@@ -61,6 +61,31 @@ export interface OrderRecord {
   updatedAt: string;
 }
 
+// Derived order-health buckets (#929). Hand-mirrored from `OrderHealthValues`
+// in `@openlinker/core/orders` per the FE-001 contract strategy — keep in sync.
+// Partition the order set: every record maps to exactly one bucket, so the KPI
+// segment counts sum to the total. Canonical precedence (highest wins) lives in
+// `deriveOrderHealth` (lib/order-health.ts), the single FE source of truth.
+export const OrderHealthValues = [
+  'awaiting_mapping',
+  'needs_attention',
+  'synced',
+  'awaiting_dispatch',
+] as const;
+export type OrderHealthValue = (typeof OrderHealthValues)[number];
+
+/**
+ * Per-health-bucket counts from `GET /orders/status-summary` (#929). Mirrors
+ * `OrderHealthSummaryResponseDto` (BE). `total` equals the sum of the buckets.
+ */
+export interface OrderHealthSummary {
+  total: number;
+  awaitingMapping: number;
+  needsAttention: number;
+  synced: number;
+  awaitingDispatch: number;
+}
+
 export interface OrderFilters {
   sourceConnectionId?: string;
   syncStatus?: OrderSyncStatusValue;
@@ -68,6 +93,20 @@ export interface OrderFilters {
   createdFrom?: string;
   createdTo?: string;
   recordStatus?: OrderRecordStatusValue;
+  /** Filter to a single derived health bucket (#929). */
+  health?: OrderHealthValue;
+}
+
+/**
+ * Scope filters for the health-summary count (#929) — source/customer/date
+ * subset only. Intentionally excludes `health` so the aggregate can't be
+ * self-filtered. Mirrors `OrderHealthSummaryQueryDto` (BE).
+ */
+export interface OrderHealthSummaryFilters {
+  sourceConnectionId?: string;
+  customerId?: string;
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 export interface OrderPagination {

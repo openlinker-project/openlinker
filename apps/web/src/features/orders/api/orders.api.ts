@@ -12,10 +12,13 @@ import type {
   PaginatedOrders,
   OrderRecord,
   RetryOrderDestinationResult,
+  OrderHealthSummary,
+  OrderHealthSummaryFilters,
 } from './orders.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
+  statusSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderHealthSummary>;
   getById: (internalOrderId: string) => Promise<OrderRecord>;
   retryDestination: (
     internalOrderId: string,
@@ -35,8 +38,19 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
   if (filters?.recordStatus) params.set('recordStatus', filters.recordStatus);
+  if (filters?.health) params.set('health', filters.health);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  const qs = params.toString();
+  return qs.length > 0 ? `?${qs}` : '';
+}
+
+function buildSummaryQuery(filters?: OrderHealthSummaryFilters): string {
+  const params = new URLSearchParams();
+  if (filters?.sourceConnectionId) params.set('sourceConnectionId', filters.sourceConnectionId);
+  if (filters?.customerId) params.set('customerId', filters.customerId);
+  if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
+  if (filters?.createdTo) params.set('createdTo', filters.createdTo);
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }
@@ -45,6 +59,9 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
   return {
     list(filters, pagination): Promise<PaginatedOrders> {
       return request<PaginatedOrders>(`/orders${buildQuery(filters, pagination)}`);
+    },
+    statusSummary(filters): Promise<OrderHealthSummary> {
+      return request<OrderHealthSummary>(`/orders/status-summary${buildSummaryQuery(filters)}`);
     },
     getById(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${internalOrderId}`);
