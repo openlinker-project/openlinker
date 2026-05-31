@@ -8,6 +8,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
+import type { PaymentStatus } from './payment-status.types';
 
 /**
  * Order status values
@@ -111,6 +112,8 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
+  /** Source-reported payment status (#928); absent when the source did not report it. */
+  paymentStatus?: PaymentStatus;
   /**
    * When the buyer placed the order on the source marketplace (#926). Distinct
    * from `createdAt`/`updatedAt`, which are OpenLinker's ingestion clocks — this
