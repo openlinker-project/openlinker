@@ -12,15 +12,18 @@ import {
   CARRIER_MAPPING_REPOSITORY_TOKEN,
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
+  ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
 } from '../../../mappings.tokens';
 import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
 import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
 import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
 import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
+import type { OrderStateMappingRepositoryPort } from '../../../domain/ports/order-state-mapping-repository.port';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
 import { CategoryMapping } from '../../../domain/entities/category-mapping.entity';
+import { OrderStateMapping } from '../../../domain/entities/order-state-mapping.entity';
 
 describe('MappingConfigService', () => {
   let service: MappingConfigService;
@@ -28,6 +31,7 @@ describe('MappingConfigService', () => {
   let carrierRepo: jest.Mocked<CarrierMappingRepositoryPort>;
   let paymentRepo: jest.Mocked<PaymentMappingRepositoryPort>;
   let categoryRepo: jest.Mocked<CategoryMappingRepositoryPort>;
+  let orderStateRepo: jest.Mocked<OrderStateMappingRepositoryPort>;
 
   const CONNECTION_ID = 'conn-uuid-1';
 
@@ -50,6 +54,10 @@ describe('MappingConfigService', () => {
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
+    orderStateRepo = {
+      findByConnectionId: jest.fn(),
+      replaceForConnection: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,6 +66,7 @@ describe('MappingConfigService', () => {
         { provide: CARRIER_MAPPING_REPOSITORY_TOKEN, useValue: carrierRepo },
         { provide: PAYMENT_MAPPING_REPOSITORY_TOKEN, useValue: paymentRepo },
         { provide: CATEGORY_MAPPING_REPOSITORY_TOKEN, useValue: categoryRepo },
+        { provide: ORDER_STATE_MAPPING_REPOSITORY_TOKEN, useValue: orderStateRepo },
       ],
     }).compile();
 
@@ -178,6 +187,64 @@ describe('MappingConfigService', () => {
       carrierRepo.findByConnectionId.mockResolvedValue([]);
 
       const result = await service.resolveCarrierMapping(CONNECTION_ID, '1fa56f79-aaa');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ── Order-state mappings (outbound OL→destination, #862) ────────────────
+
+  describe('getOrderStateMappings', () => {
+    it('should return order-state mappings from repository', async () => {
+      const mappings = [new OrderStateMapping('id-1', CONNECTION_ID, 'shipped', '4')];
+      orderStateRepo.findByConnectionId.mockResolvedValue(mappings);
+
+      const result = await service.getOrderStateMappings(CONNECTION_ID);
+
+      expect(orderStateRepo.findByConnectionId).toHaveBeenCalledWith(CONNECTION_ID);
+      expect(result).toEqual(mappings);
+    });
+  });
+
+  describe('upsertOrderStateMappings', () => {
+    it('should delegate to replaceForConnection', async () => {
+      const input = [{ olStatus: 'shipped' as const, externalStateId: '4' }];
+      const saved = [new OrderStateMapping('id-2', CONNECTION_ID, 'shipped', '4')];
+      orderStateRepo.replaceForConnection.mockResolvedValue(saved);
+
+      const result = await service.upsertOrderStateMappings(CONNECTION_ID, input);
+
+      expect(orderStateRepo.replaceForConnection).toHaveBeenCalledWith(CONNECTION_ID, input);
+      expect(result).toEqual(saved);
+    });
+  });
+
+  describe('resolveOrderStateMapping', () => {
+    it('should return externalStateId when olStatus matches', async () => {
+      orderStateRepo.findByConnectionId.mockResolvedValue([
+        new OrderStateMapping('id-1', CONNECTION_ID, 'shipped', '12'),
+        new OrderStateMapping('id-2', CONNECTION_ID, 'delivered', '15'),
+      ]);
+
+      const result = await service.resolveOrderStateMapping(CONNECTION_ID, 'shipped');
+
+      expect(result).toBe('12');
+    });
+
+    it('should return null when no override matches the given olStatus', async () => {
+      orderStateRepo.findByConnectionId.mockResolvedValue([
+        new OrderStateMapping('id-1', CONNECTION_ID, 'shipped', '12'),
+      ]);
+
+      const result = await service.resolveOrderStateMapping(CONNECTION_ID, 'refunded');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when connection has no order-state overrides configured', async () => {
+      orderStateRepo.findByConnectionId.mockResolvedValue([]);
+
+      const result = await service.resolveOrderStateMapping(CONNECTION_ID, 'shipped');
 
       expect(result).toBeNull();
     });
