@@ -37,5 +37,13 @@ export class OrderRecord {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly syncAttempts: SyncAttempt[] = [],
+    /**
+     * Derived marketplace dispatch (ship-by) deadline (#927) — the `.to` of the
+     * source dispatch window, denormalized to a top-level column so the orders
+     * list can sort/filter on the SLA without parsing the snapshot. `null` when
+     * the source exposes no dispatch SLA. Re-derived on every persist so a
+     * re-pulled order with a changed window stays fresh.
+     */
+    public readonly dispatchByAt: Date | null = null,
   ) {}
 }

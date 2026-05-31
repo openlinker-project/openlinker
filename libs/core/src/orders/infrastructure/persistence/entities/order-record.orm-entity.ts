@@ -77,6 +77,16 @@ export class OrderRecordOrmEntity {
   @Index()
   recordStatus!: string;
 
+  /**
+   * Derived marketplace dispatch (ship-by) deadline (#927) — the `.to` of the
+   * source dispatch window, denormalized from the snapshot so the orders list
+   * can sort/filter on the SLA via an index without parsing JSONB. `null` when
+   * the source exposes no dispatch SLA (non-marketplace orders, older records).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  dispatchByAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
