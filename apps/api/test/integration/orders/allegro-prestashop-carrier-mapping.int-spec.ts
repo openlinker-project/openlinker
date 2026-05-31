@@ -3,13 +3,19 @@
  *
  * Exercises `OrderIngestionService.syncOrderFromSource` end-to-end against a
  * real PrestaShop Testcontainer with the real OL PS module installed
- * (harness extended in #692):
+ * (harness extended in #692). Order creation goes through the OL module's
+ * `importorder` endpoint → `PaymentModule::validateOrder` (ADR-016 / #905),
+ * which assigns the order's carrier from the cart's `delivery_option` rather
+ * than re-resolving to the cheapest available option the raw-WS `POST /orders`
+ * path picked. The scenarios model PAID Allegro orders (`status:'processing'`
+ * → PS state 2 "Payment accepted"), so `total_paid_real == total`.
  *
  *   S-1 — mapped happy path:
  *     `connection_carrier_mappings` routes Allegro `methodId='paczkomat-s1'`
- *     to PS "My carrier". Expect the order lands with `id_carrier ==
- *     myCarrier.idCarrier`, `total_shipping == 12.50`, cart `id_carrier > 0`,
- *     `current_state != 8` (no payment-error state).
+ *     to PS "My carrier". `validateOrder` honors the cart's carrier, so the
+ *     order lands with `id_carrier == myCarrier.idCarrier`, `total_shipping ==
+ *     12.50`, cart `id_carrier > 0`, `current_state != 8`, and
+ *     `total_paid == total_paid_real`.
  *
  *   S-2 — defaultCarrierId fallback:
  *     `methodId='paczkomat-s2'` has no mapping; `connection.config.defaultCarrierId`
@@ -30,10 +36,21 @@
  *     → `Carrier::getOrderShippingCostExternal` reads it round-trip actually
  *     happened against real PS, not just mock-side.
  *
+ *   S-4 — free-carrier regression (#898, ADR-016):
+ *     Same OL-Dynamic mapping as S-3, but a FREE "Click and collect" carrier is
+ *     enabled and made available to the order's group + zone first — the exact
+ *     topology that made the pre-ADR-016 raw-WS `POST /orders` path re-resolve
+ *     every order onto the free carrier (`total_shipping=0`, Payment-error).
+ *     Since orders now go through `validateOrder` (which honors the cart's
+ *     `delivery_option`), the free carrier must NOT win: assert the order keeps
+ *     `id_carrier == ps.olDynamicCarrierId`, `total_shipping == 12.50`, and
+ *     `current_state != 8`.
+ *
  * Catches the failure-mode cluster that motivated #503 (cart `id_carrier=0`),
  * #505 (PS rejects guest customers in group 0), #467 (`total_shipping`
- * zeroed by no-zone carriers), and #513 (PS recomputes `total_shipping` from
- * carrier price tables on POST /orders — fixed via the OL Dynamic carrier path).
+ * zeroed by no-zone carriers), and #513/#898 (the raw-WS `POST /orders` path
+ * dropped the carrier + recomputed shipping — fixed by creating orders through
+ * `validateOrder`, which honors the cart's carrier and module-priced shipping).
  *
  * Suite-scoped: the PS container boots in `beforeAll` and stops in `afterAll`
  * (cold-cache CI: 5-10 min; warm cache: 60-90 s). The global Postgres+Redis
@@ -57,6 +74,7 @@ import {
 } from '../helpers/prestashop-container.helper';
 import {
   DefaultPrestashopCarriers,
+  enableFreePickupCarrier,
   getDefaultPsCarriers,
   readCartShipping,
   seedPrestashopProductForOrders,
@@ -68,7 +86,7 @@ import {
 import {
   createTestAllegroSourceConnection,
   createTestPrestashopDestinationConnection,
-  seedCarrierMapping,
+  seedCarrierMappings,
 } from '../helpers/test-connection.helper';
 import { createIncomingOrderForCarrierMapping } from '../fixtures/incoming-order.fixtures';
 
@@ -177,17 +195,21 @@ const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
 
 /**
  * Whether to install the real OL PrestaShop module into the container — gates
- * S-3 (which exercises the `cartshipping.php` HMAC round-trip).
+ * **all** scenarios. Since ADR-016 (#905) destination order creation goes
+ * through the module's HMAC-authed `importorder` → `validateOrder` endpoint, so
+ * S-1…S-4 every one require the module installed AND the webhook secret wired
+ * (below). The old WS `POST /orders` path that let S-1/S-2 run module-free is
+ * gone.
  *
  * Local default: `true` — full coverage, ~5-10s install overhead on the
  * already-paid PS container boot.
  *
  * CI override (`CI=true`): `false` — the self-hosted Linux runner currently
  * fails the post-install `verifyApacheUp` probe with HTTP 500 from
- * /api/carriers (works on macOS Docker-Desktop). Root cause TBD; tracked
- * as a follow-up so #513's locally-proven round-trip doesn't block this PR.
- * In this mode S-3 is reported as skipped rather than failed; S-1 + S-2
- * still run (they don't need the module).
+ * /api/carriers (works on macOS Docker-Desktop). Root cause TBD; tracked by the
+ * #716 module-install-in-CI follow-up. In this mode **the whole suite is
+ * reported as skipped** rather than failed (carrier-mapping has no module-free
+ * scenario left); CI PS-order coverage returns once #716 lands.
  *
  * Explicit overrides:
  *   - `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (used by
@@ -291,21 +313,37 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
       allegroConnectionId,
       prestashopConnectionId,
     });
+    // S-4 — faithful #898 reproduction: a free carrier IS present (enabled in
+    // the S-4 test body so it can't perturb S-1..S-3, which run first under
+    // maxWorkers:1). Mapped to the OL Dynamic carrier like S-3.
+    await seedScenario({
+      harness,
+      psMysqlAddress: ps.mysqlAddress,
+      externalOfferId: 'ALG-OFFER-S4',
+      psReference: 'SEEDED-SKU-S4',
+      psName: 'Carrier-mapping S-4 product',
+      allegroConnectionId,
+      prestashopConnectionId,
+    });
 
-    // S-1: mapping seeded. S-2: no mapping (resolution falls through to defaultCarrierId).
-    // S-3: mapped to the OL Dynamic carrier id — exercises the sidecar write path.
-    await seedCarrierMapping(
-      harness,
-      allegroConnectionId,
-      'paczkomat-s1',
-      String(defaultCarriers.myCarrier.idCarrier)
-    );
-    await seedCarrierMapping(
-      harness,
-      allegroConnectionId,
-      'paczkomat-s3',
-      String(ps.olDynamicCarrierId)
-    );
+    // Seed ALL carrier mappings in one call — `upsertCarrierMappings` is
+    // replace-for-connection, so separate calls would keep only the last.
+    //   S-1: paczkomat-s1 → "My carrier".  S-2: no mapping (falls through to
+    //   defaultCarrierId). S-3 + S-4: → the OL Dynamic carrier (sidecar path).
+    await seedCarrierMappings(harness, allegroConnectionId, [
+      {
+        allegroDeliveryMethodId: 'paczkomat-s1',
+        prestashopCarrierId: String(defaultCarriers.myCarrier.idCarrier),
+      },
+      {
+        allegroDeliveryMethodId: 'paczkomat-s3',
+        prestashopCarrierId: String(ps.olDynamicCarrierId),
+      },
+      {
+        allegroDeliveryMethodId: 'paczkomat-s4',
+        prestashopCarrierId: String(ps.olDynamicCarrierId),
+      },
+    ]);
   }, 15 * 60_000);
 
   afterAll(async () => {
@@ -326,9 +364,12 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     }
   });
 
-  it('S-1: mapped carrier lands on order + cart with positive id_carrier', async () => {
+  itWhenOlModuleInstalled('S-1: mapped carrier lands on order + cart with positive id_carrier', async () => {
     const incoming = createIncomingOrderForCarrierMapping({
       externalOrderId: 'ALG-S1',
+      // Paid Allegro order (payment.finishedAt set → 'processing') → PS state 2
+      // "Payment accepted" → validateOrder records the payment.
+      status: 'processing',
       methodId: 'paczkomat-s1',
       externalOfferId: 'ALG-OFFER-S1',
       sku: 'SEEDED-SKU-S1',
@@ -359,9 +400,10 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     expect(Number(psCart.id_carrier)).toBeGreaterThan(0);
   });
 
-  it('S-2: defaultCarrierId fallback lands on order with config carrier', async () => {
+  itWhenOlModuleInstalled('S-2: defaultCarrierId fallback lands on order with config carrier', async () => {
     const incoming = createIncomingOrderForCarrierMapping({
       externalOrderId: 'ALG-S2',
+      status: 'processing',
       methodId: 'paczkomat-s2',
       externalOfferId: 'ALG-OFFER-S2',
       sku: 'SEEDED-SKU-S2',
@@ -382,13 +424,13 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
-    // S-2's strongest assertion is on the *cart*, not the order. OL's
-    // `defaultCarrierId` fallback writes the chosen `id_carrier` onto the cart
-    // during cart-create; PS may then rewrite the value on the order during
-    // its own carrier-resolution pass (cheapest available wins when more than
-    // one carrier matches the cart's delivery options). That rewrite is PS
-    // behaviour, not OL — the bug surface this spec guards (#503/#505/#467)
-    // is the cart write, so the cart is what we assert strictly.
+    // OL's `defaultCarrierId` fallback writes the chosen `id_carrier` onto the
+    // cart during cart-create; under ADR-016 `validateOrder` then assigns the
+    // order's carrier from the cart's `delivery_option`, so the order carrier
+    // matches the cart. We assert the cart strictly (the OL adapter signal) and
+    // keep the order assertion as a lenient #503 guard (cart `id_carrier=0`
+    // would zero shipping) — strictness on the order value would couple the
+    // test to PS's tie-break details among equal-price carriers.
     const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
     expect(Number(psCart.id_carrier)).toBe(defaultCarriers.myCheapCarrier.idCarrier);
     expect(Number(psOrder.id_carrier)).toBeGreaterThan(0); // #503 guard — any positive carrier
@@ -406,6 +448,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
   itWhenOlModuleInstalled('S-3: OL Dynamic carrier path writes sidecar + lands authoritative shipping', async () => {
     const incoming = createIncomingOrderForCarrierMapping({
       externalOrderId: 'ALG-S3',
+      status: 'processing',
       methodId: 'paczkomat-s3',
       externalOfferId: 'ALG-OFFER-S3',
       sku: 'SEEDED-SKU-S3',
@@ -449,37 +492,91 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     expect(sidecar).not.toBeNull();
     expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
 
-    // (3) The order's `total_shipping` reads the buyer-paid amount. Note
-    // that under PS's "cheapest available + tiebreak by position-ASC"
-    // carrier-resolution at POST /orders, the order's `id_carrier` may be
-    // rewritten from the cart's value (matches S-2's documented behavior).
-    // What matters for #513's acceptance is the *total*, which lands at
-    // 12.50 regardless of which active carrier PS finally picks (all three
-    // — myCarrier, myCheapCarrier, OL Dynamic — yield 12.50 at the cart's
-    // delivery zone in this fixture). The cart-side carrier (1) and the
-    // sidecar row (2) are the OL-Dynamic-specific signals.
+    // (3) The order's `total_shipping` reads the buyer-paid (sidecar) amount.
+    // Under ADR-016 `validateOrder` assigns the carrier from the cart's
+    // `delivery_option`, so the order keeps the OL Dynamic carrier and its
+    // module-priced shipping — no recompute from PS price tables.
     expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
 
-    // (4) totals reconcile — `total_paid` matches `total_paid_real`. This
-    // is what PS uses to compute `current_state` at POST /orders, and the
-    // root cause #513's epic exists to fix.
+    // (4) totals reconcile — `total_paid` matches `total_paid_real`. The order
+    // is paid (`status:'processing'` → PS state 2 "Payment accepted"), so
+    // `validateOrder` records the payment and the two amounts agree. This is
+    // what PS uses to compute `current_state`.
     expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
 
-    // (5) No payment-error state. The whole point of the OL Dynamic carrier
-    // path: PS reads the authoritative shipping from
-    // `getOrderShippingCostExternal` *during* order create (not after via a
-    // reconcile PUT), so totals match on first POST and `current_state=8`
+    // (5) No payment-error state. `validateOrder` reads the authoritative
+    // shipping from `getOrderShippingCostExternal` and prices the order in one
+    // pass (no post-create reconcile PUT), so totals match and `current_state=8`
     // is never stamped.
     expect(Number(psOrder.current_state)).not.toBe(8);
 
-    // (6) Soft order-side check matching S-2's design: PS's carrier
-    // re-resolution at order-create may rewrite the order's `id_carrier`
-    // when multiple active carriers tie on price (12.50). The order MUST
-    // still land with a positive carrier id (the #503 guard — cart
-    // `id_carrier=0` would zero out shipping handling). Strictness on the
-    // value would be over-specifying PS behavior — see also S-2's comment.
-    expect(Number(psOrder.id_carrier)).toBeGreaterThan(0);
+    // (6) Order keeps the OL Dynamic carrier. Under ADR-016 `validateOrder`
+    // assigns the carrier from the cart's `delivery_option`, so the order — not
+    // just the cart — lands on `olDynamicCarrierId` (S-4 confirms this holds even
+    // against a cheaper free carrier). Asserting the exact id (vs the old
+    // lenient `> 0`) is the stronger #503 guard now that the WS re-resolution is
+    // gone.
+    expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
   });
+
+  itWhenOlModuleInstalled(
+    'S-4: free carrier present — OL Dynamic carrier still wins via validateOrder (#898 regression)',
+    async () => {
+      // Reproduce the exact #898 topology: a free "Click and collect" carrier
+      // available to the order's group + zone. On the pre-ADR-016 raw-WS
+      // `POST /orders` path PS re-resolved to the cheapest available option, so
+      // this free carrier ALWAYS won — every order landed on it with
+      // `total_shipping=0` and a Payment-error state. ADR-016 creates the order
+      // through `validateOrder`, which honors the cart's `delivery_option`, so
+      // the free carrier must NO LONGER win.
+      const freeCarrier = await enableFreePickupCarrier(ps.mysqlAddress);
+
+      const incoming = createIncomingOrderForCarrierMapping({
+        externalOrderId: 'ALG-S4',
+        status: 'processing',
+        methodId: 'paczkomat-s4',
+        externalOfferId: 'ALG-OFFER-S4',
+        sku: 'SEEDED-SKU-S4',
+      });
+      stub.setNextIncomingOrder(incoming);
+
+      const ingestion = harness
+        .getApp()
+        .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+      const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S4');
+
+      expect(results).toHaveLength(1);
+      if (results[0].status !== 'success') {
+        dumpPrestashopErrorLogs();
+        throw new Error(
+          `S-4 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+        );
+      }
+
+      const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
+      const psOrder = await fetchPsOrder(ps, psOrderId);
+      const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+
+      // (1) The cart is routed to the OL Dynamic carrier (adapter signal).
+      expect(Number(psCart.id_carrier)).toBe(ps.olDynamicCarrierId);
+
+      // (2) #898 core guard: the free carrier did NOT win. Under validateOrder
+      // the order keeps the cart's carrier rather than being rewritten to the
+      // cheapest (free) option — the exact substitution #898 reported.
+      expect(Number(psOrder.id_carrier)).not.toBe(freeCarrier.idCarrier);
+      expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
+
+      // (3) Shipping is the sidecar amount, not the free carrier's 0.
+      const sidecar = await readCartShipping(ps.mysqlAddress, Number(psOrder.id_cart));
+      expect(sidecar).not.toBeNull();
+      expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
+      expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+
+      // (4) Totals reconcile and no Payment-error state — the #898 banner.
+      expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
+      expect(Number(psOrder.current_state)).not.toBe(8);
+    }
+  );
 });
 
 interface SeedScenarioOpts {

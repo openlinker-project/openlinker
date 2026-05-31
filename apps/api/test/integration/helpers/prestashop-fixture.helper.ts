@@ -1019,6 +1019,101 @@ async function seedSecondaryTestCarrier(conn: Connection): Promise<PrestashopCar
 }
 
 /**
+ * Re-enable PS's built-in free "Click and collect" carrier and make it
+ * unambiguously *available* to the order's customer group + delivery zone —
+ * the exact shop topology that triggers #898.
+ *
+ * `getDefaultPsCarriers` deliberately DISABLES this carrier because, on the
+ * pre-ADR-016 raw-WS `POST /orders` path, PS re-resolved the order to the
+ * cheapest *available* delivery option and the free carrier always won,
+ * masking the OL routing under test. ADR-016 creates orders through
+ * `validateOrder`, which honors the cart's `delivery_option` — so the free
+ * carrier must NO LONGER win even when present. This helper restores it so a
+ * regression test can prove that.
+ *
+ * Sets `is_free=1` (price 0 → cheapest), `active=1`, low `position` (PS tie-breaks
+ * on position ASC), and links it to every active group + zone + shop with a
+ * permissive delivery range. Returns its `PrestashopCarrierInfo`.
+ *
+ * @throws if no "Click and collect" row exists on the install.
+ */
+export async function enableFreePickupCarrier(
+  options: ApplyFixtureOptions
+): Promise<PrestashopCarrierInfo> {
+  const conn = await createConnection({
+    host: options.host,
+    port: options.port,
+    user: options.user,
+    password: options.password,
+    database: options.database,
+    multipleStatements: false,
+  });
+  try {
+    const [rows] = await conn.execute<
+      (RowDataPacket & { id_carrier: number; id_reference: number })[]
+    >(
+      `SELECT id_carrier, id_reference FROM ps_carrier
+       WHERE name = 'Click and collect' AND deleted = 0
+       ORDER BY id_carrier ASC LIMIT 1`
+    );
+    if (rows.length === 0) {
+      throw new Error(
+        `No "Click and collect" carrier found on the PS install — cannot reproduce the #898 free-carrier topology.`
+      );
+    }
+    const idCarrier = rows[0].id_carrier;
+
+    // Make it the cheapest available option: free, active, first by position,
+    // priced via range (is_free short-circuits the price anyway), not external.
+    await conn.execute(
+      `UPDATE ps_carrier
+       SET active = 1, is_free = 1, deleted = 0, shipping_external = 0,
+           is_module = 0, need_range = 0, position = 0
+       WHERE id_carrier = ?`,
+      [idCarrier]
+    );
+
+    const [zones] = await conn.execute<(RowDataPacket & { id_zone: number })[]>(
+      'SELECT id_zone FROM ps_zone WHERE active = 1'
+    );
+    const [shops] = await conn.execute<(RowDataPacket & { id_shop: number })[]>(
+      'SELECT id_shop FROM ps_shop WHERE active = 1'
+    );
+    const [groups] = await conn.execute<(RowDataPacket & { id_group: number })[]>(
+      'SELECT id_group FROM ps_group'
+    );
+
+    // Availability: the carrier must be granted to the order's customer group
+    // (incl. the guest group OL provisions into) and its delivery zone, or PS
+    // filters it out of the delivery-option list and it can't be the bug
+    // trigger. INSERT IGNORE keeps this idempotent against PS's own seed rows.
+    for (const group of groups) {
+      await conn.execute(
+        'INSERT IGNORE INTO ps_carrier_group (id_carrier, id_group) VALUES (?, ?)',
+        [idCarrier, group.id_group]
+      );
+    }
+    for (const zone of zones) {
+      await conn.execute('INSERT IGNORE INTO ps_carrier_zone (id_carrier, id_zone) VALUES (?, ?)', [
+        idCarrier,
+        zone.id_zone,
+      ]);
+    }
+    for (const shop of shops) {
+      await conn.execute('INSERT IGNORE INTO ps_carrier_shop (id_carrier, id_shop) VALUES (?, ?)', [
+        idCarrier,
+        shop.id_shop,
+      ]);
+    }
+    await seedDeliveryRows(conn, idCarrier, zones, shops);
+
+    return { idCarrier, idReference: rows[0].id_reference || idCarrier };
+  } finally {
+    await conn.end();
+  }
+}
+
+/**
  * Wipe + re-seed delivery infrastructure for the given carrier so the spec
  * is insensitive to PS install defaults. Replaces any stock ps_delivery /
  * ps_range_price / ps_range_weight rows for the carrier with one flat-rate
