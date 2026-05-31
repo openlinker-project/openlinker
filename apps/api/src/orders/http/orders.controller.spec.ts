@@ -220,6 +220,47 @@ describe('OrdersController', () => {
         { limit: 20, offset: 0 }
       );
     });
+
+    it('should pass the dispatch-SLA sort and dueBefore filter through to the repository (#927)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({
+        sort: 'dispatchBy',
+        dueBefore: '2026-06-01T12:00:00Z',
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: 'dispatchBy',
+          dueBefore: new Date('2026-06-01T12:00:00Z'),
+        }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should serialize dispatchByAt as an ISO string, or null when absent (#927)', async () => {
+      const orderWithDeadline = new OrderRecord(
+        'ol_order_sla',
+        null,
+        'conn-source-001',
+        null,
+        {},
+        [],
+        'ready',
+        new Date('2026-04-01T00:00:00Z'),
+        new Date('2026-04-01T00:00:00Z'),
+        [],
+        new Date('2026-04-02T16:00:00Z')
+      );
+      repository.findMany.mockResolvedValue({ items: [orderWithDeadline, mockOrder], total: 2 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].dispatchByAt).toBe('2026-04-02T16:00:00.000Z');
+      expect(result.items[1].dispatchByAt).toBeNull();
+    });
   });
 
   describe('statusSummary', () => {

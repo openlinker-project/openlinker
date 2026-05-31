@@ -9,9 +9,10 @@
  * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`),
  *   surface customer + contents (parsed from `orderSnapshot`), the source→
  *   destination channel, one reconciled health `StatusBadge` (`deriveOrderHealth`,
- *   replacing the per-destination list and the blank "—"), an honest "Created"
- *   time, ghost Ship-by / Payment columns (capture-gap epic #925), and an inline
- *   Retry for failed rows;
+ *   replacing the per-destination list and the blank "—"), a "Created" time, a
+ *   **Ship-by** SLA countdown (#927; server-sorted soonest-first, with a
+ *   "breaching ≤24h / overdue" filter chip), a ghost Payment column (#928), and
+ *   an inline Retry for failed rows;
  * — loading / error / empty (incl. all-clear) states via shared feedback prims.
  *
  * Pure presentation — all data flows through feature query hooks; no transport
@@ -23,15 +24,16 @@ import { useEffect, useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { Chip } from '../../shared/ui/chip';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { StatusBadge } from '../../shared/ui/status-badge';
+import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { useToast } from '../../shared/ui/toast-provider';
+import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
@@ -84,6 +86,16 @@ function isOrderHealth(value: string | null): value is OrderHealthValue {
   return value !== null && (OrderHealthValues as readonly string[]).includes(value);
 }
 
+/** Map the neutral ship-by urgency level (#927) to a StatusBadge tone. */
+const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
+  ok: 'info',
+  soon: 'warning',
+  overdue: 'error',
+};
+
+/** "Breaching soon" window — surface orders due within this horizon (or overdue). */
+const BREACHING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Resolve the per-row total via the i18n seam (#612). Currency varies per row
  * so we instantiate per call; locale comes from the LocaleProvider.
@@ -124,18 +136,29 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
 
 export function OrdersListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
   const { locale } = useTranslation();
   const { showToast } = useToast();
 
   const rawHealth = searchParams.get('health');
   const health = isOrderHealth(rawHealth) ? rawHealth : undefined;
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
+  const breaching = searchParams.get('due') === 'breaching';
   const offset = Number(searchParams.get('offset') ?? '0');
+
+  // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
+  // render) so the query key doesn't churn. `now + 24h` catches overdue too.
+  const dueBefore = useMemo(
+    () => (breaching ? new Date(Date.now() + BREACHING_WINDOW_MS).toISOString() : undefined),
+    [breaching],
+  );
 
   const filters: OrderFilters = {
     health,
     sourceConnectionId: sourceConnectionId || undefined,
+    // Server-backed triage default: soonest ship-by first (NULLs last). The
+    // only sort on this list — kept coherent (no client-page-sorted columns).
+    sort: 'dispatchBy',
+    dueBefore,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -260,15 +283,27 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'shipBy',
         header: 'Ship-by',
-        cell: () => <span className="orders-ghost" title="Dispatch SLA — arrives with #927">soon</span>,
-        hideBelow: 1024,
+        cell: (order) => {
+          const due = order.dispatchByAt ?? null;
+          const view = formatShipBy(due);
+          if (!due || !view) return <span className="text-muted">—</span>;
+          return (
+            <span className="orders-cell-stack">
+              <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+                {view.remaining}
+              </StatusBadge>
+              <span className="text-muted orders-cell-sub">
+                <TimeDisplay iso={due} format="date" />
+              </span>
+            </span>
+          );
+        },
+        hideBelow: 768,
       },
       {
         id: 'createdAt',
         header: 'Created',
         cell: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
-        accessor: (order) => order.createdAt,
-        sortable: true,
       },
       {
         id: 'payment',
@@ -341,6 +376,19 @@ export function OrdersListPage(): ReactElement {
         p.set('health', next);
       } else {
         p.delete('health');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  function toggleBreaching(): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (breaching) {
+        p.delete('due');
+      } else {
+        p.set('due', 'breaching');
       }
       p.delete('offset');
       return p;
@@ -439,6 +487,9 @@ export function OrdersListPage(): ReactElement {
       </div>
 
       <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <Chip tone="warning" active={breaching} onClick={toggleBreaching}>
+          Ship-by ≤ 24h / overdue
+        </Chip>
         {query.data && (
           <span
             className="text-muted mono tabular"
@@ -492,8 +543,6 @@ export function OrdersListPage(): ReactElement {
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             rowHref={(order) => order.internalOrderId}
-            sort={sort}
-            onSortChange={setSort}
             cardView={{
               title: (order) => {
                 const parsed = parseOrderSnapshot(order.orderSnapshot);
@@ -508,6 +557,7 @@ export function OrdersListPage(): ReactElement {
               meta: (order) => {
                 const h = deriveOrderHealth(order);
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+                const shipBy = formatShipBy(order.dispatchByAt ?? null);
                 const failed = order.syncStatus.find((s) => s.status === 'failed');
                 const isRetrying =
                   retryMutation.isPending &&
@@ -525,6 +575,11 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
+                    {shipBy && (
+                      <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
+                        {shipBy.remaining}
+                      </StatusBadge>
+                    )}
                     {failed && order.recordStatus !== 'awaiting_mapping' ? (
                       <Button
                         tone="ghost"

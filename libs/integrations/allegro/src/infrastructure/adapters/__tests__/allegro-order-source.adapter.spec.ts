@@ -331,6 +331,69 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.paymentStatus).toBe('cod');
     });
 
+    describe('dispatch time / ship-by (#927)', () => {
+      const formWithDelivery = (
+        delivery: NonNullable<AllegroCheckoutForm['delivery']>
+      ): AllegroCheckoutForm => ({
+        id: 'cf',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: { id: 'b', email: 'b@e.com', login: 'b' },
+        lineItems: [
+          { id: 'l1', offer: { id: 'o1', name: 'O1' }, quantity: 1, price: { amount: '10.00', currency: 'PLN' } },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE', finishedAt: '2024-01-01T01:00:00Z' },
+        delivery,
+      });
+
+      it('maps delivery.time.dispatch to the neutral dispatchTime window', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithDelivery({
+            time: {
+              from: '2024-01-03T10:00:00Z',
+              to: '2024-01-03T12:00:00Z',
+              dispatch: { from: '2024-01-02T08:00:00Z', to: '2024-01-02T16:00:00Z' },
+            },
+          }),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.dispatchTime).toEqual({
+          from: '2024-01-02T08:00:00Z',
+          to: '2024-01-02T16:00:00Z',
+        });
+      });
+
+      it('ignores the deprecated guaranteed window and leaves dispatchTime undefined when no dispatch', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithDelivery({
+            time: { guaranteed: { from: '2024-01-03T10:00:00Z', to: '2024-01-03T12:00:00Z' } },
+          }),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.dispatchTime).toBeUndefined();
+      });
+
+      it('leaves dispatchTime undefined when the delivery block has no time', async () => {
+        httpClient.get.mockResolvedValueOnce({
+          data: formWithDelivery({ method: { id: 'm1', name: 'Courier' } }),
+          status: 200,
+          headers: {},
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.dispatchTime).toBeUndefined();
+      });
+    });
+
     describe('totals — shipping cost (#454)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
