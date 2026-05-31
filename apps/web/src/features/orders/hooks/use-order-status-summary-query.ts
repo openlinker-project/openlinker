@@ -18,6 +18,11 @@ export function useOrderStatusSummaryQuery(
 ): UseQueryResult<OrderHealthSummary> {
   const apiClient = useApiClient();
 
+  // No bespoke staleTime: the segment counts and the table are eventually
+  // consistent by design. The retry mutation invalidates the whole orders
+  // domain (`ordersQueryKeys.all`), so the counts and rows re-sync together on
+  // the mutation path; any transient drift between background refetches is
+  // cosmetic and acceptable for a triage summary.
   return useQuery({
     queryKey: ordersQueryKeys.statusSummary(filters),
     queryFn: () => apiClient.orders.statusSummary(filters),

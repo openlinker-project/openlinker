@@ -38,14 +38,18 @@ export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
  * fell into no bucket.
  *
  * CANONICAL PRECEDENCE (highest wins) — this comment is the single source of
- * truth; the FE `deriveOrderHealth` helper and the SQL `CASE` in
+ * truth; the FE `deriveOrderHealth` helper and the SQL in
  * `OrderRecordRepository.countByHealth` / `applyHealthFilter` must both encode
  * exactly this order:
  *   1. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
- *   2. `needs_attention`   — ready AND any destination `syncStatus = 'failed'`
- *   3. `synced`            — ready, no failed, AND any destination `synced`
- *   4. `awaiting_dispatch` — everything else (ready, no failed, no synced:
- *                            empty `syncStatus[]` / pending / syncing)
+ *   2. `needs_attention`   — not awaiting_mapping AND any destination `failed`
+ *   3. `synced`            — not awaiting_mapping, no failed, AND any `synced`
+ *   4. `awaiting_dispatch` — the residual: everything else (no failed, no
+ *                            synced: empty `syncStatus[]` / pending / syncing)
+ *
+ * Buckets 2–4 gate on `NOT awaiting_mapping` (not `recordStatus = 'ready'`) so
+ * the four remain a complete partition for ANY `recordStatus` value — a future
+ * status can't silently leave rows uncounted and break the cards' sum-to-total.
  */
 export const OrderHealthValues = [
   'awaiting_mapping',

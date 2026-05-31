@@ -128,6 +128,35 @@ describe('Order health summary (integration)', () => {
     expect(scoped.needsAttention).toBe(3);
   });
 
+  it('treats an unknown recordStatus as the residual awaiting_dispatch bucket (structural partition)', async () => {
+    const ds = harness.getDataSource();
+    // A hypothetical future recordStatus the bucket SQL doesn't name. The
+    // residual `NOT awaiting_mapping` gating must still place it (and keep the
+    // partition summing to total) — guards against #929's catch-all regressing.
+    await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE_A,
+      recordStatus: 'archived',
+      syncStatus: [],
+    });
+    await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE_A,
+      recordStatus: 'archived',
+      syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
+    });
+
+    const summary = await repository.countByHealth({});
+
+    expect(summary.total).toBe(2);
+    expect(summary.awaitingDispatch).toBe(1); // archived + empty → residual
+    expect(summary.needsAttention).toBe(1); // archived + failed → not-mapping AND failed
+    expect(
+      summary.awaitingMapping +
+        summary.needsAttention +
+        summary.synced +
+        summary.awaitingDispatch,
+    ).toBe(summary.total);
+  });
+
   it('findMany filters to a single health bucket', async () => {
     await seedCanonicalSet();
 

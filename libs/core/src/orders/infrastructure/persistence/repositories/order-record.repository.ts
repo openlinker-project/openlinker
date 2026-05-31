@@ -140,19 +140,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select('COUNT(*)', 'total')
       .addSelect(
-        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'awaiting_mapping')`,
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_MAPPING})`,
         'awaiting_mapping'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND ${OrderRecordRepository.HAS_FAILED})`,
+        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND ${OrderRecordRepository.HAS_FAILED})`,
         'needs_attention'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
+        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
         'synced'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
+        `COUNT(*) FILTER (WHERE NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
         'awaiting_dispatch'
       );
 
@@ -189,39 +189,44 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * JSONB-containment fragments shared by `applyHealthFilter` and
-   * `countByHealth`. Constant SQL (no user input) — `@>` matches when the
-   * `syncStatus[]` array contains an entry with the given status. Mirrors the
-   * idiom already used for the `syncStatus` enum filter in `findMany`.
+   * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
+   * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
+   * contains an entry with the given status; `IS_MAPPING` keys the highest-
+   * precedence bucket. The three non-mapping buckets gate on `NOT IS_MAPPING`
+   * (residual form) rather than `recordStatus = 'ready'`, so the four buckets
+   * remain a complete partition for ANY `recordStatus` value — adding a third
+   * status later can't silently leave rows uncounted. This mirrors the FE
+   * `deriveOrderHealth` precedence (mapping → failed → synced → else) exactly.
    */
+  private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
 
   /**
    * Narrow a `findMany` query to a single derived-health bucket (#929).
-   * Encodes the canonical precedence from `OrderHealthValues` — the buckets are
-   * mutually exclusive because every non-`awaiting_mapping` bucket requires
-   * `recordStatus = 'ready'`, and `recordStatus` is a closed two-value set.
+   * Encodes the canonical precedence from `OrderHealthValues`; `awaiting_dispatch`
+   * is the residual (everything not mapping / failed / synced).
    */
   private applyHealthFilter(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     health: OrderHealth
   ): void {
+    const notMapping = `NOT (${OrderRecordRepository.IS_MAPPING})`;
     switch (health) {
       case 'awaiting_mapping':
-        qb.andWhere(`rec."recordStatus" = 'awaiting_mapping'`);
+        qb.andWhere(OrderRecordRepository.IS_MAPPING);
         break;
       case 'needs_attention':
-        qb.andWhere(`rec."recordStatus" = 'ready' AND ${OrderRecordRepository.HAS_FAILED}`);
+        qb.andWhere(`${notMapping} AND ${OrderRecordRepository.HAS_FAILED}`);
         break;
       case 'synced':
         qb.andWhere(
-          `rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
+          `${notMapping} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
         );
         break;
       case 'awaiting_dispatch':
         qb.andWhere(
-          `rec."recordStatus" = 'ready' AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
+          `${notMapping} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
         );
         break;
     }

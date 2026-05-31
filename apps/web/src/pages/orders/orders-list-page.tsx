@@ -249,7 +249,9 @@ export function OrdersListPage(): ReactElement {
                 {h.label}
               </StatusBadge>
               {h.reason ? (
-                <span className="orders-status-reason">{h.reason}</span>
+                <span className="orders-status-reason" title={h.reason}>
+                  {h.reason}
+                </span>
               ) : null}
             </span>
           );

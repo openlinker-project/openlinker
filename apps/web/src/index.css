@@ -7259,7 +7259,14 @@ a.kpi-card:focus-visible {
 /* Two-line table cells (customer / items / channel). */
 .orders-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 .orders-cell-sub { font-size: 0.75rem; }
-.orders-status-reason { font-size: 0.6875rem; color: var(--status-error-strong); }
+.orders-status-reason {
+  font-size: 0.6875rem;
+  color: var(--status-error-strong);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Ghost (capture-gap) columns — Ship-by (#927), Payment (#928): the layout
    reserves their space so they drop in with zero rework once captured. */
