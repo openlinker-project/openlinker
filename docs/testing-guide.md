@@ -538,6 +538,32 @@ apps/api/
 - ✅ **Resource isolation**: Requires Docker, slower execution
 - ✅ **Clear separation**: Different purposes, different execution models
 
+### jest-integration `moduleNameMapper` guard (#917)
+
+Each host app's `test/jest-integration.cjs` hand-maintains a `moduleNameMapper`
+that **source-maps** every `@openlinker/*` workspace package its Nest module
+graph imports — so a *fresh, un-built* worktree resolves them via `src/` instead
+of a missing `dist/`. This list silently drifts: adding a plugin to
+`apps/<app>/src/plugins.ts` without the matching mapper entry breaks **every**
+integration test in a fresh worktree with `Cannot find module
+'@openlinker/integrations-…' from 'src/plugins.ts'` (CI masks it because the
+integration job builds `dist` first). This bit #916 (api missing `inpost`) and
+#786 (worker missing `integrations-ai`).
+
+`scripts/check-jest-integration-mappers.mjs` (run from `pnpm lint` via
+`pnpm check:invariants`) guards it: for `apps/api` and `apps/worker`, every
+`@openlinker/integrations-*` package imported in `plugins.ts` — plus the base set
+`@openlinker/core` / `@openlinker/shared` / `@openlinker/plugin-sdk` — must have
+**both** a `^<pkg>$` and a `^<pkg>/(.*)$` entry in that app's
+`jest-integration.cjs`, and the bare entry's target file must exist (catches a
+typo'd `src` path). A failure names the app, the package, and the fix (the exact
+two lines to paste for a missing entry).
+
+**When you add a plugin to `plugins.ts`**, add its two mapper lines to the same
+app's `test/jest-integration.cjs` (the guard prints them for you). Source of
+truth is `plugins.ts`, not the app's `package.json` — in this pnpm monorepo apps
+under-declare their `@openlinker/*` deps.
+
 ---
 
 ## Best Practices
