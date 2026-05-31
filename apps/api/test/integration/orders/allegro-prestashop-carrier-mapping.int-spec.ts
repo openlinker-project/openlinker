@@ -49,6 +49,7 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { ORDER_INGESTION_SERVICE_TOKEN, IOrderIngestionService } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import { destinationOrderIdFromRef } from '../helpers/order-ref.helper';
 import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PRESTASHOP_IMAGE,
@@ -118,22 +119,6 @@ const fetchPsOrder = (ps: PrestashopTestContainer, idOrder: number): Promise<PsO
 
 const fetchPsCart = (ps: PrestashopTestContainer, idCart: number): Promise<PsCartRow> =>
   fetchPsResource<PsCartRow>(ps, `/api/carts/${idCart}`, 'cart');
-
-/**
- * Parse the destination-native PrestaShop `id_order` from an `OrderRef` (#909).
- *
- * `OrderRef.orderId` now carries the destination-native external order id (the
- * PS numeric id), not an OL-internal id — idempotency and the external↔internal
- * mapping write moved into `OrderSyncService`. The PS WS accepts that numeric id
- * directly on `/api/orders/{id}`.
- */
-function destinationOrderIdFromRef(orderRef: { orderId: string }): number {
-  const parsed = Number(orderRef.orderId);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`PS-side order id not a positive integer: '${orderRef.orderId}'`);
-  }
-  return parsed;
-}
 
 /**
  * Surface PS PHP error logs into the test stderr when an order-create fails.
