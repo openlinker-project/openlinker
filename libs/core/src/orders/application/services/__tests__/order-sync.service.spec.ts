@@ -145,6 +145,37 @@ describe('OrderSyncService', () => {
       ]);
     });
 
+    it('should not re-create the destination order when a prior trigger already ingested it (webhook/poll convergence, #904)', async () => {
+      // Both the low-latency webhook (#902/#903) and the reconciliation poll
+      // (#904) reach syncOrder. When a prior trigger already created + mapped
+      // the order, the second trigger must skip create — exactly one ingest.
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Order',
+          externalId: 'PS-EXISTING-1',
+          connectionId: 'dest-a',
+          platformType: 'prestashop',
+        },
+      ]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'poll-event-1',
+      });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(results).toEqual([
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'success',
+          orderRef: { orderId: 'PS-EXISTING-1' },
+        },
+      ]);
+    });
+
     it('should fan out to every destination processor', async () => {
       const a = makeAdapter({ orderId: 'a-1' });
       const b = makeAdapter({ orderId: 'b-1' });
