@@ -45,6 +45,7 @@ import {
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
+import { deriveAllegroPaymentStatus } from './allegro-payment-status';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -292,6 +293,7 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
+        paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
         placedAt,
         createdAt,
         updatedAt,
