@@ -168,6 +168,10 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       typeof prestashopOrder.date_upd === 'string'
         ? prestashopOrder.date_upd
         : mapped.updatedAt.toISOString();
+    // PrestaShop `date_add` is when the customer placed the order — the
+    // buyer-placed time (#926). Undefined when the source row omits it.
+    const placedAtIso =
+      typeof prestashopOrder.date_add === 'string' ? prestashopOrder.date_add : undefined;
 
     return {
       externalOrderId,
@@ -179,6 +183,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       totals: mapped.totals,
       shippingAddress: mapped.shippingAddress as IncomingOrderAddress | undefined,
       billingAddress: mapped.billingAddress as IncomingOrderAddress | undefined,
+      placedAt: placedAtIso,
       createdAt: createdAtIso,
       updatedAt: updatedAtIso,
     };

@@ -268,6 +268,29 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    it('should carry incoming.placedAt onto the unified Order as a Date (#926)', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        placedAt: '2026-05-31T16:00:00.000Z',
+      });
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const order = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(order.placedAt).toEqual(new Date('2026-05-31T16:00:00.000Z'));
+    });
+
+    it('should leave Order.placedAt undefined when the incoming order omits it (#926)', async () => {
+      // baseIncoming carries no placedAt.
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const order = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(order.placedAt).toBeUndefined();
+    });
+
     it('should call updateSyncStatus with synced when syncOrder succeeds', async () => {
       orderSyncService.syncOrder.mockResolvedValue([
         {

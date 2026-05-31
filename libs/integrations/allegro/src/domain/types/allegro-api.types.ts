@@ -99,7 +99,11 @@ export interface AllegroCheckoutForm {
     /** Allegro Smart! free-delivery flag. Ignored today. */
     smart?: boolean;
   };
-  createdAt?: string;
+  /**
+   * Last-revision timestamp of the checkout form (the only order-level date
+   * Allegro returns). NOT a placed/created time — the buyer-placed time lives
+   * on `lineItems[].boughtAt` (#926).
+   */
   updatedAt?: string;
 }
 
