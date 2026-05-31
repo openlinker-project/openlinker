@@ -231,7 +231,20 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      statusSummary: vi.fn().mockResolvedValue({
+        total: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+      }),
       getById: vi.fn().mockResolvedValue(null),
+      retryDestination: vi.fn().mockResolvedValue({
+        internalOrderId: '',
+        destinationConnectionId: '',
+        jobId: '',
+        jobType: '',
+      }),
       ...overrides.orders,
     } as ApiClient['orders'],
     listings: {
