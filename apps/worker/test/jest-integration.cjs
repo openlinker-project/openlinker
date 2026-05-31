@@ -10,6 +10,16 @@ module.exports = {
   },
   maxWorkers: 1,
   testTimeout: 120000,
+  // Mirrors apps/api: the worker AppModule boots long-lived handles (scheduler
+  // crons, JobIntake consumption loops) that onModuleDestroy stops but may not
+  // fully drain; forceExit is the safety net against a CI hang after tests pass.
+  forceExit: true,
+  // Start/stop the Postgres + Redis Testcontainers once for the whole run and
+  // export their connection env BEFORE any suite boots AppModule. Without these
+  // the harness never runs, so AppModule falls back to localhost defaults —
+  // green locally (dev stack on :5432/:6379) but ECONNREFUSED in CI (#786).
+  globalSetup: '<rootDir>/test/integration/setup-global.ts',
+  globalTeardown: '<rootDir>/test/integration/teardown.ts',
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),
