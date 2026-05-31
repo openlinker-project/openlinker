@@ -17,6 +17,7 @@ import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
+import { toPrestashopProductAttributeId } from './prestashop-variant-id';
 
 /**
  * Default values for PrestaShop cart + order creation. Hoisted to
@@ -190,25 +191,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         );
       }
 
-      // Map variant ID if present
-      let externalVariantId: number;
-      if (item.variantId) {
-        const variantId = externalVariantIds.get(item.variantId);
-        // If variant mapping not found, use 0 (no variant) or throw error
-        if (variantId === undefined) {
-          // For MVP, we'll allow missing variant mappings and use 0
-          externalVariantId = 0;
-        } else {
-          // Ensure variant ID is a number
-          externalVariantId =
-            typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
-          if (Number.isNaN(externalVariantId)) {
-            externalVariantId = 0;
-          }
-        }
-      } else {
-        externalVariantId = 0; // No variant
-      }
+      // Map variant ID if present. Synthetic-variant markers (`product:<n>`)
+      // and unmapped variants collapse to 0 ("no combination") — shared with
+      // the price-pinning path so the two never drift (#923).
+      const externalVariantId = toPrestashopProductAttributeId(
+        item.variantId ? externalVariantIds.get(item.variantId) : undefined
+      );
 
       return {
         id: index + 1, // PrestaShop order_row IDs are sequential
@@ -353,23 +341,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         );
       }
 
-      // Map variant ID if present
-      let externalVariantId: number;
-      if (item.variantId) {
-        const variantId = externalVariantIds.get(item.variantId);
-        if (variantId === undefined) {
-          externalVariantId = 0;
-        } else {
-          // Ensure variant ID is a number
-          externalVariantId =
-            typeof variantId === 'string' ? Number.parseInt(variantId, 10) : variantId;
-          if (Number.isNaN(externalVariantId)) {
-            externalVariantId = 0;
-          }
-        }
-      } else {
-        externalVariantId = 0; // No variant
-      }
+      // Map variant ID if present. Synthetic-variant markers (`product:<n>`)
+      // and unmapped variants collapse to 0 ("no combination") — shared with
+      // the price-pinning path so the two never drift (#923).
+      const externalVariantId = toPrestashopProductAttributeId(
+        item.variantId ? externalVariantIds.get(item.variantId) : undefined
+      );
 
       return {
         id: index + 1,
