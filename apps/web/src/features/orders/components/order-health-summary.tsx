@@ -28,6 +28,8 @@ interface OrderHealthSummaryProps {
   itemCount: number;
   /** First failed destination — rendered as the Sync cell hint. */
   failedDestinationId?: string | null;
+  /** Shipping capability / shipments still resolving — show a neutral placeholder. */
+  fulfillmentPending?: boolean;
 }
 
 export function OrderHealthSummary({
@@ -36,12 +38,14 @@ export function OrderHealthSummary({
   totals,
   itemCount,
   failedDestinationId,
+  fulfillmentPending = false,
 }: OrderHealthSummaryProps): ReactElement {
   const rollup = rollupSyncStatus(syncStatus);
   const alarm = rollup.failed > 0;
 
-  const fulfillmentHint =
-    fulfillment === 'unavailable'
+  const fulfillmentHint = fulfillmentPending
+    ? 'Checking…'
+    : fulfillment === 'unavailable'
       ? 'No shipping destination'
       : alarm && fulfillment === 'not-shipped'
         ? 'Blocked until sync succeeds'
@@ -67,7 +71,7 @@ export function OrderHealthSummary({
 
       <div className="order-health__cell">
         <div className="order-health__k">Fulfillment</div>
-        <div className="order-health__v">{fulfillmentLabel(fulfillment)}</div>
+        <div className="order-health__v">{fulfillmentPending ? '—' : fulfillmentLabel(fulfillment)}</div>
         {fulfillmentHint ? <div className="order-health__hint">{fulfillmentHint}</div> : null}
       </div>
 

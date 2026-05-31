@@ -148,6 +148,7 @@ export function OrderDetailPage(): ReactElement {
         totals={snapshot.totals}
         itemCount={snapshot.items.length}
         failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
+        fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
       />
 
       {failedDestinations.length > 0 ? (

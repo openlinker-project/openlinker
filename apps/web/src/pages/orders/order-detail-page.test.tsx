@@ -166,6 +166,13 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
       expect(await screen.findByText(/1 item · 2 units/)).toBeInTheDocument();
     });
+
+    it('renders the activity audit caption derived from the event count', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      // 1 ingest event + 1 sync attempt = 2 events.
+      expect(await screen.findByText(/Showing 2 of 2 events/)).toBeInTheDocument();
+    });
   });
 
   describe('destination retry', () => {

@@ -6166,37 +6166,6 @@ a.kpi-card:focus-visible {
   }
 }
 
-/* Three-column variant (#382): summary | sync status | customer */
-@media (min-width: 768px) and (max-width: 1023px) {
-  .order-detail__primary-grid--three {
-    /* Tablet: fall back to two columns and let the customer card wrap underneath. */
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  }
-
-  .order-detail__primary-grid--three > :last-child {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (min-width: 1024px) {
-  .order-detail__primary-grid--three {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
-  }
-}
-
-/* Address grid: shipping + billing side-by-side (desktop) */
-.order-detail__address-grid {
-  display: grid;
-  gap: 1.25rem;
-}
-
-@media (min-width: 600px) {
-  .order-detail__address-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-}
-
 /* Line items */
 .order-line-items {
   display: grid;
@@ -6233,23 +6202,6 @@ a.kpi-card:focus-visible {
    scroll so the section heading clears the sticky topbar on jump. */
 #order-raw-snapshot {
   scroll-margin-top: 4rem;
-}
-
-/* Items + totals grid (#382): items on the left, totals panel on the right at >=1024px. */
-.order-detail__items-grid {
-  display: grid;
-  gap: 1.25rem;
-}
-
-@media (min-width: 1024px) {
-  .order-detail__items-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.45fr);
-    align-items: start;
-  }
-}
-
-.order-detail__totals-section {
-  min-width: 0;
 }
 
 /* Standalone warning breadcrumb row — quiet, diagnostic, links to raw snapshot. */
@@ -8668,9 +8620,7 @@ html[data-density='compact'] .status-badge {
   font-family: var(--font-sans);
 }
 .order-pricing__note {
-  display: flex;
-  gap: var(--space-2);
-  align-items: flex-start;
+  display: block;
   margin: 0;
   font-size: 0.75rem;
   color: var(--text-secondary);
