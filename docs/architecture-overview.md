@@ -1476,13 +1476,16 @@ OrdersPollHandler → OrderIngestionService.syncOrderFromSource()
     ▼
 OrderProcessorManagerPort (PrestashopOrderProcessorAdapter)
     │
-    │ 1. Maps unified Order → PrestaShop format
-    │ 2. Uses IdentifierMappingService.getExternalIds() to get PrestaShop IDs
-    │    - Product IDs: internal → PrestaShop external IDs
-    │    - Customer ID: internal → PrestaShop external ID
-    │ 3. createOrder(orderCreate) with PrestaShop external IDs
+    │ 1. Provisions customer + addresses; creates the cart (carrier +
+    │    delivery address), writes the per-cart shipping sidecar (#516) and
+    │    cart-scoped specific_prices (#895).
+    │ 2. Uses IdentifierMappingService.getExternalIds() to get PrestaShop IDs.
+    │ 3. Creates the order through PrestaShop's canonical PaymentModule::
+    │    validateOrder via the OL module's HMAC-authed `importorder` endpoint
+    │    (ADR-016 / #905) — NOT the raw webservice POST /orders, which bypasses
+    │    validateOrder and drops the carrier + recomputes shipping (#503/#898).
     ▼
-PrestaShop API
+PrestaShop API (OL module front controller → validateOrder)
     │
     │ Returns created order
     ▼
