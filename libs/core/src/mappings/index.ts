@@ -15,11 +15,13 @@ export { StatusMapping } from './domain/entities/status-mapping.entity';
 export { CarrierMapping } from './domain/entities/carrier-mapping.entity';
 export { PaymentMapping } from './domain/entities/payment-mapping.entity';
 export { CategoryMapping } from './domain/entities/category-mapping.entity';
+export { OrderStateMapping } from './domain/entities/order-state-mapping.entity';
 export type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  OrderStateMappingInput,
 } from './domain/types/mapping.types';
 
 // Fulfillment routing (#832)
