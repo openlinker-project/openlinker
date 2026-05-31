@@ -11,6 +11,7 @@
  */
 
 import type { OrderShipping, OrderPickupPoint, PriceTaxTreatment } from './order.types';
+import type { PaymentStatus } from './payment-status.types';
 
 export interface IncomingOrder {
   /**
@@ -72,6 +73,8 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+  /** Source-reported payment status (#928); absent when the source did not report it. */
+  paymentStatus?: PaymentStatus;
 
   /**
    * When the buyer placed the order on the source marketplace, as an ISO string
