@@ -30,6 +30,8 @@ import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 import type {
   IPrestashopOpenLinkerModuleClient,
   WriteCartShippingInput,
+  ImportOrderInput,
+  ImportOrderResult,
 } from './prestashop-openlinker-module.client.interface';
 import { PrestashopOlModuleException } from '../../domain/exceptions/prestashop-ol-module.exception';
 
@@ -46,6 +48,9 @@ const PROVIDER = 'prestashop';
  * routes via `?fc=module&module=<name>&controller=<name>`.
  */
 const CARTSHIPPING_PATH = '/index.php?fc=module&module=openlinker&controller=cartshipping';
+
+/** Order-import endpoint (validateOrder path, ADR-016 / #905). Same wire-contract shape as cartshipping. */
+const IMPORTORDER_PATH = '/index.php?fc=module&module=openlinker&controller=importorder';
 
 export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerModuleClient {
   private readonly logger = new Logger(PrestashopOpenLinkerModuleClient.name);
@@ -69,22 +74,80 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       source: input.source ?? null,
     });
 
-    const timestamp = String(Date.now());
-    const secret = await this.secretProvider.getSecret(PROVIDER, this.connectionId);
-    const signedPayload = timestamp + '.' + body;
-    const signatureHex = createHmac('sha256', secret).update(signedPayload).digest('hex');
-    const signatureHeader = 'sha256=' + signatureHex;
-
-    const url = this.baseUrl.replace(/\/$/, '') + CARTSHIPPING_PATH;
-
     this.logger.debug(
       `OpenLinker module: POST cartshipping connection=${this.connectionId} ` +
         `idCart=${input.idCart} amountTaxIncl=${input.amountTaxIncl}`
     );
 
-    let response: Response;
+    const response = await this.signedPost(CARTSHIPPING_PATH, body, input.idCart);
+    if (response.status >= 200 && response.status < 300) {
+      return;
+    }
+
+    const reason = await this.extractReason(response);
+    this.logger.warn(
+      `OpenLinker module: cartshipping write failed connection=${this.connectionId} ` +
+        `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
+    );
+    throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, reason);
+  }
+
+  async importOrder(input: ImportOrderInput): Promise<ImportOrderResult> {
+    const body = JSON.stringify({
+      id_cart: input.idCart,
+      id_order_state: input.idOrderState,
+      amount_paid: input.amountPaid,
+      payment_method: input.paymentMethod,
+      order_reference: input.orderReference,
+    });
+
+    this.logger.debug(
+      `OpenLinker module: POST importorder connection=${this.connectionId} ` +
+        `idCart=${input.idCart} idOrderState=${input.idOrderState} amountPaid=${input.amountPaid}`
+    );
+
+    const response = await this.signedPost(IMPORTORDER_PATH, body, input.idCart);
+    if (response.status < 200 || response.status >= 300) {
+      const reason = await this.extractReason(response);
+      this.logger.warn(
+        `OpenLinker module: importorder failed connection=${this.connectionId} ` +
+          `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
+      );
+      throw new PrestashopOlModuleException(
+        this.connectionId,
+        input.idCart,
+        response.status,
+        reason
+      );
+    }
+
+    const parsed = await this.parseImportOrderResult(response);
+    if (!parsed) {
+      throw new PrestashopOlModuleException(
+        this.connectionId,
+        input.idCart,
+        response.status,
+        'malformed-import-order-response'
+      );
+    }
+    return parsed;
+  }
+
+  /**
+   * Sign and POST a JSON body to an OL module front-controller endpoint using
+   * the inbound HMAC contract (`timestamp + "." + rawBody`, SHA-256). Returns
+   * the raw `Response` (2xx and non-2xx alike); callers interpret the status.
+   *
+   * @throws PrestashopOlModuleException on a network-level failure (status 0).
+   */
+  private async signedPost(path: string, body: string, idCartForError: number): Promise<Response> {
+    const timestamp = String(Date.now());
+    const secret = await this.secretProvider.getSecret(PROVIDER, this.connectionId);
+    const signatureHeader = 'sha256=' + createHmac('sha256', secret).update(timestamp + '.' + body).digest('hex');
+    const url = this.baseUrl.replace(/\/$/, '') + path;
+
     try {
-      response = await fetch(url, {
+      return await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,22 +160,41 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       // Network-level failure (DNS, connection refused, TLS, abort).
       throw new PrestashopOlModuleException(
         this.connectionId,
-        input.idCart,
+        idCartForError,
         0,
         `network: ${err instanceof Error ? err.message : 'unknown'}`
       );
     }
+  }
 
-    if (response.status >= 200 && response.status < 300) {
-      return;
+  /**
+   * Parse the `importorder` success body `{ id_order, reference, already_existed }`.
+   * Returns null on any shape mismatch so the caller can fail loud.
+   */
+  private async parseImportOrderResult(response: Response): Promise<ImportOrderResult | null> {
+    try {
+      const data: unknown = await response.json();
+      if (
+        typeof data === 'object' &&
+        data !== null &&
+        'id_order' in data &&
+        'reference' in data
+      ) {
+        const obj = data as { id_order: unknown; reference: unknown; already_existed?: unknown };
+        const idOrder = Number(obj.id_order);
+        if (!Number.isFinite(idOrder) || idOrder <= 0 || typeof obj.reference !== 'string') {
+          return null;
+        }
+        return {
+          idOrder,
+          reference: obj.reference,
+          alreadyExisted: obj.already_existed === true,
+        };
+      }
+      return null;
+    } catch {
+      return null;
     }
-
-    const reason = await this.extractReason(response);
-    this.logger.warn(
-      `OpenLinker module: cartshipping write failed connection=${this.connectionId} ` +
-        `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
-    );
-    throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, reason);
   }
 
   /**
