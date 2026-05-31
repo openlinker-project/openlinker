@@ -56,8 +56,7 @@ describe('OrderDetailPage', () => {
 
     renderDetail(api);
 
-    expect(await screen.findByText('ol_order_abc123')).toBeInTheDocument();
-    expect(screen.getByText('ol_customer_xyz')).toBeInTheDocument();
+    expect((await screen.findAllByText('ol_order_abc123')).length).toBeGreaterThan(0);
     expect(screen.getByText('evt_42')).toBeInTheDocument();
 
     const links = await screen.findAllByRole('link', { name: sampleConnection.name });
@@ -117,6 +116,63 @@ describe('OrderDetailPage', () => {
       'href',
       `/orders/failed?connectionId=${sampleConnection.id}`,
     );
+  });
+
+  describe('redesigned sections', () => {
+    const richOrder: OrderRecord = {
+      ...sampleOrder,
+      orderSnapshot: {
+        orderNumber: 'A-1024',
+        status: 'processing',
+        items: [
+          { id: 'it1', productId: 'ol_product_1', quantity: 2, price: 10, sku: 'SKU-1', name: 'Camera' },
+        ],
+        totals: { subtotal: 20, tax: 3.92, shipping: 5, total: 28.92, currency: 'PLN', taxTreatment: 'inclusive' },
+        shippingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: 'PL',
+        },
+        pickupPoint: { id: 'POP-WAW-04412' },
+        shipping: { methodId: 'm1', methodName: 'InPost Paczkomat' },
+      },
+    };
+
+    it('derives the sync health cell from syncStatus', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      expect(await screen.findByText('1 of 1 synced')).toBeInTheDocument();
+    });
+
+    it('surfaces the tax treatment as gross for tax-inclusive totals', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      expect(await screen.findByText(/gross · source-authoritative/i)).toBeInTheDocument();
+      expect(screen.getAllByText('Camera').length).toBeGreaterThan(0);
+    });
+
+    it('renders the buyer-selected pickup point and delivery method', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      expect(await screen.findByText('POP-WAW-04412')).toBeInTheDocument();
+      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+    });
+
+    it('summarises item and unit counts in the header', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      expect(await screen.findByText(/1 item · 2 units/)).toBeInTheDocument();
+    });
+
+    it('renders the activity audit caption derived from the event count', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      // 1 ingest event + 1 sync attempt = 2 events.
+      expect(await screen.findByText(/Showing 2 of 2 events/)).toBeInTheDocument();
+    });
   });
 
   describe('destination retry', () => {
