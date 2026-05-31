@@ -53,6 +53,7 @@ export {
   Address,
   OrderShipping,
   OrderPickupPoint,
+  OrderDispatchWindow,
 } from './domain/types/order.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
@@ -83,6 +84,8 @@ export {
   OrderHealthValues,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderRecordSort,
+  OrderRecordSortValues,
 } from './domain/types/order-record.types';
 
 // Services

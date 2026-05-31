@@ -98,6 +98,19 @@ export interface AllegroCheckoutForm {
     };
     /** Allegro Smart! free-delivery flag. Ignored today. */
     smart?: boolean;
+    /**
+     * #927 — delivery/dispatch time windows. `dispatch.{from,to}` (the
+     * shipment window, populated for all delivery methods) is the ship-by SLA
+     * source; `dispatch.to` is the deadline. `time.{from,to}` is the delivery
+     * window and `time.guaranteed` (deprecated, Kurier-X-press-only) is NOT
+     * consumed. All bounds are ISO 8601 timestamps.
+     */
+    time?: {
+      from?: string;
+      to?: string;
+      dispatch?: { from?: string; to?: string };
+      guaranteed?: { from?: string; to?: string };
+    };
   };
   /**
    * Last-revision timestamp of the checkout form (the only order-level date
