@@ -10,6 +10,7 @@ export const mappingsQueryKeys = {
   status: (connectionId: string) => ['mappings', connectionId, 'status'] as const,
   carriers: (connectionId: string) => ['mappings', connectionId, 'carriers'] as const,
   payments: (connectionId: string) => ['mappings', connectionId, 'payments'] as const,
+  orderStates: (connectionId: string) => ['mappings', connectionId, 'order-states'] as const,
   /** Per-(side, kind) option list — one entry per dropdown so panels invalidate independently. */
   option: (connectionId: string, side: MappingSide, kind: MappingOptionListKind) =>
     ['mappings', connectionId, 'options', side, kind] as const,

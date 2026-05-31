@@ -1170,7 +1170,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
     it('passes mapped externalCarrierId to mapOrderCreate when MappingConfigService resolves', async () => {
       wireSuccessfulMappings('42');
       const resolveCarrierMapping = jest.fn().mockResolvedValue('4');
-      const mockMappingConfig = { resolveCarrierMapping } as unknown as IMappingConfigService;
+      const mockMappingConfig = {
+        resolveCarrierMapping,
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
+      } as unknown as IMappingConfigService;
       const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
         mockIdentifierMapping,
@@ -1212,6 +1215,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1256,6 +1260,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1290,6 +1295,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       wireSuccessfulMappings('42');
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterWithMapping = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1379,6 +1385,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const mockMappingConfig = {
         // Mapping resolves to the OL Dynamic carrier id — adapter must write the sidecar.
         resolveCarrierMapping: jest.fn().mockResolvedValue(String(OL_DYNAMIC_CARRIER_ID)),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1411,6 +1418,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       wireSuccessfulCreatePath();
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(String(STATIC_CARRIER_ID)),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1438,6 +1446,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         STATIC_CARRIER_ID;
       const mockMappingConfig = {
         resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+        resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
       } as unknown as IMappingConfigService;
       const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
         mockHttpClient,
@@ -1853,6 +1862,82 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         expect(result.filter((m) => m.value === 'custom_a')).toHaveLength(1);
         expect(result.filter((m) => m.value === 'custom_b')).toHaveLength(1);
       });
+    });
+  });
+
+  describe('order-state override resolution (#862)', () => {
+    const PS_ORDER_ID = '5001';
+    const DEFAULT_SHIPPED_ID = 4;
+
+    function buildAdapterWithStateMapping(
+      resolveOrderStateMapping: jest.Mock
+    ): PrestashopOrderProcessorManagerAdapter {
+      const mockMappingConfig = {
+        resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+        resolveOrderStateMapping,
+      } as unknown as IMappingConfigService;
+      return new PrestashopOrderProcessorManagerAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        mockOrderMapper,
+        connection,
+        mockCustomerProvisioner,
+        mockAddressProvisioner,
+        mockCurrencyResolver,
+        mockCustomerProjectionRepository,
+        mockOpenLinkerModuleClient,
+        mockTaxRateResolver,
+        mockMappingConfig
+      );
+    }
+
+    beforeEach(() => {
+      mockOrderMapper.mapStatusToPrestashopStateId = jest.fn().mockReturnValue(DEFAULT_SHIPPED_ID);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: PS_ORDER_ID, current_state: '2', id_carrier: 7 });
+    });
+
+    it('transitions to the configured override state id (destination-scoped) instead of the default map', async () => {
+      const resolveOrderStateMapping = jest.fn().mockResolvedValue('12');
+      const adapterWithMapping = buildAdapterWithStateMapping(resolveOrderStateMapping);
+
+      await adapterWithMapping.updateFulfillment({ externalOrderId: PS_ORDER_ID, status: 'shipped' });
+
+      // Scoped by THIS (destination) connection, not the source.
+      expect(resolveOrderStateMapping).toHaveBeenCalledWith(connection.id, 'shipped');
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith(
+        'order_histories',
+        { id_order: PS_ORDER_ID, id_order_state: 12 },
+        { sendEmail: true }
+      );
+    });
+
+    it('falls back to the hardcoded default-install map when no override is configured', async () => {
+      const adapterWithMapping = buildAdapterWithStateMapping(jest.fn().mockResolvedValue(null));
+
+      await adapterWithMapping.updateFulfillment({ externalOrderId: PS_ORDER_ID, status: 'shipped' });
+
+      expect(mockOrderMapper.mapStatusToPrestashopStateId).toHaveBeenCalledWith('shipped');
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith(
+        'order_histories',
+        { id_order: PS_ORDER_ID, id_order_state: DEFAULT_SHIPPED_ID },
+        { sendEmail: true }
+      );
+    });
+
+    it('ignores a non-positive / non-numeric override and falls back to the default map', async () => {
+      const adapterWithMapping = buildAdapterWithStateMapping(
+        jest.fn().mockResolvedValue('not-a-number')
+      );
+
+      await adapterWithMapping.updateFulfillment({ externalOrderId: PS_ORDER_ID, status: 'shipped' });
+
+      expect(mockHttpClient.createResource).toHaveBeenCalledWith(
+        'order_histories',
+        { id_order: PS_ORDER_ID, id_order_state: DEFAULT_SHIPPED_ID },
+        { sendEmail: true }
+      );
     });
   });
 
