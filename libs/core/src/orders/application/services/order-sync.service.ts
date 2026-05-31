@@ -214,6 +214,13 @@ export class OrderSyncService implements IOrderSyncService {
         return { orderId: existing };
       }
 
+      // Create-then-record is non-atomic: if createOrder succeeds but
+      // persistDestinationMapping throws a non-duplicate (transient) error, the
+      // destination order exists with no mapping. On the next retry this method
+      // re-enters createOrder (the mapping read finds nothing); the adapter's
+      // own platform-side duplicate recovery is what prevents a second
+      // destination order in that window — hence the port contract asks adapters
+      // to keep it as defense-in-depth.
       const orderRef = await adapter.createOrder(orderCreate);
       await this.persistDestinationMapping(
         internalOrderId,
