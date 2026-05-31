@@ -56,6 +56,7 @@ import type { PrestashopAddressProvisioner } from '../provisioners/prestashop-ad
 import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-currency-resolver';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
 import { allocateByLargestRemainder } from '@openlinker/shared/money';
+import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
@@ -601,9 +602,14 @@ export class PrestashopOrderProcessorManagerAdapter
       if (externalProductId === undefined) {
         continue; // resolution already guaranteed this in Step 2
       }
-      const externalVariantId = item.variantId
-        ? (externalVariantIds.get(item.variantId) ?? 0)
-        : 0;
+      // Coerce the per-connection external variant id to a numeric PrestaShop
+      // `id_product_attribute`. Simple products map to a synthetic-variant
+      // marker (`product:<n>`), which PS 400-rejects as a non-numeric
+      // `id_product_attribute` — collapse it (and any unmapped variant) to 0,
+      // matching the order/cart mapper (#923).
+      const externalVariantId = toPrestashopProductAttributeId(
+        item.variantId ? externalVariantIds.get(item.variantId) : undefined
+      );
 
       const grossUnit = lineGrossMinor[index] / 100 / item.quantity;
       let rate = 0;
@@ -650,9 +656,16 @@ export class PrestashopOrderProcessorManagerAdapter
         // Fail loudly (createOrder invariant, ADR-014): do NOT let the order be
         // created at the catalog price. Throw so the idempotency-guarded retry
         // re-attempts; the caller's catch cleans up any pins created so far.
+        // Surface the upstream PrestaShop body (the real validation reason lives
+        // in `responseBody`, not `message`) — capped via `formatBodyForLog` (#923).
+        const detail =
+          error instanceof PrestashopApiException && error.responseBody
+            ? `${error.message} — ${formatBodyForLog(error.responseBody)}`
+            : error instanceof Error
+              ? error.message
+              : String(error);
         throw new PrestashopApiException(
-          `Failed to pin source-authoritative price for product ${externalProductId}: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
+          `Failed to pin source-authoritative price for product ${externalProductId}: ${detail}`,
           undefined,
           undefined
         );
