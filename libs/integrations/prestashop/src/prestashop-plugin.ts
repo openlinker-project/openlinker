@@ -31,6 +31,7 @@ import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { PrestashopAdapterFactory } from './application/prestashop-adapter.factory';
 import { PrestashopConnectionTesterAdapter } from './infrastructure/adapters/prestashop-connection-tester.adapter';
 import { PrestashopConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-config-shape-validator.adapter';
+import { PrestashopWebhookEventTranslatorAdapter } from './infrastructure/adapters/prestashop-webhook-event-translator.adapter';
 import { PrestashopConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/prestashop-connection-credentials-shape-validator.adapter';
 import { buildPrestashopSchedulerTasks } from './infrastructure/scheduler/prestashop-scheduler-tasks';
 import type { PrestashopCustomerProvisioner } from './infrastructure/provisioners/prestashop-customer-provisioner';
@@ -99,6 +100,12 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
       host.webhookProvisioningRegistry.register(
         'prestashop.webservice.v1',
         deps.webhookProvisioningAdapter,
+      );
+      // Inbound webhook-event translator (ADR-015 / #903) — decodes PS
+      // order/stock/product events into neutral CanonicalInboundEvents.
+      host.webhookEventTranslatorRegistry.register(
+        'prestashop.webservice.v1',
+        new PrestashopWebhookEventTranslatorAdapter(),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         'prestashop.webservice.v1',

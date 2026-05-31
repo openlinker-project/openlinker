@@ -23,7 +23,6 @@ import type {
   PrestashopOrder,
 } from '../../mappers/prestashop.mapper.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { PrestashopCurrencyResolver } from '../../provisioners/prestashop-currency-resolver';
@@ -320,21 +319,78 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         paymentMethod: 'Check payment',
         orderReference: order.orderNumber,
       });
-      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
-        'Order',
-        '999',
-        connection.id,
-        METADATA_INTERNAL_ORDER_ID,
-        expect.objectContaining({
-          metadata: expect.objectContaining({
-            orderNumber: order.orderNumber,
-          }),
-        })
-      );
+      // #909: the adapter no longer writes the order mapping — OrderSyncService owns it.
+      expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
+      // Returns the destination-native PS order id (#909), not the internal id.
       expect(result).toEqual({
-        orderId: METADATA_INTERNAL_ORDER_ID,
+        orderId: '999',
         orderNumber: order.orderNumber,
       });
+    });
+
+    it('should recover the existing external order id on a PS duplicate-key error', async () => {
+      const order = createTestOrder();
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string, internalId: string) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '42', entityType: 'Customer' },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '100', entityType: 'Product' },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '200', entityType: 'Product' },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              { connectionId: connection.id, externalId: '300', entityType: 'ProductVariant' },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
+      mockOrderMapper.mapOrderCreate.mockReturnValue({
+        id_customer: '42',
+        current_state: 1,
+        associations: { order_rows: { order_row: [] } },
+      });
+
+      // Cart + pins succeed; the order POST hits a unique-constraint error so the
+      // adapter falls into its defense-in-depth recovery (#909): re-query PS by
+      // reference and adopt the existing order's id.
+      mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+        if (resource === 'carts') return Promise.resolve({ id: '123' });
+        if (resource === 'specific_prices') return Promise.resolve({ id: 'sp_test' });
+        if (resource === 'orders') {
+          return Promise.reject(new Error('duplicate key value violates unique constraint'));
+        }
+        return Promise.resolve({ id: '1' });
+      });
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+          if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+            return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+          }
+          if (resource === 'orders') {
+            return Promise.resolve([{ id: '888', reference: 'TEST-ORDER-001' }]);
+          }
+          return Promise.resolve([]);
+        });
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+
+      const result = await adapter.createOrder(order);
+
+      // Defense-in-depth recovery returns the recovered PS-native id (#909).
+      expect(result.orderId).toBe('888');
+      // The adapter still does not write the mapping — OrderSyncService owns it.
+      expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
     });
 
     it('should throw error when customer ID is missing', async () => {
@@ -547,90 +603,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
     });
 
-    it('should create identifier mapping for new order', async () => {
-      const order = createTestOrder();
-      const externalCustomerId = '42';
-      const externalProductId1 = '100';
-      const externalProductId2 = '200';
-      const externalVariantId = '300';
-
-      mockIdentifierMapping.getExternalIds = jest
-        .fn()
-        .mockImplementation((entityType, internalId) => {
-          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalCustomerId,
-                entityType: 'Customer',
-              },
-            ]);
-          }
-          if (entityType === 'Product' && internalId === 'internal-product-456') {
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalProductId1,
-                entityType: 'Product',
-              },
-            ]);
-          }
-          if (entityType === 'Product' && internalId === 'internal-product-789') {
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalProductId2,
-                entityType: 'Product',
-              },
-            ]);
-          }
-          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalVariantId,
-                entityType: 'Product',
-              },
-            ]);
-          }
-          return Promise.resolve([]);
-        });
-
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: {
-          order_rows: {
-            order_row: [],
-          },
-        },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
-      const createdOrder: PrestashopOrder = {
-        id: '999',
-        reference: 'PS-ORDER-999',
-      };
-      setCreateResourceDispatch({ id: '999' }, createdOrder);
-
-      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
-
-      await adapter.createOrder(order);
-
-      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
-        'Order',
-        '999',
-        connection.id,
-        METADATA_INTERNAL_ORDER_ID,
-        expect.objectContaining({
-          metadata: expect.objectContaining({
-            orderNumber: order.orderNumber,
-            createdAt: expect.any(String),
-          }),
-        })
-      );
-    });
-
     it('should use created order reference if order number not provided', async () => {
       const order = createTestOrder({ orderNumber: undefined });
       const externalCustomerId = '42';
@@ -701,99 +673,8 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       const result = await adapter.createOrder(order);
 
       expect(result.orderNumber).toBe('PS-ORDER-999');
-      expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
-        'Order',
-        '999',
-        connection.id,
-        METADATA_INTERNAL_ORDER_ID,
-        expect.objectContaining({
-          metadata: expect.objectContaining({
-            orderNumber: 'PS-ORDER-999',
-          }),
-        })
-      );
-    });
-
-    it('should be idempotent: second call with same metadata.internalOrderId early-returns without PS create', async () => {
-      const order = createTestOrder();
-      const externalCustomerId = '42';
-      const externalProductId1 = '100';
-      const externalProductId2 = '200';
-      const externalVariantId = '300';
-      const externalPsOrderId = '999';
-
-      const resolveExternalIds = (entityType: string, internalId: string) => {
-        if (entityType === 'Order' && internalId === METADATA_INTERNAL_ORDER_ID) {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: externalPsOrderId, entityType: 'Order' },
-          ]);
-        }
-        if (entityType === 'Customer' && internalId === 'internal-customer-123') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: externalCustomerId, entityType: 'Customer' },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-456') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: externalProductId1, entityType: 'Product' },
-          ]);
-        }
-        if (entityType === 'Product' && internalId === 'internal-product-789') {
-          return Promise.resolve([
-            { connectionId: connection.id, externalId: externalProductId2, entityType: 'Product' },
-          ]);
-        }
-        if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-          return Promise.resolve([
-            {
-              connectionId: connection.id,
-              externalId: externalVariantId,
-              entityType: 'ProductVariant',
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      };
-
-      // First call: Step 0 returns nothing (no existing mapping), PS create succeeds.
-      mockIdentifierMapping.getExternalIds = jest
-        .fn()
-        .mockImplementation((entityType: string, internalId: string) => {
-          if (entityType === 'Order') return Promise.resolve([]);
-          return resolveExternalIds(entityType, internalId);
-        });
-
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
-      const createdCart = { id: '123' };
-      const createdOrder: PrestashopOrder = { id: externalPsOrderId, reference: order.orderNumber };
-      setCreateResourceDispatch(createdCart, createdOrder);
-      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
-
-      await adapter.createOrder(order);
-      // PS create happened on the first call (cart + specific_price pins +
-      // validateOrder import).
-      expect(mockHttpClient.createResource).toHaveBeenCalledWith('carts', expect.anything());
-      expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalled();
-
-      // Second call: Step 0 finds the mapping → early-return.
-      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation(resolveExternalIds);
-      mockHttpClient.createResource = jest.fn();
-      mockOpenLinkerModuleClient.importOrder = jest.fn();
-
-      const result = await adapter.createOrder(order);
-
-      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
-      expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        orderId: METADATA_INTERNAL_ORDER_ID,
-        orderNumber: expect.any(String),
-      });
+      // #909: mapping write is owned by OrderSyncService, not the adapter.
+      expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
     });
 
     describe('source-authoritative line pricing (#895)', () => {
@@ -934,78 +815,6 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
       });
     });
 
-    it('should treat DuplicateIdentifierMappingError from createMapping as idempotent success (concurrent race)', async () => {
-      const order = createTestOrder();
-      const externalCustomerId = '42';
-      const externalProductId1 = '100';
-      const externalProductId2 = '200';
-      const externalVariantId = '300';
-
-      mockIdentifierMapping.getExternalIds = jest
-        .fn()
-        .mockImplementation((entityType: string, internalId: string) => {
-          if (entityType === 'Order') return Promise.resolve([]);
-          if (entityType === 'Customer' && internalId === 'internal-customer-123')
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalCustomerId,
-                entityType: 'Customer',
-              },
-            ]);
-          if (entityType === 'Product' && internalId === 'internal-product-456')
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalProductId1,
-                entityType: 'Product',
-              },
-            ]);
-          if (entityType === 'Product' && internalId === 'internal-product-789')
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalProductId2,
-                entityType: 'Product',
-              },
-            ]);
-          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789')
-            return Promise.resolve([
-              {
-                connectionId: connection.id,
-                externalId: externalVariantId,
-                entityType: 'ProductVariant',
-              },
-            ]);
-          return Promise.resolve([]);
-        });
-
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
-      const createdCart = { id: '123' };
-      const createdOrder: PrestashopOrder = { id: '999', reference: order.orderNumber };
-      setCreateResourceDispatch(createdCart, createdOrder);
-
-      // Simulate concurrent-insert race: createMapping throws DuplicateIdentifierMappingError
-      mockIdentifierMapping.createMapping = jest
-        .fn()
-        .mockRejectedValue(
-          new DuplicateIdentifierMappingError('Order', '999', 'prestashop', connection.id)
-        );
-
-      const result = await adapter.createOrder(order);
-
-      // Adapter must treat the race as idempotent success
-      expect(result).toEqual({
-        orderId: METADATA_INTERNAL_ORDER_ID,
-        orderNumber: order.orderNumber,
-      });
-    });
 
     it('should handle generic errors and wrap in PrestashopApiException', async () => {
       const order = createTestOrder();
@@ -1111,38 +920,11 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         const result = await adapter.createOrder(order);
 
         expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
-        // Reused order's reference is the result orderNumber and the external id
-        // 777 is what's persisted into the identifier mapping.
+        // #909: the reused order's destination-native id (777) is returned; the
+        // external↔internal mapping write is OrderSyncService's, not the adapter's.
+        expect(result.orderId).toBe('777');
         expect(result.orderNumber).toBe('TEST-ORDER-001');
-        expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
-          'Order',
-          '777',
-          connection.id,
-          METADATA_INTERNAL_ORDER_ID,
-          expect.anything()
-        );
-      });
-
-      it('should reuse an existing order via the Step 0 identifier-mapping guard without creating', async () => {
-        // Step 0 finds an existing destination mapping for this connection →
-        // early-return before any cart/import work.
-        const order = createTestOrder();
-        wireResolution([
-          { connectionId: connection.id, externalId: '888', entityType: 'Order' },
-        ]);
-        setCreateResourceDispatch({ id: '123' }, {
-          id: '999',
-          reference: order.orderNumber,
-        } as PrestashopOrder);
-
-        const result = await adapter.createOrder(order);
-
-        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
-        expect(mockHttpClient.createResource).not.toHaveBeenCalledWith('carts', expect.anything());
-        expect(result).toEqual({
-          orderId: METADATA_INTERNAL_ORDER_ID,
-          orderNumber: order.orderNumber,
-        });
+        expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
       });
 
       it('should propagate an importOrder failure as PrestashopApiException', async () => {
@@ -1172,14 +954,10 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
 
         const result = await adapter.createOrder(order);
 
+        // #909: external id 555 is returned; no adapter-side mapping write.
+        expect(result.orderId).toBe('555');
         expect(result.orderNumber).toBe('R-555');
-        expect(mockIdentifierMapping.createMapping).toHaveBeenCalledWith(
-          'Order',
-          '555',
-          connection.id,
-          METADATA_INTERNAL_ORDER_ID,
-          expect.anything()
-        );
+        expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
       });
 
       it('should warn on order-total reconciliation drift', async () => {
@@ -1218,7 +996,7 @@ describe('PrestashopOrderProcessorManagerAdapter', () => {
         await adapter.createOrder(order);
 
         expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringContaining('reference-based dedup net is disabled')
+          expect.stringContaining('reference-based duplicate recovery is unavailable')
         );
         expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalledWith(
           expect.objectContaining({ orderReference: '' })

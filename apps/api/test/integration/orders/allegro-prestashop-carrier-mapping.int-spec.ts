@@ -138,34 +138,17 @@ const fetchPsCart = (ps: PrestashopTestContainer, idCart: number): Promise<PsCar
   fetchPsResource<PsCartRow>(ps, `/api/carts/${idCart}`, 'cart');
 
 /**
- * Resolve the PS-side numeric `id_order` from an OL-internal order id.
+ * Parse the destination-native PrestaShop `id_order` from an `OrderRef` (#909).
  *
- * `OrderRef.orderId` returned by `OrderSyncService` carries the OL internal
- * id (`ol_order_<uuid>`); the PS external id lives in identifier_mappings
- * keyed by the destination connection. The PS WS only accepts numeric ids
- * on `/api/orders/{id}`, so we walk the mapping here.
+ * `OrderRef.orderId` now carries the destination-native external order id (the
+ * PS numeric id), not an OL-internal id — idempotency and the external↔internal
+ * mapping write moved into `OrderSyncService`. The PS WS accepts that numeric id
+ * directly on `/api/orders/{id}`.
  */
-async function resolveDestinationOrderId(
-  harness: IntegrationTestHarness,
-  internalOrderId: string,
-  destinationConnectionId: string
-): Promise<number> {
-  const identifierMapping = harness
-    .getApp()
-    .get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
-  const externals = await identifierMapping.getExternalIds('Order', internalOrderId);
-  const match = externals.find((m) => m.connectionId === destinationConnectionId);
-  if (!match) {
-    throw new Error(
-      `No PS-side identifier mapping found for OL order ${internalOrderId} on connection ${destinationConnectionId}. ` +
-        `Found mappings: ${JSON.stringify(externals)}`
-    );
-  }
-  const parsed = Number(match.externalId);
+function destinationOrderIdFromRef(orderRef: { orderId: string }): number {
+  const parsed = Number(orderRef.orderId);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(
-      `PS-side order mapping is not a positive integer: '${match.externalId}' for OL order ${internalOrderId}`
-    );
+    throw new Error(`PS-side order id not a positive integer: '${orderRef.orderId}'`);
   }
   return parsed;
 }
@@ -405,11 +388,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     }
     expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
 
-    const psOrderId = await resolveDestinationOrderId(
-      harness,
-      results[0].orderRef.orderId,
-      prestashopConnectionId
-    );
+    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
     expect(Number(psOrder.id_carrier)).toBe(defaultCarriers.myCarrier.idCarrier);
@@ -442,11 +421,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
       );
     }
 
-    const psOrderId = await resolveDestinationOrderId(
-      harness,
-      results[0].orderRef.orderId,
-      prestashopConnectionId
-    );
+    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
     // OL's `defaultCarrierId` fallback writes the chosen `id_carrier` onto the
@@ -492,11 +467,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     }
     expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
 
-    const psOrderId = await resolveDestinationOrderId(
-      harness,
-      results[0].orderRef.orderId,
-      prestashopConnectionId
-    );
+    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     const psOrder = await fetchPsOrder(ps, psOrderId);
 
     const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
@@ -582,11 +553,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         );
       }
 
-      const psOrderId = await resolveDestinationOrderId(
-        harness,
-        results[0].orderRef.orderId,
-        prestashopConnectionId
-      );
+      const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
       const psOrder = await fetchPsOrder(ps, psOrderId);
       const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
 

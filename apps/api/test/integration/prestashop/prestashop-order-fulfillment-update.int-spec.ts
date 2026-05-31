@@ -120,25 +120,11 @@ async function fetchPsListByOrder<T>(
   return data ? [data as T] : [];
 }
 
-/** Walk identifier_mappings to get the PS-side numeric order id from the OL id. */
-async function resolveDestinationOrderId(
-  harness: IntegrationTestHarness,
-  internalOrderId: string,
-  destinationConnectionId: string
-): Promise<number> {
-  const identifierMapping = harness
-    .getApp()
-    .get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
-  const externals = await identifierMapping.getExternalIds('Order', internalOrderId);
-  const match = externals.find((m) => m.connectionId === destinationConnectionId);
-  if (!match) {
-    throw new Error(
-      `No PS-side mapping for OL order ${internalOrderId} on ${destinationConnectionId}: ${JSON.stringify(externals)}`
-    );
-  }
-  const parsed = Number(match.externalId);
+/** Parse the destination-native PS order id from an `OrderRef` (#909). */
+function destinationOrderIdFromRef(orderRef: { orderId: string }): number {
+  const parsed = Number(orderRef.orderId);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`PS-side order id not a positive integer: '${match.externalId}'`);
+    throw new Error(`PS-side order id not a positive integer: '${orderRef.orderId}'`);
   }
   return parsed;
 }
@@ -288,11 +274,8 @@ describe('PrestaShop order fulfillment update (#858)', () => {
           `Order seed failed: ${results[0] ? results[0].error.message : 'no result'}`
         );
       }
-      psOrderId = await resolveDestinationOrderId(
-        harness,
-        results[0].orderRef.orderId,
-        prestashopConnectionId
-      );
+      // orderRef.orderId is the destination-native PrestaShop order id (#909).
+      psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     }
   }, 15 * 60_000);
 
