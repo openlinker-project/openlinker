@@ -236,6 +236,30 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
+
+    it('should serialise Order.placedAt into the snapshot as an ISO string when present (#926)', async () => {
+      const order = createMockOrder();
+      order.placedAt = new Date('2026-05-31T16:00:00.000Z');
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['placedAt']).toBe('2026-05-31T16:00:00.000Z');
+    });
+
+    it('should omit placedAt from the snapshot when the Order does not carry it (#926)', async () => {
+      const order = createMockOrder();
+      expect(order.placedAt).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('placedAt');
+    });
   });
 
   describe('persistOrder - PII disabled', () => {
@@ -358,6 +382,29 @@ describe('OrderRecordService', () => {
       expect(callArg.recordStatus).toBe('awaiting_mapping');
       expect(callArg.orderSnapshot['externalOrderId']).toBe(incoming.externalOrderId);
       expect(callArg.orderSnapshot['items']).toEqual(incoming.items);
+    });
+
+    it('should pass incoming.placedAt through into the raw snapshot when present (#926)', async () => {
+      const incoming = { ...createMockIncomingOrder(), placedAt: '2026-05-31T16:00:00.000Z' };
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-1', 'evt-1');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['placedAt']).toBe('2026-05-31T16:00:00.000Z');
+    });
+
+    it('should omit placedAt from the raw snapshot when incoming does not carry it (#926)', async () => {
+      const incoming = createMockIncomingOrder();
+      expect(incoming.placedAt).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-1', 'evt-1');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('placedAt');
     });
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
