@@ -14,6 +14,13 @@
  *      front-controller endpoint; PrestaShop calls
  *      getOrderShippingCostExternal() at order-create time and reads the
  *      authoritative amount from the sidecar — no post-create reconcile.
+ *   3. Order import — the `importorder` front controller creates orders
+ *      through PrestaShop's canonical PaymentModule::validateOrder flow
+ *      (delegated to ps_checkpayment), instead of the raw webservice
+ *      POST /orders insert that bypassed validateOrder and dropped the
+ *      carrier / recomputed shipping (ADR-016 / #905). The dynamic carrier
+ *      is installed need_range=1 + groups + ranges so validateOrder's
+ *      carrier resolution surfaces it.
  *
  * Extends CarrierModule (not Module) so the carrier capability is declared
  * formally per the canonical PS pattern. CarrierModule itself extends Module,
@@ -27,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.1.0
+ * @version 1.2.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -62,11 +69,31 @@ class OpenLinker extends CarrierModule
     // edits the carrier in PS admin (PS duplicates the row and assigns a new id).
     const DYNAMIC_CARRIER_CONFIG_KEY = 'OPENLINKER_DYNAMIC_CARRIER_ID';
 
+    // When '1', emails fire on OL-imported orders (validateOrder); default '0'
+    // suppresses them — the marketplace already notified the buyer, so a
+    // duplicate PS mail is unwanted (#905). NOTE: suppression is coarse — it
+    // cancels EVERY mail validateOrder triggers in that window, which is the
+    // buyer order-confirmation + state mail today, but would also include a
+    // merchant "new order" notification if one is configured. The window is
+    // narrow (only around the single validateOrder call), so normal shop mail
+    // outside OL imports is never affected. Set to '1' to let all of them fire.
+    const IMPORT_SEND_MAIL_CONFIG_KEY = 'OPENLINKER_IMPORT_SEND_MAIL';
+
+    /**
+     * Request-scoped flag set by the importorder controller around its
+     * `validateOrder` call. While true, `hookActionEmailSendBefore` cancels
+     * every outbound mail (validateOrder's only mails in that window are the
+     * order-confirmation + state emails we intend to suppress). Static so the
+     * front controller and the hook — separate objects in the same PHP
+     * request — share it; PHP resets it per request.
+     */
+    public static $suppressImportMail = false;
+
     public function __construct()
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.1.0';
+        $this->version = '1.2.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -98,6 +125,7 @@ class OpenLinker extends CarrierModule
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
             'actionCarrierUpdate',
+            'actionEmailSendBefore',
         ];
 
         if (!parent::install()) {
@@ -150,6 +178,7 @@ class OpenLinker extends CarrierModule
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
             'actionCarrierUpdate',
+            'actionEmailSendBefore',
         ];
 
         foreach ($hooks as $hook) {
@@ -781,9 +810,15 @@ class OpenLinker extends CarrierModule
         $carrier->is_module         = true;
         $carrier->shipping_external = true;
         $carrier->external_module_name = $this->name;
-        // OL is the source of truth for the per-cart amount; PS range tables
-        // are not consulted.
-        $carrier->need_range        = false;
+        // CRITICAL (ADR-016 / #905): need_range=1 + a catch-all price range is
+        // what makes PaymentModule::validateOrder's carrier resolution SURFACE
+        // this carrier — `Carrier::getCarriersForOrder` gathers via
+        // `(is_module=0 OR need_range=1)`, so a need_range=0 module carrier is
+        // never offered at checkout/order-create and PS silently falls back to
+        // the cheapest (free) carrier. The range price (0) is ignored: PS calls
+        // getOrderShippingCostExternal() (the sidecar amount) for the real cost.
+        $carrier->shipping_method   = Carrier::SHIPPING_METHOD_PRICE;
+        $carrier->need_range        = true;
         // CRITICAL: OL supplies an authoritative tax-incl amount via the
         // sidecar. id_tax_rules_group=0 means PS does NOT add tax on top —
         // otherwise every order would be double-taxed (PS would multiply
@@ -809,6 +844,30 @@ class OpenLinker extends CarrierModule
             $carrier->addZone((int) $zone['id_zone']);
         }
 
+        // Grant the carrier to every customer group. Without this the carrier
+        // is unavailable to real customers, so PaymentModule::validateOrder's
+        // delivery-option resolution silently drops it for the shop's default
+        // (free) carrier — the #898 failure mode. Operators can prune in the PS
+        // carrier admin afterwards. See ADR-016 / #905.
+        $carrier->setGroups(array_map(
+            static function ($group) {
+                return (int) $group['id_group'];
+            },
+            Group::getGroups((int) Configuration::get('PS_LANG_DEFAULT'))
+        ));
+
+        // Catch-all price range + per-zone delivery rows. Required for the
+        // carrier to pass `getCarriersForOrder`'s in-range check (price method,
+        // need_range=1). The delivery price is 0 and never used — the module's
+        // getOrderShippingCostExternal() overrides it with the sidecar amount.
+        if (!$this->configureDynamicCarrierRanges((int) $carrier->id)) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: failed to configure ranges for OL Dynamic carrier id=' . (int) $carrier->id,
+                3, null, 'Module', null
+            );
+            return false;
+        }
+
         // Logo is required — PS otherwise shows the broken-image placeholder
         // in the carrier list. Production PS modules treat copy-failure as
         // install failure (LP Express pattern); we follow suit.
@@ -829,6 +888,111 @@ class OpenLinker extends CarrierModule
         );
 
         return true;
+    }
+
+    /**
+     * Configure the catch-all price range + per-zone delivery rows for the OL
+     * Dynamic carrier.
+     *
+     * Idempotent and row-preserving: clears any existing OL ranges/delivery
+     * rows for the carrier first, then re-creates a single 0→∞ price range and
+     * one delivery row per active zone (price 0 — the module overrides it). Safe
+     * to call from both `installDynamicCarrier` (fresh) and the upgrade hook
+     * (existing carrier row, ADR-016 / #905) because it never touches the
+     * `ps_carrier` row itself, so `id_carrier` — and every order referencing it
+     * — is preserved.
+     *
+     * @param int $idCarrier
+     * @return bool
+     */
+    private function configureDynamicCarrierRanges($idCarrier)
+    {
+        if ($idCarrier <= 0) {
+            return false;
+        }
+
+        $db = Db::getInstance();
+        // Idempotent reset — drop prior OL-managed ranges/delivery rows.
+        $db->execute('DELETE FROM `' . _DB_PREFIX_ . 'delivery` WHERE id_carrier = ' . (int) $idCarrier);
+        $db->execute('DELETE FROM `' . _DB_PREFIX_ . 'range_price` WHERE id_carrier = ' . (int) $idCarrier);
+
+        $rangePrice = new RangePrice();
+        $rangePrice->id_carrier = (int) $idCarrier;
+        $rangePrice->delimiter1 = '0';
+        $rangePrice->delimiter2 = '10000000';
+        if (!$rangePrice->add()) {
+            return false;
+        }
+
+        foreach (Zone::getZones(true) as $zone) {
+            $ok = $db->insert('delivery', [
+                'id_carrier' => (int) $idCarrier,
+                'id_range_price' => (int) $rangePrice->id,
+                'id_range_weight' => 0,
+                'id_zone' => (int) $zone['id_zone'],
+                'price' => '0',
+            ]);
+            if (!$ok) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Row-preserving reconfiguration of the existing OL Dynamic carrier for the
+     * validateOrder order-create path (ADR-016 / #905). Invoked by the upgrade
+     * hook on installs whose carrier predates this change (need_range=0, no
+     * groups/ranges).
+     *
+     * Mutates the existing `ps_carrier` row via direct SQL — deliberately NOT
+     * `Carrier::save()`, which PrestaShop duplicates into a new id_carrier and
+     * would strand `OPENLINKER_DYNAMIC_CARRIER_ID` plus every historical order
+     * referencing the carrier. `setGroups` and the range/delivery rebuild do
+     * not touch the carrier row's identity.
+     *
+     * Idempotent. No-op (success) when the carrier config key is unset.
+     *
+     * @return bool
+     */
+    public function upgradeDynamicCarrierForValidateOrder()
+    {
+        // Register the mail-suppression hook + seed its config default on
+        // existing installs (validateOrder import path, #905).
+        $this->registerHook('actionEmailSendBefore');
+        if (Configuration::get(self::IMPORT_SEND_MAIL_CONFIG_KEY) === false) {
+            Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
+        }
+
+        $carrierId = (int) Configuration::get(self::DYNAMIC_CARRIER_CONFIG_KEY);
+        if ($carrierId <= 0) {
+            // Fresh install (or carrier missing) — installDynamicCarrier owns it.
+            return true;
+        }
+
+        Db::getInstance()->execute(
+            'UPDATE `' . _DB_PREFIX_ . 'carrier` SET '
+            . 'need_range = 1, shipping_method = ' . (int) Carrier::SHIPPING_METHOD_PRICE
+            . ' WHERE id_carrier = ' . (int) $carrierId
+        );
+
+        $carrier = new Carrier($carrierId);
+        if (!Validate::isLoadedObject($carrier)) {
+            return false;
+        }
+
+        foreach (Zone::getZones(true) as $zone) {
+            $carrier->addZone((int) $zone['id_zone']);
+        }
+        $carrier->setGroups(array_map(
+            static function ($group) {
+                return (int) $group['id_group'];
+            },
+            Group::getGroups((int) Configuration::get('PS_LANG_DEFAULT'))
+        ));
+
+        return $this->configureDynamicCarrierRanges($carrierId);
     }
 
     /**
@@ -895,9 +1059,10 @@ class OpenLinker extends CarrierModule
     /**
      * CarrierModule: PS-called accessor used when ranges are configured.
      *
-     * For the OL Dynamic carrier need_range=0, but PS still calls this
-     * method on some code paths. Delegating to the external accessor keeps
-     * a single source of truth.
+     * Since ADR-016 / #905 the OL Dynamic carrier ships need_range=1 with a
+     * catch-all range (so validateOrder's carrier resolution surfaces it), and
+     * PS calls this in-range accessor. Delegating to the external accessor keeps
+     * the sidecar amount the single source of truth on every code path.
      *
      * @param Cart $params
      * @param float $shipping_cost
@@ -971,6 +1136,26 @@ class OpenLinker extends CarrierModule
     }
 
     /**
+     * Hook: actionEmailSendBefore
+     *
+     * Returning false cancels the outbound email (PS core: any module returning
+     * false short-circuits Mail::Send). We cancel only while the importorder
+     * controller is mid-`validateOrder` with mail suppressed (#905) — outside
+     * that request-scoped window we return true so normal shop mail is never
+     * affected. The cancellation is deliberately coarse (all mail in the window,
+     * not template-filtered): the window contains only validateOrder's own
+     * order-confirmation/state mails, and template-name matching would couple
+     * the module to PS mail-template internals that drift across versions.
+     *
+     * @param array $params
+     * @return bool
+     */
+    public function hookActionEmailSendBefore($params)
+    {
+        return self::$suppressImportMail ? false : true;
+    }
+
+    /**
      * Set default configuration values
      *
      * @return void
@@ -988,6 +1173,8 @@ class OpenLinker extends CarrierModule
         Configuration::updateValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
         Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
         Configuration::updateValue('DEDUPLICATION_WINDOW_MINUTES', self::DEFAULT_DEDUPLICATION_WINDOW_MINUTES);
+        // Default: suppress buyer mail on OL-imported orders (#905).
+        Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
 
     /**
@@ -1008,6 +1195,7 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('MAX_RETRY_ATTEMPTS');
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
         Configuration::deleteByName('DEDUPLICATION_WINDOW_MINUTES');
+        Configuration::deleteByName(self::IMPORT_SEND_MAIL_CONFIG_KEY);
     }
 
     /**
