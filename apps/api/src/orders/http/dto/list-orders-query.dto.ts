@@ -21,8 +21,14 @@ import {
   OrderSyncStatusFilterValues,
   OrderRecordStatusValues,
   OrderHealthValues,
+  OrderRecordSortValues,
 } from '@openlinker/core/orders';
-import { OrderSyncStatusFilter, OrderRecordStatus, OrderHealth } from '@openlinker/core/orders';
+import {
+  OrderSyncStatusFilter,
+  OrderRecordStatus,
+  OrderHealth,
+  OrderRecordSort,
+} from '@openlinker/core/orders';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -78,6 +84,23 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(OrderHealthValues)
   health?: OrderHealth;
+
+  @ApiPropertyOptional({
+    enum: OrderRecordSortValues,
+    description:
+      'Result ordering (#927). "createdAt" (default) = newest first; "dispatchBy" = ship-by deadline ascending (soonest first, NULLs last) — the triage default on the orders list.',
+  })
+  @IsOptional()
+  @IsEnum(OrderRecordSortValues)
+  sort?: OrderRecordSort;
+
+  @ApiPropertyOptional({
+    description:
+      'Dispatch-SLA filter (#927): keep only orders with a known ship-by deadline at or before this instant (ISO 8601). Pass `now` for overdue, `now + window` for "breaching soon".',
+  })
+  @IsOptional()
+  @IsDateString()
+  dueBefore?: string;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

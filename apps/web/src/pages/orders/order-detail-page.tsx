@@ -21,6 +21,7 @@ import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
+import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import { useOrderQuery } from '../../features/orders/hooks/use-order-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
@@ -45,6 +46,13 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   syncing: 'warning',
   synced: 'success',
   failed: 'error',
+};
+
+/** Ship-by urgency level (#927) → StatusBadge tone. */
+const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
+  ok: 'info',
+  soon: 'warning',
+  overdue: 'error',
 };
 
 export function OrderDetailPage(): ReactElement {
@@ -121,6 +129,7 @@ export function OrderDetailPage(): ReactElement {
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
   // Internal ID is the header copy-chip; not duplicated here.
+  const shipByView = formatShipBy(order.dispatchByAt ?? null);
   const summaryItems: KeyValueItem[] = [
     ...(snapshot.orderNumber
       ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
@@ -141,6 +150,23 @@ export function OrderDetailPage(): ReactElement {
       : []),
     { id: 'createdAt', label: 'Received (OL)', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
     { id: 'updatedAt', label: 'Updated (OL)', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
+    // Dispatch SLA countdown (#927) — the ship-by deadline + urgency badge.
+    ...(order.dispatchByAt && shipByView
+      ? [
+          {
+            id: 'shipBy',
+            label: 'Ship by',
+            value: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <TimeDisplay iso={order.dispatchByAt} format="datetime" />
+                <StatusBadge tone={SHIP_BY_TONE[shipByView.level]} withDot compact>
+                  {shipByView.remaining}
+                </StatusBadge>
+              </span>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
