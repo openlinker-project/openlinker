@@ -2,7 +2,7 @@
 <module>
     <name>openlinker</name>
     <displayName><![CDATA[OpenLinker]]></displayName>
-    <version><![CDATA[1.0.0]]></version>
+    <version><![CDATA[1.2.0]]></version>
     <description><![CDATA[OpenLinker PrestaShop module: emits webhook events for event-driven sync and hosts additional OpenLinker capabilities.]]></description>
     <author><![CDATA[OpenLinker Team]]></author>
     <tab><![CDATA[administration]]></tab>

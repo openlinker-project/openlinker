@@ -6,13 +6,15 @@
  * PS-intended `POST /order_histories` primitive (so `current_state` advances)
  * and tracking must land on the `order_carriers` association.
  *
- * Module-free by design (`installOlModule: false`): `updateFulfillment` does
- * not touch the OL Dynamic carrier sidecar, so this spec avoids the CI-flaky
- * module-install path (#716) and runs on CI like `prestashop-harness-smoke`.
- * An order is still needed to transition; it is created module-free via the
- * `OrderIngestionService` ingest path with a `defaultCarrierId` on the PS
- * connection (carrier-resolution chain step 2 — no sidecar write), mirroring
- * S-2 of `allegro-prestashop-carrier-mapping.int-spec.ts`.
+ * `updateFulfillment` itself is module-free (it only POSTs `order_histories` /
+ * `order_carriers` over the WS). But the order it transitions must first be
+ * *created*, and since ADR-016 (#905) destination order creation goes through
+ * the OL module's `importorder` → `validateOrder` endpoint — so the seed now
+ * requires the module installed + the webhook secret wired. The suite is
+ * therefore module-gated (skipped in CI behind the #716 module-install flake,
+ * like `allegro-prestashop-carrier-mapping`); the order seed lives in a
+ * `beforeAll` guarded by `INSTALL_OL_MODULE`. A `defaultCarrierId` on the PS
+ * connection keeps the seed on carrier-resolution chain step 2 (no sidecar).
  *
  * Asserts: a new `order_histories` row at the shipped state id, `current_state`
  * advanced to 4, `order_carriers.tracking_number` set, and idempotency (a
@@ -185,6 +187,25 @@ async function seedOrderableProduct(opts: {
   );
 }
 
+/** Env-var key the WebhookSecretProviderPort reads via its env-fallback path. */
+const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
+
+/**
+ * Whether to install the real OL PrestaShop module. Since ADR-016 (#905)
+ * destination order creation goes through the module's `importorder` →
+ * `validateOrder` endpoint, so even this fulfillment spec — whose subject
+ * (`updateFulfillment`) is itself module-free — needs the module + webhook
+ * secret just to **seed** the order it transitions. Gated off in CI (the #716
+ * module-install-on-Linux flake), same as the carrier-mapping spec; the single
+ * test is skipped there and the `beforeAll` order-seed is guarded accordingly.
+ */
+const INSTALL_OL_MODULE =
+  process.env.OL_FORCE_PS_MODULE_INSTALL === 'true' ||
+  (process.env.CI !== 'true' && process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true');
+
+/** Conditional `it` — runs when the OL module is installed, skips otherwise. */
+const itWhenOlModuleInstalled = INSTALL_OL_MODULE ? it : it.skip;
+
 describe('PrestaShop order fulfillment update (#858)', () => {
   let harness: IntegrationTestHarness;
   let ps: PrestashopTestContainer;
@@ -193,13 +214,19 @@ describe('PrestaShop order fulfillment update (#858)', () => {
   let prestashopConnectionId: string;
   let defaultCarriers: DefaultPrestashopCarriers;
   let psOrderId: number;
+  /** Snapshot of the env-var value (if any) at suite start — restored in afterAll. */
+  let priorWebhookSecretEnv: string | undefined;
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    // Module-free: updateFulfillment never touches the OL sidecar, so we skip
-    // the CI-flaky module install. The OL Dynamic carrier stub row is still
-    // seeded by applyPrestashopFixture, so discoverDynamicCarrierId() passes.
-    ps = await startPrestashopContainer({ installOlModule: false });
+    // Order creation now goes through the module's importorder → validateOrder
+    // endpoint (ADR-016), so seeding the order to transition requires the module
+    // installed + the webhook secret wired. Gated off in CI (#716).
+    ps = await startPrestashopContainer({ installOlModule: INSTALL_OL_MODULE });
+    if (INSTALL_OL_MODULE) {
+      priorWebhookSecretEnv = process.env[WEBHOOK_SECRET_ENV_KEY];
+      process.env[WEBHOOK_SECRET_ENV_KEY] = ps.webhookSharedSecret;
+    }
     defaultCarriers = await getDefaultPsCarriers(ps.mysqlAddress);
 
     stub = installAllegroTestSourceStub(harness);
@@ -227,33 +254,46 @@ describe('PrestaShop order fulfillment update (#858)', () => {
       prestashopConnectionId,
     });
 
-    // Create the order to transition (module-free ingest path).
-    stub.setNextIncomingOrder(
-      createIncomingOrderForCarrierMapping({
-        externalOrderId: 'ALG-858',
-        methodId: 'paczkomat-858',
-        externalOfferId: 'ALG-OFFER-858',
-        sku: 'SEEDED-SKU-858',
-      })
-    );
-    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
-    const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-858');
-    if (results[0]?.status !== 'success') {
-      throw new Error(
-        `Order seed failed: ${results[0] ? results[0].error.message : 'no result'}`
+    // Create the order to transition — via the importorder → validateOrder path
+    // (ADR-016), so this only runs when the module is installed. The single test
+    // below is gated the same way, so a skipped run never reads `psOrderId`.
+    if (INSTALL_OL_MODULE) {
+      stub.setNextIncomingOrder(
+        createIncomingOrderForCarrierMapping({
+          externalOrderId: 'ALG-858',
+          methodId: 'paczkomat-858',
+          externalOfferId: 'ALG-OFFER-858',
+          sku: 'SEEDED-SKU-858',
+          status: 'processing',
+        })
       );
+      const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+      const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-858');
+      if (results[0]?.status !== 'success') {
+        throw new Error(
+          `Order seed failed: ${results[0] ? results[0].error.message : 'no result'}`
+        );
+      }
+      // orderRef.orderId is the destination-native PrestaShop order id (#909).
+      psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     }
-    // orderRef.orderId is the destination-native PrestaShop order id (#909).
-    psOrderId = destinationOrderIdFromRef(results[0].orderRef);
   }, 15 * 60_000);
 
   afterAll(async () => {
     if (ps) {
       await ps.cleanup();
     }
+    // Restore the env var the suite mutated (maxWorkers:1 → leakage otherwise).
+    if (INSTALL_OL_MODULE) {
+      if (priorWebhookSecretEnv === undefined) {
+        delete process.env[WEBHOOK_SECRET_ENV_KEY];
+      } else {
+        process.env[WEBHOOK_SECRET_ENV_KEY] = priorWebhookSecretEnv;
+      }
+    }
   });
 
-  it('should transition state via order_histories + write tracking, idempotently', async () => {
+  itWhenOlModuleInstalled('should transition state via order_histories + write tracking, idempotently', async () => {
     const integrations = harness
       .getApp()
       .get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN);

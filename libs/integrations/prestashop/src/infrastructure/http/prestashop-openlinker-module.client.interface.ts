@@ -41,6 +41,45 @@ export interface WriteCartShippingInput {
 }
 
 /**
+ * Input shape for `importOrder` — create a PrestaShop order from an existing
+ * cart through `PaymentModule::validateOrder` (ADR-016 / #905), instead of the
+ * raw webservice `POST /api/orders` insert that bypasses the order flow.
+ *
+ * The cart must already exist with `id_carrier` + `id_address_delivery` set
+ * (the controller derives `delivery_option` from them) and its sidecar row +
+ * `specific_prices` already written.
+ */
+export interface ImportOrderInput {
+  /** PrestaShop cart id the order is created from. */
+  idCart: number;
+  /** Target PrestaShop order-state id (e.g. payment-accepted). */
+  idOrderState: number;
+  /** Buyer-paid total (authoritative; PS uses it verbatim via dont_touch_amount). */
+  amountPaid: number;
+  /**
+   * Payment-method label recorded on the order's `payment` field. The adapter
+   * sends `'Check payment'` to match the actual payment module the endpoint
+   * delegates to (`ps_checkpayment`), keeping provenance consistent with the
+   * pre-ADR-016 WS path. The controller falls back to `'OpenLinker'` if absent.
+   */
+  paymentMethod: string;
+  /** OL order reference, used as the PS order `reference` + retry dedup key. */
+  orderReference: string;
+}
+
+/**
+ * Result of a successful `importOrder` call.
+ */
+export interface ImportOrderResult {
+  /** Created (or pre-existing) PrestaShop order id. */
+  idOrder: number;
+  /** PrestaShop order reference. */
+  reference: string;
+  /** True when an order already existed for the cart (idempotent re-entry). */
+  alreadyExisted: boolean;
+}
+
+/**
  * Client contract for HMAC-signed writes to the OpenLinker PS module.
  */
 export interface IPrestashopOpenLinkerModuleClient {
@@ -54,4 +93,16 @@ export interface IPrestashopOpenLinkerModuleClient {
    *         order creation must abort so we don't ship at zero.
    */
   writeCartShipping(input: WriteCartShippingInput): Promise<void>;
+
+  /**
+   * Create a PrestaShop order from an existing cart via the module's
+   * HMAC-authed `importorder` controller, which calls
+   * `PaymentModule::validateOrder` (ADR-016 / #905). Idempotent: if an order
+   * already exists for the cart the existing one is returned.
+   *
+   * @param input — cart id + target state + authoritative paid total + payment label + reference
+   * @returns the created (or pre-existing) order id + reference
+   * @throws PrestashopOlModuleException on non-2xx response.
+   */
+  importOrder(input: ImportOrderInput): Promise<ImportOrderResult>;
 }
