@@ -25,6 +25,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { Button } from '../../../shared/ui/button';
 
 import type { OrderRecord } from '../api/orders.types';
+import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
@@ -39,6 +40,14 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
   const [formOpen, setFormOpen] = useState(false);
+
+  // #928 — source-reported payment status drives the dispatch gate on the
+  // action row below. Parsed from the order snapshot here (server state stays in
+  // the page-level query); the presentational button receives it as a prop.
+  const paymentStatus = useMemo(
+    () => parseOrderSnapshot(order.orderSnapshot).paymentStatus,
+    [order.orderSnapshot],
+  );
 
   // AC-8 — global capability gate. If no connection declares
   // ShippingProviderManager, render nothing (the operator has no way to
@@ -120,6 +129,7 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
       {activeShipment ? (
         <ShipmentActionButtons
           shipment={activeShipment}
+          paymentStatus={paymentStatus}
           onGenerateLabelClick={() => setFormOpen(true)}
         />
       ) : null}
