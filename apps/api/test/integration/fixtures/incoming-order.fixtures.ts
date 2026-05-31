@@ -40,6 +40,11 @@ export interface CarrierMappingFixtureOpts {
    * `total_paid_real == total`.
    */
   status?: IncomingOrder['status'];
+  /**
+   * Buyer-placed-on-marketplace time (#926). Defaults to a fixed ISO value so
+   * the ingested order carries a realistic `placedAt` through the snapshot.
+   */
+  placedAt?: string;
 }
 
 /**
@@ -103,6 +108,7 @@ export function createIncomingOrderForCarrierMapping(
       methodId: opts.methodId,
       methodName,
     },
+    placedAt: opts.placedAt ?? '2026-05-01T09:55:00.000Z',
     createdAt: '2026-05-01T10:00:00.000Z',
     updatedAt: '2026-05-01T10:00:00.000Z',
   };
