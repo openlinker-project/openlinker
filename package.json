@@ -25,7 +25,7 @@
     "test:integration": "pnpm --filter @openlinker/api test:integration",
     "test:php": "cd apps/prestashop-module/openlinker && composer install --no-interaction --quiet && vendor/bin/phpunit",
     "lint": "pnpm -r lint && pnpm check:invariants",
-    "check:invariants": "bash scripts/check-fixture-purity.sh && node scripts/check-render-template-fixture-drift.mjs && node scripts/check-migration-timestamps.mjs --self-check && node scripts/check-migration-timestamps.mjs && node scripts/check-design-tokens.mjs && node scripts/check-create-adapter.mjs && node scripts/check-libs-build-scripts.mjs && node scripts/check-plugin-guide-quotes.mjs && node scripts/check-repo-urls.mjs && node scripts/check-cross-context-imports.mjs && node scripts/check-service-interfaces.mjs --self-check && node scripts/check-service-interfaces.mjs",
+    "check:invariants": "bash scripts/check-fixture-purity.sh && node scripts/check-render-template-fixture-drift.mjs && node scripts/check-migration-timestamps.mjs --self-check && node scripts/check-migration-timestamps.mjs && node scripts/check-design-tokens.mjs && node scripts/check-create-adapter.mjs && node scripts/check-libs-build-scripts.mjs && node scripts/check-plugin-guide-quotes.mjs && node scripts/check-repo-urls.mjs && node scripts/check-cross-context-imports.mjs && node scripts/check-service-interfaces.mjs --self-check && node scripts/check-service-interfaces.mjs && node scripts/check-jest-integration-mappers.mjs --self-check && node scripts/check-jest-integration-mappers.mjs",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
     "create-adapter": "node scripts/create-adapter.mjs",
