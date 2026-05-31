@@ -77,6 +77,10 @@ export {
   OrderSyncStatusFilterValues,
   OrderRecordStatus,
   OrderRecordStatusValues,
+  OrderHealth,
+  OrderHealthValues,
+  OrderHealthSummary,
+  OrderHealthSummaryFilters,
 } from './domain/types/order-record.types';
 
 // Services
