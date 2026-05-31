@@ -124,6 +124,7 @@ describe('OrderDetailPage', () => {
       orderSnapshot: {
         orderNumber: 'A-1024',
         status: 'processing',
+        placedAt: '2026-05-31T16:00:00.000Z',
         items: [
           { id: 'it1', productId: 'ol_product_1', quantity: 2, price: 10, sku: 'SKU-1', name: 'Camera' },
         ],
@@ -172,6 +173,27 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
       // 1 ingest event + 1 sync attempt = 2 events.
       expect(await screen.findByText(/Showing 2 of 2 events/)).toBeInTheDocument();
+    });
+
+    it('leads with the buyer-placed timestamp and demotes the OL clocks (#926)', async () => {
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
+      renderDetail(api);
+      // Header "Placed …" + Summary "Placed" row.
+      expect((await screen.findAllByText(/^Placed$|Placed/)).length).toBeGreaterThan(0);
+      // OL ingestion clock is demoted, not removed.
+      expect(screen.getByText('Received (OL)')).toBeInTheDocument();
+    });
+
+    it('falls back to the OL received time in the header when no placedAt is present (#926)', async () => {
+      const noPlaced: OrderRecord = {
+        ...richOrder,
+        orderSnapshot: { ...richOrder.orderSnapshot, placedAt: undefined },
+      };
+      const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(noPlaced) } });
+      renderDetail(api);
+      // Header + summary both show "Received" (the OL ingestion clock); no "Placed" anywhere.
+      expect((await screen.findAllByText(/Received/)).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Placed/)).toBeNull();
     });
   });
 

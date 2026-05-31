@@ -85,11 +85,27 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
           )}
         </span>
 
+        {/* Lead with the buyer-placed-on-marketplace time (#926) when available;
+            fall back to the record's ingestion `createdAt` (NOT snapshot.createdAt,
+            which is vestigial) for older records / sources without a placed time. */}
         <span className="order-header__received">
-          Received <TimeDisplay iso={order.createdAt} format="datetime" className="mono-text tabular" />{' '}
-          <span className="text-muted">
-            · <TimeDisplay iso={order.createdAt} format="relative" />
-          </span>
+          {snapshot.placedAt ? (
+            <>
+              Placed{' '}
+              <TimeDisplay iso={snapshot.placedAt} format="datetime" className="mono-text tabular" />{' '}
+              <span className="text-muted">
+                · <TimeDisplay iso={snapshot.placedAt} format="relative" />
+              </span>
+            </>
+          ) : (
+            <>
+              Received{' '}
+              <TimeDisplay iso={order.createdAt} format="datetime" className="mono-text tabular" />{' '}
+              <span className="text-muted">
+                · <TimeDisplay iso={order.createdAt} format="relative" />
+              </span>
+            </>
+          )}
         </span>
       </div>
 
