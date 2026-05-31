@@ -59,7 +59,20 @@ export interface OrderRecord {
   recordStatus: OrderRecordStatusValue;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Marketplace dispatch (ship-by) deadline (ISO 8601) or null (#927). Surfaced
+   * top-level by the BE (derived from the source dispatch window) so the list
+   * SLA column / sort / filter and the detail countdown read it without parsing
+   * the snapshot. Optional on the FE contract (mirrors the BE
+   * `@ApiPropertyOptional`) so older/absent payloads degrade gracefully.
+   */
+  dispatchByAt?: string | null;
 }
+
+// Result ordering for the orders list (#927). Mirrors `OrderRecordSortValues`
+// in `@openlinker/core/orders`. `dispatchBy` = ship-by ascending (triage default).
+export const OrderSortValues = ['createdAt', 'dispatchBy'] as const;
+export type OrderSortValue = (typeof OrderSortValues)[number];
 
 // Derived order-health buckets (#929). Hand-mirrored from `OrderHealthValues`
 // in `@openlinker/core/orders` per the FE-001 contract strategy — keep in sync.
@@ -95,6 +108,10 @@ export interface OrderFilters {
   recordStatus?: OrderRecordStatusValue;
   /** Filter to a single derived health bucket (#929). */
   health?: OrderHealthValue;
+  /** Result ordering (#927); `dispatchBy` = ship-by ascending (triage default). */
+  sort?: OrderSortValue;
+  /** SLA "breaching / overdue" filter (#927): ISO instant; keeps orders with a ship-by deadline ≤ this. */
+  dueBefore?: string;
 }
 
 /**
