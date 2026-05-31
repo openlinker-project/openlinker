@@ -25,6 +25,7 @@ import type {
   IncomingOrderAddress,
   OrderShipping,
   OrderPickupPoint,
+  OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -294,6 +295,7 @@ export class AllegroOrderSourceAdapter
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
         paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
+        dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,
         createdAt,
         updatedAt,
@@ -444,6 +446,23 @@ export class AllegroOrderSourceAdapter
       return undefined;
     }
     return { id: pp.id, name: pp.name, description: pp.description };
+  }
+
+  /**
+   * Resolve the marketplace dispatch (ship-by) window (#927).
+   *
+   * Reads `delivery.time.dispatch.{from,to}` — the shipment window Allegro
+   * populates for all delivery methods. `dispatch.to` is the ship-by deadline
+   * the SLA surfaces. The deprecated, Kurier-X-press-only `delivery.time.guaranteed`
+   * is intentionally NOT consumed. Returns `undefined` when neither bound is
+   * present (older orders / sources without a dispatch SLA → graceful no-deadline).
+   */
+  private resolveDispatchTime(checkoutForm: AllegroCheckoutForm): OrderDispatchWindow | undefined {
+    const dispatch = checkoutForm.delivery?.time?.dispatch;
+    if (!dispatch?.from && !dispatch?.to) {
+      return undefined;
+    }
+    return { from: dispatch.from, to: dispatch.to };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
