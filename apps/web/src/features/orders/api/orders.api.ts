@@ -40,6 +40,7 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.recordStatus) params.set('recordStatus', filters.recordStatus);
   if (filters?.health) params.set('health', filters.health);
   if (filters?.sort) params.set('sort', filters.sort);
+  if (filters?.dir) params.set('dir', filters.dir);
   if (filters?.dueBefore) params.set('dueBefore', filters.dueBefore);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
