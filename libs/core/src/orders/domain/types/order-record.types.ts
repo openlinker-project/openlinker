@@ -128,18 +128,41 @@ export interface OrderRecordFilters {
    */
   dueBefore?: Date;
   /**
-   * Result ordering (#927). Default (`createdAt`) is newest-first. `dispatchBy`
-   * orders by the ship-by deadline ascending with NULLs last — the triage
-   * default on the orders list (soonest deadline first).
+   * Result ordering (#927/#944). Maps to a SQL `ORDER BY` by
+   * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
+   * last) is the list's triage default; the JSONB-derived keys (`customer`,
+   * `items`, `status`, `total`) back the clickable sortable columns (#944).
    */
   sort?: OrderRecordSort;
+  /**
+   * Sort direction for `sort` (#944). Defaults per-key in `applySort` when
+   * absent (the FE supplies an explicit direction once a header is clicked).
+   */
+  dir?: OrderRecordSortDirection;
 }
 
 /**
- * Sort fields for order-record list queries (#927).
+ * Sort fields for order-record list queries (#927, extended #944).
+ *
+ * - `createdAt` / `dispatchBy` — top-level timestamp columns.
+ * - `customer` / `items` / `status` / `total` — derived from `orderSnapshot`
+ *   JSONB (and the health `CASE` for `status`); back the sortable table columns.
  */
-export const OrderRecordSortValues = ['createdAt', 'dispatchBy'] as const;
+export const OrderRecordSortValues = [
+  'createdAt',
+  'dispatchBy',
+  'customer',
+  'items',
+  'status',
+  'total',
+] as const;
 export type OrderRecordSort = (typeof OrderRecordSortValues)[number];
+
+/**
+ * Sort direction for order-record list queries (#944).
+ */
+export const OrderRecordSortDirectionValues = ['asc', 'desc'] as const;
+export type OrderRecordSortDirection = (typeof OrderRecordSortDirectionValues)[number];
 
 /**
  * Pagination parameters for order record queries.
