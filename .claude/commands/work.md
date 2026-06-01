@@ -91,6 +91,21 @@ docs/plans/implementation-plan-{feature-name}.md
 
 ---
 
+## Phase 3.5 — Pre-implement gate
+
+Before writing any code, run the read-only `/pre-implement` gate on the plan:
+
+```
+/pre-implement docs/plans/implementation-plan-{feature-name}.md #{issue}
+```
+
+It greps the **live repo** for reuse collisions (a port / service / DI token / ORM entity / helper the plan assumes is new but already exists) and contract-surface breaks (top-level barrels, port signatures, DTOs, Symbol tokens, ORM schema, `check:invariants` rules), and writes a `READY / NEEDS-REVISION / NEEDS-MAJOR-REVISION` verdict to `docs/plans/analysis/`.
+
+- **NEEDS-REVISION** → fix the plan and re-gate before proceeding. The cheapest place to fix a collision is the plan, not a branch.
+- For a trivial, self-contained change you may note the gate is unnecessary and skip it — but say so explicitly.
+
+---
+
 ## Phase 4 — Implement
 
 0. **Re-touch the claim** (keeps long-but-active sessions from being treated as stale): post a fresh `🤖 claimed for work by branch …` comment so the 2-hour window resets before the implementation phase, which can run long.
@@ -104,7 +119,12 @@ docs/plans/implementation-plan-{feature-name}.md
    pnpm type-check  # must pass with zero errors
    pnpm test        # all unit tests must pass
    ```
-   Fix all errors before continuing.
+   Fix all errors before continuing. The pre-commit hook auto-runs `pnpm
+   smart-test --no-integration` (only the affected packages' related specs,
+   via each package's own runner), so the per-commit loop is fast; still run
+   the full `pnpm test` (and `pnpm test:integration` for backend changes)
+   before opening the PR — the hook is the fast path, the full suite is the
+   safety net.
 
 ---
 
