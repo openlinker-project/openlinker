@@ -239,6 +239,7 @@ See `docs/testing-guide.md` for the full guide.
 | Command | What it does |
 |---|---|
 | `/plan <task>` | Generate a full 5-phase implementation plan, saved to `docs/plans/` |
+| `/pre-implement <plan\|issue>` | Read-only readiness gate between `/plan` and `/work` — greps the live repo for reuse collisions + contract-surface breaks; verdict to `docs/plans/analysis/` |
 | `/tech-review <file\|diff>` | Quick tech lead review with BLOCKING/IMPORTANT/SUGGESTION ratings |
 | `/pr-review <PR number\|diff>` | Full systematic PR review using `code-review-guide.md` workflow |
 | `/migrate <description>` | Guide through creating, validating, and verifying a TypeORM migration |
