@@ -8,7 +8,7 @@
  * snapshot, the all-clear empty state, and the inline per-row Retry. Preserves
  * the canonical async states (loading / error / empty / data).
  */
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
@@ -379,5 +379,115 @@ describe('OrdersListPage', () => {
       );
       expect(calledWithDue).toBe(true);
     });
+  });
+
+  it('should filter the list by source connection when the source select changes (#939)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.selectOptions(screen.getByLabelText('Filter by source'), 'conn_allegro_1');
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(
+        ([filters]) =>
+          (filters as { sourceConnectionId?: string } | undefined)?.sourceConnectionId ===
+          'conn_allegro_1',
+      );
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should change the sort order when the sort select changes (#939)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.selectOptions(screen.getByLabelText('Sort orders'), 'createdAt');
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(
+        ([filters]) => (filters as { sort?: string } | undefined)?.sort === 'createdAt',
+      );
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should widen the created-from date to a start-of-day ISO instant (#939)', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    fireEvent.change(screen.getByLabelText('Created from'), { target: { value: '2026-05-01' } });
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(
+        ([filters]) =>
+          (filters as { createdFrom?: string } | undefined)?.createdFrom ===
+          '2026-05-01T00:00:00.000Z',
+      );
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should shorten a UUID-shaped order number so it reads as a reference (#939)', async () => {
+    const uuidOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_uuid',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        orderNumber: '186d7a20-5b82-11f1-979b-098d4666d4ec',
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([uuidOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByText('186d7a20…66d4ec')).toBeInTheDocument();
+    expect(screen.queryByText('186d7a20-5b82-11f1-979b-098d4666d4ec')).not.toBeInTheDocument();
+  });
+
+  it('should fall back to the buyer email in the customer cell when the address has no name (#939)', async () => {
+    const noNameOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_noname',
+      orderSnapshot: {
+        orderNumber: 'ALG-NONAME',
+        customerEmail: 'buyer@allegromail.pl',
+        items: [{ id: 'i1', quantity: 1, price: 10, name: 'Thing' }],
+        // shippingAddress has geography but no first/last name (locker/guest order)
+        shippingAddress: {
+          company: null,
+          address1: 'Locker POZ08A',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+        },
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([noNameOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-NONAME');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('buyer@allegromail.pl')).toBeInTheDocument();
   });
 });
