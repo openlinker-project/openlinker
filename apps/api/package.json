@@ -44,6 +44,7 @@
     "@openlinker/integrations-dpd-polska": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
+    "@openlinker/integrations-woocommerce": "workspace:*",
     "bcryptjs": "^3.0.3",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.1",
