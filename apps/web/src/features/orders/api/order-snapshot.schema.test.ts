@@ -190,4 +190,41 @@ describe('parseOrderSnapshot', () => {
     expect(parsed.items).toEqual([]);
     expect(parsed.parseWarnings.some((w) => w.field === 'items')).toBe(true);
   });
+
+  it('keeps the address when optional fields are JSON null, not just absent (#939)', () => {
+    // The persisted snapshot serialises absent optional fields as `null`
+    // (e.g. the Allegro adapter emits `company: null`). A bare `.optional()`
+    // would reject `null` and drop the whole address, blanking the customer
+    // cell. `.nullish()` must tolerate it.
+    const parsed = parseOrderSnapshot({
+      shippingAddress: {
+        firstName: 'Piotr',
+        lastName: 'Swierzy',
+        company: null,
+        address1: 'Biadaczowa 14',
+        address2: null,
+        city: 'Strzelce Opolskie',
+        state: null,
+        postalCode: '47-100',
+        country: 'PL',
+        phone: '+48500500500',
+      },
+    });
+
+    expect(parsed.shippingAddress).toBeDefined();
+    expect(parsed.shippingAddress?.firstName).toBe('Piotr');
+    expect(parsed.shippingAddress?.lastName).toBe('Swierzy');
+    expect(parsed.shippingAddress?.city).toBe('Strzelce Opolskie');
+    expect(parsed.parseWarnings.some((w) => w.field === 'shippingAddress')).toBe(false);
+  });
+
+  it('keeps an item when its optional fields are JSON null (#939)', () => {
+    const parsed = parseOrderSnapshot({
+      items: [{ id: 'i1', quantity: 1, price: 10, sku: null, name: null, imageUrl: null }],
+    });
+
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]?.id).toBe('i1');
+    expect(parsed.parseWarnings).toHaveLength(0);
+  });
 });
