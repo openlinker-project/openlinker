@@ -284,6 +284,40 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
+
+    it('should serialise Order.shipping and pickupPoint into the snapshot when present (#952)', async () => {
+      const order = createMockOrder();
+      order.shipping = { methodId: 'allegro-courier-1', methodName: 'Kurier DPD' };
+      order.pickupPoint = { id: 'POZ08A', name: 'Paczkomat POZ08A' };
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['shipping']).toEqual({
+        methodId: 'allegro-courier-1',
+        methodName: 'Kurier DPD',
+      });
+      expect(callArg.orderSnapshot['pickupPoint']).toEqual({
+        id: 'POZ08A',
+        name: 'Paczkomat POZ08A',
+      });
+    });
+
+    it('should omit shipping and pickupPoint from the snapshot when the Order does not carry them (#952)', async () => {
+      const order = createMockOrder();
+      expect(order.shipping).toBeUndefined();
+      expect(order.pickupPoint).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('shipping');
+      expect(callArg.orderSnapshot).not.toHaveProperty('pickupPoint');
+    });
   });
 
   describe('persistOrder - PII disabled', () => {
@@ -529,6 +563,42 @@ describe('OrderRecordService', () => {
 
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
+    });
+
+    it('should serialise IncomingOrder.shipping and pickupPoint into the snapshot when present (#952)', async () => {
+      const incoming = {
+        ...createMockIncomingOrder(),
+        shipping: { methodId: 'allegro-courier-1', methodName: 'Kurier DPD' },
+        pickupPoint: { id: 'POZ08A', name: 'Paczkomat POZ08A' },
+      };
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['shipping']).toEqual({
+        methodId: 'allegro-courier-1',
+        methodName: 'Kurier DPD',
+      });
+      expect(callArg.orderSnapshot['pickupPoint']).toEqual({
+        id: 'POZ08A',
+        name: 'Paczkomat POZ08A',
+      });
+    });
+
+    it('should omit shipping and pickupPoint from the snapshot when IncomingOrder does not carry them (#952)', async () => {
+      const incoming = createMockIncomingOrder();
+      expect(incoming.shipping).toBeUndefined();
+      expect(incoming.pickupPoint).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('shipping');
+      expect(callArg.orderSnapshot).not.toHaveProperty('pickupPoint');
     });
   });
 

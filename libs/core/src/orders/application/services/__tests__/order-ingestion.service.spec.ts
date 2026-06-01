@@ -315,6 +315,21 @@ describe('OrderIngestionService', () => {
       expect(order.customerEmail).toBeUndefined();
     });
 
+    it('should carry incoming.shipping and pickupPoint onto the unified Order (#952)', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        shipping: { methodId: 'allegro-courier-1', methodName: 'Kurier DPD' },
+        pickupPoint: { id: 'POZ08A', name: 'Paczkomat POZ08A' },
+      });
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const order = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(order.shipping).toEqual({ methodId: 'allegro-courier-1', methodName: 'Kurier DPD' });
+      expect(order.pickupPoint).toEqual({ id: 'POZ08A', name: 'Paczkomat POZ08A' });
+    });
+
     it('should call updateSyncStatus with synced when syncOrder succeeds', async () => {
       orderSyncService.syncOrder.mockResolvedValue([
         {
