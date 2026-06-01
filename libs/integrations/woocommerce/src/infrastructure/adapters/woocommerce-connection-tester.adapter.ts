@@ -12,7 +12,9 @@
  *   would produce false negatives for minimal API keys.
  *
  * Never throws — all failures are translated into a structured
- * `ConnectionTestResult` with `success: false`.
+ * `ConnectionTestResult` with `success: false`. Unexpected failures (network
+ * errors, timeouts) are logged at warn level so they appear in server logs
+ * even if the operator doesn't inspect the API response.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
@@ -23,11 +25,14 @@ import type {
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 import { WooCommerceHttpClient } from '../http/woocommerce-http-client';
 import type { WooCommerceConnectionConfig } from '../../domain/types/woocommerce-config.types';
 import type { WooCommerceCredentials } from '../../domain/types/woocommerce-credentials.types';
 
 export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort {
+  private readonly logger = new Logger(WooCommerceConnectionTesterAdapter.name);
+
   async test(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
@@ -51,6 +56,8 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
         config.siteUrl,
         credentials.consumerKey,
         credentials.consumerSecret,
+        // maxRetries: 0 — connection test is a single-shot probe; retries would
+        // mask real latency and make auth failures harder to diagnose.
         { maxRetries: 0, initialDelayMs: 0, backoffMultiplier: 1, maxDelayMs: 0 },
       );
 
@@ -65,6 +72,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       // AbortController fires after REQUEST_TIMEOUT_MS — surface a clear timeout message
       // rather than the raw DOMException message "The operation was aborted."
       if ((error as { name?: string }).name === 'AbortError') {
+        this.logger.warn('WooCommerce connection test timed out', { connectionId: connection.id });
         return {
           success: false,
           message: 'WooCommerce connection test timed out — the site did not respond in time',
@@ -73,6 +81,15 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       }
       const err = error as { statusCode?: number; message?: string };
       const status = typeof err.statusCode === 'number' ? err.statusCode : undefined;
+      // Log unexpected failures (network errors, 5xx) — auth failures (4xx) are
+      // expected operational results and don't need a log entry.
+      if (status === undefined || status >= 500) {
+        this.logger.warn('WooCommerce connection test failed', {
+          connectionId: connection.id,
+          status,
+          error: err.message,
+        });
+      }
       return {
         success: false,
         status,
