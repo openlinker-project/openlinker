@@ -52,8 +52,13 @@ import type {
   OrderHealthValue,
   OrderHealthSummary,
   OrderSortValue,
+  OrderSortDirection,
 } from '../../features/orders/api/orders.types';
-import { OrderHealthValues, OrderSortValues } from '../../features/orders/api/orders.types';
+import {
+  OrderHealthValues,
+  OrderSortValues,
+  OrderSortDirectionValues,
+} from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 
 const PAGE_SIZE = 20;
@@ -100,10 +105,45 @@ function isOrderSort(value: string | null): value is OrderSortValue {
   return value !== null && (OrderSortValues as readonly string[]).includes(value);
 }
 
-/** Operator-facing labels for the sort control (#939). */
-const SORT_LABELS: Record<OrderSortValue, string> = {
-  dispatchBy: 'Ship-by (soonest)',
-  createdAt: 'Created (newest)',
+/** Type-guard for the `dir` URL param (#944). */
+function isOrderDir(value: string | null): value is OrderSortDirection {
+  return value !== null && (OrderSortDirectionValues as readonly string[]).includes(value);
+}
+
+/**
+ * Sortable-column wiring (#944). The table column `id` and the server sort key
+ * diverge only for ship-by (`shipBy` column ↔ `dispatchBy` key); the rest match.
+ * Columns not in these maps (Order / Channel / Payment / actions) aren't sortable.
+ */
+const SORT_KEY_TO_COLUMN: Record<OrderSortValue, string> = {
+  dispatchBy: 'shipBy',
+  createdAt: 'createdAt',
+  customer: 'customer',
+  items: 'items',
+  status: 'status',
+  total: 'total',
+};
+const COLUMN_TO_SORT_KEY: Record<string, OrderSortValue> = {
+  shipBy: 'dispatchBy',
+  createdAt: 'createdAt',
+  customer: 'customer',
+  items: 'items',
+  status: 'status',
+  total: 'total',
+};
+
+/**
+ * First-click direction per sort key (#944): the operator-intuitive default
+ * when a column is newly selected. Re-clicking the active column flips it.
+ * Ship-by asc (soonest first) is the list's default sort state.
+ */
+const DEFAULT_DIR: Record<OrderSortValue, OrderSortDirection> = {
+  dispatchBy: 'asc',
+  createdAt: 'desc',
+  customer: 'asc',
+  items: 'desc',
+  status: 'asc',
+  total: 'desc',
 };
 
 /**
@@ -183,6 +223,10 @@ export function OrdersListPage(): ReactElement {
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
   const rawSort = searchParams.get('sort');
   const sort = isOrderSort(rawSort) ? rawSort : DEFAULT_SORT;
+  const rawDir = searchParams.get('dir');
+  // Direction defaults to the active key's first-click default until a header
+  // click pins an explicit one (#944).
+  const dir: OrderSortDirection = isOrderDir(rawDir) ? rawDir : DEFAULT_DIR[sort];
   // Date filters stay calendar-date (YYYY-MM-DD) in the URL so the native date
   // input round-trips; they're widened to start-/end-of-day UTC instants only
   // when building the query, so the `createdTo` bound is inclusive of that day.
@@ -203,10 +247,10 @@ export function OrdersListPage(): ReactElement {
   const filters: OrderFilters = {
     health,
     sourceConnectionId: sourceConnectionId || undefined,
-    // Operator-selectable ordering (#939); defaults to the triage sort
-    // (soonest ship-by first, NULLs last). Column-header sort stays a non-goal
-    // (JSONB-derived columns the server can't ORDER BY without indexes).
+    // Server-side ordering driven by clickable column headers (#944); defaults
+    // to the triage sort (soonest ship-by first, NULLs last).
     sort,
+    dir,
     createdFrom: createdFromIso,
     createdTo: createdToIso,
     dueBefore,
@@ -263,6 +307,7 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'customer',
         header: 'Customer',
+        sortable: true,
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
           const name = customerName(parsed);
@@ -280,6 +325,7 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'items',
         header: 'Items',
+        sortable: true,
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
           const count = parsed.items.length;
@@ -320,6 +366,7 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'status',
         header: 'Status',
+        sortable: true,
         cell: (order) => {
           const h = deriveOrderHealth(order);
           return (
@@ -339,6 +386,7 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'shipBy',
         header: 'Ship-by',
+        sortable: true,
         cell: (order) => {
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
@@ -359,6 +407,7 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'createdAt',
         header: 'Created',
+        sortable: true,
         cell: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
       },
       {
@@ -371,6 +420,7 @@ export function OrdersListPage(): ReactElement {
         id: 'total',
         header: 'Total',
         align: 'right',
+        sortable: true,
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
           if (!parsed.totals) return <span className="text-muted">—</span>;
@@ -486,6 +536,11 @@ export function OrdersListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
+  // Controlled (server-side) sort state for the DataTable (#944): the active
+  // sort key → its table column id, plus direction. Structurally a
+  // `SortingState` ({ id, desc }[]) without importing the react-table type.
+  const sortingState = [{ id: SORT_KEY_TO_COLUMN[sort], desc: dir === 'desc' }];
+
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
     [query.data?.items, locale],
@@ -562,8 +617,9 @@ export function OrdersListPage(): ReactElement {
         ))}
       </div>
 
-      {/* Filter + sort bar (#939) — source/date/sort controls in URL state.
-          Mirrors the connections-list toolbar pattern. */}
+      {/* Filter bar (#939) — source + created-date controls in URL state
+          (mirrors the connections-list toolbar). Sorting moved to clickable
+          column headers (#944). */}
       <div className="toolbar orders-toolbar">
         <div className="toolbar__group">
           <Select
@@ -598,19 +654,6 @@ export function OrdersListPage(): ReactElement {
               onChange={(e) => { setFilterParam('createdTo', e.target.value); }}
             />
           </label>
-        </div>
-        <div className="toolbar__group orders-toolbar__sort">
-          <Select
-            aria-label="Sort orders"
-            value={sort}
-            onChange={(e) => { setFilterParam('sort', e.target.value); }}
-          >
-            {OrderSortValues.map((value) => (
-              <option key={value} value={value}>
-                {SORT_LABELS[value]}
-              </option>
-            ))}
-          </Select>
         </div>
       </div>
 
@@ -671,6 +714,29 @@ export function OrdersListPage(): ReactElement {
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             rowHref={(order) => order.internalOrderId}
+            manualSorting
+            sort={sortingState}
+            onSortChange={(updater) => {
+              // Server-side sort (#944): take the column the user interacted
+              // with (the new state's column, or the active one when react-table
+              // cleared on a third click), then apply our own asc⇄desc toggle —
+              // same column flips, a new column starts at its default direction.
+              const next =
+                typeof updater === 'function' ? updater(sortingState) : updater;
+              const clickedColumnId =
+                next.length > 0 ? next[0].id : SORT_KEY_TO_COLUMN[sort];
+              const key = COLUMN_TO_SORT_KEY[clickedColumnId];
+              if (!key) return;
+              const nextDir: OrderSortDirection =
+                key === sort ? (dir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[key];
+              setSearchParams((prev) => {
+                const p = new URLSearchParams(prev);
+                p.set('sort', key);
+                p.set('dir', nextDir);
+                p.delete('offset');
+                return p;
+              });
+            }}
             cardView={{
               title: (order) => {
                 const parsed = parseOrderSnapshot(order.orderSnapshot);
