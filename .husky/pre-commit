@@ -11,35 +11,13 @@ pnpm lint || exit 1
 echo "🔎 Running type check for all packages..."
 pnpm type-check || exit 1
 
-# Tests are scoped to the packages whose files are staged. A libs/** touch
-# still fans out to all tests because shared libs can break any consumer.
-# Docs/config-only changes skip tests entirely. CI runs the full suite
-# regardless — this only speeds up the local loop.
-changed=$(git diff --cached --name-only)
-
-# Keep in sync with the CI job so nothing silently diverges.
-# Unit tests only here; `pnpm test:integration` stays out of the hook.
-if [ -z "$changed" ]; then
-  echo "🧪 Running unit tests for all packages (no staged paths)..."
-  pnpm test || exit 1
-elif printf '%s\n' "$changed" | grep -Eq '^libs/'; then
-  echo "🧪 Running unit tests for all packages (libs/ touched)..."
-  pnpm test || exit 1
-elif ! printf '%s\n' "$changed" | grep -Eqv '^(docs/|\.claude/|\.github/|\.vscode/|README\.md$|\.gitignore$|\.prettierignore$|\.prettierrc|\.editorconfig$)'; then
-  echo "🧪 Skipping tests (docs/config-only change)."
-else
-  filters=""
-  printf '%s\n' "$changed" | grep -q '^apps/web/'    && filters="$filters --filter @openlinker/web"
-  printf '%s\n' "$changed" | grep -q '^apps/api/'    && filters="$filters --filter @openlinker/api"
-  printf '%s\n' "$changed" | grep -q '^apps/worker/' && filters="$filters --filter @openlinker/worker"
-
-  if [ -z "$filters" ]; then
-    echo "🧪 Running unit tests for all packages (unknown path staged)..."
-    pnpm test || exit 1
-  else
-    echo "🧪 Running scoped unit tests:$filters"
-    pnpm $filters test || exit 1
-  fi
-fi
+# Diff-driven unit-test selection (scripts/smart-test.mjs). Replaces the
+# hand-rolled per-package scoping that previously ran the FULL suite on any
+# libs/ touch — a libs/core change now runs only @openlinker/core's related
+# specs (jest --findRelatedTests), not the flaky apps/web suite. The
+# integration tier stays out of the hook (--no-integration); CI runs the full
+# suite regardless. See scripts/smart-test.mjs for the classification rules.
+echo "🧪 Running affected unit tests (smart-test)..."
+pnpm smart-test --no-integration || exit 1
 
 echo "✅ Pre-commit checks passed!"
