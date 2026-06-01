@@ -519,8 +519,9 @@ function buildGenerateLabelInput(args: {
       // recipient contract.
       firstName: a?.firstName ?? undefined,
       lastName: a?.lastName ?? undefined,
-      // Gate guarantees customerEmail is present; the `??` only fires under
-      // the (impossible-by-invariant) "gate bypassed" branch.
+      // `detectMissingFields` blocks submit when customerEmail is absent, so the
+      // `??` only fires defensively (e.g. snapshots predating #948, or hash-only
+      // PII mode where the email isn't persisted).
       email: snapshot.customerEmail ?? '',
       phone: a?.phone ?? '',
       address,
