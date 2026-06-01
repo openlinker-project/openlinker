@@ -29,6 +29,11 @@ import {
   FULFILLMENT_PROCESSOR_KIND,
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
 } from '@openlinker/core/mappings';
+import {
+  type IOrderRecordService,
+  type PaymentStatus,
+  ORDER_RECORD_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
 import type {
@@ -37,13 +42,18 @@ import type {
 } from '../types/shipment-dispatch.types';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
+import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
+import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
 import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
 
 /** Capability the resolved processor connection must declare to issue a label. */
 const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
+
+/** Payment statuses that block dispatch (#938). Built once from the domain policy. */
+const DISPATCH_BLOCKING: ReadonlySet<PaymentStatus> = new Set(DISPATCH_BLOCKING_PAYMENT_STATUSES);
 
 @Injectable()
 export class ShipmentDispatchService implements IShipmentDispatchService {
@@ -56,6 +66,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly routing: IFulfillmentRoutingService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService,
   ) {}
 
   async dispatch(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
@@ -63,6 +75,28 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       sourceConnectionId: input.sourceConnectionId,
       sourceDeliveryMethodId: input.sourceDeliveryMethodId,
     });
+
+    // Payment-status gate (#938): server-side enforcement of the FE Generate-label
+    // gate (#928) — the FE affordance is not authorization (frontend-architecture
+    // § App Boundary), so the durable guarantee lives here. Runs after routing
+    // resolve (routing errors take precedence) and before any processor branch,
+    // mirroring the processor-kind-agnostic FE gate. A read failure here PROPAGATES
+    // (fails closed) — it must never silently permit dispatch of an unpaid order.
+    // Only an absent/unknown payment status permits (graceful degradation for
+    // PrestaShop / legacy orders). NOTE: this precedes the per-order idempotency
+    // check, so an order that was dispatched while `paid` and later goes
+    // `refunded` is refused (422) on a repeat call rather than returning the
+    // existing shipment — intended.
+    const order = await this.orders.getOrderRecord(input.orderId);
+    const paymentStatus = order?.paymentStatus;
+    if (paymentStatus !== undefined && DISPATCH_BLOCKING.has(paymentStatus)) {
+      // Audit signal: the FE already disables dispatch for blocked payment, so
+      // reaching here means a direct API call (or a bug) bypassed that gate.
+      this.logger.warn(
+        `Blocked dispatch of order ${input.orderId}: payment status '${paymentStatus}'`,
+      );
+      throw new OrderNotDispatchablePaymentStatusException(input.orderId, paymentStatus);
+    }
 
     switch (resolution.processorKind) {
       case FULFILLMENT_PROCESSOR_KIND.OmpFulfilled:
