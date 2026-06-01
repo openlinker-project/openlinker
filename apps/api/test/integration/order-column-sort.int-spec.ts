@@ -65,6 +65,27 @@ describe('Order column sort (integration)', () => {
     ]);
   });
 
+  it('does not throw on a non-numeric total — guarded cast sorts it NULLs-last (#944)', async () => {
+    const ds = harness.getDataSource();
+    const valid = await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE,
+      orderSnapshot: { items: [], totals: { total: 42, currency: 'PLN' } },
+    });
+    // Malformed snapshot — a non-numeric total would throw on a bare ::numeric
+    // cast; the jsonb_typeof guard must treat it as NULL instead.
+    const malformed = await createTestOrderRecord(ds, {
+      sourceConnectionId: SOURCE,
+      orderSnapshot: { items: [], totals: { total: 'not-a-number', currency: 'PLN' } },
+    });
+
+    const { items } = await repository.findMany({ sort: 'total', dir: 'desc' }, PAGE);
+
+    expect(items.map((o) => o.internalOrderId)).toEqual([
+      valid.internalOrderId,
+      malformed.internalOrderId, // non-numeric → NULL → last
+    ]);
+  });
+
   it('sorts by total ascending when dir=asc', async () => {
     const ds = harness.getDataSource();
     const cheap = await createTestOrderRecord(ds, {

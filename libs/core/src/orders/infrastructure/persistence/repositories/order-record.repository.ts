@@ -225,7 +225,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `WHEN ${OrderRecordRepository.HAS_SYNCED} THEN 3 ELSE 2 END`;
 
   /** JSONB ORDER-BY expressions for the derived sortable columns (#944). */
-  private static readonly TOTAL_EXPR = `(rec."orderSnapshot"#>>'{totals,total}')::numeric`;
+  // Guarded with `jsonb_typeof(...) = 'number'` (mirrors ITEMS_EXPR) so a
+  // malformed / non-numeric `totals.total` sorts as NULL rather than throwing on
+  // the `::numeric` cast and failing the whole list query. The migration's
+  // expression index uses the identical form so the planner can still use it.
+  private static readonly TOTAL_EXPR =
+    `CASE WHEN jsonb_typeof(rec."orderSnapshot"#>'{totals,total}') = 'number' ` +
+    `THEN (rec."orderSnapshot"#>>'{totals,total}')::numeric END`;
   private static readonly CUSTOMER_EXPR = `lower(rec."orderSnapshot"#>>'{shippingAddress,lastName}')`;
   // Guarded so a malformed (non-array) `items` value sorts as NULL rather than
   // erroring the whole list query.

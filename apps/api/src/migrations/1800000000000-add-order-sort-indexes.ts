@@ -15,7 +15,8 @@ export class AddOrderSortIndexes1800000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `CREATE INDEX "IDX_order_records_snapshot_total" ON "order_records" ` +
-        `((("orderSnapshot"#>>'{totals,total}')::numeric))`
+        `((CASE WHEN jsonb_typeof("orderSnapshot"#>'{totals,total}') = 'number' ` +
+        `THEN ("orderSnapshot"#>>'{totals,total}')::numeric END))`
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_order_records_snapshot_customer" ON "order_records" ` +
@@ -29,8 +30,8 @@ export class AddOrderSortIndexes1800000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "IDX_order_records_snapshot_items"`);
-    await queryRunner.query(`DROP INDEX "IDX_order_records_snapshot_customer"`);
-    await queryRunner.query(`DROP INDEX "IDX_order_records_snapshot_total"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_records_snapshot_items"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_records_snapshot_customer"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_records_snapshot_total"`);
   }
 }
