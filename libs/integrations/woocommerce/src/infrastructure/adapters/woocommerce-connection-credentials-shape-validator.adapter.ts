@@ -5,9 +5,15 @@
  * adapter. Verifies the raw credentials payload includes non-empty
  * `consumerKey` and `consumerSecret` strings before persistence.
  *
- * Uses inline checks rather than a class-validator DTO — the same pattern as
- * PrestaShop's credentials validator — because the shape is two non-empty
- * strings and a DTO would add boilerplate with no real benefit.
+ * Uses inline checks rather than a class-validator DTO — appropriate when
+ * the shape is two non-empty strings and a DTO would add boilerplate with
+ * no real benefit.
+ *
+ * Both fields are validated in a single pass so that an operator fixing a
+ * fresh connection sees all missing fields at once rather than one at a time.
+ * `InvalidCredentialsShapeException` carries a single `detail` string (the
+ * signature is intentionally simpler than its config counterpart — see the
+ * exception docstring), so multiple issues are joined with "; ".
  *
  * Registered with `host.connectionCredentialsShapeValidatorRegistry` at boot
  * via `createWooCommercePlugin().register(host)`.
@@ -24,22 +30,24 @@ export class WooCommerceConnectionCredentialsShapeValidatorAdapter
   constructor(private readonly pluginName: string = 'WooCommerce') {}
 
   validate(credentials: Record<string, unknown>): Promise<void> {
-    const key = credentials.consumerKey;
-    if (typeof key !== 'string' || key.trim().length === 0) {
-      return Promise.reject(
-        new InvalidCredentialsShapeException(
-          this.pluginName,
-          'must include a non-empty `consumerKey` string',
-        ),
-      );
+    const issues: string[] = [];
+
+    if (
+      typeof credentials.consumerKey !== 'string' ||
+      credentials.consumerKey.trim().length === 0
+    ) {
+      issues.push('must include a non-empty `consumerKey` string');
     }
-    const secret = credentials.consumerSecret;
-    if (typeof secret !== 'string' || secret.trim().length === 0) {
+    if (
+      typeof credentials.consumerSecret !== 'string' ||
+      credentials.consumerSecret.trim().length === 0
+    ) {
+      issues.push('must include a non-empty `consumerSecret` string');
+    }
+
+    if (issues.length > 0) {
       return Promise.reject(
-        new InvalidCredentialsShapeException(
-          this.pluginName,
-          'must include a non-empty `consumerSecret` string',
-        ),
+        new InvalidCredentialsShapeException(this.pluginName, issues.join('; ')),
       );
     }
     return Promise.resolve();
