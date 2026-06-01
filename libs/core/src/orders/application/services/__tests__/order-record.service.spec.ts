@@ -260,6 +260,30 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot).not.toHaveProperty('placedAt');
     });
+
+    it('should serialise Order.customerEmail into the snapshot when present (#948)', async () => {
+      const order = createMockOrder();
+      order.customerEmail = 'buyer@example.com';
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['customerEmail']).toBe('buyer@example.com');
+    });
+
+    it('should omit customerEmail from the snapshot when the Order does not carry it (#948)', async () => {
+      const order = createMockOrder();
+      expect(order.customerEmail).toBeUndefined();
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
+    });
   });
 
   describe('persistOrder - PII disabled', () => {
@@ -339,6 +363,18 @@ describe('OrderRecordService', () => {
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot.shippingAddress).toBeUndefined();
       expect(callArg.orderSnapshot.billingAddress).toBeUndefined();
+    });
+
+    it('should omit customerEmail under hash-only PII mode even when present (#948)', async () => {
+      const order = createMockOrder();
+      order.customerEmail = 'buyer@example.com';
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
   });
 
@@ -458,6 +494,41 @@ describe('OrderRecordService', () => {
 
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
+    });
+
+    it('should serialise IncomingOrder.customerEmail into the snapshot when present (#948)', async () => {
+      const incoming = createMockIncomingOrder(); // carries customerEmail
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot['customerEmail']).toBe('buyer@example.com');
+    });
+
+    it('should omit customerEmail from the snapshot when IncomingOrder does not carry it (#948)', async () => {
+      const incoming = { ...createMockIncomingOrder(), customerEmail: undefined };
+
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
+    });
+
+    it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
+      process.env.OL_STORE_PII = 'false';
+      service = new OrderRecordService(repository);
+
+      const incoming = createMockIncomingOrder();
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
   });
 
