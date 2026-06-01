@@ -9,7 +9,7 @@ Follow each phase below in sequence. **Pause for user input** at the decision po
 
 ## Phase 1 — Discover
 
-1. Fetch open GitHub issues using the MCP GitHub tools (`list_issues` for `SilkSoftwareHouse/openlinker`, state `OPEN`)
+1. Fetch open GitHub issues using the MCP GitHub tools (`list_issues` for `openlinker-project/openlinker`, state `OPEN`)
 2. Review recent git history (`git log --oneline -20`) to understand what was recently merged
 3. Identify which issues are ready to work on — consider:
    - Dependencies (does this issue depend on another that isn't done yet?)
@@ -17,6 +17,29 @@ Follow each phase below in sequence. **Pause for user input** at the decision po
    - Priority (unblocks other work, completes a vertical slice, reduces tech debt)
 
 ⏸️ **Present your recommendations** — suggest 2-3 issues (or issue pairs) ranked by priority with a one-line reason each. Ask the user which to work on.
+
+---
+
+## Phase 1.5 — Claim & Verify
+
+After the user picks the issue(s), **before** creating the worktree, run a lightweight claim-lock so parallel sessions don't collide. All GitHub operations use the MCP GitHub tools (`gh` CLI is not installed).
+
+1. **Verify the issue is still actionable** — for each picked issue:
+   - `issue_read` — confirm it is still `OPEN` (skip if closed).
+   - Confirm it isn't already fixed: search merged PRs (`list_pull_requests` / `search_pull_requests`) and `git log origin/main --grep "#<n>"` for work that already landed. If it looks fixed, surface that and stop rather than duplicating it.
+
+2. **Check for an existing claim** — note that parallel OpenLinker sessions all authenticate as the **same** GitHub account, so the GitHub *actor* cannot tell two sessions apart. The lock therefore keys on the **branch name**, not the assignee:
+   - Read the issue's comments for a marker of the form
+     `🤖 claimed for work by branch \`<branch>\` at <ISO-timestamp>`.
+   - If a marker exists whose `<branch>` **differs** from the branch this session is about to create AND its timestamp is within the **2-hour** freshness window → another live session likely holds it. Stop and ask the user before proceeding (override allowed).
+   - A marker from this session's **own** branch is a re-entry (resume), not a collision.
+   - A marker older than 2 hours is **stale** — reclaim it.
+
+3. **Post the claim** via the MCP GitHub tools:
+   - `add_issue_comment` with `🤖 claimed for work by branch \`<issue>-<slug>\` at <ISO-timestamp>`.
+   - If the repo has an `in-progress` label (verify once with `get_label`; if it doesn't exist, ask the user to create it or fall back to comment-only locking), add it via `issue_write`.
+
+> The claim is advisory — it prevents accidental double-work, not malicious races. Never block on it silently; always tell the user what you found.
 
 ---
 
@@ -70,6 +93,7 @@ docs/plans/implementation-plan-{feature-name}.md
 
 ## Phase 4 — Implement
 
+0. **Re-touch the claim** (keeps long-but-active sessions from being treated as stale): post a fresh `🤖 claimed for work by branch …` comment so the 2-hour window resets before the implementation phase, which can run long.
 1. **Implement every step** from the plan:
    - Follow all architecture rules (hexagonal boundaries, ports, naming conventions)
    - No `any` types, no `console.log`, no hardcoded secrets
@@ -99,6 +123,7 @@ docs/plans/implementation-plan-{feature-name}.md
 If the user says to ship it:
 5. Push the branch and create a PR with `Closes #N` in the body
 6. Output the PR URL
+7. **Release the claim**: remove the `in-progress` label (if it was applied) via `issue_write`. The PR's `Closes #N` handles closure on merge — never close the issue manually. If work is **abandoned** instead of shipped, also release the label so another session can pick the issue up.
 
 ---
 
