@@ -20,10 +20,9 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Thrown for non-2xx HTTP responses. Defined here as an implementation-private
- * error class (not a type alias or interface), consistent with InPost's
- * RetryableHttpError pattern. Not exported — typed domain exceptions
- * (WooCommerceUnauthorizedException, etc.) replace this in #874.
- * The tester catches generically and checks `statusCode`.
+ * error class (not a type alias or interface) — scoped to this file until
+ * typed domain exceptions (WooCommerceUnauthorizedException, etc.) replace
+ * it in #874. The tester catches generically and checks `statusCode`.
  */
 class WooCommerceRequestError extends Error {
   constructor(
