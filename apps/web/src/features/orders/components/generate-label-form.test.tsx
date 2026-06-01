@@ -9,7 +9,11 @@
 import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  findToastTitle,
+} from '../../../test/test-utils';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
 
@@ -223,6 +227,11 @@ describe('GenerateLabelForm — happy path', () => {
 // ── #839 AC-3 — pickup-point retry hint ─────────────────────────────────
 
 describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
+  // A genuine unresolved-locker order: a locker delivery method, but the
+  // pickup point hasn't arrived yet (#954 — the hint's legitimate case). The
+  // locker method is what makes it "expecting a pickup point" rather than a
+  // courier order; before #954 this helper kept the base courier method, which
+  // is exactly the false-positive #954 fixes.
   function makeOrderWithoutPickupPoint(
     overrides: Partial<OrderRecord> = {},
   ): OrderRecord {
@@ -233,12 +242,13 @@ describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
       ...overrides,
       orderSnapshot: {
         ...baseSnapshot,
+        shipping: { methodId: 'allegro-one-box', methodName: 'Allegro One Box' },
         pickupPoint: undefined,
       },
     };
   }
 
-  it('should render the retry hint when the order is Allegro-sourced + no pickup-point + recent', async () => {
+  it('should render the retry hint for a locker-method Allegro order with no pickup-point yet + recent', async () => {
     const order = makeOrderWithoutPickupPoint({
       sourceConnectionId: 'conn-allegro-1',
       createdAt: new Date().toISOString(),
@@ -350,5 +360,137 @@ describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
     // submit button, so findByText is ambiguous here.
     await screen.findByLabelText(/Length in millimetres/i);
     expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── #954 — hint must key on delivery method, not pickupPoint presence ─────
+
+describe('GenerateLabelForm — #954 courier-vs-locker hint gating', () => {
+  function allegroConnApi() {
+    return createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-allegro-1',
+            platformType: 'allegro',
+            name: 'Allegro Main',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+  }
+
+  function recentAllegroOrder(snapshotOverrides: Record<string, unknown>): OrderRecord {
+    const base = makeOrder();
+    return {
+      ...base,
+      sourceConnectionId: 'conn-allegro-1',
+      createdAt: new Date().toISOString(),
+      orderSnapshot: {
+        ...(base.orderSnapshot as Record<string, unknown>),
+        ...snapshotOverrides,
+      },
+    };
+  }
+
+  it('should NOT render the retry hint for a courier-method Allegro order (the #954 false positive)', async () => {
+    const order = recentAllegroOrder({
+      shipping: { methodId: 'allegro-courier', methodName: 'Kurier Allegro' },
+      pickupPoint: undefined,
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient: allegroConnApi() },
+    );
+
+    await screen.findByLabelText(/Length in millimetres/i);
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+
+  it('should NOT render the retry hint when the method is unknown but a full street address is present', async () => {
+    // Pre-#952 reality: the snapshot carries no delivery method, but the order
+    // has a full street address → courier heuristic suppresses the hint.
+    const order = recentAllegroOrder({ shipping: undefined, pickupPoint: undefined });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient: allegroConnApi() },
+    );
+
+    await screen.findByLabelText(/Length in millimetres/i);
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+
+  it('should NOT render the retry hint once the locker pickup point is resolved', async () => {
+    const order = recentAllegroOrder({
+      shipping: { methodId: 'allegro-one-box', methodName: 'Allegro One Box' },
+      // base snapshot's pickupPoint is present (resolved)
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient: allegroConnApi() },
+    );
+
+    await screen.findByLabelText(/Length in millimetres/i);
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── #953 — post-submit toast must reflect the dispatch outcome ────────────
+
+describe('GenerateLabelForm — #953 dispatch-outcome toast', () => {
+  function fillParcelAndSubmit(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+  }
+
+  it('should show the "Label generated" success toast on a dispatched result', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockResolvedValue({
+          kind: 'dispatched',
+          shipment: { id: 'ol_shipment_1', labelPdfRef: null },
+        }),
+        downloadLabel: vi.fn().mockResolvedValue(new Blob()),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await findToastTitle(/Label generated/i)).toBeInTheDocument();
+  });
+
+  it('should show a neutral toast (not "Label generated") on an omp_fulfilled result', async () => {
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
+        downloadLabel: vi.fn(),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    fillParcelAndSubmit();
+
+    expect(await findToastTitle(/Fulfilled by destination store/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Label generated/i)).not.toBeInTheDocument();
   });
 });
