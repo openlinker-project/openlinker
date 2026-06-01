@@ -22,12 +22,14 @@ import {
   OrderRecordStatusValues,
   OrderHealthValues,
   OrderRecordSortValues,
+  OrderRecordSortDirectionValues,
 } from '@openlinker/core/orders';
 import {
   OrderSyncStatusFilter,
   OrderRecordStatus,
   OrderHealth,
   OrderRecordSort,
+  OrderRecordSortDirection,
 } from '@openlinker/core/orders';
 
 export class ListOrdersQueryDto {
@@ -88,11 +90,20 @@ export class ListOrdersQueryDto {
   @ApiPropertyOptional({
     enum: OrderRecordSortValues,
     description:
-      'Result ordering (#927). "createdAt" (default) = newest first; "dispatchBy" = ship-by deadline ascending (soonest first, NULLs last) — the triage default on the orders list.',
+      'Result ordering (#927/#944). "dispatchBy" = ship-by deadline (triage default, NULLs last); "createdAt" = ingestion time; "customer"/"items"/"status"/"total" back the sortable table columns (derived from the order snapshot + health). Pair with `dir`.',
   })
   @IsOptional()
   @IsEnum(OrderRecordSortValues)
   sort?: OrderRecordSort;
+
+  @ApiPropertyOptional({
+    enum: OrderRecordSortDirectionValues,
+    description:
+      'Sort direction for `sort` (#944). Defaults per-column server-side when omitted; the UI sends an explicit direction once a header is clicked.',
+  })
+  @IsOptional()
+  @IsEnum(OrderRecordSortDirectionValues)
+  dir?: OrderRecordSortDirection;
 
   @ApiPropertyOptional({
     description:
