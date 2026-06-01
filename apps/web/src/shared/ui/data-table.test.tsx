@@ -323,6 +323,51 @@ describe('DataTable', () => {
     expect(onSortChange).toHaveBeenCalledTimes(1);
   });
 
+  it('does not reorder rows in manualSorting mode (server already sorted) (#944)', () => {
+    // Ascending sort state on `name`, but the table must render ROWS in the
+    // given order (Bravo, Alpha) because the server owns ordering.
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          { id: 'name', header: 'Name', cell: (row): string => row.name, sortable: true },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        manualSorting
+        sort={[{ id: 'name', desc: false }]}
+        onSortChange={vi.fn()}
+      />,
+    );
+
+    const cells = screen.getAllByRole('cell').map((c) => c.textContent);
+    expect(cells).toEqual(['Bravo', 'Alpha']);
+    // The active column still reflects the controlled sort state in the header.
+    expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+  });
+
+  it('fires onSortChange for a sortable column that has no accessor (server-sorted) (#944)', () => {
+    const onSortChange = vi.fn();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          // No `accessor` — server-sorted column. Must still be clickable.
+          { id: 'name', header: 'Name', cell: (row): string => row.name, sortable: true },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        manualSorting
+        sort={[]}
+        onSortChange={onSortChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Name/ }));
+    expect(onSortChange).toHaveBeenCalledTimes(1);
+  });
+
   it('mounts a fixed-height scroll container and keeps rendered rows far below the row count when virtualize=true', () => {
     const manyRows: TestRow[] = Array.from({ length: 1000 }, (_, i) => ({
       id: `row-${i}`,

@@ -119,6 +119,17 @@ describe('OrdersController', () => {
       );
     });
 
+    it('passes the sort key and direction through to the repository (#944)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ sort: 'total', dir: 'desc', limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'total', dir: 'desc' }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
     it('should return empty list when no orders match', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 
