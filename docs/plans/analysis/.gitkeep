@@ -1,0 +1,4 @@
+# Pre-implement readiness reports
+
+`/pre-implement` writes its readiness verdict here as `ANALYSIS-{plan-name}.md`.
+This file keeps the directory tracked when no reports are present.
