@@ -41,6 +41,8 @@
       "@openlinker/integrations-prestashop/*": ["libs/integrations/prestashop/src/*"],
       "@openlinker/integrations-inpost": ["libs/integrations/inpost/src/index.ts"],
       "@openlinker/integrations-inpost/*": ["libs/integrations/inpost/src/*"],
+      "@openlinker/integrations-woocommerce": ["libs/integrations/woocommerce/src/index.ts"],
+      "@openlinker/integrations-woocommerce/*": ["libs/integrations/woocommerce/src/*"],
       "@openlinker/plugin-sdk": ["libs/plugin-sdk/src/index.ts"],
       "@openlinker/plugin-sdk/*": ["libs/plugin-sdk/src/*"],
       "@openlinker/test-kit": ["libs/test-kit/src/index.ts"],
