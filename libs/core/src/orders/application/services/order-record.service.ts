@@ -76,6 +76,13 @@ export class OrderRecordService implements IOrderRecordService {
       billingAddress: piiConfig.storePii
         ? order.billingAddress
         : this.sanitizeAddress(order.billingAddress),
+      // Buyer email (#948) — PII-gated + present-only. Unlike addresses (which
+      // get a `[REDACTED]` placeholder via sanitizeAddress), email is omitted
+      // entirely under hash-only mode: there's no meaningful redaction of an
+      // atomic identifier, and the privacy model keeps only `emailHash` on the
+      // customer projection. Needed for the Generate-Label recipient.
+      ...(piiConfig.storePii &&
+        order.customerEmail !== undefined && { customerEmail: order.customerEmail }),
       // Conditional spread matches the items-level precedent above: keep the
       // snapshot key absent (not `undefined` and not `false`) when the source
       // did not supply the flag, so consumers can distinguish "Smart not
@@ -141,6 +148,14 @@ export class OrderRecordService implements IOrderRecordService {
       billingAddress: piiConfig.storePii
         ? incoming.billingAddress
         : this.sanitizeAddress(incoming.billingAddress),
+      // Buyer email (#948) — PII-gated + present-only; see persistOrder for the
+      // omit-vs-redact rationale. For "ready" orders this awaiting_mapping
+      // snapshot is overwritten by persistOrder, so this write is for
+      // consistency/debugging of records still awaiting item mapping (which
+      // can't generate a label yet anyway) — persistOrder is the load-bearing
+      // write for the label flow.
+      ...(piiConfig.storePii &&
+        incoming.customerEmail !== undefined && { customerEmail: incoming.customerEmail }),
       createdAt: incoming.createdAt,
       updatedAt: incoming.updatedAt,
       metadata: incoming.metadata,
