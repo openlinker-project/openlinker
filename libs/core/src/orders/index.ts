@@ -86,6 +86,8 @@ export {
   OrderHealthSummaryFilters,
   OrderRecordSort,
   OrderRecordSortValues,
+  OrderRecordSortDirection,
+  OrderRecordSortDirectionValues,
 } from './domain/types/order-record.types';
 
 // Services

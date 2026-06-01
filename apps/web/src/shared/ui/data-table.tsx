@@ -56,6 +56,15 @@ interface DataTableProps<Row> {
   emptyState?: ReactNode;
   /** Per-row height estimate used by the virtualizer. Default 36. */
   estimateRowHeight?: number;
+  /**
+   * Server-controlled sorting (#944). When true, the table does not reorder
+   * rows itself — it renders `rows` as-given and only tracks the active sort
+   * column/direction for the header affordance, firing `onSortChange` on click.
+   * Use when the backend already applied the sort (e.g. a paginated list where
+   * client sort would only reorder the visible page). Default false (client
+   * sort, unchanged for existing consumers).
+   */
+  manualSorting?: boolean;
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
   rowKey: (row: Row) => Key;
@@ -90,6 +99,7 @@ export function DataTable<Row>({
   containerHeight = 560,
   emptyState,
   estimateRowHeight = 36,
+  manualSorting = false,
   onSortChange,
   rowHref,
   rowKey,
@@ -117,8 +127,11 @@ export function DataTable<Row>({
     columns: defs,
     state: { sorting: effectiveSort },
     onSortingChange: effectiveOnSortChange,
+    manualSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    // Skip the client sorted-row model in server-sort mode so the table renders
+    // `rows` in the order the backend returned them (#944).
+    ...(manualSorting ? {} : { getSortedRowModel: getSortedRowModel() }),
   });
 
   const tableRows = table.getRowModel().rows;
@@ -364,7 +377,15 @@ function buildColumnDefs<Row>(columns: DataTableColumn<Row>[]): ColumnDef<Row>[]
       header: () => column.header,
       cell: (info) => column.cell(info.row.original),
       enableSorting: column.sortable ?? false,
-      accessorFn: accessor ? (row) => accessor(row) ?? '' : undefined,
+      // react-table only treats a column as sortable when it has an accessorFn,
+      // so a `sortable` column with no `accessor` (server-sorted columns under
+      // `manualSorting` — #944) still needs one. Fall back to a constant: it's
+      // unused for ordering in manual mode and a no-op for client sort.
+      accessorFn: accessor
+        ? (row) => accessor(row) ?? ''
+        : column.sortable
+          ? () => ''
+          : undefined,
     };
   });
 }
