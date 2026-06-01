@@ -59,6 +59,7 @@ import {
   ShipmentNotFoundException,
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
+  OrderNotDispatchablePaymentStatusException,
 } from '@openlinker/core/shipping';
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
@@ -185,7 +186,10 @@ export class ShipmentController {
     summary: 'Generate a shipping label for an order via the resolved fulfillment processor',
   })
   @ApiResponse({ status: 200, type: DispatchResultResponseDto })
-  @ApiResponse({ status: 422, description: 'Routing resolution cannot be dispatched' })
+  @ApiResponse({
+    status: 422,
+    description: 'Order not dispatchable (routing unresolvable, or payment status blocks dispatch)',
+  })
   @ApiResponse({ status: 502, description: 'Shipping provider rejected label generation' })
   async generateLabel(@Body() dto: GenerateLabelDto): Promise<DispatchResultResponseDto> {
     const input: ShipmentDispatchInput = {
@@ -306,6 +310,7 @@ export class ShipmentController {
     if (
       error instanceof ShipmentCancellationNotSupportedException ||
       error instanceof UndispatchableResolutionException ||
+      error instanceof OrderNotDispatchablePaymentStatusException ||
       error instanceof LabelDocumentNotSupportedException ||
       error instanceof LabelNotAvailableException
     ) {
