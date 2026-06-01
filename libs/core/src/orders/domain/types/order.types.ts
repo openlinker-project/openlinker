@@ -84,6 +84,13 @@ export interface Order {
   orderNumber?: string;
   status: string;
   customerId?: string;
+  /**
+   * Buyer email from the source platform (#948), carried through from
+   * `IncomingOrder.customerEmail`. Persisted into the order snapshot (PII-gated)
+   * so the Generate-Label recipient can be built without re-fetching the source.
+   * Absent when the source didn't expose one.
+   */
+  customerEmail?: string;
   items: OrderItem[];
   totals: OrderTotals;
   shippingAddress?: Address;
