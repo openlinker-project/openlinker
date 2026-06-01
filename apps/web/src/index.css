@@ -7235,6 +7235,30 @@ a.kpi-card:focus-visible {
   padding: 1px 7px;
 }
 
+/* ── Orders list filter/sort bar (#939) ─────────────────────────────── */
+.orders-toolbar {
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+/* Push the sort control to the trailing edge — filters lead, sort trails. */
+.orders-toolbar__sort {
+  margin-left: auto;
+}
+/* Inline date field: small mono-caps label sitting left of the native input. */
+.orders-toolbar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.orders-toolbar__label {
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* ── Surface card used for grouping demos ────────────────────────── */
 .ds-surface {
   background: var(--bg-surface);

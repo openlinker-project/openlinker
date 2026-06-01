@@ -12,28 +12,34 @@
  */
 import { z } from 'zod/v4';
 
+// Optional string fields use `.nullish()` (string | null | undefined), not
+// `.optional()` (string | undefined): the persisted snapshot serialises absent
+// values as JSON `null` (e.g. the Allegro adapter emits `company: null`), and a
+// bare `.optional()` rejects `null` — failing the whole sub-tree's `safeParse`
+// and blanking the entire address from one empty field. `.nullish()` tolerates
+// both shapes so a single null never drops the section.
 const addressSchema = z.object({
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  company: z.string().optional(),
+  firstName: z.string().nullish(),
+  lastName: z.string().nullish(),
+  company: z.string().nullish(),
   address1: z.string(),
-  address2: z.string().optional(),
+  address2: z.string().nullish(),
   city: z.string(),
-  state: z.string().optional(),
+  state: z.string().nullish(),
   postalCode: z.string(),
   country: z.string(),
-  phone: z.string().optional(),
+  phone: z.string().nullish(),
 });
 
 const orderItemSchema = z.object({
   id: z.string(),
-  productId: z.string().optional(),
-  variantId: z.string().optional(),
+  productId: z.string().nullish(),
+  variantId: z.string().nullish(),
   quantity: z.number(),
   price: z.number(),
-  sku: z.string().optional(),
-  name: z.string().optional(),
-  imageUrl: z.string().optional(),
+  sku: z.string().nullish(),
+  name: z.string().nullish(),
+  imageUrl: z.string().nullish(),
 });
 
 /**
@@ -60,17 +66,17 @@ const orderTotalsSchema = z.object({
 const orderShippingSchema = z.object({
   /** Source-side delivery-method id (routing-rule lookup key). */
   methodId: z.string(),
-  /** Operator-facing label (e.g. "InPost Paczkomaty"). */
-  methodName: z.string().optional(),
+  /** Operator-facing label (e.g. "InPost Paczkomaty"). `.nullish()` — see addressSchema. */
+  methodName: z.string().nullish(),
 });
 
 const orderPickupPointSchema = z.object({
   /** Bare locker code (e.g. `POZ08A`). */
   id: z.string(),
-  /** Operator-facing label (e.g. `Paczkomat POZ08A`). */
-  name: z.string().optional(),
-  /** Locker-side description (e.g. `Stacja paliw BP`). */
-  description: z.string().optional(),
+  /** Operator-facing label (e.g. `Paczkomat POZ08A`). `.nullish()` — see addressSchema. */
+  name: z.string().nullish(),
+  /** Locker-side description (e.g. `Stacja paliw BP`). `.nullish()` — see addressSchema. */
+  description: z.string().nullish(),
 });
 
 export type ParsedOrderItem = z.infer<typeof orderItemSchema>;

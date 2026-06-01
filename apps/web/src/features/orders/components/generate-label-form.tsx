@@ -514,8 +514,11 @@ function buildGenerateLabelInput(args: {
     shippingMethod,
     paczkomatId: values.paczkomatId && values.paczkomatId.length > 0 ? values.paczkomatId : undefined,
     recipient: {
-      firstName: a?.firstName,
-      lastName: a?.lastName,
+      // Address optionals are `string | null | undefined` (#939 — snapshot
+      // serialises absent fields as null); coalesce null → undefined for the
+      // recipient contract.
+      firstName: a?.firstName ?? undefined,
+      lastName: a?.lastName ?? undefined,
       // Gate guarantees customerEmail is present; the `??` only fires under
       // the (impossible-by-invariant) "gate bypassed" branch.
       email: snapshot.customerEmail ?? '',
