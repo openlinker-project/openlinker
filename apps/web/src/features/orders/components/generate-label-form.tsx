@@ -82,6 +82,28 @@ function isWithinPickupPointRetryWindow(createdAtIso: string): boolean {
   return Date.now() - createdAt < PICKUP_POINT_RETRY_WINDOW_MS;
 }
 
+/**
+ * Locker-method keyword tokens (#954). A delivery method whose name/id matches
+ * resolves to a pickup point (paczkomat / parcel locker), not a courier
+ * doorstep delivery. Heuristic until the snapshot carries the method
+ * authoritatively (#952 populates `shipping.methodId`/`methodName`); a
+ * platform-provided locker flag is the longer-term replacement.
+ */
+const LOCKER_METHOD_RE = /paczkomat|locker|automat|punkt|pickup|one\s*box|one\s*punkt/i;
+
+/**
+ * Classify the buyer's source delivery method as a locker (pickup-point) or
+ * courier shipment. Returns `'unknown'` when the snapshot doesn't carry the
+ * method yet (pre-#952) — callers fall back to other signals.
+ */
+function classifyDeliveryMethod(
+  shipping: ParsedOrderSnapshot['shipping'],
+): 'locker' | 'courier' | 'unknown' {
+  if (!shipping) return 'unknown';
+  const haystack = `${shipping.methodName ?? ''} ${shipping.methodId}`;
+  return LOCKER_METHOD_RE.test(haystack) ? 'locker' : 'courier';
+}
+
 export function GenerateLabelForm({
   order,
   onSuccess,
@@ -90,7 +112,24 @@ export function GenerateLabelForm({
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
   const recipient = buildRecipientPreview(snapshot);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
-  const shippingMethod: 'paczkomat' | 'kurier' = hasPickupPoint ? 'paczkomat' : 'kurier';
+  // Locker-vs-courier is driven by the actual delivery method (#954), not by
+  // `pickupPoint` presence alone (which was circular). A resolved pickup point
+  // or a locker-classified method ⇒ paczkomat flow.
+  const methodClass = classifyDeliveryMethod(snapshot.shipping);
+  const shippingMethod: 'paczkomat' | 'kurier' =
+    hasPickupPoint || methodClass === 'locker' ? 'paczkomat' : 'kurier';
+  // Clear courier signal: the method is known-courier, or — until the snapshot
+  // carries the method (#952) — the order has a full street address but no
+  // pickup point. Suppresses the locker retry hint on courier orders that will
+  // never have a pickup point, while preserving it for likely-locker orders
+  // (no street address yet) per #839/#893.
+  const hasFullStreetAddress = Boolean(
+    snapshot.shippingAddress?.address1 &&
+      snapshot.shippingAddress?.city &&
+      snapshot.shippingAddress?.postalCode,
+  );
+  const isLikelyCourier =
+    methodClass === 'courier' || (methodClass === 'unknown' && hasFullStreetAddress);
   const missingFields = useMemo(
     () => detectMissingFields(snapshot, shippingMethod),
     [snapshot, shippingMethod],
@@ -118,6 +157,7 @@ export function GenerateLabelForm({
   const sourcePlatform = usePlatform(sourceConnection?.platformType);
   const showPickupRetryHint =
     !hasPickupPoint &&
+    !isLikelyCourier &&
     sourcePlatform?.pickupPointResolvesAsync === true &&
     isWithinPickupPointRetryWindow(order.createdAt);
   const [pickupRetryInFlight, setPickupRetryInFlight] = useState(false);
@@ -182,19 +222,29 @@ export function GenerateLabelForm({
     const input = buildGenerateLabelInput({ order, snapshot, values, shippingMethod });
     try {
       const result = await mutation.mutateAsync(input);
-      showToast({
-        tone: 'success',
-        title: 'Label generated',
-        description: 'Tracking number will appear within ~5 minutes.',
-      });
-      // Auto-download the freshly-issued label (AC: "download triggered
-      // immediately after successful generation"). Imperative + guarded on the
-      // returned result so it fires exactly once per issuance — NOT a reactive
-      // effect, which would re-fire on the post-success query invalidation.
-      // Only the OL-managed-dispatch branch issues a label; the omp_fulfilled
-      // branch carries no shipment.
-      if (result.kind === 'dispatched' && result.shipment?.labelPdfRef) {
-        void labelDownload.download(result.shipment.id);
+      if (result.kind === 'dispatched') {
+        showToast({
+          tone: 'success',
+          title: 'Label generated',
+          description: 'Tracking number will appear within ~5 minutes.',
+        });
+        // Auto-download the freshly-issued label (AC: "download triggered
+        // immediately after successful generation"). Imperative + guarded on the
+        // returned result so it fires exactly once per issuance — NOT a reactive
+        // effect, which would re-fire on the post-success query invalidation.
+        if (result.shipment?.labelPdfRef) {
+          void labelDownload.download(result.shipment.id);
+        }
+      } else {
+        // omp_fulfilled (#953): the destination store fulfils this order — no OL
+        // shipment or label is created (also the default path when no
+        // fulfillment-routing rule matches). Don't claim a label was generated.
+        showToast({
+          tone: 'info',
+          title: 'Fulfilled by destination store',
+          description:
+            'This order is fulfilled by the destination store — no OpenLinker label is issued.',
+        });
       }
       form.reset();
       onSuccess();
