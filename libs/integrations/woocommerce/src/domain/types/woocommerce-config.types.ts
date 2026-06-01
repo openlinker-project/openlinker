@@ -15,7 +15,7 @@ export interface WooCommerceConnectionConfig {
   // Trailing slash is stripped by WooCommerceHttpClient before use.
   // HTTP is accepted but HTTPS is strongly recommended — WC REST transmits
   // consumerKey:consumerSecret on every request (Basic Auth = cleartext over HTTP).
-  // HTTPS enforcement is intentionally left to the FE form layer, consistent
-  // with Allegro and InPost validators which also don't enforce it.
+  // HTTPS enforcement is intentionally left to the FE form layer; the
+  // config shape validator does not enforce transport security.
   siteUrl: string;
 }
