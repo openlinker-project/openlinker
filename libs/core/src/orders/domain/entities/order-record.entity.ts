@@ -9,6 +9,8 @@
  */
 import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
+import { PaymentStatusValues } from '../types/payment-status.types';
+import type { PaymentStatus } from '../types/payment-status.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -46,4 +48,21 @@ export class OrderRecord {
      */
     public readonly dispatchByAt: Date | null = null,
   ) {}
+
+  /**
+   * Typed, fail-safe read of the order's neutral payment status (#928) from the
+   * snapshot. Pure derivation of an already-loaded field (ADR-011): no I/O, no
+   * mutation. Centralises the `orderSnapshot.paymentStatus` key + narrowing in
+   * the owning context so cross-context consumers (e.g. the #938 shipping
+   * dispatch gate) bind to a typed contract rather than the snapshot's internal
+   * JSON layout. Returns `undefined` when the source didn't populate payment
+   * (graceful degradation — PrestaShop / legacy orders) or the stored value
+   * isn't a recognised status.
+   */
+  get paymentStatus(): PaymentStatus | undefined {
+    const value = this.orderSnapshot.paymentStatus;
+    return typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value)
+      ? (value as PaymentStatus)
+      : undefined;
+  }
 }
