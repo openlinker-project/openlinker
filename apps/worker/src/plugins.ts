@@ -32,10 +32,12 @@ import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
+import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
   AllegroIntegrationModule,
   AiIntegrationModule.register(),
   InpostIntegrationModule,
+  WooCommerceIntegrationModule,
 ];

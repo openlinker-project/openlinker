@@ -32,6 +32,7 @@ import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
+import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -39,4 +40,5 @@ export const apiPlugins: PluginEntry[] = [
   AiIntegrationModule.register(),
   InpostIntegrationModule,
   DpdIntegrationModule,
+  WooCommerceIntegrationModule,
 ];

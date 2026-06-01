@@ -25,6 +25,7 @@
     "@nestjs/typeorm": "10.0.2",
     "@openlinker/core": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
+    "@openlinker/integrations-woocommerce": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "pg": "8.11.3",
     "redis": "4.6.12",
