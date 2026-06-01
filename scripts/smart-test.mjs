@@ -4,10 +4,11 @@
  *
  * Diff-driven test selector for the pnpm workspace. Maps the files changed
  * vs a base ref to the *workspace packages* they belong to, then runs only
- * those packages' tests — narrowing within each package via
- * `jest --findRelatedTests`. Backend-only changes skip the flaky
- * `@openlinker/web` suite; pure frontend changes skip the slow Testcontainers
- * integration tier.
+ * those packages' tests — narrowing within each package via its own runner
+ * (`vitest related` for apps/web, `jest --findRelatedTests` elsewhere; the
+ * runner is read from each package's `test` script). Backend-only changes skip
+ * the flaky `@openlinker/web` suite; pure frontend changes skip the slow
+ * Testcontainers integration tier.
  *
  * Granularity note (#949 review B1). pnpm's finest test unit is the workspace
  * PACKAGE, not the bounded context — `libs/core` is a single package
@@ -32,7 +33,11 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_BASE_REF = 'origin/main';
 
 // Changes anywhere under these roots, or to a top-level config file, force a
@@ -173,6 +178,33 @@ function exec(cmd, args) {
   return res.status ?? 1;
 }
 
+/**
+ * Pure: pick the related-tests runner from a package's `test` script. A vitest
+ * package (apps/web) must run `vitest related`, not `jest --findRelatedTests` —
+ * jest can't transform the vitest/TSX setup and fails the whole package.
+ */
+function testRunnerForScript(testScript) {
+  return /\bvitest\b/.test(testScript ?? '') ? 'vitest' : 'jest';
+}
+
+/** Read a package's `test` script to decide its runner; default to jest. */
+function testRunnerFor(root) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, root, 'package.json'), 'utf8'));
+    return testRunnerForScript(pkg.scripts?.test);
+  } catch {
+    return 'jest';
+  }
+}
+
+/** Build the `pnpm --filter` related-tests command for a package + changed files. */
+function relatedTestsArgs(root, rel) {
+  const base = ['--filter', `./${root}`, 'exec'];
+  return testRunnerFor(root) === 'vitest'
+    ? [...base, 'vitest', 'related', '--run', '--passWithNoTests', ...rel]
+    : [...base, 'jest', '--findRelatedTests', ...rel, '--passWithNoTests'];
+}
+
 function main() {
   const dryRun = process.argv.includes('--dry-run');
   const noIntegration = process.argv.includes('--no-integration');
@@ -207,16 +239,9 @@ function main() {
     for (const root of plan.packages) {
       const rel = relWithin(root, files);
       if (rel.length === 0) continue;
-      // Narrow within the package to specs related to the changed files.
-      const code = exec('pnpm', [
-        '--filter',
-        `./${root}`,
-        'exec',
-        'jest',
-        '--findRelatedTests',
-        ...rel,
-        '--passWithNoTests',
-      ]);
+      // Narrow within the package to specs related to the changed files, using
+      // the package's own runner (vitest for apps/web, jest elsewhere).
+      const code = exec('pnpm', relatedTestsArgs(root, rel));
       if (code !== 0) failures += 1;
     }
   }
@@ -323,8 +348,19 @@ function selfCheck() {
     if (!ok) failures.push(`  ✗ ${c.name}`);
   }
 
+  // Runner detection: a vitest package must not be run with jest.
+  const runnerCases = [
+    { name: 'vitest run script → vitest', script: 'vitest run', expect: 'vitest' },
+    { name: 'jest script → jest', script: 'jest', expect: 'jest' },
+    { name: 'absent test script → jest', script: undefined, expect: 'jest' },
+  ];
+  for (const c of runnerCases) {
+    if (testRunnerForScript(c.script) !== c.expect) failures.push(`  ✗ ${c.name}`);
+  }
+  const total = cases.length + runnerCases.length;
+
   if (failures.length === 0) {
-    process.stdout.write(`✓ smart-test --self-check: ${cases.length} classifier case(s) passed.\n`);
+    process.stdout.write(`✓ smart-test --self-check: ${total} case(s) passed.\n`);
     return 0;
   }
   process.stderr.write('✗ smart-test --self-check failed:\n');
