@@ -23,6 +23,7 @@ import type { IOrderSyncService } from '../../interfaces/order-sync.service.inte
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
+import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -424,6 +425,65 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(customerProjectionUpdater.updateProjectionsForOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).toHaveBeenCalled();
+    });
+  });
+
+  describe('syncOrderFromSource – destination-echo guard (#940)', () => {
+    const externalOrderId = 'ps-order-7';
+
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_echo');
+      orderSource.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+    });
+
+    it('should skip re-ingestion and return [] when the resolved order originated from a different connection', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'allegro-connection',
+      } as unknown as OrderRecord);
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      // Source attribution, snapshot and sync history must be left untouched.
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      expect(orderItemRefResolver.tryResolve).not.toHaveBeenCalled();
+    });
+
+    it('should proceed with ingestion when no existing order record is found (genuinely new order)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).toHaveBeenCalled();
+    });
+
+    it('should proceed with ingestion when the existing order shares the same source connection (genuine same-source reconcile)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(orderSyncService.syncOrder).toHaveBeenCalled();
     });
   });
