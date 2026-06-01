@@ -27,6 +27,8 @@ import type {
   OrderHealth,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderRecordSort,
+  OrderRecordSortDirection,
 } from '../../../domain/types/order-record.types';
 
 @Injectable()
@@ -122,13 +124,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       this.applyHealthFilter(qb, filters.health);
     }
 
-    // Ordering (#927). `dispatchBy` is the triage default on the list: soonest
-    // ship-by first, NULLs last, with createdAt as a stable tiebreaker.
-    if (filters.sort === 'dispatchBy') {
-      qb.orderBy('rec.dispatchByAt', 'ASC', 'NULLS LAST').addOrderBy('rec.createdAt', 'DESC');
-    } else {
-      qb.orderBy('rec.createdAt', 'DESC');
-    }
+    this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
 
@@ -216,6 +212,76 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+
+  /**
+   * Triage-urgency ordinal for the `status` sort (#944): most-urgent first when
+   * ascending. Mirrors the health precedence (mapping → failed → synced → else)
+   * in WHEN order, but assigns the ordinal by urgency:
+   * needs_attention(0) < awaiting_mapping(1) < awaiting_dispatch(2) < synced(3).
+   */
+  private static readonly HEALTH_ORDINAL =
+    `CASE WHEN ${OrderRecordRepository.IS_MAPPING} THEN 1 ` +
+    `WHEN ${OrderRecordRepository.HAS_FAILED} THEN 0 ` +
+    `WHEN ${OrderRecordRepository.HAS_SYNCED} THEN 3 ELSE 2 END`;
+
+  /** JSONB ORDER-BY expressions for the derived sortable columns (#944). */
+  private static readonly TOTAL_EXPR = `(rec."orderSnapshot"#>>'{totals,total}')::numeric`;
+  private static readonly CUSTOMER_EXPR = `lower(rec."orderSnapshot"#>>'{shippingAddress,lastName}')`;
+  // Guarded so a malformed (non-array) `items` value sorts as NULL rather than
+  // erroring the whole list query.
+  private static readonly ITEMS_EXPR =
+    `CASE WHEN jsonb_typeof(rec."orderSnapshot"->'items') = 'array' ` +
+    `THEN jsonb_array_length(rec."orderSnapshot"->'items') END`;
+
+  /**
+   * Apply result ordering (#927/#944). `dispatchBy` is the list's triage
+   * default (soonest ship-by first, NULLs last); the JSONB-derived keys back the
+   * sortable table columns. `dir` overrides the per-key default direction when
+   * the FE supplies one (a header click). Every branch adds a stable
+   * `createdAt DESC` tiebreaker so equal sort keys keep a deterministic order.
+   */
+  private applySort(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    sort: OrderRecordSort | undefined,
+    dir: OrderRecordSortDirection | undefined
+  ): void {
+    const d = (fallback: 'ASC' | 'DESC'): 'ASC' | 'DESC' =>
+      dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
+    switch (sort) {
+      case 'dispatchBy':
+        qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST').addOrderBy('rec.createdAt', 'DESC');
+        return;
+      case 'total':
+        qb.orderBy(OrderRecordRepository.TOTAL_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
+      case 'items':
+        qb.orderBy(OrderRecordRepository.ITEMS_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
+      case 'customer':
+        qb.orderBy(OrderRecordRepository.CUSTOMER_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
+      case 'status':
+        qb.orderBy(OrderRecordRepository.HEALTH_ORDINAL, d('ASC')).addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
+      case 'createdAt':
+      default:
+        // No-sort default stays createdAt DESC (unchanged for non-list callers).
+        qb.orderBy('rec.createdAt', d('DESC'));
+        return;
+    }
+  }
 
   /**
    * Narrow a `findMany` query to a single derived-health bucket (#929).

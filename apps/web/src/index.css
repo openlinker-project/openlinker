@@ -7241,10 +7241,6 @@ a.kpi-card:focus-visible {
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
-/* Push the sort control to the trailing edge — filters lead, sort trails. */
-.orders-toolbar__sort {
-  margin-left: auto;
-}
 /* Inline date field: small mono-caps label sitting left of the native input. */
 .orders-toolbar__field {
   display: inline-flex;
