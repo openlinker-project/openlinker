@@ -30,6 +30,7 @@ import {
   ShipmentNotFoundException,
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
+  OrderNotDispatchablePaymentStatusException,
 } from '@openlinker/core/shipping';
 
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
@@ -241,6 +242,15 @@ describe('ShipmentController', () => {
 
     it('should map UndispatchableResolutionException to 422', async () => {
       dispatch.dispatch.mockRejectedValue(new UndispatchableResolutionException('no connection'));
+      await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should map OrderNotDispatchablePaymentStatusException to 422', async () => {
+      dispatch.dispatch.mockRejectedValue(
+        new OrderNotDispatchablePaymentStatusException('ol_order_1', 'awaiting'),
+      );
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
         UnprocessableEntityException,
       );
