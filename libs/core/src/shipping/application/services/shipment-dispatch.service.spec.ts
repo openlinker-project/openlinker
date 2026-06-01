@@ -15,12 +15,29 @@ import {
   type FulfillmentRoutingResolution,
   type IFulfillmentRoutingService,
 } from '@openlinker/core/mappings';
+import { type IOrderRecordService, OrderRecord, type PaymentStatus } from '@openlinker/core/orders';
 import { ShipmentDispatchService } from './shipment-dispatch.service';
 import type { ShipmentDispatchInput } from '../types/shipment-dispatch.types';
 import { Shipment } from '../../domain/entities/shipment.entity';
 import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
+import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
+
+/** Build an OrderRecord whose snapshot carries the given payment status (or none). */
+function makeOrderRecord(paymentStatus?: PaymentStatus): OrderRecord {
+  return new OrderRecord(
+    'ol_order_1',
+    'ol_customer_1',
+    SOURCE,
+    null,
+    paymentStatus === undefined ? {} : { paymentStatus },
+    [],
+    'ready',
+    new Date(),
+    new Date(),
+  );
+}
 
 const SOURCE = 'conn-allegro';
 const INPOST = 'conn-inpost';
@@ -87,6 +104,7 @@ describe('ShipmentDispatchService', () => {
   let routing: jest.Mocked<IFulfillmentRoutingService>;
   let integrations: jest.Mocked<IIntegrationsService>;
   let adapter: jest.Mocked<ShippingProviderManagerPort>;
+  let orders: jest.Mocked<IOrderRecordService>;
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -117,7 +135,87 @@ describe('ShipmentDispatchService', () => {
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
     };
-    service = new ShipmentDispatchService(repository, routing, integrations);
+    orders = {
+      persistOrder: jest.fn(),
+      persistIncomingSnapshot: jest.fn(),
+      updateSyncStatus: jest.fn(),
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(),
+    };
+    service = new ShipmentDispatchService(repository, routing, integrations, orders);
+  });
+
+  describe('payment-status dispatch gate (#938)', () => {
+    /** Arrange the ol_managed_carrier happy path so a permitted status dispatches. */
+    function arrangeHappyPath(): void {
+      routing.resolve.mockResolvedValue(
+        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: null,
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' }));
+    }
+
+    it.each(['awaiting', 'refunded'] as const)(
+      'should reject dispatch with OrderNotDispatchablePaymentStatusException when payment status is %s',
+      async (paymentStatus) => {
+        routing.resolve.mockResolvedValue(resolution());
+        orders.getOrderRecord.mockResolvedValue(makeOrderRecord(paymentStatus));
+
+        await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+          OrderNotDispatchablePaymentStatusException,
+        );
+
+        // No shipment work happens once the gate blocks.
+        expect(repository.findActiveByOrderId).not.toHaveBeenCalled();
+        expect(repository.create).not.toHaveBeenCalled();
+        expect(adapter.generateLabel).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['paid', 'cod'] as const)(
+      'should permit dispatch when payment status is %s',
+      async (paymentStatus) => {
+        arrangeHappyPath();
+        orders.getOrderRecord.mockResolvedValue(makeOrderRecord(paymentStatus));
+
+        const result = await service.dispatch(makeInput());
+
+        expect(result.kind).toBe('dispatched');
+        expect(adapter.generateLabel).toHaveBeenCalled();
+      },
+    );
+
+    it('should permit dispatch when the order has no payment status (graceful degradation)', async () => {
+      arrangeHappyPath();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord(undefined));
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+    });
+
+    it('should permit dispatch when no order record is found', async () => {
+      arrangeHappyPath();
+      orders.getOrderRecord.mockResolvedValue(null);
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+    });
+
+    it('should fail closed (propagate) when the order record read throws', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orders.getOrderRecord.mockRejectedValue(new Error('db down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
   });
 
   describe('omp_fulfilled (branch-1, no OL label)', () => {
