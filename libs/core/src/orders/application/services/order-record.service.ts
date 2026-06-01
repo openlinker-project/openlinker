@@ -96,6 +96,15 @@ export class OrderRecordService implements IOrderRecordService {
       // expose one. Conditional spread keeps the key off the snapshot rather
       // than emitting `undefined`.
       ...(order.placedAt !== undefined && { placedAt: order.placedAt.toISOString() }),
+      // Source-side delivery method + pickup point (#952) — present-only, like
+      // deliverySmart/dispatchTime. NOT PII-gated: a carrier method id/name and a
+      // public locker code aren't personal data (the locker's address is folded
+      // into the PII-gated shippingAddress). Needed by the order-detail Delivery
+      // panel, the Generate-Label paczkomat pre-fill, and — critically —
+      // fulfillment routing, which keys on `shipping.methodId` (absent it, routing
+      // always resolves to the omp_fulfilled default).
+      ...(order.shipping !== undefined && { shipping: order.shipping }),
+      ...(order.pickupPoint !== undefined && { pickupPoint: order.pickupPoint }),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
@@ -165,6 +174,10 @@ export class OrderRecordService implements IOrderRecordService {
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),
       // Buyer-placed-on-marketplace time (#926) — ISO string passed through verbatim.
       ...(incoming.placedAt !== undefined && { placedAt: incoming.placedAt }),
+      // Source-side delivery method + pickup point (#952) — see persistOrder for
+      // the present-only + non-PII rationale. Same fields, same placement.
+      ...(incoming.shipping !== undefined && { shipping: incoming.shipping }),
+      ...(incoming.pickupPoint !== undefined && { pickupPoint: incoming.pickupPoint }),
     };
 
     const orderRecord = new OrderRecord(
