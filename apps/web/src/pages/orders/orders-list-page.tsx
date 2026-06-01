@@ -1,16 +1,20 @@
 /**
  * Orders List Page
  *
- * Operator triage queue for the orders backbone (#778, redesigned #929).
- * Composes:
+ * Operator triage queue for the orders backbone (#778, redesigned #929;
+ * filter/sort bar + identity-cell fixes #939). Composes:
  * — status segments (5 clickable `MetricCard`s backed by the single
  *   `/orders/status-summary` count endpoint) that **partition** the order set,
  *   so the counts sum to the total and double as the `health` URL-state filter;
- * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`),
- *   surface customer + contents (parsed from `orderSnapshot`), the source→
- *   destination channel, one reconciled health `StatusBadge` (`deriveOrderHealth`,
- *   replacing the per-destination list and the blank "—"), a "Created" time, a
- *   **Ship-by** SLA countdown (#927; server-sorted soonest-first, with a
+ * — a filter/sort bar (#939) — source-connection, created-date range, and sort
+ *   controls, all URL-state-backed (mirrors the connections-list toolbar);
+ * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`,
+ *   showing a shortened channel order reference — #939), surface customer +
+ *   contents (parsed from `orderSnapshot`, with an email fallback when the
+ *   source omits a buyer name — #939), the source→destination channel, one
+ *   reconciled health `StatusBadge` (`deriveOrderHealth`, replacing the
+ *   per-destination list and the blank "—"), a "Created" time, a **Ship-by**
+ *   SLA countdown (#927; server-sorted soonest-first, with a
  *   "breaching ≤24h / overdue" filter chip), a ghost Payment column (#928), and
  *   an inline Retry for failed rows;
  * — loading / error / empty (incl. all-clear) states via shared feedback prims.
@@ -28,6 +32,7 @@ import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
+import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
@@ -46,8 +51,9 @@ import type {
   OrderFilters,
   OrderHealthValue,
   OrderHealthSummary,
+  OrderSortValue,
 } from '../../features/orders/api/orders.types';
-import { OrderHealthValues } from '../../features/orders/api/orders.types';
+import { OrderHealthValues, OrderSortValues } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 
 const PAGE_SIZE = 20;
@@ -86,6 +92,35 @@ function isOrderHealth(value: string | null): value is OrderHealthValue {
   return value !== null && (OrderHealthValues as readonly string[]).includes(value);
 }
 
+/** Triage default ordering — soonest ship-by first (NULLs last), server-backed. */
+const DEFAULT_SORT: OrderSortValue = 'dispatchBy';
+
+/** Type-guard for the `sort` URL param (#939). Same widen-then-narrow shape as `isOrderHealth`. */
+function isOrderSort(value: string | null): value is OrderSortValue {
+  return value !== null && (OrderSortValues as readonly string[]).includes(value);
+}
+
+/** Operator-facing labels for the sort control (#939). */
+const SORT_LABELS: Record<OrderSortValue, string> = {
+  dispatchBy: 'Ship-by (soonest)',
+  createdAt: 'Created (newest)',
+};
+
+/**
+ * Order-column primary label (#939). The source marketplace often has no
+ * human-friendly order number — Allegro's `orderNumber` is its `checkoutFormId`,
+ * a 36-char UUID that reads as noise when rendered verbatim. Shorten long ids to
+ * a `head…tail` form so the cell reads as a reference; short numbers (most
+ * shops) pass through untouched. Returns `''` when no order number is present so
+ * the caller can fall back to the internal id. The marketplace itself is already
+ * conveyed by the dedicated Channel column, so no channel prefix is added here.
+ */
+function formatOrderRef(orderNumber: string | undefined): string {
+  if (!orderNumber) return '';
+  if (orderNumber.length <= 18) return orderNumber;
+  return `${orderNumber.slice(0, 8)}…${orderNumber.slice(-6)}`;
+}
+
 /** Map the neutral ship-by urgency level (#927) to a StatusBadge tone. */
 const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
   ok: 'info',
@@ -106,12 +141,16 @@ function formatCurrency(amount: number, currency: string, locale: LocaleCode): s
   );
 }
 
-/** Buyer name from the snapshot's shipping address — null when absent. */
+/**
+ * Buyer identity for the customer cell (#939). Prefers the shipping-address
+ * name; falls back to the buyer email when the source omits a name (so the cell
+ * stays useful instead of blanking). `null` only when neither is present.
+ */
 function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | null {
   const a = parsed.shippingAddress;
-  if (!a) return null;
-  const name = [a.firstName, a.lastName].filter(Boolean).join(' ').trim();
-  return name.length > 0 ? name : null;
+  const name = [a?.firstName, a?.lastName].filter(Boolean).join(' ').trim();
+  if (name.length > 0) return name;
+  return parsed.customerEmail ?? null;
 }
 
 /**
@@ -142,6 +181,15 @@ export function OrdersListPage(): ReactElement {
   const rawHealth = searchParams.get('health');
   const health = isOrderHealth(rawHealth) ? rawHealth : undefined;
   const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
+  const rawSort = searchParams.get('sort');
+  const sort = isOrderSort(rawSort) ? rawSort : DEFAULT_SORT;
+  // Date filters stay calendar-date (YYYY-MM-DD) in the URL so the native date
+  // input round-trips; they're widened to start-/end-of-day UTC instants only
+  // when building the query, so the `createdTo` bound is inclusive of that day.
+  const createdFrom = searchParams.get('createdFrom') || undefined;
+  const createdTo = searchParams.get('createdTo') || undefined;
+  const createdFromIso = createdFrom ? `${createdFrom}T00:00:00.000Z` : undefined;
+  const createdToIso = createdTo ? `${createdTo}T23:59:59.999Z` : undefined;
   const breaching = searchParams.get('due') === 'breaching';
   const offset = Number(searchParams.get('offset') ?? '0');
 
@@ -155,9 +203,12 @@ export function OrdersListPage(): ReactElement {
   const filters: OrderFilters = {
     health,
     sourceConnectionId: sourceConnectionId || undefined,
-    // Server-backed triage default: soonest ship-by first (NULLs last). The
-    // only sort on this list — kept coherent (no client-page-sorted columns).
-    sort: 'dispatchBy',
+    // Operator-selectable ordering (#939); defaults to the triage sort
+    // (soonest ship-by first, NULLs last). Column-header sort stays a non-goal
+    // (JSONB-derived columns the server can't ORDER BY without indexes).
+    sort,
+    createdFrom: createdFromIso,
+    createdTo: createdToIso,
     dueBefore,
   };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -165,11 +216,16 @@ export function OrdersListPage(): ReactElement {
   const query = useOrdersQuery(filters, pagination);
 
   // Single count endpoint — partitions the set, so segment counts sum to total.
-  // Scoped by source only (the table's other axis); `health` is intentionally
-  // never part of the summary scope.
+  // Scoped by the same source + date axes as the table (NOT `health`, so the
+  // aggregate can't be self-filtered) — keeps the segment counts coherent with
+  // an active source/date filter.
   const summaryScope = useMemo(
-    () => ({ sourceConnectionId: sourceConnectionId || undefined }),
-    [sourceConnectionId],
+    () => ({
+      sourceConnectionId: sourceConnectionId || undefined,
+      createdFrom: createdFromIso,
+      createdTo: createdToIso,
+    }),
+    [sourceConnectionId, createdFromIso, createdToIso],
   );
   const summaryQuery = useOrderStatusSummaryQuery(summaryScope);
   const summary = summaryQuery.data;
@@ -199,7 +255,7 @@ export function OrdersListPage(): ReactElement {
           return (
             <EntityLabel
               id={order.internalOrderId}
-              name={parsed.orderNumber ?? order.internalOrderId}
+              name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
             />
           );
         },
@@ -382,6 +438,25 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /**
+   * Set/clear a single filter URL param (#939) and reset paging. Empty string
+   * removes the param (e.g. the "All sources" / default-sort option). Mirrors
+   * the connections-list filter pattern; `offset` is dropped so a new filter
+   * always lands on page 1.
+   */
+  function setFilterParam(key: string, value: string): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (value) {
+        p.set(key, value);
+      } else {
+        p.delete(key);
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   function toggleBreaching(): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -429,6 +504,7 @@ export function OrdersListPage(): ReactElement {
       if (
         target?.tagName === 'INPUT' ||
         target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
         target?.isContentEditable
       ) {
         return;
@@ -484,6 +560,58 @@ export function OrdersListPage(): ReactElement {
             <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
           </button>
         ))}
+      </div>
+
+      {/* Filter + sort bar (#939) — source/date/sort controls in URL state.
+          Mirrors the connections-list toolbar pattern. */}
+      <div className="toolbar orders-toolbar">
+        <div className="toolbar__group">
+          <Select
+            aria-label="Filter by source"
+            value={sourceConnectionId ?? ''}
+            onChange={(e) => { setFilterParam('sourceConnectionId', e.target.value); }}
+          >
+            <option value="">All sources</option>
+            {(connectionsQuery.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <label className="orders-toolbar__field">
+            <span className="orders-toolbar__label">From</span>
+            <input
+              type="date"
+              className="control"
+              aria-label="Created from"
+              value={createdFrom ?? ''}
+              onChange={(e) => { setFilterParam('createdFrom', e.target.value); }}
+            />
+          </label>
+          <label className="orders-toolbar__field">
+            <span className="orders-toolbar__label">To</span>
+            <input
+              type="date"
+              className="control"
+              aria-label="Created to"
+              value={createdTo ?? ''}
+              onChange={(e) => { setFilterParam('createdTo', e.target.value); }}
+            />
+          </label>
+        </div>
+        <div className="toolbar__group orders-toolbar__sort">
+          <Select
+            aria-label="Sort orders"
+            value={sort}
+            onChange={(e) => { setFilterParam('sort', e.target.value); }}
+          >
+            {OrderSortValues.map((value) => (
+              <option key={value} value={value}>
+                {SORT_LABELS[value]}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -549,7 +677,7 @@ export function OrdersListPage(): ReactElement {
                 return (
                   <EntityLabel
                     id={order.internalOrderId}
-                    name={parsed.orderNumber ?? order.internalOrderId}
+                    name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
                   />
                 );
               },
