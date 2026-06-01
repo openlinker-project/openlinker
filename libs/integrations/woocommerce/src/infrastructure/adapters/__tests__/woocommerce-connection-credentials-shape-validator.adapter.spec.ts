@@ -54,4 +54,10 @@ describe('WooCommerceConnectionCredentialsShapeValidatorAdapter', () => {
   it('should throw InvalidCredentialsShapeException when both fields are missing', async () => {
     await expect(validator.validate({})).rejects.toThrow(InvalidCredentialsShapeException);
   });
+
+  it('should report both missing fields in a single exception when both are absent', async () => {
+    // Both errors are collected in one pass — the operator sees all issues at once.
+    await expect(validator.validate({})).rejects.toThrow('consumerKey');
+    await expect(validator.validate({})).rejects.toThrow('consumerSecret');
+  });
 });
