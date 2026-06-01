@@ -194,6 +194,28 @@ export class OrderIngestionService implements IOrderIngestionService {
       connectionId
     );
 
+    // Destination-echo guard (#940 / ADR-017): if an internal order already
+    // exists for this external id and it originated from a DIFFERENT connection,
+    // this is a re-read of an order OpenLinker itself created here as a sync
+    // destination (e.g. the PrestaShop reconciliation poll re-reading an
+    // Allegro-origin order it pushed in). Re-ingesting would overwrite the
+    // order's true source, source event id and snapshot, and reset its sync
+    // history — so skip. The real source stays authoritative; destination-side
+    // fulfillment flows through the dedicated *.statusSync jobs (which key on
+    // destinationConnectionId, not the source) and is unaffected.
+    const existing = await this.orderRecordService.getOrderRecord(internalOrderId);
+    if (existing && existing.sourceConnectionId !== connectionId) {
+      // `debug` not `log`: this is an expected, per-order steady-state skip that
+      // fires for every cross-origin order on each poll within the watermark
+      // window — emitting it at info level would be production noise.
+      this.logger.debug(
+        `Skipping destination-echo re-ingestion of order ${internalOrderId}: ` +
+          `external id ${incoming.externalOrderId} on connection ${connectionId} ` +
+          `maps to an order originating from ${existing.sourceConnectionId}`
+      );
+      return [];
+    }
+
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
       connectionId,
