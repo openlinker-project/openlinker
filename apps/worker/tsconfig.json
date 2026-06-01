@@ -26,7 +26,11 @@
       "@openlinker/shared": ["../../libs/shared/src/index.ts"],
       "@openlinker/shared/*": ["../../libs/shared/src/*"],
       "@openlinker/integrations-allegro": ["../../libs/integrations/allegro/src/index.ts"],
-      "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"]
+      "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"],
+      "@openlinker/integrations-woocommerce": ["../../libs/integrations/woocommerce/src/index.ts"],
+      "@openlinker/integrations-woocommerce/*": ["../../libs/integrations/woocommerce/src/*"],
+      "@openlinker/plugin-sdk": ["../../libs/plugin-sdk/src/index.ts"],
+      "@openlinker/plugin-sdk/*": ["../../libs/plugin-sdk/src/*"]
     }
   },
   "include": ["src/**/*"],
