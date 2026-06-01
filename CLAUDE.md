@@ -21,8 +21,11 @@ Before writing or modifying code, read the relevant doc(s):
 | Frontend technical architecture and state rules | `docs/frontend-architecture.md` |
 | Frontend visual and interaction style | `docs/frontend-ui-style-guide.md` |
 | Implementation plan process | `docs/implementation-plan-generator-guide.md` |
+| Recurring gotchas / regression ledger | `docs/lessons.md` |
 
 Architecture docs define **intent and direction**, not every implementation detail. You may infer missing layers or patterns if they clearly align — but always justify them explicitly.
+
+**Review `docs/lessons.md` at the start of a work session** — it's the empirical regression ledger of mistakes already made (not architectural rules; those live in the docs above). After a correction that would prevent a repeat mistake, add an entry following the format documented at the top of that file.
 
 ---
 
