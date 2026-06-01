@@ -371,7 +371,8 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: /Ship-by/i }));
+    // Exact name targets the chip, not the sortable "Ship-by" column header (#944).
+    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h / overdue' }));
 
     await vi.waitFor(() => {
       const calledWithDue = list.mock.calls.some(
@@ -404,22 +405,65 @@ describe('OrdersListPage', () => {
     });
   });
 
-  it('should change the sort order when the sort select changes (#939)', async () => {
+  it('should server-sort by a column (with its default direction) when its header is clicked (#944)', async () => {
     const user = userEvent.setup();
     const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
-    const mockApi = createMockApiClient({ orders: { list } });
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.selectOptions(screen.getByLabelText('Sort orders'), 'createdAt');
+    // Total's first-click default direction is descending (biggest first).
+    await user.click(screen.getByRole('button', { name: 'Total' }));
 
     await vi.waitFor(() => {
-      const called = list.mock.calls.some(
-        ([filters]) => (filters as { sort?: string } | undefined)?.sort === 'createdAt',
-      );
+      const called = list.mock.calls.some(([filters]) => {
+        const f = filters as { sort?: string; dir?: string } | undefined;
+        return f?.sort === 'total' && f?.dir === 'desc';
+      });
       expect(called).toBe(true);
     });
+  });
+
+  it('should flip direction when the already-active sort header is re-clicked (#944)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    // Start on the default Ship-by ascending sort; re-clicking flips to desc.
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?sort=dispatchBy&dir=asc',
+    });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: 'Ship-by' }));
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(([filters]) => {
+        const f = filters as { sort?: string; dir?: string } | undefined;
+        return f?.sort === 'dispatchBy' && f?.dir === 'desc';
+      });
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should no longer render the standalone sort dropdown — headers own sort now (#944)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    expect(screen.queryByLabelText('Sort orders')).not.toBeInTheDocument();
   });
 
   it('should widen the created-from date to a start-of-day ISO instant (#939)', async () => {
