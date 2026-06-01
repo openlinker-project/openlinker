@@ -7187,7 +7187,13 @@ a.kpi-card:focus-visible {
 /* ── Orders list redesign (#929) ───────────────────────────────────── */
 /* Status segments double as clickable health filters: a reset button wraps a
    MetricCard; the active segment mirrors the chip-active accent treatment. */
-.orders-segments { margin-bottom: var(--space-4); }
+/* `grid-auto-rows: minmax(5.5rem, auto)` reserves the real card height on the
+   track (#943): `.orders-segment` is a `<button>` and its `.metric-card` child
+   uses `height: 100%`, so a percentage height against the auto-height button
+   collapses during track sizing — the track shrank to ~32px while the cards
+   render 88px and overflowed downward, colliding with the filter bar below.
+   5.5rem matches `.metric-card`'s own `min-height`. */
+.orders-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
 .orders-segment {
   display: block;
   width: 100%;
