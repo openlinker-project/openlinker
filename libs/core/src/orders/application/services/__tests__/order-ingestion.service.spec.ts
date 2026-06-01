@@ -292,6 +292,29 @@ describe('OrderIngestionService', () => {
       expect(order.placedAt).toBeUndefined();
     });
 
+    it('should carry incoming.customerEmail onto the unified Order (#948)', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerEmail: 'buyer@example.com',
+      });
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const order = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(order.customerEmail).toBe('buyer@example.com');
+    });
+
+    it('should leave Order.customerEmail undefined when the incoming order omits it (#948)', async () => {
+      // baseIncoming carries no customerEmail.
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const order = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(order.customerEmail).toBeUndefined();
+    });
+
     it('should call updateSyncStatus with synced when syncOrder succeeds', async () => {
       orderSyncService.syncOrder.mockResolvedValue([
         {
