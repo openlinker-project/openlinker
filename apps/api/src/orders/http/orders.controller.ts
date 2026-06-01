@@ -77,6 +77,7 @@ export class OrdersController {
       recordStatus,
       health,
       sort,
+      dir,
       dueBefore,
       limit = 20,
       offset = 0,
@@ -92,6 +93,7 @@ export class OrdersController {
         recordStatus,
         health,
         sort,
+        dir,
         dueBefore: dueBefore ? new Date(dueBefore) : undefined,
       },
       { limit, offset }

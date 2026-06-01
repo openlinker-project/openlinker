@@ -69,10 +69,23 @@ export interface OrderRecord {
   dispatchByAt?: string | null;
 }
 
-// Result ordering for the orders list (#927). Mirrors `OrderRecordSortValues`
-// in `@openlinker/core/orders`. `dispatchBy` = ship-by ascending (triage default).
-export const OrderSortValues = ['createdAt', 'dispatchBy'] as const;
+// Result ordering for the orders list (#927, extended #944). Mirrors
+// `OrderRecordSortValues` in `@openlinker/core/orders`. `dispatchBy` = ship-by
+// ascending (triage default); `customer`/`items`/`status`/`total` back the
+// sortable table columns (server-side).
+export const OrderSortValues = [
+  'createdAt',
+  'dispatchBy',
+  'customer',
+  'items',
+  'status',
+  'total',
+] as const;
 export type OrderSortValue = (typeof OrderSortValues)[number];
+
+// Sort direction (#944). Mirrors `OrderRecordSortDirectionValues` in core.
+export const OrderSortDirectionValues = ['asc', 'desc'] as const;
+export type OrderSortDirection = (typeof OrderSortDirectionValues)[number];
 
 // Derived order-health buckets (#929). Hand-mirrored from `OrderHealthValues`
 // in `@openlinker/core/orders` per the FE-001 contract strategy — keep in sync.
@@ -108,8 +121,10 @@ export interface OrderFilters {
   recordStatus?: OrderRecordStatusValue;
   /** Filter to a single derived health bucket (#929). */
   health?: OrderHealthValue;
-  /** Result ordering (#927); `dispatchBy` = ship-by ascending (triage default). */
+  /** Result ordering (#927/#944); `dispatchBy` = ship-by ascending (triage default). */
   sort?: OrderSortValue;
+  /** Sort direction for `sort` (#944); defaults per-column server-side when omitted. */
+  dir?: OrderSortDirection;
   /** SLA "breaching / overdue" filter (#927): ISO instant; keeps orders with a ship-by deadline ≤ this. */
   dueBefore?: string;
 }
