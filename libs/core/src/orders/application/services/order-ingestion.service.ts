@@ -369,6 +369,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       orderNumber: incoming.orderNumber,
       status: incoming.status,
       customerId: internalCustomerId,
+      // Carry the buyer email through (#948) — used only for customer-identity
+      // resolution before this point; the snapshot needs it for the label
+      // recipient. PII gating happens at persistence (`persistOrder`).
+      customerEmail: incoming.customerEmail,
       items: resolvedItems,
       totals: incoming.totals,
       shippingAddress: incoming.shippingAddress,
