@@ -25,6 +25,9 @@ import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/produ
 import { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
+import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
+import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
+import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
 /**
  * Static plugin manifest (#575).
@@ -38,7 +41,7 @@ import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-con
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster'],
+  supportedCapabilities: ['ProductMaster', 'OrderSource'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -64,6 +67,13 @@ export function createWooCommercePlugin(): AdapterPlugin {
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceConnectionCredentialsShapeValidatorAdapter(WOOCOMMERCE_BRAND),
       );
+      host.authFailureClassifierRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      for (const task of buildWooCommerceSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     async createCapabilityAdapter<T>(
@@ -100,11 +110,15 @@ export function createWooCommercePlugin(): AdapterPlugin {
         mapper,
         connection,
       );
+      const orderSource = new WooCommerceOrderSourceAdapter(httpClient, connection);
       try {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
-            { ProductMaster: () => productMaster },
+            {
+              ProductMaster: () => productMaster,
+              OrderSource: () => orderSource,
+            },
             WOOCOMMERCE_BRAND,
           ),
         );

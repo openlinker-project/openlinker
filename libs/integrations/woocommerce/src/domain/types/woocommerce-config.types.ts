@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/woocommerce/src/domain/types
  */
+import type { WooCommerceOrdersConfig } from './woocommerce-orders-config.types';
 
 export interface WooCommerceConnectionConfig {
   // Must include protocol (http:// or https://).
@@ -18,4 +19,7 @@ export interface WooCommerceConnectionConfig {
   // HTTPS enforcement is intentionally left to the FE form layer; the
   // config shape validator does not enforce transport security.
   siteUrl: string;
+
+  /** OrderSource capability configuration (#876). */
+  orders?: WooCommerceOrdersConfig;
 }

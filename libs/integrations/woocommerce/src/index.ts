@@ -15,6 +15,7 @@
 
 // Config + credentials types
 export type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
+export type { WooCommerceOrdersConfig } from './domain/types/woocommerce-orders-config.types';
 export type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 
 // Domain exceptions — 5 domain-level exceptions exported for consumers
