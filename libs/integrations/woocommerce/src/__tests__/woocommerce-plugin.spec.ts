@@ -3,13 +3,15 @@
  *
  * Verifies the static manifest shape, that `register(host)` self-registers
  * the connection tester, config shape validator, and credentials shape
- * validator, and that `createCapabilityAdapter` throws the expected error for
- * any capability (empty dispatch table at scaffold stage — #874+ populate it).
+ * validator, and that `createCapabilityAdapter` correctly handles capabilities
+ * added in #874 (ProductMaster) and rejects unsupported ones.
  *
  * @module libs/integrations/woocommerce/src/__tests__
  */
 import type { HostServices } from '@openlinker/plugin-sdk';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { woocommerceAdapterManifest, createWooCommercePlugin } from '../woocommerce-plugin';
+import { WooCommerceConfigException } from '../domain/exceptions/woocommerce-config.exception';
 
 function makeHostStub(): {
   host: HostServices;
@@ -25,7 +27,6 @@ function makeHostStub(): {
     connectionTesterRegistry: testerRegistry,
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
-    // Other host services not used by this plugin at scaffold stage
     emailNormalizerRegistry: { register: jest.fn() },
     retryClassifierRegistry: { register: jest.fn() },
     authFailureClassifierRegistry: { register: jest.fn() },
@@ -36,11 +37,29 @@ function makeHostStub(): {
     factoryResolver: { registerFactory: jest.fn() },
     logger: jest.fn(),
     identifierMapping: {} as HostServices['identifierMapping'],
-    credentialsResolver: {} as HostServices['credentialsResolver'],
+    credentialsResolver: {
+      get: jest.fn().mockResolvedValue({
+        consumerKey: 'ck_test',
+        consumerSecret: 'cs_test',
+      }),
+    } as unknown as HostServices['credentialsResolver'],
   } as unknown as HostServices;
 
   return { host, testerRegistry, configRegistry, credentialsRegistry };
 }
+
+const mockConnection: Connection = {
+  id: 'conn-1',
+  platformType: 'woocommerce',
+  name: 'Test',
+  status: 'active',
+  config: { siteUrl: 'https://myshop.com' } as Record<string, unknown>,
+  credentialsRef: 'cred-ref-001',
+  enabledCapabilities: ['ProductMaster'],
+  adapterKey: 'woocommerce.restapi.v3',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 
 describe('woocommerceAdapterManifest', () => {
   it('should declare adapterKey as woocommerce.restapi.v3', () => {
@@ -51,8 +70,8 @@ describe('woocommerceAdapterManifest', () => {
     expect(woocommerceAdapterManifest.platformType).toBe('woocommerce');
   });
 
-  it('should declare supportedCapabilities as empty array at scaffold stage', () => {
-    expect(woocommerceAdapterManifest.supportedCapabilities).toEqual([]);
+  it('should include ProductMaster in supportedCapabilities (#874)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('ProductMaster');
   });
 
   it('should be marked as the default adapter for the platform', () => {
@@ -90,23 +109,28 @@ describe('createWooCommercePlugin → register(host)', () => {
 });
 
 describe('createWooCommercePlugin → createCapabilityAdapter', () => {
-  it('should throw unsupported capability error for any capability', async () => {
+  it('should throw WooCommerceConfigException when credentialsRef is missing', async () => {
     const { host } = makeHostStub();
     const plugin = createWooCommercePlugin();
-    const connection = { id: 'conn-1' } as Parameters<typeof plugin.createCapabilityAdapter>[0];
-
+    const noCredsConnection = { ...mockConnection, credentialsRef: null } as unknown as Connection;
     await expect(
-      plugin.createCapabilityAdapter(connection, 'ProductMaster', host),
-    ).rejects.toThrow('WooCommerce adapter does not support capability: ProductMaster');
+      plugin.createCapabilityAdapter(noCredsConnection, 'ProductMaster', host),
+    ).rejects.toBeInstanceOf(WooCommerceConfigException);
   });
 
-  it('should list empty supported capabilities in the error message', async () => {
+  it('should resolve ProductMaster adapter when capability is ProductMaster (#874)', async () => {
     const { host } = makeHostStub();
     const plugin = createWooCommercePlugin();
-    const connection = { id: 'conn-1' } as Parameters<typeof plugin.createCapabilityAdapter>[0];
+    const adapter = await plugin.createCapabilityAdapter(mockConnection, 'ProductMaster', host);
+    expect(adapter).toBeDefined();
+    expect(typeof (adapter as { getProduct?: unknown }).getProduct).toBe('function');
+  });
 
+  it('should reject unsupported capability with descriptive error', async () => {
+    const { host } = makeHostStub();
+    const plugin = createWooCommercePlugin();
     await expect(
-      plugin.createCapabilityAdapter(connection, 'OrderSource', host),
-    ).rejects.toThrow('Supported capabilities: ');
+      plugin.createCapabilityAdapter(mockConnection, 'OrderSource', host),
+    ).rejects.toThrow('WooCommerce');
   });
 });
