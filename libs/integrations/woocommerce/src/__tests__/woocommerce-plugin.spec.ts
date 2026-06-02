@@ -2,9 +2,10 @@
  * WooCommerce Plugin Descriptor — unit tests
  *
  * Verifies the static manifest shape, that `register(host)` self-registers
- * the connection tester, config shape validator, and credentials shape
- * validator, and that `createCapabilityAdapter` correctly handles capabilities
- * added in #874 (ProductMaster) and rejects unsupported ones.
+ * the connection tester, config shape validator, credentials shape validator,
+ * auth failure classifier, and scheduler tasks, and that `createCapabilityAdapter`
+ * correctly handles capabilities added in #874 (ProductMaster), #876 (OrderSource),
+ * and rejects unsupported ones.
  *
  * @module libs/integrations/woocommerce/src/__tests__
  */
@@ -12,16 +13,23 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { woocommerceAdapterManifest, createWooCommercePlugin } from '../woocommerce-plugin';
 import { WooCommerceConfigException } from '../domain/exceptions/woocommerce-config.exception';
+import { WooCommerceAuthFailureClassifierAdapter } from '../infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 
-function makeHostStub(): {
+interface HostStub {
   host: HostServices;
   testerRegistry: { register: jest.Mock };
   configRegistry: { register: jest.Mock };
   credentialsRegistry: { register: jest.Mock };
-} {
+  authFailureRegistry: { register: jest.Mock };
+  schedulerRegistry: { register: jest.Mock };
+}
+
+function makeHostStub(): HostStub {
   const testerRegistry = { register: jest.fn() };
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
+  const authFailureRegistry = { register: jest.fn() };
+  const schedulerRegistry = { register: jest.fn() };
 
   const host = {
     connectionTesterRegistry: testerRegistry,
@@ -29,8 +37,8 @@ function makeHostStub(): {
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     emailNormalizerRegistry: { register: jest.fn() },
     retryClassifierRegistry: { register: jest.fn() },
-    authFailureClassifierRegistry: { register: jest.fn() },
-    schedulerTaskRegistry: { register: jest.fn() },
+    authFailureClassifierRegistry: authFailureRegistry,
+    schedulerTaskRegistry: schedulerRegistry,
     webhookProvisioningRegistry: { register: jest.fn() },
     oauthCompletionRegistry: { register: jest.fn() },
     adapterRegistry: { register: jest.fn() },
@@ -45,7 +53,7 @@ function makeHostStub(): {
     } as unknown as HostServices['credentialsResolver'],
   } as unknown as HostServices;
 
-  return { host, testerRegistry, configRegistry, credentialsRegistry };
+  return { host, testerRegistry, configRegistry, credentialsRegistry, authFailureRegistry, schedulerRegistry };
 }
 
 const mockConnection: Connection = {
@@ -72,6 +80,10 @@ describe('woocommerceAdapterManifest', () => {
 
   it('should include ProductMaster in supportedCapabilities (#874)', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('ProductMaster');
+  });
+
+  it('should include OrderSource in supportedCapabilities (#876)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('OrderSource');
   });
 
   it('should be marked as the default adapter for the platform', () => {
@@ -126,11 +138,39 @@ describe('createWooCommercePlugin → createCapabilityAdapter', () => {
     expect(typeof (adapter as { getProduct?: unknown }).getProduct).toBe('function');
   });
 
+  it('should resolve OrderSource adapter when capability is OrderSource (#876)', async () => {
+    const { host } = makeHostStub();
+    const plugin = createWooCommercePlugin();
+    const adapter = await plugin.createCapabilityAdapter(mockConnection, 'OrderSource', host);
+    expect(adapter).toBeDefined();
+    expect(typeof (adapter as { listOrderFeed?: unknown }).listOrderFeed).toBe('function');
+    expect(typeof (adapter as { getOrder?: unknown }).getOrder).toBe('function');
+  });
+
   it('should reject unsupported capability with descriptive error', async () => {
     const { host } = makeHostStub();
     const plugin = createWooCommercePlugin();
     await expect(
-      plugin.createCapabilityAdapter(mockConnection, 'OrderSource', host),
+      plugin.createCapabilityAdapter(mockConnection, 'InventoryMaster', host),
     ).rejects.toThrow('WooCommerce');
+  });
+});
+
+describe('createWooCommercePlugin → register(host) — #876 additions', () => {
+  it('should register auth failure classifier at the plugin adapterKey', () => {
+    const { host, authFailureRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(authFailureRegistry.register).toHaveBeenCalledWith(
+      'woocommerce.restapi.v3',
+      expect.any(WooCommerceAuthFailureClassifierAdapter),
+    );
+  });
+
+  it('should register the orders-poll scheduler task', () => {
+    const { host, schedulerRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(schedulerRegistry.register).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 'woocommerce-orders-poll' }),
+    );
   });
 });
