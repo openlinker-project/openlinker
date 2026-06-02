@@ -7,11 +7,6 @@
  * validator, credentials shape validator), and the per-connection
  * `createCapabilityAdapter` factory.
  *
- * At scaffold stage (#873), `supportedCapabilities` is empty — connections
- * can be created and tested but no capability adapter is available yet.
- * Capability adapters are added in #874–#879; each issue adds its capability
- * to the manifest and dispatch table without changing this file's signature.
- *
  * WooCommerce needs no plugin-specific NestJS providers (no repository, no
  * token-refresh service), so the host wires it via `createNestAdapterModule`
  * — see `woocommerce-integration.module.ts`.
@@ -24,6 +19,12 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { WooCommerceConnectionTesterAdapter } from './infrastructure/adapters/woocommerce-connection-tester.adapter';
 import { WooCommerceConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-config-shape-validator.adapter';
 import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-credentials-shape-validator.adapter';
+import { WooCommerceHttpClient } from './infrastructure/http/woocommerce-http-client';
+import { WooCommerceProductMapper } from './infrastructure/mappers/woocommerce-product.mapper';
+import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/product-master/woocommerce-product-master.adapter';
+import { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
+import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
+import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
 
 /**
  * Static plugin manifest (#575).
@@ -37,7 +38,7 @@ import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrast
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: [], // populated by #874–#879
+  supportedCapabilities: ['ProductMaster'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -65,17 +66,44 @@ export function createWooCommercePlugin(): AdapterPlugin {
       );
     },
 
-    createCapabilityAdapter<T>(
-      _connection: Connection,
+    async createCapabilityAdapter<T>(
+      connection: Connection,
       capability: string,
-      _host: HostServices,
+      host: HostServices,
     ): Promise<T> {
-      // Empty dispatch table — rejects with "WooCommerce adapter does not support
-      // capability: X. Supported capabilities: " until #874+ land.
-      // dispatchCapability throws synchronously; try/catch converts it to a
-      // rejected promise so callers can use await / .catch uniformly.
+      if (!connection.credentialsRef) {
+        return Promise.reject(
+          new WooCommerceConfigException(
+            `Connection ${connection.id} is missing credentialsRef — save credentials before using this capability.`,
+            connection.id,
+          ),
+        );
+      }
+      // NEVER log credentials — contains consumerKey + consumerSecret
+      const credentials = await host.credentialsResolver.get<WooCommerceCredentials>(
+        connection.credentialsRef,
+      );
+      const config = (connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
+      const httpClient = new WooCommerceHttpClient(
+        config.siteUrl,
+        credentials.consumerKey,
+        credentials.consumerSecret,
+      );
+      const mapper = new WooCommerceProductMapper({});
+      const productMaster = new WooCommerceProductMasterAdapter(
+        httpClient,
+        host.identifierMapping,
+        mapper,
+        connection,
+      );
       try {
-        return Promise.resolve(dispatchCapability<T>(capability, {}, WOOCOMMERCE_BRAND));
+        return Promise.resolve(
+          dispatchCapability<T>(
+            capability,
+            { ProductMaster: () => productMaster },
+            WOOCOMMERCE_BRAND,
+          ),
+        );
       } catch (err) {
         return Promise.reject(err as Error);
       }
