@@ -99,25 +99,21 @@ export function createWooCommercePlugin(): AdapterPlugin {
         credentials.consumerKey,
         credentials.consumerSecret,
       );
-      // TODO(#879): currency is always null until WooCommerceConnectionConfig grows a
-      // currency field. WC exposes the store currency at
-      // GET /wp-json/wc/v3/settings/general/woocommerce_currency.
-      // Product.currency carries 'null when the adapter did not provide a currency'.
-      const mapper = new WooCommerceProductMapper({});
-      const productMaster = new WooCommerceProductMasterAdapter(
-        httpClient,
-        host.identifierMapping,
-        mapper,
-        connection,
-      );
-      const orderSource = new WooCommerceOrderSourceAdapter(httpClient, connection);
       try {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
             {
-              ProductMaster: () => productMaster,
-              OrderSource: () => orderSource,
+              // Lazy factories — each adapter is only constructed when its
+              // capability is actually requested, not on every call.
+              ProductMaster: () =>
+                new WooCommerceProductMasterAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  new WooCommerceProductMapper({}),
+                  connection,
+                ),
+              OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,
           ),

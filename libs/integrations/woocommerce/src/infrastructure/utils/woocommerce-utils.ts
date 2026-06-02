@@ -2,9 +2,9 @@
  * WooCommerce Utilities
  *
  * Pure helper functions shared across WooCommerce adapters. No I/O, no
- * framework dependencies — safe to import from any layer.
+ * framework dependencies.
  *
- * @module libs/integrations/woocommerce/src/domain/utils
+ * @module libs/integrations/woocommerce/src/infrastructure/utils
  */
 
 /**
