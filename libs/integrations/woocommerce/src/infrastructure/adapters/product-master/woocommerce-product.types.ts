@@ -1,11 +1,12 @@
 /**
  * WooCommerce Product API Types
  *
- * TypeScript shapes for WooCommerce REST API v3 product-related responses.
- * Used exclusively by WooCommerceProductMasterAdapter and
- * WooCommerceProductMapper to deserialize WC API payloads.
+ * TypeScript request and response shapes for WooCommerce REST API v3
+ * product-related payloads. Used by WooCommerceProductMasterAdapter and
+ * WooCommerceProductMapper to serialize write requests and deserialize
+ * API responses.
  *
- * All fields are declared as optional where the WC API may omit them
+ * All response fields are declared as optional where the WC API may omit them
  * (e.g. `price` is empty string on variable products, `meta_data` may be
  * absent on minimal-scope API keys).
  *
@@ -57,4 +58,22 @@ export interface WooCommerceMetaEntry {
   id?: number;
   key: string;
   value: unknown;
+}
+
+export interface WooCommerceProductWriteRequest {
+  name?: string;
+  sku?: string;
+  description?: string;
+  regular_price?: string;
+  weight?: string;
+  status?: string;
+  type?: string;
+  categories?: Array<{ id: number }>;
+}
+
+export interface WooCommerceVariationWriteRequest {
+  sku?: string;
+  regular_price?: string;
+  weight?: string;
+  attributes?: Array<{ name: string; option: string }>;
 }
