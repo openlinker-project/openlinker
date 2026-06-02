@@ -25,7 +25,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../domain/exceptions/woocommerce-resource-not-found.exception';
-import { normGmt } from '../../domain/utils/woocommerce-utils';
+import { normGmt } from '../utils/woocommerce-utils';
 import type { WooCommerceConnectionConfig } from '../../domain/types/woocommerce-config.types';
 import type {
   WooCommerceOrder,

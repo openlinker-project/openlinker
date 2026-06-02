@@ -1,5 +1,5 @@
 /**
- * @module libs/integrations/woocommerce/src/domain/utils/__tests__
+ * @module libs/integrations/woocommerce/src/infrastructure/utils/__tests__
  */
 import { normGmt } from '../woocommerce-utils';
 
