@@ -598,6 +598,8 @@ describe('WooCommerceProductMasterAdapter', () => {
         expect.objectContaining({ sku: 'VAR-EXIST', regular_price: '15' }),
       );
       expect(httpClient.post).not.toHaveBeenCalled();
+      // Should use the pre-known existing.id (101), not the PUT response id,
+      // to avoid registering "undefined" if WC omitted id from the response.
       expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         CORE_ENTITY_TYPE.ProductVariant,
         '101',
@@ -634,6 +636,21 @@ describe('WooCommerceProductMasterAdapter', () => {
         adapter.upsertProductVariant('prod-missing', { sku: 'VAR-1' }),
       ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
       expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when WC returns 404 on variation PUT (variation deleted between GET and PUT)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 101, sku: 'VAR-EXIST' }] as WooCommerceProductVariation[]);
+      httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(
+        adapter.upsertProductVariant('prod-internal-1', { sku: 'VAR-EXIST' }),
+      ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
     });
 
     it('should throw WooCommerceResourceNotFoundException when WC returns 404 on variations GET (parent deleted)', async () => {

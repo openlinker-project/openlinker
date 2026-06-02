@@ -516,11 +516,13 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
         }
         throw err;
       }
+      // Use existing.id (known from the SKU-match) rather than raw.id (PUT response field
+      // is optional in the type) to guarantee we never register "undefined" as an external ID.
       const internalId = await this.identifierMapping.getOrCreateInternalId(
         CORE_ENTITY_TYPE.ProductVariant,
-        String(raw.id),
+        String(existing.id),
         this.connection.id,
-        { ...variantContext, metadata: { variantExternalId: String(raw.id) } },
+        { ...variantContext, metadata: { variantExternalId: String(existing.id) } },
       );
       return { ...this.mapper.mapVariation(raw, productId), id: internalId };
     }
