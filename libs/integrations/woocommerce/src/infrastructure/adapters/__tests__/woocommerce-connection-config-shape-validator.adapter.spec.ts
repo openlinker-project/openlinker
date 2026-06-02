@@ -15,15 +15,15 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('should pass when siteUrl is a valid http URL', async () => {
+  it('should throw InvalidConnectionConfigException when siteUrl uses http (HTTPS required)', async () => {
     await expect(
       validator.validate({ siteUrl: 'http://myshop.com' }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
-  it('should pass when siteUrl is a localhost URL', async () => {
+  it('should pass when siteUrl is a localhost URL over https (local dev)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://localhost:8080' }),
+      validator.validate({ siteUrl: 'https://localhost:8080' }),
     ).resolves.toBeUndefined();
   });
 
@@ -58,51 +58,58 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
 
   // ── SSRF protection (#876) ────────────────────────────────────────────────
 
+  // SSRF tests use https:// to exercise the SSRF guard specifically (not the protocol check)
   it('should throw when siteUrl points to AWS metadata endpoint (169.254.169.254)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://169.254.169.254' }),
+      validator.validate({ siteUrl: 'https://169.254.169.254' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
   it('should throw when siteUrl points to a RFC-1918 address (10.x)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://10.0.0.1' }),
+      validator.validate({ siteUrl: 'https://10.0.0.1' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
   it('should throw when siteUrl points to a RFC-1918 address (192.168.x)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://192.168.1.50' }),
+      validator.validate({ siteUrl: 'https://192.168.1.50' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
   it('should throw when siteUrl points to a RFC-1918 address (172.16.x)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://172.16.0.1' }),
+      validator.validate({ siteUrl: 'https://172.16.0.1' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
   it('should throw when siteUrl uses hex-encoded IP bypass (0xc0a80001 = 192.168.0.1)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://0xc0a80001' }),
+      validator.validate({ siteUrl: 'https://0xc0a80001' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
   it('should throw when siteUrl uses IPv4-mapped IPv6 bypass (::ffff:192.168.1.1)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://[::ffff:192.168.1.1]' }),
+      validator.validate({ siteUrl: 'https://[::ffff:192.168.1.1]' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
-  it('should pass when siteUrl is localhost (allowed for local dev)', async () => {
+  it('should throw when siteUrl points to Azure metadata hostname', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://localhost' }),
+      validator.validate({ siteUrl: 'https://metadata.azure.com' }),
+    ).rejects.toThrow(InvalidConnectionConfigException);
+  });
+
+  it('should pass when siteUrl is localhost over https (loopback, allowed for local dev)', async () => {
+    await expect(
+      validator.validate({ siteUrl: 'https://localhost' }),
     ).resolves.toBeUndefined();
   });
 
-  it('should pass when siteUrl is 127.0.0.1 (loopback, allowed for local dev)', async () => {
+  it('should pass when siteUrl is 127.0.0.1 over https (loopback, allowed for local dev)', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://127.0.0.1' }),
+      validator.validate({ siteUrl: 'https://127.0.0.1' }),
     ).resolves.toBeUndefined();
   });
 

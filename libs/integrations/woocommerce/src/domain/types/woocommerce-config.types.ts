@@ -10,14 +10,14 @@
 import type { WooCommerceOrdersConfig } from './woocommerce-orders-config.types';
 
 export interface WooCommerceConnectionConfig {
-  // Must include protocol (http:// or https://).
+  // Must be an https:// URL.
   // Validated at save-time by WooCommerceConnectionConfigShapeValidatorAdapter:
-  //   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['http', 'https'] })
+  //   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   // Trailing slash is stripped by WooCommerceHttpClient before use.
-  // HTTP is accepted but HTTPS is strongly recommended — WC REST transmits
-  // consumerKey:consumerSecret on every request (Basic Auth = cleartext over HTTP).
-  // HTTPS enforcement is intentionally left to the FE form layer; the
-  // config shape validator does not enforce transport security.
+  // HTTPS is required — WC REST transmits consumerKey:consumerSecret as
+  // Basic Auth on every request; http:// would send credentials in cleartext.
+  // localhost and 127.x are accepted for local development (HTTPS not needed
+  // on loopback since traffic stays on the same machine).
   siteUrl: string;
 
   /** OrderSource capability configuration (#876). */
