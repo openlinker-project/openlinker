@@ -3,85 +3,133 @@
  *
  * Native-`fetch` transport for the WooCommerce REST API v3. Attaches Basic
  * Auth credentials (consumer key + consumer secret, Base64-encoded) on every
- * request and enforces a request timeout via `AbortController`.
+ * request, serialises optional query params, and enforces a request timeout
+ * via `AbortController`.
  *
- * At scaffold stage (#873) the client performs a single attempt with no retry
- * loop — this is intentional. The retry loop and typed domain exceptions
- * (`WooCommerceUnauthorizedException`, `WooCommerceNetworkException`, etc.)
- * will be added in #874 when the first capability adapter lands, at which
- * point the `RetryConfig` constructor parameter will drive the loop without
- * a signature change.
+ * Retry loop: exponential backoff for 429 and 5xx responses. Non-retryable
+ * status codes (401, 403, 404) throw typed domain exceptions immediately.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/http
  */
 import type { RetryConfig } from './woocommerce-http-client.types';
+import type { IWooCommerceHttpClient } from './woocommerce-http-client.interface';
+import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
+import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
+import { WooCommerceHttpResponseException } from './woocommerce-http-response.exception';
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelayMs: 500,
+  backoffMultiplier: 2,
+  maxDelayMs: 8000,
+};
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
-/**
- * Thrown for non-2xx HTTP responses. Defined here as an implementation-private
- * error class (not a type alias or interface) — scoped to this file until
- * typed domain exceptions (WooCommerceUnauthorizedException, etc.) replace
- * it in #874. The tester catches generically and checks `statusCode`.
- */
-class WooCommerceRequestError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'WooCommerceRequestError';
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
-
-export class WooCommerceHttpClient {
+export class WooCommerceHttpClient implements IWooCommerceHttpClient {
   private readonly siteUrl: string;
+  private readonly retryConfig: RetryConfig;
 
   constructor(
     siteUrl: string,
     private readonly consumerKey: string,
     private readonly consumerSecret: string,
-    // _retryConfig is accepted now so the constructor signature stays stable for #874,
-    // when the retry loop and typed domain exceptions land. At scaffold stage
-    // get() performs a single attempt only and this param is intentionally unused.
-    _retryConfig?: Partial<RetryConfig>,
+    retryConfig?: Partial<RetryConfig>,
   ) {
-    // Strip trailing slashes so path construction is always safe.
-    // "https://myshop.com/" and "https://myshop.com" produce identical URLs.
     this.siteUrl = siteUrl.replace(/\/+$/, '');
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
 
-  async get<T>(path: string): Promise<T> {
-    const url = `${this.siteUrl}${path}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  async get<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
+    const qs = params
+      ? new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    const separator = qs ? (path.includes('?') ? '&' : '?') : '';
+    const url = `${this.siteUrl}${path}${separator}${qs}`;
 
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: this.buildAuthHeader(),
-          Accept: 'application/json',
-        },
-        signal: controller.signal,
-      });
+    let delay = this.retryConfig.initialDelayMs;
 
-      if (!response.ok) {
-        throw new WooCommerceRequestError(
+    for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: this.buildAuthHeader(),
+            Accept: 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        if (response.ok) {
+          return (await response.json()) as T;
+        }
+
+        // Never retry auth errors or not-found
+        if (response.status === 401 || response.status === 403) {
+          throw new WooCommerceUnauthorizedException(
+            `WooCommerce authentication failed (HTTP ${response.status})`,
+          );
+        }
+
+        if (response.status === 404) {
+          throw new WooCommerceHttpResponseException(
+            response.status,
+            `WooCommerce returned HTTP ${response.status}: ${url}`,
+          );
+        }
+
+        // Retryable: 429 and 5xx
+        if (attempt < this.retryConfig.maxRetries) {
+          await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
+          delay *= this.retryConfig.backoffMultiplier;
+          continue;
+        }
+
+        // Retries exhausted — still a known HTTP error response
+        throw new WooCommerceHttpResponseException(
           response.status,
-          `WooCommerce returned HTTP ${response.status}`,
+          `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`,
         );
-      }
+      } catch (err) {
+        if (
+          err instanceof WooCommerceUnauthorizedException ||
+          err instanceof WooCommerceHttpResponseException ||
+          err instanceof WooCommerceNetworkException
+        ) {
+          throw err;
+        }
 
-      return (await response.json()) as T;
-    } finally {
-      clearTimeout(timeout);
+        if ((err as { name?: string }).name === 'AbortError') {
+          throw new WooCommerceNetworkException('WooCommerce request timed out', err as Error);
+        }
+
+        if (attempt < this.retryConfig.maxRetries) {
+          await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
+          delay *= this.retryConfig.backoffMultiplier;
+          continue;
+        }
+
+        throw new WooCommerceNetworkException(
+          `WooCommerce network error after ${this.retryConfig.maxRetries} retries`,
+          err as Error,
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
     }
+
+    // Unreachable — loop always throws or returns
+    throw new WooCommerceNetworkException('WooCommerce request failed');
   }
 
   private buildAuthHeader(): string {
-    // Buffer (Node.js server-side) — not btoa() which is browser-only in older runtimes.
     return 'Basic ' + Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
