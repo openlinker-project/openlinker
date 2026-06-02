@@ -27,6 +27,9 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { WooCommerceHttpClient } from '../http/woocommerce-http-client';
+import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
+import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
+import { WooCommerceHttpResponseException } from '../http/woocommerce-http-response.exception';
 import type { WooCommerceConnectionConfig } from '../../domain/types/woocommerce-config.types';
 import type { WooCommerceCredentials } from '../../domain/types/woocommerce-credentials.types';
 
@@ -69,46 +72,90 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
-      // AbortController fires after REQUEST_TIMEOUT_MS — surface a clear timeout message
-      // rather than the raw DOMException message "The operation was aborted."
-      if ((error as { name?: string }).name === 'AbortError') {
-        this.logger.warn('WooCommerce connection test timed out', { connectionId: connection.id });
+      if (error instanceof WooCommerceUnauthorizedException) {
+        // WooCommerceUnauthorizedException covers both 401 and 403.
+        // Check the error message to surface the correct HTTP status in the result.
+        const statusInMsg = error.message.includes('403') ? 403 : 401;
         return {
           success: false,
-          message: 'WooCommerce connection test timed out — the site did not respond in time',
+          status: statusInMsg,
+          message: 'WooCommerce authentication failed — check consumer key and secret',
           latencyMs: Date.now() - startedAt,
         };
       }
-      const err = error as { statusCode?: number; message?: string };
-      const status = typeof err.statusCode === 'number' ? err.statusCode : undefined;
-      // Log unexpected failures (network errors, 5xx) — auth failures (4xx) are
-      // expected operational results and don't need a log entry.
-      if (status === undefined || status >= 500) {
+
+      if (error instanceof WooCommerceHttpResponseException) {
+        const status = error.statusCode;
+        if (status === 404) {
+          return {
+            success: false,
+            status,
+            message:
+              'WooCommerce REST API not found — verify the site URL and that WooCommerce is installed',
+            latencyMs: Date.now() - startedAt,
+          };
+        }
+        if (status >= 500) {
+          this.logger.warn('WooCommerce connection test failed', {
+            connectionId: connection.id,
+            status,
+            error: error.message,
+          });
+          return {
+            success: false,
+            status,
+            message: `WooCommerce returned an unexpected error (HTTP ${status})`,
+            latencyMs: Date.now() - startedAt,
+          };
+        }
         this.logger.warn('WooCommerce connection test failed', {
           connectionId: connection.id,
           status,
-          error: err.message,
+          error: error.message,
         });
+        return {
+          success: false,
+          status,
+          message: `WooCommerce returned HTTP ${status}`,
+          latencyMs: Date.now() - startedAt,
+        };
       }
+
+      if (error instanceof WooCommerceNetworkException) {
+        const isTimeout = error.message.includes('timed out');
+        if (isTimeout) {
+          this.logger.warn('WooCommerce connection test timed out', {
+            connectionId: connection.id,
+          });
+          return {
+            success: false,
+            message:
+              'WooCommerce connection test timed out — the site did not respond in time',
+            latencyMs: Date.now() - startedAt,
+          };
+        }
+        this.logger.warn('WooCommerce connection test failed', {
+          connectionId: connection.id,
+          error: error.message,
+        });
+        return {
+          success: false,
+          // Include the original error message so operators see e.g. "ECONNREFUSED"
+          message: error.originalError?.message ?? error.message,
+          latencyMs: Date.now() - startedAt,
+        };
+      }
+
+      const err = error as { message?: string };
+      this.logger.warn('WooCommerce connection test failed unexpectedly', {
+        connectionId: connection.id,
+        error: err.message,
+      });
       return {
         success: false,
-        status,
-        message: buildFailureMessage(status, err.message),
+        message: err.message ?? 'WooCommerce connection test failed',
         latencyMs: Date.now() - startedAt,
       };
     }
   }
-}
-
-function buildFailureMessage(status: number | undefined, errorMessage?: string): string {
-  if (status === 401 || status === 403) {
-    return 'WooCommerce authentication failed — check consumer key and secret';
-  }
-  if (status === 404) {
-    return 'WooCommerce REST API not found — verify the site URL and that WooCommerce is installed';
-  }
-  if (status !== undefined && status >= 500) {
-    return `WooCommerce returned an unexpected error (HTTP ${status})`;
-  }
-  return errorMessage ?? 'WooCommerce connection test failed';
 }
