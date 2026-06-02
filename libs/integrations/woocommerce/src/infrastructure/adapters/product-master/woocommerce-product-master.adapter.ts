@@ -44,10 +44,7 @@ import type {
   WooCommerceProductWriteRequest,
   WooCommerceVariationWriteRequest,
 } from './woocommerce-product.types';
-
-// Safety cap for fetchAllPages: 500 pages × 100 items = 50,000 items max.
-// Mirrors the MAX_PAGES guard in master-product-sync-all.handler.ts.
-const FETCH_ALL_MAX_PAGES = 500;
+import { fetchAllPages } from '../../utils/woocommerce-utils';
 
 export class WooCommerceProductMasterAdapter implements ProductMasterPort {
   private readonly logger = new Logger(WooCommerceProductMasterAdapter.name);
@@ -58,39 +55,6 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     private readonly mapper: IWooCommerceProductMapper,
     private readonly connection: Connection,
   ) {}
-
-  // ─── Internal pagination helper ───────────────────────────────────────────
-
-  /**
-   * Exhausts all WC REST API pages for a given path and returns a flat array.
-   * Used only for methods whose contract is "return all" (getCategories, getProductVariants).
-   * For externally-paged methods (listExternalIds, getProducts) the caller drives the loop.
-   */
-  private async fetchAllPages<T>(
-    path: string,
-    params?: Record<string, string | number | boolean>,
-    perPage = 100,
-  ): Promise<T[]> {
-    const results: T[] = [];
-    let page = 1;
-    while (true) {
-      this.logger.debug(
-        `fetchAllPages: GET ${path} page=${page} per_page=${perPage} (connection: ${this.connection.id})`,
-      );
-      const batch = await this.httpClient.get<T[]>(path, { ...params, per_page: perPage, page });
-      results.push(...batch);
-      if (batch.length < perPage) break;
-      if (page >= FETCH_ALL_MAX_PAGES) {
-        this.logger.warn(
-          `fetchAllPages: hit MAX_PAGES (${FETCH_ALL_MAX_PAGES}) for ${path} ` +
-            `(connection: ${this.connection.id}) — catalog may be truncated`,
-        );
-        break;
-      }
-      page++;
-    }
-    return results;
-  }
 
   // ─── Read methods ──────────────────────────────────────────────────────────
 
@@ -264,8 +228,10 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     );
 
     // Exhaust all pages — products with >100 variations exist (configurable products, apparel).
-    const variations = await this.fetchAllPages<WooCommerceProductVariation>(
+    const variations = await fetchAllPages<WooCommerceProductVariation>(
       `/wp-json/wc/v3/products/${wcId}/variations`,
+      this.httpClient,
+      this.logger,
     );
 
     const validVariations = variations.filter(
@@ -338,8 +304,10 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
   async getCategories(): Promise<Category[]> {
     this.logger.debug(`Getting all categories (connection: ${this.connection.id})`);
-    const raw = await this.fetchAllPages<WooCommerceProductCategory>(
+    const raw = await fetchAllPages<WooCommerceProductCategory>(
       '/wp-json/wc/v3/products/categories',
+      this.httpClient,
+      this.logger,
     );
     return raw
       .filter(
