@@ -106,5 +106,6 @@ One pointer per section, identical format every time.
 | [ADR-014](./014-source-authoritative-order-pricing.md) | Source-authoritative order pricing | Proposed | 2026-05-30 |
 | [ADR-015](./015-inbound-event-routing-capability-translated.md) | Capability-driven, plugin-translated inbound webhook event routing | Accepted | 2026-05-30 |
 | [ADR-017](./017-cross-origin-order-reingestion-guard.md) | Skip re-ingestion of orders re-read from a destination connection | Accepted | 2026-06-01 |
+| [ADR-018](./018-soap-transport-for-dpd-polska.md) | SOAP transport for the DPD Polska integration | Proposed | 2026-06-02 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
