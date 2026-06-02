@@ -24,11 +24,16 @@ import { WooCommerceOrdersConfigDto } from './woocommerce-orders-config.dto';
  * Returns true when the hostname resolves to a private, link-local, or
  * RFC-1918 address that must not be reached by outbound OL requests.
  *
- * localhost / 127.x is intentionally ALLOWED — needed for local dev where
- * a WooCommerce container runs on the same machine as the OL API server.
+ * Loopback is intentionally ALLOWED for local development:
+ *   - 127.x  (IPv4 loopback)
+ *   - localhost  (hostname — may resolve to 127.0.0.1 or ::1)
+ *   - ::1  (IPv6 loopback)
+ * All three forms let operators point OL at a WooCommerce container on
+ * the same machine without a reverse proxy. In production these addresses
+ * cannot be routed to from the public internet.
  *
  * Bypass patterns caught explicitly (verified via validator.js):
- *   - Hex notation  0xc0a80001  → @IsUrl accepts, IP regex returns 0 → caught here
+ *   - Hex notation  0xc0a80001  → @IsUrl accepts, isIP() returns 0 → caught here
  *   - IPv4-mapped   ::ffff:10.0.0.1 → @IsUrl accepts, simple IPv6 check misses → caught here
  */
 function isPrivateOrLinkLocalIp(hostname: string): boolean {
@@ -57,7 +62,11 @@ function isPrivateOrLinkLocalIp(hostname: string): boolean {
   );
 }
 
-const BLOCKED_HOSTNAMES = new Set(['metadata.google.internal', 'metadata.internal']);
+const BLOCKED_HOSTNAMES = new Set([
+  'metadata.google.internal', // GCP IMDS
+  'metadata.internal',        // GCP (alternate)
+  'metadata.azure.com',       // Azure IMDS hostname
+]);
 
 @ValidatorConstraint({ name: 'isSsrfSafeUrl', async: false })
 export class IsSsrfSafeUrlConstraint implements ValidatorConstraintInterface {
@@ -91,7 +100,7 @@ export class IsSsrfSafeUrlConstraint implements ValidatorConstraintInterface {
 }
 
 export class WooCommerceConnectionConfigDto {
-  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['http', 'https'] })
+  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   @Validate(IsSsrfSafeUrlConstraint)
   siteUrl!: string;
 
