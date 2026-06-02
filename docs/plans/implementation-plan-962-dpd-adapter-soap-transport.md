@@ -5,35 +5,40 @@
 **Issue**: [#962](https://github.com/openlinker-project/openlinker/issues/962) (Part of [#961](https://github.com/openlinker-project/openlinker/issues/961))
 **Spec**: [`docs/specs/product-spec-961-dpd-polska-shipping.md`](../specs/product-spec-961-dpd-polska-shipping.md)
 **Plan branch**: `962-dpd-soap-plan` · **Implementation branch (later)**: `962-dpd-adapter-soap-transport`
-**Estimated Effort**: L (~2 weeks), spike-first
+**Estimated Effort**: L (~1.5–2 weeks), spike-first
 
-> **Revision note (post-`/tech-review`):** COD (in scope per spec + customer)
-> cannot be delivered as an integration-only change — the core
-> `GenerateLabelCommand` carries no COD field, so the adapter can't receive the
-> amount. #962 is therefore re-classified **CORE + Integration**: it extends the
-> core command + dispatch to thread COD, then implements the adapter. Also fixed:
-> `getTracking` coarse contract, scaffolder usage, gram→kg conversion, and the
-> SOAP business-status check. WSDL op list verified in full (§4).
+> **Revision note (post-`/tech-review`):** COD (in scope per spec + customer) needs
+> a COD field on the command — the core `GenerateLabelCommand` has none, so the
+> adapter can't receive the amount. A code check of `ShipmentDispatchInput`
+> (`Omit<GenerateLabelCommand,…>` + "caller owns the label payload") shows the fix
+> is **small and additive**: a typed `cod?` on the command (auto-flows into the
+> dispatch input) + a one-line pass-through in the dispatch service, mirroring how
+> `recipient`/`parcel` are handled — **not** order-sourcing logic. #962 is
+> CORE + Integration, but the CORE part is ~3 tiny edits. Also fixed: `getTracking`
+> coarse contract, scaffolder usage, gram→kg conversion, SOAP business-status
+> check. Full WSDL op list verified (§4).
 
 ---
 
 ## 1. Task Summary
 
-**Objective**: Build the `@openlinker/integrations-dpd-polska` plugin package — the foundation of the DPD Polska integration — implementing **courier-to-door label generation + COD** on the seller's own DPD contract, behind `ShippingProviderManagerPort` + `LabelDocumentReader`. Thread the COD amount from the order through the core dispatch command so the adapter can submit it.
+**Objective**: Build the `@openlinker/integrations-dpd-polska` plugin package — the foundation of the DPD Polska integration — implementing **courier-to-door label generation + COD** on the seller's own DPD contract, behind `ShippingProviderManagerPort` + `LabelDocumentReader`. Add a typed optional `cod` to the core command so a caller can thread the COD amount to the adapter.
 
 **Context**: DPD is the customer-pulled second OL-managed carrier after InPost (#727). It slots into the shipping context like InPost, with two structural differences: (1) DPD Polska's `DPDPackageObjServices` API is **SOAP/WSDL**; (2) its label flow is **two calls** (create package → render label) where InPost is one REST POST.
 
-**Classification**: **CORE + Integration.** The bulk is a new Integration package, but COD requires a small, additive CORE change (a typed optional field on `GenerateLabelCommand` + dispatch population). No DB migration.
+**Classification**: **CORE + Integration.** The bulk is a new Integration package; COD adds a small additive CORE change (a typed optional command field + a one-line dispatch pass-through). No DB migration.
 
 ---
 
 ## 2. Scope & Non-Goals
 
 ### In Scope
-**CORE (additive, COD plumbing):**
-- Extend `GenerateLabelCommand` (`libs/core/src/shipping/domain/types/generate-label.types.ts`) with a typed optional `cod?: ShipmentCod` field — the file header sanctions exactly this ("add a typed optional field here… never an untyped bag"). `ShipmentCod = { amount: string; currency: string }` in a new `*.types.ts`.
-- Populate it in `ShipmentDispatchService` (`libs/core/src/shipping/application/services/shipment-dispatch.service.ts`) from the order's COD data (see prerequisite below).
-- **Prerequisite verification:** confirm the order snapshot / `ShipmentDispatchInput` actually carries COD (is-COD + amount + currency). If it does not, sourcing it is an additional upstream step (orders context) that must be settled before the dispatch can populate the field — flagged as OQ-0.
+**CORE (additive, COD field — ~3 tiny edits):**
+- `ShipmentCod` type (`{ amount: string; currency: string }`) in a new `*.types.ts`.
+- `GenerateLabelCommand.cod?: ShipmentCod` (`libs/core/src/shipping/domain/types/generate-label.types.ts`) — the file header sanctions exactly this ("add a typed optional field here… never an untyped bag"). It **auto-flows into `ShipmentDispatchInput`** via that type's existing `Omit<GenerateLabelCommand,…>`.
+- One **pass-through** line in `ShipmentDispatchService` (`…/application/services/shipment-dispatch.service.ts`): `cod: input.cod`, mirroring how `recipient`/`parcel` are passed. **No order-sourcing** — the dispatch seam is *caller-owns-payload* by design; the COD amount is caller-supplied just like `recipient`/`parcel`.
+
+> **COD ownership note:** the order already carries the COD signal (`PaymentStatus = 'cod'`, `orders/domain/types/payment-status.types.ts`). The COD **amount** is supplied by the **caller** of `dispatch` (the operator-facing generate-label flow / controller), exactly as `recipient`/`parcel` are. So #962 delivers the **backend capability + pass-through + adapter mapping**; wiring the operator-facing COD input is **#966 (FE)**. #962's COD is provable via unit test (command `cod` → `services.cod`) + the manual spike.
 
 **Integration (`libs/integrations/dpd-polska/`):**
 - SOAP transport (`IDpdSoapClient`) — hand-rolled SOAP 1.1 envelopes via `fast-xml-parser` `XMLBuilder`, response parse via `XMLParser`.
@@ -42,39 +47,39 @@
   - `fetchLabel` → `generateSpedLabelsV1` (render) → base64 PDF → `LabelDocument`.
   - `getSupportedMethods()` → `['kurier']`.
   - `getTracking` → **see §6 coarse-contract decision** (does *not* fabricate `in-transit`).
-- **COD** mapped into `OpenUMLFeV1.services.cod` from the new command field.
+- **COD** mapped into `openUMLFeV1.services.cod` from `cmd.cod`.
 - Config DTO + `ConnectionConfigShapeValidatorPort`; credentials (login + masterFID + password) enforced at factory construction.
 - Manifest `dpd.polska.webservice.v1`, plugin descriptor, **API** host registration (`apps/api/src/plugins.ts` + jest-integration mapper).
 - ADR-018 (SOAP transport pattern).
-- Unit tests: soap client, mapper, adapter, config validator, **+ a core dispatch test for COD population**.
+- Unit tests: soap client, mapper, adapter, config validator, **+ a core dispatch test for the COD pass-through**.
 
 ### Out of Scope (other #961 children)
 - DPD Pickup points / `PickupPointFinder` (#963).
 - Bulk labels + handover protocol (#964).
 - Real tracking via DPDInfoServices + worker registration (#965).
-- FE connection form + panel affordances (#966).
+- FE connection form + **operator-facing COD-amount input** + panel affordances (#966).
 - Label cancel/re-issue — **confirmed: no cancel op in `DPDPackageObjServices`** (§4); re-issue = new shipment.
 
 ### Constraints
-- CORE change is **additive only** (optional field) — no breaking change to existing adapters (InPost/Allegro ignore `cod`).
-- `fast-xml-parser` is already a repo dependency (`libs/integrations/prestashop`) — no new dependency category.
+- CORE change is **additive only** (optional field + pass-through) — InPost/Allegro ignore `cod`; no breaking change.
+- `fast-xml-parser` already a repo dependency (`libs/integrations/prestashop`) — no new dependency category.
 - Production WSDL host unconfirmed until contract signing; sandbox is the dev target.
 
 ---
 
 ## 3. Architecture Mapping
 
-**Target Layers**: CORE (`libs/core/src/shipping/` — command type + dispatch) + Integration (`libs/integrations/dpd-polska/`).
+**Target Layers**: CORE (`libs/core/src/shipping/` — command field + dispatch pass-through) + Integration (`libs/integrations/dpd-polska/`).
 
 **Capabilities Involved**: `ShippingProviderManagerPort` (base) + `LabelDocumentReader` — from `@openlinker/core/shipping`.
 
-**Existing Services Reused** (otherwise unchanged): `ShipmentDispatchService` (gets the COD-population edit), `ShipmentLabelService`, `CredentialsResolverPort`, `ConnectionConfigShapeValidatorRegistryService`, `createNestAdapterModule` + `dispatchCapability`.
+**Existing Services Reused** (otherwise unchanged): `ShipmentDispatchService` (one-line `cod` pass-through), `ShipmentLabelService`, `CredentialsResolverPort`, `ConnectionConfigShapeValidatorRegistryService`, `createNestAdapterModule` + `dispatchCapability`.
 
 **New Components**:
-- **CORE**: `ShipmentCod` type; `GenerateLabelCommand.cod?`; dispatch population.
+- **CORE**: `ShipmentCod` type; `GenerateLabelCommand.cod?`; dispatch pass-through line.
 - **Integration**: `dpd-plugin.ts`, `dpd-integration.module.ts`, `dpd-adapter.factory.ts`, `dto/dpd-connection-config.dto.ts`, `types/{dpd-config,dpd-credentials,dpd-soap}.types.ts`, `exceptions/{dpd-config,dpd-unauthorized,dpd-network}.exception.ts`, `adapters/{dpd-shipping.adapter.ts, dpd-connection-config-shape-validator.adapter.ts}`, `soap/{dpd-soap-client.interface.ts, dpd-soap-client.ts}`, `mappers/dpd-openumlf.mapper.ts`.
 
-**Core vs Integration Justification**: COD is a **carrier-neutral** shipment concept (every PL courier offers pobranie), so it belongs on the canonical command, not behind a per-adapter escape hatch — consistent with how `recipient`/`parcel` were added for InPost (#764, per the type file's own header). SOAP envelopes / `OpenUMLFeV1` / DPD's COD element stay entirely in the integration.
+**Core vs Integration Justification**: COD is a **carrier-neutral** shipment concept (every PL courier offers pobranie), so it belongs on the canonical command, not behind a per-adapter escape hatch — consistent with how `recipient`/`parcel` were added for InPost (#764, per the type file's own header). SOAP envelopes / `openUMLFeV1` / DPD's COD element stay entirely in the integration.
 
 ---
 
@@ -93,7 +98,7 @@
 `generatePackagesNumbersV1–V10`, `generateSpedLabelsV1–V4`, `generateShipmentV1/V2`, `generateProtocolV1/V2`, `generateProtocolsWithDestinationsV1/V2`, `generateReturnPackages`, `generateReturnLabelV1`, `generateDomesticReturnLabelV1`, `generateInternationalPackageNumbersV1`, `generateDropOffPinV1`, `packagesPickupCallV1–V4`, `appendParcelsToPackageV1/V2`, `getCourierOrderAvailabilityV1`, `findPostalCodeV1`, `importDeliveryBusinessEventV1`.
 - **No cancel/withdraw/delete operation** → cancel is genuinely unavailable (validates the out-of-scope call).
 - **No tracking/events/status operation** in *this* service → tracking lives in the separate **`DPDInfoServices`** WSDL (`getEventsForWaybill*`), which is #965.
-- **`generateShipmentV1/V2`** is a possible **single-call** create+label alternative to the two-step flow — evaluate in the Phase 0 spike; if it returns the label PDF in one round-trip it may simplify `generateLabel` (with `fetchLabel` still re-rendering via `generateSpedLabels`). Default remains the proven two-step unless the spike shows the single-call is cleaner.
+- **`generateShipmentV1/V2`** is a possible **single-call** create+label alternative to the two-step flow — evaluate in the Phase 0 spike; default remains the proven two-step unless the spike shows the single-call is cleaner.
 
 Sources: live WSDL + `?xsd=…schema1.xsd`; reference clients [dbojdo/dpd-client](https://github.com/dbojdo/dpd-client), [t3ko/dpd-pl-api-php](https://github.com/t3ko/dpd-pl-api-php), [msztorc/php-dpd-api](https://github.com/msztorc/php-dpd-api). Full evidence in spec §4.
 
@@ -101,17 +106,19 @@ Sources: live WSDL + `?xsd=…schema1.xsd`; reference clients [dbojdo/dpd-client
 - **Adapter scaffolder** `scripts/create-adapter.mjs` (14-file template set, drift-guarded by `check-create-adapter.mjs`) — the blessed starting point for a new adapter package. Start there, then layer SOAP-specific files on top.
 - **InPost package** (`libs/integrations/inpost/`) — closest behavioural template (factory, client-behind-interface, adapter implementing port + capabilities, config DTO + validator, manifest + descriptor).
 - **PrestaShop XML** (`libs/integrations/prestashop/src/infrastructure/http/`) — `XMLBuilder` (`prestashop-webservice.client.ts:115`), `XMLParser` (`prestashop-response.parser.ts:20`). The DPD SOAP client copies this usage shape.
+- **`ShipmentDispatchInput`** (`…/application/types/shipment-dispatch.types.ts`) — `Omit<GenerateLabelCommand,…>`; its header documents the *caller-owns-payload* contract that makes COD a pass-through, not order-sourced.
 
 ---
 
 ## 5. Questions & Assumptions
 
-### Open Questions (resolve in the spike / prerequisite — do not block planning)
-- **OQ-0 (new, gating COD)**: does the order snapshot / `ShipmentDispatchInput` already carry COD (is-COD + amount + currency)? If not, sourcing it is an upstream orders-context step that precedes the dispatch population.
+### Open Questions (resolve in the spike — none block planning)
 - **OQ-1**: exact `serviceCurrencyEnum` values (PLN at least) — confirm from the XSD enum.
 - **OQ-2**: does `generateShipmentV1/V2` return the label in one call (single-call path)? Spike.
 - **OQ-3**: SOAP 1.1 envelope namespaces / element ordering — confirm against live WSDL in the spike.
 - **OQ-4**: production WSDL host (`dpdservices.dpd.com.pl` inferred) — confirm at contract signing.
+
+> **Resolved (was OQ-0):** "does the order carry COD for dispatch to source?" — moot. The dispatch seam is *caller-owns-payload* (recipient/parcel aren't order-derived either), so COD is caller-supplied; the dispatch service only passes `input.cod` through. The order already exposes `PaymentStatus = 'cod'` for the caller to key on. No orders-context change in #962.
 
 ### Assumptions
 - `labelPdfRef` is a **locator string**, not stored bytes (InPost precedent — no blob store in core). For DPD: store the waybill/package id; `fetchLabel` re-renders via `generateSpedLabelsV1`.
@@ -125,16 +132,16 @@ Sources: live WSDL + `?xsd=…schema1.xsd`; reference clients [dbojdo/dpd-client
 ## 6. Proposed Implementation Plan
 
 ### Phase 0 — Sandbox spike (de-risk SOAP before hardening)
-1. **Throwaway spike** against `dpdservicesdemo.dpd.com.pl` (public creds `test`/`1495`/`KqvsoFLT2M`): build `generatePackagesNumbersV1` (plain + COD), feed parcel ref into `generateSpedLabelsV1` → decode `documentData` → PDF. Also probe `generateShipmentV1` to evaluate the single-call path (OQ-2).
-   - **Acceptance**: valid PDF for a plain *and* a COD shipment; the exact COD element path, `serviceCurrencyEnum`, and the per-parcel `status` shape on both success and a deliberately-invalid request are captured. Spike code is NOT merged.
+1. **Throwaway spike** against `dpdservicesdemo.dpd.com.pl` (public creds `test`/`1495`/`KqvsoFLT2M`): build `generatePackagesNumbersV1` (plain + COD), feed parcel ref into `generateSpedLabelsV1` → decode `documentData` → PDF. Also probe `generateShipmentV1` (OQ-2).
+   - **Acceptance**: valid PDF for a plain *and* a COD shipment; the exact COD element path, `serviceCurrencyEnum`, and the per-parcel `status` shape on success and on a deliberately-invalid request are captured. Spike code is NOT merged.
 
-### Phase 1 — CORE: COD on the command (additive)
-2. **Verify the COD source (OQ-0)** on the order snapshot / dispatch input. If absent, add it (orders context) first.
-3. **`ShipmentCod` type + `GenerateLabelCommand.cod?`** in `libs/core/src/shipping/domain/types/`. Populate in `ShipmentDispatchService`. Unit-test the dispatch populates `cod` for a COD order and leaves it `undefined` otherwise.
-   - **Acceptance**: existing InPost/Allegro dispatch unaffected (field optional); core unit + (if touched) the shipping int-spec still green.
+### Phase 1 — CORE: COD field on the command (additive, ~3 edits)
+2. **`ShipmentCod` type + `GenerateLabelCommand.cod?`** in `libs/core/src/shipping/domain/types/`. It auto-flows into `ShipmentDispatchInput`.
+3. **One pass-through line** in `ShipmentDispatchService` (`cod: input.cod`, beside `recipient`/`parcel`). Unit-test it forwards `cod` when present and `undefined` otherwise. **No order-sourcing logic.**
+   - **Acceptance**: existing InPost/Allegro dispatch unaffected (field optional); core unit + shipping int-spec still green.
 
 ### Phase 2 — Integration: package scaffold + SOAP transport
-4. **Scaffold** via `node scripts/create-adapter.mjs dpd-polska` (the blessed 14-file skeleton), then add the SOAP-specific files. Deviations from the scaffold noted in the PR.
+4. **Scaffold** via `node scripts/create-adapter.mjs dpd-polska` (the blessed 14-file skeleton), then add the SOAP-specific files. Deviations noted in the PR.
 5. **SOAP types** (`dpd-soap.types.ts`) typed from the XSD; **domain exceptions** (`dpd-{config,unauthorized,network}.exception.ts`) mirroring InPost.
 6. **`IDpdSoapClient` + `DpdSoapClient`**: `XMLBuilder` envelope (auth + op body), native `fetch` POST with `SOAPAction`, `XMLParser` parse. Map: SOAP `Fault` **and** non-OK `Status` → `ShippingProviderRejectionException('dpd', code, msg, details)`; 401/403 → `DpdUnauthorizedException`; network/timeout → `DpdNetworkException`. Retry loop + 30 s timeout (InPost constants).
    - **Acceptance**: unit tests build a known envelope, parse a canned success, and map a canned SOAP fault → exception.
@@ -168,6 +175,7 @@ The adapter receives only `{ providerShipmentId }` and has no real tracking sour
 
 - **A full SOAP library (`soap` / `strong-soap`)** — rejected (boot-time WSDL parse / heavy dep for ~3 ops). Hand-rolled + `fast-xml-parser` (already in tree). ADR-018.
 - **COD via an untyped `platformParams` bag on the command** — rejected; the command type's header mandates a typed optional field. `cod?: ShipmentCod` is the sanctioned shape.
+- **Sourcing COD in `ShipmentDispatchService` from the order** — rejected; contradicts the seam's *caller-owns-payload* contract (recipient/parcel aren't order-sourced either). COD is caller-supplied.
 - **Eager PDF storage in `generateLabel`** — rejected; no blob store, `labelPdfRef` is a locator, `fetchLabel` re-renders (InPost precedent).
 - **A new core `SoapShippingPort`** — rejected; SOAP is transport, not capability.
 
@@ -176,11 +184,11 @@ The adapter receives only `{ providerShipmentId }` and has no real tracking sour
 ## 8. Validation & Risks
 
 ### Architecture Compliance
-- ✅ CORE change is additive + carrier-neutral (matches the `recipient`/`parcel` precedent); no breaking change.
+- ✅ CORE change is additive + carrier-neutral (matches the `recipient`/`parcel` precedent); no breaking change; no order-sourcing.
 - ✅ Integration implements existing ports; barrel-only imports; errors map to the shared `ShippingProviderRejectionException`.
 
 ### Risks
-- **COD source on the order (OQ-0)** — if the snapshot doesn't carry COD, scope grows into orders. **Mitigation**: verify first (Phase 1 step 2); if missing, treat as a prerequisite sub-task and flag to the maintainer before building the adapter.
+- **End-to-end COD needs #966** — #962 ships the backend capability + pass-through, but the operator-facing COD-amount input is wired in #966 (FE). #962 proves COD via unit test + the manual spike, not via the live operator flow. Flag so "COD done in #962" isn't over-claimed.
 - **SOAP envelope fidelity** — Phase 0 spike against the live WSDL before hardening.
 - **DPD returns business failures in the response `status`, not SOAP faults** — the adapter must check `parcels[].status` (Phase 3 step 8); a missed check would surface as silent label failure. Covered by a dedicated test.
 - **Unit mismatch (grams vs kg)** — explicit conversion + test (Phase 3 step 7).
@@ -195,7 +203,7 @@ The adapter receives only `{ providerShipmentId }` and has no real tracking sour
 ## 9. Testing Strategy & Acceptance Criteria
 
 ### Unit Tests
-- **Core**: `shipment-dispatch.service.spec.ts` — dispatch populates `cod` for a COD order, leaves it `undefined` otherwise.
+- **Core**: `shipment-dispatch.service.spec.ts` — dispatch forwards `cod` when present, leaves it `undefined` otherwise (pass-through, no derivation).
 - `dpd-soap-client.spec.ts` — envelope build, success parse, SOAP-fault → rejection, 401 → unauthorized, timeout → network, retry-on-transient.
 - `dpd-openumlf.mapper.spec.ts` — plain + COD mapping; grams→kg + cm conversion; base64 → `Uint8Array`.
 - `dpd-shipping.adapter.spec.ts` — `generateLabel` happy/COD, **non-OK parcel status → rejection**, `fetchLabel`, `getSupportedMethods`, `getTracking` throws typed unavailable (mock `IDpdSoapClient`).
@@ -207,7 +215,7 @@ The adapter receives only `{ providerShipmentId }` and has no real tracking sour
 ### Acceptance Criteria (issue #962)
 - [ ] Operator creates a "DPD Polska" connection; connection-test reaches the web service.
 - [ ] Courier label generates → downloadable PDF; shipment `generated`.
-- [ ] COD order threads the amount (core command → adapter → `services.cod`); DPD COD/validation errors surface verbatim.
+- [ ] COD threads through the command (`cmd.cod` → `services.cod`) and is provable by unit test; DPD COD/validation errors surface verbatim. (Operator-facing COD-amount input is #966.)
 - [ ] Invalid recipient data rejected pre-submission.
 - [ ] `pnpm lint` / `type-check` / unit tests green; jest-integration mapper added; `check-create-adapter` invariant satisfied.
 - [ ] **Manual (pre-merge):** live sandbox round-trip produces a real PDF for a plain + a COD shipment.
@@ -217,7 +225,7 @@ The adapter receives only `{ providerShipmentId }` and has no real tracking sour
 ## 10. Alignment Checklist
 
 - [x] Follows hexagonal architecture (integration implements core ports; additive core change)
-- [x] CORE vs Integration boundary honoured + justified (COD is carrier-neutral)
+- [x] CORE vs Integration boundary honoured + justified (COD is carrier-neutral; caller-owns-payload)
 - [x] Uses existing patterns (scaffolder, InPost layout, PrestaShop `fast-xml-parser`, plugin-sdk)
 - [x] Idempotency considered (best-effort core pre-check; double-COD risk noted)
 - [x] Rate limits & retries addressed (retry loop + timeout)
