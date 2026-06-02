@@ -46,7 +46,29 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       : '';
     const separator = qs ? (path.includes('?') ? '&' : '?') : '';
     const url = `${this.siteUrl}${path}${separator}${qs}`;
+    return this.request<T>('GET', url);
+  }
 
+  async post<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('POST', url, body);
+  }
+
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('PUT', url, body);
+  }
+
+  async delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
+    const qs = params
+      ? new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    const separator = qs ? (path.includes('?') ? '&' : '?') : '';
+    const url = `${this.siteUrl}${path}${separator}${qs}`;
+    return this.request<T>('DELETE', url);
+  }
+
+  private async request<T>(method: string, url: string, body?: unknown): Promise<T> {
     let delay = this.retryConfig.initialDelayMs;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
@@ -54,12 +76,18 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
       try {
+        const headers: Record<string, string> = {
+          Authorization: this.buildAuthHeader(),
+          Accept: 'application/json',
+        };
+        if (body !== undefined) {
+          headers['Content-Type'] = 'application/json';
+        }
+
         const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Authorization: this.buildAuthHeader(),
-            Accept: 'application/json',
-          },
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
           signal: controller.signal,
         });
 

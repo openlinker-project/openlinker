@@ -1,10 +1,11 @@
 /**
  * WooCommerce Product Master Adapter
  *
- * Implements the read half of ProductMasterPort for WooCommerce REST API v3.
- * Write methods (createProduct, updateProduct, deleteProduct,
- * upsertProductVariant, assignCategories) throw WooCommerceNotSupportedException
- * and are deferred to #879.
+ * Implements ProductMasterPort for WooCommerce REST API v3.
+ * Read methods (#874): getProduct, getProducts, getProductVariants,
+ *   getProductCategories, getCategories, searchProducts, listExternalIds.
+ * Write methods (#879): createProduct, updateProduct, deleteProduct,
+ *   upsertProductVariant, assignCategories.
  *
  * Pagination: single-page fetch consistent with PrestashopProductMasterAdapter.
  * The caller (master-product-sync-all.handler.ts) drives the loop via
@@ -12,10 +13,9 @@
  * using page = Math.floor(offset / perPage) + 1.
  *
  * 404 handling: WooCommerceHttpClient throws WooCommerceHttpResponseException(404)
- * for not-found responses. Adapter catches and rethrows as
- * WooCommerceResourceNotFoundException with full entity context (entityType,
- * OL internal ID, connectionId) — consistent with PrestashopResourceNotFoundException
- * at the PS adapter boundary.
+ * for not-found responses. All read and write methods catch and rethrow as
+ * WooCommerceResourceNotFoundException with full entity context — consistent
+ * boundary contract across the adapter.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-master
  * @implements {ProductMasterPort}
@@ -36,12 +36,13 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
-import { WooCommerceNotSupportedException } from '../../../domain/exceptions/woocommerce-not-supported.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
   WooCommerceProductCategory,
+  WooCommerceProductWriteRequest,
+  WooCommerceVariationWriteRequest,
 } from './woocommerce-product.types';
 
 // Safety cap for fetchAllPages: 500 pages × 100 items = 50,000 items max.
@@ -91,7 +92,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     return results;
   }
 
-  // ─── Port methods ──────────────────────────────────────────────────────────
+  // ─── Read methods ──────────────────────────────────────────────────────────
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
     this.logger.debug(
@@ -357,45 +358,234 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     return this.getProducts({ ...filters, query });
   }
 
-  // ─── Write stubs (deferred to #879) ───────────────────────────────────────
+  // ─── Write methods ─────────────────────────────────────────────────────────
 
-  createProduct(_product: ProductCreate): Promise<Product> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('createProduct', 'Use the WooCommerce admin or #879'),
+  async createProduct(product: ProductCreate): Promise<Product> {
+    this.logger.debug(`Creating product: ${product.sku} (connection: ${this.connection.id})`);
+    const payload: WooCommerceProductWriteRequest = {
+      name: product.name,
+      sku: product.sku,
+      ...(product.description !== undefined ? { description: product.description } : {}),
+      regular_price: String(product.price),
+      ...(product.weight !== undefined ? { weight: String(product.weight) } : {}),
+    };
+    const raw = await this.httpClient.post<WooCommerceProduct>('/wp-json/wc/v3/products', payload);
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      String(raw.id),
+      this.connection.id,
     );
+    return { ...this.mapper.mapProduct(raw), id: internalId };
   }
 
-  updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('updateProduct', 'Use the WooCommerce admin or #879'),
+  async updateProduct(productId: string, product: ProductUpdate): Promise<Product> {
+    this.logger.debug(`Updating product: ${productId} (connection: ${this.connection.id})`);
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
     );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    const wcId = mapping.externalId;
+    const payload: WooCommerceProductWriteRequest = {};
+    if (product.name !== undefined) payload.name = product.name;
+    if (product.sku !== undefined) payload.sku = product.sku;
+    if (product.description !== undefined) payload.description = product.description;
+    if (product.price !== undefined) payload.regular_price = String(product.price);
+    if (product.weight !== undefined) payload.weight = String(product.weight);
+
+    let raw: WooCommerceProduct;
+    try {
+      raw = await this.httpClient.put<WooCommerceProduct>(
+        `/wp-json/wc/v3/products/${wcId}`,
+        payload,
+      );
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${wcId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
+    return { ...this.mapper.mapProduct(raw), id: productId };
   }
 
-  deleteProduct(_productId: string): Promise<void> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('deleteProduct', 'Use the WooCommerce admin or #879'),
+  async deleteProduct(productId: string): Promise<void> {
+    this.logger.debug(`Deleting product: ${productId} (connection: ${this.connection.id})`);
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
     );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    try {
+      await this.httpClient.delete(`/wp-json/wc/v3/products/${mapping.externalId}`);
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        // Product is already trashed/deleted — caller's intent is satisfied.
+        return;
+      }
+      throw err;
+    }
   }
 
-  upsertProductVariant(
-    _productId: string,
-    _variant: ProductVariantCreate,
-  ): Promise<ProductVariant> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException(
-        'upsertProductVariant',
-        'Use the WooCommerce admin or #879',
-      ),
+  async upsertProductVariant(productId: string, variant: ProductVariantCreate): Promise<ProductVariant> {
+    this.logger.debug(
+      `Upserting variant sku=${variant.sku} for product: ${productId} (connection: ${this.connection.id})`,
     );
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    const wcId = mapping.externalId;
+
+    let variations: WooCommerceProductVariation[];
+    try {
+      variations = await this.httpClient.get<WooCommerceProductVariation[]>(
+        `/wp-json/wc/v3/products/${wcId}/variations`,
+        { per_page: 100 },
+      );
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${wcId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
+
+    if (variations.length >= 100) {
+      this.logger.warn(
+        `upsertProductVariant: variations list saturated at 100 for product ${wcId} ` +
+          `(connection: ${this.connection.id}) — SKU lookup may be incomplete`,
+      );
+    }
+
+    const varPayload: WooCommerceVariationWriteRequest = {
+      sku: variant.sku,
+      ...(variant.price !== undefined ? { regular_price: String(variant.price) } : {}),
+      ...(variant.weight !== undefined ? { weight: String(variant.weight) } : {}),
+      ...(variant.attributes
+        ? {
+            attributes: Object.entries(variant.attributes).map(([name, option]) => ({
+              name,
+              option,
+            })),
+          }
+        : {}),
+    };
+
+    const variantContext = {
+      parentEntityType: CORE_ENTITY_TYPE.Product,
+      parentInternalId: productId,
+    };
+
+    const existing = variations.find((v) => v.sku === variant.sku);
+
+    if (existing) {
+      const varId = existing.id;
+      let raw: WooCommerceProductVariation;
+      try {
+        raw = await this.httpClient.put<WooCommerceProductVariation>(
+          `/wp-json/wc/v3/products/${wcId}/variations/${String(varId)}`,
+          varPayload,
+        );
+      } catch (err) {
+        if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+          throw new WooCommerceResourceNotFoundException(
+            `WooCommerce variation ${String(varId)} not found (deleted?)`,
+            CORE_ENTITY_TYPE.ProductVariant,
+            String(varId),
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.ProductVariant,
+        String(raw.id),
+        this.connection.id,
+        { ...variantContext, metadata: { variantExternalId: String(raw.id) } },
+      );
+      return { ...this.mapper.mapVariation(raw, productId), id: internalId };
+    }
+
+    // SKU not found — create new variation
+    const raw = await this.httpClient.post<WooCommerceProductVariation>(
+      `/wp-json/wc/v3/products/${wcId}/variations`,
+      varPayload,
+    );
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      String(raw.id),
+      this.connection.id,
+      { ...variantContext, metadata: { variantExternalId: String(raw.id) } },
+    );
+    return { ...this.mapper.mapVariation(raw, productId), id: internalId };
   }
 
-  assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException(
-        'assignCategories',
-        'Use the WooCommerce admin or #879',
-      ),
+  async assignCategories(productId: string, categoryIds: string[]): Promise<void> {
+    this.logger.debug(
+      `Assigning ${categoryIds.length} categories to product: ${productId} (connection: ${this.connection.id})`,
     );
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    try {
+      await this.httpClient.put(`/wp-json/wc/v3/products/${mapping.externalId}`, {
+        categories: categoryIds.map((id) => ({ id: Number(id) })),
+      });
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${mapping.externalId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────

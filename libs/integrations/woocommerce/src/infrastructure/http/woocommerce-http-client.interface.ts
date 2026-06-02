@@ -23,4 +23,37 @@ export interface IWooCommerceHttpClient {
    * @throws {WooCommerceNetworkException} on timeout or network error
    */
   get<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T>;
+
+  /**
+   * Perform a POST request against the WooCommerce REST API.
+   *
+   * @param path - URL path including the `/wp-json/wc/v3/...` prefix.
+   * @param body - Request body serialized as JSON.
+   * @throws {WooCommerceUnauthorizedException} on HTTP 401/403
+   * @throws {WooCommerceHttpResponseException} on HTTP 404 and other non-2xx
+   * @throws {WooCommerceNetworkException} on timeout or network error
+   */
+  post<T>(path: string, body: unknown): Promise<T>;
+
+  /**
+   * Perform a PUT request against the WooCommerce REST API.
+   *
+   * @param path - URL path including the `/wp-json/wc/v3/...` prefix.
+   * @param body - Request body serialized as JSON.
+   * @throws {WooCommerceUnauthorizedException} on HTTP 401/403
+   * @throws {WooCommerceHttpResponseException} on HTTP 404 and other non-2xx
+   * @throws {WooCommerceNetworkException} on timeout or network error
+   */
+  put<T>(path: string, body: unknown): Promise<T>;
+
+  /**
+   * Perform a DELETE request against the WooCommerce REST API.
+   *
+   * @param path - URL path including the `/wp-json/wc/v3/...` prefix.
+   * @param params - Optional query parameters (e.g. `{ force: true }`).
+   * @throws {WooCommerceUnauthorizedException} on HTTP 401/403
+   * @throws {WooCommerceHttpResponseException} on HTTP 404 and other non-2xx
+   * @throws {WooCommerceNetworkException} on timeout or network error
+   */
+  delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T>;
 }
