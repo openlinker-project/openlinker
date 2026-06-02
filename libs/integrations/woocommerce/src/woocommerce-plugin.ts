@@ -25,6 +25,7 @@ import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/produ
 import { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
+import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
 
 /**
  * Static plugin manifest (#575).
@@ -38,7 +39,7 @@ import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-con
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -100,7 +101,14 @@ export function createWooCommercePlugin(): AdapterPlugin {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
-            { ProductMaster: () => productMaster },
+            {
+              ProductMaster: () => productMaster,
+              InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
+                httpClient,
+                host.identifierMapping,
+                connection,
+              ),
+            },
             WOOCOMMERCE_BRAND,
           ),
         );
