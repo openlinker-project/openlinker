@@ -74,6 +74,10 @@ describe('woocommerceAdapterManifest', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('ProductMaster');
   });
 
+  it('should include InventoryMaster in supportedCapabilities (#875)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('InventoryMaster');
+  });
+
   it('should be marked as the default adapter for the platform', () => {
     expect(woocommerceAdapterManifest.isDefault).toBe(true);
   });
