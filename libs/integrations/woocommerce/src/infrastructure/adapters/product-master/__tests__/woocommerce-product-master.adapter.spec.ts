@@ -716,6 +716,7 @@ describe('WooCommerceProductMasterAdapter', () => {
       expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
     });
 
+
     it('should throw WooCommerceResourceNotFoundException when WC returns 404 on variations GET (parent deleted)', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
