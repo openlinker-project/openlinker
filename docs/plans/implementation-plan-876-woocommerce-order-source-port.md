@@ -64,7 +64,7 @@ GET /wp-json/wc/v3/orders/{id}
 | EventKey | `${id}:${status}` |
 | EventType | `cancelled/refunded/failed → cancelled`; `processing → paid` (always); `isNew → created`; else `updated` |
 | Cursor | `max(normGmt(date_modified_gmt, date_modified))` over ALL orders, before eventType filter |
-| `normGmt` | `domain/utils/woocommerce-utils.ts` — pure exported function; handles no-Z, empty-both-fields. Placed in `domain/utils/` (not `infrastructure/utils/`) because it has zero I/O and zero infrastructure deps — it is a pure date-string transformation reusable from any layer. Future adapters importing it from `domain/utils/` never violate dependency direction. |
+| `normGmt` | `infrastructure/utils/woocommerce-utils.ts` — pure exported function; handles no-Z, empty-both-fields. **Deviation from original plan**: the plan originally justified `domain/utils/` on grounds of zero I/O and zero infrastructure deps (safe from any layer). In practice, `normGmt` is only consumed by the order-source adapter (an infrastructure-layer class); colocating it in `infrastructure/utils/` keeps it closer to its only caller without violating any layer rule — infrastructure code is always free to import from infrastructure siblings. If a future pure-domain entity or application service needs it, the function can be moved to `domain/utils/` at that point. Tests at `infrastructure/utils/__tests__/woocommerce-utils.spec.ts`. |
 | `roundCurrency` | Module-level private in adapter file (Allegro pattern) |
 | Address mapping | `mapShippingAddress` / `mapBillingAddress` sharing `mapBaseAddress` — no `in` discrimination |
 | Mapping approach | Module-level private functions (no `IMapper` interface or mapper class). Matches Allegro `OrderSource` pattern. `#874` used a mapper class for `ProductMaster` because it has complex options and is injected independently; `OrderSource` mapping is simpler and adapter-internal. Note this in PR description. |
@@ -109,10 +109,8 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
 libs/integrations/woocommerce/src/
 │
 ├── domain/
-│   ├── types/
-│   │   └── woocommerce-orders-config.types.ts      WooCommerceOrdersConfig interface
-│   └── utils/
-│       └── woocommerce-utils.ts                    normGmt pure function
+│   └── types/
+│       └── woocommerce-orders-config.types.ts      WooCommerceOrdersConfig interface
 │
 ├── application/
 │   └── dto/
@@ -125,16 +123,14 @@ libs/integrations/woocommerce/src/
     │   └── __tests__/
     │       ├── woocommerce-order-source.adapter.spec.ts          16 cases
     │       └── woocommerce-auth-failure-classifier.adapter.spec.ts  3 cases
-    └── scheduler/
-        ├── woocommerce-scheduler-tasks.ts
+    ├── scheduler/
+    │   ├── woocommerce-scheduler-tasks.ts
+    │   └── __tests__/
+    │       └── woocommerce-scheduler-tasks.spec.ts  5 cases
+    └── utils/
+        ├── woocommerce-utils.ts                    normGmt pure function (see design decisions)
         └── __tests__/
-            └── woocommerce-scheduler-tasks.spec.ts  5 cases
-```
-
-Plus:
-```
-domain/utils/__tests__/
-    └── woocommerce-utils.spec.ts    4 cases
+            └── woocommerce-utils.spec.ts           4 cases
 ```
 
 **Not creating** (already in #874):
@@ -248,16 +244,19 @@ export interface WooCommerceConnectionConfig {
 
 ---
 
-### `woocommerce-utils.ts` (`domain/utils/`)
+### `woocommerce-utils.ts` (`infrastructure/utils/`)
+
+Note: originally planned for `domain/utils/` — moved to `infrastructure/utils/` because
+`normGmt` is only consumed by infrastructure-layer adapters. See design decisions table for rationale.
 
 ```typescript
 /**
  * WooCommerce Utilities
  *
  * Pure helper functions shared across WooCommerce adapters. No I/O, no
- * framework dependencies — safe to import from any layer.
+ * framework dependencies.
  *
- * @module libs/integrations/woocommerce/src/domain/utils
+ * @module libs/integrations/woocommerce/src/infrastructure/utils
  */
 
 /**
@@ -343,7 +342,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../domain/exceptions/woocommerce-resource-not-found.exception';
-import { normGmt } from '../../domain/utils/woocommerce-utils';
+import { normGmt } from '../utils/woocommerce-utils';
 import type { WooCommerceConnectionConfig } from '../../domain/types/woocommerce-config.types';
 import type {
   WooCommerceOrder, WooCommerceLineItem,
@@ -1021,7 +1020,7 @@ The `logger.warn` call immediately above this return already logs `err.message` 
 - [x] 404 uses `instanceof WooCommerceHttpResponseException` — internal import, not from barrel
 - [x] `WooCommerceResourceNotFoundException` reused — no redundant exception class
 - [x] No base class — all exceptions extend `Error` directly (per #874 convention)
-- [x] `normGmt` in `domain/utils/` — pure, no I/O, directly tested
+- [x] `normGmt` in `infrastructure/utils/` — pure, no I/O, directly tested (moved from planned `domain/utils/`; see design decisions)
 - [x] WC order types co-located with adapter in `infrastructure/adapters/order-source/`
 - [x] `mapShippingAddress`/`mapBillingAddress`/`mapBaseAddress` — typed, no `in` discrimination
 - [x] `getOrder` try/catch: 404 → `WooCommerceResourceNotFoundException`; others propagate
@@ -1037,8 +1036,8 @@ The `logger.warn` call immediately above this return already logs `err.message` 
 - [x] Data exposure: 3 tester spec cases confirm no internal details in `result.message`
 - [x] `supportedCapabilities` updated to `['ProductMaster', 'OrderSource']`
 - [x] `woocommerce-plugin.spec.ts` updated with 4 new assertions (auth classifier, scheduler, capability)
-- [x] `domain/utils/` placement justified — pure function, no I/O, no infrastructure deps, safe from any layer
+- [x] `infrastructure/utils/` placement — colocated with its only caller; pure function, no I/O; moveable to `domain/utils/` if future domain code needs it
 - [x] No mapper class — module-level private functions, matches Allegro `OrderSource` pattern; noted in PR description
-- [x] Adapter spec has 16 cases including `fromCursor` + empty response cursor stability
+- [x] Adapter spec has 19 cases (16 original + 3 added for productRef sku/id fallback coverage)
 - [x] No `any` types
 - [x] No `console.log`

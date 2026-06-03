@@ -93,9 +93,8 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       };
     });
 
-    const filtered = input.eventTypes
-      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
-      : items;
+    const { eventTypes } = input;
+    const filtered = eventTypes ? items.filter((i) => eventTypes.includes(i.eventType)) : items;
 
     return { items: filtered, nextCursor: nextCursor ?? input.fromCursor ?? null };
   }
