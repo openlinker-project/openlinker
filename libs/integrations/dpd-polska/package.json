@@ -1,0 +1,58 @@
+{
+  "name": "@openlinker/integrations-dpd-polska",
+  "version": "0.1.0",
+  "description": "DPD Polska (DPDServices REST) shipping adapter for OpenLinker",
+  "license": "Apache-2.0",
+  "author": "OpenLinker",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "require": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "jest --config ./jest.config.mjs",
+    "test:watch": "jest --watch --config ./jest.config.mjs",
+    "test:cov": "jest --coverage --config ./jest.config.mjs",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openlinker/core": "workspace:*",
+    "@openlinker/plugin-sdk": "workspace:*",
+    "@openlinker/shared": "workspace:*",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.1"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/jest": "29.5.12",
+    "@types/node": "20.11.30",
+    "@typescript-eslint/eslint-plugin": "7.3.1",
+    "@typescript-eslint/parser": "7.3.1",
+    "eslint": "8.57.0",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.2",
+    "typescript": "5.4.3"
+  }
+}
