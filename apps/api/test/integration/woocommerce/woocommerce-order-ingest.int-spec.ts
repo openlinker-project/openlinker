@@ -26,17 +26,24 @@ import {
 } from '../helpers/woocommerce-container.helper';
 import { createTestWooCommerceConnection } from '../helpers/woocommerce-connection.helper';
 import { drainProductSyncJobs } from '../helpers/woocommerce-sync.helper';
-import { installAllegroTestSourceStub } from '../helpers/allegro-test-source-stub.helper';
+import {
+  installAllegroTestSourceStub,
+  type AllegroTestSourceStub,
+} from '../helpers/allegro-test-source-stub.helper';
 import {
   ORDER_INGESTION_SERVICE_TOKEN,
   type IOrderIngestionService,
+  type IncomingOrder,
 } from '@openlinker/core/orders';
+// Static import — ConnectionOrmEntity is always needed in beforeAll setup
+import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
 describe('WooCommerce order ingest (#878)', () => {
   let harness: IntegrationTestHarness;
   let wc: WooCommerceTestContainer;
   let wcConnectionId: string;
   let allegroConnectionId: string;
+  let stub: AllegroTestSourceStub;
   let ingestService: IOrderIngestionService;
 
   beforeAll(async () => {
@@ -44,15 +51,12 @@ describe('WooCommerce order ingest (#878)', () => {
     wc = await startWooCommerceContainer();
 
     // Register stub Allegro OrderSource
-    const stub = installAllegroTestSourceStub(harness);
+    stub = installAllegroTestSourceStub(harness);
 
-    // Create Allegro source connection
-    const { ConnectionOrmEntity } = await import(
-      '@openlinker/core/identifier-mapping/orm-entities'
-    );
-    const allegroConn = await harness.getDataSource()
-      .getRepository(ConnectionOrmEntity)
-      .save(harness.getDataSource().getRepository(ConnectionOrmEntity).create({
+    // Create Allegro source connection pointing at the stub adapter key
+    const allegroRepo = harness.getDataSource().getRepository(ConnectionOrmEntity);
+    const allegroConn = await allegroRepo.save(
+      allegroRepo.create({
         platformType: stub.platformType,
         name: 'Test Allegro source',
         status: 'active',
@@ -60,7 +64,8 @@ describe('WooCommerce order ingest (#878)', () => {
         credentialsRef: 'env:ALLEGRO_CLIENT_ID',
         adapterKey: stub.adapterKey,
         enabledCapabilities: ['OrderSource'],
-      }));
+      }),
+    );
     allegroConnectionId = allegroConn.id;
 
     // Create WC connection as destination
@@ -72,19 +77,46 @@ describe('WooCommerce order ingest (#878)', () => {
     });
     wcConnectionId = wcConn.id;
 
-    // Populate identifier mappings via adapter path (REQUIRED before createOrder)
+    // Populate identifier mappings via adapter path (REQUIRED before createOrder).
+    // WooCommerceOrderProcessorAdapter.resolveLineItems() calls
+    // identifierMapping.getExternalIds(Product, productId) — throws if missing.
     await drainProductSyncJobs(harness, wcConnectionId, [wc.simpleProductExternalId]);
 
-    // Configure stub Allegro source to yield a test order with 2× WC-SHIRT-001
-    // The stub's externalOrderId is used as the stable key across S-1 and S-2.
-    stub.setNextOrder({
+    // Configure stub Allegro source to yield a test order with 2× WC-SHIRT-001.
+    // The IncomingOrder shape requires the full domain DTO — productRef uses
+    // type: 'product' since WC sources products, not offers.
+    const testOrder: IncomingOrder = {
       externalOrderId: 'allegro-wc-test-order-1',
-      items: [{ externalProductId: wc.simpleProductExternalId, quantity: 2, price: 49.99 }],
-      total: 99.98,
-      currency: 'PLN',
-    });
+      status: 'processing',
+      customerEmail: 'buyer@test.example',
+      items: [
+        {
+          id: 'item-1',
+          productRef: { type: 'product', externalId: wc.simpleProductExternalId },
+          quantity: 2,
+          price: 49.99,
+          name: 'OL Test Shirt',
+        },
+      ],
+      totals: { subtotal: 99.98, tax: 0, shipping: 0, total: 99.98, currency: 'PLN' },
+      shippingAddress: {
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        address1: 'ul. Testowa 1',
+        city: 'Warszawa',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: { internalOrderId: 'ol-test-order-wc-ingest-1' },
+    };
+    stub.setNextIncomingOrder(testOrder);
 
-    // Get ingest service directly (bypasses OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED)
+    // Get ingest service directly — bypasses OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED cron gate.
+    // syncOrderFromSource(connectionId: string, externalOrderId: string):
+    //   connectionId = SOURCE (Allegro); WC destination auto-resolved from active
+    //   OrderProcessorManager connections.
     ingestService = harness
       .getApp()
       .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
@@ -95,9 +127,6 @@ describe('WooCommerce order ingest (#878)', () => {
   });
 
   it('S-1: should create WC order from Allegro order with correct line items', async () => {
-    // syncOrderFromSource(connectionId: string, externalOrderId: string)
-    // connectionId = SOURCE (Allegro); WC destination is auto-resolved from active
-    // OrderProcessorManager connections.
     await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
 
     const auth = Buffer.from(`${wc.consumerKey}:${wc.consumerSecret}`).toString('base64');
@@ -119,7 +148,7 @@ describe('WooCommerce order ingest (#878)', () => {
   });
 
   it('S-2: should be idempotent — second call does not create a duplicate WC order', async () => {
-    // Same externalOrderId — identifier mapping hit returns early
+    // Same externalOrderId — identifier mapping hit returns early without calling WC
     await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
 
     const auth = Buffer.from(`${wc.consumerKey}:${wc.consumerSecret}`).toString('base64');
