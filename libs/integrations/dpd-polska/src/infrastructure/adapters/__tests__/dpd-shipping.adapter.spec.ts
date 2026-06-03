@@ -8,7 +8,11 @@
  *
  * @module libs/integrations/dpd-polska/src/infrastructure/adapters
  */
-import { ShippingProviderRejectionException, type GenerateLabelCommand } from '@openlinker/core/shipping';
+import {
+  isPickupPointFinder,
+  ShippingProviderRejectionException,
+  type GenerateLabelCommand,
+} from '@openlinker/core/shipping';
 import type { DpdConnectionConfig } from '../../../domain/types/dpd-config.types';
 import type { IDpdHttpClient } from '../../http/dpd-http-client.interface';
 import { DpdShippingAdapter } from '../dpd-shipping.adapter';
@@ -54,8 +58,12 @@ describe('DpdShippingAdapter', () => {
     adapter = new DpdShippingAdapter(http, makeConfig());
   });
 
-  it('should declare kurier as the only supported method', () => {
-    expect(adapter.getSupportedMethods()).toEqual(['kurier']);
+  it('should declare kurier and pickup as supported methods', () => {
+    expect(adapter.getSupportedMethods()).toEqual(['kurier', 'pickup']);
+  });
+
+  it('should declare the PickupPointFinder capability', () => {
+    expect(isPickupPointFinder(adapter)).toBe(true);
   });
 
   it('should create a shipment and return the waybill as provider id + tracking + label ref', async () => {
@@ -128,5 +136,44 @@ describe('DpdShippingAdapter', () => {
       providerName: 'dpd',
       providerCode: 'tracking.unavailable',
     });
+  });
+
+  it('should create a pickup shipment to a DPD point (pudoReceiver + DPD_PICKUP)', async () => {
+    http.request.mockResolvedValueOnce({
+      status: 'OK',
+      packages: [{ status: 'OK', parcels: [{ status: 'OK', waybill: 'WB-PUDO' }] }],
+    });
+
+    const result = await adapter.generateLabel(makeCmd({ shippingMethod: 'pickup', paczkomatId: 'PL11033' }));
+
+    expect(result.providerShipmentId).toBe('WB-PUDO');
+    const body = http.request.mock.calls[0][0].body as {
+      packages: Array<{ pudoReceiver?: { pudoId: string }; receiver?: unknown; services?: Array<{ code: string }> }>;
+    };
+    expect(body.packages[0].pudoReceiver).toMatchObject({ pudoId: 'PL11033' });
+    expect(body.packages[0].receiver).toBeUndefined();
+    expect((body.packages[0].services ?? []).map((s) => s.code)).toContain('DPD_PICKUP');
+  });
+
+  it('should search the DPD point directory via findPickupPoints', async () => {
+    http.request.mockResolvedValueOnce({
+      status: 'OK',
+      points: [
+        { id: 'PL11033', name: 'Żabka', address: { street: 'Krakowska 12', city: 'Poznań', postalCode: '60-001', countryCode: 'PL' } },
+      ],
+    });
+
+    const points = await adapter.findPickupPoints({ city: 'Poznań' });
+
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({ providerId: 'PL11033', name: 'Żabka', status: 'active' });
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'POST', path: '/public/appservices/v1/findPoints', idempotent: true }),
+    );
+  });
+
+  it('should return an empty list when the directory has no points', async () => {
+    http.request.mockResolvedValueOnce({ status: 'OK' });
+    await expect(adapter.findPickupPoints({ city: 'Nowhere' })).resolves.toEqual([]);
   });
 });
