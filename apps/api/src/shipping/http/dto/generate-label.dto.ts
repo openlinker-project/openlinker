@@ -142,7 +142,10 @@ export class GenerateLabelDto {
   @IsEnum(ShippingMethodValues)
   shippingMethod!: ShippingMethod;
 
-  @ApiPropertyOptional({ description: 'Required when shippingMethod === paczkomat' })
+  @ApiPropertyOptional({
+    description:
+      'Pickup-point id — required for point-delivery methods (paczkomat = locker, pickup = parcel-shop/PUDO); absent for kurier',
+  })
   @IsOptional()
   @IsString()
   paczkomatId?: string;
