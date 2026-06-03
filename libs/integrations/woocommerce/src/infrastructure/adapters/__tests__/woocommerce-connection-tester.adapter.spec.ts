@@ -98,11 +98,21 @@ describe('WooCommerceConnectionTesterAdapter', () => {
     expect(result.message).toContain('500');
   });
 
-  it('should return failure when fetch throws a network error', async () => {
-    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+  it('should return failure when fetch throws a network error without leaking internal details', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED 10.0.0.5:5432'));
     const result = await adapter.test(makeConnection(), makeCredentialsResolver());
     expect(result.success).toBe(false);
-    expect(result.message).toContain('ECONNREFUSED');
+    // Raw OS error must NOT be in the response — it would leak internal network topology
+    expect(result.message).not.toContain('ECONNREFUSED');
+    expect(result.message).not.toContain('10.0.0.5');
+  });
+
+  it('should return generic message for unexpected errors without leaking raw error text', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('getaddrinfo ENOTFOUND postgres.internal'));
+    const result = await adapter.test(makeConnection(), makeCredentialsResolver());
+    expect(result.success).toBe(false);
+    expect(result.message).not.toContain('postgres.internal');
+    expect(result.message).not.toContain('ENOTFOUND');
   });
 
   it('should return a timeout message when fetch is aborted by the request timeout', async () => {
