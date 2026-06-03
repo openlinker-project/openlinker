@@ -67,6 +67,8 @@ function makeMapper(): jest.Mocked<IWooCommerceProductMapper> {
       ean: null,
       gtin: null,
     }),
+    extractEan: jest.fn().mockReturnValue(null),
+    extractGtin: jest.fn().mockReturnValue(null),
   };
 }
 
@@ -267,6 +269,67 @@ describe('WooCommerceProductMasterAdapter', () => {
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProductVariants('prod-1');
       expect(result[0].price).toBe(0);
+    });
+
+    it('should extract EAN from _ean meta key in product meta_data', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue({
+        id: 10,
+        type: 'simple',
+        sku: 'EAN-PRODUCT',
+        meta_data: [{ key: '_ean', value: '5901234123457' }],
+      } as WooCommerceProduct);
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-ean-1');
+      const mapper = makeMapper();
+      mapper.extractEan.mockReturnValue('5901234123457');
+      mapper.extractGtin.mockReturnValue(null);
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+      const result = await adapter.getProductVariants('prod-ean');
+      expect(mapper.extractEan).toHaveBeenCalledWith([{ key: '_ean', value: '5901234123457' }]);
+      expect(result[0].ean).toBe('5901234123457');
+    });
+
+    it('should return null ean/gtin when meta_data is empty', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue({
+        id: 11,
+        type: 'simple',
+        sku: 'NO-BARCODE',
+        meta_data: [],
+      } as WooCommerceProduct);
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '11', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-no-barcode');
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      const result = await adapter.getProductVariants('prod-no-barcode');
+      expect(result[0].ean).toBeNull();
+      expect(result[0].gtin).toBeNull();
+    });
+
+    it('should pass empty array to extractEan/extractGtin when meta_data is absent', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue({
+        id: 12,
+        type: 'simple',
+        sku: 'NO-META',
+        // meta_data absent
+      } as WooCommerceProduct);
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '12', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-no-meta');
+      const mapper = makeMapper();
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+      await adapter.getProductVariants('prod-no-meta');
+      expect(mapper.extractEan).toHaveBeenCalledWith([]);
+      expect(mapper.extractGtin).toHaveBeenCalledWith([]);
     });
   });
 
