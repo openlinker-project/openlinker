@@ -100,6 +100,20 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     const perPage = filters?.limit ?? 100;
     const page =
       filters?.offset !== undefined ? Math.floor(filters.offset / perPage) + 1 : 1;
+    // WC uses page-based pagination: offset must be an exact multiple of perPage.
+    // A non-multiple offset maps to the nearest lower page, silently returning
+    // overlapping items. The current caller (master-product-sync-all.handler)
+    // always passes clean multiples, but we warn here to surface misuse early.
+    if (
+      filters?.offset !== undefined &&
+      perPage > 0 &&
+      filters.offset % perPage !== 0
+    ) {
+      this.logger.warn(
+        `listExternalIds: offset ${String(filters.offset)} is not a clean multiple of limit ${String(perPage)}; ` +
+          `WC pagination is page-based — returning page ${String(page)} which may overlap with previous results`,
+      );
+    }
     const raw = await this.httpClient.get<Array<{ id: number }>>(
       '/wp-json/wc/v3/products',
       { _fields: 'id', per_page: perPage, page },
@@ -227,14 +241,15 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       );
       const price =
         product.price !== undefined ? this.parseVariantPrice(product.price) : undefined;
+      const metaData = product.meta_data ?? [];
       return [
         {
           id: internalVariantId,
           productId,
           sku: product.sku || `product-${wcId}`,
           attributes: null,
-          ean: null,
-          gtin: null,
+          ean: this.mapper.extractEan(metaData),
+          gtin: this.mapper.extractGtin(metaData),
           price,
         },
       ];
