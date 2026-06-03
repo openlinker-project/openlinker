@@ -22,6 +22,7 @@ import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrast
 import { WooCommerceHttpClient } from './infrastructure/http/woocommerce-http-client';
 import { WooCommerceProductMapper } from './infrastructure/mappers/woocommerce-product.mapper';
 import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/product-master/woocommerce-product-master.adapter';
+import { WooCommerceOrderProcessorAdapter } from './infrastructure/adapters/order-processor/woocommerce-order-processor.adapter';
 import { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
@@ -39,7 +40,7 @@ import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inv
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -91,19 +92,23 @@ export function createWooCommercePlugin(): AdapterPlugin {
         credentials.consumerSecret,
       );
       const mapper = new WooCommerceProductMapper({});
-      const productMaster = new WooCommerceProductMasterAdapter(
-        httpClient,
-        host.identifierMapping,
-        mapper,
-        connection,
-      );
       try {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
             {
-              ProductMaster: () => productMaster,
+              ProductMaster: () => new WooCommerceProductMasterAdapter(
+                httpClient,
+                host.identifierMapping,
+                mapper,
+                connection,
+              ),
               InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
+                httpClient,
+                host.identifierMapping,
+                connection,
+              ),
+              OrderProcessorManager: () => new WooCommerceOrderProcessorAdapter(
                 httpClient,
                 host.identifierMapping,
                 connection,
