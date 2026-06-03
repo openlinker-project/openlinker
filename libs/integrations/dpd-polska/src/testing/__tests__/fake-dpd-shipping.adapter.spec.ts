@@ -33,8 +33,8 @@ describe('FakeDpdShippingAdapter', () => {
     adapter = new FakeDpdShippingAdapter();
   });
 
-  it('should support only kurier', () => {
-    expect(adapter.getSupportedMethods()).toEqual(['kurier']);
+  it('should support kurier and pickup', () => {
+    expect(adapter.getSupportedMethods()).toEqual(['kurier', 'pickup']);
   });
 
   it('should generate a deterministic, incrementing waybill', async () => {
@@ -58,6 +58,27 @@ describe('FakeDpdShippingAdapter', () => {
     await expect(
       adapter.generateLabel({ ...cmd, recipient: { ...cmd.recipient, address: undefined } }),
     ).rejects.toMatchObject({ providerCode: 'preflight.missing-recipient-address' });
+  });
+
+  it('should generate a pickup shipment when a point id is supplied', async () => {
+    const result = await adapter.generateLabel(makeCmd({ shippingMethod: 'pickup', paczkomatId: 'PL11033' }));
+    expect(result.providerShipmentId).toBe('fake-dpd-1');
+  });
+
+  it('should reject a pickup shipment with no point id', async () => {
+    await expect(adapter.generateLabel(makeCmd({ shippingMethod: 'pickup' }))).rejects.toMatchObject({
+      providerCode: 'preflight.missing-paczkomat-id',
+    });
+  });
+
+  it('should return seeded pickup points and clear them on reset', async () => {
+    adapter.seedPickupPoints([
+      { providerId: 'PL11033', name: 'Żabka', address: { line1: 'Krakowska 12', city: 'Poznań', postalCode: '60-001', country: 'PL' }, status: 'active' },
+    ]);
+    await expect(adapter.findPickupPoints({ city: 'Poznań' })).resolves.toHaveLength(1);
+
+    adapter.clear();
+    await expect(adapter.findPickupPoints({ city: 'Poznań' })).resolves.toEqual([]);
   });
 
   it('should return a PDF label document', async () => {
