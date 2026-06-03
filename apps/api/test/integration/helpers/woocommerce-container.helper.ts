@@ -19,7 +19,7 @@
  * Boot-time budget:
  *   Warm Docker image cache (dev laptop, CI re-runs): ~90-120 s
  *   Cold cache (CI first run, image pull + WP auto-install): ~5 min
- *   withStartupTimeout: 10 * 60 * 1000 ms (matches prestashop-container.helper.ts)
+ *   withStartupTimeout: 12 * 60 * 1000 ms (matches prestashop-container.helper.ts 12 min deadline)
  *
  * @module apps/api/test/integration/helpers
  */
@@ -93,7 +93,7 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       .withExposedPorts(8080)
       .withWaitStrategy(
         Wait.forHttp('/wp-json/wc/v3/', 8080)
-          .withStartupTimeout(10 * 60 * 1000),
+          .withStartupTimeout(12 * 60 * 1000),
       )
       .start();
 

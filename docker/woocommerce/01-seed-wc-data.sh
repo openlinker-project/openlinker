@@ -1,9 +1,15 @@
 #!/bin/bash
 # WooCommerce Dev Stack Seed Script
 #
-# Runs inside the openlinker-woocommerce container on first boot (mounted at
-# /docker-entrypoint-initdb.d/). Creates WC REST API credentials, activates HPOS,
-# and seeds sample products used for local development and integration tests.
+# Run explicitly via: pnpm dev:stack:seed-woocommerce
+# (docker exec openlinker-woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh)
+#
+# NOTE: bitnami/wordpress does NOT auto-run scripts from /docker-entrypoint-initdb.d/
+# on container restart — only on the very first run of a fresh volume. This script
+# must be invoked manually via the pnpm command above after container startup.
+#
+# Creates WC REST API credentials, activates HPOS, and seeds sample products used
+# for local development.
 #
 # Idempotent: checks for WC-SHIRT-001 before seeding; safe to re-run via
 # `pnpm dev:stack:seed-woocommerce` without duplicating data.

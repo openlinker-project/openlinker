@@ -24,7 +24,7 @@
  *
  * @module apps/api/test/integration/woocommerce
  */
-import { getTestHarness, type IntegrationTestHarness } from '../setup';
+import { getTestHarness, resetTestHarness, type IntegrationTestHarness } from '../setup';
 import {
   startWooCommerceContainer,
   type WooCommerceTestContainer,
@@ -33,7 +33,12 @@ import { createTestWooCommerceConnection } from '../helpers/woocommerce-connecti
 import { drainProductSyncJobs, drainInventorySyncJobs } from '../helpers/woocommerce-sync.helper';
 import { MASTER_INVENTORY_SYNC_SERVICE_TOKEN, type IMasterInventorySyncService } from '@openlinker/core/inventory';
 
-describe('WooCommerce inventory propagation (#878)', () => {
+// Skip the entire suite when OL_SKIP_WC_INTEGRATION=true so CI pipelines can
+// gate this opt-in suite separately from the standard integration suite.
+// WC Testcontainers boot takes ~90-120s warm and 5+ min cold.
+const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
+
+(SKIP_WC_INTEGRATION ? describe.skip : describe)('WooCommerce inventory propagation (#878)', () => {
   let harness: IntegrationTestHarness;
   let wc: WooCommerceTestContainer;
   let wcConnectionId: string;
@@ -41,7 +46,12 @@ describe('WooCommerce inventory propagation (#878)', () => {
   beforeAll(async () => {
     harness = await getTestHarness();
     wc = await startWooCommerceContainer();
+  }, 15 * 60_000); // 15 min: WC cold boot
 
+  beforeEach(async () => {
+    // Re-create the WC connection and identifier mappings after each resetTestHarness()
+    // call (which truncates `connections` and `identifier_mappings`).
+    // drainProductSyncJobs is fast (~1-2s) since the WC container is already running.
     const conn = await createTestWooCommerceConnection(harness.getDataSource(), {
       siteUrl: wc.baseUrl,
       consumerKey: wc.consumerKey,
@@ -50,13 +60,19 @@ describe('WooCommerce inventory propagation (#878)', () => {
     });
     wcConnectionId = conn.id;
 
-    // MANDATORY FIRST STEP: populate identifier mappings via the adapter path.
+    // MANDATORY: populate identifier mappings via the adapter path before each test.
     // Without this, getExternalIds(Product, ...) returns [] and inventory sync throws.
     await drainProductSyncJobs(harness, wcConnectionId, [
       wc.simpleProductExternalId,
       wc.variableProductExternalId,
     ]);
-  }, 15 * 60_000); // 15 min: WC cold boot + product sync
+  });
+
+  afterEach(async () => {
+    // Truncate OL DB tables between tests so S-1/S-2/S-3 each start with a clean OL DB.
+    // Per testing guide §Integration Tests best practices item 5.
+    await resetTestHarness();
+  });
 
   afterAll(async () => {
     await wc.cleanup();
