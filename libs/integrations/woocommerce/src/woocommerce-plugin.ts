@@ -19,6 +19,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { WooCommerceConnectionTesterAdapter } from './infrastructure/adapters/woocommerce-connection-tester.adapter';
 import { WooCommerceConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-config-shape-validator.adapter';
 import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-credentials-shape-validator.adapter';
+import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 import { WooCommerceHttpClient } from './infrastructure/http/woocommerce-http-client';
 import { WooCommerceProductMapper } from './infrastructure/mappers/woocommerce-product.mapper';
 import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/product-master/woocommerce-product-master.adapter';
@@ -65,6 +66,10 @@ export function createWooCommercePlugin(): AdapterPlugin {
       host.connectionCredentialsShapeValidatorRegistry.register(
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceConnectionCredentialsShapeValidatorAdapter(WOOCOMMERCE_BRAND),
+      );
+      host.authFailureClassifierRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceAuthFailureClassifierAdapter(),
       );
     },
 
