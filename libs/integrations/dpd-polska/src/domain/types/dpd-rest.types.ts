@@ -248,7 +248,6 @@ export interface DpdPointSearchQuery {
   postalCode?: string;
   /** Free-text (street / name). */
   searchText?: string;
-  countryCode?: string;
   limit?: number;
 }
 

@@ -86,6 +86,9 @@ describe('buildCreatePackagesRequest', () => {
     expect(pkg.payerFID).toBe(1495); // numeric, parsed from the '1495' string
     expect(pkg.sender).toMatchObject({ name: 'Sklep ACME', address: 'Magazynowa 1', city: 'Warszawa' });
     expect(pkg.services).toBeUndefined();
+    // Courier ships to a street receiver — never a pudoReceiver (mutual exclusivity).
+    expect(pkg.pudoReceiver).toBeUndefined();
+    expect(pkg.receiver).toBeDefined();
     expect(pkg.parcels).toHaveLength(1);
   });
 
