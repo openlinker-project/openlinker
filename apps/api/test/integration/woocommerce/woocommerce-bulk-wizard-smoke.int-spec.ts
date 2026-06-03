@@ -17,7 +17,7 @@
  *
  * @module apps/api/test/integration/woocommerce
  */
-import { getTestHarness, type IntegrationTestHarness } from '../setup';
+import { getTestHarness, resetTestHarness, type IntegrationTestHarness } from '../setup';
 import {
   startWooCommerceContainer,
   type WooCommerceTestContainer,
@@ -33,7 +33,12 @@ import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
-describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
+// Skip the entire suite when OL_SKIP_WC_INTEGRATION=true so CI pipelines can
+// gate this opt-in suite separately from the standard integration suite.
+// WC Testcontainers boot takes ~90-120s warm and 5+ min cold.
+const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
+
+(SKIP_WC_INTEGRATION ? describe.skip : describe)('WooCommerce bulk-listing wizard smoke (#878)', () => {
   let harness: IntegrationTestHarness;
   let wc: WooCommerceTestContainer;
   let wcConnectionId: string;
@@ -46,10 +51,17 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
     harness = await getTestHarness();
     wc = await startWooCommerceContainer();
 
-    // Register stub Allegro OfferManager + OfferCreator
+    // Register stub Allegro OfferManager + OfferCreator (suite-scoped — registers
+    // the stub in the NestJS DI graph once; remains in place for all tests).
     installAllegroTestOfferManagerStub(harness);
+  }, 20 * 60_000); // 20 min: WC boot
 
-    // Seed test admin user and obtain Bearer token using the established helper.
+  beforeEach(async () => {
+    // Re-create all DB-side fixtures after each resetTestHarness() call which
+    // truncates connections, identifier_mappings, users, etc.
+    // The WC Testcontainer keeps running between tests — only the OL DB is reset.
+
+    // Seed test admin user and obtain Bearer token.
     // loginAsAdmin inserts the user into the test DB with bcrypt-hashed password
     // and returns the JWT from POST /auth/login — same path as production auth.
     authToken = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
@@ -107,7 +119,13 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
 
     // S-variation: variationIds[0] = S-variation WC external id
     jeansSVariantInternalId = await findVariantInternalId(wc.variationIds[0]);
-  }, 20 * 60_000); // 20 min: WC boot + product sync + bulk overhead
+  });
+
+  afterEach(async () => {
+    // Truncate OL DB tables between S-1 and S-2 so each test starts with a
+    // clean OL DB. Per testing guide §Integration Tests best practices item 5.
+    await resetTestHarness();
+  });
 
   afterAll(async () => {
     await wc.cleanup();

@@ -19,7 +19,7 @@
  *
  * @module apps/api/test/integration/woocommerce
  */
-import { getTestHarness, type IntegrationTestHarness } from '../setup';
+import { getTestHarness, resetTestHarness, type IntegrationTestHarness } from '../setup';
 import {
   startWooCommerceContainer,
   type WooCommerceTestContainer,
@@ -38,7 +38,12 @@ import {
 // Static import — ConnectionOrmEntity is always needed in beforeAll setup
 import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 
-describe('WooCommerce order ingest (#878)', () => {
+// Skip the entire suite when OL_SKIP_WC_INTEGRATION=true so CI pipelines can
+// gate this opt-in suite separately from the standard integration suite.
+// WC Testcontainers boot takes ~90-120s warm and 5+ min cold.
+const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
+
+(SKIP_WC_INTEGRATION ? describe.skip : describe)('WooCommerce order ingest (#878)', () => {
   let harness: IntegrationTestHarness;
   let wc: WooCommerceTestContainer;
   let wcConnectionId: string;
@@ -122,40 +127,52 @@ describe('WooCommerce order ingest (#878)', () => {
       .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
   }, 15 * 60_000);
 
+  afterEach(async () => {
+    // Truncate OL DB tables between tests so state from one test does not
+    // pollute the next (per testing guide §Integration Tests best practices).
+    await resetTestHarness();
+  });
+
   afterAll(async () => {
     await wc.cleanup();
   });
 
-  it('S-1: should create WC order from Allegro order with correct line items', async () => {
-    await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
+  it(
+    'S-1 + S-2: should create WC order from Allegro order and be idempotent on re-ingest',
+    async () => {
+      // S-1: first ingest — WC order is created
+      await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
 
-    const auth = Buffer.from(`${wc.consumerKey}:${wc.consumerSecret}`).toString('base64');
-    const res = await fetch(`${wc.baseUrl}/wp-json/wc/v3/orders`, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-    expect(res.ok).toBe(true);
+      const auth = Buffer.from(`${wc.consumerKey}:${wc.consumerSecret}`).toString('base64');
+      const resAfterFirst = await fetch(`${wc.baseUrl}/wp-json/wc/v3/orders`, {
+        headers: { Authorization: `Basic ${auth}` },
+      });
+      expect(resAfterFirst.ok).toBe(true);
 
-    const orders = await res.json() as Array<{
-      id: number;
-      status: string;
-      line_items: Array<{ product_id: number; quantity: number }>;
-    }>;
+      const ordersAfterFirst = await resAfterFirst.json() as Array<{
+        id: number;
+        status: string;
+        line_items: Array<{ product_id: number; quantity: number }>;
+      }>;
 
-    expect(orders).toHaveLength(1);
-    expect(orders[0].status).toBe('processing');
-    expect(orders[0].line_items[0].product_id).toBe(Number(wc.simpleProductExternalId));
-    expect(orders[0].line_items[0].quantity).toBe(2);
-  });
+      expect(ordersAfterFirst).toHaveLength(1);
+      expect(ordersAfterFirst[0].status).toBe('processing');
+      expect(ordersAfterFirst[0].line_items[0].product_id).toBe(
+        Number(wc.simpleProductExternalId),
+      );
+      expect(ordersAfterFirst[0].line_items[0].quantity).toBe(2);
 
-  it('S-2: should be idempotent — second call does not create a duplicate WC order', async () => {
-    // Same externalOrderId — identifier mapping hit returns early without calling WC
-    await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
+      // S-2: second ingest with the same externalOrderId — identifier mapping hit
+      // returns early without calling WC, so WC still has exactly 1 order.
+      // S-1 and S-2 are combined into one it() because S-2 intentionally relies
+      // on the OL DB state (identifier_mappings) written by S-1.
+      await ingestService.syncOrderFromSource(allegroConnectionId, 'allegro-wc-test-order-1');
 
-    const auth = Buffer.from(`${wc.consumerKey}:${wc.consumerSecret}`).toString('base64');
-    const res = await fetch(`${wc.baseUrl}/wp-json/wc/v3/orders`, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-    const orders = await res.json() as unknown[];
-    expect(orders).toHaveLength(1); // still exactly 1
-  });
+      const resAfterSecond = await fetch(`${wc.baseUrl}/wp-json/wc/v3/orders`, {
+        headers: { Authorization: `Basic ${auth}` },
+      });
+      const ordersAfterSecond = await resAfterSecond.json() as unknown[];
+      expect(ordersAfterSecond).toHaveLength(1); // still exactly 1 — no duplicate
+    },
+  );
 });
