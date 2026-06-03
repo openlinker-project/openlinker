@@ -303,12 +303,11 @@ interface InventoryMasterPort {
 }
 ```
 
-**Current Implementation**: `PrestashopInventoryMasterAdapter` (MVP stage)
+**Current Implementations**: `PrestashopInventoryMasterAdapter`, `WooCommerceInventoryMasterAdapter`
 
 **Future Implementations**:
 - `OpenLinkerInventoryMasterAdapter` (OpenLinker's own inventory system)
 - `ShopifyInventoryMasterAdapter`
-- `WooCommerceInventoryMasterAdapter`
 
 ### ProductMasterPort
 
@@ -369,12 +368,11 @@ interface ProductMasterPort {
 }
 ```
 
-**Current Implementation**: `PrestashopProductMasterAdapter` (MVP stage)
+**Current Implementations**: `PrestashopProductMasterAdapter`, `WooCommerceProductMasterAdapter`
 
 **Future Implementations**:
 - `OpenLinkerProductMasterAdapter` (OpenLinker's own product catalog system)
 - `ShopifyProductMasterAdapter`
-- `WooCommerceProductMasterAdapter`
 
 **Usage Example**:
 ```typescript
@@ -433,7 +431,7 @@ interface OrderProcessorManagerPort {
 }
 ```
 
-**Current Implementation**: `PrestashopOrderProcessorAdapter` (MVP stage)
+**Current Implementations**: `PrestashopOrderProcessorAdapter`, `WooCommerceOrderProcessorAdapter`
 
 **Future Implementations**:
 - `OpenLinkerOrderProcessorAdapter` (OpenLinker's own order system)
@@ -460,9 +458,9 @@ interface OrderSourcePort {
 }
 ```
 
-**Current Implementations**: `AllegroOrderSourceAdapter`, `PrestashopOrderSourceAdapter`
+**Current Implementations**: `AllegroOrderSourceAdapter`, `PrestashopOrderSourceAdapter`, `WooCommerceOrderSourceAdapter`
 
-**Future Implementations**: `ShopifyOrderSourceAdapter`, `WooCommerceOrderSourceAdapter`
+**Future Implementations**: `ShopifyOrderSourceAdapter`
 
 ### OfferManagerPort
 
