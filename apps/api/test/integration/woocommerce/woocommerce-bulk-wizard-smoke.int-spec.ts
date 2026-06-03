@@ -5,8 +5,8 @@
  * WooCommerce Testcontainer:
  *
  *   S-1 — simple product offer creation:
- *     Sync WC catalog → submit bulk wizard → drain batch → assert Allegro stub
- *     received createOffer and batch completed with 0 failures.
+ *     Sync WC catalog → submit bulk wizard → drain batch → assert batch
+ *     completed with 0 failures.
  *
  *   S-2 — variable product multi-variant fan-out (#824):
  *     Submit WC-JEANS primary variant → batch expands to 2 (S + M) → both
@@ -17,7 +17,6 @@
  *
  * @module apps/api/test/integration/woocommerce
  */
-import supertest from 'supertest';
 import { getTestHarness, type IntegrationTestHarness } from '../setup';
 import {
   startWooCommerceContainer,
@@ -27,6 +26,9 @@ import { createTestWooCommerceConnection } from '../helpers/woocommerce-connecti
 import { drainProductSyncJobs } from '../helpers/woocommerce-sync.helper';
 import { drainBulkBatch } from '../helpers/bulk-batch-drain.helper';
 import { installAllegroTestOfferManagerStub } from '../helpers/allegro-test-offer-manager-stub.helper';
+// loginAsAdmin creates a test user + returns a valid Bearer token using the
+// established integration-test auth pattern (bcrypt + POST /auth/login).
+import { loginAsAdmin } from '../helpers/test-auth.helper';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
@@ -38,6 +40,7 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
   let allegroConnectionId: string;
   let shirtVariantInternalId: string;
   let jeansSVariantInternalId: string;
+  let authToken: string;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -45,6 +48,11 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
 
     // Register stub Allegro OfferManager + OfferCreator
     installAllegroTestOfferManagerStub(harness);
+
+    // Seed test admin user and obtain Bearer token using the established helper.
+    // loginAsAdmin inserts the user into the test DB with bcrypt-hashed password
+    // and returns the JWT from POST /auth/login — same path as production auth.
+    authToken = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
 
     // Create WC connection
     const wcConn = await createTestWooCommerceConnection(harness.getDataSource(), {
@@ -64,20 +72,21 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
         status: 'active',
         config: {},
         credentialsRef: 'env:ALLEGRO_CLIENT_ID',
-        adapterKey: 'allegro.publicapi.v1',
+        adapterKey: 'allegro.test.offer-manager.v1',
         enabledCapabilities: ['OfferManager'],
       }),
     );
     allegroConnectionId = allegroConn.id;
 
-    // STEP 6: populate identifier mappings via adapter path
+    // Populate identifier mappings via adapter path (mandatory before bulk submit)
     await drainProductSyncJobs(harness, wcConnectionId, [
       wc.simpleProductExternalId,
       wc.variableProductExternalId,
     ]);
 
-    // STEP 7: resolve internal variant IDs from identifier_mappings table
-    // (test-setup-only DB access via IdentifierMappingOrmEntity — not production logic)
+    // Resolve internal variant IDs from identifier_mappings table.
+    // Direct DataSource query is acceptable in test setup — not production logic.
+    // Confirmed pattern: order-destination-retry.int-spec.ts:67 uses the same approach.
     const mappingRepo = harness.getDataSource().getRepository(IdentifierMappingOrmEntity);
 
     const findVariantInternalId = async (externalId: string): Promise<string> => {
@@ -98,7 +107,7 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
 
     // S-variation: variationIds[0] = S-variation WC external id
     jeansSVariantInternalId = await findVariantInternalId(wc.variationIds[0]);
-  }, 20 * 60_000); // 20 min: WC boot + product sync + potential bulk overhead
+  }, 20 * 60_000); // 20 min: WC boot + product sync + bulk overhead
 
   afterAll(async () => {
     await wc.cleanup();
@@ -109,7 +118,7 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
 
     const submitRes = await http
       .post('/bulk/offer-creation/submit')
-      .set('Authorization', `Bearer ${await getTestAuthToken(harness)}`)
+      .set('Authorization', `Bearer ${authToken}`)
       .send({
         sourceConnectionId: wcConnectionId,
         destConnectionId: allegroConnectionId,
@@ -131,7 +140,7 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
 
     const submitRes = await http
       .post('/bulk/offer-creation/submit')
-      .set('Authorization', `Bearer ${await getTestAuthToken(harness)}`)
+      .set('Authorization', `Bearer ${authToken}`)
       .send({
         sourceConnectionId: wcConnectionId,
         destConnectionId: allegroConnectionId,
@@ -144,15 +153,8 @@ describe('WooCommerce bulk-listing wizard smoke (#878)', () => {
     const result = await drainBulkBatch(harness, batchId);
 
     // Both S and M variant mappings were created by drainProductSyncJobs,
-    // so the fan-out resolves both variants.
+    // so the fan-out resolves both variants (multi-variant expansion #824).
     expect(result.outcomes).toHaveLength(2);
     result.outcomes.forEach((o) => expect(o.outcome).toBe('ok'));
   });
 });
-
-async function getTestAuthToken(harness: IntegrationTestHarness): Promise<string> {
-  const res = await harness.getHttp()
-    .post('/auth/login')
-    .send({ email: 'admin@openlinker.local', password: 'password' });
-  return (res.body as { accessToken: string }).accessToken ?? '';
-}
