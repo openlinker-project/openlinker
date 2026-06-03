@@ -22,6 +22,7 @@
 import type { ShippingMethod } from './shipping-method.types';
 import type { ShipmentRecipient } from './shipment-recipient.types';
 import type { ShipmentParcel } from './shipment-parcel.types';
+import type { ShipmentCod } from './shipment-cod.types';
 
 export interface GenerateLabelCommand {
   /** Internal Shipment id (`ol_shipment_*`). */
@@ -50,6 +51,11 @@ export interface GenerateLabelCommand {
    * `dimensions` + `weightGrams` (courier). The adapter validates the right
    * combination per method. */
   parcel: ShipmentParcel;
+  /** Cash-on-delivery to collect on delivery. Carrier-neutral and
+   * **caller-supplied** (operator input / #966), not order-sourced — adapters
+   * that don't support COD ignore it; COD-capable adapters (DPD Polska #962)
+   * translate it to their provider's wire format. */
+  cod?: ShipmentCod;
 }
 
 export interface GenerateLabelResult {
