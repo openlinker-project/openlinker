@@ -15,6 +15,7 @@
  */
 import {
   ShippingProviderRejectionException,
+  type DispatchProtocolReader,
   type FindPickupPointsQuery,
   type GenerateLabelCommand,
   type GenerateLabelResult,
@@ -30,7 +31,11 @@ import {
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier', 'pickup'];
 
 export class FakeDpdShippingAdapter
-  implements ShippingProviderManagerPort, LabelDocumentReader, PickupPointFinder
+  implements
+    ShippingProviderManagerPort,
+    LabelDocumentReader,
+    PickupPointFinder,
+    DispatchProtocolReader
 {
   private counter = 0;
   private seededFailure: Error | null = null;
@@ -99,9 +104,19 @@ export class FakeDpdShippingAdapter
     );
   }
 
+  generateProtocol(_input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
+    if (this.seededFailure) {
+      return Promise.reject(this.seededFailure);
+    }
+    return Promise.resolve({
+      contentType: 'application/pdf',
+      body: new Uint8Array([0x25, 0x50, 0x44, 0x46]), // %PDF
+    });
+  }
+
   // --- test helpers ----------------------------------------------------------
 
-  /** Make the next `generateLabel` / `fetchLabel` throw the given error. */
+  /** Make the next `generateLabel` / `fetchLabel` / `generateProtocol` throw the given error. */
   seedFailure(error: Error): void {
     this.seededFailure = error;
   }
