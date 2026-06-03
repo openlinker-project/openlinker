@@ -230,6 +230,48 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
     });
 
+    it('should map product_id > 0 with variation_id = 0 to product ref', async () => {
+      const order = makeOrder({
+        line_items: [
+          { id: 10, name: 'Simple Product', product_id: 100, variation_id: 0, quantity: 1, sku: 'SKU-A', price: '29.99', subtotal: '29.99', total: '29.99', image: null },
+        ],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.items[0].productRef).toEqual({ type: 'product', externalId: '100' });
+    });
+
+    it('should fall back to sku when product_id = 0 and variation_id = 0', async () => {
+      const order = makeOrder({
+        line_items: [
+          { id: 10, name: 'Manual Item', product_id: 0, variation_id: 0, quantity: 1, sku: 'SKU-X', price: '10.00', subtotal: '10.00', total: '10.00', image: null },
+        ],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.items[0].productRef).toEqual({ type: 'sku', externalId: 'SKU-X' });
+    });
+
+    it('should fall back to item id as sku when product_id = 0, variation_id = 0, and sku is absent', async () => {
+      const order = makeOrder({
+        line_items: [
+          { id: 42, name: 'Unknown Item', product_id: 0, variation_id: 0, quantity: 1, sku: '', price: '5.00', subtotal: '5.00', total: '5.00', image: null },
+        ],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.items[0].productRef).toEqual({ type: 'sku', externalId: '42' });
+    });
+
     it('should map customer_id = 0 to undefined customerExternalId (guest order)', async () => {
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(makeOrder({ customer_id: 0 })) });
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
