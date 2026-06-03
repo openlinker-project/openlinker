@@ -9,8 +9,9 @@
  *
  * HTTPS is required — WC REST transmits consumerKey:consumerSecret as
  * Basic Auth on every request; http:// would send credentials in cleartext.
- * localhost and 127.x are accepted for local development (HTTPS not needed
- * on loopback since traffic stays on the same machine).
+ * HTTPS is required even on loopback; a self-signed certificate is fine for
+ * local development. Loopback addresses (127.x, ::1, localhost) are exempt
+ * from the SSRF block but must still use https://.
  *
  * @module libs/integrations/woocommerce/src/application/dto
  */

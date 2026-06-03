@@ -1,8 +1,10 @@
 /**
  * WooCommerce Not Supported Exception
  *
- * Thrown by WooCommerceProductMasterAdapter for write operations that are
- * not implemented in this issue (#874). Write capability is covered by #879.
+ * Thrown when a WooCommerce adapter method has no equivalent in the WooCommerce
+ * REST API (e.g. reserveInventory, releaseInventory, adjustInventory on variable
+ * products without a variantId). Contains the unsupported `operation` name and
+ * a human-readable `alternative`.
  *
  * @module libs/integrations/woocommerce/src/domain/exceptions
  */
