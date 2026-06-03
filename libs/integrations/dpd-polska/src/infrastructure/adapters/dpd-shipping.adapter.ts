@@ -2,9 +2,10 @@
  * DPD Polska Shipping Adapter
  *
  * Implements the core `ShippingProviderManagerPort` plus the
- * `LabelDocumentReader` sub-capability against the DPDServices REST API. Thin
- * orchestration only: it delegates wire translation to `dpd-shipment.mapper`
- * and HTTP/retry/error-mapping to `IDpdHttpClient`.
+ * `LabelDocumentReader` and `PickupPointFinder` (#963 — DPD Pickup) sub-
+ * capabilities against the DPDServices REST API. Thin orchestration only: it
+ * delegates wire translation to `dpd-shipment.mapper` and HTTP/retry/error-
+ * mapping to `IDpdHttpClient`.
  *
  * Two-call flow: `generatePackagesNumbers` (create → waybill) then
  * `generateSpedLabels` (render → PDF) on demand. Business validation failures
@@ -19,10 +20,13 @@
  */
 import {
   ShippingProviderRejectionException,
+  type FindPickupPointsQuery,
   type GenerateLabelCommand,
   type GenerateLabelResult,
   type LabelDocument,
   type LabelDocumentReader,
+  type PickupPoint,
+  type PickupPointFinder,
   type ShippingMethod,
   type ShippingProviderManagerPort,
   type TrackingSnapshot,
@@ -31,22 +35,31 @@ import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersResponse,
   DpdGenerateSpedLabelsResponse,
+  DpdPointSearchResponse,
 } from '../../domain/types/dpd-rest.types';
 import type { IDpdHttpClient } from '../http/dpd-http-client.interface';
 import {
   assertCreateSucceededAndExtractWaybill,
   buildCreatePackagesRequest,
   buildGenerateLabelRequest,
+  buildPointSearchQuery,
   decodeLabelDocument,
   toGenerateLabelResult,
+  toPickupPoint,
 } from '../mappers/dpd-shipment.mapper';
 
-const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier'];
+const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier', 'pickup'];
 
 const CREATE_PATH = '/public/shipment/v1/generatePackagesNumbers';
 const LABEL_PATH = '/public/shipment/v1/generateSpedLabels';
+// OQ-1 (#963 plan): exact point-directory path/method/auth confirmed against the
+// live Swagger in the Phase-0 spike. DPDServices is POST-heavy (findPostalCode-
+// style), so v1 POSTs the query body; isolated here + in the mapper.
+const POINT_SEARCH_PATH = '/public/appservices/v1/findPoints';
 
-export class DpdShippingAdapter implements ShippingProviderManagerPort, LabelDocumentReader {
+export class DpdShippingAdapter
+  implements ShippingProviderManagerPort, LabelDocumentReader, PickupPointFinder
+{
   constructor(
     private readonly http: IDpdHttpClient,
     private readonly config: DpdConnectionConfig,
@@ -80,6 +93,17 @@ export class DpdShippingAdapter implements ShippingProviderManagerPort, LabelDoc
       idempotent: true,
     });
     return decodeLabelDocument(response);
+  }
+
+  async findPickupPoints(query: FindPickupPointsQuery): Promise<PickupPoint[]> {
+    // Idempotent read of the DPD Pickup point directory (#963).
+    const response = await this.http.request<DpdPointSearchResponse>({
+      method: 'POST',
+      path: POINT_SEARCH_PATH,
+      body: buildPointSearchQuery(query),
+      idempotent: true,
+    });
+    return (response.points ?? []).map(toPickupPoint);
   }
 
   getTracking(_input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
