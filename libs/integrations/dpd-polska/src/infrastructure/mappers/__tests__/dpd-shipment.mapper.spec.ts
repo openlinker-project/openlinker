@@ -14,12 +14,15 @@ import type {
   DpdGeneratePackagesNumbersResponse,
   DpdGenerateSpedLabelsResponse,
 } from '../../../domain/types/dpd-rest.types';
+import type { DpdPoint } from '../../../domain/types/dpd-rest.types';
 import {
   assertCreateSucceededAndExtractWaybill,
   buildCreatePackagesRequest,
   buildGenerateLabelRequest,
+  buildPointSearchQuery,
   decodeLabelDocument,
   toGenerateLabelResult,
+  toPickupPoint,
 } from '../dpd-shipment.mapper';
 
 function makeConfig(overrides: Partial<DpdConnectionConfig> = {}): DpdConnectionConfig {
@@ -178,8 +181,8 @@ describe('buildCreatePackagesRequest', () => {
   });
 
   it('should reject an unsupported shipping method', () => {
-    expect(() => buildCreatePackagesRequest(makeCmd({ shippingMethod: 'paczkomat' }), makeConfig())).toThrow(
-      /supports 'kurier' only/,
+    expect(() => buildCreatePackagesRequest(makeCmd({ shippingMethod: 'omp' }), makeConfig())).toThrow(
+      /'kurier' and 'pickup' only/,
     );
   });
 
@@ -193,6 +196,90 @@ describe('buildCreatePackagesRequest', () => {
     expect(() => buildCreatePackagesRequest(makeCmd({ parcel: {} }), makeConfig())).toThrow(
       /weightGrams is required/,
     );
+  });
+});
+
+describe('buildCreatePackagesRequest — DPD Pickup (#963)', () => {
+  function makePickupCmd(overrides: Partial<GenerateLabelCommand> = {}): GenerateLabelCommand {
+    return makeCmd({ shippingMethod: 'pickup', paczkomatId: 'PL11033', ...overrides });
+  }
+
+  it('should build a pudoReceiver + DPD_PICKUP service for a pickup shipment (no courier receiver)', () => {
+    const req = buildCreatePackagesRequest(makePickupCmd(), makeConfig());
+    const pkg = req.packages[0];
+
+    expect(pkg.receiver).toBeUndefined();
+    expect(pkg.pudoReceiver).toMatchObject({
+      pudoId: 'PL11033',
+      name: 'Jan Kowalski',
+      phone: '+48500600700',
+      email: 'buyer@example.com',
+    });
+    expect(pkg.services).toEqual([{ code: 'DPD_PICKUP' }]);
+    // Still a real parcel with weight.
+    expect(pkg.parcels[0].weight).toBe(1.5);
+  });
+
+  it('should reject a pickup shipment with no point id (paczkomatId)', () => {
+    const cmd = makePickupCmd({ paczkomatId: undefined });
+    const error = run(() => buildCreatePackagesRequest(cmd, makeConfig()));
+    expect(error).toMatchObject({ providerCode: 'preflight.missing-paczkomat-id' });
+  });
+
+  it('should NOT require a recipient street address for a pickup shipment', () => {
+    const cmd = makePickupCmd();
+    const noAddr = { ...cmd, recipient: { ...cmd.recipient, address: undefined } };
+    expect(() => buildCreatePackagesRequest(noAddr, makeConfig())).not.toThrow();
+  });
+
+  it('should still attach COD on a pickup shipment (DPD_PICKUP + COD)', () => {
+    const req = buildCreatePackagesRequest(
+      makePickupCmd({ cod: { amount: '39.99', currency: 'PLN' } }),
+      makeConfig(),
+    );
+    const codes = (req.packages[0].services ?? []).map((s) => s.code);
+    expect(codes).toEqual(['DPD_PICKUP', 'COD']);
+  });
+
+  it('should reject an unsupported method with a kurier/pickup message', () => {
+    expect(() => buildCreatePackagesRequest(makeCmd({ shippingMethod: 'omp' }), makeConfig())).toThrow(
+      /'kurier' and 'pickup' only/,
+    );
+  });
+});
+
+describe('point directory mapping (#963)', () => {
+  it('should map a neutral query to the DPD point-search shape', () => {
+    expect(
+      buildPointSearchQuery({ city: 'Poznań', postalCode: '60-001', searchText: 'Krakowska', limit: 20 }),
+    ).toEqual({ city: 'Poznań', postalCode: '60-001', searchText: 'Krakowska', limit: 20 });
+  });
+
+  it('should map a DPD point to the neutral PickupPoint', () => {
+    const point: DpdPoint = {
+      id: 'PL11033',
+      name: 'DPD Pickup Żabka',
+      address: { street: 'Krakowska 12', city: 'Poznań', postalCode: '60-001', countryCode: 'PL' },
+      latitude: 52.4,
+      longitude: 16.9,
+      type: 'shop',
+    };
+
+    expect(toPickupPoint(point)).toEqual({
+      providerId: 'PL11033',
+      name: 'DPD Pickup Żabka',
+      address: { line1: 'Krakowska 12', city: 'Poznań', postalCode: '60-001', country: 'PL' },
+      status: 'active',
+      lat: 52.4,
+      lon: 16.9,
+    });
+  });
+
+  it('should fall back to the point id for the name and PL for the country when absent', () => {
+    const point: DpdPoint = { id: 'PL999' };
+    const mapped = toPickupPoint(point);
+    expect(mapped.name).toBe('PL999');
+    expect(mapped.address.country).toBe('PL');
   });
 });
 

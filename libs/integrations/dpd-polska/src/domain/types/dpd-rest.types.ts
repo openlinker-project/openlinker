@@ -28,8 +28,10 @@ export type DpdGenerationPolicy = (typeof DpdGenerationPolicyValues)[number];
 /** Status string that means success at every level of the body. */
 export const DPD_STATUS_OK = 'OK';
 
-/** ServiceCode values this adapter emits today (COD); the full enum is larger. */
+/** ServiceCode values this adapter emits today (COD, DPD_PICKUP); the full enum is larger. */
 export const DPD_SERVICE_CODE_COD = 'COD';
+/** Ship-to-point service for a DPD Pickup (parcel-shop / PUDO) delivery (#963). */
+export const DPD_SERVICE_CODE_DPD_PICKUP = 'DPD_PICKUP';
 
 /** COD/declared-value attribute keys (generic `code`/`value` attribute bag). */
 export const DPD_COD_ATTRIBUTE = {
@@ -79,10 +81,32 @@ export interface DpdParcel {
   customerData3?: string;
 }
 
+/**
+ * Receiver for a DPD Pickup (parcel-shop / PUDO) shipment (#963). The parcel is
+ * delivered to the chosen point (`pudoId`); the buyer contact is carried for
+ * pickup notifications. No street address — the point's own address applies.
+ *
+ * ⚠ OQ-2 (#963 plan): the exact field name (`pudoId` vs an id on `pudoReceiver`
+ * vs a `DPD_PICKUP` service attribute) is confirmed against the live
+ * `generatePackagesNumbers` Swagger during the Phase-0 spike; this is the
+ * documented/expected shape and is isolated here + in the mapper.
+ */
+export interface DpdPudoReceiver {
+  /** DPD Pickup point id (e.g. `PL11033`). */
+  pudoId: string;
+  company?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+}
+
 export interface DpdSinglePackage {
   reference?: string;
   sender: DpdSenderOrReceiver;
+  /** Courier-to-door receiver (street address). Mutually exclusive with `pudoReceiver`. */
   receiver?: DpdSenderOrReceiver;
+  /** Ship-to-point receiver for a DPD Pickup shipment (#963). */
+  pudoReceiver?: DpdPudoReceiver;
   /** Payer FID sub-number (numkat/fid). */
   payerFID: number;
   ref1?: string;
@@ -205,4 +229,50 @@ export interface DpdErrors {
 /** `401` body. */
 export interface DpdError401 {
   status?: string;
+}
+
+// --- pickup-point directory (#963) -------------------------------------------
+
+/**
+ * DPD Pickup point directory search (#963).
+ *
+ * ⚠ OQ-1 (#963 plan): whether the point directory lives in this REST
+ * `DPDServices` API (reuse `DpdHttpClient` + Basic auth) or a separate DPD
+ * Pickup finder service, plus the exact request/response field names and
+ * GET-vs-POST, is confirmed against the live Swagger in the Phase-0 spike.
+ * This is the documented/expected shape, isolated here + in the mapper so a
+ * later correction touches only these two files.
+ */
+export interface DpdPointSearchQuery {
+  city?: string;
+  postalCode?: string;
+  /** Free-text (street / name). */
+  searchText?: string;
+  countryCode?: string;
+  limit?: number;
+}
+
+export interface DpdPointAddress {
+  street?: string;
+  city?: string;
+  postalCode?: string;
+  countryCode?: string;
+}
+
+export interface DpdPoint {
+  /** Point id (e.g. `PL11033`) — the value sent back as `pudoReceiver.pudoId`. */
+  id: string;
+  name?: string;
+  address?: DpdPointAddress;
+  latitude?: number;
+  longitude?: number;
+  /** Provider-native point type (parcel shop vs locker), for diagnostics. */
+  type?: string;
+}
+
+export interface DpdPointSearchResponse {
+  /** Non-`'OK'` ⇒ search failed. */
+  status?: string;
+  points?: DpdPoint[];
+  traceId?: string;
 }
