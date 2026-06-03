@@ -50,13 +50,11 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const url = `${this.siteUrl}${path}`;
-    return this.request<T>('POST', url, body);
+    return this.request<T>('POST', `${this.siteUrl}${path}`, body);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const url = `${this.siteUrl}${path}`;
-    return this.request<T>('PUT', url, body);
+    return this.request<T>('PUT', `${this.siteUrl}${path}`, body);
   }
 
   async delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
@@ -116,7 +114,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           continue;
         }
 
-        // Retries exhausted — still a known HTTP error response
+        // Retries exhausted
         throw new WooCommerceHttpResponseException(
           response.status,
           `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`,
