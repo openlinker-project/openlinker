@@ -70,6 +70,58 @@ services:
       timeout: 5s
       retries: 5
 
+  woocommerce-mysql:
+    image: mysql:8.4.7
+    container_name: openlinker-woocommerce-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: woocommerce
+      MYSQL_USER: woocommerce
+      MYSQL_PASSWORD: woocommerce
+    ports:
+      - '127.0.0.1:3307:3306'
+    volumes:
+      - woocommerce_mysql_data:/var/lib/mysql
+    healthcheck:
+      # -proot: no space between flag and password (matches MYSQL_ROOT_PASSWORD: root)
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  woocommerce:
+    image: bitnami/wordpress:6.7.2-debian-12-r0
+    platform: linux/amd64
+    container_name: openlinker-woocommerce
+    depends_on:
+      woocommerce-mysql:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DATABASE_HOST: woocommerce-mysql
+      WORDPRESS_DATABASE_PORT_NUMBER: 3306
+      WORDPRESS_DATABASE_NAME: woocommerce
+      WORDPRESS_DATABASE_USER: woocommerce
+      WORDPRESS_DATABASE_PASSWORD: woocommerce
+      WORDPRESS_USERNAME: admin
+      WORDPRESS_PASSWORD: admin123
+      WORDPRESS_EMAIL: admin@openlinker.local
+      WORDPRESS_SITE_TITLE: OpenLinker WC Dev
+      WORDPRESS_PLUGINS: woocommerce
+    ports:
+      # 8082: avoids collision with PrestaShop on 8080
+      - '127.0.0.1:8082:8080'
+    volumes:
+      - woocommerce_data:/bitnami/wordpress
+      - ./docker/woocommerce:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # /wp-json/wc/v3/ = WC namespace index, returns 200 without auth once WC is active.
+      # NOT /wp-json/wc/v3/system_status (requires consumer key — chicken-and-egg at startup).
+      test: ['CMD', 'curl', '-sf', 'http://localhost:8080/wp-json/wc/v3/']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
     container_name: openlinker-prestashop
@@ -159,4 +211,6 @@ volumes:
   redis_data:
   mysql_data:
   prestashop_data:
+  woocommerce_mysql_data:
+  woocommerce_data:
 
