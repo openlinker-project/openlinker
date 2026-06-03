@@ -155,11 +155,40 @@ describe('DpdHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
+  it('should NOT retry an ambiguous 5xx (500) on the non-idempotent create (guards double-COD)', async () => {
+    fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 500, body: '{}' }));
+
+    await expect(client.request({ method: 'POST', path: CREATE_PATH })).rejects.toBeInstanceOf(
+      DpdNetworkException,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should retry a 503 even on the non-idempotent create (DPD did not commit)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(fakeResponse({ ok: false, status: 503, body: '{}' }))
+      .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"status":"OK"}' }));
+
+    await expect(client.request({ method: 'POST', path: CREATE_PATH })).resolves.toEqual({
+      status: 'OK',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('should retry an ambiguous 5xx (500) on an idempotent read', async () => {
+    fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 500, body: '{}' }));
+
+    await expect(
+      client.request({ method: 'POST', path: '/public/shipment/v1/generateSpedLabels', idempotent: true }),
+    ).rejects.toBeInstanceOf(DpdNetworkException);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
+  });
+
   it('should NOT retry a network/timeout on the create call (guards double-COD)', async () => {
     fetchMock.mockRejectedValue(new Error('ETIMEDOUT'));
 
     await expect(
-      // retryOnNetworkError omitted ⇒ false for the non-idempotent create.
+      // idempotent omitted ⇒ false for the non-idempotent create.
       client.request({ method: 'POST', path: CREATE_PATH }),
     ).rejects.toBeInstanceOf(DpdNetworkException);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -169,7 +198,7 @@ describe('DpdHttpClient', () => {
     fetchMock.mockRejectedValue(new Error('ECONNRESET'));
 
     await expect(
-      client.request({ method: 'GET', path: '/public/shipment/v1/generateSpedLabels', retryOnNetworkError: true }),
+      client.request({ method: 'GET', path: '/public/shipment/v1/generateSpedLabels', idempotent: true }),
     ).rejects.toBeInstanceOf(DpdNetworkException);
     expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
   });

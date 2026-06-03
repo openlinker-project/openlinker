@@ -210,7 +210,13 @@ function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
 }
 
 function toReceiverPeer(recipient: ShipmentRecipient, address: ShipmentAddress): DpdSenderOrReceiver {
+  // Recipient fields come from the order (not the DTO-validated sender config),
+  // so DPD's length caps (name/address ≤100, city ≤50, postalCode ≤10) are NOT
+  // pre-validated here — an over-cap or malformed value is rejected by DPD and
+  // surfaced verbatim as a `ShippingProviderRejectionException`.
   return {
+    // Omit `name` (optional on DPD) rather than send an empty string when the
+    // order carries no name parts.
     name: resolveRecipientName(recipient),
     // OL splits street + buildingNumber; DPD's `address` is a single ≤100 line.
     address: `${address.street} ${address.buildingNumber}`.trim(),
@@ -222,8 +228,12 @@ function toReceiverPeer(recipient: ShipmentRecipient, address: ShipmentAddress):
   };
 }
 
-function resolveRecipientName(recipient: ShipmentRecipient): string {
-  return recipient.name ?? `${recipient.firstName ?? ''} ${recipient.lastName ?? ''}`.trim();
+function resolveRecipientName(recipient: ShipmentRecipient): string | undefined {
+  if (recipient.name) {
+    return recipient.name;
+  }
+  const composed = `${recipient.firstName ?? ''} ${recipient.lastName ?? ''}`.trim();
+  return composed.length > 0 ? composed : undefined;
 }
 
 function firstValidation(infos?: DpdValidationInfo[]): DpdValidationInfo | undefined {

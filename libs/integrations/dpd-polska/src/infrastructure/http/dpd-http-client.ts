@@ -25,7 +25,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { DpdError401, DpdErrorItem, DpdErrors } from '../../domain/types/dpd-rest.types';
 import { DpdUnauthorizedException } from '../../domain/exceptions/dpd-unauthorized.exception';
 import { DpdNetworkException } from '../../domain/exceptions/dpd-network.exception';
-import type { DpdRequestOptions, IDpdHttpClient } from './dpd-http-client.interface';
+import type { DpdHttpAuth, DpdRequestOptions, IDpdHttpClient } from './dpd-http-client.interface';
 
 interface RetryConfig {
   maxRetries: number;
@@ -45,18 +45,10 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 const DPD_BRAND = 'dpd';
 
-/** Auth identifiers for the DPDServices client. */
-export interface DpdHttpAuth {
-  login: string;
-  password: string;
-  /** Provisional `X-DPD-FID` header value (master FID), pending OQ-2. */
-  masterFid?: string;
-}
-
 /**
- * Internal marker for retryable transport failures (429 / 5xx, plus network
- * errors when the caller opted in). Never escapes the client — the retry loop
- * converts it to `DpdNetworkException` once the budget is exhausted.
+ * Internal marker for retryable transport failures (429 / 503 always; ambiguous
+ * 5xx + network only for idempotent calls). Never escapes the client — the
+ * retry loop converts it to `DpdNetworkException` once the budget is exhausted.
  */
 class RetryableHttpError extends Error {
   constructor(
@@ -159,7 +151,7 @@ export class DpdHttpClient implements IDpdHttpClient {
       const message = `DPDServices network error: ${(error as Error).message}`;
       // Idempotent reads may retry; the non-idempotent create must NOT
       // (double-waybill / double-COD), so it throws a terminal network error.
-      if (options.retryOnNetworkError) {
+      if (options.idempotent) {
         throw new RetryableHttpError(message);
       }
       throw new DpdNetworkException(message, error);
@@ -180,7 +172,9 @@ export class DpdHttpClient implements IDpdHttpClient {
     if (response.status === 401 || response.status === 403) {
       throw new DpdUnauthorizedException(message);
     }
-    if (response.status === 429) {
+    if (response.status === 429 || response.status === 503) {
+      // Rate-limited / unavailable: DPD did NOT process the request, so a retry
+      // can't double-create — always retryable, regardless of idempotency.
       throw new RetryableHttpError(
         message,
         response.status,
@@ -188,7 +182,13 @@ export class DpdHttpClient implements IDpdHttpClient {
       );
     }
     if (response.status >= 500) {
-      throw new RetryableHttpError(message, response.status);
+      // Ambiguous 5xx (500/502/504): the request may have committed server-side.
+      // Retry only idempotent reads; a non-idempotent create treats it as an
+      // indeterminate outcome (reconcile, don't re-POST) to avoid double-COD.
+      if (options.idempotent) {
+        throw new RetryableHttpError(message, response.status);
+      }
+      throw new DpdNetworkException(message);
     }
     const first = firstErrorItem(errorBody);
     throw new ShippingProviderRejectionException(

@@ -77,7 +77,7 @@ export class DpdShippingAdapter implements ShippingProviderManagerPort, LabelDoc
       method: 'POST',
       path: LABEL_PATH,
       body,
-      retryOnNetworkError: true,
+      idempotent: true,
     });
     return decodeLabelDocument(response);
   }

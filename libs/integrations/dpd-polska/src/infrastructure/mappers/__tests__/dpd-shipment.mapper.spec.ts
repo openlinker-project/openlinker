@@ -123,6 +123,27 @@ describe('buildCreatePackagesRequest', () => {
     expect(req.packages[0].receiver?.name).toBe('ACME Sp. z o.o.');
   });
 
+  it('should omit the receiver name when the order carries no name parts', () => {
+    const req = buildCreatePackagesRequest(
+      makeCmd({
+        recipient: {
+          email: 'b@example.com',
+          phone: '+48500600700',
+          address: {
+            street: 'Krakowska',
+            buildingNumber: '12',
+            city: 'Poznań',
+            postCode: '60-001',
+            countryCode: 'PL',
+          },
+        },
+      }),
+      makeConfig(),
+    );
+
+    expect(req.packages[0].receiver?.name).toBeUndefined();
+  });
+
   it('should convert grams to kilograms and millimetres to centimetres', () => {
     const req = buildCreatePackagesRequest(makeCmd(), makeConfig());
     const parcel = req.packages[0].parcels[0];

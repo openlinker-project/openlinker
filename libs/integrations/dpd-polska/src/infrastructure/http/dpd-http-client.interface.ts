@@ -11,6 +11,14 @@
 
 export type DpdHttpMethod = 'GET' | 'POST';
 
+/** Auth identifiers for the DPDServices client (HTTP Basic + optional X-DPD-FID). */
+export interface DpdHttpAuth {
+  login: string;
+  password: string;
+  /** Provisional `X-DPD-FID` header value (master FID), pending OQ-2. */
+  masterFid?: string;
+}
+
 export interface DpdRequestOptions {
   method: DpdHttpMethod;
   /** Absolute path on the DPDServices host, e.g. `/public/shipment/v1/generatePackagesNumbers`. */
@@ -18,15 +26,19 @@ export interface DpdRequestOptions {
   /** JSON request body (serialised by the client). */
   body?: unknown;
   /**
-   * Whether a **network/timeout** failure may be auto-retried. `true` only for
-   * idempotent reads (label render). For the non-idempotent create
-   * (`generatePackagesNumbers`) leave it `false`/unset: DPD has no idempotency
-   * key, so a retry after the request already committed would double-create a
-   * waybill and double-charge COD — the network error surfaces as
-   * `DpdNetworkException` (reconcile, don't re-POST). HTTP `429`/`5xx` (which
-   * mean DPD did NOT commit) are always retryable regardless of this flag.
+   * Whether the call is safe to auto-retry on an **ambiguous** failure — a
+   * network/timeout or an ambiguous `5xx` (`500`/`502`/`504`) that might have
+   * committed server-side. `true` only for idempotent reads (label render).
+   *
+   * For the non-idempotent create (`generatePackagesNumbers`) leave it
+   * `false`/unset: DPD has no idempotency key, so retrying a request that
+   * already committed would double-create a waybill and double-charge COD — the
+   * failure surfaces as `DpdNetworkException` (reconcile, don't re-POST).
+   *
+   * `429` and `503` are retryable regardless of this flag: both mean DPD did
+   * NOT process the request, so a retry can't double-create.
    */
-  retryOnNetworkError?: boolean;
+  idempotent?: boolean;
 }
 
 export interface IDpdHttpClient {

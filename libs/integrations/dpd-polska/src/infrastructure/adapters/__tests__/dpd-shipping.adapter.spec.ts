@@ -70,10 +70,8 @@ describe('DpdShippingAdapter', () => {
     expect(http.request).toHaveBeenCalledWith(
       expect.objectContaining({ method: 'POST', path: '/public/shipment/v1/generatePackagesNumbers' }),
     );
-    // The create must NOT opt into network-retry (double-COD guard).
-    expect(http.request).toHaveBeenCalledWith(
-      expect.not.objectContaining({ retryOnNetworkError: true }),
-    );
+    // The create must NOT opt into idempotent retry (double-COD guard).
+    expect(http.request).toHaveBeenCalledWith(expect.not.objectContaining({ idempotent: true }));
   });
 
   it('should thread COD into the create request body', async () => {
@@ -121,7 +119,7 @@ describe('DpdShippingAdapter', () => {
     expect(doc.contentType).toBe('application/pdf');
     expect(Buffer.from(doc.body).toString('utf8')).toBe('%PDF-1.4');
     expect(http.request).toHaveBeenCalledWith(
-      expect.objectContaining({ method: 'POST', path: '/public/shipment/v1/generateSpedLabels', retryOnNetworkError: true }),
+      expect.objectContaining({ method: 'POST', path: '/public/shipment/v1/generateSpedLabels', idempotent: true }),
     );
   });
 
