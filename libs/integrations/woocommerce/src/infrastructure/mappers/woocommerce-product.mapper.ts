@@ -82,6 +82,14 @@ export class WooCommerceProductMapper implements IWooCommerceProductMapper {
     return Number.isFinite(n) ? n : undefined;
   }
 
+  extractEan(metaData: WooCommerceMetaEntry[]): string | null {
+    return normalizeToEan13(this.extractMeta(metaData, ...EAN_KEYS));
+  }
+
+  extractGtin(metaData: WooCommerceMetaEntry[]): string | null {
+    return normalizeBarcode(this.extractMeta(metaData, ...GTIN_KEYS));
+  }
+
   private extractMeta(metaData: WooCommerceMetaEntry[], ...keys: string[]): string | null {
     for (const key of keys) {
       const entry = metaData.find((m) => m.key === key);
