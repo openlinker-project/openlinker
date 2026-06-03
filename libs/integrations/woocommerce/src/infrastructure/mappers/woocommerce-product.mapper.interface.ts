@@ -13,6 +13,7 @@ import type { Product, ProductVariant } from '@openlinker/core/products';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
+  WooCommerceMetaEntry,
 } from '../adapters/product-master/woocommerce-product.types';
 
 export interface IWooCommerceProductMapper {
@@ -21,4 +22,14 @@ export interface IWooCommerceProductMapper {
     variation: WooCommerceProductVariation,
     productId: string,
   ): Omit<ProductVariant, 'id'>;
+  /**
+   * Extract and normalise EAN-13 barcode from product meta_data.
+   * Returns null when no recognised EAN key is present or the value is blank.
+   */
+  extractEan(metaData: WooCommerceMetaEntry[]): string | null;
+  /**
+   * Extract and normalise GTIN barcode from product meta_data.
+   * Returns null when no recognised GTIN key is present or the value is blank.
+   */
+  extractGtin(metaData: WooCommerceMetaEntry[]): string | null;
 }
