@@ -193,6 +193,9 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         deliveryMethodId: this.resolveProviderDeliveryMethodId(input),
         recipient: input.recipient,
         parcel: input.parcel,
+        // Caller-supplied COD (#962) — pass through verbatim; COD-incapable
+        // adapters ignore it, COD-capable ones translate it to their wire shape.
+        cod: input.cod,
       });
 
       return await this.shipments.update(shipment.id, {
