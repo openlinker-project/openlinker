@@ -41,6 +41,7 @@
     "@openlinker/core": "workspace:*",
     "@openlinker/integrations-ai": "workspace:*",
     "@openlinker/integrations-allegro": "workspace:*",
+    "@openlinker/integrations-dpd-polska": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
     "bcryptjs": "^3.0.3",
