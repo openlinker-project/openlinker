@@ -40,8 +40,11 @@ export interface GenerateLabelCommand {
    * own-contract adapters (InPost) ignore it. Source-brokered adapters that
    * require it MUST throw a readable error when it is absent. */
   deliveryMethodId?: string;
-  /** Required when `shippingMethod === 'paczkomat'`. Provider-issued
-   * locker id (e.g. `'POZ08A'`). */
+  /** Pickup-point id the parcel ships to. Required for the point-delivery
+   * methods — `'paczkomat'` (locker id, e.g. InPost `'POZ08A'`) and `'pickup'`
+   * (parcel-shop / PUDO id, e.g. DPD `'PL11033'`, #963). The field name is
+   * historical (InPost locker); it carries any provider's pickup-point id.
+   * Absent for `'kurier'`. */
   paczkomatId?: string;
   /** Recipient (buyer) — name, contact, optional postal address. The caller
    * resolves it from the order. Adapters require `recipient.address` for

@@ -14,14 +14,17 @@
  * @module libs/integrations/dpd-polska/src/infrastructure/mappers
  */
 import type {
+  FindPickupPointsQuery,
   GenerateLabelCommand,
   GenerateLabelResult,
   LabelDocument,
+  PickupPoint,
+  PickupPointAddress,
   ShipmentAddress,
   ShipmentCod,
   ShipmentRecipient,
 } from '@openlinker/core/shipping';
-import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+import { PICKUP_POINT_STATUS, ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { DpdConnectionConfig, DpdSenderContact } from '../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersRequest,
@@ -29,61 +32,104 @@ import type {
   DpdGenerateSpedLabelsRequest,
   DpdGenerateSpedLabelsResponse,
   DpdParcel,
+  DpdPoint,
+  DpdPointSearchQuery,
+  DpdPudoReceiver,
   DpdSenderOrReceiver,
+  DpdSinglePackage,
   DpdTransportService,
   DpdValidationInfo,
 } from '../../domain/types/dpd-rest.types';
 import {
   DPD_COD_ATTRIBUTE,
   DPD_SERVICE_CODE_COD,
+  DPD_SERVICE_CODE_DPD_PICKUP,
   DPD_STATUS_OK,
   DpdCodCurrencyValues,
 } from '../../domain/types/dpd-rest.types';
 
 const DPD_BRAND = 'dpd';
 
-/** Build the create-packages request for the command (v1: one package, one parcel). */
+/**
+ * Build the create-packages request for the command (v1: one package, one
+ * parcel). Branches on shipping method: `kurier` → courier `receiver` (street
+ * address); `pickup` → `pudoReceiver` + the `DPD_PICKUP` service (ship to a DPD
+ * Pickup parcel-shop / PUDO point, #963). COD applies to either.
+ */
 export function buildCreatePackagesRequest(
   cmd: GenerateLabelCommand,
   config: DpdConnectionConfig,
 ): DpdGeneratePackagesNumbersRequest {
-  if (cmd.shippingMethod !== 'kurier') {
+  if (cmd.shippingMethod !== 'kurier' && cmd.shippingMethod !== 'pickup') {
     throw new ShippingProviderRejectionException(
       DPD_BRAND,
       'preflight.unsupported-method',
-      `DPD Polska supports 'kurier' only; got '${String(cmd.shippingMethod)}'`,
+      `DPD Polska supports 'kurier' and 'pickup' only; got '${String(cmd.shippingMethod)}'`,
     );
   }
-  if (!cmd.recipient.address) {
-    throw new ShippingProviderRejectionException(
-      DPD_BRAND,
-      'preflight.missing-recipient-address',
-      'recipient.address is required for a DPD courier shipment',
-    );
-  }
+  // Both methods carry a physical parcel → weight is always required.
   if (cmd.parcel.weightGrams === undefined) {
     throw new ShippingProviderRejectionException(
       DPD_BRAND,
       'preflight.missing-dimensions-or-weight',
-      'parcel.weightGrams is required for a DPD courier shipment',
+      'parcel.weightGrams is required for a DPD shipment',
     );
   }
 
-  const services = cmd.cod ? [buildCodService(cmd.cod)] : undefined;
+  const isPickup = cmd.shippingMethod === 'pickup';
 
+  const services: DpdTransportService[] = [];
+  if (isPickup) {
+    services.push({ code: DPD_SERVICE_CODE_DPD_PICKUP });
+  }
+  if (cmd.cod) {
+    services.push(buildCodService(cmd.cod));
+  }
+
+  const pkg: DpdSinglePackage = {
+    reference: cmd.shipmentId,
+    ref1: cmd.orderId,
+    sender: toSenderPeer(config.senderAddress),
+    payerFID: Number(config.payerFid),
+    services: services.length > 0 ? services : undefined,
+    parcels: [toParcel(cmd)],
+  };
+
+  if (isPickup) {
+    pkg.pudoReceiver = toPudoReceiver(cmd);
+  } else {
+    if (!cmd.recipient.address) {
+      throw new ShippingProviderRejectionException(
+        DPD_BRAND,
+        'preflight.missing-recipient-address',
+        'recipient.address is required for a DPD courier shipment',
+      );
+    }
+    pkg.receiver = toReceiverPeer(cmd.recipient, cmd.recipient.address);
+  }
+
+  return { generationPolicy: 'ALL_OR_NOTHING', packages: [pkg] };
+}
+
+/** Map a neutral pickup-point query to the DPD point-directory search shape. */
+export function buildPointSearchQuery(query: FindPickupPointsQuery): DpdPointSearchQuery {
   return {
-    generationPolicy: 'ALL_OR_NOTHING',
-    packages: [
-      {
-        reference: cmd.shipmentId,
-        ref1: cmd.orderId,
-        sender: toSenderPeer(config.senderAddress),
-        receiver: toReceiverPeer(cmd.recipient, cmd.recipient.address),
-        payerFID: Number(config.payerFid),
-        services,
-        parcels: [toParcel(cmd)],
-      },
-    ],
+    city: query.city,
+    postalCode: query.postalCode,
+    searchText: query.searchText,
+    limit: query.limit,
+  };
+}
+
+/** Map a DPD Pickup point to the neutral `PickupPoint`. */
+export function toPickupPoint(point: DpdPoint): PickupPoint {
+  return {
+    providerId: point.id,
+    name: point.name ?? point.id,
+    address: toPickupPointAddress(point),
+    status: PICKUP_POINT_STATUS.Active,
+    lat: point.latitude,
+    lon: point.longitude,
   };
 }
 
@@ -194,6 +240,36 @@ function toParcel(cmd: GenerateLabelCommand): DpdParcel {
     parcel.sizeZ = height / 10;
   }
   return parcel;
+}
+
+/**
+ * Build the DPD Pickup `pudoReceiver` from the command — the point id (carried
+ * on the generic `paczkomatId` field) + the buyer contact for pickup
+ * notifications. No street address (the point's own address applies).
+ */
+function toPudoReceiver(cmd: GenerateLabelCommand): DpdPudoReceiver {
+  if (!cmd.paczkomatId) {
+    throw new ShippingProviderRejectionException(
+      DPD_BRAND,
+      'preflight.missing-paczkomat-id',
+      'paczkomatId (the DPD Pickup point id) is required for a pickup shipment',
+    );
+  }
+  return {
+    pudoId: cmd.paczkomatId,
+    name: resolveRecipientName(cmd.recipient),
+    phone: cmd.recipient.phone,
+    email: cmd.recipient.email,
+  };
+}
+
+function toPickupPointAddress(point: DpdPoint): PickupPointAddress {
+  return {
+    line1: point.address?.street ?? '',
+    city: point.address?.city ?? '',
+    postalCode: point.address?.postalCode ?? '',
+    country: point.address?.countryCode ?? 'PL',
+  };
 }
 
 function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
