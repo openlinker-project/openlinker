@@ -35,6 +35,7 @@ import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.han
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
+import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -69,6 +70,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,
     MasterProductSyncAllHandler,
+    PickupPointRefreshHandler,
     HandlerRegistrationService,
   ],
 })
