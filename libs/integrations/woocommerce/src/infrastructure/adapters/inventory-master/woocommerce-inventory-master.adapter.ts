@@ -98,17 +98,21 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     return this.adjustSimpleInventory(adjustment, wcId, product);
   }
 
-  async reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
-    throw new WooCommerceNotSupportedException(
-      'reserveInventory',
-      'WooCommerce REST API does not expose inventory reservation. Use adjustInventory for absolute stock changes.',
+  reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
+    return Promise.reject(
+      new WooCommerceNotSupportedException(
+        'reserveInventory',
+        'WooCommerce REST API does not expose inventory reservation. Use adjustInventory for absolute stock changes.',
+      ),
     );
   }
 
-  async releaseInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
-    throw new WooCommerceNotSupportedException(
-      'releaseInventory',
-      'WooCommerce REST API does not expose inventory reservation. Use adjustInventory for absolute stock changes.',
+  releaseInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
+    return Promise.reject(
+      new WooCommerceNotSupportedException(
+        'releaseInventory',
+        'WooCommerce REST API does not expose inventory reservation. Use adjustInventory for absolute stock changes.',
+      ),
     );
   }
 
