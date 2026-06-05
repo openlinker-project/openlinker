@@ -1,3 +1,5 @@
+import { ciStabilityConfig } from '../../../jest.ci-stability.mjs';
+
 export default {
   testEnvironment: 'node',
   rootDir: '.',
@@ -34,11 +36,9 @@ export default {
   testTimeout: 30000,
 
   // CI stability (#976): `allegro-http-client.spec.ts` ballooned to ~950 s in
-  // the same red full-suite runs that OOM-killed the prestashop package —
-  // memory/CPU starvation under the `pnpm -r test` fan-out. Same bound as the
-  // prestashop config: a deterministic worker cap + per-worker memory ceiling.
-  maxWorkers: 2,
-  workerIdleMemoryLimit: '512MB',
+  // the same red full-suite runs that OOM-killed the prestashop package. Same
+  // worker/memory caps as prestashop — see jest.ci-stability.mjs at the repo root.
+  ...ciStabilityConfig,
 };
 
 
