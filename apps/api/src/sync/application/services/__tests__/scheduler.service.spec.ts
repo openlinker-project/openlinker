@@ -93,7 +93,11 @@ describe('SchedulerService', () => {
 
   describe('onApplicationBootstrap', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
-      const cronKeys = ['OL_INVENTORY_SYNC_CRON', 'OL_PRODUCT_SYNC_CRON'];
+      const cronKeys = [
+        'OL_INVENTORY_SYNC_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+      ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
     };
@@ -156,7 +160,7 @@ describe('SchedulerService', () => {
 
     it('should not carry any allegro-specific task knowledge in core', () => {
       // Regression guard for #584: with an empty registry the scheduler must
-      // register *only* the two capability-based core tasks. The previous
+      // register *only* the capability-based core tasks. The previous
       // implementation hardcoded `allegro-orders-poll` and `allegro-offers-sync`
       // here; both must now be contributed by AllegroIntegrationModule.
       configService.get.mockImplementation(defaultConfigGet);
@@ -164,7 +168,11 @@ describe('SchedulerService', () => {
       service.onApplicationBootstrap();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
-      expect(registeredJobs.sort()).toEqual(['master-inventory-sync', 'master-product-sync']);
+      expect(registeredJobs.sort()).toEqual([
+        'master-inventory-sync',
+        'master-product-sync',
+        'pickup-point-refresh',
+      ]);
     });
 
     it('should skip a registry-contributed task whose enabledEnvVar resolves to false', () => {
