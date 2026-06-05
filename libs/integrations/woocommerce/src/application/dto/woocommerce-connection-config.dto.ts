@@ -17,6 +17,6 @@
 import { IsUrl } from 'class-validator';
 
 export class WooCommerceConnectionConfigDto {
-  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['http', 'https'] })
+  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   siteUrl!: string;
 }
