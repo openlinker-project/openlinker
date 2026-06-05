@@ -1,7 +1,7 @@
 /**
  * WooCommerce Testcontainer Helper (#878)
  *
- * Boots a real WordPress + WooCommerce instance (bitnami/wordpress:6.7.2-debian-12-r0
+ * Boots a real WordPress + WooCommerce instance (bitnami/wordpress:latest
  * + MySQL 8.4.7) on a shared Testcontainers Network. Follows the two-container
  * pattern established in prestashop-container.helper.ts.
  *
@@ -76,7 +76,7 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
 
     // 3. WordPress+WooCommerce — wait for WC namespace index (public, no auth required)
     //    withStartupTimeout takes milliseconds — same as .withStartupTimeout(240_000) in PS helper
-    wordpress = await new GenericContainer('bitnami/wordpress:6.7.2-debian-12-r0')
+    wordpress = await new GenericContainer('bitnami/wordpress:latest')
       .withNetwork(network)
       .withEnvironment({
         WORDPRESS_DATABASE_HOST: 'woocommerce-mysql-tc',
