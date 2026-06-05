@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- mock implementations must be async to satisfy the mocked port's Promise<T> return type; they return values directly without needing internal await */
 /**
  * WooCommerce Order Processor Adapter — unit tests
  *

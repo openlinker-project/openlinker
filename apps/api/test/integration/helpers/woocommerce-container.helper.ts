@@ -7,14 +7,13 @@
  *
  * Readiness probe: GET /wp-json/wc/v3/ (WC namespace index, public endpoint —
  * returns 200 without auth once WooCommerce has registered its REST routes).
- * NOT /wp-json/wc/v3/system_status (requires consumer key auth — chicken-and-egg
- * before keys are generated) and NOT /wp-json/ (WordPress only, not WC).
  *
- * Consumer key generation via WP-CLI after readiness:
- *   wp eval 'echo json_encode((new WC_Auth)->create_keys(...));' --no-debug 2>/dev/null
- * Parses LAST non-empty stdout line as JSON (PHP notices may precede it).
- * Retries up to 5 × 10 s: WC class init may lag behind WordPress REST readiness.
- * Shape: { key_id, user_id, consumer_key: "ck_...", consumer_secret: "cs_...", key_permissions }
+ * Key generation: direct wpdb INSERT with hash_hmac("sha256", $ck, "wc-api").
+ * WC_Auth::create_keys() is unreliable from WP-CLI context in WC 9+.
+ *
+ * Product seeding: WC PHP API via `wp eval` (WC_Product_Simple, WC_Product_Variable,
+ * WC_Product_Variation). Avoids HTTP auth entirely — WooCommerce REST API over plain
+ * HTTP only supports OAuth 1.0a; Basic Auth and query-string auth require is_ssl()=true.
  *
  * Boot-time budget:
  *   Warm Docker image cache (dev laptop, CI re-runs): ~90-120 s
@@ -23,8 +22,6 @@
  *
  * @module apps/api/test/integration/helpers
  */
-// MySqlContainer is in @testcontainers/mysql (apps/api/package.json@10.28.0)
-// matching the import pattern in prestashop-container.helper.ts
 import {
   GenericContainer,
   Network,
@@ -52,7 +49,6 @@ export interface WooCommerceTestContainer {
 }
 
 export async function startWooCommerceContainer(): Promise<WooCommerceTestContainer> {
-  // Typed as undefined so cleanup() guards are safe on partial startup failure
   let network: StartedNetwork | undefined;
   let mysql: StartedMySqlContainer | undefined;
   let wordpress: StartedTestContainer | undefined;
@@ -60,10 +56,8 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
   try {
     console.log('[WC] Starting MySQL companion...');
 
-    // 1. Shared network — WordPress must reach MySQL by hostname
     network = await Network.newNetwork();
 
-    // 2. MySQL companion on the shared network
     mysql = await new MySqlContainer('mysql:8.4.7')
       .withNetwork(network)
       .withNetworkAliases('woocommerce-mysql-tc')
@@ -74,8 +68,6 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
 
     console.log('[WC] MySQL ready. Starting WordPress+WooCommerce (warm: ~2min, cold: ~5min)...');
 
-    // 3. WordPress+WooCommerce — wait for WC namespace index (public, no auth required)
-    //    withStartupTimeout takes milliseconds — same as .withStartupTimeout(240_000) in PS helper
     wordpress = await new GenericContainer('bitnami/wordpress:latest')
       .withNetwork(network)
       .withEnvironment({
@@ -100,24 +92,40 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
     const baseUrl = `http://localhost:${wordpress.getMappedPort(8080)}`;
     console.log(`[WC] WordPress+WooCommerce ready at ${baseUrl}. Activating HPOS + generating keys...`);
 
-    // 4. Activate HPOS (v1 requirement per spec §6)
+    // Activate HPOS (v1 requirement per spec §6)
     await wordpress.exec([
       'wp', 'option', 'update', 'woocommerce_feature_hpos_enabled', 'yes',
       '--allow-root', '--no-debug',
     ]);
 
-    // 5. Generate WC REST API credentials via WP-CLI.
-    //    Retry 5 × 10 s: WC_Auth class may not be available immediately after WC REST readiness.
-    //    --no-debug 2>/dev/null: suppress PHP notices from stdout.
-    //    Parse LAST non-empty line: WP-CLI may emit progress before the JSON.
+    // Generate consumer key via direct wpdb INSERT.
+    // wc_api_hash() = hash_hmac('sha256', $key, 'wc-api') — must match so WC can
+    // look up the hashed key from the query-string consumer_key parameter.
+    // Retry: WC table may not be fully migrated immediately after REST readiness.
     let consumerKey = '';
     let consumerSecret = '';
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const { output, exitCode } = await wordpress.exec([
         'sh', '-c',
-        `wp eval 'echo json_encode((new WC_Auth)->create_keys("ol-test", 1, "read_write"));' \
-          --allow-root --no-debug 2>/dev/null`,
+        `wp eval '
+          $ck = "ck_" . bin2hex(random_bytes(20));
+          $cs = "cs_" . bin2hex(random_bytes(20));
+          global $wpdb;
+          $ok = $wpdb->insert(
+            $wpdb->prefix . "woocommerce_api_keys",
+            [
+              "user_id"         => 1,
+              "description"     => "OL Test Key",
+              "permissions"     => "read_write",
+              "consumer_key"    => hash_hmac("sha256", $ck, "wc-api"),
+              "consumer_secret" => $cs,
+              "truncated_key"   => substr($ck, -7),
+            ]
+          );
+          if (!$ok) { fwrite(STDERR, $wpdb->last_error); exit(1); }
+          echo json_encode(["consumer_key" => $ck, "consumer_secret" => $cs]);
+        ' --allow-root --no-debug 2>/dev/null`,
       ]);
       if (exitCode !== 0) { await delay(10_000); continue; }
       const lastLine = output.trim().split('\n').filter(Boolean).at(-1) ?? '';
@@ -139,57 +147,101 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
 
     if (!consumerKey || !consumerSecret) {
       throw new Error(
-        'WooCommerceTestContainer: failed to generate consumer keys after 5 attempts. ' +
-        'WC may not have completed initialisation.',
+        'WooCommerceTestContainer: failed to generate consumer keys after 5 attempts.',
       );
     }
 
-    console.log('[WC] Consumer keys generated. Seeding products...');
+    console.log('[WC] Consumer keys generated. Seeding products via WC PHP API...');
 
-    // 6. Seed products via WC REST API (validates data through WC model layer)
-    const headers: Record<string, string> = {
-      Authorization: `Basic ${Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64')}`,
-      'Content-Type': 'application/json',
+    // Seed products using WC PHP classes directly via wp eval.
+    // Avoids WooCommerce REST API HTTP auth (over plain HTTP only OAuth 1.0a works;
+    // Basic Auth and query-string auth both require is_ssl()=true in WC source).
+
+    const wpEval = async (code: string): Promise<string> => {
+      const { output, exitCode } = await wordpress!.exec([
+        'sh', '-c',
+        `wp eval ${JSON.stringify(code)} --allow-root --no-debug 2>/dev/null`,
+      ]);
+      if (exitCode !== 0) throw new Error(`wp eval failed (exit ${exitCode}): ${output}`);
+      return output.trim().split('\n').filter(Boolean).at(-1) ?? '';
     };
 
-    const seedPost = async (path: string, body: unknown): Promise<{ id: number }> => {
-      const res = await fetch(`${baseUrl}/wp-json/wc/v3${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`WC seed POST ${path} failed ${res.status}: ${text}`);
+    // Get-or-create Clothing category
+    const categoryId = await wpEval(`
+      $existing = term_exists("Clothing", "product_cat");
+      if ($existing) {
+        echo is_array($existing) ? $existing["term_id"] : $existing;
+      } else {
+        $term = wp_insert_term("Clothing", "product_cat");
+        echo is_wp_error($term) ? "0" : $term["term_id"];
       }
-      return res.json() as Promise<{ id: number }>;
-    };
+    `);
+    if (!categoryId || categoryId === '0') {
+      throw new Error('WooCommerceTestContainer: failed to get or create Clothing category');
+    }
 
-    const { id: categoryId } = await seedPost('/products/categories', { name: 'Clothing' });
+    const shirtId = await wpEval(`
+      $p = new WC_Product_Simple();
+      $p->set_name("OL Test Shirt");
+      $p->set_sku("WC-SHIRT-001");
+      $p->set_regular_price("49.99");
+      $p->set_manage_stock(true);
+      $p->set_stock_quantity(50);
+      $p->set_category_ids([${categoryId}]);
+      $p->set_status("publish");
+      echo $p->save();
+    `);
+    if (!shirtId || shirtId === '0') {
+      throw new Error('WooCommerceTestContainer: failed to create WC-SHIRT-001');
+    }
 
-    const { id: shirtId } = await seedPost('/products', {
-      name: 'OL Test Shirt', sku: 'WC-SHIRT-001', type: 'simple',
-      regular_price: '49.99', manage_stock: true, stock_quantity: 50,
-      categories: [{ id: categoryId }],
-    });
+    const jeansId = await wpEval(`
+      $attr = new WC_Product_Attribute();
+      $attr->set_name("Size");
+      $attr->set_options(["S", "M"]);
+      $attr->set_variation(true);
+      $attr->set_visible(true);
+      $p = new WC_Product_Variable();
+      $p->set_name("OL Test Jeans");
+      $p->set_sku("WC-JEANS");
+      $p->set_category_ids([${categoryId}]);
+      $p->set_attributes([$attr]);
+      $p->set_status("publish");
+      echo $p->save();
+    `);
+    if (!jeansId || jeansId === '0') {
+      throw new Error('WooCommerceTestContainer: failed to create WC-JEANS');
+    }
 
-    const { id: jeansId } = await seedPost('/products', {
-      name: 'OL Test Jeans', sku: 'WC-JEANS', type: 'variable',
-      categories: [{ id: categoryId }],
-      attributes: [{ name: 'Size', options: ['S', 'M'], variation: true, visible: true }],
-    });
+    const varSId = await wpEval(`
+      $v = new WC_Product_Variation();
+      $v->set_parent_id(${jeansId});
+      $v->set_sku("WC-JEANS-S");
+      $v->set_regular_price("79.99");
+      $v->set_manage_stock(true);
+      $v->set_stock_quantity(30);
+      $v->set_attributes(["size" => "S"]);
+      $v->set_status("publish");
+      echo $v->save();
+    `);
+    if (!varSId || varSId === '0') {
+      throw new Error('WooCommerceTestContainer: failed to create WC-JEANS-S variation');
+    }
 
-    const { id: varSId } = await seedPost(`/products/${jeansId}/variations`, {
-      sku: 'WC-JEANS-S', regular_price: '79.99',
-      manage_stock: true, stock_quantity: 30,
-      attributes: [{ name: 'Size', option: 'S' }],
-    });
-
-    const { id: varMId } = await seedPost(`/products/${jeansId}/variations`, {
-      sku: 'WC-JEANS-M', regular_price: '79.99',
-      manage_stock: true, stock_quantity: 20,
-      attributes: [{ name: 'Size', option: 'M' }],
-    });
+    const varMId = await wpEval(`
+      $v = new WC_Product_Variation();
+      $v->set_parent_id(${jeansId});
+      $v->set_sku("WC-JEANS-M");
+      $v->set_regular_price("79.99");
+      $v->set_manage_stock(true);
+      $v->set_stock_quantity(20);
+      $v->set_attributes(["size" => "M"]);
+      $v->set_status("publish");
+      echo $v->save();
+    `);
+    if (!varMId || varMId === '0') {
+      throw new Error('WooCommerceTestContainer: failed to create WC-JEANS-M variation');
+    }
 
     console.log(
       `[WC] Seed complete. baseUrl=${baseUrl} shirt=${shirtId} jeans=${jeansId} vars=[${varSId},${varMId}]`,
@@ -199,9 +251,9 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       baseUrl,
       consumerKey,
       consumerSecret,
-      simpleProductExternalId: String(shirtId),
-      variableProductExternalId: String(jeansId),
-      variationIds: [String(varSId), String(varMId)],
+      simpleProductExternalId: shirtId,
+      variableProductExternalId: jeansId,
+      variationIds: [varSId, varMId],
 
       async cleanup(): Promise<void> {
         try {
@@ -216,7 +268,6 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       },
     };
   } catch (err) {
-    // Partial startup: clean up any containers that did start
     try { await wordpress?.stop(); } catch { /* ignore */ }
     try { await mysql?.stop(); } catch { /* ignore */ }
     try { await network?.stop(); } catch { /* ignore */ }
