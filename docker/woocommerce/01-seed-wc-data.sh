@@ -15,20 +15,21 @@
 # `pnpm dev:stack:seed-woocommerce` without duplicating data.
 #
 # JSON parsing uses grep + cut — no jq or python3 required (bitnami/wordpress:latest
-# ships neither).
+# ships neither; it is based on Photon OS with a minimal toolset).
 set -e
 
 log() { echo "[WC seed] $*"; }
 
-# Extract a string value from flat JSON: json_str_field KEY < file.json
-# Works on single-line JSON. Example: {"consumer_key":"ck_abc"} → ck_abc
-json_str_field() {
-  grep -oE "\"$1\":\"[^\"]+\"" | head -1 | cut -d'"' -f4
-}
-
-# Extract the first numeric "id" field from a JSON response
+# Extract the first numeric "id" field from a JSON string.
+# Works for both success responses {"id":N,...} and passes through to term_id fallback.
 json_first_id() {
   grep -oE '"id":[0-9]+' | head -1 | cut -d: -f2
+}
+
+# Extract a string value from flat JSON passed via stdin.
+# Usage: json_str_field KEY <<< "$JSON"
+json_str_field() {
+  grep -oE "\"$1\":\"[^\"]+\"" | head -1 | cut -d'"' -f4
 }
 
 log "Waiting for WordPress core install..."
@@ -63,44 +64,71 @@ BASE_URL="http://localhost:8080"
 AUTH="$CONSUMER_KEY:$CONSUMER_SECRET"
 
 # Idempotency guard — skip if WC-SHIRT-001 already exists
-EXISTING_SHIRT=$(curl -sf -u "$AUTH" "$BASE_URL/wp-json/wc/v3/products?sku=WC-SHIRT-001" \
+EXISTING_SHIRT=$(curl -s -u "$AUTH" "$BASE_URL/wp-json/wc/v3/products?sku=WC-SHIRT-001" \
   | json_first_id)
 if [ -n "$EXISTING_SHIRT" ]; then
   log "Seed data already present (WC-SHIRT-001 id=$EXISTING_SHIRT). Skipping."
   exit 0
 fi
 
-# DRY helper: all WC REST POST calls share the same auth, base URL, content-type
+# DRY helper: WC REST POST — does NOT use -f so HTTP errors don't abort the script;
+# callers validate the response themselves.
 wc_post() {
-  # wc_post <path> <json-body> — returns response body; exits non-zero on HTTP error
-  curl -sf -u "$AUTH" -X POST "$BASE_URL/wp-json/wc/v3$1" \
+  curl -s -u "$AUTH" -X POST "$BASE_URL/wp-json/wc/v3$1" \
     -H "Content-Type: application/json" \
     -d "$2"
 }
 
-# Category
-CATEGORY_ID=$(wc_post '/products/categories' '{"name":"Clothing"}' | json_first_id)
+# Get-or-create "Clothing" category.
+# WC returns {"id":N,...} on success or
+# {"code":"term_exists","data":{"status":400,"term_id":N}} on duplicate.
+CATEGORY_RESP=$(wc_post '/products/categories' '{"name":"Clothing"}')
+CATEGORY_ID=$(echo "$CATEGORY_RESP" | json_first_id)
+if [ -z "$CATEGORY_ID" ]; then
+  # "term_exists" error path — extract term_id from the data object
+  CATEGORY_ID=$(echo "$CATEGORY_RESP" | grep -oE '"term_id":[0-9]+' | head -1 | cut -d: -f2)
+fi
+if [ -z "$CATEGORY_ID" ]; then
+  log "ERROR: could not get or create 'Clothing' category. Response: $CATEGORY_RESP"
+  exit 1
+fi
 log "Category 'Clothing' id=$CATEGORY_ID"
 
 # Simple product
-wc_post '/products' \
-  "{\"name\":\"OL Test Shirt\",\"sku\":\"WC-SHIRT-001\",\"type\":\"simple\",\"regular_price\":\"49.99\",\"manage_stock\":true,\"stock_quantity\":50,\"categories\":[{\"id\":$CATEGORY_ID}]}" \
-  > /dev/null
-log "Simple product WC-SHIRT-001 created (stock=50)."
+SHIRT_RESP=$(wc_post '/products' \
+  "{\"name\":\"OL Test Shirt\",\"sku\":\"WC-SHIRT-001\",\"type\":\"simple\",\"regular_price\":\"49.99\",\"manage_stock\":true,\"stock_quantity\":50,\"categories\":[{\"id\":$CATEGORY_ID}]}")
+SHIRT_ID=$(echo "$SHIRT_RESP" | json_first_id)
+if [ -z "$SHIRT_ID" ]; then
+  log "ERROR: failed to create WC-SHIRT-001. Response: $SHIRT_RESP"
+  exit 1
+fi
+log "Simple product WC-SHIRT-001 created (id=$SHIRT_ID, stock=50)."
 
 # Variable product
-JEANS_ID=$(wc_post '/products' \
-  "{\"name\":\"OL Test Jeans\",\"sku\":\"WC-JEANS\",\"type\":\"variable\",\"categories\":[{\"id\":$CATEGORY_ID}],\"attributes\":[{\"name\":\"Size\",\"options\":[\"S\",\"M\"],\"variation\":true,\"visible\":true}]}" \
-  | json_first_id)
+JEANS_RESP=$(wc_post '/products' \
+  "{\"name\":\"OL Test Jeans\",\"sku\":\"WC-JEANS\",\"type\":\"variable\",\"categories\":[{\"id\":$CATEGORY_ID}],\"attributes\":[{\"name\":\"Size\",\"options\":[\"S\",\"M\"],\"variation\":true,\"visible\":true}]}")
+JEANS_ID=$(echo "$JEANS_RESP" | json_first_id)
+if [ -z "$JEANS_ID" ]; then
+  log "ERROR: failed to create WC-JEANS. Response: $JEANS_RESP"
+  exit 1
+fi
 
 # Variations
-wc_post "/products/$JEANS_ID/variations" \
-  '{"sku":"WC-JEANS-S","regular_price":"79.99","manage_stock":true,"stock_quantity":30,"attributes":[{"name":"Size","option":"S"}]}' \
-  > /dev/null
+VARS_RESP=$(wc_post "/products/$JEANS_ID/variations" \
+  '{"sku":"WC-JEANS-S","regular_price":"79.99","manage_stock":true,"stock_quantity":30,"attributes":[{"name":"Size","option":"S"}]}')
+VARS_ID=$(echo "$VARS_RESP" | json_first_id)
+if [ -z "$VARS_ID" ]; then
+  log "ERROR: failed to create WC-JEANS-S variation. Response: $VARS_RESP"
+  exit 1
+fi
 
-wc_post "/products/$JEANS_ID/variations" \
-  '{"sku":"WC-JEANS-M","regular_price":"79.99","manage_stock":true,"stock_quantity":20,"attributes":[{"name":"Size","option":"M"}]}' \
-  > /dev/null
+VARM_RESP=$(wc_post "/products/$JEANS_ID/variations" \
+  '{"sku":"WC-JEANS-M","regular_price":"79.99","manage_stock":true,"stock_quantity":20,"attributes":[{"name":"Size","option":"M"}]}')
+VARM_ID=$(echo "$VARM_RESP" | json_first_id)
+if [ -z "$VARM_ID" ]; then
+  log "ERROR: failed to create WC-JEANS-M variation. Response: $VARM_RESP"
+  exit 1
+fi
 
-log "Variable product WC-JEANS (S stock=30, M stock=20) created."
+log "Variable product WC-JEANS id=$JEANS_ID (S id=$VARS_ID stock=30, M id=$VARM_ID stock=20) created."
 log "Seed complete. Access WC at http://localhost:8082 (host) — admin/admin123."
