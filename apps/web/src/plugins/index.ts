@@ -42,8 +42,9 @@
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
+import { dpdPlugin } from './dpd';
 import { prestashopPlugin } from './prestashop';
 
-export const plugins: readonly OpenLinkerPlugin[] = [prestashopPlugin, allegroPlugin];
+export const plugins: readonly OpenLinkerPlugin[] = [prestashopPlugin, allegroPlugin, dpdPlugin];
 
 assertUniquePluginInvariants(plugins);
