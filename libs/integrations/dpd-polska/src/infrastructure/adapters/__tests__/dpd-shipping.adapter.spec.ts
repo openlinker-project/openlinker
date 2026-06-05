@@ -9,6 +9,7 @@
  * @module libs/integrations/dpd-polska/src/infrastructure/adapters
  */
 import {
+  isDispatchProtocolReader,
   isPickupPointFinder,
   ShippingProviderRejectionException,
   type GenerateLabelCommand,
@@ -64,6 +65,35 @@ describe('DpdShippingAdapter', () => {
 
   it('should declare the PickupPointFinder capability', () => {
     expect(isPickupPointFinder(adapter)).toBe(true);
+  });
+
+  it('should declare the DispatchProtocolReader capability', () => {
+    expect(isDispatchProtocolReader(adapter)).toBe(true);
+  });
+
+  it('should generate a handover protocol PDF over a batch of waybills (idempotent)', async () => {
+    const pdf = Buffer.from('%PDF-protocol', 'utf8').toString('base64');
+    http.request.mockResolvedValueOnce({ status: 'OK', documentData: pdf });
+
+    const doc = await adapter.generateProtocol({ providerShipmentIds: ['WB1', 'WB2'] });
+
+    expect(doc.contentType).toBe('application/pdf');
+    expect(Buffer.from(doc.body).toString('utf8')).toBe('%PDF-protocol');
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'POST', path: '/public/shipment/v1/generateProtocol', idempotent: true }),
+    );
+    const body = http.request.mock.calls[0][0].body as {
+      session: { type: string; packages: Array<{ parcels: Array<{ waybill: string }> }> };
+    };
+    expect(body.session.type).toBe('DOMESTIC');
+    expect(body.session.packages.map((p) => p.parcels[0].waybill)).toEqual(['WB1', 'WB2']);
+  });
+
+  it('should reject when protocol generation returns a non-OK status', async () => {
+    http.request.mockResolvedValueOnce({ status: 'PROTOCOL_ERROR' });
+    await expect(
+      adapter.generateProtocol({ providerShipmentIds: ['WB1'] }),
+    ).rejects.toBeInstanceOf(ShippingProviderRejectionException);
   });
 
   it('should create a shipment and return the waybill as provider id + tracking + label ref', async () => {
