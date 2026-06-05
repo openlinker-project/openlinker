@@ -210,6 +210,8 @@ export class ShipmentController {
       paczkomatId: dto.paczkomatId,
       recipient: dto.recipient,
       parcel: dto.parcel,
+      // COD pass-through (#966) — caller-supplied; COD-incapable adapters ignore it.
+      cod: dto.cod,
     };
     try {
       const result = await this.dispatch.dispatch(input);
