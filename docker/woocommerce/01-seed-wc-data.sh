@@ -17,6 +17,11 @@ set -e
 
 log() { echo "[WC seed] $*"; }
 
+# JSON field extractor — uses python3 (guaranteed in bitnami/wordpress:latest).
+# jq is not available in the image.
+json_field() { python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('$1',''))" ; }
+json_array_field() { python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0].get('$1','') if d else '')" ; }
+
 log "Waiting for WordPress core install..."
 until wp core is-installed --allow-root --no-debug 2>/dev/null; do sleep 5; done
 
@@ -41,16 +46,16 @@ cp /tmp/wc-creds.json /bitnami/wordpress/.dev-secrets/woocommerce-credentials.js
 log "Consumer key written to volume:.dev-secrets/woocommerce-credentials.json"
 log "Run: pnpm dev:stack:wc-credentials  to view credentials on the host."
 
-# Parse credentials via jq (bitnami/wordpress includes jq; python3 not guaranteed)
-CONSUMER_KEY=$(jq -r '.consumer_key' /tmp/wc-creds.json)
-CONSUMER_SECRET=$(jq -r '.consumer_secret' /tmp/wc-creds.json)
+# Parse credentials via python3
+CONSUMER_KEY=$(json_field consumer_key < /tmp/wc-creds.json)
+CONSUMER_SECRET=$(json_field consumer_secret < /tmp/wc-creds.json)
 
 BASE_URL="http://localhost:8080"
 AUTH="$CONSUMER_KEY:$CONSUMER_SECRET"
 
 # Idempotency guard — skip if WC-SHIRT-001 already exists
 EXISTING_SHIRT=$(curl -sf -u "$AUTH" "$BASE_URL/wp-json/wc/v3/products?sku=WC-SHIRT-001" \
-  | jq -r '.[0].id // empty')
+  | json_array_field id)
 if [ -n "$EXISTING_SHIRT" ]; then
   log "Seed data already present (WC-SHIRT-001 id=$EXISTING_SHIRT). Skipping."
   exit 0
@@ -65,7 +70,7 @@ wc_post() {
 }
 
 # Category
-CATEGORY_ID=$(wc_post '/products/categories' '{"name":"Clothing"}' | jq -r '.id')
+CATEGORY_ID=$(wc_post '/products/categories' '{"name":"Clothing"}' | json_field id)
 log "Category 'Clothing' id=$CATEGORY_ID"
 
 # Simple product
@@ -77,7 +82,7 @@ log "Simple product WC-SHIRT-001 created (stock=50)."
 # Variable product
 JEANS_ID=$(wc_post '/products' \
   "{\"name\":\"OL Test Jeans\",\"sku\":\"WC-JEANS\",\"type\":\"variable\",\"categories\":[{\"id\":$CATEGORY_ID}],\"attributes\":[{\"name\":\"Size\",\"options\":[\"S\",\"M\"],\"variation\":true,\"visible\":true}]}" \
-  | jq -r '.id')
+  | json_field id)
 
 # Variations — use wc_post for consistency (DRY)
 wc_post "/products/$JEANS_ID/variations" \
