@@ -210,6 +210,33 @@ export interface DpdGenerateSpedLabelsResponse {
   traceId?: string;
 }
 
+// --- protocol (handover manifest, #964) --------------------------------------
+
+/**
+ * Handover-protocol ("protokół odbioru") request — the courier hand-off manifest
+ * over a batch of already-generated waybills. Modelled on the label request: a
+ * waybill `session` + an output format, returning a base64 document.
+ *
+ * ⚠ OQ-1 (#964 plan): the exact path (`/public/shipment/v1/generateProtocol`?),
+ * whether it keys on a waybill list vs the create `sessionId`, and the precise
+ * field names are confirmed against the live `DPDServices` Swagger in the
+ * Phase-0 spike. This is the documented/expected shape, isolated here + in the
+ * mapper so a later correction touches only these two files.
+ */
+export interface DpdGenerateProtocolRequest {
+  session: DpdLabelSession;
+  outputDocFormat: DpdOutputDocFormat;
+}
+
+export interface DpdGenerateProtocolResponse {
+  /** Non-`'OK'` ⇒ protocol generation failed. */
+  status: string;
+  /** Base64-encoded document bytes (PDF for `outputDocFormat: 'PDF'`). */
+  documentData?: string;
+  documentId?: string;
+  traceId?: string;
+}
+
 // --- error envelopes ---------------------------------------------------------
 
 export interface DpdErrorItem {
