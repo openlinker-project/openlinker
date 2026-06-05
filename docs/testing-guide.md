@@ -749,6 +749,27 @@ under-declare their `@openlinker/*` deps.
 3. Use `jest.useFakeTimers()` for time-dependent tests
 4. Check for unnecessary async operations
 
+#### Red suite with `SIGKILL` / "worker terminated" (OOM, not a test failure) (#976)
+
+**Problem**: A package's `test` run (especially under the full-suite `pnpm -r test` / `pnpm test:ci`) goes red with **zero failed assertions** — a Jest worker is killed by the OS:
+
+```
+● Test suite failed to run
+  A jest worker process (pid=…) was terminated by another process:
+  signal=SIGKILL, exitCode=null
+Test Suites: 1 failed, 23 passed, 24 total
+Tests:       339 passed, 339 total          ← zero test failures
+```
+
+`signal=SIGKILL` / `exitCode=null` is an **OS OOM-kill**, not an assertion failure. `pnpm -r test` runs every package's Jest concurrently and each defaults to ~`cores − 1` workers, so on a memory-constrained (self-hosted) runner the combined fan-out can exhaust RAM. **Do not reflexively re-run** — a green re-run hides the real cause, which is exactly how a genuine regression eventually slips through unnoticed.
+
+**Solution** (already applied to the heavy `prestashop` + `allegro` packages):
+1. **Per-package worker + memory caps** — `maxWorkers: 2` and `workerIdleMemoryLimit: '512MB'` in the package's `jest.config.mjs`. The memory limit recycles a worker before the OS kills it; the absolute worker cap (not `'50%'`, which scales with unknown runner cores) bounds peak memory deterministically. Tune the ceiling down (e.g. `256MB`) if the runner is tight.
+2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once.
+3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
+
+To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
+
 ---
 
 ### Integration Tests

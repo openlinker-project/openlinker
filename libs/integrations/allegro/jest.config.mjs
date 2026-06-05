@@ -32,6 +32,13 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
+
+  // CI stability (#976): `allegro-http-client.spec.ts` ballooned to ~950 s in
+  // the same red full-suite runs that OOM-killed the prestashop package —
+  // memory/CPU starvation under the `pnpm -r test` fan-out. Same bound as the
+  // prestashop config: a deterministic worker cap + per-worker memory ceiling.
+  maxWorkers: 2,
+  workerIdleMemoryLimit: '512MB',
 };
 
 

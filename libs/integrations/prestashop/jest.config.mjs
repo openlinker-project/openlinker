@@ -32,5 +32,14 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
+
+  // CI stability (#976): the full-suite `pnpm -r test` fan-out runs every
+  // package's Jest concurrently; this heavy package's default ~(cores-1)
+  // workers contributed to OS OOM-kills (SIGKILL/exitCode=null) on the
+  // self-hosted runner. A hard worker cap (absolute, not '50%', so it's
+  // deterministic regardless of runner core count) plus a per-worker memory
+  // ceiling (recycle the worker before the OS does) bound peak memory.
+  maxWorkers: 2,
+  workerIdleMemoryLimit: '512MB',
 };
 
