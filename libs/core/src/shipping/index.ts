@@ -82,6 +82,8 @@ export { Shipment } from './domain/entities/shipment.entity';
 export type { ShippingProviderManagerPort } from './domain/ports/shipping-provider-manager.port';
 export type { ShipmentRepositoryPort } from './domain/ports/shipment-repository.port';
 export type { PickupPointCachePort } from './domain/ports/pickup-point-cache.port';
+export type { PickupPointSearchCachePort } from './domain/ports/pickup-point-search-cache.port';
+export type { PickupPointQueryStatsPort } from './domain/ports/pickup-point-query-stats.port';
 
 // Sub-capabilities (#763 — sub-port + co-located type guard pattern per
 // engineering-standards §"Port sub-capabilities").
@@ -146,6 +148,11 @@ export type { IShipmentLabelService } from './application/interfaces/shipment-la
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
 export type { IPickupPointLookupService } from './application/interfaces/pickup-point-lookup.service.interface';
+
+// Application — pickup-point background-refresh seam (#849). Interface + result
+// type only; the service is injected via PICKUP_POINT_REFRESH_SERVICE_TOKEN.
+export type { IPickupPointRefreshService } from './application/interfaces/pickup-point-refresh.service.interface';
+export type { PickupPointRefreshResult } from './application/types/pickup-point-refresh.types';
 
 // Application — dispatch-notify seam (#837). Interface + result types only; the
 // service is injected via SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN.
