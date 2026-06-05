@@ -114,7 +114,7 @@ export class IsSsrfSafeUrlConstraint implements ValidatorConstraintInterface {
       // Normalise decimal-integer and octal-octet encoded IPs before the standard check
       const normalisedHost = normaliseToIpv4(rawHost);
       if (normalisedHost !== null) {
-        return !isPrivateOrLinkLocalIp(normalisedHost);
+        return false; // Encoded forms always blocked; use standard IP notation
       }
 
       if (isIP(rawHost) !== 0) {
