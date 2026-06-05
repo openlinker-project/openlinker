@@ -1,3 +1,5 @@
+import { ciStabilityConfig } from '../../../jest.ci-stability.mjs';
+
 export default {
   testEnvironment: 'node',
   rootDir: '.',
@@ -32,6 +34,11 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
+
+  // CI stability (#976): `allegro-http-client.spec.ts` ballooned to ~950 s in
+  // the same red full-suite runs that OOM-killed the prestashop package. Same
+  // worker/memory caps as prestashop — see jest.ci-stability.mjs at the repo root.
+  ...ciStabilityConfig,
 };
 
 
