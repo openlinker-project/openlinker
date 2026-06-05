@@ -12,6 +12,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { DpdConnectionConfig } from '../../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersResponse,
+  DpdGenerateProtocolResponse,
   DpdGenerateSpedLabelsResponse,
 } from '../../../domain/types/dpd-rest.types';
 import type { DpdPoint } from '../../../domain/types/dpd-rest.types';
@@ -19,8 +20,10 @@ import {
   assertCreateSucceededAndExtractWaybill,
   buildCreatePackagesRequest,
   buildGenerateLabelRequest,
+  buildGenerateProtocolRequest,
   buildPointSearchQuery,
   decodeLabelDocument,
+  decodeProtocolDocument,
   toGenerateLabelResult,
   toPickupPoint,
 } from '../dpd-shipment.mapper';
@@ -381,6 +384,33 @@ describe('decodeLabelDocument', () => {
   it('should throw command.empty-label when OK but no documentData', () => {
     const error = run(() => decodeLabelDocument({ status: 'OK' }));
     expect(error).toMatchObject({ providerCode: 'command.empty-label' });
+  });
+});
+
+describe('buildGenerateProtocolRequest', () => {
+  it('should build a DOMESTIC PDF session listing every waybill as its own package', () => {
+    const req = buildGenerateProtocolRequest(['WB1', 'WB2', 'WB3']);
+    expect(req.outputDocFormat).toBe('PDF');
+    expect(req.session.type).toBe('DOMESTIC');
+    expect(req.session.packages?.map((p) => p.parcels[0].waybill)).toEqual(['WB1', 'WB2', 'WB3']);
+  });
+});
+
+describe('decodeProtocolDocument', () => {
+  it('should decode the base64 protocol PDF to bytes', () => {
+    const pdf = Buffer.from('%PDF-protocol', 'utf8').toString('base64');
+    const doc = decodeProtocolDocument({ status: 'OK', documentData: pdf } as DpdGenerateProtocolResponse);
+    expect(doc.contentType).toBe('application/pdf');
+    expect(Buffer.from(doc.body).toString('utf8')).toBe('%PDF-protocol');
+  });
+
+  it('should throw when the protocol status is not OK', () => {
+    expect(() => decodeProtocolDocument({ status: 'ERROR' })).toThrow(ShippingProviderRejectionException);
+  });
+
+  it('should throw command.empty-protocol when OK but no documentData', () => {
+    const error = run(() => decodeProtocolDocument({ status: 'OK' }));
+    expect(error).toMatchObject({ providerCode: 'command.empty-protocol' });
   });
 });
 
