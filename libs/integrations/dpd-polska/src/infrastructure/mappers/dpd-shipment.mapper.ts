@@ -29,8 +29,11 @@ import type { DpdConnectionConfig, DpdSenderContact } from '../../domain/types/d
 import type {
   DpdGeneratePackagesNumbersRequest,
   DpdGeneratePackagesNumbersResponse,
+  DpdGenerateProtocolRequest,
+  DpdGenerateProtocolResponse,
   DpdGenerateSpedLabelsRequest,
   DpdGenerateSpedLabelsResponse,
+  DpdLabelSessionPackage,
   DpdParcel,
   DpdPoint,
   DpdPointSearchQuery,
@@ -199,6 +202,42 @@ export function decodeLabelDocument(res: DpdGenerateSpedLabelsResponse): LabelDo
       DPD_BRAND,
       'command.empty-label',
       'DPD reported OK but returned no label document',
+    );
+  }
+  return {
+    contentType: 'application/pdf',
+    body: new Uint8Array(Buffer.from(res.documentData, 'base64')),
+  };
+}
+
+/**
+ * Build the handover-protocol request over a batch of waybills (#964). One
+ * domestic session listing every waybill as its own package/parcel, PDF output.
+ */
+export function buildGenerateProtocolRequest(waybills: string[]): DpdGenerateProtocolRequest {
+  const packages: DpdLabelSessionPackage[] = waybills.map((waybill) => ({
+    parcels: [{ waybill }],
+  }));
+  return {
+    session: { type: 'DOMESTIC', packages },
+    outputDocFormat: 'PDF',
+  };
+}
+
+/** Assert the protocol response succeeded and decode the base64 PDF to bytes. */
+export function decodeProtocolDocument(res: DpdGenerateProtocolResponse): LabelDocument {
+  if (res.status !== DPD_STATUS_OK) {
+    throw new ShippingProviderRejectionException(
+      DPD_BRAND,
+      res.status,
+      `DPD protocol generation rejected (status: ${res.status})`,
+    );
+  }
+  if (!res.documentData) {
+    throw new ShippingProviderRejectionException(
+      DPD_BRAND,
+      'command.empty-protocol',
+      'DPD reported OK but returned no protocol document',
     );
   }
   return {
