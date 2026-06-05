@@ -166,6 +166,51 @@ describe('GenerateLabelForm — happy path', () => {
     resolveRef.current?.({ kind: 'dispatched', shipment: null });
   });
 
+  it('should include COD in the dispatch payload when an amount is entered, normalising the decimal (#966)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    // Comma decimal separator → normalised to a dot for the wire shape.
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '129,90' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should omit COD from the payload when no amount is entered', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect((generateLabel.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
+  });
+
   it('should auto-download the label after a successful dispatched generation (#884)', async () => {
     const downloadLabel = vi.fn().mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])]));
     const apiClient = createMockApiClient({
