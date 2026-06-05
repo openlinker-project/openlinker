@@ -31,6 +31,8 @@ import { IsUrl, Validate, ValidatorConstraint } from 'class-validator';
  * Bypass patterns caught explicitly (verified via validator.js):
  *   - Hex notation  0xc0a80001  → @IsUrl accepts, isIP() returns 0 → caught here
  *   - IPv4-mapped   ::ffff:10.0.0.1 → @IsUrl accepts, simple IPv6 check misses → caught here
+ *   - Decimal integer  2130706433  → @IsUrl accepts, normaliseToIpv4 catches
+ *   - Octal octets     0177.0.0.1  → @IsUrl accepts, normaliseToIpv4 catches
  */
 function isPrivateOrLinkLocalIp(hostname: string): boolean {
   const h = hostname.toLowerCase();
@@ -55,6 +57,43 @@ function isPrivateOrLinkLocalIp(hostname: string): boolean {
   );
 }
 
+/**
+ * Normalises non-standard IPv4 encodings to dotted-quad notation so that
+ * isPrivateOrLinkLocalIp can check them.
+ * Returns null if the hostname is not a recognisable encoded IPv4 form.
+ *
+ * Handles:
+ *   - Decimal integer:  2130706433  → 127.0.0.1
+ *   - Octal octets:     0177.0.0.1  → 127.0.0.1
+ */
+function normaliseToIpv4(hostname: string): string | null {
+  // Decimal integer encoding (e.g. 2130706433 = 0x7f000001 = 127.0.0.1)
+  if (/^\d+$/.test(hostname)) {
+    const n = parseInt(hostname, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) return null;
+    return [
+      (n >>> 24) & 0xff,
+      (n >>> 16) & 0xff,
+      (n >>> 8) & 0xff,
+      n & 0xff,
+    ].join('.');
+  }
+
+  // Octal-octet encoding (e.g. 0177.0.0.1 → 127.0.0.1)
+  const parts = hostname.split('.');
+  if (
+    parts.length === 4 &&
+    parts.some((p) => p.startsWith('0') && p.length > 1)
+  ) {
+    const octets = parts.map((p) => parseInt(p, 8));
+    if (octets.some((o) => !Number.isFinite(o) || o < 0 || o > 255))
+      return null;
+    return octets.join('.');
+  }
+
+  return null;
+}
+
 const BLOCKED_HOSTNAMES = new Set([
   'metadata.google.internal',
   'metadata.internal',
@@ -71,6 +110,12 @@ export class IsSsrfSafeUrlConstraint implements ValidatorConstraintInterface {
         hostname.startsWith('[') && hostname.endsWith(']')
           ? hostname.slice(1, -1)
           : hostname;
+
+      // Normalise decimal-integer and octal-octet encoded IPs before the standard check
+      const normalisedHost = normaliseToIpv4(rawHost);
+      if (normalisedHost !== null) {
+        return !isPrivateOrLinkLocalIp(normalisedHost);
+      }
 
       if (isIP(rawHost) !== 0) {
         return !isPrivateOrLinkLocalIp(rawHost);
