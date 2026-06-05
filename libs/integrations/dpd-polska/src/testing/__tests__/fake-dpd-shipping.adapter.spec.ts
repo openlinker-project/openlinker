@@ -87,6 +87,19 @@ describe('FakeDpdShippingAdapter', () => {
     expect(doc.body.length).toBeGreaterThan(0);
   });
 
+  it('should return a PDF handover protocol document', async () => {
+    const doc = await adapter.generateProtocol({ providerShipmentIds: ['fake-dpd-1', 'fake-dpd-2'] });
+    expect(doc.contentType).toBe('application/pdf');
+    expect(doc.body.length).toBeGreaterThan(0);
+  });
+
+  it('should surface a seeded failure from generateProtocol', async () => {
+    adapter.seedFailure(new Error('protocol boom'));
+    await expect(adapter.generateProtocol({ providerShipmentIds: ['fake-dpd-1'] })).rejects.toThrow(
+      'protocol boom',
+    );
+  });
+
   it('should throw tracking.unavailable from getTracking', async () => {
     await expect(adapter.getTracking({ providerShipmentId: 'fake-dpd-1' })).rejects.toMatchObject({
       providerCode: 'tracking.unavailable',
