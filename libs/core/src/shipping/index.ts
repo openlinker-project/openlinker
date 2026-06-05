@@ -91,6 +91,8 @@ export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
 export { isLabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
+export type { DispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
+export { isDispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
 export type { LabelDocument } from './domain/types/label-document.types';
 
 // `FulfillmentStatusReader` (#834) lives in `@openlinker/core/orders`
@@ -109,6 +111,8 @@ export { PickupPointFinderNotSupportedException } from './domain/exceptions/pick
 export { ShippingProviderRejectionException } from './domain/exceptions/shipping-provider-rejection.exception';
 export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
+export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
+export { InvalidProtocolBatchException } from './domain/exceptions/invalid-protocol-batch.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
@@ -118,6 +122,17 @@ export type {
   ShipmentDispatchInput,
   ShipmentDispatchResult,
 } from './application/types/shipment-dispatch.types';
+
+// Application — bulk-dispatch + handover-protocol seam (#964, ADR-019).
+// Interface + types only; the service is injected via
+// BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN.
+export type { IBulkShipmentDispatchService } from './application/interfaces/bulk-shipment-dispatch.service.interface';
+export type {
+  BulkShipmentDispatchInput,
+  BulkShipmentDispatchItem,
+  BulkShipmentDispatchResult,
+  PerOrderDispatchResult,
+} from './application/types/bulk-shipment-dispatch.types';
 
 // Application — read + cancel seams (#846). Interfaces only; services are
 // injected via SHIPMENT_QUERY_SERVICE_TOKEN / SHIPMENT_CANCELLATION_SERVICE_TOKEN.

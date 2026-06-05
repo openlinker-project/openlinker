@@ -20,6 +20,7 @@
  */
 import {
   ShippingProviderRejectionException,
+  type DispatchProtocolReader,
   type FindPickupPointsQuery,
   type GenerateLabelCommand,
   type GenerateLabelResult,
@@ -34,6 +35,7 @@ import {
 import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import type {
   DpdGeneratePackagesNumbersResponse,
+  DpdGenerateProtocolResponse,
   DpdGenerateSpedLabelsResponse,
   DpdPointSearchResponse,
 } from '../../domain/types/dpd-rest.types';
@@ -42,8 +44,10 @@ import {
   assertCreateSucceededAndExtractWaybill,
   buildCreatePackagesRequest,
   buildGenerateLabelRequest,
+  buildGenerateProtocolRequest,
   buildPointSearchQuery,
   decodeLabelDocument,
+  decodeProtocolDocument,
   toGenerateLabelResult,
   toPickupPoint,
 } from '../mappers/dpd-shipment.mapper';
@@ -52,13 +56,20 @@ const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier', 'pickup'];
 
 const CREATE_PATH = '/public/shipment/v1/generatePackagesNumbers';
 const LABEL_PATH = '/public/shipment/v1/generateSpedLabels';
+// OQ-1 (#964 plan): exact protocol path/request/response confirmed against the
+// live Swagger in the Phase-0 spike; isolated here + in the mapper/types.
+const PROTOCOL_PATH = '/public/shipment/v1/generateProtocol';
 // OQ-1 (#963 plan): exact point-directory path/method/auth confirmed against the
 // live Swagger in the Phase-0 spike. DPDServices is POST-heavy (findPostalCode-
 // style), so v1 POSTs the query body; isolated here + in the mapper.
 const POINT_SEARCH_PATH = '/public/appservices/v1/findPoints';
 
 export class DpdShippingAdapter
-  implements ShippingProviderManagerPort, LabelDocumentReader, PickupPointFinder
+  implements
+    ShippingProviderManagerPort,
+    LabelDocumentReader,
+    PickupPointFinder,
+    DispatchProtocolReader
 {
   constructor(
     private readonly http: IDpdHttpClient,
@@ -93,6 +104,19 @@ export class DpdShippingAdapter
       idempotent: true,
     });
     return decodeLabelDocument(response);
+  }
+
+  async generateProtocol(input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
+    const body = buildGenerateProtocolRequest(input.providerShipmentIds);
+    // Idempotent render of the handover manifest over existing waybills — safe
+    // to retry on network/timeout (no side effect at the carrier).
+    const response = await this.http.request<DpdGenerateProtocolResponse>({
+      method: 'POST',
+      path: PROTOCOL_PATH,
+      body,
+      idempotent: true,
+    });
+    return decodeProtocolDocument(response);
   }
 
   async findPickupPoints(query: FindPickupPointsQuery): Promise<PickupPoint[]> {
