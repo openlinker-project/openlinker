@@ -247,6 +247,24 @@ describe('ShipmentController', () => {
       expect(result.shipment).toBeUndefined();
     });
 
+    it('should pass COD through to the dispatch input when supplied (#966)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto({ cod: { amount: '129.90', currency: 'PLN' } }));
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      );
+    });
+
+    it('should leave cod undefined on the dispatch input when not supplied', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto());
+
+      expect((dispatch.dispatch.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
+    });
+
     it('should map UndispatchableResolutionException to 422', async () => {
       dispatch.dispatch.mockRejectedValue(new UndispatchableResolutionException('no connection'));
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
