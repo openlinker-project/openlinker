@@ -13,14 +13,23 @@
 #
 # Idempotent: checks for WC-SHIRT-001 before seeding; safe to re-run via
 # `pnpm dev:stack:seed-woocommerce` without duplicating data.
+#
+# JSON parsing uses grep + cut — no jq or python3 required (bitnami/wordpress:latest
+# ships neither).
 set -e
 
 log() { echo "[WC seed] $*"; }
 
-# JSON field extractor — uses python3 (guaranteed in bitnami/wordpress:latest).
-# jq is not available in the image.
-json_field() { python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('$1',''))" ; }
-json_array_field() { python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0].get('$1','') if d else '')" ; }
+# Extract a string value from flat JSON: json_str_field KEY < file.json
+# Works on single-line JSON. Example: {"consumer_key":"ck_abc"} → ck_abc
+json_str_field() {
+  grep -oE "\"$1\":\"[^\"]+\"" | head -1 | cut -d'"' -f4
+}
+
+# Extract the first numeric "id" field from a JSON response
+json_first_id() {
+  grep -oE '"id":[0-9]+' | head -1 | cut -d: -f2
+}
 
 log "Waiting for WordPress core install..."
 until wp core is-installed --allow-root --no-debug 2>/dev/null; do sleep 5; done
@@ -46,16 +55,16 @@ cp /tmp/wc-creds.json /bitnami/wordpress/.dev-secrets/woocommerce-credentials.js
 log "Consumer key written to volume:.dev-secrets/woocommerce-credentials.json"
 log "Run: pnpm dev:stack:wc-credentials  to view credentials on the host."
 
-# Parse credentials via python3
-CONSUMER_KEY=$(json_field consumer_key < /tmp/wc-creds.json)
-CONSUMER_SECRET=$(json_field consumer_secret < /tmp/wc-creds.json)
+# Parse credentials with grep+cut (no jq or python3 needed)
+CONSUMER_KEY=$(json_str_field consumer_key < /tmp/wc-creds.json)
+CONSUMER_SECRET=$(json_str_field consumer_secret < /tmp/wc-creds.json)
 
 BASE_URL="http://localhost:8080"
 AUTH="$CONSUMER_KEY:$CONSUMER_SECRET"
 
 # Idempotency guard — skip if WC-SHIRT-001 already exists
 EXISTING_SHIRT=$(curl -sf -u "$AUTH" "$BASE_URL/wp-json/wc/v3/products?sku=WC-SHIRT-001" \
-  | json_array_field id)
+  | json_first_id)
 if [ -n "$EXISTING_SHIRT" ]; then
   log "Seed data already present (WC-SHIRT-001 id=$EXISTING_SHIRT). Skipping."
   exit 0
@@ -70,7 +79,7 @@ wc_post() {
 }
 
 # Category
-CATEGORY_ID=$(wc_post '/products/categories' '{"name":"Clothing"}' | json_field id)
+CATEGORY_ID=$(wc_post '/products/categories' '{"name":"Clothing"}' | json_first_id)
 log "Category 'Clothing' id=$CATEGORY_ID"
 
 # Simple product
@@ -82,9 +91,9 @@ log "Simple product WC-SHIRT-001 created (stock=50)."
 # Variable product
 JEANS_ID=$(wc_post '/products' \
   "{\"name\":\"OL Test Jeans\",\"sku\":\"WC-JEANS\",\"type\":\"variable\",\"categories\":[{\"id\":$CATEGORY_ID}],\"attributes\":[{\"name\":\"Size\",\"options\":[\"S\",\"M\"],\"variation\":true,\"visible\":true}]}" \
-  | json_field id)
+  | json_first_id)
 
-# Variations — use wc_post for consistency (DRY)
+# Variations
 wc_post "/products/$JEANS_ID/variations" \
   '{"sku":"WC-JEANS-S","regular_price":"79.99","manage_stock":true,"stock_quantity":30,"attributes":[{"name":"Size","option":"S"}]}' \
   > /dev/null
