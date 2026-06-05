@@ -25,6 +25,7 @@ import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
+import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -45,7 +46,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
-    private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler
+    private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
+    private readonly pickupPointRefreshHandler: PickupPointRefreshHandler
   ) {}
 
   onModuleInit(): void {
@@ -94,6 +96,12 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register master product sync all handler (catalog discovery / periodic full sync)
     this.handlerRegistry.register('master.product.syncAll', this.masterProductSyncAllHandler);
+
+    // Register pickup-point background-refresh handler (#849, daily re-warm)
+    this.handlerRegistry.register(
+      'shipping.pickupPoint.refreshFrequent',
+      this.pickupPointRefreshHandler
+    );
 
     // Register inventory propagate to marketplaces handler
     this.handlerRegistry.register(
