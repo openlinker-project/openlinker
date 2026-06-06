@@ -28,7 +28,10 @@
  * @module libs/integrations/inpost/src/infrastructure/scheduler
  * @see {@link SchedulerTaskConfig} in `@openlinker/core/sync`.
  */
-import type { SchedulerTaskConfig } from '@openlinker/core/sync';
+import type {
+  MarketplaceShipmentStatusSyncPayloadV1,
+  SchedulerTaskConfig,
+} from '@openlinker/core/sync';
 
 const SCHEDULER_ENABLED_ENV = 'OL_INPOST_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED';
 const INTERVAL_CRON_ENV = 'OL_INPOST_SHIPMENT_STATUS_SYNC_INTERVAL_CRON';
@@ -66,11 +69,16 @@ export function buildInpostSchedulerTasks(): SchedulerTaskConfig[] {
       jobType: 'marketplace.shipment.statusSync',
       cronExpression,
       enabledEnvVar: SCHEDULER_ENABLED_ENV,
-      generatePayload: () => ({
-        schemaVersion: 1,
-        limit: pageLimit,
-        cursorKey: CURSOR_KEY,
-      }),
+      // `satisfies` (not a return annotation): validates the literal against the
+      // handler's payload contract at compile time while keeping the inferred type
+      // assignable to SchedulerTaskConfig.generatePayload's `Record<string, unknown>`
+      // (a named interface lacks the index signature that return type requires).
+      generatePayload: () =>
+        ({
+          schemaVersion: 1,
+          limit: pageLimit,
+          cursorKey: CURSOR_KEY,
+        }) satisfies MarketplaceShipmentStatusSyncPayloadV1,
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:shipment:status:sync:${timestamp}`,
     });
