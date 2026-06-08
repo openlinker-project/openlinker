@@ -32,6 +32,8 @@ import {
 import { createTestWooCommerceConnection } from '../helpers/woocommerce-connection.helper';
 import { drainProductSyncJobs, drainInventorySyncJobs } from '../helpers/woocommerce-sync.helper';
 import { MASTER_INVENTORY_SYNC_SERVICE_TOKEN, type IMasterInventorySyncService } from '@openlinker/core/inventory';
+import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
 // Skip the entire suite when OL_SKIP_WC_INTEGRATION=true so CI pipelines can
 // gate this opt-in suite separately from the standard integration suite.
@@ -42,6 +44,10 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
   let harness: IntegrationTestHarness;
   let wc: WooCommerceTestContainer;
   let wcConnectionId: string;
+  // Internal product IDs set in beforeEach after drainProductSyncJobs creates the mappings.
+  // inventory_items keyed by internal productId — no connectionId column exists.
+  let shirtInternalProductId: string;
+  let jeansInternalProductId: string;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -66,6 +72,28 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
       wc.simpleProductExternalId,
       wc.variableProductExternalId,
     ]);
+
+    // Look up internal product IDs for DB assertions in each test.
+    // inventory_items rows are keyed by internal productId (no connectionId column).
+    const mappingRepo = harness.getDataSource().getRepository(IdentifierMappingOrmEntity);
+
+    const shirtMapping = await mappingRepo.findOneOrFail({
+      where: {
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: wc.simpleProductExternalId,
+        connectionId: wcConnectionId,
+      },
+    });
+    shirtInternalProductId = shirtMapping.internalId;
+
+    const jeansMapping = await mappingRepo.findOneOrFail({
+      where: {
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: wc.variableProductExternalId,
+        connectionId: wcConnectionId,
+      },
+    });
+    jeansInternalProductId = jeansMapping.internalId;
   });
 
   afterEach(async () => {
@@ -92,13 +120,14 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
     expect(syncResult.availableQuantity).toBe(50);
     expect(syncResult.itemsWritten).toBeGreaterThan(0);
 
-    // Assert the OL DB row was actually written (not just a service return value)
+    // Assert the OL DB row was actually written (not just a service return value).
+    // inventory_items has no connectionId column — query by internal productId.
     const rows = await harness.getDataSource().query(
-      `SELECT available_quantity FROM inventory_items WHERE connection_id = $1 LIMIT 10`,
-      [wcConnectionId],
-    ) as Array<{ available_quantity: number }>;
+      `SELECT "availableQuantity" FROM inventory_items WHERE "productId" = $1 LIMIT 10`,
+      [shirtInternalProductId],
+    ) as Array<{ availableQuantity: number }>;
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].available_quantity).toBe(50);
+    expect(rows[0].availableQuantity).toBe(50);
   });
 
   it('S-2: should propagate out-of-stock (0) — master is authoritative', async () => {
@@ -129,13 +158,14 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
     // Assert service return: WC stock was read as 0
     expect(syncResult.availableQuantity).toBe(0);
 
-    // Assert OL DB was updated — the row now reflects 0 (master is authoritative)
+    // Assert OL DB was updated — the row now reflects 0 (master is authoritative).
+    // inventory_items has no connectionId column — query by internal productId.
     const rows = await harness.getDataSource().query(
-      `SELECT available_quantity FROM inventory_items WHERE connection_id = $1 LIMIT 10`,
-      [wcConnectionId],
-    ) as Array<{ available_quantity: number }>;
+      `SELECT "availableQuantity" FROM inventory_items WHERE "productId" = $1 LIMIT 10`,
+      [shirtInternalProductId],
+    ) as Array<{ availableQuantity: number }>;
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].available_quantity).toBe(0);
+    expect(rows[0].availableQuantity).toBe(0);
   });
 
   it('S-3: should write two distinct variant-keyed inventory_items rows for jeans (S + M)', async () => {
@@ -143,16 +173,17 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
 
     // Assert two variant-keyed rows exist in OL DB — one per variation (S and M).
     // variant-keyed rows have productVariantId IS NOT NULL (per ADR-010 / #822).
+    // inventory_items has no connectionId column — query by internal productId.
     const rows = await harness.getDataSource().query(
-      `SELECT "productVariantId", available_quantity
+      `SELECT "productVariantId", "availableQuantity"
        FROM inventory_items
-       WHERE connection_id = $1 AND "productVariantId" IS NOT NULL`,
-      [wcConnectionId],
-    ) as Array<{ productVariantId: string; available_quantity: number }>;
+       WHERE "productId" = $1 AND "productVariantId" IS NOT NULL`,
+      [jeansInternalProductId],
+    ) as Array<{ productVariantId: string; availableQuantity: number }>;
 
     // Two variations were seeded: S (stock 30) and M (stock 20)
     expect(rows).toHaveLength(2);
-    const quantities = rows.map((r) => r.available_quantity).sort((a, b) => b - a);
+    const quantities = rows.map((r) => r.availableQuantity).sort((a, b) => b - a);
     expect(quantities).toEqual([30, 20]);
   });
 });

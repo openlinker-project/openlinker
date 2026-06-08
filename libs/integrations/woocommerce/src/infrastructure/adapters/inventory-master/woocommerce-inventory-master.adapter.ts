@@ -189,8 +189,8 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
       mapToInventory(
         v.stock_quantity,
         productId,
-        variantIdMap.get(String(v.id))!,
-        inventoryIdMap.get(`stock-var:${v.id}`)!,
+        variantIdMap.get(`${String(v.id)}:${this.connection.id}`)!,
+        inventoryIdMap.get(`stock-var:${v.id}:${this.connection.id}`)!,
       ),
     );
   }

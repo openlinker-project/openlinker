@@ -25,7 +25,10 @@ import {
 import { createTestWooCommerceConnection } from '../helpers/woocommerce-connection.helper';
 import { drainProductSyncJobs } from '../helpers/woocommerce-sync.helper';
 import { drainBulkBatch } from '../helpers/bulk-batch-drain.helper';
-import { installAllegroTestOfferManagerStub } from '../helpers/allegro-test-offer-manager-stub.helper';
+import {
+  installAllegroTestOfferManagerStub,
+  type AllegroTestOfferManagerStub,
+} from '../helpers/allegro-test-offer-manager-stub.helper';
 // loginAsAdmin creates a test user + returns a valid Bearer token using the
 // established integration-test auth pattern (bcrypt + POST /auth/login).
 import { loginAsAdmin } from '../helpers/test-auth.helper';
@@ -45,7 +48,9 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
   let allegroConnectionId: string;
   let shirtVariantInternalId: string;
   let jeansSVariantInternalId: string;
+  let jeansMVariantInternalId: string;
   let authToken: string;
+  let stub: AllegroTestOfferManagerStub;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -53,7 +58,7 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
 
     // Register stub Allegro OfferManager + OfferCreator (suite-scoped — registers
     // the stub in the NestJS DI graph once; remains in place for all tests).
-    installAllegroTestOfferManagerStub(harness);
+    stub = installAllegroTestOfferManagerStub(harness);
   }, 20 * 60_000); // 20 min: WC boot
 
   beforeEach(async () => {
@@ -82,7 +87,7 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
         platformType: 'allegro',
         name: 'Test Allegro offers',
         status: 'active',
-        config: {},
+        config: { masterCatalogConnectionId: wcConnectionId },
         credentialsRef: 'env:ALLEGRO_CLIENT_ID',
         adapterKey: 'allegro.test.offer-manager.v1',
         enabledCapabilities: ['OfferManager'],
@@ -119,6 +124,29 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
 
     // S-variation: variationIds[0] = S-variation WC external id
     jeansSVariantInternalId = await findVariantInternalId(wc.variationIds[0]);
+
+    // M-variation: variationIds[1] = M-variation WC external id
+    jeansMVariantInternalId = await findVariantInternalId(wc.variationIds[1]);
+
+    // Pre-script success results for all variants in the stub adapter.
+    // The drain helper calls createOffer per pending record; the stub throws if
+    // no script is set. Reset clears scripts from previous test runs.
+    stub.reset();
+    stub.setNextCreateResult(shirtVariantInternalId, {
+      kind: 'success',
+      externalOfferId: 'ext-shirt-001',
+      status: 'active',
+    });
+    stub.setNextCreateResult(jeansSVariantInternalId, {
+      kind: 'success',
+      externalOfferId: 'ext-jeans-s-001',
+      status: 'active',
+    });
+    stub.setNextCreateResult(jeansMVariantInternalId, {
+      kind: 'success',
+      externalOfferId: 'ext-jeans-m-001',
+      status: 'active',
+    });
   });
 
   afterEach(async () => {
@@ -134,15 +162,22 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
   it('S-1: should create Allegro offer from WC simple product via bulk wizard', async () => {
     const http = harness.getHttp();
 
+    // POST /listings/bulk-create — returns 202 ACCEPTED per the controller spec.
+    // connectionId = Allegro destination; productIds = OL internal variant IDs.
     const submitRes = await http
-      .post('/bulk/offer-creation/submit')
+      .post('/listings/bulk-create')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
-        sourceConnectionId: wcConnectionId,
-        destConnectionId: allegroConnectionId,
-        variantIds: [shirtVariantInternalId],
+        connectionId: allegroConnectionId,
+        productIds: [shirtVariantInternalId],
+        sharedConfig: {
+          stock: 10,
+          publishImmediately: false,
+          price: { amount: 49.99, currency: 'PLN' },
+          overrides: { categoryId: 'test-category-001' },
+        },
       })
-      .expect(201);
+      .expect(202);
 
     const batchId: string = submitRes.body.batchId as string;
     expect(batchId).toBeDefined();
@@ -156,15 +191,22 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
   it('S-2: variable product expands to 2 offers (S + M fan-out via #824)', async () => {
     const http = harness.getHttp();
 
+    // Submit the S variant as the primary; the submit service expands it to
+    // both S and M offers (multi-variant fan-out, #824). totalCount = 2.
     const submitRes = await http
-      .post('/bulk/offer-creation/submit')
+      .post('/listings/bulk-create')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
-        sourceConnectionId: wcConnectionId,
-        destConnectionId: allegroConnectionId,
-        variantIds: [jeansSVariantInternalId], // primary S variant triggers fan-out
+        connectionId: allegroConnectionId,
+        productIds: [jeansSVariantInternalId],
+        sharedConfig: {
+          stock: 10,
+          publishImmediately: false,
+          price: { amount: 79.99, currency: 'PLN' },
+          overrides: { categoryId: 'test-category-001' },
+        },
       })
-      .expect(201);
+      .expect(202);
 
     const batchId: string = submitRes.body.batchId as string;
 
