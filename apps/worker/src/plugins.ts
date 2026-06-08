@@ -16,6 +16,12 @@
  * per-job AI description generation. Without this, `AI_COMPLETION_PORT_TOKEN`
  * is unresolved in the worker's DI scope.
  *
+ * `InpostIntegrationModule` is registered here (#772) so the worker can resolve
+ * the InPost `ShippingProviderManager` adapter when executing the
+ * `marketplace.shipment.statusSync` job for InPost connections. (The worker runs
+ * no SchedulerService, so InPost's scheduler task registers but never fires
+ * here — it is drained only by the api.)
+ *
  * See `docs/architecture-overview.md` § *Adapter Registry (Code-Level)* for
  * the conceptual model.
  *
@@ -25,9 +31,11 @@ import type { PluginEntry } from '@openlinker/core/integrations';
 import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop';
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
+import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
   AllegroIntegrationModule,
   AiIntegrationModule.register(),
+  InpostIntegrationModule,
 ];
