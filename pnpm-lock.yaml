@@ -135,6 +135,9 @@ importers:
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
+      dotenv:
+        specifier: 16.6.1
+        version: 16.6.1
       passport:
         specifier: 0.7.0
         version: 0.7.0
