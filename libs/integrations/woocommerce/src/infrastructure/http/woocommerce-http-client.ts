@@ -109,8 +109,9 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           );
         }
 
-        // Retryable: 429 and 5xx
-        if (attempt < this.retryConfig.maxRetries) {
+        // Only retry 429 (rate limit) and 5xx (server errors)
+        const isRetryable = response.status === 429 || response.status >= 500;
+        if (isRetryable && attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
           continue;
