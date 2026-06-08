@@ -165,6 +165,15 @@ export class WooCommerceOrderProcessorAdapter
       payload,
     );
 
+    if (raw.id === undefined) {
+      throw new WooCommerceResourceNotFoundException(
+        `WooCommerce returned order without ID`,
+        CORE_ENTITY_TYPE.Order,
+        `(${payload.status})`,
+        this.connection.id,
+      );
+    }
+
     return { orderId: String(raw.id), orderNumber: raw.number };
   }
 
