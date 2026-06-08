@@ -47,11 +47,11 @@ describe('WoocommerceCredentialsPanel', () => {
     );
 
     fireEvent.click(screen.getByText('Rotate API credentials'));
-    const keyInput = screen.getByPlaceholderText('ck_••••••••••••••••••••••••••••••••••••••••');
-    const secretInput = screen.getByPlaceholderText('cs_••••••••••••••••••••••••••••••••••••••••');
+    const keyInput = screen.getByPlaceholderText('New consumer key (ck_...)');
+    const secretInput = screen.getByPlaceholderText('New consumer secret (cs_...)');
     fireEvent.change(keyInput, { target: { value: 'ck_test1234567890' } });
     fireEvent.change(secretInput, { target: { value: 'cs_test1234567890' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save new credentials' }));
 
     await waitFor(() => {
       expect(updateCredentials).toHaveBeenCalledWith(sampleConnection.id, {
@@ -69,15 +69,15 @@ describe('WoocommerceCredentialsPanel', () => {
       <WoocommerceCredentialsPanel connection={sampleConnection} />
     );
     fireEvent.click(screen.getByText('Rotate API credentials'));
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save new credentials' })).toBeDisabled();
 
-    const keyInput = screen.getByPlaceholderText('ck_••••••••••••••••••••••••••••••••••••••••');
+    const keyInput = screen.getByPlaceholderText('New consumer key (ck_...)');
     fireEvent.change(keyInput, { target: { value: 'ck_test1234567890' } });
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save new credentials' })).toBeDisabled();
 
-    const secretInput = screen.getByPlaceholderText('cs_••••••••••••••••••••••••••••••••••••••••');
+    const secretInput = screen.getByPlaceholderText('New consumer secret (cs_...)');
     fireEvent.change(secretInput, { target: { value: 'cs_test1234567890' } });
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save new credentials' })).toBeEnabled();
   });
 
   it('collapses the form after successful save', async () => {
@@ -91,15 +91,15 @@ describe('WoocommerceCredentialsPanel', () => {
     );
 
     fireEvent.click(screen.getByText('Rotate API credentials'));
-    const keyInput = screen.getByPlaceholderText('ck_••••••••••••••••••••••••••••••••••••••••');
-    const secretInput = screen.getByPlaceholderText('cs_••••••••••••••••••••••••••••••••••••••••');
+    const keyInput = screen.getByPlaceholderText('New consumer key (ck_...)');
+    const secretInput = screen.getByPlaceholderText('New consumer secret (cs_...)');
     fireEvent.change(keyInput, { target: { value: 'ck_test1234567890' } });
     fireEvent.change(secretInput, { target: { value: 'cs_test1234567890' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save new credentials' }));
 
     await waitFor(() => {
       expect(screen.getByText('Rotate API credentials')).toBeInTheDocument();
-      expect(screen.queryByPlaceholderText('ck_••••••••••••••••••••••••••••••••••••••••')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('New consumer key (ck_...)')).not.toBeInTheDocument();
     });
   });
 });
