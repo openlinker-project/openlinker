@@ -180,7 +180,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     return validProducts
       .map((p) => {
-        const internalId = idMap.get(`${String(p.id)}:${this.connection.id}`);
+        const internalId = idMap.get(String(p.id));
         if (!internalId) {
           this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
           return null;
@@ -256,11 +256,16 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     }
 
     // Variable product — delete stale synthetic (safe no-op if absent)
-    await this.identifierMapping.deleteMapping(
-      CORE_ENTITY_TYPE.ProductVariant,
-      `product:${wcId}`,
-      this.connection.id,
-    );
+    try {
+      await this.identifierMapping.deleteMapping(
+        CORE_ENTITY_TYPE.ProductVariant,
+        `product:${wcId}`,
+        this.connection.id,
+      );
+    } catch (err) {
+      this.logger.warn('Failed to delete stale synthetic variant', err);
+      // Continue — variants fetch is more important than cleanup
+    }
 
     // Exhaust all pages — products with >100 variations exist (configurable products, apparel).
     const variations = await this.fetchAllPages<WooCommerceProductVariation>(
@@ -287,7 +292,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     return validVariations
       .map((v) => {
-        const internalId = idMap.get(`${String(v.id)}:${this.connection.id}`);
+        const internalId = idMap.get(String(v.id));
         if (!internalId) {
           this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
           return null;

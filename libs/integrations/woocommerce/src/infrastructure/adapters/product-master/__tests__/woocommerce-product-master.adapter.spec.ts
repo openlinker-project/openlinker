@@ -165,14 +165,14 @@ describe('WooCommerceProductMasterAdapter', () => {
       expect(result).toEqual([]);
     });
 
-    it('should batch-map products with composite key externalId:connectionId', async () => {
+    it('should batch-map products with simple key externalId', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockResolvedValue([{ id: 1 }, { id: 2 }] as WooCommerceProduct[]);
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
         new Map([
-          [`1:${CONNECTION_ID}`, 'internal-1'],
-          [`2:${CONNECTION_ID}`, 'internal-2'],
+          ['1', 'internal-1'],
+          ['2', 'internal-2'],
         ]),
       );
       const mapper = makeMapper();
@@ -215,7 +215,7 @@ describe('WooCommerceProductMasterAdapter', () => {
       ] as WooCommerceProduct[]);
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
-        new Map([[`1:${CONNECTION_ID}`, 'internal-1']]),
+        new Map([['1', 'internal-1']]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProducts();
@@ -353,8 +353,8 @@ describe('WooCommerceProductMasterAdapter', () => {
       identifierMapping.deleteMapping.mockResolvedValue(undefined);
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
         new Map([
-          [`101:${CONNECTION_ID}`, 'var-internal-1'],
-          [`102:${CONNECTION_ID}`, 'var-internal-2'],
+          ['101', 'var-internal-1'],
+          ['102', 'var-internal-2'],
         ]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
@@ -378,7 +378,7 @@ describe('WooCommerceProductMasterAdapter', () => {
       ]);
       identifierMapping.deleteMapping.mockResolvedValue(undefined);
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
-        new Map([[`101:${CONNECTION_ID}`, 'var-1']]),
+        new Map([['101', 'var-1']]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProductVariants('prod-1');
