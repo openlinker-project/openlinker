@@ -17,6 +17,7 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createInpostShippingAdapter } from './application/inpost-adapter.factory';
 import { InpostConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/inpost-connection-config-shape-validator.adapter';
+import { buildInpostSchedulerTasks } from './infrastructure/scheduler/inpost-scheduler-tasks';
 
 /**
  * Static plugin manifest (#575). Exported as a top-level `const` so host-side
@@ -47,6 +48,14 @@ export function createInpostPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ apiToken }` shape is enforced
       // at adapter construction time by the factory (deeper than this boundary).
+
+      // #772 — schedule the carrier-generic shipment-status poll (#838) for
+      // InPost connections (webhook fallback). Drained only by the api's
+      // SchedulerService; the worker registers it too (no SchedulerService
+      // there) but never fires it.
+      for (const task of buildInpostSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     async createCapabilityAdapter<T>(
