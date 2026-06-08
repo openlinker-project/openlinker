@@ -30,26 +30,18 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
 import { RedisPickupPointCacheAdapter } from './infrastructure/adapters/redis-pickup-point-cache.adapter';
-import { RedisPickupPointSearchCacheAdapter } from './infrastructure/adapters/redis-pickup-point-search-cache.adapter';
-import { RedisPickupPointQueryStatsAdapter } from './infrastructure/adapters/redis-pickup-point-query-stats.adapter';
 import { ShipmentDispatchService } from './application/services/shipment-dispatch.service';
-import { BulkShipmentDispatchService } from './application/services/bulk-shipment-dispatch.service';
 import { ShipmentQueryService } from './application/services/shipment-query.service';
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
-import { PickupPointRefreshService } from './application/services/pickup-point-refresh.service';
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
 import {
-  BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
-  PICKUP_POINT_SEARCH_CACHE_TOKEN,
-  PICKUP_POINT_QUERY_STATS_TOKEN,
-  PICKUP_POINT_REFRESH_SERVICE_TOKEN,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
@@ -85,13 +77,6 @@ import {
       provide: SHIPMENT_DISPATCH_SERVICE_TOKEN,
       useExisting: ShipmentDispatchService,
     },
-    // #964 bulk surface: loops the per-order dispatch seam (synchronous,
-    // ADR-019) + resolves the DispatchProtocolReader sub-capability.
-    BulkShipmentDispatchService,
-    {
-      provide: BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
-      useExisting: BulkShipmentDispatchService,
-    },
     ShipmentQueryService,
     {
       provide: SHIPMENT_QUERY_SERVICE_TOKEN,
@@ -107,27 +92,10 @@ import {
       provide: PICKUP_POINT_CACHE_TOKEN,
       useExisting: RedisPickupPointCacheAdapter,
     },
-    RedisPickupPointSearchCacheAdapter,
-    {
-      provide: PICKUP_POINT_SEARCH_CACHE_TOKEN,
-      useExisting: RedisPickupPointSearchCacheAdapter,
-    },
-    RedisPickupPointQueryStatsAdapter,
-    {
-      provide: PICKUP_POINT_QUERY_STATS_TOKEN,
-      useExisting: RedisPickupPointQueryStatsAdapter,
-    },
     PickupPointLookupService,
     {
       provide: PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
       useExisting: PickupPointLookupService,
-    },
-    // #849 background re-warm orchestration — re-runs the top-N most-frequent
-    // searches per connection (driven by the worker's pickup-point-refresh handler).
-    PickupPointRefreshService,
-    {
-      provide: PICKUP_POINT_REFRESH_SERVICE_TOKEN,
-      useExisting: PickupPointRefreshService,
     },
     ShipmentDispatchNotificationService,
     {
@@ -157,14 +125,10 @@ import {
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
     SHIPMENT_DISPATCH_SERVICE_TOKEN,
-    BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
     SHIPMENT_QUERY_SERVICE_TOKEN,
     SHIPMENT_CANCELLATION_SERVICE_TOKEN,
     PICKUP_POINT_CACHE_TOKEN,
     PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
-    PICKUP_POINT_SEARCH_CACHE_TOKEN,
-    PICKUP_POINT_QUERY_STATS_TOKEN,
-    PICKUP_POINT_REFRESH_SERVICE_TOKEN,
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
     FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,

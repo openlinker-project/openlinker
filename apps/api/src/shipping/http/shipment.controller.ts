@@ -40,23 +40,18 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
-  type IBulkShipmentDispatchService,
   type IShipmentCancellationService,
   type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
   type IShipmentLabelService,
   type IShipmentQueryService,
-  type BulkShipmentDispatchItem,
   type ShipmentDispatchInput,
   type ShipmentFilters,
-  BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_LABEL_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
-  DispatchProtocolNotSupportedException,
-  InvalidProtocolBatchException,
   LabelDocumentNotSupportedException,
   LabelNotAvailableException,
   ShipmentCancellationNotSupportedException,
@@ -69,11 +64,8 @@ import {
 import { type IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { BulkDispatchResultResponseDto } from './dto/bulk-dispatch-result-response.dto';
-import { BulkGenerateLabelsDto } from './dto/bulk-generate-labels.dto';
 import { DispatchResultResponseDto } from './dto/dispatch-result-response.dto';
 import { GenerateLabelDto } from './dto/generate-label.dto';
-import { GenerateProtocolDto } from './dto/generate-protocol.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
@@ -91,8 +83,6 @@ export class ShipmentController {
     private readonly query: IShipmentQueryService,
     @Inject(SHIPMENT_DISPATCH_SERVICE_TOKEN)
     private readonly dispatch: IShipmentDispatchService,
-    @Inject(BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN)
-    private readonly bulkDispatch: IBulkShipmentDispatchService,
     @Inject(SHIPMENT_CANCELLATION_SERVICE_TOKEN)
     private readonly cancellation: IShipmentCancellationService,
     @Inject(SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN)
@@ -210,74 +200,10 @@ export class ShipmentController {
       paczkomatId: dto.paczkomatId,
       recipient: dto.recipient,
       parcel: dto.parcel,
-      // COD pass-through (#966) — caller-supplied; COD-incapable adapters ignore it.
-      cod: dto.cod,
     };
     try {
       const result = await this.dispatch.dispatch(input);
       return DispatchResultResponseDto.fromResult(result);
-    } catch (error) {
-      throw this.toHttpException(error);
-    }
-  }
-
-  @Post('bulk/generate-labels')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Dispatch labels for up to 25 orders in one action (#964)',
-    description:
-      'Synchronous bulk dispatch: loops the per-order dispatch seam, isolating ' +
-      'each order so a partial failure keeps the successful labels. Returns a ' +
-      'per-order outcome list (200 even on partial failure). Fetch the handover ' +
-      'protocol over the dispatched shipments via POST /shipments/bulk/protocol.',
-  })
-  @ApiResponse({ status: 200, type: BulkDispatchResultResponseDto })
-  async bulkGenerateLabels(
-    @Body() dto: BulkGenerateLabelsDto,
-  ): Promise<BulkDispatchResultResponseDto> {
-    const items: BulkShipmentDispatchItem[] = dto.items.map((item) => ({
-      sourceDeliveryMethodId: item.sourceDeliveryMethodId ?? null,
-      orderId: item.orderId,
-      shippingMethod: item.shippingMethod,
-      paczkomatId: item.paczkomatId,
-      recipient: item.recipient,
-      parcel: item.parcel,
-    }));
-    // No try/catch around the whole batch: per-order failures are isolated INSIDE
-    // the service (caught into `failed` results), so this resolves 200 with the
-    // outcome list. An exception here would be a true infrastructure failure.
-    const result = await this.bulkDispatch.dispatchBulk({
-      sourceConnectionId: dto.sourceConnectionId,
-      items,
-    });
-    return BulkDispatchResultResponseDto.fromResult(result);
-  }
-
-  @Post('bulk/protocol')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Download the carrier handover protocol over a set of dispatched shipments (#964)',
-  })
-  @ApiProduces('application/pdf')
-  @ApiResponse({ status: 200, description: 'Handover protocol bytes (Content-Type per provider)' })
-  @ApiResponse({
-    status: 400,
-    description: 'No generated labels in the set, or shipments span multiple carrier connections',
-  })
-  @ApiResponse({ status: 422, description: 'Carrier does not support handover protocols' })
-  @ApiResponse({ status: 502, description: 'Shipping provider rejected protocol generation' })
-  async downloadProtocol(@Body() dto: GenerateProtocolDto, @Res() res: Response): Promise<void> {
-    // `@Res()` disables Nest's serializer (binary, not JSON). The service runs
-    // FIRST so a thrown domain exception still routes through Nest's exception
-    // layer before any byte is written; `res.*` only runs on success.
-    try {
-      const { contentType, body } = await this.bulkDispatch.generateProtocol({
-        shipmentIds: dto.shipmentIds,
-      });
-      const ext = extensionForContentType(contentType);
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="ol-handover-protocol.${ext}"`);
-      res.send(Buffer.from(body));
     } catch (error) {
       throw this.toHttpException(error);
     }
@@ -381,17 +307,12 @@ export class ShipmentController {
     if (error instanceof ShipmentNotCancellableException) {
       return new ConflictException(error.message);
     }
-    if (error instanceof InvalidProtocolBatchException) {
-      // Client-input problem (empty set / no labels / mixed carriers) → 400.
-      return new BadRequestException(error.message);
-    }
     if (
       error instanceof ShipmentCancellationNotSupportedException ||
       error instanceof UndispatchableResolutionException ||
       error instanceof OrderNotDispatchablePaymentStatusException ||
       error instanceof LabelDocumentNotSupportedException ||
-      error instanceof LabelNotAvailableException ||
-      error instanceof DispatchProtocolNotSupportedException
+      error instanceof LabelNotAvailableException
     ) {
       return new UnprocessableEntityException(error.message);
     }

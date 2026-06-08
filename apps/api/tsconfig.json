@@ -22,8 +22,6 @@
       "@openlinker/integrations-ai/*": ["../../libs/integrations/ai/src/*"],
       "@openlinker/integrations-inpost": ["../../libs/integrations/inpost/src/index.ts"],
       "@openlinker/integrations-inpost/*": ["../../libs/integrations/inpost/src/*"],
-      "@openlinker/integrations-dpd-polska": ["../../libs/integrations/dpd-polska/src/index.ts"],
-      "@openlinker/integrations-dpd-polska/*": ["../../libs/integrations/dpd-polska/src/*"],
       "@openlinker/integrations-woocommerce": ["../../libs/integrations/woocommerce/src/index.ts"],
       "@openlinker/integrations-woocommerce/*": ["../../libs/integrations/woocommerce/src/*"],
       "@openlinker/test-kit": ["../../libs/test-kit/src/index.ts"],

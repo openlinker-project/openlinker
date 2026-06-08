@@ -301,43 +301,6 @@ describe('ShipmentDispatchService', () => {
       expect(result).toEqual({ kind: 'dispatched', shipment: generated });
     });
 
-    it('should forward caller-supplied COD verbatim to generateLabel (#962)', async () => {
-      routing.resolve.mockResolvedValue(
-        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
-      );
-      repository.findActiveByOrderId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
-      adapter.generateLabel.mockResolvedValue({
-        providerShipmentId: 'dpd-1',
-        trackingNumber: 'dpd-1',
-        labelPdfRef: 'dpd-1',
-      });
-      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
-
-      const cod = { amount: '39.99', currency: 'PLN' };
-      await service.dispatch(makeInput({ cod }));
-
-      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
-    });
-
-    it('should forward cod as undefined when the caller omits it', async () => {
-      routing.resolve.mockResolvedValue(
-        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
-      );
-      repository.findActiveByOrderId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
-      adapter.generateLabel.mockResolvedValue({
-        providerShipmentId: 'shipx-1',
-        trackingNumber: null,
-        labelPdfRef: 'shipx:label:shipx-1',
-      });
-      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
-
-      await service.dispatch(makeInput());
-
-      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod: undefined }));
-    });
-
     it('should dispatch source_brokered through the identical path (no rework for #833)', async () => {
       routing.resolve.mockResolvedValue(
         resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.SourceBrokered, processorConnectionId: SOURCE }),

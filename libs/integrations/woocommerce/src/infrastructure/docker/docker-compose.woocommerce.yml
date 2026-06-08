@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  woocommerce:
+    # Image tag is pinned to ensure consistent test environment.
+    # Update both tag and test fixtures when upgrading WooCommerce.
+    image: woocommerce:6.8-php8.2-apache
+    container_name: openlinker-woocommerce
+    ports:
+      - "8081:80"
+    environment:
+      WORDPRESS_DB_HOST: woocommerce-db
+      WORDPRESS_DB_NAME: woocommerce
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: rootpassword
+      WORDPRESS_TABLE_PREFIX: wp_
+      WORDPRESS_DEBUG: "false"
+    depends_on:
+      - woocommerce-db
+    networks:
+      - openlinker-network
+    volumes:
+      - woocommerce-data:/var/www/html
+
+  woocommerce-db:
+    image: mysql:8.0
+    container_name: openlinker-woocommerce-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: woocommerce
+    networks:
+      - openlinker-network
+    volumes:
+      - woocommerce-db-data:/var/lib/mysql
+
+volumes:
+  woocommerce-data:
+  woocommerce-db-data:
+
+networks:
+  openlinker-network:
+    driver: bridge

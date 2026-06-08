@@ -205,45 +205,6 @@ describe('OrderShipmentPanel — populated state', () => {
     expect(await screen.findByText(/buyer-selected via Allegro/i)).toBeInTheDocument();
   });
 
-  it('should label a DPD pickup shipment "Pickup point" with an operator-selected caption (#966)', async () => {
-    const shipment = makeShipment({ connectionId: 'conn-dpd', shippingMethod: 'pickup', paczkomatId: 'PL11033', carrier: 'dpd' });
-    const apiClient = createMockApiClient({
-      connections: {
-        list: vi.fn().mockResolvedValue([
-          makeConnection({ id: 'conn-dpd', platformType: 'dpd', name: 'DPD Polska' }),
-        ]),
-      },
-      shipments: {
-        list: vi.fn().mockResolvedValue({ items: [shipment], total: 1, limit: 20, offset: 0 }),
-      },
-    });
-
-    renderWithProviders(<OrderShipmentPanel order={makeOrder()} />, { apiClient });
-
-    // Row label follows the method (#966) — pickup → "Pickup point"; DPD omits
-    // pickupPointResolvesAsync so the caption is operator-selected.
-    expect(await screen.findByText('Pickup point')).toBeInTheDocument();
-    expect(screen.getByText('PL11033')).toBeInTheDocument();
-    expect(screen.getByText(/operator-selected/i)).toBeInTheDocument();
-  });
-
-  it('should surface a Cash-on-delivery status row for a COD order (#966, decision A)', async () => {
-    const order = makeOrder();
-    (order.orderSnapshot as Record<string, unknown>).paymentStatus = 'cod';
-    const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
-      shipments: {
-        list: vi.fn().mockResolvedValue({ items: [makeShipment()], total: 1, limit: 20, offset: 0 }),
-      },
-    });
-
-    renderWithProviders(<OrderShipmentPanel order={order} />, { apiClient });
-
-    // Status only — no amount is persisted on the shipment (decision A).
-    expect(await screen.findByText('Cash on delivery')).toBeInTheDocument();
-    expect(screen.getByText(/collect on delivery/i)).toBeInTheDocument();
-  });
-
   it('should render copy-text for the tracking number when carrier is null (status-sync has not backfilled)', async () => {
     const shipment = makeShipment({ carrier: null, trackingNumber: '6800000099' });
     const apiClient = createMockApiClient({

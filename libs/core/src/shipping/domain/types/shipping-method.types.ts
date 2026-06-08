@@ -8,12 +8,11 @@
  *
  * Two flavours of value live in the same union:
  *
- * - **Provider-issued methods** — `paczkomat` (locker), `pickup` (parcel-shop /
- *   PUDO point — DPD Pickup #963; carrier-neutral, distinct from the
- *   `paczkomat` locker), `kurier` (and future ones for #732 Allegro Delivery):
- *   each maps to a different endpoint shape on the provider side, and a
- *   label-issuing `ShippingProviderManagerPort` adapter is the row's
- *   authoritative writer.
+ * - **Provider-issued methods** — `paczkomat`, `kurier` (and future ones
+ *   for #732 Allegro Delivery): each maps to a different ShipX endpoint
+ *   shape on the provider side, and a label-issuing
+ *   `ShippingProviderManagerPort` adapter is the row's authoritative
+ *   writer.
  * - **Projection-only methods** — `omp` (#834, ADR-012): branch-1
  *   shipments where the destination OMP ships externally and OL holds no
  *   provider id, no `labelPdfRef`. The row exists as a *projection* of
@@ -26,12 +25,11 @@
  * @module libs/core/src/shipping/domain/types
  */
 
-export const ShippingMethodValues = ['paczkomat', 'pickup', 'kurier', 'omp'] as const;
+export const ShippingMethodValues = ['paczkomat', 'kurier', 'omp'] as const;
 export type ShippingMethod = (typeof ShippingMethodValues)[number];
 
 export const SHIPPING_METHOD = {
   Paczkomat: 'paczkomat',
-  Pickup: 'pickup',
   Kurier: 'kurier',
   Omp: 'omp',
-} as const satisfies Record<'Paczkomat' | 'Pickup' | 'Kurier' | 'Omp', ShippingMethod>;
+} as const satisfies Record<'Paczkomat' | 'Kurier' | 'Omp', ShippingMethod>;

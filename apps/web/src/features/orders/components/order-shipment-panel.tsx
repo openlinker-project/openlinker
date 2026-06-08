@@ -22,11 +22,10 @@ import { usePlatform, type Platform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
-import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Button } from '../../../shared/ui/button';
 
 import type { OrderRecord } from '../api/orders.types';
-import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
+import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
@@ -111,7 +110,6 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
         <OrderShipmentPanelBody
           shipment={activeShipment}
           shippingPlatformType={shippingConnection?.platformType ?? null}
-          paymentStatus={paymentStatus}
           mutationError={null /* surfaced via the action-buttons own state */}
         />
       ) : formOpen ? null : (
@@ -151,19 +149,17 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
 function OrderShipmentPanelBody({
   shipment,
   shippingPlatformType,
-  paymentStatus,
   mutationError,
 }: {
   shipment: Shipment;
   shippingPlatformType: string | null;
-  paymentStatus: PaymentStatus | undefined;
   mutationError: string | null;
 }): ReactElement {
   // Resolve the shipping platform's contribution here (a component) rather than
   // in the parent, which has early returns above its `shippingConnection`
   // computation — a `usePlatform` call there would be conditional (#893).
   const shippingPlatform = usePlatform(shippingPlatformType ?? undefined);
-  const items = buildShipmentFieldItems(shipment, shippingPlatform, paymentStatus);
+  const items = buildShipmentFieldItems(shipment, shippingPlatform);
   return (
     <div className="order-shipment-panel__body">
       <KeyValueList items={items} />
@@ -179,7 +175,6 @@ function OrderShipmentPanelBody({
 function buildShipmentFieldItems(
   shipment: Shipment,
   shippingPlatform: Platform | undefined,
-  paymentStatus: PaymentStatus | undefined,
 ): KeyValueItem[] {
   const items: KeyValueItem[] = [];
 
@@ -214,35 +209,13 @@ function buildShipmentFieldItems(
       shippingPlatform?.pickupPointResolvesAsync === true
         ? `(buyer-selected via ${shippingPlatform.displayName})`
         : '(operator-selected)';
-    // Row label follows the method: parcel-shop / PUDO methods ('pickup', e.g.
-    // DPD Pickup) read "Pickup point"; locker methods ('paczkomat') keep their
-    // name. Both carry their point id on `paczkomatId`.
-    const pointLabel = shipment.shippingMethod === 'pickup' ? 'Pickup point' : 'Paczkomat';
     items.push({
       id: 'paczkomat',
-      label: pointLabel,
+      label: 'Paczkomat',
       value: (
         <>
           <span className="mono-text">{shipment.paczkomatId}</span>{' '}
           <span className="text-muted">{caption}</span>
-        </>
-      ),
-    });
-  }
-
-  // COD indicator (#966, decision A) — surfaces that the order is cash-on-delivery
-  // from the source-reported payment status. The amount is NOT persisted on the
-  // shipment (operator-entered at dispatch), so this is a status row, not a figure.
-  if (paymentStatus === 'cod') {
-    items.push({
-      id: 'cod',
-      label: 'Payment',
-      value: (
-        <>
-          <StatusBadge tone="warning" withDot>
-            Cash on delivery
-          </StatusBadge>{' '}
-          <span className="text-muted">collect on delivery</span>
         </>
       ),
     });

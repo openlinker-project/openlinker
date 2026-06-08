@@ -12,34 +12,6 @@ Follow the 5-phase process defined in `docs/implementation-plan-generator-guide.
 
 ---
 
-## Setup — Worktree & branch (run once at the start)
-
-A plan produces committed artifacts (the plan doc + any ADR drafts) that ship as their own PR. Always run in an isolated worktree to keep `main` clean and enable a self-contained PR at the end — same pattern as `/work` and `/refine-product`.
-
-**Skip this section** if the session is already in a worktree for this issue (check: `git rev-parse --show-toplevel` includes `.claude/worktrees/`). Otherwise:
-
-1. **Sync local main with origin:**
-   ```bash
-   git fetch origin main
-   git checkout main
-   git merge origin/main --ff-only
-   ```
-2. **Create the worktree** via the `EnterWorktree` tool. Name format: `{issue-number}-{kebab-slug}-plan` (slug from the issue's domain noun). If `EnterWorktree` isn't loaded, fetch it via `ToolSearch` with `select:EnterWorktree`.
-3. **Inside the worktree, reset to latest origin/main and rename the branch:**
-   ```bash
-   git reset --hard origin/main
-   git branch -m {issue-number}-{kebab-slug}-plan
-   ```
-4. **Install dependencies** (the pre-commit hook runs full lint + type-check, which need `node_modules`):
-   ```bash
-   pnpm install --prefer-offline
-   ```
-5. Confirm the worktree is ready before proceeding. The same branch carries the plan doc + ADR(s) and becomes the eventual PR.
-
-**At the end** (after the plan + ADR drafts are written): commit on the branch with DCO sign-off (`git commit -s`), push, open a PR with `mcp__github__create_pull_request` (reference the issue, do **not** `Closes` it — the plan precedes implementation), then `ExitWorktree` (`action: remove`, `discard_changes: true` once the PR is open, since the work is preserved on the remote branch).
-
----
-
 ## Your Task
 
 Generate a complete implementation plan for: **$ARGUMENTS**
@@ -137,7 +109,3 @@ docs/plans/implementation-plan-{feature-name}.md
 Use the required output format from `docs/implementation-plan-generator-guide.md`.
 
 The plan must be self-contained: understandable without additional context.
-
-When the architecture work surfaces a non-trivial decision (per `docs/architecture/adrs/README.md` § When to write an ADR), also draft the ADR under `docs/architecture/adrs/NNN-*.md` (next free number) with `Status: Proposed`, and add its row to the ADR index in that README.
-
-Then commit + open the PR per the **Setup — Worktree & branch** section, and `ExitWorktree`.

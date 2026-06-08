@@ -53,7 +53,6 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     // core-side; only platform-specific *triggers* move to integrations.
     this.registerInventorySyncTask();
     this.registerProductSyncTask();
-    this.registerPickupPointRefreshTask();
 
     // Drain plugin-contributed tasks. Integration modules have already
     // populated the registry at `onModuleInit`; NestJS guarantees every
@@ -315,42 +314,6 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `master:${connection.id}:product:syncAll:${timestamp}`,
-    });
-  }
-
-  /**
-   * Register the periodic paczkomat-cache re-warm task (#849).
-   *
-   * Enqueues `shipping.pickupPoint.refreshFrequent` for every active connection
-   * that supports the ShippingProviderManager capability (capability-scoped —
-   * covers InPost and DPD alike). The worker handler delegates to the core
-   * `PickupPointRefreshService`, which re-runs the top-N most-frequent searches;
-   * connections without a pickup-point finder no-op cleanly. Daily by default.
-   */
-  private registerPickupPointRefreshTask(): void {
-    const enabled = this.configService.get<string>('OL_PICKUP_POINT_REFRESH_ENABLED', 'true');
-    if (enabled === 'false') {
-      return;
-    }
-
-    const cron = this.configService.get<string>('OL_PICKUP_POINT_REFRESH_CRON', '0 3 * * *');
-
-    this.tasks.push({
-      taskId: 'pickup-point-refresh',
-      jobType: 'shipping.pickupPoint.refreshFrequent',
-      cronExpression: cron,
-      enabledEnvVar: 'OL_PICKUP_POINT_REFRESH_ENABLED',
-      connectionFilter: async () => {
-        const adapters = await this.integrationsService.listCapabilityAdapters({
-          capability: 'ShippingProviderManager',
-        });
-        return (adapters ?? []).map((a) => a.connection);
-      },
-      generatePayload: () => ({
-        schemaVersion: 1,
-      }),
-      generateIdempotencyKey: (connection, timestamp) =>
-        `shipping:${connection.id}:pickupPoints:refresh:${timestamp}`,
     });
   }
 }
