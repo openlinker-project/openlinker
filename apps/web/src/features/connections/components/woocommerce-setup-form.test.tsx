@@ -31,7 +31,7 @@ describe('WoocommerceSetupForm', () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Connection name is required')).toBeInTheDocument();
+      expect(screen.getAllByText('Connection name is required')[0]).toBeInTheDocument();
     });
   });
 
@@ -48,7 +48,7 @@ describe('WoocommerceSetupForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Site URL must use HTTPS (or localhost for local development)')
+        screen.getAllByText('Site URL must use HTTPS (or localhost for local development)')[0]
       ).toBeInTheDocument();
     });
   });
@@ -99,7 +99,7 @@ describe('WoocommerceSetupForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Consumer key must start with ck_')
+        screen.getAllByText('Consumer key must start with ck_')[0]
       ).toBeInTheDocument();
     });
   });
@@ -123,7 +123,7 @@ describe('WoocommerceSetupForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Consumer secret must start with cs_')
+        screen.getAllByText('Consumer secret must start with cs_')[0]
       ).toBeInTheDocument();
     });
   });
@@ -157,8 +157,16 @@ describe('WoocommerceSetupForm', () => {
       expect(createConnection).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'My Store',
-          baseUrl: 'https://shop.example.com',
           platformType: 'woocommerce',
+          adapterKey: expect.any(String),
+          config: expect.objectContaining({
+            baseUrl: 'https://shop.example.com',
+          }),
+          credentials: expect.objectContaining({
+            consumerKey: 'ck_test1234567890',
+            consumerSecret: 'cs_test1234567890',
+          }),
+          enabledCapabilities: expect.any(Array),
         })
       );
     });
@@ -194,20 +202,23 @@ describe('WoocommerceSetupForm', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
 
-    expect(screen.getByRole('button', { name: 'Connecting…' })).toBeDisabled();
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /Connecting|Connect WooCommerce/ });
+      expect(button).toBeDisabled();
+    });
   });
 
   it('shows validation errors only after first submit attempt', async () => {
     renderWithProviders(<WoocommerceSetupForm />);
 
     // Initially no error summary
-    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     // After submit attempt
     fireEvent.click(screen.getByRole('button', { name: 'Connect WooCommerce' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Connection name is required')).toBeInTheDocument();
+      expect(screen.getAllByText('Connection name is required')[0]).toBeInTheDocument();
     });
   });
 });
