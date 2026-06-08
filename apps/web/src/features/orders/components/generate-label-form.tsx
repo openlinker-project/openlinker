@@ -35,7 +35,6 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
-import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -50,7 +49,6 @@ import {
   type GenerateLabelInput,
 } from '../../shipments';
 import {
-  COD_CURRENCY_VALUES,
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
@@ -189,9 +187,6 @@ export function GenerateLabelForm({
       // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
       // operator types (picker deferred per plan).
       paczkomatId: snapshot.pickupPoint?.id ?? '',
-      // COD (#966, decision A) — operator-entered at dispatch; not order-sourced.
-      codAmount: '',
-      codCurrency: 'PLN',
     },
     resolver: zodResolver(generateLabelSchema),
   });
@@ -204,13 +199,6 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
-  const codAmountRegister = form.register('codAmount');
-  const codCurrencyRegister = form.register('codCurrency');
-
-  // COD orders are flagged by the snapshot's payment status (#928). The COD
-  // amount itself isn't persisted (decision A) — the operator enters what to
-  // collect here at dispatch.
-  const isCodOrder = snapshot.paymentStatus === 'cod';
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -436,35 +424,6 @@ export function GenerateLabelForm({
           </FormField>
         ) : null}
 
-        {/* Cash on delivery (#966, decision A) — optional, operator-entered.
-            COD-incapable carriers ignore it; DPD translates it to its COD
-            service. Pre-flagged when the order's payment status is COD. */}
-        <div className="form-field">
-          <p className="form-field__label">Cash on delivery (optional)</p>
-          <p className="form-field__description">
-            {isCodOrder
-              ? 'This order is cash-on-delivery — enter the amount to collect at the door.'
-              : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
-          </p>
-          <div className="generate-label-form__cod">
-            <Input
-              {...codAmountRegister}
-              inputMode="decimal"
-              placeholder="129.90"
-              aria-label="COD amount to collect"
-              invalid={Boolean(form.formState.errors.codAmount)}
-            />
-            <Select {...codCurrencyRegister} aria-label="COD currency">
-              {COD_CURRENCY_VALUES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
-        </div>
-
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">
             Allegro is processing your label. This typically takes 10–30 seconds.
@@ -621,12 +580,6 @@ function buildGenerateLabelInput(args: {
       dimensions: { length: values.length, width: values.width, height: values.height },
       weightGrams: values.weightGrams,
     },
-    // COD (#966) — only when the operator entered an amount. Normalise a
-    // comma decimal separator to a dot for the wire shape.
-    cod:
-      values.codAmount && values.codAmount.length > 0
-        ? { amount: values.codAmount.replace(',', '.'), currency: values.codCurrency ?? 'PLN' }
-        : undefined,
   };
 }
 

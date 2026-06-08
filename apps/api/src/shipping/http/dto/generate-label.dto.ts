@@ -19,7 +19,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -121,22 +120,6 @@ class ShipmentParcelDto {
   weightGrams?: number;
 }
 
-class ShipmentCodDto {
-  @ApiProperty({ description: 'Cash-on-delivery amount to collect, as a decimal string (e.g. "129.90")' })
-  @IsString()
-  @IsNotEmpty()
-  // Defense-in-depth: the FE already gates the decimal shape, but the API has
-  // other potential clients — reject a malformed amount here so it never reaches
-  // the carrier (#966 review).
-  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'COD amount must be a decimal string, e.g. "129.90"' })
-  amount!: string;
-
-  @ApiProperty({ description: 'ISO 4217 currency code (e.g. PLN). Carrier validates the supported set.' })
-  @IsString()
-  @IsNotEmpty()
-  currency!: string;
-}
-
 export class GenerateLabelDto {
   @ApiProperty({ description: 'Order-source connection id (the routing rule scope)' })
   @IsUUID()
@@ -159,10 +142,7 @@ export class GenerateLabelDto {
   @IsEnum(ShippingMethodValues)
   shippingMethod!: ShippingMethod;
 
-  @ApiPropertyOptional({
-    description:
-      'Pickup-point id — required for point-delivery methods (paczkomat = locker, pickup = parcel-shop/PUDO); absent for kurier',
-  })
+  @ApiPropertyOptional({ description: 'Required when shippingMethod === paczkomat' })
   @IsOptional()
   @IsString()
   paczkomatId?: string;
@@ -176,14 +156,4 @@ export class GenerateLabelDto {
   @ValidateNested()
   @Type(() => ShipmentParcelDto)
   parcel!: ShipmentParcelDto;
-
-  @ApiPropertyOptional({
-    type: ShipmentCodDto,
-    description:
-      'Cash-on-delivery to collect on delivery (operator-supplied, #966). COD-incapable carriers ignore it; DPD Polska translates it to the COD service.',
-  })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ShipmentCodDto)
-  cod?: ShipmentCodDto;
 }

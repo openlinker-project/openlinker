@@ -13,21 +13,11 @@ import type { FindPickupPointsQuery, PickupPoint } from '../../domain/types/pick
 
 export interface IPickupPointLookupService {
   /**
-   * Operator-facing search. Records query frequency (#849), then serves from
-   * the result cache when warm (skipping the provider call); on a miss runs a
-   * live provider search and write-throughs the result list + each point.
+   * Live provider search; write-throughs each returned point to the cache.
    * Throws `PickupPointFinderNotSupportedException` when the connection's
    * adapter has no pickup-point network (e.g. a courier-only carrier).
    */
   search(connectionId: string, query: FindPickupPointsQuery): Promise<PickupPoint[]>;
-
-  /**
-   * Background re-warm path (#849): always runs a live provider search and
-   * write-throughs both caches, **bypassing** the result-cache read and
-   * **without** recording frequency (so the daily re-warm doesn't reinforce
-   * its own counts). Used by `IPickupPointRefreshService`.
-   */
-  refreshSearch(connectionId: string, query: FindPickupPointsQuery): Promise<void>;
 
   /**
    * Fast by-id read from cache. `null` on miss — there is no live by-id

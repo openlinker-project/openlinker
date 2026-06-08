@@ -40,6 +40,8 @@ function makeHttpClient(): jest.Mocked<IWooCommerceHttpClient> {
 }
 
 function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
+  // SECURITY WARNING: These are test fixtures only, never use hardcoded credentials in production.
+  // Use environment variables or secure credential storage instead.
   return {
     getOrCreateInternalId: jest.fn(),
     getOrCreateExactMapping: jest.fn(),

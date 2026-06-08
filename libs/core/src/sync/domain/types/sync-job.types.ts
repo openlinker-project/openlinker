@@ -32,9 +32,6 @@ export const JobTypeValues = [
 
   'master.variants.autoMatch',
 
-  // Shipping (core-owned; capability-scoped, executed by worker)
-  'shipping.pickupPoint.refreshFrequent',
-
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
 ] as const;

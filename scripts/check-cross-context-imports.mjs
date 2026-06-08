@@ -318,7 +318,7 @@ const ALLOW_LIST = new Map([
     new Set(['CustomerProjectionRepositoryPort']),
   ],
   [
-    'libs/integrations/prestashop/src/__tests__/mocks/prestashop-order-processor-manager.factory.ts',
+    'libs/integrations/prestashop/src/infrastructure/adapters/__tests__/prestashop-order-processor-manager.adapter.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],
   [

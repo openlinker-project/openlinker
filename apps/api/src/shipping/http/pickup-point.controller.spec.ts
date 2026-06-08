@@ -39,7 +39,7 @@ describe('PickupPointController', () => {
   let controller: PickupPointController;
 
   beforeEach(() => {
-    lookup = { search: jest.fn(), refreshSearch: jest.fn(), getCachedPoint: jest.fn() };
+    lookup = { search: jest.fn(), getCachedPoint: jest.fn() };
     controller = new PickupPointController(lookup);
   });
 

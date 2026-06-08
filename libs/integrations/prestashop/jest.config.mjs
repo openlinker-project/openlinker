@@ -1,5 +1,3 @@
-import { ciStabilityConfig } from '../../../jest.ci-stability.mjs';
-
 export default {
   testEnvironment: 'node',
   rootDir: '.',
@@ -34,9 +32,5 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
-
-  // CI stability (#976): worker/memory caps shared with the other heavy
-  // integration packages — see jest.ci-stability.mjs at the repo root.
-  ...ciStabilityConfig,
 };
 

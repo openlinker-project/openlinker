@@ -19,7 +19,7 @@
     "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
     "build:api": "pnpm --filter @openlinker/api exec nest build",
     "test": "pnpm -r test",
-    "test:ci": "pnpm -r --filter \"./libs/**\" build && pnpm -r --workspace-concurrency=2 test",
+    "test:ci": "pnpm -r --filter \"./libs/**\" build && pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "test:cov": "pnpm -r test:cov",
     "test:integration": "pnpm --filter @openlinker/api test:integration",

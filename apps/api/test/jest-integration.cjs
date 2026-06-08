@@ -53,14 +53,6 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/inpost/src/$1',
     ),
-    '^@openlinker/integrations-dpd-polska$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/dpd-polska/src/index.ts',
-    ),
-    '^@openlinker/integrations-dpd-polska/(.*)$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/dpd-polska/src/$1',
-    ),
     '^@openlinker/integrations-woocommerce$': path.resolve(
       __dirname,
       '../../../libs/integrations/woocommerce/src/index.ts',

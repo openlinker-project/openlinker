@@ -8471,14 +8471,6 @@ html[data-density='compact'] .status-badge {
   }
 }
 
-/* COD composite (#966) — amount input + currency select; amount takes the
- * remaining width, currency is sized to its content. */
-.generate-label-form__cod {
-  display: grid;
-  grid-template-columns: 1fr 7rem;
-  gap: var(--space-2);
-}
-
 .generate-label-form__slow-notice {
   font-size: 0.8125rem;
   color: var(--text-secondary);

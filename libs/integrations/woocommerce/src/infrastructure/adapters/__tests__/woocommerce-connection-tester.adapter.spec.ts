@@ -13,6 +13,9 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { WooCommerceConnectionTesterAdapter } from '../woocommerce-connection-tester.adapter';
 
 const SITE_URL = 'https://myshop.com';
+
+// SECURITY WARNING: These are test fixtures only, never use hardcoded credentials in production.
+// Use environment variables or secure credential storage instead.
 const CONSUMER_KEY = 'ck_abc123';
 const CONSUMER_SECRET = 'cs_xyz789';
 
