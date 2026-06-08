@@ -113,8 +113,8 @@ describe('WooCommerceInventoryMasterAdapter', () => {
         .mockResolvedValueOnce(makeVariableProduct([10, 11]))      // product
         .mockResolvedValueOnce([makeVariation(10, 3), makeVariation(11, 7)]); // variations page 1
       identifierMapping.batchGetOrCreateInternalIds
-        .mockResolvedValueOnce(new Map([['10', 'ol-var-10'], ['11', 'ol-var-11']]))
-        .mockResolvedValueOnce(new Map([['stock-var:10', 'ol-inv-10'], ['stock-var:11', 'ol-inv-11']]));
+        .mockResolvedValueOnce(new Map([[`10:${CONNECTION_ID}`, 'ol-var-10'], [`11:${CONNECTION_ID}`, 'ol-var-11']]))
+        .mockResolvedValueOnce(new Map([[`stock-var:10:${CONNECTION_ID}`, 'ol-inv-10'], [`stock-var:11:${CONNECTION_ID}`, 'ol-inv-11']]));
 
       const rows = await adapter.listInventory('ol-product-2');
 

@@ -49,27 +49,29 @@ export interface WooCommerceTestContainer {
 }
 
 export async function startWooCommerceContainer(): Promise<WooCommerceTestContainer> {
-  let network: StartedNetwork | undefined;
+  // Boot the network first so `startedNetwork` is a non-null const — avoids
+  // undefined propagation into withNetwork() calls below (same pattern as
+  // prestashop-container.helper.ts).
+  const startedNetwork = await new Network().start();
+  let network: StartedNetwork | undefined = startedNetwork;
   let mysql: StartedMySqlContainer | undefined;
   let wordpress: StartedTestContainer | undefined;
 
   try {
     console.log('[WC] Starting MySQL companion...');
 
-    network = await Network.newNetwork();
-
     mysql = await new MySqlContainer('mysql:8.4.7')
-      .withNetwork(network)
+      .withNetwork(startedNetwork)
       .withNetworkAliases('woocommerce-mysql-tc')
       .withDatabase('woocommerce')
       .withUsername('woocommerce')
-      .withPassword('woocommerce')
+      .withUserPassword('woocommerce')
       .start();
 
     console.log('[WC] MySQL ready. Starting WordPress+WooCommerce (warm: ~2min, cold: ~5min)...');
 
     wordpress = await new GenericContainer('bitnami/wordpress:latest')
-      .withNetwork(network)
+      .withNetwork(startedNetwork)
       .withEnvironment({
         WORDPRESS_DATABASE_HOST: 'woocommerce-mysql-tc',
         WORDPRESS_DATABASE_PORT_NUMBER: '3306',
@@ -157,10 +159,13 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
     // Avoids WooCommerce REST API HTTP auth (over plain HTTP only OAuth 1.0a works;
     // Basic Auth and query-string auth both require is_ssl()=true in WC source).
 
+    // Pass wp eval arguments directly to Docker exec — no shell intermediary,
+    // so PHP variables ($p, $v, $existing …) are never subject to shell expansion.
+    // JSON.stringify-then-double-quote (the sh -c approach) would silently strip
+    // every $var because the shell expands them as empty env vars.
     const wpEval = async (code: string): Promise<string> => {
       const { output, exitCode } = await wordpress!.exec([
-        'sh', '-c',
-        `wp eval ${JSON.stringify(code)} --allow-root --no-debug 2>/dev/null`,
+        'wp', 'eval', code, '--allow-root', '--no-debug',
       ]);
       if (exitCode !== 0) throw new Error(`wp eval failed (exit ${exitCode}): ${output}`);
       return output.trim().split('\n').filter(Boolean).at(-1) ?? '';
@@ -222,6 +227,7 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       $v->set_stock_quantity(30);
       $v->set_attributes(["size" => "S"]);
       $v->set_status("publish");
+      $v->update_meta_data("_ean", "5901234123457");
       echo $v->save();
     `);
     if (!varSId || varSId === '0') {
@@ -237,11 +243,23 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       $v->set_stock_quantity(20);
       $v->set_attributes(["size" => "M"]);
       $v->set_status("publish");
+      $v->update_meta_data("_ean", "5901234123464");
       echo $v->save();
     `);
     if (!varMId || varMId === '0') {
       throw new Error('WooCommerceTestContainer: failed to create WC-JEANS-M variation');
     }
+
+    // WooCommerce REST API `perform_basic_authentication()` is gated on `is_ssl()`.
+    // The Testcontainer runs on plain HTTP; install a must-use plugin that sets
+    // $_SERVER['HTTPS'] = 'on' so is_ssl() returns true. Standard proxy workaround.
+    // Installed AFTER seeding so a syntax error here can't break the wp eval seed calls.
+    // chr(36) produces '$' without PHP or shell expanding it in the string literal.
+    await wordpress.exec([
+      'wp', 'eval',
+      `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/force-https.php', '<?php ' . chr(36) . '_SERVER["HTTPS"] = "on";');`,
+      '--allow-root', '--no-debug',
+    ]);
 
     console.log(
       `[WC] Seed complete. baseUrl=${baseUrl} shirt=${shirtId} jeans=${jeansId} vars=[${varSId},${varMId}]`,

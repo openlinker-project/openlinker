@@ -35,8 +35,11 @@ import {
   type IOrderIngestionService,
   type IncomingOrder,
 } from '@openlinker/core/orders';
-// Static import — ConnectionOrmEntity is always needed in beforeAll setup
-import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
+import {
+  ConnectionOrmEntity,
+  IdentifierMappingOrmEntity,
+} from '@openlinker/core/identifier-mapping/orm-entities';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
 // Skip the entire suite when OL_SKIP_WC_INTEGRATION=true so CI pipelines can
 // gate this opt-in suite separately from the standard integration suite.
@@ -86,6 +89,29 @@ const SKIP_WC_INTEGRATION = process.env.OL_SKIP_WC_INTEGRATION === 'true';
     // WooCommerceOrderProcessorAdapter.resolveLineItems() calls
     // identifierMapping.getExternalIds(Product, productId) — throws if missing.
     await drainProductSyncJobs(harness, wcConnectionId, [wc.simpleProductExternalId]);
+
+    // The order-ingestion item resolver calls getInternalId(Product, externalId, connectionId)
+    // with connectionId = allegroConnectionId (the source connection). drainProductSyncJobs
+    // created the mapping under wcConnectionId. Create an alias mapping so the resolver
+    // can find the product when called with the Allegro source connection.
+    const mappingRepo = harness.getDataSource().getRepository(IdentifierMappingOrmEntity);
+    const wcProductMapping = await mappingRepo.findOneOrFail({
+      where: {
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: wc.simpleProductExternalId,
+        connectionId: wcConnectionId,
+      },
+    });
+    await mappingRepo.save(
+      mappingRepo.create({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: wc.simpleProductExternalId,
+        internalId: wcProductMapping.internalId,
+        platformType: stub.platformType,
+        connectionId: allegroConnectionId,
+        context: null,
+      }),
+    );
 
     // Configure stub Allegro source to yield a test order with 2× WC-SHIRT-001.
     // The IncomingOrder shape requires the full domain DTO — productRef uses
