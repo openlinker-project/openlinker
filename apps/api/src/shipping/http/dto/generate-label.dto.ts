@@ -24,7 +24,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ShippingMethodValues, type ShippingMethod } from '@openlinker/core/shipping';
+import {
+  ShippingMethodValues,
+  type ShippingMethod,
+  DeliveryIntentValues,
+  type DeliveryIntent,
+} from '@openlinker/core/shipping';
 
 class ShipmentAddressDto {
   @ApiProperty()
@@ -155,9 +160,26 @@ export class GenerateLabelDto {
   @IsNotEmpty()
   orderId!: string;
 
-  @ApiProperty({ enum: ShippingMethodValues })
+  @ApiPropertyOptional({
+    enum: DeliveryIntentValues,
+    description:
+      'Carrier-neutral delivery intent (#979, ADR-020). The dispatch seam resolves ' +
+      'the carrier-specific shipping method from this. Preferred over `shippingMethod`.',
+  })
+  @IsOptional()
+  @IsEnum(DeliveryIntentValues)
+  deliveryIntent?: DeliveryIntent;
+
+  @ApiPropertyOptional({
+    enum: ShippingMethodValues,
+    deprecated: true,
+    description:
+      '@deprecated — send `deliveryIntent` instead. Accepted for one release as a ' +
+      'fallback when `deliveryIntent` is absent (the seam derives the intent from it).',
+  })
+  @IsOptional()
   @IsEnum(ShippingMethodValues)
-  shippingMethod!: ShippingMethod;
+  shippingMethod?: ShippingMethod;
 
   @ApiPropertyOptional({
     description:

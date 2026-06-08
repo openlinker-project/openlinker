@@ -53,6 +53,16 @@ export const SHIPPING_METHOD_VALUES = ['paczkomat', 'kurier', 'pickup', 'omp'] a
 export type ShippingMethod = (typeof SHIPPING_METHOD_VALUES)[number];
 
 /**
+ * Carrier-neutral delivery intent — the dispatch *caller* contract (#979,
+ * ADR-020). The operator/form expresses where the parcel goes; the BE dispatch
+ * seam resolves the carrier-specific `ShippingMethod`. **FE mirror** of the BE
+ * `DeliveryIntentValues` — keep in sync (same FE↔BE drift discipline as
+ * `SHIPPING_METHOD_VALUES`, #966).
+ */
+export const DELIVERY_INTENT_VALUES = ['pickup_point', 'address'] as const;
+export type DeliveryIntent = (typeof DELIVERY_INTENT_VALUES)[number];
+
+/**
  * Operator-readable label per shipping method. Used by the `/shipments`
  * Method column and the method-filter dropdown so the UI doesn't surface raw
  * enum values. `Record<ShippingMethod, string>` (not `Partial<>`) so a new
@@ -128,7 +138,9 @@ export interface GenerateLabelInput {
   sourceConnectionId: string;
   sourceDeliveryMethodId?: string | null;
   orderId: string;
-  shippingMethod: ShippingMethod;
+  /** Carrier-neutral delivery intent (#979, ADR-020). The BE resolves the
+   * concrete shipping method from this; the caller never names a carrier method. */
+  deliveryIntent: DeliveryIntent;
   paczkomatId?: string;
   recipient: {
     name?: string;

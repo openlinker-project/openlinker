@@ -206,6 +206,10 @@ export class ShipmentController {
       sourceConnectionId: dto.sourceConnectionId,
       sourceDeliveryMethodId: dto.sourceDeliveryMethodId ?? null,
       orderId: dto.orderId,
+      // Carrier-neutral intent (#979); `shippingMethod` is the deprecated
+      // one-release fallback. The seam resolves the carrier method + raises
+      // 422 (UndispatchableResolutionException) if neither is usable.
+      deliveryIntent: dto.deliveryIntent,
       shippingMethod: dto.shippingMethod,
       paczkomatId: dto.paczkomatId,
       recipient: dto.recipient,
@@ -238,6 +242,7 @@ export class ShipmentController {
     const items: BulkShipmentDispatchItem[] = dto.items.map((item) => ({
       sourceDeliveryMethodId: item.sourceDeliveryMethodId ?? null,
       orderId: item.orderId,
+      deliveryIntent: item.deliveryIntent,
       shippingMethod: item.shippingMethod,
       paczkomatId: item.paczkomatId,
       recipient: item.recipient,
