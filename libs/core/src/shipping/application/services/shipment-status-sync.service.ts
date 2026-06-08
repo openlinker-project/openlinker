@@ -166,6 +166,40 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     };
   }
 
+  async syncOneByProviderShipmentId(
+    connectionId: string,
+    providerShipmentId: string,
+  ): Promise<void> {
+    const shipment = await this.shipments.findByProviderShipmentId(providerShipmentId);
+    if (!shipment) {
+      this.logger.warn(
+        `Webhook-triggered shipment refresh: no shipment for providerShipmentId=${providerShipmentId} (connection ${connectionId}) — ignoring.`,
+      );
+      return;
+    }
+    // Cross-connection guard (ADR-021): a webhook delivered for connection A
+    // must never refresh a shipment owned by connection B, even if provider
+    // shipment ids collide across multi-account connections (#727 v2).
+    if (shipment.connectionId !== connectionId) {
+      this.logger.warn(
+        `Webhook-triggered shipment refresh: providerShipmentId=${providerShipmentId} resolved to shipment ${shipment.id} on connection ${shipment.connectionId}, not the webhook's connection ${connectionId} — skipping.`,
+      );
+      return;
+    }
+
+    const carrierAdapter =
+      await this.integrations.getCapabilityAdapter<ShippingProviderManagerPort>(
+        connectionId,
+        SHIPPING_PROVIDER_MANAGER_CAPABILITY,
+      );
+    const snapshot = await carrierAdapter.getTracking({ providerShipmentId });
+
+    const { patch } = await this.buildPatchAndMaybePush(shipment, snapshot);
+    if (Object.keys(patch).length > 0) {
+      await this.shipments.update(shipment.id, patch);
+    }
+  }
+
   /**
    * Diff the snapshot against the shipment, attempt the OMP push under the
    * dispatched-gate (workaround #2), and return the patch. On push failure

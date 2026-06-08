@@ -19,6 +19,7 @@ import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-p
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
+import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
@@ -41,6 +42,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
+    private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
@@ -75,6 +77,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.shipment.statusSync',
       this.marketplaceShipmentStatusSyncHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.shipment.syncByExternalId',
+      this.marketplaceShipmentSyncByExternalIdHandler
     );
     this.handlerRegistry.register(
       'marketplace.fulfillment.statusSync',
