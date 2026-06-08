@@ -5,6 +5,7 @@
  * for WooCommerce connections. Tests propagation to JSON config via
  * syncStructuredToJson callback.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- test component mocking requires flexible types */
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,12 +17,13 @@ describe('WoocommerceStructuredSection', () => {
 
   it('renders the baseUrl field for editing', () => {
     const TestComponent = () => {
-      const form = useForm({
+      const form = useForm<any>({
         defaultValues: { baseUrl: 'https://shop.example.com' },
       });
       return (
         <WoocommerceStructuredSection
-          form={form}
+          connection={{ id: '1' } as any}
+          form={form as any}
           configIsParseable={true}
           syncStructuredToJson={vi.fn()}
         />
@@ -34,12 +36,13 @@ describe('WoocommerceStructuredSection', () => {
   it('calls syncStructuredToJson when baseUrl changes', () => {
     const syncStructuredToJson = vi.fn();
     const TestComponent = () => {
-      const form = useForm({
+      const form = useForm<any>({
         defaultValues: { baseUrl: 'https://shop.example.com' },
       });
       return (
         <WoocommerceStructuredSection
-          form={form}
+          connection={{ id: '1' } as any}
+          form={form as any}
           configIsParseable={true}
           syncStructuredToJson={syncStructuredToJson}
         />
@@ -58,12 +61,13 @@ describe('WoocommerceStructuredSection', () => {
 
   it('disables input when configIsParseable is false', () => {
     const TestComponent = () => {
-      const form = useForm({
+      const form = useForm<any>({
         defaultValues: { baseUrl: 'https://shop.example.com' },
       });
       return (
         <WoocommerceStructuredSection
-          form={form}
+          connection={{ id: '1' } as any}
+          form={form as any}
           configIsParseable={false}
           syncStructuredToJson={vi.fn()}
         />
@@ -77,7 +81,7 @@ describe('WoocommerceStructuredSection', () => {
 
   it('shows form error message when baseUrl has validation error', () => {
     const TestComponent = () => {
-      const form = useForm({
+      const form = useForm<any>({
         defaultValues: { baseUrl: '' },
       });
       form.formState.errors.baseUrl = {
@@ -86,7 +90,8 @@ describe('WoocommerceStructuredSection', () => {
       };
       return (
         <WoocommerceStructuredSection
-          form={form}
+          connection={{ id: '1' } as any}
+          form={form as any}
           configIsParseable={true}
           syncStructuredToJson={vi.fn()}
         />

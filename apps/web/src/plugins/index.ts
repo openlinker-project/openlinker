@@ -43,7 +43,8 @@ import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { prestashopPlugin } from './prestashop';
+import { woocommercePlugin } from './woocommerce';
 
-export const plugins: readonly OpenLinkerPlugin[] = [prestashopPlugin, allegroPlugin];
+export const plugins: readonly OpenLinkerPlugin[] = [prestashopPlugin, allegroPlugin, woocommercePlugin];
 
 assertUniquePluginInvariants(plugins);
