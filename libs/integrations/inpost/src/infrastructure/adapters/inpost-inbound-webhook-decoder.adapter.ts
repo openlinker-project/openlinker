@@ -100,8 +100,13 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     }
 
     // A verified request always carries `x-inpost-timestamp` (it's inside the
-    // signed payload); fall back to now only for the type system's benefit.
-    const occurredAt = this.header(headers, TIMESTAMP_HEADER) ?? new Date().toISOString();
+    // signed payload), so its absence here means the body reached extract
+    // without passing verify — reject rather than fabricate a timestamp, keeping
+    // this a pure transform.
+    const occurredAt = this.header(headers, TIMESTAMP_HEADER);
+    if (!occurredAt) {
+      return { action: 'reject', reason: 'missing x-inpost-timestamp' };
+    }
     return {
       action: 'route',
       envelope: {

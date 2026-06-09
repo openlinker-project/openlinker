@@ -115,5 +115,13 @@ describe('InpostInboundWebhookDecoderAdapter', () => {
       });
       expect(result.action).toBe('reject');
     });
+
+    it('should reject a tracking event missing the timestamp header', () => {
+      const result = decoder.extractEnvelope(
+        Buffer.from(JSON.stringify({ tracking_number: '6200000000001' })),
+        { 'x-inpost-topic': 'Shipment.Tracking' },
+      );
+      expect(result.action).toBe('reject');
+    });
   });
 });
