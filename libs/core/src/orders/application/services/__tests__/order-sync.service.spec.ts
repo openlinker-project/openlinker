@@ -140,6 +140,9 @@ describe('OrderSyncService', () => {
         expect.objectContaining({
           orderNumber: 'ORDER-001',
           source: { connectionId: 'source-1', eventId: 'event-456' },
+          // #970 B1: core passes the internal order id so destination adapters
+          // can write a platform-side dedup guard.
+          metadata: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
         })
       );
       expect(results).toEqual([

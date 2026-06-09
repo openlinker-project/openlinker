@@ -102,6 +102,10 @@ export class OrderSyncService implements IOrderSyncService {
         // Stamped once and shared across destinations: marks when OL started
         // dispatching this order, not per-destination completion time.
         syncedAt: new Date().toISOString(),
+        // Carries the internal order id to destination adapters so they can write
+        // a platform-side dedup guard (e.g. WC `_ol_order_id` meta_data) — core
+        // remains the authority for idempotency + mapping (#909/#911).
+        internalOrderId: order.id,
       },
     };
 
