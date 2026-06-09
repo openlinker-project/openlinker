@@ -91,8 +91,29 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       )
       .start();
 
-    const baseUrl = `http://localhost:${wordpress.getMappedPort(8080)}`;
+    // Use getHost() (NOT a hardcoded "localhost"): on self-hosted CI runners the
+    // Docker daemon is not necessarily reachable at localhost, so the mapped port
+    // is published on getHost(), not on "localhost". Hardcoding "localhost" works
+    // on a dev laptop (getHost() === localhost there) but yields ECONNREFUSED in
+    // CI — the root cause of the #878 "network error after 3 retries" failures.
+    // Mirrors the prestashop-container.helper.ts pattern.
+    const externalHost = wordpress.getHost();
+    const externalPort = wordpress.getMappedPort(8080);
+    const baseUrl = `http://${externalHost}:${externalPort}`;
     console.log(`[WC] WordPress+WooCommerce ready at ${baseUrl}. Activating HPOS + generating keys...`);
+
+    // Pin WP's canonical URL to the reachable host:port so WordPress never
+    // redirect_canonical()s a REST request to a URL the test runner can't reach
+    // (e.g. the install-time "localhost" host, or — with the force-https shim
+    // below making is_ssl() true — an https:// canonical that has no TLS
+    // listener). Stored as http:// to match the scheme the client actually
+    // connects on; the force-https mu-plugin keeps is_ssl() true for WC auth.
+    await wordpress.exec([
+      'wp', 'option', 'update', 'siteurl', baseUrl, '--allow-root', '--no-debug',
+    ]);
+    await wordpress.exec([
+      'wp', 'option', 'update', 'home', baseUrl, '--allow-root', '--no-debug',
+    ]);
 
     // Activate HPOS (v1 requirement per spec §6)
     await wordpress.exec([
@@ -253,11 +274,19 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
     // WooCommerce REST API `perform_basic_authentication()` is gated on `is_ssl()`.
     // The Testcontainer runs on plain HTTP; install a must-use plugin that sets
     // $_SERVER['HTTPS'] = 'on' so is_ssl() returns true. Standard proxy workaround.
+    //
+    // Making is_ssl() true also makes WordPress derive an https:// canonical URL
+    // for the request and redirect_canonical() it there — but the test runner
+    // reaches the container only over plain http on the mapped port, so that
+    // redirect lands on a dead TLS port and Node's fetch surfaces a connection
+    // error (the #878 "network error after 3 retries"). Disable redirect_canonical
+    // so the REST request is served in place on the reachable http:// host:port.
+    //
     // Installed AFTER seeding so a syntax error here can't break the wp eval seed calls.
     // chr(36) produces '$' without PHP or shell expanding it in the string literal.
     await wordpress.exec([
       'wp', 'eval',
-      `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/force-https.php', '<?php ' . chr(36) . '_SERVER["HTTPS"] = "on";');`,
+      `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/force-https.php', '<?php ' . chr(36) . '_SERVER["HTTPS"] = "on"; add_filter("redirect_canonical", "__return_false");');`,
       '--allow-root', '--no-debug',
     ]);
 
