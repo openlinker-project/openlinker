@@ -59,8 +59,14 @@ export class DefaultWebhookDecoder implements InboundWebhookDecoderPort {
       return { ok: false };
     }
 
+    // OL timestamps are always epoch-ms numeric. A non-numeric (but
+    // validly-signed) timestamp is malformed — fail closed rather than return
+    // ok without a timestamp, which would silently skip the replay-window check.
     const timestampMs = Number.parseInt(timestamp, 10);
-    return { ok: true, timestampMs: Number.isNaN(timestampMs) ? undefined : timestampMs };
+    if (Number.isNaN(timestampMs)) {
+      return { ok: false };
+    }
+    return { ok: true, timestampMs };
   }
 
   extractEnvelope(rawBody: Buffer, _headers: Record<string, string>): DecodeResult {

@@ -45,8 +45,18 @@ export class WebhookController {
   @ApiOperation({ summary: 'Receive inbound webhook from external system' })
   @ApiParam({ name: 'provider', description: 'Provider identifier (e.g., "prestashop")', example: 'prestashop' })
   @ApiParam({ name: 'connectionId', description: 'Connection identifier (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
-  @ApiHeader({ name: 'X-OpenLinker-Timestamp', description: 'Unix timestamp in milliseconds', required: true })
-  @ApiHeader({ name: 'X-OpenLinker-Signature', description: 'HMAC SHA256 signature (format: sha256=<hex>)', required: true })
+  @ApiHeader({
+    name: 'X-OpenLinker-Timestamp',
+    description:
+      'Provider-specific signature timestamp. OL-module providers (e.g. PrestaShop) send Unix ms here; third-party providers use their own header (e.g. InPost `x-inpost-timestamp`). The connection\'s registered decoder reads the right one (ADR-021).',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'X-OpenLinker-Signature',
+    description:
+      'Provider-specific webhook signature. OL-module providers send `sha256=<hex>`; third-party providers use their own scheme + header (e.g. InPost `x-inpost-signature`, base64 HMAC). Resolved per-provider by the registered decoder.',
+    required: false,
+  })
   @ApiResponse({ status: 202, description: 'Webhook accepted and queued for processing' })
   @ApiResponse({ status: 400, description: 'Invalid request payload or malformed data' })
   @ApiResponse({ status: 401, description: 'Invalid signature or timestamp out of window' })

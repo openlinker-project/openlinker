@@ -13,7 +13,6 @@ import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { CONNECTION_PORT_TOKEN, Connection } from '@openlinker/core/identifier-mapping';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../errors/webhook-replay.exception';
-import * as crypto from 'crypto';
 
 describe('WebhookAuthService', () => {
   let service: WebhookAuthService;
@@ -70,73 +69,15 @@ describe('WebhookAuthService', () => {
     connectionPort.get.mockResolvedValue(mockConnection);
   });
 
-  describe('verifySignature', () => {
-    it('should verify valid signature', async () => {
-      const provider = 'prestashop';
-      const connectionId = mockConnection.id;
-      const timestamp = Date.now().toString();
-      const rawBody = Buffer.from('{"test": "data"}');
-      const signedPayload = timestamp + '.' + rawBody.toString();
-      const signature = crypto.createHmac('sha256', mockSecret).update(signedPayload).digest('hex');
-
-      const result = await service.verifySignature(
-        provider,
-        connectionId,
-        timestamp,
-        rawBody,
-        `sha256=${signature}`
-      );
-
-      expect(result).toBe(true);
-      expect(connectionPort.get).toHaveBeenCalledWith(connectionId);
-      expect(secretProvider.getSecret).toHaveBeenCalledWith(provider, connectionId);
-    });
-
-    it('should reject invalid signature', async () => {
-      const provider = 'prestashop';
-      const connectionId = mockConnection.id;
-      const timestamp = Date.now().toString();
-      const rawBody = Buffer.from('{"test": "data"}');
-      // Use a properly formatted hex string (64 chars) but wrong value
-      const invalidSignature = 'sha256=' + '0'.repeat(64);
-
-      const result = await service.verifySignature(
-        provider,
-        connectionId,
-        timestamp,
-        rawBody,
-        invalidSignature
-      );
-
-      expect(result).toBe(false);
-    });
-
-    it('should reject signature with wrong format', async () => {
-      const provider = 'prestashop';
-      const connectionId = mockConnection.id;
-      const timestamp = Date.now().toString();
-      const rawBody = Buffer.from('{"test": "data"}');
-
+  describe('assertConnectionUsable', () => {
+    it('resolves when the connection is active and the provider matches', async () => {
       await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, 'invalid-format')
-      ).rejects.toThrow(WebhookAuthenticationException);
+        service.assertConnectionUsable('prestashop', mockConnection.id),
+      ).resolves.toBeUndefined();
+      expect(connectionPort.get).toHaveBeenCalledWith(mockConnection.id);
     });
 
-    it('should reject if connection not found', async () => {
-      connectionPort.get.mockRejectedValue(new Error('Connection not found'));
-
-      const provider = 'prestashop';
-      const connectionId = 'non-existent';
-      const timestamp = Date.now().toString();
-      const rawBody = Buffer.from('{"test": "data"}');
-      const signature = 'sha256=test';
-
-      await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, signature)
-      ).rejects.toThrow();
-    });
-
-    it('should reject if connection is not active', async () => {
+    it('throws when the connection is not active', async () => {
       const disabledConnection = new Connection(
         mockConnection.id,
         mockConnection.platformType,
@@ -151,54 +92,62 @@ describe('WebhookAuthService', () => {
       );
       connectionPort.get.mockResolvedValue(disabledConnection);
 
-      const provider = 'prestashop';
-      const connectionId = mockConnection.id;
-      const timestamp = Date.now().toString();
-      const rawBody = Buffer.from('{"test": "data"}');
-      const signature = 'sha256=test';
-
       await expect(
-        service.verifySignature(provider, connectionId, timestamp, rawBody, signature)
+        service.assertConnectionUsable('prestashop', mockConnection.id),
       ).rejects.toThrow(WebhookAuthenticationException);
+    });
+
+    it('throws on provider / platformType mismatch', async () => {
+      await expect(
+        service.assertConnectionUsable('inpost', mockConnection.id),
+      ).rejects.toThrow(WebhookAuthenticationException);
+    });
+
+    it('propagates when the connection does not exist', async () => {
+      connectionPort.get.mockRejectedValue(new Error('Connection not found'));
+      await expect(
+        service.assertConnectionUsable('prestashop', 'non-existent'),
+      ).rejects.toThrow();
     });
   });
 
-  describe('validateTimestamp', () => {
-    it('should accept valid timestamp within window', () => {
-      const timestamp = Date.now().toString();
-      const result = service.validateTimestamp(timestamp);
-      expect(result).toBe(true);
+  describe('getSecret', () => {
+    it('resolves the per-connection secret from the provider', async () => {
+      await expect(service.getSecret('prestashop', mockConnection.id)).resolves.toBe(mockSecret);
+      expect(secretProvider.getSecret).toHaveBeenCalledWith('prestashop', mockConnection.id);
+    });
+  });
+
+  describe('validateTimestampMs', () => {
+    it('accepts a timestamp within the window', () => {
+      expect(() => service.validateTimestampMs(Date.now())).not.toThrow();
     });
 
-    it('should reject timestamp outside window', () => {
-      const oldTimestamp = (Date.now() - 10 * 60 * 1000).toString(); // 10 minutes ago
-      expect(() => service.validateTimestamp(oldTimestamp)).toThrow(WebhookReplayException);
+    it('rejects a timestamp outside the window', () => {
+      expect(() => service.validateTimestampMs(Date.now() - 10 * 60 * 1000)).toThrow(
+        WebhookReplayException,
+      );
     });
 
-    it('should reject invalid timestamp format', () => {
-      expect(() => service.validateTimestamp('invalid')).toThrow(WebhookReplayException);
-      expect(() => service.validateTimestamp('')).toThrow(WebhookReplayException);
-      expect(() => service.validateTimestamp('abc123')).toThrow(WebhookReplayException);
+    it('rejects a non-finite or non-positive timestamp', () => {
+      expect(() => service.validateTimestampMs(Number.NaN)).toThrow(WebhookReplayException);
+      expect(() => service.validateTimestampMs(0)).toThrow(WebhookReplayException);
+      expect(() => service.validateTimestampMs(-1)).toThrow(WebhookReplayException);
     });
 
-    it('should accept custom skew window', () => {
-      const timestamp = (Date.now() - 2 * 60 * 1000).toString(); // 2 minutes ago
-      const result = service.validateTimestamp(timestamp, 5 * 60 * 1000); // 5 minute window
-      expect(result).toBe(true);
+    it('accepts a custom skew window', () => {
+      expect(() => service.validateTimestampMs(Date.now() - 2 * 60 * 1000, 5 * 60 * 1000)).not.toThrow();
     });
 
-    // #711 — proves the default window tightened from 5 min → 120 s.
-    // A 4-minute-old timestamp would have been accepted under the old default
-    // and is rejected under the new one.
-    it('should reject a 4-minute-old timestamp under the new 120s default window (#711)', () => {
-      const oldTimestamp = (Date.now() - 4 * 60 * 1000).toString();
-      expect(() => service.validateTimestamp(oldTimestamp)).toThrow(WebhookReplayException);
+    // #711 — the default window tightened from 5 min → 120 s.
+    it('rejects a 4-minute-old timestamp under the new 120s default window (#711)', () => {
+      expect(() => service.validateTimestampMs(Date.now() - 4 * 60 * 1000)).toThrow(
+        WebhookReplayException,
+      );
     });
 
-    it('should accept a 60-second-old timestamp within the new default window (#711)', () => {
-      const recentTimestamp = (Date.now() - 60 * 1000).toString();
-      const result = service.validateTimestamp(recentTimestamp);
-      expect(result).toBe(true);
+    it('accepts a 60-second-old timestamp within the new default window (#711)', () => {
+      expect(() => service.validateTimestampMs(Date.now() - 60 * 1000)).not.toThrow();
     });
   });
 });
