@@ -13,9 +13,13 @@
 export const SHIPMENT_REPOSITORY_TOKEN = Symbol('ShipmentRepositoryPort');
 export const PICKUP_POINT_CACHE_TOKEN = Symbol('PickupPointCachePort');
 export const SHIPMENT_DISPATCH_SERVICE_TOKEN = Symbol('IShipmentDispatchService');
+export const BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN = Symbol('IBulkShipmentDispatchService');
 export const SHIPMENT_QUERY_SERVICE_TOKEN = Symbol('IShipmentQueryService');
 export const SHIPMENT_CANCELLATION_SERVICE_TOKEN = Symbol('IShipmentCancellationService');
 export const PICKUP_POINT_LOOKUP_SERVICE_TOKEN = Symbol('IPickupPointLookupService');
+export const PICKUP_POINT_SEARCH_CACHE_TOKEN = Symbol('PickupPointSearchCachePort');
+export const PICKUP_POINT_QUERY_STATS_TOKEN = Symbol('PickupPointQueryStatsPort');
+export const PICKUP_POINT_REFRESH_SERVICE_TOKEN = Symbol('IPickupPointRefreshService');
 export const SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN = Symbol(
   'IShipmentDispatchNotificationService',
 );

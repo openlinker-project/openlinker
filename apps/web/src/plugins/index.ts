@@ -46,6 +46,11 @@ import { dpdPlugin } from './dpd';
 import { prestashopPlugin } from './prestashop';
 import { woocommercePlugin } from './woocommerce';
 
-export const plugins: readonly OpenLinkerPlugin[] = [prestashopPlugin, allegroPlugin, dpdPlugin, woocommercePlugin];
+export const plugins: readonly OpenLinkerPlugin[] = [
+  prestashopPlugin,
+  allegroPlugin,
+  dpdPlugin,
+  woocommercePlugin,
+];
 
 assertUniquePluginInvariants(plugins);

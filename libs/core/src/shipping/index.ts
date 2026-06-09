@@ -27,6 +27,8 @@ export type {
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
+export { DeliveryIntentValues, DELIVERY_INTENT } from './domain/types/delivery-intent.types';
+export type { DeliveryIntent } from './domain/types/delivery-intent.types';
 
 export {
   PickupPointStatusValues,
@@ -57,6 +59,7 @@ export type {
   ShipmentParcel,
   ShipmentDimensions,
 } from './domain/types/shipment-parcel.types';
+export type { ShipmentCod } from './domain/types/shipment-cod.types';
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
@@ -81,6 +84,8 @@ export { Shipment } from './domain/entities/shipment.entity';
 export type { ShippingProviderManagerPort } from './domain/ports/shipping-provider-manager.port';
 export type { ShipmentRepositoryPort } from './domain/ports/shipment-repository.port';
 export type { PickupPointCachePort } from './domain/ports/pickup-point-cache.port';
+export type { PickupPointSearchCachePort } from './domain/ports/pickup-point-search-cache.port';
+export type { PickupPointQueryStatsPort } from './domain/ports/pickup-point-query-stats.port';
 
 // Sub-capabilities (#763 — sub-port + co-located type guard pattern per
 // engineering-standards §"Port sub-capabilities").
@@ -90,6 +95,8 @@ export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
 export { isLabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
+export type { DispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
+export { isDispatchProtocolReader } from './domain/ports/capabilities/dispatch-protocol-reader.capability';
 export type { LabelDocument } from './domain/types/label-document.types';
 
 // `FulfillmentStatusReader` (#834) lives in `@openlinker/core/orders`
@@ -108,6 +115,8 @@ export { PickupPointFinderNotSupportedException } from './domain/exceptions/pick
 export { ShippingProviderRejectionException } from './domain/exceptions/shipping-provider-rejection.exception';
 export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
+export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
+export { InvalidProtocolBatchException } from './domain/exceptions/invalid-protocol-batch.exception';
 
 // Application — dispatch seam (#835). Interface + types only; the service
 // class is injected via SHIPMENT_DISPATCH_SERVICE_TOKEN (exported above via
@@ -117,6 +126,17 @@ export type {
   ShipmentDispatchInput,
   ShipmentDispatchResult,
 } from './application/types/shipment-dispatch.types';
+
+// Application — bulk-dispatch + handover-protocol seam (#964, ADR-019).
+// Interface + types only; the service is injected via
+// BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN.
+export type { IBulkShipmentDispatchService } from './application/interfaces/bulk-shipment-dispatch.service.interface';
+export type {
+  BulkShipmentDispatchInput,
+  BulkShipmentDispatchItem,
+  BulkShipmentDispatchResult,
+  PerOrderDispatchResult,
+} from './application/types/bulk-shipment-dispatch.types';
 
 // Application — read + cancel seams (#846). Interfaces only; services are
 // injected via SHIPMENT_QUERY_SERVICE_TOKEN / SHIPMENT_CANCELLATION_SERVICE_TOKEN.
@@ -130,6 +150,11 @@ export type { IShipmentLabelService } from './application/interfaces/shipment-la
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
 export type { IPickupPointLookupService } from './application/interfaces/pickup-point-lookup.service.interface';
+
+// Application — pickup-point background-refresh seam (#849). Interface + result
+// type only; the service is injected via PICKUP_POINT_REFRESH_SERVICE_TOKEN.
+export type { IPickupPointRefreshService } from './application/interfaces/pickup-point-refresh.service.interface';
+export type { PickupPointRefreshResult } from './application/types/pickup-point-refresh.types';
 
 // Application — dispatch-notify seam (#837). Interface + result types only; the
 // service is injected via SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN.

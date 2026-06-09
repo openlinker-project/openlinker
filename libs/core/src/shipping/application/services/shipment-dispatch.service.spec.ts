@@ -48,7 +48,7 @@ function makeInput(overrides: Partial<ShipmentDispatchInput> = {}): ShipmentDisp
     sourceConnectionId: SOURCE,
     sourceDeliveryMethodId: 'allegro-courier',
     orderId: 'ol_order_1',
-    shippingMethod: 'kurier',
+    deliveryIntent: 'address',
     recipient: {
       email: 'buyer@example.com',
       phone: '+48500600700',
@@ -85,6 +85,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     new Date(),
     overrides.sourceDeliveryMethodId ?? null,
     overrides.carrier ?? null,
+    overrides.deliveryIntent ?? null,
   );
 }
 
@@ -127,7 +128,8 @@ describe('ShipmentDispatchService', () => {
     adapter = {
       generateLabel: jest.fn(),
       getTracking: jest.fn(),
-      getSupportedMethods: jest.fn(),
+      // Default InPost-like support set; overridden per-test for DPD.
+      getSupportedMethods: jest.fn().mockReturnValue(['paczkomat', 'kurier']),
     };
     integrations = {
       getAdapter: jest.fn(),
@@ -263,14 +265,16 @@ describe('ShipmentDispatchService', () => {
       const generated = makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' });
       repository.update.mockResolvedValue(generated);
 
-      const input = makeInput({ shippingMethod: 'paczkomat', paczkomatId: 'POZ08A' });
+      const input = makeInput({ deliveryIntent: 'pickup_point', paczkomatId: 'POZ08A' });
       const result = await service.dispatch(input);
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(INPOST, 'ShippingProviderManager');
       expect(repository.create).toHaveBeenCalledWith({
         orderId: 'ol_order_1',
         connectionId: INPOST,
+        // pickup_point intent resolves to InPost's point method via getSupportedMethods (#979).
         shippingMethod: 'paczkomat',
+        deliveryIntent: 'pickup_point',
         paczkomatId: 'POZ08A',
         // Persisted for audit (A2) — the source method this shipment routed from.
         sourceDeliveryMethodId: 'allegro-courier',
@@ -299,6 +303,43 @@ describe('ShipmentDispatchService', () => {
         }),
       );
       expect(result).toEqual({ kind: 'dispatched', shipment: generated });
+    });
+
+    it('should forward caller-supplied COD verbatim to generateLabel (#962)', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'dpd-1',
+        trackingNumber: 'dpd-1',
+        labelPdfRef: 'dpd-1',
+      });
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should forward cod as undefined when the caller omits it', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: null,
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod: undefined }));
     });
 
     it('should dispatch source_brokered through the identical path (no rework for #833)', async () => {
@@ -353,6 +394,79 @@ describe('ShipmentDispatchService', () => {
         draft.id,
         expect.objectContaining({ status: 'failed', errorMessage: 'paczkomat unavailable' }),
       );
+    });
+  });
+
+  describe('delivery-intent resolution (#979)', () => {
+    beforeEach(() => {
+      routing.resolve.mockResolvedValue(resolution());
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'prov-1',
+        trackingNumber: null,
+        labelPdfRef: 'label:1',
+      });
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+    });
+
+    it('should resolve pickup_point to the DPD point method (pickup) and persist both', async () => {
+      adapter.getSupportedMethods.mockReturnValue(['kurier', 'pickup']);
+
+      await service.dispatch(makeInput({ deliveryIntent: 'pickup_point', paczkomatId: 'PL11033' }));
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingMethod: 'pickup', deliveryIntent: 'pickup_point' }),
+      );
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingMethod: 'pickup' }),
+      );
+    });
+
+    it('should resolve pickup_point to the InPost point method (paczkomat)', async () => {
+      adapter.getSupportedMethods.mockReturnValue(['paczkomat', 'kurier']);
+
+      await service.dispatch(makeInput({ deliveryIntent: 'pickup_point', paczkomatId: 'POZ08A' }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingMethod: 'paczkomat' }),
+      );
+    });
+
+    it('should resolve address to kurier', async () => {
+      adapter.getSupportedMethods.mockReturnValue(['kurier', 'pickup']);
+
+      await service.dispatch(makeInput({ deliveryIntent: 'address' }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingMethod: 'kurier' }),
+      );
+    });
+
+    it('should fall back to a legacy shippingMethod when deliveryIntent is absent', async () => {
+      adapter.getSupportedMethods.mockReturnValue(['kurier', 'pickup']);
+
+      await service.dispatch(makeInput({ deliveryIntent: undefined, shippingMethod: 'pickup' }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ shippingMethod: 'pickup' }),
+      );
+    });
+
+    it('should throw UndispatchableResolutionException when neither intent nor method is present', async () => {
+      await expect(
+        service.dispatch(makeInput({ deliveryIntent: undefined })),
+      ).rejects.toBeInstanceOf(UndispatchableResolutionException);
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should throw when the resolved carrier cannot fulfil the intent', async () => {
+      adapter.getSupportedMethods.mockReturnValue(['kurier']); // courier-only
+
+      await expect(
+        service.dispatch(makeInput({ deliveryIntent: 'pickup_point' })),
+      ).rejects.toBeInstanceOf(UndispatchableResolutionException);
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
     });
   });
 

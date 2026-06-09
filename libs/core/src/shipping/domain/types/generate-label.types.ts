@@ -22,6 +22,7 @@
 import type { ShippingMethod } from './shipping-method.types';
 import type { ShipmentRecipient } from './shipment-recipient.types';
 import type { ShipmentParcel } from './shipment-parcel.types';
+import type { ShipmentCod } from './shipment-cod.types';
 
 export interface GenerateLabelCommand {
   /** Internal Shipment id (`ol_shipment_*`). */
@@ -39,8 +40,11 @@ export interface GenerateLabelCommand {
    * own-contract adapters (InPost) ignore it. Source-brokered adapters that
    * require it MUST throw a readable error when it is absent. */
   deliveryMethodId?: string;
-  /** Required when `shippingMethod === 'paczkomat'`. Provider-issued
-   * locker id (e.g. `'POZ08A'`). */
+  /** Pickup-point id the parcel ships to. Required for the point-delivery
+   * methods — `'paczkomat'` (locker id, e.g. InPost `'POZ08A'`) and `'pickup'`
+   * (parcel-shop / PUDO id, e.g. DPD `'PL11033'`, #963). The field name is
+   * historical (InPost locker); it carries any provider's pickup-point id.
+   * Absent for `'kurier'`. */
   paczkomatId?: string;
   /** Recipient (buyer) — name, contact, optional postal address. The caller
    * resolves it from the order. Adapters require `recipient.address` for
@@ -50,6 +54,11 @@ export interface GenerateLabelCommand {
    * `dimensions` + `weightGrams` (courier). The adapter validates the right
    * combination per method. */
   parcel: ShipmentParcel;
+  /** Cash-on-delivery to collect on delivery. Carrier-neutral and
+   * **caller-supplied** (operator input / #966), not order-sourced — adapters
+   * that don't support COD ignore it; COD-capable adapters (DPD Polska #962)
+   * translate it to their provider's wire format. */
+  cod?: ShipmentCod;
 }
 
 export interface GenerateLabelResult {
