@@ -19,15 +19,31 @@
 
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import type { GenerateLabelCommand } from '../../domain/types/generate-label.types';
+import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
+import type { ShippingMethod } from '../../domain/types/shipping-method.types';
 
 export type ShipmentDispatchInput = {
   /** Order source connection (the routing rule's scope). */
   sourceConnectionId: string;
   /** Source-side delivery method id; `null` resolves to the omp_fulfilled default. */
   sourceDeliveryMethodId: string | null;
+  /** Carrier-neutral delivery intent (caller contract, #979 / ADR-020). The
+   * seam resolves the concrete `ShippingMethod` from the carrier's
+   * `getSupportedMethods()`. Optional only during the transition window — at
+   * least one of `deliveryIntent` / `shippingMethod` must be present (the seam
+   * raises `UndispatchableResolutionException` otherwise). */
+  deliveryIntent?: DeliveryIntent;
+  /**
+   * @deprecated Legacy caller-supplied concrete method. Accepted for one
+   * release as a fallback when `deliveryIntent` is absent — the seam derives
+   * the intent from it. Removed next release.
+   */
+  shippingMethod?: ShippingMethod;
   // `deliveryMethodId` is omitted: the seam resolves the provider delivery
   // method from `sourceDeliveryMethodId` (#833 ADR-012), never the caller.
-} & Omit<GenerateLabelCommand, 'shipmentId' | 'connectionId' | 'deliveryMethodId'>;
+  // `shippingMethod` is omitted from the command pick and re-declared optional
+  // above — it's seam-resolved (#979), no longer a required caller field.
+} & Omit<GenerateLabelCommand, 'shipmentId' | 'connectionId' | 'deliveryMethodId' | 'shippingMethod'>;
 
 /**
  * Outcome of a dispatch. A discriminated union (rather than `Shipment | null`)

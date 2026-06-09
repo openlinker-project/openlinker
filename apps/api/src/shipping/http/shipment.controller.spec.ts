@@ -16,12 +16,15 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  type IBulkShipmentDispatchService,
   type IShipmentCancellationService,
   type IShipmentDispatchNotificationService,
   type IShipmentDispatchService,
   type IShipmentLabelService,
   type IShipmentQueryService,
   type LabelDocument,
+  DispatchProtocolNotSupportedException,
+  InvalidProtocolBatchException,
   LabelDocumentNotSupportedException,
   LabelNotAvailableException,
   Shipment,
@@ -37,6 +40,7 @@ import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { Response } from 'express';
 
 import { ShipmentController, extensionForContentType } from './shipment.controller';
+import type { BulkGenerateLabelsDto } from './dto/bulk-generate-labels.dto';
 import type { GenerateLabelDto } from './dto/generate-label.dto';
 import type { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 
@@ -60,6 +64,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     new Date('2026-05-20T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? null,
     overrides.carrier ?? null,
+    overrides.deliveryIntent ?? null,
   );
 }
 
@@ -77,6 +82,7 @@ function makeGenerateLabelDto(overrides: Partial<GenerateLabelDto> = {}): Genera
 describe('ShipmentController', () => {
   let query: jest.Mocked<IShipmentQueryService>;
   let dispatch: jest.Mocked<IShipmentDispatchService>;
+  let bulkDispatch: jest.Mocked<IBulkShipmentDispatchService>;
   let cancellation: jest.Mocked<IShipmentCancellationService>;
   let notification: jest.Mocked<IShipmentDispatchNotificationService>;
   let labelService: jest.Mocked<IShipmentLabelService>;
@@ -90,6 +96,7 @@ describe('ShipmentController', () => {
       getActiveByOrderId: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
+    bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };
     cancellation = { cancel: jest.fn() };
     notification = { notifyDispatched: jest.fn() };
     labelService = { fetchLabel: jest.fn() };
@@ -104,6 +111,7 @@ describe('ShipmentController', () => {
     controller = new ShipmentController(
       query,
       dispatch,
+      bulkDispatch,
       cancellation,
       notification,
       labelService,
@@ -240,6 +248,36 @@ describe('ShipmentController', () => {
       expect(result.shipment).toBeUndefined();
     });
 
+    it('should pass deliveryIntent through to the dispatch input (#979)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(
+        makeGenerateLabelDto({ deliveryIntent: 'pickup_point', shippingMethod: undefined }),
+      );
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ deliveryIntent: 'pickup_point' }),
+      );
+    });
+
+    it('should pass COD through to the dispatch input when supplied (#966)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto({ cod: { amount: '129.90', currency: 'PLN' } }));
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      );
+    });
+
+    it('should leave cod undefined on the dispatch input when not supplied', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto());
+
+      expect((dispatch.dispatch.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
+    });
+
     it('should map UndispatchableResolutionException to 422', async () => {
       dispatch.dispatch.mockRejectedValue(new UndispatchableResolutionException('no connection'));
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
@@ -273,6 +311,106 @@ describe('ShipmentController', () => {
       dispatch.dispatch.mockRejectedValue(new Error('something broke'));
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
         InternalServerErrorException,
+      );
+    });
+  });
+
+  describe('bulkGenerateLabels (#964)', () => {
+    function makeBulkDto(): BulkGenerateLabelsDto {
+      return {
+        sourceConnectionId: 'a1b2c3d4-0000-4000-8000-000000000002',
+        items: [
+          {
+            orderId: 'ol_order_1',
+            shippingMethod: 'kurier',
+            recipient: { email: 'a@example.com', phone: '+48500600700' },
+            parcel: { weightGrams: 1000 },
+          },
+          {
+            orderId: 'ol_order_2',
+            sourceDeliveryMethodId: 'dm-9',
+            shippingMethod: 'kurier',
+            recipient: { email: 'b@example.com', phone: '+48500600701' },
+            parcel: { weightGrams: 1500 },
+          },
+        ],
+      } as BulkGenerateLabelsDto;
+    }
+
+    it('should map each item (defaulting source method to null) and return the per-order results', async () => {
+      bulkDispatch.dispatchBulk.mockResolvedValue({
+        results: [
+          { kind: 'dispatched', orderId: 'ol_order_1', shipment: makeShipment({ orderId: 'ol_order_1' }) },
+          { kind: 'failed', orderId: 'ol_order_2', error: 'carrier rejected' },
+        ],
+      });
+
+      const result = await controller.bulkGenerateLabels(makeBulkDto());
+
+      const call = bulkDispatch.dispatchBulk.mock.calls[0][0];
+      expect(call.sourceConnectionId).toBe('a1b2c3d4-0000-4000-8000-000000000002');
+      expect(call.items[0]).toMatchObject({ orderId: 'ol_order_1', sourceDeliveryMethodId: null });
+      expect(call.items[1]).toMatchObject({ orderId: 'ol_order_2', sourceDeliveryMethodId: 'dm-9' });
+      expect(result.results).toHaveLength(2);
+      expect(result.results[0]).toMatchObject({ kind: 'dispatched', orderId: 'ol_order_1' });
+      expect(result.results[1]).toMatchObject({ kind: 'failed', orderId: 'ol_order_2', error: 'carrier rejected' });
+    });
+  });
+
+  describe('downloadProtocol (#964)', () => {
+    function makeRes(): { res: Response; setHeader: jest.Mock; send: jest.Mock } {
+      const setHeader = jest.fn();
+      const send = jest.fn();
+      const res = { setHeader, send } as unknown as Response;
+      return { res, setHeader, send };
+    }
+
+    it('should stream the protocol PDF with attachment disposition', async () => {
+      bulkDispatch.generateProtocol.mockResolvedValue({
+        contentType: 'application/pdf',
+        body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      });
+      const { res, setHeader, send } = makeRes();
+
+      await controller.downloadProtocol({ shipmentIds: ['ol_shipment_1', 'ol_shipment_2'] }, res);
+
+      expect(bulkDispatch.generateProtocol).toHaveBeenCalledWith({
+        shipmentIds: ['ol_shipment_1', 'ol_shipment_2'],
+      });
+      expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="ol-handover-protocol.pdf"',
+      );
+      expect(send).toHaveBeenCalled();
+    });
+
+    it('should map InvalidProtocolBatchException to 400', async () => {
+      bulkDispatch.generateProtocol.mockRejectedValue(new InvalidProtocolBatchException('mixed carriers'));
+      const { res } = makeRes();
+
+      await expect(controller.downloadProtocol({ shipmentIds: ['x'] }, res)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('should map DispatchProtocolNotSupportedException to 422', async () => {
+      bulkDispatch.generateProtocol.mockRejectedValue(new DispatchProtocolNotSupportedException('conn-x'));
+      const { res } = makeRes();
+
+      await expect(controller.downloadProtocol({ shipmentIds: ['x'] }, res)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should map ShippingProviderRejectionException to 502', async () => {
+      bulkDispatch.generateProtocol.mockRejectedValue(
+        new ShippingProviderRejectionException('dpd', 'PROTOCOL_ERROR', 'boom'),
+      );
+      const { res } = makeRes();
+
+      await expect(controller.downloadProtocol({ shipmentIds: ['x'] }, res)).rejects.toBeInstanceOf(
+        BadGatewayException,
       );
     });
   });

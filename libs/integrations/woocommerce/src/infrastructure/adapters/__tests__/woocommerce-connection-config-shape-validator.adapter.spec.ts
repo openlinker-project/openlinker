@@ -50,6 +50,7 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
   });
 
   it('should pass when config carries extra keys alongside siteUrl', async () => {
+    // whitelist: false — adjacent keys from future releases must not break validation
     await expect(
       validator.validate({ siteUrl: 'https://myshop.com', futureField: 'value' }),
     ).resolves.toBeUndefined();

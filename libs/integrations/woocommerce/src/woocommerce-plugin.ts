@@ -107,11 +107,12 @@ export function createWooCommercePlugin(): AdapterPlugin {
             capability,
             {
               ProductMaster: () => productMaster,
-              InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
-                httpClient,
-                host.identifierMapping,
-                connection,
-              ),
+              InventoryMaster: () =>
+                new WooCommerceInventoryMasterAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  connection,
+                ),
             },
             WOOCOMMERCE_BRAND,
           ),
