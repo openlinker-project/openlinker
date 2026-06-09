@@ -64,6 +64,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     new Date('2026-05-20T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? null,
     overrides.carrier ?? null,
+    overrides.deliveryIntent ?? null,
   );
 }
 
@@ -245,6 +246,36 @@ describe('ShipmentController', () => {
       const result = await controller.generateLabel(makeGenerateLabelDto());
       expect(result.kind).toBe('omp_fulfilled');
       expect(result.shipment).toBeUndefined();
+    });
+
+    it('should pass deliveryIntent through to the dispatch input (#979)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(
+        makeGenerateLabelDto({ deliveryIntent: 'pickup_point', shippingMethod: undefined }),
+      );
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ deliveryIntent: 'pickup_point' }),
+      );
+    });
+
+    it('should pass COD through to the dispatch input when supplied (#966)', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto({ cod: { amount: '129.90', currency: 'PLN' } }));
+
+      expect(dispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      );
+    });
+
+    it('should leave cod undefined on the dispatch input when not supplied', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'dispatched', shipment: makeShipment() });
+
+      await controller.generateLabel(makeGenerateLabelDto());
+
+      expect((dispatch.dispatch.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
     });
 
     it('should map UndispatchableResolutionException to 422', async () => {

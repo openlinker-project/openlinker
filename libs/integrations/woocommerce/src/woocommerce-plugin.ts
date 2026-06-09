@@ -106,6 +106,9 @@ export function createWooCommercePlugin(): AdapterPlugin {
             {
               // Lazy factories — each adapter is only constructed when its
               // capability is actually requested, not on every call.
+              // TODO(#879): WooCommerceProductMapper currency is always null until
+              // WooCommerceConnectionConfig grows a currency field. WC exposes the
+              // store currency at GET /wp-json/wc/v3/settings/general/woocommerce_currency.
               ProductMaster: () =>
                 new WooCommerceProductMasterAdapter(
                   httpClient,
