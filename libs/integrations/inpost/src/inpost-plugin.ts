@@ -17,6 +17,8 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createInpostShippingAdapter } from './application/inpost-adapter.factory';
 import { InpostConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/inpost-connection-config-shape-validator.adapter';
+import { InpostInboundWebhookDecoderAdapter } from './infrastructure/adapters/inpost-inbound-webhook-decoder.adapter';
+import { InpostWebhookEventTranslatorAdapter } from './infrastructure/adapters/inpost-webhook-event-translator.adapter';
 import { buildInpostSchedulerTasks } from './infrastructure/scheduler/inpost-scheduler-tasks';
 
 /**
@@ -48,6 +50,19 @@ export function createInpostPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ apiToken }` shape is enforced
       // at adapter construction time by the factory (deeper than this boundary).
+
+      // #768 / ADR-021 — third-party-native webhook ingress. The decoder
+      // (provider-keyed) authenticates + decodes InPost's `Shipment.Tracking`
+      // webhook at the host ingress; the translator (adapterKey-keyed) maps the
+      // decoded event onto the `shipment` inbound domain downstream.
+      host.inboundWebhookDecoderRegistry.register(
+        inpostAdapterManifest.platformType,
+        new InpostInboundWebhookDecoderAdapter(),
+      );
+      host.webhookEventTranslatorRegistry.register(
+        inpostAdapterManifest.adapterKey,
+        new InpostWebhookEventTranslatorAdapter(),
+      );
 
       // #772 — schedule the carrier-generic shipment-status poll (#838) for
       // InPost connections (webhook fallback). Drained only by the api's
