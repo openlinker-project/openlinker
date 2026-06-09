@@ -73,6 +73,35 @@ export class WebhookAuthService implements IWebhookAuthService {
     );
   }
 
+  /**
+   * Provider-agnostic connection gate (ADR-021): the connection must exist, be
+   * active, and its `platformType` must match the URL `provider`. Extracted out
+   * of `verifySignature` so the host runs it for every provider before handing
+   * off to that provider's decoder. Throws `WebhookAuthenticationException`.
+   */
+  async assertConnectionUsable(provider: string, connectionId: string): Promise<void> {
+    const connection = await this.connectionPort.get(connectionId);
+    if (connection.status !== 'active') {
+      throw new WebhookAuthenticationException(
+        `Connection ${connectionId} is not active (status: ${connection.status})`,
+        provider,
+        connectionId
+      );
+    }
+    if (connection.platformType !== provider) {
+      throw new WebhookAuthenticationException(
+        `Provider mismatch: expected ${connection.platformType}, got ${provider}`,
+        provider,
+        connectionId
+      );
+    }
+  }
+
+  /** Resolve the per-connection webhook shared secret (handed to the decoder). */
+  async getSecret(provider: string, connectionId: string): Promise<string> {
+    return this.secretProvider.getSecret(provider, connectionId);
+  }
+
   async verifySignature(
     provider: string,
     connectionId: string,
@@ -101,24 +130,8 @@ export class WebhookAuthService implements IWebhookAuthService {
         );
       }
 
-      // Validate connection exists and is active (fail fast before HMAC)
-      const connection = await this.connectionPort.get(connectionId);
-      if (connection.status !== 'active') {
-        throw new WebhookAuthenticationException(
-          `Connection ${connectionId} is not active (status: ${connection.status})`,
-          provider,
-          connectionId
-        );
-      }
-
-      // Validate provider matches connection platformType
-      if (connection.platformType !== provider) {
-        throw new WebhookAuthenticationException(
-          `Provider mismatch: expected ${connection.platformType}, got ${provider}`,
-          provider,
-          connectionId
-        );
-      }
+      // Validate connection exists, is active, and matches the provider.
+      await this.assertConnectionUsable(provider, connectionId);
 
       // Get webhook secret
       const secret = await this.secretProvider.getSecret(provider, connectionId);
@@ -170,42 +183,43 @@ export class WebhookAuthService implements IWebhookAuthService {
     timestamp: string,
     skewWindowMs: number = this.DEFAULT_SKEW_WINDOW_MS
   ): boolean {
-    try {
-      // Validate timestamp format (should be numeric string)
-      const timestampNum = Number.parseInt(timestamp, 10);
-      if (Number.isNaN(timestampNum) || timestampNum <= 0) {
-        throw new WebhookReplayException(
-          `Invalid timestamp format: ${timestamp}`,
-          timestamp,
-          skewWindowMs
-        );
-      }
-
-      // Get current time
-      const now = Date.now();
-      const timestampMs = timestampNum;
-
-      // Calculate time difference
-      const timeDiff = Math.abs(now - timestampMs);
-
-      // Check if within skew window
-      if (timeDiff > skewWindowMs) {
-        throw new WebhookReplayException(
-          `Timestamp outside allowed window. Difference: ${timeDiff}ms, allowed: ±${skewWindowMs}ms`,
-          timestamp,
-          skewWindowMs
-        );
-      }
-
-      return true;
-    } catch (error) {
-      if (error instanceof WebhookReplayException) {
-        throw error;
-      }
-
+    // Validate timestamp format (should be numeric string), then delegate the
+    // window check to the normalized-ms path so both the OL-string and the
+    // per-provider epoch-ms callers share one replay rule (ADR-021).
+    const timestampNum = Number.parseInt(timestamp, 10);
+    if (Number.isNaN(timestampNum) || timestampNum <= 0) {
       throw new WebhookReplayException(
-        `Timestamp validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Invalid timestamp format: ${timestamp}`,
         timestamp,
+        skewWindowMs
+      );
+    }
+    this.validateTimestampMs(timestampNum, skewWindowMs);
+    return true;
+  }
+
+  /**
+   * Replay-window check on an already-normalized epoch-ms timestamp (ADR-021).
+   * The per-provider decoder returns this from `verify` (it owns the provider's
+   * timestamp header/format); the host applies the shared window here. Throws
+   * `WebhookReplayException` when outside the window.
+   */
+  validateTimestampMs(
+    timestampMs: number,
+    skewWindowMs: number = this.DEFAULT_SKEW_WINDOW_MS
+  ): void {
+    if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
+      throw new WebhookReplayException(
+        `Invalid timestamp: ${timestampMs}`,
+        String(timestampMs),
+        skewWindowMs
+      );
+    }
+    const timeDiff = Math.abs(Date.now() - timestampMs);
+    if (timeDiff > skewWindowMs) {
+      throw new WebhookReplayException(
+        `Timestamp outside allowed window. Difference: ${timeDiff}ms, allowed: ±${skewWindowMs}ms`,
+        String(timestampMs),
         skewWindowMs
       );
     }

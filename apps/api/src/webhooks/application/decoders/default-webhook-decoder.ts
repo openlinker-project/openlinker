@@ -14,6 +14,7 @@
  *
  * @module apps/api/src/webhooks/application/decoders
  */
+import { Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -28,6 +29,7 @@ const TIMESTAMP_HEADER = 'x-openlinker-timestamp';
 const SIGNATURE_HEADER = 'x-openlinker-signature';
 const SIGNATURE_PREFIX = 'sha256=';
 
+@Injectable()
 export class DefaultWebhookDecoder implements InboundWebhookDecoderPort {
   verify(input: {
     rawBody: Buffer;
