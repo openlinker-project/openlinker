@@ -135,6 +135,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.orderId = input.orderId;
     entity.connectionId = input.connectionId;
     entity.shippingMethod = input.shippingMethod;
+    entity.deliveryIntent = input.deliveryIntent ?? null;
     // Atomic-terminal mode (#834): when `initialStatus` is supplied (the
     // branch-1 projection path), the row is born at its correct status +
     // terminal timestamps + tracking number. Default `'draft'` preserves
@@ -220,6 +221,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.updatedAt,
       entity.sourceDeliveryMethodId,
       entity.carrier,
+      entity.deliveryIntent,
     );
   }
 }

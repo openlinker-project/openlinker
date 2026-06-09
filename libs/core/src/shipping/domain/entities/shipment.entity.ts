@@ -26,6 +26,7 @@
 
 import type { ShipmentStatus } from '../types/shipment-status.types';
 import type { ShippingMethod } from '../types/shipping-method.types';
+import type { DeliveryIntent } from '../types/delivery-intent.types';
 
 export class Shipment {
   constructor(
@@ -68,5 +69,11 @@ export class Shipment {
     // Appended after `sourceDeliveryMethodId` for the same anti-collision
     // rationale as that field.
     public readonly carrier: string | null,
+    // Carrier-neutral delivery intent the dispatch was requested with (#979,
+    // ADR-020). `null` for branch-1/omp projection rows (no label, no intent).
+    // The carrier-specific `shippingMethod` above is resolved from this at the
+    // dispatch seam. Appended last for the same anti-collision rationale —
+    // do not splice into the middle.
+    public readonly deliveryIntent: DeliveryIntent | null,
   ) {}
 }
