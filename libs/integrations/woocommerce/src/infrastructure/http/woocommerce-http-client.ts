@@ -50,11 +50,13 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('POST', `${this.siteUrl}${path}`, body);
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('POST', url, body);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('PUT', `${this.siteUrl}${path}`, body);
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('PUT', url, body);
   }
 
   async delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
@@ -107,14 +109,15 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           );
         }
 
-        // Retryable: 429 and 5xx
-        if (attempt < this.retryConfig.maxRetries) {
+        // Only retry 429 (rate limit) and 5xx (server errors)
+        const isRetryable = response.status === 429 || response.status >= 500;
+        if (isRetryable && attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
           continue;
         }
 
-        // Retries exhausted
+        // Retries exhausted — still a known HTTP error response
         throw new WooCommerceHttpResponseException(
           response.status,
           `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`,

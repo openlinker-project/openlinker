@@ -221,11 +221,16 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     }
 
     // Variable product — delete stale synthetic (safe no-op if absent)
-    await this.identifierMapping.deleteMapping(
-      CORE_ENTITY_TYPE.ProductVariant,
-      `product:${wcId}`,
-      this.connection.id,
-    );
+    try {
+      await this.identifierMapping.deleteMapping(
+        CORE_ENTITY_TYPE.ProductVariant,
+        `product:${wcId}`,
+        this.connection.id,
+      );
+    } catch (err) {
+      this.logger.warn('Failed to delete stale synthetic variant', err);
+      // Continue — variants fetch is more important than cleanup
+    }
 
     // Exhaust all pages — products with >100 variations exist (configurable products, apparel).
     const variations = await fetchAllPages<WooCommerceProductVariation>(
@@ -334,10 +339,20 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       name: product.name,
       sku: product.sku,
       ...(product.description !== undefined ? { description: product.description } : {}),
-      regular_price: String(product.price),
+      ...(product.price !== undefined && !Number.isNaN(product.price)
+        ? { regular_price: String(product.price) }
+        : {}),
       ...(product.weight !== undefined ? { weight: String(product.weight) } : {}),
     };
     const raw = await this.httpClient.post<WooCommerceProduct>('/wp-json/wc/v3/products', payload);
+    if (raw.id === undefined) {
+      throw new WooCommerceResourceNotFoundException(
+        `WooCommerce returned product without ID`,
+        CORE_ENTITY_TYPE.Product,
+        `(${product.sku})`,
+        this.connection.id,
+      );
+    }
     const internalId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
       String(raw.id),
@@ -366,7 +381,8 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     if (product.name !== undefined) payload.name = product.name;
     if (product.sku !== undefined) payload.sku = product.sku;
     if (product.description !== undefined) payload.description = product.description;
-    if (product.price !== undefined) payload.regular_price = String(product.price);
+    if (product.price !== undefined && !Number.isNaN(product.price))
+      payload.regular_price = String(product.price);
     if (product.weight !== undefined) payload.weight = String(product.weight);
 
     let raw: WooCommerceProduct;
@@ -461,7 +477,9 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     const varPayload: WooCommerceVariationWriteRequest = {
       sku: variant.sku,
-      ...(variant.price !== undefined ? { regular_price: String(variant.price) } : {}),
+      ...(variant.price !== undefined && !Number.isNaN(variant.price)
+        ? { regular_price: String(variant.price) }
+        : {}),
       ...(variant.weight !== undefined ? { weight: String(variant.weight) } : {}),
       ...(variant.attributes
         ? {
@@ -515,6 +533,14 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       `/wp-json/wc/v3/products/${wcId}/variations`,
       varPayload,
     );
+    if (raw.id === undefined) {
+      throw new WooCommerceResourceNotFoundException(
+        `WooCommerce returned variation without ID`,
+        CORE_ENTITY_TYPE.ProductVariant,
+        `(${variant.sku})`,
+        this.connection.id,
+      );
+    }
     const internalId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.ProductVariant,
       String(raw.id),

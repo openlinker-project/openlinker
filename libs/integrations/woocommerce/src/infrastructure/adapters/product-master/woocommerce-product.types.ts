@@ -27,9 +27,9 @@ export interface WooCommerceProduct {
   images?: Array<{ id: number; src: string; alt: string }>;
   attributes?: Array<{ id: number; name: string; position: number; options: string[] }>;
   variations?: number[];
-  stock_quantity?: number | null;  // null = stock tracking disabled
+  stock_quantity?: number | null; // null = stock tracking disabled
   manage_stock?: boolean;
-  stock_status?: string;           // 'instock' | 'outofstock' | 'onbackorder'
+  stock_status?: string; // 'instock' | 'outofstock' | 'onbackorder'
   weight?: string;
   date_created?: string;
   date_modified?: string;
@@ -43,9 +43,9 @@ export interface WooCommerceProductVariation {
   regular_price?: string;
   attributes?: Array<{ id: number; name: string; option: string }>;
   image?: { id: number; src: string } | null;
-  stock_quantity?: number | null;  // null = stock tracking disabled
+  stock_quantity?: number | null; // null = stock tracking disabled
   manage_stock?: boolean;
-  stock_status?: string;           // 'instock' | 'outofstock' | 'onbackorder'
+  stock_status?: string; // 'instock' | 'outofstock' | 'onbackorder'
   weight?: string;
   date_created?: string;
   date_modified?: string;

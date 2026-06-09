@@ -101,27 +101,30 @@ export function createWooCommercePlugin(): AdapterPlugin {
       // GET /wp-json/wc/v3/settings/general/woocommerce_currency.
       // Product.currency carries 'null when the adapter did not provide a currency'.
       const mapper = new WooCommerceProductMapper({});
+      const productMaster = new WooCommerceProductMasterAdapter(
+        httpClient,
+        host.identifierMapping,
+        mapper,
+        connection,
+      );
       try {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
             {
-              ProductMaster: () => new WooCommerceProductMasterAdapter(
-                httpClient,
-                host.identifierMapping,
-                mapper,
-                connection,
-              ),
-              InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
-                httpClient,
-                host.identifierMapping,
-                connection,
-              ),
-              OrderProcessorManager: () => new WooCommerceOrderProcessorAdapter(
-                httpClient,
-                host.identifierMapping,
-                connection,
-              ),
+              ProductMaster: () => productMaster,
+              InventoryMaster: () =>
+                new WooCommerceInventoryMasterAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  connection,
+                ),
+              OrderProcessorManager: () =>
+                new WooCommerceOrderProcessorAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  connection,
+                ),
             },
             WOOCOMMERCE_BRAND,
           ),

@@ -109,12 +109,12 @@ function makeOrder(overrides: Partial<OrderCreate> = {}): OrderCreate {
 function mockMinimalMappings(identifierMapping: jest.Mocked<IdentifierMappingPort>): void {
   identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
     if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-      return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+      return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
     }
     if (entityType === CORE_ENTITY_TYPE.Customer) {
-      return [{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+      return Promise.resolve([{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
     }
-    return [];
+    return Promise.resolve([]);
   });
 }
 
@@ -184,15 +184,15 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     // Customer mapping: no existing → provision new
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
-      if (entityType === CORE_ENTITY_TYPE.Customer) return [];
+      if (entityType === CORE_ENTITY_TYPE.Customer) return Promise.resolve([]);
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
-      if (path === '/wp-json/wc/v3/customers') return { id: 10, email: 'jan.kowalski@example.com' };
-      return { id: 99, number: 'WC-99' };
+      if (path === '/wp-json/wc/v3/customers') return Promise.resolve({ id: 10, email: 'jan.kowalski@example.com' });
+      return Promise.resolve({ id: 99, number: 'WC-99' });
     });
 
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -220,15 +220,15 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     // getExternalIds returns an Order mapping — adapter should still call POST, not return early
     identifierMapping.getExternalIds.mockImplementation((entityType: string) => {
       if (entityType === CORE_ENTITY_TYPE.Order) {
-        return [{ externalId: '55', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '55', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.Product) {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.Customer) {
-        return [{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99, number: 'WC-99' });
 
@@ -377,12 +377,12 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Customer && id === 'ol-cust-1') {
-        return [{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.Product) {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99 });
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -396,13 +396,13 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
-      if (path === '/wp-json/wc/v3/customers') return { id: 15 };
-      return { id: 99 };
+      if (path === '/wp-json/wc/v3/customers') return Promise.resolve({ id: 15 });
+      return Promise.resolve({ id: 99 });
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     await adapter.createOrder(makeOrder());
@@ -420,13 +420,13 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
       if (path === '/wp-json/wc/v3/customers') throw new WooCommerceHttpResponseException(400, 'email exists');
-      return { id: 99 };
+      return Promise.resolve({ id: 99 });
     });
     httpClient.get.mockResolvedValue([{ id: 22, email: 'jan.kowalski@example.com' }]);
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -444,13 +444,13 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
       if (path === '/wp-json/wc/v3/customers') throw new WooCommerceHttpResponseException(400, 'email exists');
-      return { id: 99 };
+      return Promise.resolve({ id: 99 });
     });
     httpClient.get.mockResolvedValue([]);
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -464,15 +464,15 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
       if (path === '/wp-json/wc/v3/customers') {
         throw new WooCommerceUnauthorizedException('401 Unauthorized');
       }
-      return { id: 99 };
+      return Promise.resolve({ id: 99 });
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     // Auth failure must NOT be swallowed into a guest order — it must propagate
@@ -485,13 +485,13 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
       if (path === '/wp-json/wc/v3/customers') throw new WooCommerceHttpResponseException(500, 'server error');
-      return { id: 99 };
+      return Promise.resolve({ id: 99 });
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     await adapter.createOrder(makeOrder());
@@ -504,9 +504,9 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99 });
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -520,12 +520,12 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Customer && id === 'ol-cust-1') {
-        return [{ externalId: 'abc', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: 'abc', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99 });
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -540,23 +540,24 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     let callCount = 0;
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.Customer) {
         callCount++;
         if (callCount >= 2) {
           // Second lookup — winner lookup after duplicate
-          return [{ externalId: '30', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+          return Promise.resolve([{ externalId: '30', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
         }
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
-      if (path === '/wp-json/wc/v3/customers') return { id: 30 };
-      return { id: 99 };
+      if (path === '/wp-json/wc/v3/customers') return Promise.resolve({ id: 30 });
+      return Promise.resolve({ id: 99 });
     });
     identifierMapping.createMapping.mockImplementation((entityType: string) => {
       if (entityType === CORE_ENTITY_TYPE.Customer) throw new DuplicateIdentifierMappingError('Customer', '30', 'woocommerce', CONNECTION_ID);
+      return Promise.resolve();
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     const result = await adapter.createOrder(makeOrder());
@@ -569,16 +570,17 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockImplementation((path) => {
-      if (path === '/wp-json/wc/v3/customers') return { id: 30 };
-      return { id: 99 };
+      if (path === '/wp-json/wc/v3/customers') return Promise.resolve({ id: 30 });
+      return Promise.resolve({ id: 99 });
     });
     identifierMapping.createMapping.mockImplementation((entityType: string) => {
       if (entityType === CORE_ENTITY_TYPE.Customer) throw new DuplicateIdentifierMappingError('Customer', '30', 'woocommerce', CONNECTION_ID);
+      return Promise.resolve();
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     await adapter.createOrder(makeOrder());
@@ -591,9 +593,9 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99 });
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -609,14 +611,14 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     const itemWithVariant: OrderItem = { id: 'i1', productId: 'ol-prod-1', variantId: 'ol-var-1', quantity: 1, price: 10 };
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
-      if (entityType === CORE_ENTITY_TYPE.Customer) return [];
+      if (entityType === CORE_ENTITY_TYPE.Customer) return Promise.resolve([]);
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
       if (entityType === CORE_ENTITY_TYPE.ProductVariant && id === 'ol-var-1') {
-        return [{ externalId: '101', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '101', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     httpClient.post.mockResolvedValue({ id: 99 });
     const adapter = makeAdapter(httpClient, identifierMapping);
@@ -644,9 +646,9 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const itemWithVariant: OrderItem = { id: 'i1', productId: 'ol-prod-1', variantId: 'ol-var-missing', quantity: 1, price: 10 };
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     await expect(adapter.createOrder(makeOrder({ items: [itemWithVariant] }))).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
@@ -657,9 +659,9 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const identifierMapping = makeIdentifierMapping();
     identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
       if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
-        return [{ externalId: '0', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }];
+        return Promise.resolve([{ externalId: '0', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
       }
-      return [];
+      return Promise.resolve([]);
     });
     const adapter = makeAdapter(httpClient, identifierMapping);
     await expect(adapter.createOrder(makeOrder())).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);

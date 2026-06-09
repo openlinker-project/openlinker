@@ -69,16 +69,6 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/woocommerce/src/$1',
     ),
-    '^@openlinker/integrations-inpost$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/inpost/src/index.ts',
-    ),
-    '^@openlinker/integrations-inpost/(.*)$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/inpost/src/$1',
-    ),
-    '^@openlinker/plugin-sdk$': path.resolve(__dirname, '../../../libs/plugin-sdk/src/index.ts'),
-    '^@openlinker/plugin-sdk/(.*)$': path.resolve(__dirname, '../../../libs/plugin-sdk/src/$1'),
     '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
     '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },
