@@ -25,6 +25,7 @@
 
 import type { ShipmentStatus } from './shipment-status.types';
 import type { ShippingMethod } from './shipping-method.types';
+import type { DeliveryIntent } from './delivery-intent.types';
 
 export interface CreateShipmentInput {
   /** Internal order id (`ol_order_*`). */
@@ -32,8 +33,12 @@ export interface CreateShipmentInput {
   /** Shipping-provider connection that will issue the label, or the OMP
    * connection for branch-1 projection rows. */
   connectionId: string;
-  /** Which shipping shape this attempt produces. */
+  /** Which shipping shape this attempt produces (the carrier-specific method
+   * the seam resolved from `deliveryIntent`). */
   shippingMethod: ShippingMethod;
+  /** Carrier-neutral delivery intent this dispatch was requested with (#979,
+   * ADR-020). `null`/omitted for branch-1/omp projection rows. */
+  deliveryIntent?: DeliveryIntent | null;
   /** Pickup-point id — required for point-delivery methods (`'paczkomat'`
    * locker, `'pickup'` parcel-shop/PUDO #963); absent for `'kurier'`. */
   paczkomatId?: string;

@@ -35,6 +35,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.updatedAt ?? new Date('2026-05-27T10:00:00.000Z'),
     overrides.sourceDeliveryMethodId ?? 'allegro-method',
     overrides.carrier ?? null,
+    overrides.deliveryIntent ?? null,
   );
 }
 
