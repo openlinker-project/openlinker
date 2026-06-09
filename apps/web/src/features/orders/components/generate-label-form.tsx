@@ -602,7 +602,10 @@ function buildGenerateLabelInput(args: {
     sourceConnectionId: order.sourceConnectionId,
     sourceDeliveryMethodId: snapshot.shipping?.methodId ?? null,
     orderId: order.internalOrderId,
-    shippingMethod,
+    // Send the carrier-neutral intent (#979, ADR-020); the BE resolves the
+    // carrier-specific method. The form's internal point-vs-courier
+    // classification (paczkomat ⇒ pickup point, kurier ⇒ address) maps 1:1.
+    deliveryIntent: shippingMethod === 'paczkomat' ? 'pickup_point' : 'address',
     paczkomatId: values.paczkomatId && values.paczkomatId.length > 0 ? values.paczkomatId : undefined,
     recipient: {
       // Address optionals are `string | null | undefined` (#939 — snapshot

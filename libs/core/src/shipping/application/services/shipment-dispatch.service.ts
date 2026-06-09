@@ -41,6 +41,10 @@ import type {
   ShipmentDispatchResult,
 } from '../types/shipment-dispatch.types';
 import type { Shipment } from '../../domain/entities/shipment.entity';
+import {
+  resolveCarrierMethod,
+  deriveIntentFromLegacyMethod,
+} from '../../domain/delivery-intent-resolution';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
@@ -170,10 +174,38 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       SHIPPING_PROVIDER_MANAGER_CAPABILITY,
     );
 
+    // Resolve the carrier-neutral delivery intent to this carrier's concrete
+    // method (#979, ADR-020). The seam reads the adapter's published
+    // `getSupportedMethods()`; the adapter's `generateLabel` branching is
+    // unchanged. Legacy callers may still send a concrete `shippingMethod` for
+    // one release — derive the intent from it as a fallback.
+    const intent =
+      input.deliveryIntent ??
+      (input.shippingMethod !== undefined
+        ? deriveIntentFromLegacyMethod(input.shippingMethod)
+        : undefined);
+    if (intent === undefined) {
+      throw new UndispatchableResolutionException(
+        'a deliveryIntent (or a legacy shippingMethod) is required to dispatch a label',
+      );
+    }
+    const shippingMethod = resolveCarrierMethod(intent, adapter.getSupportedMethods());
+    if (shippingMethod === null) {
+      throw new UndispatchableResolutionException(
+        `the resolved carrier cannot fulfil delivery intent '${intent}'`,
+      );
+    }
+    if (input.shippingMethod !== undefined && input.shippingMethod !== shippingMethod) {
+      this.logger.log(
+        `Resolved deliveryIntent '${intent}' to shippingMethod '${shippingMethod}' for connection ${processorConnectionId}`,
+      );
+    }
+
     const shipment = await this.shipments.create({
       orderId: input.orderId,
       connectionId: processorConnectionId,
-      shippingMethod: input.shippingMethod,
+      shippingMethod,
+      deliveryIntent: intent,
       paczkomatId: input.paczkomatId,
       sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
     });
@@ -188,7 +220,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         shipmentId: shipment.id,
         connectionId: processorConnectionId,
         orderId: input.orderId,
-        shippingMethod: input.shippingMethod,
+        shippingMethod,
         paczkomatId: input.paczkomatId,
         deliveryMethodId: this.resolveProviderDeliveryMethodId(input),
         recipient: input.recipient,

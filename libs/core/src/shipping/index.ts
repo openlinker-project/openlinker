@@ -27,6 +27,8 @@ export type {
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
+export { DeliveryIntentValues, DELIVERY_INTENT } from './domain/types/delivery-intent.types';
+export type { DeliveryIntent } from './domain/types/delivery-intent.types';
 
 export {
   PickupPointStatusValues,
