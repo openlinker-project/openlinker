@@ -34,8 +34,11 @@ export type ShipmentStatus = (typeof SHIPMENT_STATUS_VALUES)[number];
  * FE mirror of the BE `ShippingMethodValues`
  * (`libs/core/src/shipping/domain/types/shipping-method.types.ts`).
  *
- * - `'paczkomat'` / `'kurier'` — provider-issued shipments (branches 2/3:
- *   InPost own-contract, Allegro Delivery source-brokered).
+ * - `'paczkomat'` / `'kurier'` / `'pickup'` — provider-issued shipments
+ *   (branches 2/3: InPost own-contract, Allegro Delivery source-brokered, DPD
+ *   Polska courier + parcel-shop). `'pickup'` is the carrier-neutral
+ *   parcel-shop / PUDO method (DPD Pickup, #963); like `'paczkomat'` it carries
+ *   an operator- or buyer-supplied point id on `paczkomatId`.
  * - `'omp'` — **projection-only** rows (branch-1, #834): the destination OMP
  *   ships externally and OL holds no provider id / label.
  *   `FulfillmentStatusSyncService` is the sole writer. No
@@ -44,10 +47,20 @@ export type ShipmentStatus = (typeof SHIPMENT_STATUS_VALUES)[number];
  * Adding a new BE method requires widening this array AND
  * `SHIPPING_METHOD_LABEL` below — `Record<ShippingMethod, string>` makes the
  * compiler fail loudly on omission (intentional: stops the kind of FE↔BE
- * value-level drift that bit us in #886).
+ * value-level drift that bit us in #886 — and the `'pickup'` mirror gap #966 fixed).
  */
-export const SHIPPING_METHOD_VALUES = ['paczkomat', 'kurier', 'omp'] as const;
+export const SHIPPING_METHOD_VALUES = ['paczkomat', 'kurier', 'pickup', 'omp'] as const;
 export type ShippingMethod = (typeof SHIPPING_METHOD_VALUES)[number];
+
+/**
+ * Carrier-neutral delivery intent — the dispatch *caller* contract (#979,
+ * ADR-020). The operator/form expresses where the parcel goes; the BE dispatch
+ * seam resolves the carrier-specific `ShippingMethod`. **FE mirror** of the BE
+ * `DeliveryIntentValues` — keep in sync (same FE↔BE drift discipline as
+ * `SHIPPING_METHOD_VALUES`, #966).
+ */
+export const DELIVERY_INTENT_VALUES = ['pickup_point', 'address'] as const;
+export type DeliveryIntent = (typeof DELIVERY_INTENT_VALUES)[number];
 
 /**
  * Operator-readable label per shipping method. Used by the `/shipments`
@@ -58,6 +71,7 @@ export type ShippingMethod = (typeof SHIPPING_METHOD_VALUES)[number];
 export const SHIPPING_METHOD_LABEL: Record<ShippingMethod, string> = {
   paczkomat: 'Paczkomat',
   kurier: 'Kurier',
+  pickup: 'Pickup point',
   omp: 'OMP-fulfilled',
 };
 
@@ -124,7 +138,9 @@ export interface GenerateLabelInput {
   sourceConnectionId: string;
   sourceDeliveryMethodId?: string | null;
   orderId: string;
-  shippingMethod: ShippingMethod;
+  /** Carrier-neutral delivery intent (#979, ADR-020). The BE resolves the
+   * concrete shipping method from this; the caller never names a carrier method. */
+  deliveryIntent: DeliveryIntent;
   paczkomatId?: string;
   recipient: {
     name?: string;
@@ -144,6 +160,14 @@ export interface GenerateLabelInput {
     template?: string;
     dimensions?: { length: number; width: number; height: number };
     weightGrams?: number;
+  };
+  /** Optional cash-on-delivery to collect (operator-supplied, #966). COD-incapable
+   * carriers ignore it server-side; DPD Polska translates it to its COD service. */
+  cod?: {
+    /** Amount as a decimal string (e.g. "129.90"). */
+    amount: string;
+    /** ISO 4217 currency code (e.g. PLN). */
+    currency: string;
   };
 }
 

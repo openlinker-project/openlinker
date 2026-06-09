@@ -27,6 +27,7 @@ import {
 
 import { ShipmentStatus } from '../../../domain/types/shipment-status.types';
 import { ShippingMethod } from '../../../domain/types/shipping-method.types';
+import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types';
 
 @Entity('shipments')
 @Index('IDX_shipments_orderId', ['orderId'])
@@ -60,6 +61,12 @@ export class ShipmentOrmEntity {
 
   @Column({ type: 'text' })
   shippingMethod!: ShippingMethod;
+
+  // Carrier-neutral delivery intent the dispatch was requested with (#979,
+  // ADR-020). Nullable: branch-1/omp projection rows carry no intent. The
+  // `shippingMethod` above is resolved from this at the dispatch seam.
+  @Column({ type: 'text', nullable: true })
+  deliveryIntent!: DeliveryIntent | null;
 
   @Column({ type: 'text' })
   status!: ShipmentStatus;
