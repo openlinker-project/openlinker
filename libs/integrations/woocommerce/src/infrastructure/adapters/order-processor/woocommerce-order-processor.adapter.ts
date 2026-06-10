@@ -455,20 +455,29 @@ export class WooCommerceOrderProcessorAdapter
     ];
   }
 
-  /** Maps an OL Address to a WC billing/shipping object. Returns undefined for absent addresses. */
+  /**
+   * Maps an OL Address to a WC billing/shipping object. Returns undefined for
+   * absent addresses. Nullish fields are OMITTED, not passed through — WC REST
+   * type-checks address properties as strings and rejects the whole request
+   * with `rest_invalid_param: shipping[company] is not of type string` when a
+   * source platform (e.g. Allegro) carries `null` for an optional field.
+   */
   private mapAddress(address: Address | undefined): WooCommerceOrderAddress | undefined {
     if (!address) return undefined;
-    return {
-      first_name: address.firstName,
-      last_name: address.lastName,
-      company: address.company,
-      address_1: address.address1,
-      address_2: address.address2,
-      city: address.city,
-      state: address.state,
-      postcode: address.postalCode,
-      country: address.country,
-      phone: address.phone,
+    const mapped: WooCommerceOrderAddress = {};
+    const assign = (key: keyof WooCommerceOrderAddress, value: string | null | undefined): void => {
+      if (value !== null && value !== undefined) mapped[key] = value;
     };
+    assign('first_name', address.firstName);
+    assign('last_name', address.lastName);
+    assign('company', address.company);
+    assign('address_1', address.address1);
+    assign('address_2', address.address2);
+    assign('city', address.city);
+    assign('state', address.state);
+    assign('postcode', address.postalCode);
+    assign('country', address.country);
+    assign('phone', address.phone);
+    return mapped;
   }
 }
