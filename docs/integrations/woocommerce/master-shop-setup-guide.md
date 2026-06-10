@@ -355,6 +355,13 @@ curl -X POST https://api.allegro.pl.allegrosandbox.pl/sale/responsible-producers
 least `email` or `formUrl`. A `201` response returns the entry's `id` — then
 re-open the connection edit page and the dropdown will list it.
 
+> **"Could not load responsible producers / Invalid or expired access token"** on
+> the edit page means the Allegro connection was auto-flagged `needs_reauth`
+> (token expired and the refresh failed). Open the connection **detail** page —
+> the re-authentication banner links to the setup wizard in re-auth mode
+> (`/connections/new/allegro?reauth={connectionId}`), which re-runs OAuth and
+> rotates the credentials in place. Then return to the edit page.
+
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
 
