@@ -233,6 +233,26 @@ export interface MarketplaceShipmentStatusSyncPayloadV1 {
 }
 
 /**
+ * marketplace.shipment.syncByExternalId (#768, ADR-021)
+ *
+ * Parcel-targeted shipment refresh — the **trigger** half of the InPost
+ * webhook flow. An inbound `Shipment.Tracking` webhook routes here (via the
+ * `shipment` inbound domain) carrying the carrier's own parcel id; the handler
+ * re-reads authoritative status via the connection's `getTracking` and
+ * propagates terminal status + waybill to the destination OMP — the same
+ * per-shipment primitive the paged `marketplace.shipment.statusSync` poll
+ * (#838) uses, just keyed to one parcel instead of a rolling scan. The webhook
+ * payload's own status is never trusted (sandbox-gated catalogue); the re-read
+ * is the source of truth. `externalId` is the carrier `providerShipmentId`; the
+ * job's connection scope resolves the shipment (cross-connection-guarded).
+ */
+export interface MarketplaceShipmentSyncByExternalIdPayloadV1 {
+  schemaVersion: 1;
+  /** Carrier-native parcel id (`providerShipmentId`) to refresh. */
+  externalId: string;
+}
+
+/**
  * marketplace.fulfillment.statusSync (#834)
  *
  * Branch-1 (OMP-fulfilled) shipment status read-back. The handler pages OL
