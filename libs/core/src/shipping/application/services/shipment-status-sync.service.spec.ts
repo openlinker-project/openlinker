@@ -390,4 +390,41 @@ describe('ShipmentStatusSyncService', () => {
       );
     });
   });
+
+  describe('syncOneByProviderShipmentId (#768 webhook-triggered refresh)', () => {
+    it('resolves the shipment by provider id and applies the re-read patch', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', deliveredAt: new Date('2026-05-28') }),
+      );
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(getTracking).toHaveBeenCalledWith({ providerShipmentId: 'prov-abc' });
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ status: 'delivered' }),
+      );
+    });
+
+    it('is a no-op when no shipment resolves for the provider id', async () => {
+      shipments.findByProviderShipmentId.mockResolvedValue(null);
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-missing');
+
+      expect(getTracking).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
+
+    it('skips (cross-connection guard) when the resolved shipment belongs to another connection', async () => {
+      const s = makeShipment({ connectionId: 'conn-other' });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(getTracking).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
+  });
 });

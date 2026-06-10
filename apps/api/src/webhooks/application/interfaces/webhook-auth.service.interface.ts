@@ -11,37 +11,26 @@
 
 export interface IWebhookAuthService {
   /**
-   * Verify webhook signature
+   * Provider-agnostic connection gate (ADR-021): the connection must exist, be
+   * active, and its `platformType` must match the URL `provider`. The host runs
+   * this for every provider before handing off to that provider's decoder.
    *
-   * Validates the HMAC SHA256 signature of the webhook request.
-   * Signature scheme: HMAC_SHA256(secret, timestamp + '.' + rawBody)
-   *
-   * @param provider - Provider identifier (e.g., 'prestashop')
-   * @param connectionId - Connection identifier (UUID)
-   * @param timestamp - Unix timestamp in milliseconds (from X-OpenLinker-Timestamp header)
-   * @param rawBody - Raw request body bytes
-   * @param signature - Signature from X-OpenLinker-Signature header (format: sha256=<hex>)
-   * @returns Promise resolving to true if signature is valid, false otherwise
-   * @throws WebhookAuthenticationException if signature format is invalid or verification fails
+   * @throws WebhookAuthenticationException if the connection is missing/inactive
+   *   or the provider doesn't match
    */
-  verifySignature(
-    provider: string,
-    connectionId: string,
-    timestamp: string,
-    rawBody: Buffer,
-    signature: string,
-  ): Promise<boolean>;
+  assertConnectionUsable(provider: string, connectionId: string): Promise<void>;
+
+  /** Resolve the per-connection webhook shared secret (handed to the decoder). */
+  getSecret(provider: string, connectionId: string): Promise<string>;
 
   /**
-   * Validate timestamp for replay protection
+   * Replay-window check on an already-normalized epoch-ms timestamp (ADR-021).
+   * The per-provider decoder owns the provider's timestamp header/format and
+   * returns the normalized value from `verify`; the host applies the shared
+   * window here.
    *
-   * Checks if the timestamp is within the allowed skew window (default ±5 minutes).
-   *
-   * @param timestamp - Unix timestamp in milliseconds (string)
-   * @param skewWindowMs - Allowed skew window in milliseconds (default: 300000 = 5 minutes)
-   * @returns true if timestamp is valid, false otherwise
-   * @throws WebhookReplayException if timestamp is outside the allowed window
+   * @throws WebhookReplayException if the timestamp is outside the allowed window
    */
-  validateTimestamp(timestamp: string, skewWindowMs?: number): boolean;
+  validateTimestampMs(timestampMs: number, skewWindowMs?: number): void;
 }
 
