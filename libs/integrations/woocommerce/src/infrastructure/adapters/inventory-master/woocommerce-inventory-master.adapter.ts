@@ -25,7 +25,12 @@ import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceNotSupportedException } from '../../../domain/exceptions/woocommerce-not-supported.exception';
+import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { fetchAllPages, toPositiveInt } from '../../utils/woocommerce-utils';
+import {
+  DEFAULT_UNMANAGED_STOCK_QUANTITY,
+  type WooCommerceConnectionConfig,
+} from '../../../domain/types/woocommerce-config.types';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
@@ -34,11 +39,23 @@ import type {
 export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
   private readonly logger = new Logger(WooCommerceInventoryMasterAdapter.name);
 
+  /**
+   * Per-connection fallback quantity for unmanaged-stock (`manage_stock=false`)
+   * in-stock products. Resolved once from `connection.config.inventory`, falling
+   * back to DEFAULT_UNMANAGED_STOCK_QUANTITY. The shape validator guarantees a
+   * configured value is a non-negative integer.
+   */
+  private readonly unmanagedStockQuantity: number;
+
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connection: Connection,
-  ) {}
+  ) {
+    const config = (connection.config ?? {}) as Partial<WooCommerceConnectionConfig>;
+    this.unmanagedStockQuantity =
+      config.inventory?.unmanagedStockQuantity ?? DEFAULT_UNMANAGED_STOCK_QUANTITY;
+  }
 
   // ─── InventoryMasterPort ──────────────────────────────────────────────────
 
@@ -118,6 +135,29 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
+  /**
+   * Resolves the effective stock quantity, honouring WC's manage_stock flag.
+   *
+   * WC manage_stock=false products do not track a numeric quantity — the
+   * product is either in-stock or out-of-stock:
+   *   - manage_stock=false AND stock_status='instock'  → per-connection cap
+   *     (`inventory.unmanagedStockQuantity`, default DEFAULT_UNMANAGED_STOCK_QUANTITY).
+   *     Master inventory is authoritative, so reporting 0 here would de-list a
+   *     sellable product on every marketplace — the cap stands in for "plenty".
+   *   - manage_stock=false AND stock_status≠'instock'  → 0 (out-of-stock)
+   * Managed stock returns the real numeric quantity.
+   */
+  private resolveStockQuantity(
+    stockQuantity: number | null | undefined,
+    manageStock: boolean | undefined,
+    stockStatus: string | undefined,
+  ): number {
+    if (manageStock === false) {
+      return stockStatus === 'instock' ? this.unmanagedStockQuantity : 0;
+    }
+    return parseStockQuantity(stockQuantity);
+  }
+
   private async resolveWcProductId(productId: string): Promise<number> {
     const externalIds = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.Product,
@@ -132,16 +172,19 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
         this.connection.id,
       );
     }
-    const wcId = toPositiveInt(mapping.externalId);
-    if (wcId === null) {
-      throw new WooCommerceResourceNotFoundException(
-        `Product mapping for ${productId} has invalid externalId "${mapping.externalId}" (not a positive integer)`,
-        'Product',
-        productId,
-        this.connection.id,
-      );
+    try {
+      return toPositiveInt(mapping.externalId, 'product id');
+    } catch (err) {
+      if (err instanceof WooCommerceInvalidIdentifierException) {
+        throw new WooCommerceResourceNotFoundException(
+          `Product mapping for ${productId} has invalid externalId "${mapping.externalId}" (not a positive integer)`,
+          'Product',
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
     }
-    return wcId;
   }
 
   private async listSimpleInventory(
@@ -163,7 +206,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
       { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
     );
     return [mapToInventory(
-      resolveStockQuantity(product.stock_quantity, product.manage_stock, product.stock_status),
+      this.resolveStockQuantity(product.stock_quantity, product.manage_stock, product.stock_status),
       productId,
       variantId,
       inventoryId,
@@ -217,7 +260,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
           `Missing inventory internal ID for WC variation ${String(v.id)} on connection ${this.connection.id}`,
         );
       }
-      return mapToInventory(resolveStockQuantity(v.stock_quantity, v.manage_stock, v.stock_status), productId, variantId, inventoryId);
+      return mapToInventory(this.resolveStockQuantity(v.stock_quantity, v.manage_stock, v.stock_status), productId, variantId, inventoryId);
     });
   }
 
@@ -226,7 +269,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     wcId: number,
     product: WooCommerceProduct,
   ): Promise<Inventory> {
-    const current = resolveStockQuantity(product.stock_quantity, product.manage_stock, product.stock_status);
+    const current = this.resolveStockQuantity(product.stock_quantity, product.manage_stock, product.stock_status);
     const newQuantity = Math.max(0, current + adjustment.quantity);
 
     await this.httpClient.put(`/wp-json/wc/v3/products/${wcId}`, {
@@ -271,14 +314,19 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
         this.connection.id,
       );
     }
-    const wcVariationId = toPositiveInt(variantMapping.externalId);
-    if (wcVariationId === null) {
-      throw new WooCommerceResourceNotFoundException(
-        `Variant mapping for ${variantId} has invalid externalId "${variantMapping.externalId}" (not a positive integer)`,
-        'ProductVariant',
-        variantId,
-        this.connection.id,
-      );
+    let wcVariationId: number;
+    try {
+      wcVariationId = toPositiveInt(variantMapping.externalId, 'variation id');
+    } catch (err) {
+      if (err instanceof WooCommerceInvalidIdentifierException) {
+        throw new WooCommerceResourceNotFoundException(
+          `Variant mapping for ${variantId} has invalid externalId "${variantMapping.externalId}" (not a positive integer)`,
+          'ProductVariant',
+          variantId,
+          this.connection.id,
+        );
+      }
+      throw err;
     }
 
     let variation: WooCommerceProductVariation;
@@ -298,7 +346,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
       throw err;
     }
 
-    const current = resolveStockQuantity(variation.stock_quantity, variation.manage_stock, variation.stock_status);
+    const current = this.resolveStockQuantity(variation.stock_quantity, variation.manage_stock, variation.stock_status);
     const newQuantity = Math.max(0, current + adjustment.quantity);
 
     await this.httpClient.put(`/wp-json/wc/v3/products/${wcId}/variations/${wcVariationId}`, {
@@ -319,29 +367,6 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
 }
 
 // ─── Module-level helpers (not exported) ─────────────────────────────────────
-
-/**
- * Resolves the effective stock quantity, honouring WC's manage_stock flag.
- *
- * WC manage_stock=false products: WC does not track a numeric quantity — the
- * product is either in-stock or out-of-stock. We represent this as a sentinel:
- *   - manage_stock=false AND stock_status='instock'  → 9999 (effectively unlimited)
- *   - manage_stock=false AND stock_status≠'instock'  → 0 (out-of-stock)
- *
- * TODO: confirm sentinel value 9999 with Piotr before shipping to production.
- * A dedicated "unmanaged" flag on the Inventory entity may be cleaner long-term.
- */
-function resolveStockQuantity(
-  stockQuantity: number | null | undefined,
-  manageStock: boolean | undefined,
-  stockStatus: string | undefined,
-): number {
-  if (manageStock === false) {
-    // WC manage_stock=false products: unmanaged stock represented as 9999 sentinel.
-    return stockStatus === 'instock' ? 9999 : 0;
-  }
-  return parseStockQuantity(stockQuantity);
-}
 
 function parseStockQuantity(raw: number | null | undefined): number {
   if (raw === null || raw === undefined) return 0;
