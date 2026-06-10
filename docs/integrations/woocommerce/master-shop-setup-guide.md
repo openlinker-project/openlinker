@@ -191,9 +191,21 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 > **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
 >
 > ```bash
-> caddy reverse-proxy --from https://localhost:8443 --to localhost:8082
-> caddy trust   # installs Caddy's local CA into the OS trust store (browser)
+> caddy run --adapter caddyfile --config - <<'CADDY'
+> {
+>   admin off
+>   auto_https disable_redirects
+> }
+> https://localhost:8443 {
+>   reverse_proxy localhost:8082
+> }
+> CADDY
 > ```
+>
+> (`disable_redirects` matters: plain `caddy reverse-proxy` also opens an HTTP→HTTPS
+> redirect listener on privileged port 80 and dies with `bind: permission denied`
+> on an unprivileged shell. `caddy trust` — run once in another terminal — installs
+> Caddy's local CA into the OS trust store for the browser.)
 >
 > **Node does not read the OS trust store** — the API and worker must be launched with `NODE_EXTRA_CA_CERTS` pointing at Caddy's root CA. It has to be inline on the command (Node reads it once at process launch, so `apps/api/.env.local` is silently ignored). Start them with exactly:
 >
