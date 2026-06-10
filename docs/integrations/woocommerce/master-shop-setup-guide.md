@@ -24,7 +24,7 @@ By the end you will have:
 
 OpenLinker treats WooCommerce as a **master shop** — a source of products/inventory and a destination for marketplace orders. It is **not** a shop-to-shop bridge. Out of scope for this guide:
 
-- Ingesting orders *out of* WooCommerce (`OrderSource`, `modified_after` watermark polling — #876). It exists as a capability, but in the master-shop flow orders travel **Allegro → OpenLinker → WooCommerce**, not out of WooCommerce.
+- Routing orders ingested *out of* WooCommerce to another shop. The ingestion itself (`OrderSource`, `modified_after` watermark polling — #876) works and is verified in § 5.4, but in the master-shop flow orders travel **Allegro → OpenLinker → WooCommerce**; dispatching WooCommerce-native orders onwards needs a second destination shop, which this guide doesn't set up.
 - Pushing products or inventory *from another shop into* WooCommerce (no shop→shop sync).
 - Cross-platform category/attribute mapping (ADR — *Proposed*).
 
@@ -101,7 +101,7 @@ Once the REST API health check returns 200, run the seed (the WordPress image do
 pnpm dev:stack:seed-woocommerce
 ```
 
-This creates a few sample products **and generates the Read/Write API key** that § 2 prints.
+This creates a few sample products, two sample orders (verified in § 5.4), **and generates the Read/Write API key** that § 2 prints.
 
 ---
 
@@ -258,6 +258,36 @@ Open **Inventory**. Stock is tracked **per variant**, read from each WooCommerce
 **[Screenshot Placeholder: OpenLinker Inventory list with per-variant stock]**
 
 > This is a one-way read: OpenLinker reflects WooCommerce's stock. Changing stock in OpenLinker does not write back to WooCommerce.
+
+### 5.4 Verify orders in OpenLinker
+
+The seed (§ 1) created two WooCommerce orders; OpenLinker ingests them via the
+`OrderSource` capability (`woocommerce-orders-poll`, every 5 minutes,
+`modified_after` watermark).
+
+**Prerequisites** (both already set if you followed § 3.1 / § 4):
+
+- `OrderSource` is among the connection's enabled capabilities.
+- `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=true` in `apps/worker/.env.local`
+  (shipped by `.env.example`) — without it the poll cron never fires.
+
+Within ~5 minutes of the worker starting, the poll enqueues one
+`marketplace.order.sync` job per order. Open **Orders** and verify both seed
+orders arrived with their items resolved to internal catalog entries:
+
+- order `18` — *processing*, 2× OL Test Shirt, total **99.98**
+- order `19` — *completed*, 1× OL Test Jeans-S, total **79.99** — the line item
+  links to the internal **variant** (`ol_variant_…`), not just the product
+
+**[Screenshot Placeholder: OpenLinker Orders list with the two WooCommerce orders]**
+
+> **Expected error in a single-shop setup:** the worker logs
+> `No OrderProcessorManager destinations available` for these jobs and retries
+> them until they die (10 attempts). Order *ingestion* persists the order before
+> destination dispatch, so the orders are visible regardless — the error only
+> says there is no *second* shop to forward them to (the source connection is
+> excluded as a destination). With Allegro as the order source (§ 6) the
+> dispatch direction reverses and WooCommerce becomes the destination.
 
 ---
 
