@@ -65,4 +65,6 @@ Thumbs.db
 
 # Claude Code worktrees
 .claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/*.lock
 

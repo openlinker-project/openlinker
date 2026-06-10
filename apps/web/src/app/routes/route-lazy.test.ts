@@ -50,18 +50,18 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (40 total):
+ * Today's breakdown (39 total):
  *   - 33 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers/inventory expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775) and `/shipments` (#770))
  *   - 2 guest routes (forgot-password, reset-password — login stays eager)
- *   - 5 plugin routes (allegro callback + setup, prestashop setup, dpd setup, woocommerce setup)
+ *   - 4 plugin routes (allegro callback + setup, prestashop setup, dpd setup)
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 40;
+const EXPECTED_LAZY_ROUTE_COUNT = 39;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

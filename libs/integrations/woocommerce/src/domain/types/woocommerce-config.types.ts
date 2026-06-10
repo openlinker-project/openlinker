@@ -9,13 +9,12 @@
  */
 
 export interface WooCommerceConnectionConfig {
-  // Must include protocol (http:// or https://).
+  // Must be an https:// URL.
   // Validated at save-time by WooCommerceConnectionConfigShapeValidatorAdapter:
-  //   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['http', 'https'] })
+  //   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   // Trailing slash is stripped by WooCommerceHttpClient before use.
-  // HTTP is accepted but HTTPS is strongly recommended — WC REST transmits
-  // consumerKey:consumerSecret on every request (Basic Auth = cleartext over HTTP).
-  // HTTPS enforcement is intentionally left to the FE form layer; the
-  // config shape validator does not enforce transport security.
+  // HTTPS-only is enforced at the config shape validator: WC REST transmits
+  // consumerKey:consumerSecret on every request (Basic Auth = cleartext over HTTP),
+  // so plaintext HTTP is rejected at save-time.
   siteUrl: string;
 }
