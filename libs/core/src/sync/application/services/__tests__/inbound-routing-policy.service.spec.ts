@@ -102,6 +102,39 @@ describe('InboundRoutingPolicyService', () => {
     );
   });
 
+  it('should route a shipment event to marketplace.shipment.syncByExternalId gated on ShippingProviderManager', async () => {
+    const outcome = await service.route(
+      event({ domain: 'shipment', eventType: 'tracking' }),
+      connection(['ShippingProviderManager']),
+      ['ShippingProviderManager'],
+      'evt-9'
+    );
+
+    expect(outcome.status).toBe('enqueued');
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: 'marketplace.shipment.syncByExternalId',
+        payload: { schemaVersion: 1, externalId: '42' },
+      })
+    );
+  });
+
+  it('should not enqueue a shipment event when ShippingProviderManager is not enabled', async () => {
+    const outcome = await service.route(
+      event({ domain: 'shipment', eventType: 'tracking' }),
+      connection([]),
+      ['ShippingProviderManager'],
+      'evt-9'
+    );
+
+    expect(outcome).toEqual({
+      status: 'ungated',
+      domain: 'shipment',
+      requiredCapability: 'ShippingProviderManager',
+    });
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
   it('should not enqueue and return ungated when the capability is supported but not enabled', async () => {
     const outcome = await service.route(
       event({ domain: 'order' }),
