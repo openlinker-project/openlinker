@@ -66,6 +66,9 @@ export type AllegroSellerDefaultsFormValues = z.input<typeof allegroSellerDefaul
 export const editConnectionSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   baseUrl: z.string().trim().optional(),
+  // WooCommerce-only structured field surfacing `config.siteUrl` — the key
+  // the WooCommerce backend config DTO validates (#975).
+  siteUrl: z.string().trim().optional(),
   shopId: z.string().trim().optional(),
   // Optional override for the split-host case (webservice host ≠ public storefront).
   // Accepts a validated URL or an empty string (to unset). See #271 / #283.
@@ -143,6 +146,8 @@ export function toUpdateConnectionInput(values: EditConnectionFormSubmission): U
 
 export interface StructuredConfigPatch {
   baseUrl?: string;
+  /** WooCommerce store root URL — `config.siteUrl` (#975). */
+  siteUrl?: string;
   shopId?: string;
   storefrontBaseUrl?: string;
   openlinkerCallbackBaseUrl?: string;
@@ -180,6 +185,13 @@ export function mergeStructuredIntoConfig(
       delete next.baseUrl;
     } else {
       next.baseUrl = structured.baseUrl;
+    }
+  }
+  if (structured.siteUrl !== undefined) {
+    if (structured.siteUrl.length === 0) {
+      delete next.siteUrl;
+    } else {
+      next.siteUrl = structured.siteUrl;
     }
   }
   if (structured.shopId !== undefined) {

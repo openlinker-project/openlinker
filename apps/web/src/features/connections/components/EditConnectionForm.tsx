@@ -29,6 +29,7 @@ interface EditConnectionFormProps {
 
 type StructuredField =
   | 'baseUrl'
+  | 'siteUrl'
   | 'shopId'
   | 'storefrontBaseUrl'
   | 'openlinkerCallbackBaseUrl'
@@ -133,6 +134,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     defaultValues: {
       name: connection.name,
       baseUrl: readString(connection.config, 'baseUrl'),
+      siteUrl: readString(connection.config, 'siteUrl'),
       shopId: readString(connection.config, 'shopId'),
       storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
       // #168 — pre-fill OL callback URL via the platform plugin when the

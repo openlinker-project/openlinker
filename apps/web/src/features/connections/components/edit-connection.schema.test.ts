@@ -7,6 +7,18 @@ describe('mergeStructuredIntoConfig', () => {
     expect(result).toEqual({ baseUrl: 'https://shop.example.com' });
   });
 
+  it('writes a new siteUrl into an empty config (WooCommerce, #975)', () => {
+    const result = mergeStructuredIntoConfig({}, { siteUrl: 'https://wc.example.com' });
+    expect(result).toEqual({ siteUrl: 'https://wc.example.com' });
+  });
+
+  it('deletes siteUrl when the structured input is cleared to an empty string', () => {
+    const base = { siteUrl: 'https://wc.example.com', customField: 'preserve-me' };
+    const result = mergeStructuredIntoConfig(base, { siteUrl: '' });
+    expect(result).toEqual({ customField: 'preserve-me' });
+    expect('siteUrl' in result).toBe(false);
+  });
+
   it('overwrites an existing baseUrl without losing unknown keys', () => {
     const base = {
       baseUrl: 'https://old.example.com',
