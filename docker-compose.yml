@@ -106,7 +106,10 @@ services:
       WORDPRESS_PASSWORD: admin123
       WORDPRESS_EMAIL: admin@openlinker.local
       WORDPRESS_SITE_TITLE: OpenLinker WC Dev
-      WORDPRESS_PLUGINS: woocommerce
+      # Pinned by URL: latest WooCommerce (>=10.8) requires WP 6.9, but the
+      # bitnamilegacy image is frozen at 6.7.1 — an unpinned 'woocommerce' slug
+      # breaks every fresh install. WC 10.1.0 requires WP >= 6.7.
+      WORDPRESS_PLUGINS: https://downloads.wordpress.org/plugin/woocommerce.10.1.0.zip
     ports:
       # 8082: avoids collision with PrestaShop on 8080
       - '127.0.0.1:8082:8080'
@@ -116,7 +119,8 @@ services:
     healthcheck:
       # /wp-json/wc/v3/ = WC namespace index, returns 200 without auth once WC is active.
       # NOT /wp-json/wc/v3/system_status (requires consumer key — chicken-and-egg at startup).
-      test: ['CMD', 'curl', '-sf', 'http://localhost:8080/wp-json/wc/v3/']
+      # php, not curl/wget — neither exists in the bitnamilegacy image.
+      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc/v3") === false ? 1 : 0);''']
       interval: 30s
       timeout: 10s
       retries: 10
