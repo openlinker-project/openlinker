@@ -195,14 +195,15 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 > caddy trust   # installs Caddy's local CA into the OS trust store (browser)
 > ```
 >
-> **Node does not read the OS trust store** — the API/worker processes will still reject Caddy's certificate unless you point `NODE_EXTRA_CA_CERTS` at its root CA before starting them:
+> **Node does not read the OS trust store** — the API and worker must be launched with `NODE_EXTRA_CA_CERTS` pointing at Caddy's root CA. It has to be inline on the command (Node reads it once at process launch, so `apps/api/.env.local` is silently ignored). Start them with exactly:
 >
 > ```bash
-> export NODE_EXTRA_CA_CERTS="$HOME/.local/share/caddy/pki/authorities/local/root.crt"
-> pnpm start:dev:api      # (and the same env for start:dev:worker)
+> NODE_EXTRA_CA_CERTS="$HOME/.local/share/caddy/pki/authorities/local/root.crt" pnpm start:dev:api
 > ```
 >
-> This variable **cannot live in `apps/api/.env.local`**: Node reads `NODE_EXTRA_CA_CERTS` once at process launch, before the app's env files are loaded, so a value set there is silently ignored. To set it once instead of exporting per terminal, add the `export` line to your shell profile (`~/.bashrc` / `~/.zshrc`).
+> ```bash
+> NODE_EXTRA_CA_CERTS="$HOME/.local/share/caddy/pki/authorities/local/root.crt" pnpm start:dev:worker
+> ```
 >
 > Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
 
