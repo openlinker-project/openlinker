@@ -62,10 +62,20 @@ EXISTING=$(wp eval '
   echo $p ? $p[0]->get_id() : "";
 ' --allow-root --no-debug 2>/dev/null | tail -1)
 
+# Products and orders have independent idempotency guards so that re-running
+# the script on an instance seeded before orders were added still creates them.
 if [ -n "$EXISTING" ]; then
-  log "Seed data already present (WC-SHIRT-001 id=$EXISTING). Skipping."
-  exit 0
-fi
+  log "Products already present (WC-SHIRT-001 id=$EXISTING). Skipping product creation."
+  SHIRT_ID=$EXISTING
+  # type=variation is required — wc_get_products() excludes variations by default.
+  VARS_ID=$(wp eval '
+    $p = wc_get_products(["sku" => "WC-JEANS-S", "limit" => 1, "type" => "variation"]);
+    echo $p ? $p[0]->get_id() : "";
+  ' --allow-root --no-debug 2>/dev/null | tail -1)
+  if [ -z "$VARS_ID" ]; then
+    log "ERROR: could not resolve WC-JEANS-S variation id"; exit 1
+  fi
+else
 
 # Get-or-create "Clothing" category via WP taxonomy API
 log "Creating category..."
@@ -157,4 +167,64 @@ if [ -z "$VARM_ID" ] || [ "$VARM_ID" = "0" ]; then
 fi
 
 log "Variable product WC-JEANS id=$JEANS_ID (S id=$VARS_ID stock=30, M id=$VARM_ID stock=20)."
+fi
+
+# Sample orders — give OL's OrderSource ingestion (modified_after polling) a feed
+# to read, and make the WC admin look like a live shop. Guarded separately from
+# products (see above).
+ORDERS_EXIST=$(wp eval '
+  $o = wc_get_orders(["billing_email" => "jan.kowalski@example.com", "limit" => 1]);
+  echo $o ? $o[0]->get_id() : "";
+' --allow-root --no-debug 2>/dev/null | tail -1)
+
+if [ -n "$ORDERS_EXIST" ]; then
+  log "Sample orders already present (order id=$ORDERS_EXIST). Skipping order creation."
+else
+  ORDER1_ID=$(wp eval "
+    \$addr = [
+      'first_name' => 'Jan', 'last_name' => 'Kowalski',
+      'email' => 'jan.kowalski@example.com', 'phone' => '+48600100200',
+      'address_1' => 'ul. Testowa 1', 'city' => 'Warszawa',
+      'postcode' => '00-001', 'country' => 'PL',
+    ];
+    \$order = wc_create_order();
+    \$order->add_product(wc_get_product($SHIRT_ID), 2);
+    \$order->set_address(\$addr, 'billing');
+    \$order->set_address(\$addr, 'shipping');
+    \$order->set_payment_method('cod');
+    \$order->set_payment_method_title('Cash on delivery');
+    \$order->calculate_totals();
+    \$order->update_status('processing', 'OL dev seed');
+    echo \$order->get_id();
+  " --allow-root --no-debug 2>/dev/null | tail -1)
+
+  if [ -z "$ORDER1_ID" ] || [ "$ORDER1_ID" = "0" ]; then
+    log "ERROR: failed to create sample order 1"; exit 1
+  fi
+  log "Order #$ORDER1_ID created (2x WC-SHIRT-001, processing, jan.kowalski@example.com)."
+
+  ORDER2_ID=$(wp eval "
+    \$addr = [
+      'first_name' => 'Anna', 'last_name' => 'Nowak',
+      'email' => 'anna.nowak@example.com', 'phone' => '+48600300400',
+      'address_1' => 'ul. Przykladowa 7', 'city' => 'Krakow',
+      'postcode' => '30-001', 'country' => 'PL',
+    ];
+    \$order = wc_create_order();
+    \$order->add_product(wc_get_product($VARS_ID), 1);
+    \$order->set_address(\$addr, 'billing');
+    \$order->set_address(\$addr, 'shipping');
+    \$order->set_payment_method('bacs');
+    \$order->set_payment_method_title('Bank transfer');
+    \$order->calculate_totals();
+    \$order->update_status('completed', 'OL dev seed');
+    echo \$order->get_id();
+  " --allow-root --no-debug 2>/dev/null | tail -1)
+
+  if [ -z "$ORDER2_ID" ] || [ "$ORDER2_ID" = "0" ]; then
+    log "ERROR: failed to create sample order 2"; exit 1
+  fi
+  log "Order #$ORDER2_ID created (1x WC-JEANS-S, completed, anna.nowak@example.com)."
+fi
+
 log "Seed complete. WC admin: http://localhost:8082/wp-admin (admin / admin123)."
