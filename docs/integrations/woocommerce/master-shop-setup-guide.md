@@ -228,6 +228,12 @@ WooCommerce is the **master** for its own products and stock. OpenLinker pulls t
 
 On the **WooCommerce connection detail** page, open the **Trigger sync** dialog and run `master.product.syncAll`, then `master.inventory.syncAll` (or wait for the scheduled runs). Watch progress under **Jobs & Logs**.
 
+> **`OL_PRODUCT_SYNC_PAGE_SIZE=100` must be set in `apps/worker/.env.local`** (the
+> `.env.example` you copied in § 3.1 already ships it). The worker's built-in page
+> size is 200, but WooCommerce REST caps `per_page` at 100 — without the override,
+> `master.product.syncAll` fails with `WooCommerce returned HTTP 400 … per_page must
+> be between 1 (inclusive) and 100 (inclusive)`.
+
 ### 5.2 Verify products in OpenLinker
 
 Open **Products**. You should see the WooCommerce products with:
