@@ -191,15 +191,7 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 > **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
 >
 > ```bash
-> caddy run --adapter caddyfile --config - <<'CADDY'
-> {
->   admin off
->   auto_https disable_redirects
-> }
-> https://localhost:8443 {
->   reverse_proxy localhost:8082
-> }
-> CADDY
+> printf '{\n admin off\n auto_https disable_redirects\n}\nhttps://localhost:8443 {\n reverse_proxy localhost:8082\n}\n' | caddy run --adapter caddyfile --config -
 > ```
 >
 > (`disable_redirects` matters: plain `caddy reverse-proxy` also opens an HTTP→HTTPS
