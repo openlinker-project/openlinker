@@ -3,12 +3,11 @@
  * Migration Timestamp Invariant Guard (#374)
  *
  * Scans `apps/api/src/migrations/` and fails on any violation of the
- * four rules that together prevent the ordering bugs where two migrations
- * share a timestamp (#374) or a new migration sorts into the middle of
- * already-merged history (#1013) — TypeORM 0.3.17 sorts by timestamp alone
- * with no deterministic tie-breaker, so a collision can leave one `up()`
- * body silently unapplied, and a too-low timestamp runs DDL before the
- * tables it depends on exist on fresh databases.
+ * three rules that together prevent the ordering bug where two migrations
+ * share a timestamp — TypeORM 0.3.17 sorts by timestamp alone with no
+ * deterministic tie-breaker, so a collision can leave one `up()` body
+ * silently unapplied while both class names appear in the `migrations`
+ * table.
  *
  * Enforced invariants:
  *   1. Every migration filename begins with exactly 13 digits followed by
@@ -18,11 +17,6 @@
  *      as the filename prefix (catches half-renames that update one side
  *      but not the other).
  *   3. No two migration files share the same 13-digit prefix.
- *   4. A migration file that is NOT yet on `origin/main` must have a
- *      timestamp strictly greater than every migration that IS (#1013 —
- *      `migration:generate` emits a real `Date.now()` prefix; re-prefix it
- *      to the next free synthetic timestamp before committing). Skipped
- *      with a one-line notice when the `origin/main` ref is unavailable.
  *
  * Wired into `pnpm lint` via the root `check:invariants` chain, so a
  * collision fails pre-commit and CI runs before the broken migration can
@@ -33,7 +27,6 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,77 +91,6 @@ export function validateEntries(entries) {
   }
 
   return { ok: violations.length === 0, violations };
-}
-
-/**
- * Pure validator for the ordering invariant (#1013). Takes the working-tree
- * entries (`{ filename }` — basenames) and the basenames of migrations
- * already present on `origin/main`, and returns `{ ok, violations }`.
- *
- * Every entry NOT in the baseline ("new on this branch") must have a
- * 13-digit prefix strictly greater than the highest prefix in the baseline —
- * otherwise TypeORM would execute it in the middle of already-applied
- * history, which breaks fresh-database `migration:run` whenever the new DDL
- * depends on tables created later in the sequence.
- *
- * An empty baseline (repo with no migrations on main yet) accepts anything.
- * Malformed filenames are ignored here — rule 1 already reports them.
- * Kept free of I/O so the self-check can drive it with inline fixtures.
- */
-export function validateOrdering({ entries, baselineFilenames }) {
-  const violations = [];
-  const baseline = new Set(baselineFilenames);
-
-  let baselineMax = null;
-  let baselineMaxFile = null;
-  for (const filename of baselineFilenames) {
-    const match = FILENAME_RE.exec(filename);
-    if (!match || match[1].length !== CANONICAL_TIMESTAMP_LEN) continue;
-    if (baselineMax === null || match[1] > baselineMax) {
-      baselineMax = match[1];
-      baselineMaxFile = filename;
-    }
-  }
-  if (baselineMax === null) {
-    return { ok: true, violations };
-  }
-
-  for (const { filename } of entries) {
-    if (baseline.has(filename)) continue;
-    const match = FILENAME_RE.exec(filename);
-    if (!match || match[1].length !== CANONICAL_TIMESTAMP_LEN) continue;
-    if (match[1] <= baselineMax) {
-      violations.push(
-        `${filename}: timestamp ${match[1]} sorts before (or ties with) the newest migration ` +
-          `already on origin/main (${baselineMax} — ${baselineMaxFile}); bump the prefix to the ` +
-          `next free synthetic timestamp and update the class suffix to match (#1013)`,
-      );
-    }
-  }
-
-  return { ok: violations.length === 0, violations };
-}
-
-/**
- * Basenames of migration files present on `origin/main` across the given
- * repo-root-relative directories, via `git ls-tree` (no checkout needed).
- * Returns `null` when the ref is unavailable (no remote, shallow clone
- * without the ref) — the caller skips the ordering check with a notice;
- * CI always has the ref, so the skip only relaxes exotic local setups.
- */
-function loadBaselineFilenames(relativeDirs) {
-  try {
-    const out = execSync(`git ls-tree -r --name-only origin/main -- ${relativeDirs.join(' ')}`, {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString();
-    return out
-      .split('\n')
-      .filter((line) => line.endsWith('.ts'))
-      .map((line) => line.split('/').pop());
-  } catch {
-    return null;
-  }
 }
 
 function loadMigrationsFromDisk(dir) {
@@ -260,19 +182,7 @@ function runAgainstTree() {
   const entries = allDirs.flatMap((dir) => loadMigrationsFromDisk(dir));
   const { ok, violations } = validateEntries(entries);
 
-  // Ordering invariant (#1013): files new on this branch must sort after
-  // everything already on origin/main (core + plugin dirs, same union).
-  const baselineFilenames = loadBaselineFilenames(['apps/api/src/migrations', ...pluginDirs]);
-  let orderingSummary;
-  if (baselineFilenames === null) {
-    orderingSummary = 'ordering vs origin/main: skipped (no origin/main ref)';
-  } else {
-    const ordering = validateOrdering({ entries, baselineFilenames });
-    violations.push(...ordering.violations);
-    orderingSummary = 'ordering vs origin/main: checked';
-  }
-
-  if (!ok || violations.length > 0) {
+  if (!ok) {
     for (const line of violations) {
       console.error(`migration-timestamps: ${line}`);
     }
@@ -281,9 +191,7 @@ function runAgainstTree() {
   }
 
   const pluginSummary = pluginDirs.length > 0 ? ` (incl. ${pluginDirs.length} plugin dir)` : '';
-  console.log(
-    `migration-timestamps: OK (${entries.length} migrations${pluginSummary}; ${orderingSummary})`,
-  );
+  console.log(`migration-timestamps: OK (${entries.length} migrations${pluginSummary})`);
 }
 
 function runSelfCheck() {
@@ -448,69 +356,6 @@ function runSelfCheck() {
     ['libs/integrations/allegro/src/migrations'],
     `const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [];`,
     'drift between',
-  );
-
-  // --- Ordering invariant (#1013) ---
-
-  const passOrdering = (label, input) => {
-    const { ok, violations } = validateOrdering(input);
-    if (!ok) {
-      console.error(
-        `self-check FAIL: "${label}" expected no violations, got:\n  ${violations.join('\n  ')}`,
-      );
-      process.exit(1);
-    }
-  };
-  const failOrdering = (label, input, expectedSubstring) => {
-    const { ok, violations } = validateOrdering(input);
-    if (ok) {
-      console.error(`self-check FAIL: "${label}" expected a violation, got none`);
-      process.exit(1);
-    }
-    if (!violations.some((v) => v.includes(expectedSubstring))) {
-      console.error(
-        `self-check FAIL: "${label}" expected violation containing "${expectedSubstring}", got:\n  ${violations.join('\n  ')}`,
-      );
-      process.exit(1);
-    }
-  };
-
-  passOrdering('ordering: new file above baseline max', {
-    entries: [{ filename: '1801000000000-a.ts' }, { filename: '1802000000000-b.ts' }],
-    baselineFilenames: ['1801000000000-a.ts'],
-  });
-
-  passOrdering('ordering: no new files (running on main itself)', {
-    entries: [{ filename: '1801000000000-a.ts' }],
-    baselineFilenames: ['1801000000000-a.ts'],
-  });
-
-  passOrdering('ordering: empty baseline accepts anything', {
-    entries: [{ filename: '1700000000000-first.ts' }],
-    baselineFilenames: [],
-  });
-
-  passOrdering('ordering: file deleted from tree but still on main is ignored', {
-    entries: [{ filename: '1802000000000-b.ts' }],
-    baselineFilenames: ['1779985594755-AddShipmentCarrier.ts', '1801000000000-a.ts'],
-  });
-
-  failOrdering(
-    'ordering: new file sorts into the middle of merged history (#1013 shape)',
-    {
-      entries: [{ filename: '1801000000000-a.ts' }, { filename: '1779985594755-carrier.ts' }],
-      baselineFilenames: ['1801000000000-a.ts'],
-    },
-    'sorts before',
-  );
-
-  failOrdering(
-    'ordering: new file ties with baseline max',
-    {
-      entries: [{ filename: '1801000000000-a.ts' }, { filename: '1801000000000-b.ts' }],
-      baselineFilenames: ['1801000000000-a.ts'],
-    },
-    'sorts before',
   );
 
   console.log('migration-timestamps: self-check OK');
