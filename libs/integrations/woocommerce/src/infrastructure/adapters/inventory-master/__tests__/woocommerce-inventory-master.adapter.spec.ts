@@ -1,24 +1,34 @@
 /**
+ * WooCommerce Inventory Master Adapter — unit tests
+ *
+ * Uses the published in-memory identifier-mapping fake
+ * (`@openlinker/core/identifier-mapping/testing`) rather than a hand-rolled
+ * jest mock, so the composite-key format (`${externalId}:${connectionId}`)
+ * produced by `batchGetOrCreateInternalIds` can never silently drift from the
+ * key the adapter reads back (the B1 regression this guards against).
+ *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/inventory-master/__tests__
  */
 import { WooCommerceInventoryMasterAdapter } from '../woocommerce-inventory-master.adapter';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceNotSupportedException } from '../../../../domain/exceptions/woocommerce-not-supported.exception';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
-import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
+import { DEFAULT_UNMANAGED_STOCK_QUANTITY } from '../../../../domain/types/woocommerce-config.types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const CONNECTION_ID = 'conn-wc-1';
 
-const makeConnection = (): Connection =>
+const makeConnection = (config: Record<string, unknown> = { siteUrl: 'https://myshop.example.com' }): Connection =>
   ({
     id: CONNECTION_ID,
     platformType: 'woocommerce',
     name: 'Test WC',
     status: 'active',
-    config: { siteUrl: 'https://myshop.example.com' },
+    config,
     credentialsRef: 'cred-ref',
     enabledCapabilities: ['InventoryMaster'],
     adapterKey: 'woocommerce.restapi.v3',
@@ -30,38 +40,31 @@ function makeHttpClient(): jest.Mocked<IWooCommerceHttpClient> {
   return { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() } as unknown as jest.Mocked<IWooCommerceHttpClient>;
 }
 
-function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
-  return {
-    getExternalIds: jest.fn(),
-    getOrCreateInternalId: jest.fn(),
-    batchGetOrCreateInternalIds: jest.fn(),
-    getInternalId: jest.fn(),
-    createMapping: jest.fn(),
-  } as unknown as jest.Mocked<IdentifierMappingPort>;
-}
-
-function setupProductMapping(
-  identifierMapping: jest.Mocked<IdentifierMappingPort>,
+/**
+ * Seed a Product → WC-id mapping into the fake so `resolveWcProductId` finds it.
+ */
+function seedProductMapping(
+  identifierMapping: InMemoryIdentifierMappingAdapter,
   productId: string,
   wcId: number,
 ): void {
-  identifierMapping.getExternalIds.mockImplementation((entityType, id) => {
-    if (entityType === CORE_ENTITY_TYPE.Product && id === productId) {
-      return Promise.resolve([{ externalId: String(wcId), connectionId: CONNECTION_ID, entityType, platformType: 'woocommerce' }]);
-    }
-    return Promise.resolve([]);
+  identifierMapping.seed({
+    entityType: CORE_ENTITY_TYPE.Product,
+    externalId: String(wcId),
+    connectionId: CONNECTION_ID,
+    internalId: productId,
   });
 }
 
-function makeSimpleProduct(overrides: Record<string, unknown> = {}) {
+function makeSimpleProduct(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { id: 1, type: 'simple', stock_quantity: 10, manage_stock: true, ...overrides };
 }
 
-function makeVariableProduct(variationIds: number[]) {
+function makeVariableProduct(variationIds: number[]): Record<string, unknown> {
   return { id: 1, type: 'variable', variations: variationIds };
 }
 
-function makeVariation(id: number, stock_quantity: number | null = 5) {
+function makeVariation(id: number, stock_quantity: number | null = 5): Record<string, unknown> {
   return { id, stock_quantity, manage_stock: true };
 }
 
@@ -69,12 +72,12 @@ function makeVariation(id: number, stock_quantity: number | null = 5) {
 
 describe('WooCommerceInventoryMasterAdapter', () => {
   let httpClient: jest.Mocked<IWooCommerceHttpClient>;
-  let identifierMapping: jest.Mocked<IdentifierMappingPort>;
+  let identifierMapping: InMemoryIdentifierMappingAdapter;
   let adapter: WooCommerceInventoryMasterAdapter;
 
   beforeEach(() => {
     httpClient = makeHttpClient();
-    identifierMapping = makeIdentifierMapping();
+    identifierMapping = new InMemoryIdentifierMappingAdapter({ [CONNECTION_ID]: 'woocommerce' });
     adapter = new WooCommerceInventoryMasterAdapter(httpClient, identifierMapping, makeConnection());
   });
 
@@ -82,51 +85,56 @@ describe('WooCommerceInventoryMasterAdapter', () => {
 
   describe('listInventory', () => {
     it('should return a single inventory row with synthetic variantId for a simple product', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-1', 42);
+      seedProductMapping(identifierMapping, 'ol-product-1', 42);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 42, stock_quantity: 10 }));
-      identifierMapping.getOrCreateInternalId
-        .mockResolvedValueOnce('ol-variant-synthetic')
-        .mockResolvedValueOnce('ol-inventory-1');
 
       const rows = await adapter.listInventory('ol-product-1');
 
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         productId: 'ol-product-1',
-        variantId: 'ol-variant-synthetic',
-        id: 'ol-inventory-1',
         quantity: 10,
         reserved: 0,
         available: 10,
       });
-      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
-        CORE_ENTITY_TYPE.ProductVariant,
-        'product:42',
-        CONNECTION_ID,
-        expect.objectContaining({ parentEntityType: CORE_ENTITY_TYPE.Product }),
-      );
+      // The synthetic variant id was minted through getOrCreateInternalId
+      // keyed on `product:42` — assert it round-trips to a defined internal id.
+      expect(rows[0].variantId).toBeDefined();
+      expect(
+        await identifierMapping.getInternalId(CORE_ENTITY_TYPE.ProductVariant, 'product:42', CONNECTION_ID),
+      ).toBe(rows[0].variantId);
+      expect(rows[0].id).toBeDefined();
     });
 
     it('should return one inventory row per variation for a variable product', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-2', 99);
+      seedProductMapping(identifierMapping, 'ol-product-2', 99);
       httpClient.get
         .mockResolvedValueOnce(makeVariableProduct([10, 11]))      // product
         .mockResolvedValueOnce([makeVariation(10, 3), makeVariation(11, 7)]); // variations page 1
-      identifierMapping.batchGetOrCreateInternalIds
-        .mockResolvedValueOnce(new Map([[`10:${CONNECTION_ID}`, 'ol-var-10'], [`11:${CONNECTION_ID}`, 'ol-var-11']]))
-        .mockResolvedValueOnce(new Map([[`stock-var:10:${CONNECTION_ID}`, 'ol-inv-10'], [`stock-var:11:${CONNECTION_ID}`, 'ol-inv-11']]));
 
       const rows = await adapter.listInventory('ol-product-2');
 
       expect(rows).toHaveLength(2);
-      expect(rows[0]).toMatchObject({ variantId: 'ol-var-10', quantity: 3 });
-      expect(rows[1]).toMatchObject({ variantId: 'ol-var-11', quantity: 7 });
+      expect(rows[0]).toMatchObject({ quantity: 3 });
+      expect(rows[1]).toMatchObject({ quantity: 7 });
+      // B1 guard: each row must carry a DEFINED variantId/id — a composite-key
+      // mismatch would leave these undefined.
+      expect(rows[0].variantId).toBeDefined();
+      expect(rows[0].id).toBeDefined();
+      expect(rows[1].variantId).toBeDefined();
+      expect(rows[1].id).toBeDefined();
+      // variantIds resolve to the variation external ids that were created.
+      expect(
+        await identifierMapping.getInternalId(CORE_ENTITY_TYPE.ProductVariant, '10', CONNECTION_ID),
+      ).toBe(rows[0].variantId);
+      expect(
+        await identifierMapping.getInternalId(CORE_ENTITY_TYPE.ProductVariant, '11', CONNECTION_ID),
+      ).toBe(rows[1].variantId);
     });
 
-    it('should map stock_quantity = null to quantity = 0', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-3', 55);
+    it('should map stock_quantity = null to quantity = 0 for managed stock', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-3', 55);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 55, stock_quantity: null }));
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
 
       const [row] = await adapter.listInventory('ol-product-3');
 
@@ -134,19 +142,42 @@ describe('WooCommerceInventoryMasterAdapter', () => {
       expect(row.available).toBe(0);
     });
 
-    it('should map stock_quantity = null (manage_stock=false) to quantity = 0', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-4', 56);
-      httpClient.get.mockResolvedValue({ id: 56, type: 'simple', stock_quantity: null, manage_stock: false });
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
+    it('should emit quantity=0 when manage_stock=false and stock_status is not instock', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-4', 56);
+      httpClient.get.mockResolvedValue({ id: 56, type: 'simple', stock_quantity: null, manage_stock: false, stock_status: 'outofstock' });
 
       const [row] = await adapter.listInventory('ol-product-4');
 
       expect(row.quantity).toBe(0);
     });
 
-    it('should throw WooCommerceResourceNotFoundException when product has no mapping', async () => {
-      identifierMapping.getExternalIds.mockResolvedValue([]);
+    it('should emit the default unmanaged cap when manage_stock=false and stock_status=instock', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-4b', 57);
+      httpClient.get.mockResolvedValue({ id: 57, type: 'simple', stock_quantity: null, manage_stock: false, stock_status: 'instock' });
 
+      const [row] = await adapter.listInventory('ol-product-4b');
+
+      // manage_stock=false + instock → per-connection cap (default), NOT 0:
+      // master is authoritative; reporting 0 would de-list a sellable product.
+      expect(row.quantity).toBe(DEFAULT_UNMANAGED_STOCK_QUANTITY);
+      expect(row.available).toBe(DEFAULT_UNMANAGED_STOCK_QUANTITY);
+    });
+
+    it('should honour a per-connection unmanagedStockQuantity override', async () => {
+      const customAdapter = new WooCommerceInventoryMasterAdapter(
+        httpClient,
+        identifierMapping,
+        makeConnection({ siteUrl: 'https://myshop.example.com', inventory: { unmanagedStockQuantity: 5 } }),
+      );
+      seedProductMapping(identifierMapping, 'ol-product-4c', 58);
+      httpClient.get.mockResolvedValue({ id: 58, type: 'simple', stock_quantity: null, manage_stock: false, stock_status: 'instock' });
+
+      const [row] = await customAdapter.listInventory('ol-product-4c');
+
+      expect(row.quantity).toBe(5);
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when product has no mapping', async () => {
       await expect(adapter.listInventory('ol-unmapped')).rejects.toBeInstanceOf(
         WooCommerceResourceNotFoundException,
       );
@@ -157,9 +188,8 @@ describe('WooCommerceInventoryMasterAdapter', () => {
 
   describe('getInventory', () => {
     it('should return the first row from listInventory', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-5', 10);
+      seedProductMapping(identifierMapping, 'ol-product-5', 10);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 10, stock_quantity: 5 }));
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
 
       const inv = await adapter.getInventory('ol-product-5');
 
@@ -167,11 +197,9 @@ describe('WooCommerceInventoryMasterAdapter', () => {
     });
 
     it('should throw WooCommerceResourceNotFoundException when listInventory returns empty', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-6', 11);
+      seedProductMapping(identifierMapping, 'ol-product-6', 11);
       // variable product with no variations
-      httpClient.get.mockResolvedValue({ id: 11, type: 'variable', variations: [] });
       httpClient.get.mockResolvedValueOnce({ id: 11, type: 'variable' }).mockResolvedValueOnce([]);
-      identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(new Map());
 
       await expect(adapter.getInventory('ol-product-6')).rejects.toBeInstanceOf(
         WooCommerceResourceNotFoundException,
@@ -183,9 +211,8 @@ describe('WooCommerceInventoryMasterAdapter', () => {
 
   describe('getAvailableQuantity', () => {
     it('should return inventory.available', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-7', 20);
+      seedProductMapping(identifierMapping, 'ol-product-7', 20);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 20, stock_quantity: 8 }));
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
 
       const qty = await adapter.getAvailableQuantity('ol-product-7');
 
@@ -197,9 +224,8 @@ describe('WooCommerceInventoryMasterAdapter', () => {
 
   describe('adjustInventory', () => {
     it('should read current stock, compute absolute, and PUT for a simple product', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-8', 30);
+      seedProductMapping(identifierMapping, 'ol-product-8', 30);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 30, stock_quantity: 10 }));
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
 
       await adapter.adjustInventory({ productId: 'ol-product-8', quantity: 5 });
 
@@ -210,9 +236,8 @@ describe('WooCommerceInventoryMasterAdapter', () => {
     });
 
     it('should clamp newQuantity to 0 when delta exceeds current stock', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-8b', 31);
+      seedProductMapping(identifierMapping, 'ol-product-8b', 31);
       httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 31, stock_quantity: 3 }));
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-id');
 
       await adapter.adjustInventory({ productId: 'ol-product-8b', quantity: -10 });
 
@@ -223,17 +248,17 @@ describe('WooCommerceInventoryMasterAdapter', () => {
     });
 
     it('should resolve variation and PUT to variations endpoint', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-9', 40);
+      seedProductMapping(identifierMapping, 'ol-product-9', 40);
+      // Seed the variant → WC-variation-id mapping the adapter reads back.
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: '55',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol-var-55',
+      });
       httpClient.get
         .mockResolvedValueOnce({ id: 40, type: 'variable' })
         .mockResolvedValueOnce(makeVariation(55, 7));
-      identifierMapping.getExternalIds
-        .mockImplementation((entityType, id) => {
-          if (entityType === CORE_ENTITY_TYPE.Product) return Promise.resolve([{ externalId: '40', connectionId: CONNECTION_ID, entityType, platformType: 'woocommerce' }]);
-          if (entityType === CORE_ENTITY_TYPE.ProductVariant && id === 'ol-var-55') return Promise.resolve([{ externalId: '55', connectionId: CONNECTION_ID, entityType, platformType: 'woocommerce' }]);
-          return Promise.resolve([]);
-        });
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol-inv-55');
 
       await adapter.adjustInventory({ productId: 'ol-product-9', quantity: 3, variantId: 'ol-var-55' });
 
@@ -244,15 +269,13 @@ describe('WooCommerceInventoryMasterAdapter', () => {
     });
 
     it('should throw WooCommerceResourceNotFoundException when product is not mapped', async () => {
-      identifierMapping.getExternalIds.mockResolvedValue([]);
-
       await expect(
         adapter.adjustInventory({ productId: 'ol-unmapped', quantity: 1 }),
       ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
     });
 
     it('should throw WooCommerceNotSupportedException for variable product without variantId', async () => {
-      setupProductMapping(identifierMapping, 'ol-product-10', 50);
+      seedProductMapping(identifierMapping, 'ol-product-10', 50);
       httpClient.get.mockResolvedValue({ id: 50, type: 'variable' });
 
       await expect(

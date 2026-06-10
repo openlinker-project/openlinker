@@ -6,12 +6,23 @@
  * for WooCommerce REST API v3.
  *
  * Key design decisions:
- * - createOrder: idempotent via identifier mapping + _ol_order_id meta_data on the WC order
- * - Customer provisioning: POST /customers with email from order metadata; degrades to guest on failure
- * - destination_address_mappings: not applicable — WC has no address entities; addresses are
- *   embedded inline in the order payload
- * - DuplicateIdentifierMappingError: handled for both Order and Customer createMapping calls
- *   to prevent duplicate WC resources on concurrent retries
+ * - createOrder: the adapter does NOT dedup. It POSTs to WC and returns the
+ *   WC-native order id (#877). The `_ol_order_id` meta_data it stamps is a
+ *   forensic/recovery marker only (WC REST cannot filter orders by meta_data
+ *   without an extension, so it cannot be read back as a skip-check). Real
+ *   idempotency is core-owned: OrderSyncService's per-(order,destination) lock
+ *   (#906) + update-or-create mapping check (#909).
+ * - Customer provisioning: POST /customers with email when available.
+ *   auth failures (401/403) propagate as WooCommerceAuthFailureException — they
+ *   are NOT swallowed into guest-order creation (#877).
+ * - buyerEmail: WooCommerce adapter reads buyer email from order.metadata?.buyerEmail,
+ *   which OrderSyncService populates from the source order's customerEmail (#948).
+ *   When absent (hash-only PII mode, or a source without an email), customer
+ *   provisioning degrades to guest (customer_id = 0).
+ * - destination_address_mappings: not applicable — WC has no address entities; addresses
+ *   are embedded inline in the order payload.
+ * - DuplicateIdentifierMappingError: not applicable here — mapping writes are in
+ *   OrderSyncService.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
@@ -31,8 +42,13 @@ import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/c
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
+import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
+import { WooCommerceAuthFailureException } from '../../../domain/exceptions/woocommerce-auth-failure.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
+import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
+import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
+import { toPositiveInt } from '../../utils/woocommerce-utils';
 import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
@@ -56,29 +72,6 @@ export function isValidEmail(value: unknown): value is string {
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-/**
- * Converts a string identifier-mapping externalId to a positive WC integer ID.
- * Throws WooCommerceResourceNotFoundException rather than silently producing NaN —
- * JSON.stringify({ id: NaN }) → { "id": null } would corrupt the WC resource.
- */
-export function toPositiveInt(
-  value: string,
-  entityType: string,
-  entityId: string,
-  connectionId: string,
-): number {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new WooCommerceResourceNotFoundException(
-      `Corrupted mapping: "${value}" is not a valid positive integer WC ID for ${entityType} ${entityId}`,
-      entityType,
-      entityId,
-      connectionId,
-    );
-  }
-  return n;
-}
-
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
@@ -99,47 +92,42 @@ export class WooCommerceOrderProcessorAdapter
       `createOrder: status=${order.status} items=${order.items.length} (connection: ${this.connection.id})`,
     );
 
-    // Step 1 — assert internalOrderId (always set by OrderIngestionService)
-    const internalOrderId = order.metadata?.internalOrderId;
-    if (typeof internalOrderId !== 'string' || internalOrderId.length === 0) {
-      throw new WooCommerceOrderProcessingException(
-        'createOrder called without metadata.internalOrderId — upstream programming error',
-        this.connection.id,
-      );
-    }
-
-    // Step 2 — idempotency: if we already created a WC order for this OL order, return early
-    const existingIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Order,
-      internalOrderId,
-    );
-    const existing = existingIds.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-    if (existing) {
-      this.logger.debug(
-        `createOrder: idempotent return for order ${internalOrderId} (WC ${existing.externalId})`,
-      );
-      return { orderId: internalOrderId };
-    }
-
-    // Step 3 — extract and validate buyer email from order metadata
+    // Step 1 — extract and validate buyer email from order metadata.
+    // OrderSyncService populates metadata.buyerEmail from the source order's
+    // customerEmail (#948); absent in hash-only PII mode or emailless sources.
     const rawEmail = order.metadata?.buyerEmail;
     const buyerEmail = isValidEmail(rawEmail) ? rawEmail : undefined;
     if (!buyerEmail) {
       this.logger.debug(
-        `createOrder: billing.email absent or invalid for order ${internalOrderId} — WC order confirmation will not be sent`,
+        `createOrder: billing.email absent or invalid — WC order confirmation will not be sent`,
       );
     }
 
-    // Step 4 — resolve or provision WC customer
+    // Step 2 — resolve or provision WC customer
     const customerId = await this.resolveCustomerId(order, buyerEmail);
 
-    // Step 5 — resolve line items (throws on any unresolvable or corrupted mapping)
+    // Step 3 — resolve line items (throws on any unresolvable or corrupted mapping)
     const lineItems = await this.resolveLineItems(order.items);
 
-    // Step 6 — build shipping lines
+    // Step 4 — build shipping lines
     const shippingLines = this.buildShippingLines(order);
 
-    // Step 7 — build WC order payload
+    // Step 5 — build WC order payload.
+    // _ol_order_id is a forensic/recovery marker only — NOT a dedup guard. WC REST
+    // cannot filter orders by meta_data without an extension, so the adapter cannot
+    // (and must not) read it back to skip a duplicate. Real idempotency is owned by
+    // core's OrderSyncService — the per-(order,destination) lock (#906) plus the
+    // update-or-create mapping check (#909). The marker only lets operators or
+    // recovery tooling identify the WC order an OL order produced when a response is
+    // lost after a successful POST.
+    const internalOrderId = order.metadata?.internalOrderId;
+
+    // Gate set_paid: only mark paid for fulfilled/in-progress states. A pending,
+    // cancelled, or refunded order must not be flipped to paid (WC's set_paid:true
+    // forces the order into a paid state and stamps date_paid regardless of status).
+    const markPaid =
+      order.status !== 'pending' && order.status !== 'cancelled' && order.status !== 'refunded';
+
     const payload: WooCommerceOrderCreateRequest = {
       status: WC_ORDER_STATUS_MAP[order.status],
       customer_id: customerId,
@@ -152,44 +140,30 @@ export class WooCommerceOrderProcessorAdapter
       ...(shippingLines.length > 0 ? { shipping_lines: shippingLines } : {}),
       payment_method: 'other',
       payment_method_title: 'External',
-      set_paid: true,
-      meta_data: [{ key: '_ol_order_id', value: internalOrderId }],
+      ...(markPaid ? { set_paid: true } : {}),
+      ...(typeof internalOrderId === 'string' && internalOrderId.length > 0
+        ? { meta_data: [{ key: '_ol_order_id', value: internalOrderId }] }
+        : {}),
     };
 
-    // Step 8 — create WC order
+    // Step 6 — create WC order; return WC-native id as orderId (#877 B2).
+    // Identifier-mapping (OL idempotency) and order-mapping writes are owned by
+    // OrderSyncService — not the adapter's concern.
     const raw = await this.httpClient.post<WooCommerceOrderResponse>(
       '/wp-json/wc/v3/orders',
       payload,
     );
 
-    // Step 9 — register identifier mapping with concurrent-duplicate handler
-    try {
-      await this.identifierMapping.createMapping(
+    if (raw.id === undefined) {
+      throw new WooCommerceResourceNotFoundException(
+        `WooCommerce returned order without ID`,
         CORE_ENTITY_TYPE.Order,
-        String(raw.id),
+        `(${payload.status})`,
         this.connection.id,
-        internalOrderId,
       );
-    } catch (err) {
-      if (err instanceof DuplicateIdentifierMappingError) {
-        const winners = await this.identifierMapping.getExternalIds(
-          CORE_ENTITY_TYPE.Order,
-          internalOrderId,
-        );
-        const winner = winners.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-        if (winner) {
-          this.logger.warn(
-            `createOrder: concurrent duplicate for ${internalOrderId} — returning winner WC ${winner.externalId}`,
-          );
-          return { orderId: internalOrderId };
-        }
-        throw err; // Transient state — let the job retry
-      }
-      throw err;
     }
 
-    // Step 10
-    return { orderId: internalOrderId, orderNumber: raw.number };
+    return { orderId: String(raw.id), orderNumber: raw.number };
   }
 
   // ─── OrderFulfillmentUpdater ──────────────────────────────────────────────
@@ -205,11 +179,8 @@ export class WooCommerceOrderProcessorAdapter
 
     // Path-traversal defence — externalOrderId must be a bare positive integer string
     if (!/^\d+$/.test(input.externalOrderId)) {
-      throw new WooCommerceResourceNotFoundException(
+      throw new WooCommerceInvalidArgumentException(
         `Invalid externalOrderId "${input.externalOrderId}" — expected a WC integer ID`,
-        CORE_ENTITY_TYPE.Order,
-        input.externalOrderId,
-        this.connection.id,
       );
     }
 
@@ -243,7 +214,10 @@ export class WooCommerceOrderProcessorAdapter
 
   /**
    * Resolves or provisions a WC customer account for the given OL internal customer.
-   * Degrades to guest (customer_id = 0) on any non-auth failure to preserve order creation.
+   * Degrades to guest (customer_id = 0) on non-auth, non-critical failure.
+   * Auth failures (401/403) are NOT swallowed — they propagate as
+   * WooCommerceAuthFailureException so the sync runner can flag the connection
+   * for re-authentication (#877 I1).
    */
   private async resolveCustomerId(
     order: OrderCreate,
@@ -298,6 +272,14 @@ export class WooCommerceOrderProcessorAdapter
       }
       wcCustomerId = created.id;
     } catch (err) {
+      // Auth failures must propagate — invalid credentials require re-authentication.
+      // Swallowing a 401/403 into a guest order masks a broken connection (#877 I1).
+      if (err instanceof WooCommerceUnauthorizedException) {
+        throw new WooCommerceAuthFailureException(
+          `WooCommerce auth failure provisioning customer ${customerId} on connection ${this.connection.id}: ${String(err)}`,
+          this.connection.id,
+        );
+      }
       if (err instanceof WooCommerceHttpResponseException && err.statusCode === 400) {
         // WC returns 400 + code 'registration-error-email-exists' for duplicate emails —
         // look up the existing customer account by email
@@ -314,7 +296,8 @@ export class WooCommerceOrderProcessorAdapter
         }
         wcCustomerId = match.id;
       } else {
-        // Auth or network failure — degrade to guest, do not abort order creation
+        // Non-auth, non-400 failure (network, rate-limit, etc.) — degrade to guest,
+        // do not abort order creation.
         this.logger.warn(
           `resolveCustomerId: WC customer API error for ${customerId} — guest order: ${String(err)}`,
         );
@@ -382,12 +365,20 @@ export class WooCommerceOrderProcessorAdapter
           this.connection.id,
         );
       }
-      const productId = toPositiveInt(
-        productMapping.externalId,
-        CORE_ENTITY_TYPE.Product,
-        item.productId,
-        this.connection.id,
-      );
+      let productId: number;
+      try {
+        productId = toPositiveInt(productMapping.externalId, 'product id');
+      } catch (err) {
+        if (err instanceof WooCommerceInvalidIdentifierException) {
+          throw new WooCommerceResourceNotFoundException(
+            `Corrupted mapping: "${productMapping.externalId}" is not a valid positive integer WC ID for ${CORE_ENTITY_TYPE.Product} ${item.productId}`,
+            CORE_ENTITY_TYPE.Product,
+            item.productId,
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
 
       // Resolve variant (optional)
       let variationId: number | undefined;
@@ -405,19 +396,32 @@ export class WooCommerceOrderProcessorAdapter
             this.connection.id,
           );
         }
-        variationId = toPositiveInt(
-          variantMapping.externalId,
-          CORE_ENTITY_TYPE.ProductVariant,
-          item.variantId,
-          this.connection.id,
-        );
+        try {
+          variationId = toPositiveInt(variantMapping.externalId, 'variation id');
+        } catch (err) {
+          if (err instanceof WooCommerceInvalidIdentifierException) {
+            throw new WooCommerceResourceNotFoundException(
+              `Corrupted mapping: "${variantMapping.externalId}" is not a valid positive integer WC ID for ${CORE_ENTITY_TYPE.ProductVariant} ${item.variantId}`,
+              CORE_ENTITY_TYPE.ProductVariant,
+              item.variantId,
+              this.connection.id,
+            );
+          }
+          throw err;
+        }
       }
+
+      // Pin buyer-paid price via subtotal/total. WC REST line_items.price is read-only
+      // (reflects catalog price); subtotal/total carry the actual buyer-paid amounts.
+      const lineSubtotal = (item.price * item.quantity).toFixed(2);
+      const lineTotal = lineSubtotal;
 
       lineItems.push({
         product_id: productId,
         ...(variationId !== undefined ? { variation_id: variationId } : {}),
         quantity: item.quantity,
-        price: item.price.toFixed(2),
+        subtotal: lineSubtotal,
+        total: lineTotal,
         ...(item.name ? { name: item.name } : {}),
       });
     }

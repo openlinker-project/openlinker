@@ -17,6 +17,10 @@ export class WooCommerceHttpResponseException extends Error {
   constructor(
     readonly statusCode: number,
     message: string,
+    // Machine-readable WC error code from the response body (e.g.
+    // `product_invalid_sku`), when present. Lets the adapter map known codes
+    // to domain exceptions without parsing the human-readable message.
+    readonly errorCode?: string,
   ) {
     super(message);
     this.name = 'WooCommerceHttpResponseException';

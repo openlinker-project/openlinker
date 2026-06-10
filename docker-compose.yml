@@ -90,7 +90,7 @@ services:
       retries: 5
 
   woocommerce:
-    image: bitnami/wordpress:latest
+    image: bitnami/wordpress:6.7.1
     platform: linux/amd64
     container_name: openlinker-woocommerce
     depends_on:
