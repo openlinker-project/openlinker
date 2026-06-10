@@ -385,6 +385,28 @@ re-open the connection edit page and the dropdown will list it.
 > - `5901234567893`
 > - `5901112223330`
 > - `5909876543213`
+
+#### Common Allegro offer rejections (and their single root causes)
+
+A rejected record usually lists many errors with one underlying cause. The two
+clusters hit during this guide's walkthrough:
+
+1. **One Fulfillment cluster** — `W One Fulfillment możliwa jest wysyłka wyłącznie
+   do magazynu…`, `…musisz ustawić adres do wycofania`, `…musisz ustawić stawkę
+   VAT`, `AvailableStockMustEqualToZero` (stock must be 0), `…musisz mieć aktywną
+   usługę One Fulfillment`, plus mismatched return-policy type. **Root cause:**
+   the offer references a **One Fulfillment** delivery price list (and/or OF-type
+   return terms) — Magazyn Allegro then demands its whole setup. **Fix:** create
+   and select a **standard** delivery price list and standard return terms (Sales
+   Center → Ustawienia sprzedaży → Cenniki dostawy / Warunki zwrotów — make sure
+   the One Fulfillment variant is *not* selected), then retry.
+
+2. **Existing-catalog-product cluster** — `Kategoria oferty (X) nie pasuje do
+   kategorii produktu (Y)` and `Niepoprawna wartość parametru Marka…`. **Root
+   cause:** the EAN matched an **existing Allegro catalog product card**, and the
+   card dictates the offer's category and brand. **Fix:** either set the offer's
+   category to the one named in the error (the product card's), or use a barcode
+   that doesn't collide with an existing card.
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
 
 Verify under **Listings**: each offer row shows its linked product and the Allegro publication status.
