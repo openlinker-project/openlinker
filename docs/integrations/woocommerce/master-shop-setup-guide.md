@@ -373,6 +373,18 @@ re-open the connection edit page and the dropdown will list it.
 > rotates the credentials in place. Then return to the edit page.
 
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
+
+> **EAN/GTIN must be a real GS1 number — made-up prefixes are rejected.** Allegro
+> validates the barcode against GS1 allocation ranges and rejects offers with
+> `ProductValidationException: GS1 nie nadaje numerów EAN (GTIN), które zaczynają
+> się od 990…` for numbers from unallocated ranges (e.g. the `990–999` coupon
+> area) or with a wrong check digit. For dev/sandbox testing use a well-formed
+> EAN-13 with an allocated prefix (`590` = GS1 Poland) and a valid check digit,
+> e.g.:
+>
+> - `5901234567893`
+> - `5901112223330`
+> - `5909876543213`
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
 
 Verify under **Listings**: each offer row shows its linked product and the Allegro publication status.
