@@ -321,10 +321,12 @@ Open the Allegro connection's **edit form** and set **Product catalog** (`config
 
 A fresh Allegro (sandbox) account has no responsible-producer entries — OpenLinker
 only *lists* them (`GET /sale/responsible-producers`), it never creates them.
-Add one either in the Allegro UI — **Moje Allegro → Sprzedaż → Ustawienia
-sprzedaży → Dane producentów** (on sandbox: the same path on
-`allegro.pl.allegrosandbox.pl`, logged in as the seller account) — or directly
-via the API (works on sandbox; the bearer token must be a **user**
+Add one either in the Allegro **Sales Center** — direct link
+`https://salescenter.allegro.com/responsible-producers` (sandbox:
+`https://salescenter.allegro.com.allegrosandbox.pl/responsible-producers`),
+logged in as the seller account; the consumer-side "Moje Allegro" menu does
+**not** expose this page, but "Moja sprzedaż" takes you into Sales Center —
+or directly via the API (works on sandbox; the bearer token must be a **user**
 OAuth token for the seller account with the `allegro:api:sale:settings:write`
 scope — e.g. obtained the same way as during the connection OAuth in the
 [Allegro Setup Guide](../allegro/setup-guide.md)):
