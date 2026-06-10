@@ -202,6 +202,8 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 > pnpm start:dev:api      # (and the same env for start:dev:worker)
 > ```
 >
+> This variable **cannot live in `apps/api/.env.local`**: Node reads `NODE_EXTRA_CA_CERTS` once at process launch, before the app's env files are loaded, so a value set there is silently ignored. To set it once instead of exporting per terminal, add the `export` line to your shell profile (`~/.bashrc` / `~/.zshrc`).
+>
 > Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
 
 **[Screenshot Placeholder: WooCommerce setup form, filled]**
