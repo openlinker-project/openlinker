@@ -307,6 +307,16 @@ Open the Allegro connection's **edit form** and set **Product catalog** (`config
 
 ### 6.3 Create offers from the WooCommerce catalog
 
+> **A fresh (sandbox) Allegro seller account also needs after-sales templates** —
+> without them Allegro rejects every offer with `ReturnPolicyNotDefinedException`
+> ("Nie posiadasz żadnych warunków zwrotu") / `ImpliedWarrantyNotDefinedException`
+> ("…warunków reklamacji"). In **Sales Center → Ustawienia sprzedaży** create at
+> least one entry in each of: **Warunki zwrotów** (return terms), **Warunki
+> reklamacji** (complaint terms), and **Cenniki dostawy** (delivery price list —
+> offers need shipping rates too). Any sane sandbox values work. OpenLinker
+> discovers these from the account at offer-creation time; after adding them,
+> retry the failed records.
+
 > **Complete the Allegro seller defaults first** (GPSR — required by Allegro for
 > every new offer). On the Allegro connection's **edit page**, fill the
 > *Seller defaults* section: ship-from **location** (voivodeship, city, post
