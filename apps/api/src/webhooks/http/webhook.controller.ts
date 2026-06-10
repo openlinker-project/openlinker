@@ -11,7 +11,6 @@ import {
   Controller,
   Post,
   Param,
-  Body,
   Headers,
   Req,
   HttpCode,
@@ -23,11 +22,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiHeader } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
-import { WebhookRequestDto } from './dto/webhook-request.dto';
 import { WebhookService } from '../application/services/webhook.service';
 import { RequestWithRawBody } from './middleware/raw-body.middleware';
 import { WebhookAuthenticationException } from '../application/errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../application/errors/webhook-replay.exception';
+import { WebhookDecodeException } from '../application/errors/webhook-decode.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 @Public()
@@ -46,8 +45,18 @@ export class WebhookController {
   @ApiOperation({ summary: 'Receive inbound webhook from external system' })
   @ApiParam({ name: 'provider', description: 'Provider identifier (e.g., "prestashop")', example: 'prestashop' })
   @ApiParam({ name: 'connectionId', description: 'Connection identifier (UUID)', example: '123e4567-e89b-12d3-a456-426614174000' })
-  @ApiHeader({ name: 'X-OpenLinker-Timestamp', description: 'Unix timestamp in milliseconds', required: true })
-  @ApiHeader({ name: 'X-OpenLinker-Signature', description: 'HMAC SHA256 signature (format: sha256=<hex>)', required: true })
+  @ApiHeader({
+    name: 'X-OpenLinker-Timestamp',
+    description:
+      'Provider-specific signature timestamp. OL-module providers (e.g. PrestaShop) send Unix ms here; third-party providers use their own header (e.g. InPost `x-inpost-timestamp`). The connection\'s registered decoder reads the right one (ADR-021).',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'X-OpenLinker-Signature',
+    description:
+      'Provider-specific webhook signature. OL-module providers send `sha256=<hex>`; third-party providers use their own scheme + header (e.g. InPost `x-inpost-signature`, base64 HMAC). Resolved per-provider by the registered decoder.',
+    required: false,
+  })
   @ApiResponse({ status: 202, description: 'Webhook accepted and queued for processing' })
   @ApiResponse({ status: 400, description: 'Invalid request payload or malformed data' })
   @ApiResponse({ status: 401, description: 'Invalid signature or timestamp out of window' })
@@ -56,10 +65,13 @@ export class WebhookController {
   async receiveWebhook(
     @Param('provider') provider: string,
     @Param('connectionId') connectionId: string,
-    @Body() request: WebhookRequestDto,
     @Headers() headers: Record<string, string>,
     @Req() req: RequestWithRawBody,
   ): Promise<void> {
+    // No `@Body() WebhookRequestDto` — the body shape is the provider's, not
+    // OL's (ADR-021). The per-provider decoder (resolved in WebhookService)
+    // verifies + parses the raw bytes; the host OL-module default decoder still
+    // validates the WebhookRequestDto envelope for OL-enveloped providers.
     // Get raw body from request (set by express.json() verify hook in main.ts)
     const rawBody = req.rawBody;
 
@@ -88,15 +100,18 @@ export class WebhookController {
     }
 
     try {
-      await this.webhookService.processWebhook(
-        provider,
-        connectionId,
-        request,
-        rawBody,
-        headers,
-      );
+      await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
     } catch (error) {
       // Map domain exceptions to HTTP exceptions
+      if (error instanceof WebhookDecodeException) {
+        // Authentic request, unusable body (decoder `reject`) → 400.
+        this.logger.warn(
+          `Webhook body decode failed: provider=${provider}, connectionId=${connectionId}`,
+          error.message,
+        );
+        throw new BadRequestException(error.message);
+      }
+
       if (error instanceof WebhookAuthenticationException) {
         this.logger.warn(
           `Webhook authentication failed: provider=${provider}, connectionId=${connectionId}`,

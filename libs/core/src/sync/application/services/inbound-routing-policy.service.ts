@@ -20,7 +20,7 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { CanonicalInboundEvent, CoreCapability } from '@openlinker/core/integrations';
+import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { OrderFeedEventType } from '@openlinker/core/orders';
 import type { IInboundRoutingPolicyService } from '../interfaces/inbound-routing-policy.service.interface';
@@ -28,7 +28,13 @@ import type { RoutingOutcome } from '../types/inbound-routing-policy.types';
 import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
 import { JOB_ENQUEUE_TOKEN } from '../../sync.tokens';
 import type { JobType, SyncJobRequest } from '../../domain/types/sync-job.types';
-import type { MarketplaceOrderSyncPayloadV1 } from '../../domain/types/marketplace-job-payloads.types';
+import type {
+  MarketplaceOrderSyncPayloadV1,
+  MarketplaceShipmentSyncByExternalIdPayloadV1,
+} from '../../domain/types/marketplace-job-payloads.types';
+
+/** Open-world shipping capability (#576) — the `shipment` domain's gate (#768). */
+const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
 import type {
   MasterInventorySyncByExternalIdPayloadV1,
   MasterProductSyncByExternalIdPayloadV1,
@@ -99,7 +105,11 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
   private resolveRoute(
     event: CanonicalInboundEvent,
     sourceEventId: string
-  ): { jobType: JobType; requiredCapability: CoreCapability; payload: SyncJobRequest['payload'] } {
+  ): {
+    jobType: JobType;
+    requiredCapability: string;
+    payload: SyncJobRequest['payload'];
+  } {
     switch (event.domain) {
       case 'order':
         return {
@@ -132,6 +142,15 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
             externalId: event.externalId,
             objectType: 'Product',
           } satisfies MasterProductSyncByExternalIdPayloadV1,
+        };
+      case 'shipment':
+        return {
+          jobType: 'marketplace.shipment.syncByExternalId',
+          requiredCapability: SHIPPING_PROVIDER_MANAGER_CAPABILITY,
+          payload: {
+            schemaVersion: 1,
+            externalId: event.externalId,
+          } satisfies MarketplaceShipmentSyncByExternalIdPayloadV1,
         };
       default: {
         // Exhaustive — `domain` is a closed union; this guards future additions.
