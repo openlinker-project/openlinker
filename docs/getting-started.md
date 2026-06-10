@@ -71,9 +71,10 @@ cp apps/api/.env.example apps/api/.env.local
 cp apps/worker/.env.example apps/worker/.env.local
 ```
 
-Run migrations, then start the API and the web app (in separate terminals):
+Build the workspace, run migrations, then start the API and the web app (in separate terminals):
 
 ```bash
+pnpm build
 pnpm --filter @openlinker/api migration:run
 pnpm start:dev:api       # http://localhost:3000
 pnpm start:dev:web       # http://localhost:4173
