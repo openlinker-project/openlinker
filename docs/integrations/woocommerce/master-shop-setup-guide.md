@@ -301,6 +301,25 @@ The destination half of the flow: WooCommerce catalog → Allegro offers, WooCom
 2. In the web app, go to **Connections → Add Connection** and pick **Allegro**. The guided wizard collects the client ID/secret and environment (`sandbox`), then sends you through Allegro's OAuth consent screen; the callback creates the connection automatically (`adapterKey: allegro.publicapi.v1`, `config.environment: sandbox`).
 3. The connection detail page should show **Active**. The raw-API path (`POST /integrations/allegro/oauth/connect`) is documented in [Allegro Setup Guide § 5](../allegro/setup-guide.md#5-connection-creation-steps).
 
+#### Fresh seller-account checklist (do this once, before any offer)
+
+A brand-new (sandbox) Allegro seller account ships with **none** of the objects an
+offer needs — each missing one rejects offer creation with its own error (the
+specific messages are catalogued in § 6.3). Open **Sales Center**
+(`https://salescenter.allegro.com.allegrosandbox.pl`, logged in as the seller
+account) → **Ustawienia sprzedaży** and create, top to bottom:
+
+| # | Where (menu) | What to create | Notes |
+|---|---|---|---|
+| 1 | **Dostawy → Ustawienia dostawy** | A **delivery price list** (cennik dostawy) | Standard own-shipping (e.g. courier, any price). **Not** the One Fulfillment / Magazyn Allegro variant — that drags in the whole OF requirement set (§ 6.3). |
+| 2 | **Dostawy → Magazyny** | A warehouse / dispatch address | Used as the shipping origin. |
+| 3 | **Sprzedaż → Warunki zwrotów** | A return-terms template | Any sane sandbox values (withdrawal possible, 14 days, return address). |
+| 4 | **Sprzedaż → Warunki reklamacji** | A complaint-terms template | |
+| 5 | **Sprzedaż → Dane producentów** | A responsible producer (GPSR) | Details + API alternative below. |
+
+Then, back in OpenLinker, complete the connection's **seller defaults**
+(§ 6.3 callout: location, responsible producer, safety information).
+
 ### 6.2 Point Allegro at the WooCommerce catalog
 
 Open the Allegro connection's **edit form** and set **Product catalog** (`config.masterCatalogConnectionId`) to your **WooCommerce connection**. This scopes barcode-based offer↔product linking to the WooCommerce catalog — with exactly one master-shop connection it is auto-selected, but verify it explicitly once you run more than one shop connection.
@@ -312,8 +331,9 @@ Open the Allegro connection's **edit form** and set **Product catalog** (`config
 > ("Nie posiadasz żadnych warunków zwrotu") / `ImpliedWarrantyNotDefinedException`
 > ("…warunków reklamacji"). In **Sales Center → Ustawienia sprzedaży** create at
 > least one entry in each of: **Warunki zwrotów** (return terms), **Warunki
-> reklamacji** (complaint terms), and **Cenniki dostawy** (delivery price list —
-> offers need shipping rates too). Any sane sandbox values work. OpenLinker
+> reklamacji** (complaint terms), and a delivery price list under **Dostawy →
+> Ustawienia dostawy** (offers need shipping rates too) — see the § 6.1
+> checklist. Any sane sandbox values work. OpenLinker
 > discovers these from the account at offer-creation time; after adding them,
 > retry the failed records.
 
@@ -398,7 +418,8 @@ clusters hit during this guide's walkthrough:
    the offer references a **One Fulfillment** delivery price list (and/or OF-type
    return terms) — Magazyn Allegro then demands its whole setup. **Fix:** create
    and select a **standard** delivery price list and standard return terms (Sales
-   Center → Ustawienia sprzedaży → Cenniki dostawy / Warunki zwrotów — make sure
+   Center → Ustawienia sprzedaży → Dostawy → Ustawienia dostawy / Sprzedaż →
+   Warunki zwrotów — make sure
    the One Fulfillment variant is *not* selected), then retry.
 
 2. **Existing-catalog-product cluster** — `Kategoria oferty (X) nie pasuje do
