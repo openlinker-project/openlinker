@@ -44,12 +44,10 @@ import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
 import { prestashopPlugin } from './prestashop';
-import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
   prestashopPlugin,
   allegroPlugin,
-  woocommercePlugin,
   dpdPlugin,
 ];
 

@@ -57,11 +57,17 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
 
     if (input.fromCursor) {
       params.modified_after = input.fromCursor;
+      // The cursor is a GMT timestamp (date_modified_gmt, Z-normalized). WC
+      // interprets modified_after in the SITE's local timezone unless this flag
+      // is set — so without it, orders modified in the local-offset window are
+      // silently skipped for shops west of GMT (the cursor has already advanced).
+      params.dates_are_gmt = true;
     } else {
       const config = (this.connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
       const initial = config.orders?.initialSyncFrom;
       if (initial) {
         params.modified_after = new Date(initial).toISOString();
+        params.dates_are_gmt = true;
       }
       // No modified_after = fetch all historical orders (intentional boot behaviour)
     }
@@ -164,7 +170,11 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
 
 function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEventType {
   const s = status.toLowerCase();
-  if (s === 'cancelled' || s === 'refunded' || s === 'failed') return 'cancelled';
+  // WC `failed` is a recoverable *payment* failure (the order itself is not
+  // cancelled), so it maps to `updated` rather than `cancelled` — otherwise a
+  // transient payment hiccup would cancel the destination order. Only the
+  // genuinely-terminal `cancelled`/`refunded` statuses map to `cancelled`.
+  if (s === 'cancelled' || s === 'refunded') return 'cancelled';
   if (s === 'processing') return 'paid';
   if (isNew) return 'created';
   return 'updated';
