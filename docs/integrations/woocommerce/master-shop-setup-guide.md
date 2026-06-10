@@ -228,6 +228,15 @@ WooCommerce is the **master** for its own products and stock. OpenLinker pulls t
 
 On the **WooCommerce connection detail** page, open the **Trigger sync** dialog and run `master.product.syncAll`, then `master.inventory.syncAll` (or wait for the scheduled runs). Watch progress under **Jobs & Logs**.
 
+> **Order matters — inventory sync only sees products that are already mapped.**
+> `master.inventory.syncAll` enumerates the connection's product identifier
+> mappings, which are created by the *product* sync. Run it (or let the scheduler
+> run it — every 15 minutes) **after** the `master.product.syncByExternalId` jobs
+> from the product sync have finished in **Jobs & Logs**. An inventory run that
+> fires too early completes as `ok` with zero work ("No product mappings found")
+> and the Inventory page stays empty — just trigger `master.inventory.syncAll`
+> again manually, or wait for the next scheduled run.
+
 > **`OL_PRODUCT_SYNC_PAGE_SIZE=100` must be set in `apps/worker/.env.local`** (the
 > `.env.example` you copied in § 3.1 already ships it). The worker's built-in page
 > size is 200, but WooCommerce REST caps `per_page` at 100 — without the override,
