@@ -97,6 +97,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
 
       const [, params] = (httpClient.get as jest.Mock).mock.calls[0] as [string, Record<string, unknown>];
       expect(params).not.toHaveProperty('modified_after');
+      expect(params).not.toHaveProperty('dates_are_gmt');
     });
 
     it('should use initialSyncFrom when fromCursor is null and config has it', async () => {
@@ -110,6 +111,8 @@ describe('WooCommerceOrderSourceAdapter', () => {
 
       const [, params] = (httpClient.get as jest.Mock).mock.calls[0] as [string, Record<string, unknown>];
       expect(params.modified_after).toBe(new Date('2024-01-01').toISOString());
+      // GMT watermark must be tagged so WC interprets it in UTC, not site-local.
+      expect(params.dates_are_gmt).toBe(true);
     });
 
     it('should pass fromCursor as modified_after when set', async () => {
@@ -121,6 +124,8 @@ describe('WooCommerceOrderSourceAdapter', () => {
 
       const [, params] = (httpClient.get as jest.Mock).mock.calls[0] as [string, Record<string, unknown>];
       expect(params.modified_after).toBe(cursor);
+      // The cursor is a GMT timestamp; WC must interpret modified_after in UTC.
+      expect(params.dates_are_gmt).toBe(true);
     });
 
     it('should return empty items and preserve fromCursor on empty response', async () => {
@@ -164,8 +169,8 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.items[0].externalOrderId).toBe('1');
     });
 
-    it('should map cancelled/refunded/failed status to cancelled event type', async () => {
-      for (const status of ['cancelled', 'refunded', 'failed']) {
+    it('should map terminal cancelled/refunded status to cancelled event type', async () => {
+      for (const status of ['cancelled', 'refunded']) {
         const httpClient = makeHttpClient({
           get: jest.fn().mockResolvedValue([makeOrder({ id: 1, status, date_modified_gmt: '2024-01-15T11:00:00', date_created_gmt: '2024-01-10T08:00:00' })]),
         });
@@ -173,6 +178,19 @@ describe('WooCommerceOrderSourceAdapter', () => {
         const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
         expect(result.items[0].eventType).toBe('cancelled');
       }
+    });
+
+    it('should map recoverable failed payment status to updated, not cancelled', async () => {
+      // WC `failed` is a recoverable payment failure — mapping it to cancelled
+      // would wrongly cancel the destination order on a transient payment hiccup.
+      const httpClient = makeHttpClient({
+        get: jest.fn().mockResolvedValue([
+          makeOrder({ id: 1, status: 'failed', date_modified_gmt: '2024-01-15T11:00:00', date_created_gmt: '2024-01-10T08:00:00' }),
+        ]),
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+      expect(result.items[0].eventType).toBe('updated');
     });
 
     it('should map processing status to paid even when order is new', async () => {

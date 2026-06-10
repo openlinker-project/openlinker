@@ -141,9 +141,6 @@ export interface GenerateLabelInput {
   /** Carrier-neutral delivery intent (#979, ADR-020). The BE resolves the
    * concrete shipping method from this; the caller never names a carrier method. */
   deliveryIntent: DeliveryIntent;
-  /** @deprecated — send `deliveryIntent` instead. Accepted by the BE for one
-   * release as a fallback when `deliveryIntent` is absent. */
-  shippingMethod?: ShippingMethod;
   paczkomatId?: string;
   recipient: {
     name?: string;
