@@ -133,4 +133,25 @@ describe('createWooCommercePlugin → createCapabilityAdapter', () => {
       plugin.createCapabilityAdapter(mockConnection, 'OrderSource', host),
     ).rejects.toThrow('WooCommerce');
   });
+
+  it('should not resolve credentials when the capability is unsupported (lazy dispatch)', async () => {
+    const { host } = makeHostStub();
+    const plugin = createWooCommercePlugin();
+    await expect(
+      plugin.createCapabilityAdapter(mockConnection, 'OrderSource', host),
+    ).rejects.toThrow();
+    expect(host.credentialsResolver.get).not.toHaveBeenCalled();
+  });
+
+  it('should throw WooCommerceConfigException when config.siteUrl is missing', async () => {
+    const { host } = makeHostStub();
+    const plugin = createWooCommercePlugin();
+    const noSiteUrlConnection = {
+      ...mockConnection,
+      config: {} as Record<string, unknown>,
+    } as unknown as Connection;
+    await expect(
+      plugin.createCapabilityAdapter(noSiteUrlConnection, 'ProductMaster', host),
+    ).rejects.toBeInstanceOf(WooCommerceConfigException);
+  });
 });

@@ -71,46 +71,55 @@ export function createWooCommercePlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      if (!connection.credentialsRef) {
-        return Promise.reject(
-          new WooCommerceConfigException(
+      // The ProductMaster thunk fetches credentials and allocates the HTTP
+      // client / mapper / adapter only when that capability is actually
+      // requested — an unsupported-capability request short-circuits in
+      // dispatchCapability before any credential fetch or allocation happens.
+      const buildProductMaster = async (): Promise<WooCommerceProductMasterAdapter> => {
+        if (!connection.credentialsRef) {
+          throw new WooCommerceConfigException(
             `Connection ${connection.id} is missing credentialsRef — save credentials before using this capability.`,
             connection.id,
-          ),
+          );
+        }
+        const config = (connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
+        if (typeof config.siteUrl !== 'string' || config.siteUrl.length === 0) {
+          throw new WooCommerceConfigException(
+            `Connection ${connection.id} is missing config.siteUrl — set the store URL before using this capability.`,
+            connection.id,
+          );
+        }
+        // NEVER log credentials — contains consumerKey + consumerSecret
+        const credentials = await host.credentialsResolver.get<WooCommerceCredentials>(
+          connection.credentialsRef,
         );
-      }
-      // NEVER log credentials — contains consumerKey + consumerSecret
-      const credentials = await host.credentialsResolver.get<WooCommerceCredentials>(
-        connection.credentialsRef,
-      );
-      const config = (connection.config ?? {}) as unknown as WooCommerceConnectionConfig;
-      const httpClient = new WooCommerceHttpClient(
-        config.siteUrl,
-        credentials.consumerKey,
-        credentials.consumerSecret,
-      );
-      // TODO(#879): currency is always null until WooCommerceConnectionConfig grows a
-      // currency field. WC exposes the store currency at
-      // GET /wp-json/wc/v3/settings/general/woocommerce_currency.
-      // Product.currency carries 'null when the adapter did not provide a currency'.
-      const mapper = new WooCommerceProductMapper({});
-      const productMaster = new WooCommerceProductMasterAdapter(
-        httpClient,
-        host.identifierMapping,
-        mapper,
-        connection,
-      );
-      try {
-        return Promise.resolve(
-          dispatchCapability<T>(
-            capability,
-            { ProductMaster: () => productMaster },
-            WOOCOMMERCE_BRAND,
-          ),
+        const httpClient = new WooCommerceHttpClient(
+          config.siteUrl,
+          credentials.consumerKey,
+          credentials.consumerSecret,
         );
-      } catch (err) {
-        return Promise.reject(err as Error);
-      }
+        // TODO(#879): currency is always null until WooCommerceConnectionConfig grows a
+        // currency field. WC exposes the store currency at
+        // GET /wp-json/wc/v3/settings/general/woocommerce_currency.
+        // Product.currency carries 'null when the adapter did not provide a currency'.
+        const mapper = new WooCommerceProductMapper({});
+        return new WooCommerceProductMasterAdapter(
+          httpClient,
+          host.identifierMapping,
+          mapper,
+          connection,
+        );
+      };
+
+      // dispatchCapability throws synchronously for an unsupported capability
+      // (before the thunk runs) — that throw surfaces as a rejected promise
+      // from this async method, matching the previous behaviour.
+      const adapter = await dispatchCapability<Promise<WooCommerceProductMasterAdapter>>(
+        capability,
+        { ProductMaster: () => buildProductMaster() },
+        WOOCOMMERCE_BRAND,
+      );
+      return adapter as unknown as T;
     },
   };
 }

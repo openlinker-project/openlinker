@@ -102,14 +102,20 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           throw err;
         }
 
-        if ((err as { name?: string }).name === 'AbortError') {
-          throw new WooCommerceNetworkException('WooCommerce request timed out', err as Error);
-        }
+        // Timeouts (AbortError) are treated as retryable transient failures —
+        // consistent with other network errors. A slow request often succeeds
+        // on a subsequent attempt; only after exhausting retries do we surface
+        // it as a timeout exception.
+        const isTimeout = (err as { name?: string }).name === 'AbortError';
 
         if (attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
           continue;
+        }
+
+        if (isTimeout) {
+          throw new WooCommerceNetworkException('WooCommerce request timed out', err as Error);
         }
 
         throw new WooCommerceNetworkException(

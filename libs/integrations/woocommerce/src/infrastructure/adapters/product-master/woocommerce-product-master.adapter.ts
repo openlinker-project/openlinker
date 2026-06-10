@@ -180,7 +180,9 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     return validProducts
       .map((p) => {
-        const internalId = idMap.get(String(p.id));
+        // batchGetOrCreateInternalIds keys its result Map by the composite
+        // `${externalId}:${connectionId}`, not the bare external id.
+        const internalId = idMap.get(`${String(p.id)}:${this.connection.id}`);
         if (!internalId) {
           this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
           return null;
@@ -292,7 +294,9 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     return validVariations
       .map((v) => {
-        const internalId = idMap.get(String(v.id));
+        // batchGetOrCreateInternalIds keys its result Map by the composite
+        // `${externalId}:${connectionId}`, not the bare external id.
+        const internalId = idMap.get(`${String(v.id)}:${this.connection.id}`);
         if (!internalId) {
           this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
           return null;

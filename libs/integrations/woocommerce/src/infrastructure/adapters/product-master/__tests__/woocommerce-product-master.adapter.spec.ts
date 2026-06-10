@@ -165,14 +165,14 @@ describe('WooCommerceProductMasterAdapter', () => {
       expect(result).toEqual([]);
     });
 
-    it('should batch-map products with simple key externalId', async () => {
+    it('should batch-map products using the composite externalId:connectionId key', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockResolvedValue([{ id: 1 }, { id: 2 }] as WooCommerceProduct[]);
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
         new Map([
-          ['1', 'internal-1'],
-          ['2', 'internal-2'],
+          [`1:${CONNECTION_ID}`, 'internal-1'],
+          [`2:${CONNECTION_ID}`, 'internal-2'],
         ]),
       );
       const mapper = makeMapper();
@@ -215,11 +215,12 @@ describe('WooCommerceProductMasterAdapter', () => {
       ] as WooCommerceProduct[]);
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
-        new Map([['1', 'internal-1']]),
+        new Map([[`1:${CONNECTION_ID}`, 'internal-1']]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProducts();
       expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('internal-1');
       const batchCall = identifierMapping.batchGetOrCreateInternalIds.mock.calls[0][0];
       expect(batchCall).toHaveLength(1);
       expect(batchCall[0].externalId).toBe('1');
@@ -353,8 +354,8 @@ describe('WooCommerceProductMasterAdapter', () => {
       identifierMapping.deleteMapping.mockResolvedValue(undefined);
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
         new Map([
-          ['101', 'var-internal-1'],
-          ['102', 'var-internal-2'],
+          [`101:${CONNECTION_ID}`, 'var-internal-1'],
+          [`102:${CONNECTION_ID}`, 'var-internal-2'],
         ]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
@@ -365,6 +366,8 @@ describe('WooCommerceProductMasterAdapter', () => {
         CONNECTION_ID,
       );
       expect(result).toHaveLength(2);
+      expect(result[0].id).toBe('var-internal-1');
+      expect(result[1].id).toBe('var-internal-2');
     });
 
     it('should filter variations with undefined id before batch mapping', async () => {
@@ -378,11 +381,12 @@ describe('WooCommerceProductMasterAdapter', () => {
       ]);
       identifierMapping.deleteMapping.mockResolvedValue(undefined);
       identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
-        new Map([['101', 'var-1']]),
+        new Map([[`101:${CONNECTION_ID}`, 'var-1']]),
       );
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProductVariants('prod-1');
       expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('var-1');
       const batchCall = identifierMapping.batchGetOrCreateInternalIds.mock.calls[0][0];
       expect(batchCall).toHaveLength(1);
     });

@@ -25,6 +25,14 @@ import type {
   WooCommerceMetaEntry,
 } from '../adapters/product-master/woocommerce-product.types';
 
+// WooCommerce has no canonical barcode field — plugins/themes store it under
+// many meta_data keys. EAN and GTIN deliberately share several candidate keys
+// (`_ean`/`ean`/`_gtin`/`gtin`/`_barcode`) because the same raw value is a
+// valid EAN-13 *and* a GTIN. The key arrays differ only in lookup PRIORITY:
+// EAN tries EAN-named keys first (then GTIN/barcode as fallback), GTIN tries
+// GTIN-named keys first. The two fields are then normalised differently
+// (normalizeToEan13 vs normalizeBarcode), so the overlap is intentional, not a
+// copy-paste bug.
 const EAN_KEYS = ['_ean', 'ean', '_gtin', 'gtin', '_barcode', 'barcode'] as const;
 const GTIN_KEYS = ['_gtin', 'gtin', '_ean', 'ean', '_wc_gtin', 'hwp_product_gtin', '_barcode'] as const;
 
