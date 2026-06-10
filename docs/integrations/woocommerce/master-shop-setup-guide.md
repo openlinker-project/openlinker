@@ -311,11 +311,45 @@ Open the Allegro connection's **edit form** and set **Product catalog** (`config
 > every new offer). On the Allegro connection's **edit page**, fill the
 > *Seller defaults* section: ship-from **location** (voivodeship, city, post
 > code), a **Responsible producer** picked from the dropdown (the list comes
-> from your Allegro account — if it's empty, create one in Allegro Seller
-> Center first), and **Safety information** (pick *"None applies"* unless your
-> products need GPSR safety text). Without these, every offer-creation record
-> fails with `SELLER_DEFAULTS_NOT_CONFIGURED`; after saving the defaults,
-> retry the failed records from the batch detail view.
+> from your Allegro account — if it's empty, create one first, see below), and
+> **Safety information** (pick *"None applies"* unless your products need GPSR
+> safety text). Without these, every offer-creation record fails with
+> `SELLER_DEFAULTS_NOT_CONFIGURED`; after saving the defaults, retry the
+> failed records from the batch detail view.
+
+#### Creating a responsible producer (when the dropdown is empty)
+
+A fresh Allegro (sandbox) account has no responsible-producer entries — OpenLinker
+only *lists* them (`GET /sale/responsible-producers`), it never creates them.
+Add one either in **Allegro Seller Center** (product-compliance / GPSR settings)
+or directly via the API (works on sandbox; the bearer token must be a **user**
+OAuth token for the seller account with the `allegro:api:sale:settings:write`
+scope — e.g. obtained the same way as during the connection OAuth in the
+[Allegro Setup Guide](../allegro/setup-guide.md)):
+
+```bash
+curl -X POST https://api.allegro.pl.allegrosandbox.pl/sale/responsible-producers \
+  -H "Authorization: Bearer $ALLEGRO_USER_TOKEN" \
+  -H "Accept: application/vnd.allegro.public.v1+json" \
+  -H "Content-Type: application/vnd.allegro.public.v1+json" \
+  -d '{
+    "name": "OL Dev Producer",
+    "producerData": {
+      "tradeName": "OpenLinker Test Producer Sp. z o.o.",
+      "address": {
+        "countryCode": "PL",
+        "street": "Wisniowa 1",
+        "postalCode": "00-001",
+        "city": "Warszawa"
+      },
+      "contact": { "email": "producer@example.com" }
+    }
+  }'
+```
+
+`name` is your private label for the entry (max 50 chars); `contact` requires at
+least `email` or `formUrl`. A `201` response returns the entry's `id` — then
+re-open the connection edit page and the dropdown will list it.
 
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
