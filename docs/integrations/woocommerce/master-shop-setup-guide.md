@@ -155,7 +155,17 @@ pnpm --filter @openlinker/api migration:run
 # Expected: Migration up completed successfully
 ```
 
-### 3.3 Start API, worker, web (three terminals)
+### 3.3 Build workspace packages
+
+```bash
+pnpm build
+```
+
+Required on a fresh checkout (and after pulling changes in `libs/*`): the apps resolve
+workspace packages through their built `dist/` outputs, so `start:dev:*` fails with
+module-resolution errors until the workspace has been built once.
+
+### 3.4 Start API, worker, web (three terminals)
 
 ```bash
 pnpm start:dev:api      # http://localhost:3000
