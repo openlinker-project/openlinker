@@ -15,11 +15,18 @@ import type { CoreCapability, CreateConnectionInput } from '../api/connections.t
 export const WOOCOMMERCE_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
 /**
- * Fallback used only when the adapter registry cannot be queried.
- * The source of truth is the `/adapters` endpoint consumed by the wizard
- * via `useAdaptersQuery`.
+ * Fallback used when the adapter registry cannot be queried or has no
+ * WooCommerce entry yet. Mirrors the chain manifest's capability set so a
+ * connection created in that window can still run the master product /
+ * inventory sync. The source of truth is the `/adapters` endpoint consumed
+ * by the wizard via `useAdaptersQuery`.
  */
-export const WOOCOMMERCE_FALLBACK_CAPABILITIES: CoreCapability[] = ['OrderSource'];
+export const WOOCOMMERCE_FALLBACK_CAPABILITIES: CoreCapability[] = [
+  'ProductMaster',
+  'InventoryMaster',
+  'OrderProcessorManager',
+  'OrderSource',
+];
 
 // Mirrors the backend config DTO (`@IsUrl({ protocols: ['https'] })`):
 // https-only, including local development (`https://localhost` is accepted,

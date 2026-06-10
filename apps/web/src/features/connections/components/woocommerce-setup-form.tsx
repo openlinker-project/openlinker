@@ -8,8 +8,8 @@
  *   - Consumer secret (cs_...)
  *
  * Simpler than the PrestaShop 4-step wizard — no stepper, no capabilities
- * step (WooCommerce MVP exposes OrderSource only; capabilities are seeded
- * silently from the adapter registry). Abandon-prevention triggers a native
+ * step (capabilities are seeded silently from the adapter registry, falling
+ * back to the manifest's full set). Abandon-prevention triggers a native
  * confirm dialog when the form is dirty and the tab is closed.
  */
 import { useEffect, type ReactElement } from 'react';
