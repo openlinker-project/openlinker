@@ -307,6 +307,16 @@ Open the Allegro connection's **edit form** and set **Product catalog** (`config
 
 ### 6.3 Create offers from the WooCommerce catalog
 
+> **Complete the Allegro seller defaults first** (GPSR — required by Allegro for
+> every new offer). On the Allegro connection's **edit page**, fill the
+> *Seller defaults* section: ship-from **location** (voivodeship, city, post
+> code), a **Responsible producer** picked from the dropdown (the list comes
+> from your Allegro account — if it's empty, create one in Allegro Seller
+> Center first), and **Safety information** (pick *"None applies"* unless your
+> products need GPSR safety text). Without these, every offer-creation record
+> fails with `SELLER_DEFAULTS_NOT_CONFIGURED`; after saving the defaults,
+> retry the failed records from the batch detail view.
+
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
 
