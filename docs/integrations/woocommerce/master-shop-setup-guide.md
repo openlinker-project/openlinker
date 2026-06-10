@@ -1,0 +1,302 @@
+# WooCommerce Master-Shop Setup Guide
+
+**Setup Time:** ~25 minutes (WooCommerce + OpenLinker) + Allegro sandbox connection
+**Target Audience:** Developers (local dev setup)
+**Scope:** The **WooCommerce → OpenLinker → Allegro** flow. WooCommerce is the **master shop**: OpenLinker reads its product catalog and per-variant inventory, lists those products as Allegro offers, propagates WooCommerce stock to the offer quantities, and routes incoming Allegro orders back into WooCommerce as the destination shop. This is a local-development walkthrough (Docker dev stack + `start:dev` processes), not a production deployment guide.
+
+> **Applies to:** the WooCommerce master-shop adapter (product spec #872). The runtime behaviour described here ships with the WooCommerce integration package; if your checkout predates it, the WooCommerce connection type and the `dev:stack:wc:up` / `dev:stack:wc-credentials` / `dev:stack:seed-woocommerce` scripts below will not be present yet.
+
+---
+
+## What this guide covers
+
+By the end you will have:
+
+1. ✅ WooCommerce running locally in Docker
+2. ✅ OpenLinker API + worker + web app running
+3. ✅ A WooCommerce connection created in OpenLinker
+4. ✅ WooCommerce's product catalog and per-variant inventory read into OpenLinker
+5. ✅ WooCommerce products listed as offers on Allegro, WooCommerce stock propagated to those offers, and Allegro orders routed into WooCommerce
+
+> Step 5 requires an **Allegro sandbox account** — see [Allegro Setup Guide](../allegro/setup-guide.md). Steps 1–4 work fully offline.
+
+## What this guide does **not** cover
+
+OpenLinker treats WooCommerce as a **master shop** — a source of products/inventory and a destination for marketplace orders. It is **not** a shop-to-shop bridge. Out of scope for this guide:
+
+- Ingesting orders *out of* WooCommerce (`OrderSource`, `modified_after` watermark polling — #876). It exists as a capability, but in the master-shop flow orders travel **Allegro → OpenLinker → WooCommerce**, not out of WooCommerce.
+- Pushing products or inventory *from another shop into* WooCommerce (no shop→shop sync).
+- Cross-platform category/attribute mapping (ADR — *Proposed*).
+
+---
+
+## Architecture: WooCommerce → OpenLinker → Allegro
+
+```
+  Products:   WooCommerce ── read products ──▶  OpenLinker ── create offers ─────▶  Allegro (offers)
+  Inventory:  WooCommerce ── read stock ─────▶  OpenLinker ── update quantities ─▶  Allegro (offer quantities)
+  Orders:     Allegro (order) ── ingest ─────▶  OpenLinker ── create order ──────▶  WooCommerce (destination)
+```
+
+**Data direction:**
+
+- **Products:** WooCommerce → OpenLinker (read into the internal catalog) → Allegro offers.
+- **Inventory:** WooCommerce → OpenLinker (per-variant read) → Allegro **offer quantities**.
+- **Orders:** Allegro → OpenLinker → WooCommerce (created via `OrderProcessorManager`).
+
+WooCommerce is the source of truth for its own catalog and stock. OpenLinker reads from it; it does not write products or stock back into WooCommerce.
+
+---
+
+## Prerequisites
+
+- **Docker & Docker Compose** v2.0+ (`docker compose version`)
+- **Node.js** LTS (18.x or 20.x) and **pnpm** (`pnpm --version`)
+- **Git** (the OpenLinker repo cloned)
+- **`jq`** (used by the credentials helper script)
+- For § 6: an **Allegro sandbox account** with API credentials ([Allegro Setup Guide](../allegro/setup-guide.md))
+- Several GB free disk space (container images + databases)
+
+**Ports used:**
+- 3000 (OpenLinker API), 5173 (web UI), 5432 (PostgreSQL), 6379 (Redis)
+- 8082 (WooCommerce), 3307 (WooCommerce MySQL)
+
+---
+
+## § 1: Start WooCommerce (Docker)
+
+From the OpenLinker repo root:
+
+```bash
+# 1. Base stack (PostgreSQL, Redis, …)
+pnpm dev:stack:up
+
+# 2. WooCommerce + its dedicated MySQL
+pnpm dev:stack:wc:up
+```
+
+**Wait ~3–5 minutes** for WordPress auto-install + WooCommerce plugin activation.
+
+### Verify WooCommerce is running
+
+```bash
+# REST API health check — should return HTTP/1.1 200 OK
+curl -sI http://localhost:8082/wp-json/wc/v3/ | head -1
+
+# Container logs
+pnpm dev:stack:logs
+```
+
+### Access WooCommerce admin (optional)
+
+- **URL:** http://localhost:8082/wp-admin/
+- **Username:** `admin`
+- **Password:** `admin123`
+
+> The dev container seeds a few sample products on first boot. Re-run the seeding any time with `pnpm dev:stack:seed-woocommerce` (idempotent).
+
+---
+
+## § 2: Get WooCommerce REST API credentials
+
+OpenLinker authenticates to WooCommerce with a REST API **consumer key + secret**.
+
+### Fast path (dev stack auto-seeds them)
+
+The dev container generates a Read/Write key on first boot. Print it on the host:
+
+```bash
+pnpm dev:stack:wc-credentials
+```
+
+```json
+{
+  "consumer_key": "ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "consumer_secret": "cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+Copy both values — you'll paste them in § 4.
+
+### Manual path (real WooCommerce, or to rotate the key)
+
+1. WooCommerce admin → **Settings → Advanced → REST API**
+2. **Create an API key**
+3. **Description:** `OpenLinker`; **Permissions:** `Read/Write`; **User:** an admin
+4. **Generate API Key** and copy the **Consumer Key** (`ck_…`) and **Consumer Secret** (`cs_…`)
+
+> The Consumer Secret is shown only once — copy it immediately.
+
+---
+
+## § 3: Boot OpenLinker
+
+### 3.1 Environment files
+
+```bash
+cp apps/api/.env.example apps/api/.env.local
+cp apps/worker/.env.example apps/worker/.env.local
+```
+
+The defaults target the local dev stack (Postgres `localhost:5432`, Redis `localhost:6379`).
+
+### 3.2 Run database migrations
+
+```bash
+pnpm --filter @openlinker/api migration:run
+# Expected: Migration up completed successfully
+```
+
+### 3.3 Start API, worker, web (three terminals)
+
+```bash
+pnpm start:dev:api      # http://localhost:3000
+pnpm start:dev:worker   # background sync-job runner
+pnpm start:dev:web      # http://localhost:5173
+```
+
+Wait for all three to report ready. Log in to the web app with the admin credentials printed in the API logs on first boot (`Default admin credentials: username=admin password=…`).
+
+---
+
+## § 4: Add the WooCommerce connection
+
+1. In the web app, go to **Connections → Add Connection** (`/connections/new`).
+2. Select **WooCommerce**.
+3. Fill in the setup form:
+   - **Connection name:** `WooCommerce Store`
+   - **Site URL:** the HTTPS URL of the store (see the callout below for local dev)
+   - **Consumer Key:** `ck_…` (from § 2)
+   - **Consumer Secret:** `cs_…` (from § 2)
+4. Click **Test connection** to verify the credentials, then **Create connection**.
+
+> **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
+>
+> ```bash
+> caddy reverse-proxy --from https://localhost:8443 --to localhost:8082
+> caddy trust   # installs Caddy's local CA into the OS trust store (browser)
+> ```
+>
+> **Node does not read the OS trust store** — the API/worker processes will still reject Caddy's certificate unless you point `NODE_EXTRA_CA_CERTS` at its root CA before starting them:
+>
+> ```bash
+> export NODE_EXTRA_CA_CERTS="$HOME/.local/share/caddy/pki/authorities/local/root.crt"
+> pnpm start:dev:api      # (and the same env for start:dev:worker)
+> ```
+>
+> Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
+
+**[Screenshot Placeholder: WooCommerce setup form, filled]**
+- Fields: Connection name, Site URL, Consumer Key (masked), Consumer Secret (masked); green "Test connection" result.
+
+The connection detail page shows **Active** with capability pills.
+
+> **Capability pills:** this flow uses `ProductMaster` and `InventoryMaster` (read the catalog/stock) plus `OrderProcessorManager` (write Allegro orders into WooCommerce). `OrderSource` (#876) may also appear — it is not part of the master-shop flow and you can leave it unused.
+
+---
+
+## § 5: Verify OpenLinker reads the WooCommerce catalog + inventory
+
+WooCommerce is the **master** for its own products and stock. OpenLinker pulls them into its internal catalog.
+
+### 5.1 Trigger the product + inventory sync
+
+On the **WooCommerce connection detail** page, open the **Trigger sync** dialog and run `master.product.syncAll`, then `master.inventory.syncAll` (or wait for the scheduled runs). Watch progress under **Jobs & Logs**.
+
+### 5.2 Verify products in OpenLinker
+
+Open **Products**. You should see the WooCommerce products with:
+- Name, SKU/reference
+- Variants (variable products list one row per variation; simple products map to a single deterministic synthetic variant)
+
+**[Screenshot Placeholder: OpenLinker Products list populated from WooCommerce]**
+
+### 5.3 Verify inventory in OpenLinker
+
+Open **Inventory**. Stock is tracked **per variant**, read from each WooCommerce variation's `stock_quantity` (simple products report on their synthetic variant).
+
+**[Screenshot Placeholder: OpenLinker Inventory list with per-variant stock]**
+
+> This is a one-way read: OpenLinker reflects WooCommerce's stock. Changing stock in OpenLinker does not write back to WooCommerce.
+
+---
+
+## § 6: List on Allegro and route orders into WooCommerce
+
+The destination half of the flow: WooCommerce catalog → Allegro offers, WooCommerce stock → Allegro offer quantities, Allegro orders → WooCommerce.
+
+### 6.1 Connect Allegro (sandbox)
+
+1. Register a sandbox OAuth application at [apps.developer.allegro.pl.allegrosandbox.pl](https://apps.developer.allegro.pl.allegrosandbox.pl/) — see [Allegro Setup Guide § 1](../allegro/setup-guide.md#1-allegro-oauth-application-setup) for the redirect-URI and scope details.
+2. In the web app, go to **Connections → Add Connection** and pick **Allegro**. The guided wizard collects the client ID/secret and environment (`sandbox`), then sends you through Allegro's OAuth consent screen; the callback creates the connection automatically (`adapterKey: allegro.publicapi.v1`, `config.environment: sandbox`).
+3. The connection detail page should show **Active**. The raw-API path (`POST /integrations/allegro/oauth/connect`) is documented in [Allegro Setup Guide § 5](../allegro/setup-guide.md#5-connection-creation-steps).
+
+### 6.2 Point Allegro at the WooCommerce catalog
+
+Open the Allegro connection's **edit form** and set **Product catalog** (`config.masterCatalogConnectionId`) to your **WooCommerce connection**. This scopes barcode-based offer↔product linking to the WooCommerce catalog — with exactly one master-shop connection it is auto-selected, but verify it explicitly once you run more than one shop connection.
+
+### 6.3 Create offers from the WooCommerce catalog
+
+- **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
+- **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
+
+Verify under **Listings**: each offer row shows its linked product and the Allegro publication status.
+
+### 6.4 Propagate WooCommerce stock to offer quantities
+
+Trigger the `inventory.propagateToMarketplaces` job (connection detail → **Trigger sync**, or wait for the schedule). It reads the master stock OpenLinker holds from WooCommerce and fans out one `marketplace.offerQuantity.update` per mapped offer — WooCommerce stock → Allegro offer quantity.
+
+To see an end-to-end change: edit a product's stock in WooCommerce admin, run `master.inventory.syncAll` (§ 5.1), then `inventory.propagateToMarketplaces`, and check the offer's quantity on the Allegro sandbox.
+
+### 6.5 Route Allegro orders into WooCommerce
+
+1. **Enable `OrderProcessorManager` on the WooCommerce connection** (§ 4). Order sync dispatches every ingested order to **all** active connections with that capability (except the order's own source) — with WooCommerce as the only one, Allegro orders land exactly there.
+2. Place a test order on the Allegro **sandbox** (buy one of your offers with a sandbox buyer account).
+3. The Allegro order-events poll ingests it (one `marketplace.order.sync` job per event). `OrderSyncService` then creates the order in WooCommerce via `createOrder` — provisioning the customer as a guest if needed — and `updateFulfillment` writes subsequent status changes to the WooCommerce order.
+4. Verify in **WooCommerce admin → Orders**: the order appears with the Allegro line items, and in OpenLinker's **Orders** list with mappings to both platforms.
+
+> **Tracking numbers:** `updateFulfillment` accepts a tracking number but does not yet persist it to the WooCommerce order — only the order status is written.
+
+---
+
+## § 7: Known Limitations / Not Yet Supported
+
+*Accurate as of 2026-06-10 — revisit as the WooCommerce integration chain (#947–#972) evolves.*
+
+- **WooCommerce order ingestion is outside this flow.** The `OrderSource` capability (#876, `modified_after` watermark polling) ships with the integration chain, but the master-shop flow documented here ingests orders from **Allegro**, not from WooCommerce. If your checkout predates the chain, the capability may be advertised in the manifest without being wired — verify before relying on it.
+- **No shop→shop product or inventory sync.** OpenLinker does not push products or stock from one shop into another. Inventory propagation targets marketplace **offers** (Allegro), not other shops. WooCommerce's catalog/stock is read-only from OpenLinker's perspective.
+- **No cross-platform category/attribute mapping.** Mapping categories and attributes between platforms (the subject of a *Proposed* ADR) is not implemented. Offers are created from raw product data; category/attribute mismatches may cause offer rejection on strict marketplaces.
+- **No inventory reservation.** The WooCommerce adapter does not support `reserveInventory` / `releaseInventory` (the WooCommerce REST API does not expose reservation).
+
+---
+
+## Troubleshooting
+
+1. **WooCommerce won't start / API 404** — give it the full 3–5 min; check `pnpm dev:stack:logs`. The healthcheck probes `/wp-json/wc/v3/`.
+2. **Connection test fails (401/403)** — re-check the consumer key/secret (`pnpm dev:stack:wc-credentials`) and that the key is **Read/Write**.
+3. **"Site URL must use HTTPS" on create** — expected: the validator is https-only. Use the local TLS proxy from the § 4 callout (or a real HTTPS store URL).
+4. **Connection test fails with `SELF_SIGNED_CERT_IN_CHAIN` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE`** — the API process doesn't trust the local proxy's certificate. Start it with `NODE_EXTRA_CA_CERTS` pointing at Caddy's root CA (see the § 4 callout); `caddy trust` alone only covers the browser.
+5. **No products in OpenLinker** — confirm the sync job ran under **Jobs & Logs**; re-seed WooCommerce with `pnpm dev:stack:seed-woocommerce`.
+6. **Stock not propagating to Allegro offers** — confirm `InventoryMaster` is enabled on the WooCommerce connection and the offers are mapped (linked by barcode/SKU).
+7. **API/worker errors** — check the API and worker terminal output.
+
+---
+
+## Summary
+
+You now have:
+
+- ✅ WooCommerce running locally and connected to OpenLinker
+- ✅ WooCommerce's catalog and per-variant inventory read into OpenLinker
+- ✅ WooCommerce products listed on Allegro, with inventory propagated to the offers and Allegro orders routed back into WooCommerce
+
+**Key principle:** WooCommerce is the **master shop** in the **WooCommerce → OpenLinker → Allegro** flow — OpenLinker reads its products and inventory, lists them on Allegro, and writes Allegro orders into it. OpenLinker does not write products/stock back into WooCommerce.
+
+---
+
+## References
+
+- `docs/specs/product-spec-872-woocommerce-shop-integration.md` — intended WooCommerce role (master shop). Ships with the WooCommerce integration chain (PRs #947 → #958 → #960 / #959 → #969 → #970 → #972); the FE setup wizard is PR #1002. May not be present on `main` yet.
+- [Allegro Setup Guide](../allegro/setup-guide.md) — marketplace connection used in § 6
+- [Architecture Overview](../../architecture-overview.md) — capability ports, inventory→offer data flow
+- [Getting Started](../../getting-started.md) — broader dev-stack setup
