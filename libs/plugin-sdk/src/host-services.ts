@@ -39,6 +39,7 @@ import type {
   EmailNormalizerRegistryService,
   WebhookProvisioningRegistryService,
   WebhookEventTranslatorRegistryService,
+  InboundWebhookDecoderRegistryService,
   ConnectionConfigShapeValidatorRegistryService,
   ConnectionCredentialsShapeValidatorRegistryService,
   OAuthCompletionRegistryService,
@@ -121,6 +122,16 @@ export interface HostServices {
    * poll-only (a stray webhook dead-letters as "no translator").
    */
   readonly webhookEventTranslatorRegistry: WebhookEventTranslatorRegistryService;
+
+  /**
+   * Inbound-webhook-decoder registry (ADR-021). A plugin registers an
+   * `InboundWebhookDecoderPort` here, keyed by `provider`, to authenticate and
+   * decode its third-party-native webhook body (signature scheme + envelope +
+   * dedup `eventId`) before the host's shared dedup/publish pipeline. Absence
+   * means the connection's webhooks fall to the host default OL-HMAC +
+   * `WebhookRequestDto` decoder.
+   */
+  readonly inboundWebhookDecoderRegistry: InboundWebhookDecoderRegistryService;
 
   /**
    * Per-plugin `Connection.config` shape-validator registry (#587). A plugin

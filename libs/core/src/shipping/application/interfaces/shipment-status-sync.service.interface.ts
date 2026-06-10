@@ -20,4 +20,18 @@ export interface IShipmentStatusSyncService {
     connectionId: string,
     options: ShipmentStatusSyncOptions,
   ): Promise<ShipmentStatusSyncResult>;
+
+  /**
+   * Parcel-targeted refresh — the trigger half of the InPost webhook flow
+   * (#768, ADR-021). Resolves the shipment by carrier `providerShipmentId`
+   * (connection-scoped — a webhook on one connection must not refresh
+   * another's), re-reads authoritative status via `getTracking`, and applies
+   * the same per-shipment patch + OMP propagation the paged `sync()` does.
+   * No-op (logged) when the parcel id resolves to no shipment or a shipment on
+   * a different connection.
+   */
+  syncOneByProviderShipmentId(
+    connectionId: string,
+    providerShipmentId: string,
+  ): Promise<void>;
 }

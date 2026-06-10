@@ -109,5 +109,6 @@ One pointer per section, identical format every time.
 | [ADR-018](./018-dpd-polska-rest-api-over-soap.md) | DPD Polska transport: native REST DPDServices API over legacy SOAP | Proposed | 2026-06-02 |
 | [ADR-019](./019-synchronous-bulk-shipment-dispatch.md) | Synchronous bulk shipment dispatch (loop the per-order seam) | Accepted | 2026-06-03 |
 | [ADR-020](./020-neutral-delivery-intent-shipping-dispatch.md) | Neutral delivery intent as the shipping-dispatch caller contract | Accepted | 2026-06-05 |
+| [ADR-021](./021-third-party-native-inbound-webhook-ingestion.md) | Third-party-native inbound webhook ingestion via a per-provider decoder | Proposed | 2026-06-08 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
