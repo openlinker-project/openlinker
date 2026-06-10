@@ -2,7 +2,9 @@ packages:
   - 'apps/*'
   - 'libs/*'
   - 'libs/integrations/*'
-
-
-
-
+allowBuilds:
+  '@nestjs/core': false
+  '@scarf/scarf': false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
