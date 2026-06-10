@@ -15,6 +15,7 @@ export { AdapterFactoryResolverService } from './infrastructure/adapters/adapter
 export { ConnectionTesterRegistryService } from './infrastructure/adapters/connection-tester-registry.service';
 export { WebhookProvisioningRegistryService } from './infrastructure/adapters/webhook-provisioning-registry.service';
 export { WebhookEventTranslatorRegistryService } from './infrastructure/adapters/webhook-event-translator-registry.service';
+export { InboundWebhookDecoderRegistryService } from './infrastructure/adapters/inbound-webhook-decoder-registry.service';
 export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
 export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
@@ -27,6 +28,7 @@ export { AdapterFactoryPort } from './domain/ports/adapter-factory.port';
 export { ConnectionTesterPort } from './domain/ports/connection-tester.port';
 export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.port';
 export { WebhookEventTranslatorPort } from './domain/ports/webhook-event-translator.port';
+export { InboundWebhookDecoderPort } from './domain/ports/inbound-webhook-decoder.port';
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
@@ -55,6 +57,11 @@ export {
   InboundEventDomain,
   InboundEventDomainValues,
 } from './domain/types/canonical-inbound-event.types';
+export {
+  InboundWebhookEnvelope,
+  DecodeResult,
+  WebhookVerifyResult,
+} from './domain/types/inbound-webhook-decoder.types';
 export {
   OAuthCredentialBlob,
   BuildAuthorizationUrlInput,
