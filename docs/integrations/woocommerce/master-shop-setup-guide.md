@@ -455,7 +455,23 @@ To see an end-to-end change: edit a product's stock in WooCommerce admin, run `m
 ### 6.5 Route Allegro orders into WooCommerce
 
 1. **Enable `OrderProcessorManager` on the WooCommerce connection** (§ 4). Order sync dispatches every ingested order to **all** active connections with that capability (except the order's own source) — with WooCommerce as the only one, Allegro orders land exactly there.
-2. Place a test order on the Allegro **sandbox** (buy one of your offers with a sandbox buyer account).
+2. Place a test order on the Allegro **sandbox** — click-by-click:
+   1. **Register a second sandbox account (the buyer)** at
+      `https://allegro.pl.allegrosandbox.pl` — you cannot buy your own offer
+      with the seller account. Use fictional data; only the e-mail must be
+      real (activation link).
+   2. As the **seller**, copy the offer's public URL from **Mój asortyment**
+      (each row links to the offer page; sandbox search indexing lags, so the
+      direct URL is the reliable way to find it). The offer must be `active`
+      with stock > 0.
+   3. Log in as the **buyer** (separate/incognito browser window keeps both
+      sessions alive), open the offer URL, click **KUP TERAZ**, set the
+      quantity, pick the delivery method (the courier from the seller's price
+      list), fill a fictional PL address, and continue to checkout.
+   4. Pay with the sandbox **payment simulator** (test online payment — it
+      succeeds immediately; no real money or card involved).
+   5. Seller-side check: the order appears under **Moja sprzedaż →
+      Zamówienia** on the seller account.
 3. The Allegro order-events poll ingests it (one `marketplace.order.sync` job per event). `OrderSyncService` then creates the order in WooCommerce via `createOrder` — provisioning the customer as a guest if needed — and `updateFulfillment` writes subsequent status changes to the WooCommerce order.
 4. Verify in **WooCommerce admin → Orders**: the order appears with the Allegro line items, and in OpenLinker's **Orders** list with mappings to both platforms.
 
