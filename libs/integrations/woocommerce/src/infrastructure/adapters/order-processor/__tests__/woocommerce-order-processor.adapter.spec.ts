@@ -681,6 +681,40 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     expect(lineItems[0]).not.toHaveProperty('variation_id');
   });
 
+  it('should omit nullish address fields instead of sending null (WC rejects non-string address props)', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    identifierMapping.getExternalIds.mockImplementation((entityType: string) => {
+      if (entityType === CORE_ENTITY_TYPE.Product) {
+        return Promise.resolve([{ externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
+      }
+      return Promise.resolve([]);
+    });
+    httpClient.post.mockResolvedValue({ id: 99 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        customerId: undefined,
+        billingAddress: undefined,
+        shippingAddress: {
+          firstName: 'Norbert',
+          lastName: 'Kulus',
+          company: null as unknown as string,
+          address1: 'taj as 2',
+          city: 'Gietrzwałd',
+          postalCode: '11-036',
+          country: 'PL',
+          phone: '+48510033555',
+        },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const shipping = (payload as { shipping: Record<string, unknown> }).shipping;
+    expect(shipping).not.toHaveProperty('company');
+    expect(shipping).not.toHaveProperty('state');
+    expect(shipping).toMatchObject({ first_name: 'Norbert', city: 'Gietrzwałd', country: 'PL' });
+  });
+
   it('should throw WooCommerceResourceNotFoundException when product mapping missing', async () => {
     const httpClient = makeHttpClient();
     const identifierMapping = makeIdentifierMapping();
