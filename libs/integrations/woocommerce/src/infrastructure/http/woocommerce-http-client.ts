@@ -102,10 +102,16 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           );
         }
 
+        // WC encodes a machine-readable `code` (e.g. `product_invalid_sku`) in
+        // the error body; surface it so the adapter can map known codes to
+        // domain exceptions.
+        const errorCode = await this.extractErrorCode(response);
+
         if (response.status === 404) {
           throw new WooCommerceHttpResponseException(
             response.status,
             `WooCommerce returned HTTP ${response.status}: ${url}`,
+            errorCode,
           );
         }
 
@@ -117,11 +123,13 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           continue;
         }
 
-        // Retries exhausted — still a known HTTP error response
-        throw new WooCommerceHttpResponseException(
-          response.status,
-          `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`,
-        );
+        // Distinguish "retries exhausted" (we actually retried) from a
+        // non-retryable status (4xx other than auth/404) that never retried —
+        // the message must not claim retries that did not happen.
+        const message = isRetryable
+          ? `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`
+          : `WooCommerce returned HTTP ${response.status}`;
+        throw new WooCommerceHttpResponseException(response.status, message, errorCode);
       } catch (err) {
         if (
           err instanceof WooCommerceUnauthorizedException ||
@@ -152,6 +160,28 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
 
     // Unreachable — loop always throws or returns
     throw new WooCommerceNetworkException('WooCommerce request failed');
+  }
+
+  /**
+   * Reads the WC REST error envelope `{ code, message, data }` and returns the
+   * machine-readable `code`. Best-effort: a non-JSON or bodyless error response
+   * yields `undefined` rather than throwing.
+   */
+  private async extractErrorCode(response: Response): Promise<string | undefined> {
+    try {
+      const parsed: unknown = await response.json();
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'code' in parsed &&
+        typeof (parsed as { code: unknown }).code === 'string'
+      ) {
+        return (parsed as { code: string }).code;
+      }
+    } catch {
+      // Non-JSON / empty body — no code to extract.
+    }
+    return undefined;
   }
 
   private buildAuthHeader(): string {

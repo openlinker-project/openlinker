@@ -12,6 +12,7 @@ import type { IWooCommerceProductMapper } from '../../../mappers/woocommerce-pro
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceDuplicateSkuException } from '../../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
 import type { WooCommerceProduct, WooCommerceProductVariation } from '../woocommerce-product.types';
 
@@ -522,6 +523,17 @@ describe('WooCommerceProductMasterAdapter', () => {
         adapter.createProduct({ name: 'Bad', sku: 'BAD', price: 0 }),
       ).rejects.toBeInstanceOf(WooCommerceHttpResponseException);
     });
+
+    it('should map WC product_invalid_sku (400) to WooCommerceDuplicateSkuException', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.post.mockRejectedValue(
+        new WooCommerceHttpResponseException(400, 'Invalid or duplicated SKU.', 'product_invalid_sku'),
+      );
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+      await expect(
+        adapter.createProduct({ name: 'Dup', sku: 'DUP-1', price: 1 }),
+      ).rejects.toBeInstanceOf(WooCommerceDuplicateSkuException);
+    });
   });
 
   describe('updateProduct', () => {
@@ -582,7 +594,9 @@ describe('WooCommerceProductMasterAdapter', () => {
 
       const result = await adapter.deleteProduct('prod-internal-1');
 
-      expect(httpClient.delete).toHaveBeenCalledWith('/wp-json/wc/v3/products/42');
+      expect(httpClient.delete).toHaveBeenCalledWith('/wp-json/wc/v3/products/42', {
+        force: true,
+      });
       expect(result).toBeUndefined();
     });
 
@@ -729,28 +743,42 @@ describe('WooCommerceProductMasterAdapter', () => {
       ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
     });
 
-    it('should log warn when variations list is saturated at 100 items', async () => {
-      const httpClient = makeHttpClient();
-      const saturatedList = Array.from({ length: 100 }, (_, i) => ({
+    it('should PUT-update (not POST-duplicate) when the target SKU is on a later variations page', async () => {
+      // Page 1: 100 variations (none match), page 2: target SKU. A single
+      // per_page=100 fetch would miss it and POST a duplicate; fetchAllPages
+      // must exhaust pages so the existing-SKU lookup finds it on page 2.
+      const page1 = Array.from({ length: 100 }, (_, i) => ({
         id: i + 1,
         sku: `SKU-${i + 1}`,
       })) as WooCommerceProductVariation[];
-      httpClient.get.mockResolvedValue(saturatedList);
-      // SKU not found in saturated list — POST new variation
-      httpClient.post.mockResolvedValue(makeVariationResponse(999));
+      const page2 = [{ id: 250, sku: 'SKU-ON-PAGE-2' }] as WooCommerceProductVariation[];
+
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+      httpClient.put.mockResolvedValue(makeVariationResponse(250));
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.getExternalIds.mockResolvedValue([
         { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
       ]);
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-new');
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-internal-page2');
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
 
-      const warnSpy = jest.spyOn(adapter['logger'], 'warn');
-      await adapter.upsertProductVariant('prod-internal-1', { sku: 'SKU-BRAND-NEW' });
+      const result = await adapter.upsertProductVariant('prod-internal-1', { sku: 'SKU-ON-PAGE-2' });
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('saturated'),
+      // Both pages fetched (exhaustive lookup), then PUT the matched variation.
+      expect(httpClient.get).toHaveBeenCalledTimes(2);
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/10/variations/250',
+        expect.objectContaining({ sku: 'SKU-ON-PAGE-2' }),
       );
+      expect(httpClient.post).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        CORE_ENTITY_TYPE.ProductVariant,
+        '250',
+        CONNECTION_ID,
+        expect.objectContaining({ parentEntityType: CORE_ENTITY_TYPE.Product }),
+      );
+      expect(result.id).toBe('var-internal-page2');
     });
   });
 

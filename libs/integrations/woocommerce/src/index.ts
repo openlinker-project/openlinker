@@ -17,12 +17,13 @@
 export type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
 export type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 
-// Domain exceptions — 5 domain-level exceptions exported for consumers
+// Domain exceptions — domain-level exceptions exported for consumers
 export { WooCommerceNotSupportedException } from './domain/exceptions/woocommerce-not-supported.exception';
 export { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 export { WooCommerceResourceNotFoundException } from './domain/exceptions/woocommerce-resource-not-found.exception';
 export { WooCommerceUnauthorizedException } from './domain/exceptions/woocommerce-unauthorized.exception';
 export { WooCommerceNetworkException } from './domain/exceptions/woocommerce-network.exception';
+export { WooCommerceDuplicateSkuException } from './domain/exceptions/woocommerce-duplicate-sku.exception';
 
 // Plugin descriptor + static manifest (#575)
 export { woocommerceAdapterManifest, createWooCommercePlugin } from './woocommerce-plugin';

@@ -171,6 +171,31 @@ describe('WooCommerceHttpClient', () => {
       expect(err).toBeInstanceOf(WooCommerceHttpResponseException);
       expect((err as WooCommerceHttpResponseException).statusCode).toBe(500);
     });
+
+    it('should NOT claim retries in the message for a non-retryable 400', async () => {
+      // 400 is non-retryable; the message must not say "after N retries".
+      jest.spyOn(global, 'fetch').mockImplementation(
+        makeFetchStub(400, { code: 'product_invalid_sku', message: 'Invalid or duplicated SKU.' }),
+      );
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+        maxRetries: 3,
+      });
+      const err = await client.post('/test', {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(WooCommerceHttpResponseException);
+      expect((err as WooCommerceHttpResponseException).statusCode).toBe(400);
+      expect((err as WooCommerceHttpResponseException).message).not.toContain('retries');
+      // Only one attempt — no retry happened.
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should expose the WC error code from the response body on errorCode', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(
+        makeFetchStub(400, { code: 'product_invalid_sku', message: 'Invalid or duplicated SKU.' }),
+      );
+      const client = makeClient();
+      const err = await client.post('/test', {}).catch((e: unknown) => e);
+      expect((err as WooCommerceHttpResponseException).errorCode).toBe('product_invalid_sku');
+    });
   });
 
   describe('retry behaviour', () => {

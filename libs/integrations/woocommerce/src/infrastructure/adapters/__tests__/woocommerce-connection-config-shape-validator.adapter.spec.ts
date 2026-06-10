@@ -15,15 +15,15 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('should pass when siteUrl is a valid http URL', async () => {
+  it('should throw InvalidConnectionConfigException when siteUrl is an http URL', async () => {
     await expect(
       validator.validate({ siteUrl: 'http://myshop.com' }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(InvalidConnectionConfigException);
   });
 
-  it('should pass when siteUrl is a localhost URL', async () => {
+  it('should pass when siteUrl is an https localhost URL', async () => {
     await expect(
-      validator.validate({ siteUrl: 'http://localhost:8080' }),
+      validator.validate({ siteUrl: 'https://localhost:8080' }),
     ).resolves.toBeUndefined();
   });
 

@@ -9,14 +9,16 @@
  *
  * `require_protocol: true` is intentional: without it, class-validator's
  * `@IsUrl` accepts protocol-less input like "myshop.com" that
- * `WooCommerceHttpClient` cannot fetch. `require_tld: false` allows
- * localhost and .internal hostnames for local development.
+ * `WooCommerceHttpClient` cannot fetch. `protocols: ['https']` is enforced
+ * to prevent plaintext credential transport — WooCommerce REST API keys are
+ * sent on every request, so http is rejected. `require_tld: false` allows
+ * localhost and .internal hostnames for local development (over https).
  *
  * @module libs/integrations/woocommerce/src/application/dto
  */
 import { IsUrl } from 'class-validator';
 
 export class WooCommerceConnectionConfigDto {
-  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['http', 'https'] })
+  @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   siteUrl!: string;
 }

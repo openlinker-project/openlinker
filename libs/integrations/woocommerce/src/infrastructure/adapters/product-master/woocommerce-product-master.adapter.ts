@@ -37,6 +37,7 @@ import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
@@ -376,7 +377,15 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
         : {}),
       ...(product.weight !== undefined ? { weight: String(product.weight) } : {}),
     };
-    const raw = await this.httpClient.post<WooCommerceProduct>('/wp-json/wc/v3/products', payload);
+    let raw: WooCommerceProduct;
+    try {
+      raw = await this.httpClient.post<WooCommerceProduct>('/wp-json/wc/v3/products', payload);
+    } catch (err) {
+      if (this.isDuplicateSkuError(err)) {
+        throw new WooCommerceDuplicateSkuException(product.sku, this.connection.id);
+      }
+      throw err;
+    }
     if (raw.id === undefined) {
       throw new WooCommerceResourceNotFoundException(
         `WooCommerce returned product without ID`,
@@ -453,7 +462,13 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       );
     }
     try {
-      await this.httpClient.delete(`/wp-json/wc/v3/products/${mapping.externalId}`);
+      // force=true is a permanent delete (bypasses the WC trash). Without it WC
+      // soft-deletes (trashes) the product, leaving its SKU occupied — which
+      // breaks the port contract ("delete from the external system") and blocks
+      // re-creating a product with the same SKU.
+      await this.httpClient.delete(`/wp-json/wc/v3/products/${mapping.externalId}`, {
+        force: true,
+      });
     } catch (err) {
       if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
         // Product is already trashed/deleted — caller's intent is satisfied.
@@ -482,11 +497,14 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     }
     const wcId = mapping.externalId;
 
+    // Exhaust all pages so the existing-SKU lookup is correct regardless of
+    // variation count. A single per_page=100 fetch silently misses a target
+    // SKU on page 2+, causing a duplicate variation to be POSTed instead of an
+    // update for variable products with >100 variations.
     let variations: WooCommerceProductVariation[];
     try {
-      variations = await this.httpClient.get<WooCommerceProductVariation[]>(
+      variations = await this.fetchAllPages<WooCommerceProductVariation>(
         `/wp-json/wc/v3/products/${wcId}/variations`,
-        { per_page: 100 },
       );
     } catch (err) {
       if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
@@ -498,13 +516,6 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
         );
       }
       throw err;
-    }
-
-    if (variations.length >= 100) {
-      this.logger.warn(
-        `upsertProductVariant: variations list saturated at 100 for product ${wcId} ` +
-          `(connection: ${this.connection.id}) — SKU lookup may be incomplete`,
-      );
     }
 
     const varPayload: WooCommerceVariationWriteRequest = {
@@ -647,6 +658,15 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     }
 
     return Object.keys(params).length > 0 ? params : undefined;
+  }
+
+  // WC rejects a duplicate SKU with HTTP 400 + error code `product_invalid_sku`.
+  private isDuplicateSkuError(err: unknown): boolean {
+    return (
+      err instanceof WooCommerceHttpResponseException &&
+      err.statusCode === 400 &&
+      err.errorCode === 'product_invalid_sku'
+    );
   }
 
   // Inline price parse for synthetic variant — mirrors parseOptionalNumber in the mapper.
