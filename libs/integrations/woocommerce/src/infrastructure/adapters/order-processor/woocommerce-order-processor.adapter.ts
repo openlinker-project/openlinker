@@ -396,18 +396,25 @@ export class WooCommerceOrderProcessorAdapter
             this.connection.id,
           );
         }
-        try {
-          variationId = toPositiveInt(variantMapping.externalId, 'variation id');
-        } catch (err) {
-          if (err instanceof WooCommerceInvalidIdentifierException) {
-            throw new WooCommerceResourceNotFoundException(
-              `Corrupted mapping: "${variantMapping.externalId}" is not a valid positive integer WC ID for ${CORE_ENTITY_TYPE.ProductVariant} ${item.variantId}`,
-              CORE_ENTITY_TYPE.ProductVariant,
-              item.variantId,
-              this.connection.id,
-            );
+        if (variantMapping.externalId.startsWith('product:')) {
+          // Synthetic variant of a simple product (`product:{wcId}` — same
+          // convention as PrestaShop; the inventory adapter strips this
+          // prefix too). Simple products have no WC variation — the line
+          // item is the product itself, so variation_id stays unset.
+        } else {
+          try {
+            variationId = toPositiveInt(variantMapping.externalId, 'variation id');
+          } catch (err) {
+            if (err instanceof WooCommerceInvalidIdentifierException) {
+              throw new WooCommerceResourceNotFoundException(
+                `Corrupted mapping: "${variantMapping.externalId}" is not a valid positive integer WC ID for ${CORE_ENTITY_TYPE.ProductVariant} ${item.variantId}`,
+                CORE_ENTITY_TYPE.ProductVariant,
+                item.variantId,
+                this.connection.id,
+              );
+            }
+            throw err;
           }
-          throw err;
         }
       }
 

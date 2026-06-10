@@ -658,6 +658,29 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     );
   });
 
+  it('should omit variation_id when the variant is a synthetic simple-product variant (product:{id})', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    const itemWithSyntheticVariant: OrderItem = { id: 'i1', productId: 'ol-prod-1', variantId: 'ol-var-synth', quantity: 2, price: 49.99 };
+    identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) => {
+      if (entityType === CORE_ENTITY_TYPE.Customer) return Promise.resolve([]);
+      if (entityType === CORE_ENTITY_TYPE.Product && id === 'ol-prod-1') {
+        return Promise.resolve([{ externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
+      }
+      if (entityType === CORE_ENTITY_TYPE.ProductVariant && id === 'ol-var-synth') {
+        return Promise.resolve([{ externalId: 'product:10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
+      }
+      return Promise.resolve([]);
+    });
+    httpClient.post.mockResolvedValue({ id: 99 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder({ items: [itemWithSyntheticVariant] }));
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const lineItems = (payload as { line_items: Array<Record<string, unknown>> }).line_items;
+    expect(lineItems).toContainEqual(expect.objectContaining({ product_id: 10 }));
+    expect(lineItems[0]).not.toHaveProperty('variation_id');
+  });
+
   it('should throw WooCommerceResourceNotFoundException when product mapping missing', async () => {
     const httpClient = makeHttpClient();
     const identifierMapping = makeIdentifierMapping();
