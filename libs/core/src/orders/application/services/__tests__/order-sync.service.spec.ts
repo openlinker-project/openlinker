@@ -154,6 +154,32 @@ describe('OrderSyncService', () => {
       ]);
     });
 
+    it('should pass buyerEmail metadata when the source order carries customerEmail (#948 → #877 I2)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: { ...createOrder(), customerEmail: 'buyer@example.com' },
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ buyerEmail: 'buyer@example.com' }),
+        })
+      );
+    });
+
+    it('should omit buyerEmail metadata when the source order has no customerEmail', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      const [orderCreateArg] = adapter.createOrder.mock.calls[0] as [{ metadata?: Record<string, unknown> }];
+      expect(orderCreateArg.metadata).not.toHaveProperty('buyerEmail');
+    });
+
     it('should not re-create the destination order when a prior trigger already ingested it (webhook/poll convergence, #904)', async () => {
       // Both the low-latency webhook (#902/#903) and the reconciliation poll
       // (#904) reach syncOrder. When a prior trigger already created + mapped

@@ -17,7 +17,7 @@
 export type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
 export type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 
-// Domain exceptions — 7 domain-level exceptions exported for consumers
+// Domain exceptions — domain-level exceptions exported for consumers
 export { WooCommerceNotSupportedException } from './domain/exceptions/woocommerce-not-supported.exception';
 export { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 export { WooCommerceResourceNotFoundException } from './domain/exceptions/woocommerce-resource-not-found.exception';
@@ -25,6 +25,7 @@ export { WooCommerceUnauthorizedException } from './domain/exceptions/woocommerc
 export { WooCommerceNetworkException } from './domain/exceptions/woocommerce-network.exception';
 export { WooCommerceAuthFailureException } from './domain/exceptions/woocommerce-auth-failure.exception';
 export { WooCommerceInvalidArgumentException } from './domain/exceptions/woocommerce-invalid-argument.exception';
+export { WooCommerceInvalidIdentifierException } from './domain/exceptions/woocommerce-invalid-identifier.exception';
 
 // Plugin descriptor + static manifest (#575)
 export { woocommerceAdapterManifest, createWooCommercePlugin } from './woocommerce-plugin';

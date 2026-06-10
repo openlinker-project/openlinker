@@ -2,22 +2,24 @@
  * WooCommerce Order Processor Adapter — unit tests
  *
  * Mocks IWooCommerceHttpClient and IdentifierMappingPort.
- * All helpers (isValidEmail, toPositiveInt, WC_ORDER_STATUS_MAP) are tested
- * via direct import — no adapter instantiation needed for pure-function coverage.
+ * Pure helpers (isValidEmail, WC_ORDER_STATUS_MAP) and the shared
+ * `toPositiveInt` coercion are tested via direct import — no adapter
+ * instantiation needed for pure-function coverage.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__
  */
 import {
   WooCommerceOrderProcessorAdapter,
   isValidEmail,
-  toPositiveInt,
 } from '../woocommerce-order-processor.adapter';
+import { toPositiveInt } from '../../../utils/woocommerce-utils';
 import { WC_ORDER_STATUS_MAP } from '../woocommerce-order.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
-import type { OrderCreate, OrderItem } from '@openlinker/core/orders';
+import type { OrderCreate, OrderItem, OrderStatus } from '@openlinker/core/orders';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { WooCommerceOrderProcessingException } from '../../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceInvalidArgumentException } from '../../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceAuthFailureException } from '../../../../domain/exceptions/woocommerce-auth-failure.exception';
@@ -137,14 +139,14 @@ describe('WC_ORDER_STATUS_MAP', () => {
 
 describe('toPositiveInt', () => {
   it('should return the integer for a valid numeric string', () => {
-    expect(toPositiveInt('42', 'Product', 'prod-1', CONNECTION_ID)).toBe(42);
+    expect(toPositiveInt('42', 'product id')).toBe(42);
   });
 
-  it.each(['0', '-1', 'abc', '', 'NaN', '1.5'])(
-    'should throw WooCommerceResourceNotFoundException for "%s"',
+  it.each(['0', '-1', 'abc', '', 'NaN'])(
+    'should throw WooCommerceInvalidIdentifierException for "%s"',
     (value) => {
-      expect(() => toPositiveInt(value, 'Product', 'prod-1', CONNECTION_ID))
-        .toThrow(WooCommerceResourceNotFoundException);
+      expect(() => toPositiveInt(value, 'product id'))
+        .toThrow(WooCommerceInvalidIdentifierException);
     },
   );
 });
@@ -352,6 +354,33 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
     expect((payload as Record<string, unknown>).shipping_lines).toBeUndefined();
   });
+
+  // ── set_paid gating ──
+
+  it('should set set_paid: true for a processing order', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder({ status: 'processing' }));
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    expect((payload as Record<string, unknown>).set_paid).toBe(true);
+  });
+
+  it.each<OrderStatus>(['pending', 'cancelled', 'refunded'])(
+    'should omit set_paid for %s status',
+    async (status) => {
+      const httpClient = makeHttpClient();
+      const identifierMapping = makeIdentifierMapping();
+      mockMinimalMappings(identifierMapping);
+      httpClient.post.mockResolvedValue({ id: 1 });
+      const adapter = makeAdapter(httpClient, identifierMapping);
+      await adapter.createOrder(makeOrder({ status }));
+      const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+      expect((payload as Record<string, unknown>).set_paid).toBeUndefined();
+    },
+  );
 
   // ── Line item price pinning (B4) ──
 

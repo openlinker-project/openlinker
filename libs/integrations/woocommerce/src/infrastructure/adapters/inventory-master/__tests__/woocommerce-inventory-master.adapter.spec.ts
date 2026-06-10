@@ -53,15 +53,15 @@ function setupProductMapping(
   });
 }
 
-function makeSimpleProduct(overrides: Record<string, unknown> = {}) {
+function makeSimpleProduct(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { id: 1, type: 'simple', stock_quantity: 10, manage_stock: true, ...overrides };
 }
 
-function makeVariableProduct(variationIds: number[]) {
+function makeVariableProduct(variationIds: number[]): Record<string, unknown> {
   return { id: 1, type: 'variable', variations: variationIds };
 }
 
-function makeVariation(id: number, stock_quantity: number | null = 5) {
+function makeVariation(id: number, stock_quantity: number | null = 5): Record<string, unknown> {
   return { id, stock_quantity, manage_stock: true };
 }
 

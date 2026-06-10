@@ -106,6 +106,10 @@ export class OrderSyncService implements IOrderSyncService {
         // a platform-side dedup guard (e.g. WC `_ol_order_id` meta_data) — core
         // remains the authority for idempotency + mapping (#909/#911).
         internalOrderId: order.id,
+        // Neutral buyer email passthrough (#948 source → destination). Destination
+        // adapters that provision a customer keyed on email (e.g. WooCommerce)
+        // read this; platform-neutral and omitted when the source has no email.
+        ...(order.customerEmail ? { buyerEmail: order.customerEmail } : {}),
       },
     };
 

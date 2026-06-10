@@ -1,9 +1,35 @@
 /**
  * @module libs/integrations/woocommerce/src/infrastructure/utils/__tests__
  */
-import { fetchAllPages, FETCH_ALL_MAX_PAGES } from '../woocommerce-utils';
+import { fetchAllPages, FETCH_ALL_MAX_PAGES, toPositiveInt } from '../woocommerce-utils';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
+import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { Logger } from '@openlinker/shared/logging';
+
+describe('toPositiveInt', () => {
+  it('should return the integer for a positive numeric string', () => {
+    expect(toPositiveInt('42')).toBe(42);
+  });
+
+  it('should return the integer for a positive number', () => {
+    expect(toPositiveInt(7)).toBe(7);
+  });
+
+  it('should floor a positive non-integer', () => {
+    expect(toPositiveInt('12.9')).toBe(12);
+  });
+
+  it.each([null, undefined, '', 'abc', NaN, Infinity, 0, -1, '-5'])(
+    'should throw WooCommerceInvalidIdentifierException for invalid input %p',
+    (value) => {
+      expect(() => toPositiveInt(value)).toThrow(WooCommerceInvalidIdentifierException);
+    },
+  );
+
+  it('should weave the label into the error message', () => {
+    expect(() => toPositiveInt('NaN', 'variation id')).toThrow(/variation id/);
+  });
+});
 
 function makeHttpClient(pages: unknown[][]): jest.Mocked<IWooCommerceHttpClient> {
   let call = 0;

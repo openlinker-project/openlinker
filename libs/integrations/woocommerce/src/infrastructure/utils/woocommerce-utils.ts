@@ -9,6 +9,7 @@
  */
 import type { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
+import { WooCommerceInvalidIdentifierException } from '../../domain/exceptions/woocommerce-invalid-identifier.exception';
 
 /**
  * Safety cap: prevents unbounded pagination in pathological cases.
@@ -17,13 +18,30 @@ import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.int
 export const FETCH_ALL_MAX_PAGES = 500;
 
 /**
- * Converts a value to a positive integer, returning null if the conversion
- * fails or the result is not a finite positive integer.
- * Guards against NaN, Infinity, negative numbers, and non-numeric strings.
+ * Canonical positive-integer coercion for WooCommerce resource ids.
+ *
+ * Converts a value to a positive integer, THROWING
+ * `WooCommerceInvalidIdentifierException` when the conversion fails or the
+ * result is not a finite positive integer (NaN, Infinity, zero, negative,
+ * non-numeric string). Throwing rather than returning a sentinel means a
+ * corrupted identifier mapping fails fast at the point of use instead of
+ * silently producing a malformed request path like `/products/NaN`.
+ *
+ * `label` is woven into the error message so the caller's context (e.g.
+ * "product id", "variation id") survives in the thrown error.
+ *
+ * @throws {WooCommerceInvalidIdentifierException} when `value` is not a
+ *   finite positive integer.
  */
-export function toPositiveInt(value: unknown): number | null {
+export function toPositiveInt(value: unknown, label = 'identifier'): number {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new WooCommerceInvalidIdentifierException(
+      `WooCommerce ${label} must be a positive integer, received: ${JSON.stringify(value)}`,
+      value,
+    );
+  }
+  return Math.floor(n);
 }
 
 /**

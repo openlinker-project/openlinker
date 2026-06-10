@@ -25,6 +25,7 @@ import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceNotSupportedException } from '../../../domain/exceptions/woocommerce-not-supported.exception';
+import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { fetchAllPages, toPositiveInt } from '../../utils/woocommerce-utils';
 import type {
   WooCommerceProduct,
@@ -132,16 +133,19 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
         this.connection.id,
       );
     }
-    const wcId = toPositiveInt(mapping.externalId);
-    if (wcId === null) {
-      throw new WooCommerceResourceNotFoundException(
-        `Product mapping for ${productId} has invalid externalId "${mapping.externalId}" (not a positive integer)`,
-        'Product',
-        productId,
-        this.connection.id,
-      );
+    try {
+      return toPositiveInt(mapping.externalId, 'product id');
+    } catch (err) {
+      if (err instanceof WooCommerceInvalidIdentifierException) {
+        throw new WooCommerceResourceNotFoundException(
+          `Product mapping for ${productId} has invalid externalId "${mapping.externalId}" (not a positive integer)`,
+          'Product',
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
     }
-    return wcId;
   }
 
   private async listSimpleInventory(
@@ -271,14 +275,19 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
         this.connection.id,
       );
     }
-    const wcVariationId = toPositiveInt(variantMapping.externalId);
-    if (wcVariationId === null) {
-      throw new WooCommerceResourceNotFoundException(
-        `Variant mapping for ${variantId} has invalid externalId "${variantMapping.externalId}" (not a positive integer)`,
-        'ProductVariant',
-        variantId,
-        this.connection.id,
-      );
+    let wcVariationId: number;
+    try {
+      wcVariationId = toPositiveInt(variantMapping.externalId, 'variation id');
+    } catch (err) {
+      if (err instanceof WooCommerceInvalidIdentifierException) {
+        throw new WooCommerceResourceNotFoundException(
+          `Variant mapping for ${variantId} has invalid externalId "${variantMapping.externalId}" (not a positive integer)`,
+          'ProductVariant',
+          variantId,
+          this.connection.id,
+        );
+      }
+      throw err;
     }
 
     let variation: WooCommerceProductVariation;

@@ -31,9 +31,9 @@ try {
 
   // Priority: .env.local > .env (matching NestJS ConfigModule behavior)
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- untyped runtime config read at boot
-  config({ path: resolve(__dirname, '../../.env.local') });
+  config({ path: resolve(__dirname, '../../../.env.local') });
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- untyped runtime config read at boot
-  config({ path: resolve(__dirname, '../../.env') });
+  config({ path: resolve(__dirname, '../../../.env') });
 } catch {
   // dotenv not available - rely on environment variables being set
   // This is fine for production where env vars are set by the container/runtime

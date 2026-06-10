@@ -1,63 +1,87 @@
 /**
- * WooCommerce Connection Config DTO — SSRF Guard Tests
+ * WooCommerce Connection Config DTO — SSRF guard unit tests
  *
- * Verifies that IsSsrfSafeUrlConstraint blocks all forms of private-IP
- * encoding, including decimal-integer and octal-octet bypass forms.
+ * Exercises `IsSsrfSafeUrlConstraint` directly (the canonical SSRF guard the
+ * rest of the plugin fleet copies, adopted from #875). Each known IPv4-literal
+ * bypass class (dotted private, loopback, hex, IPv4-mapped IPv6,
+ * decimal-integer, octal) is asserted, plus a normal public https URL is
+ * accepted. Loopback in ANY encoding is intentionally allowed for local dev.
  *
  * @module libs/integrations/woocommerce/src/application/dto
  */
-import { validate } from 'class-validator';
-import { WooCommerceConnectionConfigDto } from './woocommerce-connection-config.dto';
+import 'reflect-metadata';
+import { IsSsrfSafeUrlConstraint } from './woocommerce-connection-config.dto';
 
-async function isValid(url: string): Promise<boolean> {
-  const dto = new WooCommerceConnectionConfigDto();
-  dto.siteUrl = url;
-  const errors = await validate(dto);
-  return errors.length === 0;
-}
+describe('IsSsrfSafeUrlConstraint', () => {
+  const guard = new IsSsrfSafeUrlConstraint();
+  const accept = (url: string): boolean => guard.validate(url);
 
-describe('WooCommerceConnectionConfigDto — IsSsrfSafeUrlConstraint', () => {
-  describe('decimal-integer encoded IPs', () => {
-    it('should reject decimal-integer encoding of 127.0.0.1 (2130706433)', async () => {
-      expect(await isValid('https://2130706433')).toBe(false);
+  describe('accepts legitimate URLs', () => {
+    it('should accept a normal public https URL', () => {
+      expect(accept('https://myshop.example.com')).toBe(true);
     });
 
-    it('should reject decimal-integer encoding of 192.168.0.1 (3232235521)', async () => {
-      expect(await isValid('https://3232235521')).toBe(false);
-    });
-  });
-
-  describe('octal-octet encoded IPs', () => {
-    it('should reject octal encoding of 127.0.0.1 (0177.0.0.1)', async () => {
-      expect(await isValid('https://0177.0.0.1')).toBe(false);
+    it('should accept loopback (127.0.0.1) for local dev', () => {
+      expect(accept('https://127.0.0.1')).toBe(true);
     });
 
-    it('should reject octal encoding of 192.168.0.1 (0300.0250.0.1)', async () => {
-      expect(await isValid('https://0300.0250.0.1')).toBe(false);
+    it('should accept localhost for local dev', () => {
+      expect(accept('https://localhost')).toBe(true);
+    });
+
+    it('should accept IPv6 loopback ([::1]) for local dev', () => {
+      expect(accept('https://[::1]')).toBe(true);
     });
   });
 
-  describe('allowed addresses', () => {
-    it('should allow a valid public HTTPS URL', async () => {
-      expect(await isValid('https://myshop.example.com')).toBe(true);
-    });
-
-    it('should allow loopback with https (local dev)', async () => {
-      expect(await isValid('https://127.0.0.1')).toBe(true);
-    });
-
-    it('should allow localhost with https', async () => {
-      expect(await isValid('https://localhost')).toBe(true);
+  describe('rejects private / link-local IPs in dotted-quad form', () => {
+    it.each([
+      'https://10.0.0.1',
+      'https://172.16.0.1',
+      'https://192.168.1.50',
+      'https://169.254.169.254',
+    ])('should reject %s', (url) => {
+      expect(accept(url)).toBe(false);
     });
   });
 
-  describe('still blocked — pre-existing forms', () => {
-    it('should reject hex-encoded private IP', async () => {
-      expect(await isValid('https://0xc0a80001')).toBe(false);
+  describe('rejects IPv4-literal SSRF bypass encodings', () => {
+    it('should reject hex-encoded private IP (0xc0a80001 = 192.168.0.1)', () => {
+      expect(accept('https://0xc0a80001')).toBe(false);
     });
 
-    it('should reject RFC-1918 address', async () => {
-      expect(await isValid('https://192.168.1.100')).toBe(false);
+    it('should reject IPv4-mapped IPv6 (::ffff:192.168.1.1)', () => {
+      expect(accept('https://[::ffff:192.168.1.1]')).toBe(false);
+    });
+
+    it('should reject decimal-integer encoding of a private IP (3232235521 = 192.168.0.1)', () => {
+      expect(accept('https://3232235521')).toBe(false);
+    });
+
+    it('should reject decimal-integer encoding of link-local metadata (2852039166 = 169.254.169.254)', () => {
+      expect(accept('https://2852039166')).toBe(false);
+    });
+
+    it('should reject octal-encoded private IP (0012.0.0.1 = 10.0.0.1)', () => {
+      expect(accept('https://0012.0.0.1')).toBe(false);
+    });
+
+    it('should reject hex-part dotted IP (0xa.0.0.1 = 10.0.0.1)', () => {
+      expect(accept('https://0xa.0.0.1')).toBe(false);
+    });
+  });
+
+  describe('rejects cloud-metadata hostnames and malformed input', () => {
+    it('should reject the Azure metadata hostname', () => {
+      expect(accept('https://metadata.azure.com')).toBe(false);
+    });
+
+    it('should reject a non-string value', () => {
+      expect(guard.validate(42)).toBe(false);
+    });
+
+    it('should reject an unparseable URL', () => {
+      expect(accept('not-a-url')).toBe(false);
     });
   });
 });

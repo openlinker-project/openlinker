@@ -430,4 +430,78 @@ describe('WooCommerceHttpClient', () => {
       await expect(client.delete('/test')).rejects.toBeInstanceOf(WooCommerceNetworkException);
     });
   });
+
+  // ── SSRF redirect guard (#969) ─────────────────────────────────────────────
+
+  describe('redirect SSRF guard', () => {
+    function redirectResponse(status: number, location: string | null): unknown {
+      return {
+        ok: false,
+        status,
+        headers: { get: (name: string) => (name.toLowerCase() === 'location' ? location : null) },
+        json: () => Promise.resolve({}),
+      };
+    }
+
+    function okResponse(body: unknown = { ok: true }): unknown {
+      return { ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) };
+    }
+
+    it('should reject a redirect to a private IP target', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        redirectResponse(302, 'https://10.0.0.5/wp-json/wc/v3/products') as Response,
+      );
+      const client = makeClient();
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
+        WooCommerceNetworkException,
+      );
+    });
+
+    it('should reject a redirect to a cleartext http target', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        redirectResponse(301, 'http://attacker.example.com/') as Response,
+      );
+      const client = makeClient();
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
+        WooCommerceNetworkException,
+      );
+    });
+
+    it('should reject a redirect to the cloud-metadata endpoint', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        redirectResponse(307, 'https://169.254.169.254/latest/meta-data/') as Response,
+      );
+      const client = makeClient();
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
+        WooCommerceNetworkException,
+      );
+    });
+
+    it('should reject a redirect with no Location header', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(redirectResponse(302, null) as Response);
+      const client = makeClient();
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
+        WooCommerceNetworkException,
+      );
+    });
+
+    it('should follow a redirect to a safe public https target and return its body', async () => {
+      const stub = jest
+        .fn()
+        .mockResolvedValueOnce(redirectResponse(302, 'https://other.example.com/wp-json/wc/v3/products'))
+        .mockResolvedValueOnce(okResponse({ id: 1 }));
+      jest.spyOn(global, 'fetch').mockImplementation(stub as unknown as typeof fetch);
+      const client = makeClient();
+
+      const result = await client.get<{ id: number }>('/wp-json/wc/v3/products');
+
+      expect(result).toEqual({ id: 1 });
+      expect(stub).toHaveBeenCalledTimes(2);
+      expect(stub).toHaveBeenNthCalledWith(
+        2,
+        'https://other.example.com/wp-json/wc/v3/products',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+    });
+  });
 });
