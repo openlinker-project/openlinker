@@ -23,6 +23,7 @@ import {
   EMAIL_NORMALIZER_REGISTRY_TOKEN,
   WEBHOOK_PROVISIONING_REGISTRY_TOKEN,
   WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN,
+  INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
@@ -59,6 +60,7 @@ describe('createNestAdapterModule', () => {
     emailNormalizerRegistry: object;
     webhookProvisioningRegistry: object;
     webhookEventTranslatorRegistry: object;
+    inboundWebhookDecoderRegistry: object;
     connectionConfigShapeValidatorRegistry: object;
     connectionCredentialsShapeValidatorRegistry: object;
     oauthCompletionRegistry: object;
@@ -75,6 +77,7 @@ describe('createNestAdapterModule', () => {
       emailNormalizerRegistry: {},
       webhookProvisioningRegistry: {},
       webhookEventTranslatorRegistry: {},
+      inboundWebhookDecoderRegistry: {},
       connectionConfigShapeValidatorRegistry: {},
       connectionCredentialsShapeValidatorRegistry: {},
       oauthCompletionRegistry: {},
@@ -106,6 +109,10 @@ describe('createNestAdapterModule', () => {
         {
           provide: WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN,
           useValue: registries.webhookEventTranslatorRegistry,
+        },
+        {
+          provide: INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN,
+          useValue: registries.inboundWebhookDecoderRegistry,
         },
         {
           provide: CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
