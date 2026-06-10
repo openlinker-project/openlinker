@@ -53,7 +53,7 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
   // undefined propagation into withNetwork() calls below (same pattern as
   // prestashop-container.helper.ts).
   const startedNetwork = await new Network().start();
-  let network: StartedNetwork | undefined = startedNetwork;
+  const network: StartedNetwork | undefined = startedNetwork;
   let mysql: StartedMySqlContainer | undefined;
   let wordpress: StartedTestContainer | undefined;
 
@@ -82,7 +82,9 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
         WORDPRESS_PASSWORD: 'admintest',
         WORDPRESS_EMAIL: 'test@openlinker.local',
         WORDPRESS_SITE_TITLE: 'OL WC Test',
-        WORDPRESS_PLUGINS: 'woocommerce',
+        // Pinned by URL: latest WC requires a newer WP than the frozen
+        // bitnamilegacy 6.7.1 image ships (see docker-compose.yml).
+        WORDPRESS_PLUGINS: 'https://downloads.wordpress.org/plugin/woocommerce.10.1.0.zip',
       })
       .withExposedPorts(8080)
       .withWaitStrategy(
