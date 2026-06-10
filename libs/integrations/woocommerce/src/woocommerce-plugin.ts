@@ -27,6 +27,9 @@ import { WooCommerceConfigException } from './domain/exceptions/woocommerce-conf
 import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
 import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
+import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
+import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
+import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
 /**
  * Static plugin manifest (#575).
@@ -40,7 +43,7 @@ import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inv
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -66,6 +69,13 @@ export function createWooCommercePlugin(): AdapterPlugin {
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceConnectionCredentialsShapeValidatorAdapter(WOOCOMMERCE_BRAND),
       );
+      host.authFailureClassifierRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      for (const task of buildWooCommerceSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     async createCapabilityAdapter<T>(
@@ -113,6 +123,7 @@ export function createWooCommercePlugin(): AdapterPlugin {
                 host.identifierMapping,
                 connection,
               ),
+              OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,
           ),
