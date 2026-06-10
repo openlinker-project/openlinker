@@ -394,11 +394,13 @@ re-open the connection edit page and the dropdown will list it.
 
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
 
-> **Pick a simple leaf category in the wizard.** Deep, simple leaves (e.g.
-> *Ubrania męskie → Bluzy* — "bluza Nike rozpinana") have few required
-> parameters and validate easily; broad or technical categories demand many
-> mandatory product parameters and multiply rejection reasons while you're
-> still wiring up the flow.
+> **Pick a simple leaf category in the wizard.** The easiest one verified in
+> this walkthrough is **Elektronika → Komputery → Internet i produkt cyfrowy**
+> — it requires **no EAN/GTIN at all** (digital product), so it sidesteps the
+> GS1 barcode validation entirely and has almost no mandatory parameters.
+> Physical-goods categories demand a valid EAN plus their own required
+> parameters and multiply rejection reasons while you're still wiring up the
+> flow.
 
 > **EAN/GTIN must be a real GS1 number — made-up prefixes are rejected.** Allegro
 > validates the barcode against GS1 allocation ranges and rejects offers with
