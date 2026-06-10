@@ -394,6 +394,12 @@ re-open the connection edit page and the dropdown will list it.
 
 - **New offers:** from **Products**, select the WooCommerce-sourced variants you want to sell and launch the offer-creation wizard (single or bulk). Each offer links to its product by the variant's **barcode (EAN/GTIN)**; multi-variant products fan out one offer per variant, each sourcing its stock from the per-variant master inventory read in § 5.
 
+> **Pick a simple leaf category in the wizard.** Deep, simple leaves (e.g.
+> *Ubrania męskie → Bluzy* — "bluza Nike rozpinana") have few required
+> parameters and validate easily; broad or technical categories demand many
+> mandatory product parameters and multiply rejection reasons while you're
+> still wiring up the flow.
+
 > **EAN/GTIN must be a real GS1 number — made-up prefixes are rejected.** Allegro
 > validates the barcode against GS1 allocation ranges and rejects offers with
 > `ProductValidationException: GS1 nie nadaje numerów EAN (GTIN), które zaczynają
@@ -431,6 +437,12 @@ clusters hit during this guide's walkthrough:
 - **Pre-existing Allegro offers:** the `marketplace.offers.sync` job imports them and the barcode linker maps each offer to a WooCommerce product — only **unique** barcode matches link automatically; ambiguous ones stay unlinked for manual mapping.
 
 Verify under **Listings**: each offer row shows its linked product and the Allegro publication status.
+
+**Verify on the Allegro side**: open **Mój asortyment** in Sales Center —
+`https://salescenter.allegro.com.allegrosandbox.pl/my-assortment` (production:
+`https://salescenter.allegro.com/my-assortment`) — the created offers appear
+there with their publication status, and each row links to the public offer
+page on `allegro.pl.allegrosandbox.pl`.
 
 ### 6.4 Propagate WooCommerce stock to offer quantities
 
