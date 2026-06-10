@@ -43,7 +43,13 @@ export interface WooCommerceLineItemRequest {
   product_id: number;
   variation_id?: number;
   quantity: number;
-  price?: string;
+  /**
+   * `price` is read-only in WC REST API — it reflects catalog price, not buyer-paid price.
+   * Use `subtotal` / `total` to pin the buyer-paid amounts. Sending `price` has no effect
+   * (WC silently ignores it) but we omit it to keep the payload clean.
+   */
+  subtotal?: string;
+  total?: string;
   name?: string;
 }
 
