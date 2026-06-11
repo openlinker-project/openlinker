@@ -2,6 +2,11 @@
 
 End-to-end walkthrough: from a clean machine to a fully-configured OpenLinker instance with PrestaShop and Allegro connected, catalog synced, and categories mapped — ready to start creating offers and ingesting orders.
 
+> **Using WooCommerce instead of PrestaShop?** Both shop adapters are fully supported.
+> See the **[WooCommerce Setup Guide](./integrations/woocommerce/setup-guide.md)** for a
+> WooCommerce-specific walkthrough. The dev stack includes WooCommerce at **http://localhost:8082**
+> — run `pnpm dev:stack:wc-credentials` after startup to get the API credentials.
+
 ## Prerequisites
 
 - Docker + Docker Compose
@@ -71,9 +76,10 @@ cp apps/api/.env.example apps/api/.env.local
 cp apps/worker/.env.example apps/worker/.env.local
 ```
 
-Run migrations, then start the API and the web app (in separate terminals):
+Build the workspace, run migrations, then start the API and the web app (in separate terminals):
 
 ```bash
+pnpm build
 pnpm --filter @openlinker/api migration:run
 pnpm start:dev:api       # http://localhost:3000
 pnpm start:dev:web       # http://localhost:4173
