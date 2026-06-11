@@ -34,11 +34,27 @@ type StructuredField =
   | 'storefrontBaseUrl'
   | 'openlinkerCallbackBaseUrl'
   | 'masterCatalogConnectionId'
-  | 'defaultCarrierId';
+  | 'defaultCarrierId'
+  | 'unmanagedStockQuantity';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Read the WooCommerce unmanaged-stock cap out of `config.inventory` (#969 §7.3).
+ * Persisted as a number nested under `inventory`; the form keeps it as a string
+ * (same shape as `defaultCarrierId`). Empty string = no override (adapter default).
+ */
+function readUnmanagedStockQuantity(config: Record<string, unknown>): string {
+  const inventory =
+    typeof config.inventory === 'object' && config.inventory !== null
+      ? (config.inventory as Record<string, unknown>)
+      : {};
+  return typeof inventory.unmanagedStockQuantity === 'number'
+    ? String(inventory.unmanagedStockQuantity)
+    : '';
 }
 
 /**
@@ -154,6 +170,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         typeof connection.config.defaultCarrierId === 'number'
           ? String(connection.config.defaultCarrierId)
           : '',
+      // WC `inventory.unmanagedStockQuantity` is persisted as a number nested
+      // under `config.inventory`; the form keeps it as a string (#969 §7.3).
+      unmanagedStockQuantity: readUnmanagedStockQuantity(connection.config),
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
       sellerDefaults: readSellerDefaults(connection.config),

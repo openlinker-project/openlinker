@@ -96,6 +96,50 @@ describe('mergeStructuredIntoConfig', () => {
       expect(result).toEqual({ defaultCarrierId: 7, baseUrl: 'https://shop.example.com' });
     });
   });
+
+  describe('unmanagedStockQuantity (WooCommerce, #969 §7.3)', () => {
+    it('writes a coerced number nested under inventory into an empty config', () => {
+      const result = mergeStructuredIntoConfig({}, { unmanagedStockQuantity: '500' });
+      expect(result).toEqual({ inventory: { unmanagedStockQuantity: 500 } });
+    });
+
+    it('preserves sibling inventory keys when overwriting', () => {
+      const base = {
+        siteUrl: 'https://wc.example.com',
+        inventory: { unmanagedStockQuantity: 1000, futureKey: 'preserve-me' },
+      };
+      const result = mergeStructuredIntoConfig(base, { unmanagedStockQuantity: '250' });
+      expect(result).toEqual({
+        siteUrl: 'https://wc.example.com',
+        inventory: { unmanagedStockQuantity: 250, futureKey: 'preserve-me' },
+      });
+    });
+
+    it('deletes the key when cleared and drops an emptied inventory object', () => {
+      const base = {
+        siteUrl: 'https://wc.example.com',
+        inventory: { unmanagedStockQuantity: 1000 },
+      };
+      const result = mergeStructuredIntoConfig(base, { unmanagedStockQuantity: '' });
+      expect(result).toEqual({ siteUrl: 'https://wc.example.com' });
+      expect('inventory' in result).toBe(false);
+    });
+
+    it('keeps the inventory object when clearing leaves sibling keys behind', () => {
+      const base = { inventory: { unmanagedStockQuantity: 1000, futureKey: 'keep' } };
+      const result = mergeStructuredIntoConfig(base, { unmanagedStockQuantity: '' });
+      expect(result).toEqual({ inventory: { futureKey: 'keep' } });
+    });
+
+    it('leaves inventory untouched when the patch omits the field', () => {
+      const base = { inventory: { unmanagedStockQuantity: 1000 } };
+      const result = mergeStructuredIntoConfig(base, { siteUrl: 'https://wc.example.com' });
+      expect(result).toEqual({
+        inventory: { unmanagedStockQuantity: 1000 },
+        siteUrl: 'https://wc.example.com',
+      });
+    });
+  });
 });
 
 describe('editConnectionSchema — defaultCarrierId (#517)', () => {
@@ -173,4 +217,74 @@ describe('editConnectionSchema — storefrontBaseUrl', () => {
       expect(issue?.message).toBe('Storefront URL must be a valid URL');
     }
   });
+});
+
+describe('editConnectionSchema — siteUrl (WooCommerce, #975)', () => {
+  const validRest = {
+    name: 'Shop',
+    configText: '{}',
+  };
+
+  it('accepts an absent siteUrl and an empty string (unset signal)', () => {
+    expect(editConnectionSchema.safeParse(validRest).success).toBe(true);
+    expect(editConnectionSchema.safeParse({ ...validRest, siteUrl: '' }).success).toBe(true);
+  });
+
+  it('accepts a valid https URL (including https localhost)', () => {
+    expect(
+      editConnectionSchema.safeParse({ ...validRest, siteUrl: 'https://wc.example.com' }).success,
+    ).toBe(true);
+    expect(
+      editConnectionSchema.safeParse({ ...validRest, siteUrl: 'https://localhost:8443' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a plain-http URL with the wizard-aligned message', () => {
+    const result = editConnectionSchema.safeParse({
+      ...validRest,
+      siteUrl: 'http://wc.example.com',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.includes('siteUrl'));
+      expect(issue?.message).toBe('Site URL must use HTTPS');
+    }
+  });
+});
+
+describe('editConnectionSchema — unmanagedStockQuantity (WooCommerce, #969 §7.3)', () => {
+  const validRest = {
+    name: 'Shop',
+    configText: '{}',
+  };
+
+  it('accepts an absent value and an empty string (unset signal)', () => {
+    expect(editConnectionSchema.safeParse(validRest).success).toBe(true);
+    expect(
+      editConnectionSchema.safeParse({ ...validRest, unmanagedStockQuantity: '' }).success,
+    ).toBe(true);
+  });
+
+  it.each(['1', '500', '9999'])('accepts a positive-integer string (%s)', (value) => {
+    const result = editConnectionSchema.safeParse({
+      ...validRest,
+      unmanagedStockQuantity: value,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['0', '-5', '2.5', 'lots', ' '])(
+    'rejects non-positive-integer input (%s) with the documented message',
+    (value) => {
+      const result = editConnectionSchema.safeParse({
+        ...validRest,
+        unmanagedStockQuantity: value,
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const issue = result.error.issues.find((i) => i.path.includes('unmanagedStockQuantity'));
+        expect(issue?.message).toBe('Unmanaged stock quantity must be a positive integer.');
+      }
+    },
+  );
 });
