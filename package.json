@@ -40,9 +40,12 @@
     "start:dev:web": "pnpm --filter @openlinker/web dev",
     "build:worker": "pnpm --filter @openlinker/worker build",
     "dev:stack:up": "docker compose up -d postgres redis mysql phpmyadmin prestashop",
+    "dev:stack:wc:up": "docker compose up -d woocommerce-mysql woocommerce",
     "dev:stack:down": "docker compose down",
     "dev:stack:logs": "docker compose logs -f",
     "dev:stack:seed-prestashop": "docker compose exec prestashop sh -c 'for f in /tmp/post-install-scripts/*.sh; do echo \"--- $f ---\"; sh \"$f\" || exit $?; done'",
+    "dev:stack:seed-woocommerce": "docker exec openlinker-woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh",
+    "dev:stack:wc-credentials": "docker exec openlinker-woocommerce cat /bitnami/wordpress/.dev-secrets/woocommerce-credentials.json | jq .",
     "dev:health": "curl -s http://localhost:3000/health/dev-stack | jq . || curl -s http://localhost:3000/health/dev-stack",
     "prepare": "husky install || true"
   },
@@ -78,5 +81,6 @@
     "overrides": {
       "typeorm": "0.3.17"
     }
-  }
+  },
+  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800"
 }

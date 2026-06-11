@@ -46,7 +46,8 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **Subiekt nexo** *([#728](https://github.com/openlinker-project/openlinker/issues/728))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | 🚧 In progress |
 | **InPost** *([#727](https://github.com/openlinker-project/openlinker/issues/727))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | 🚧 In progress |
-| Shopify · WooCommerce · BigCommerce · Magento | Shop | 📋 Planned |
+| **[WooCommerce](./libs/integrations/woocommerce/)** | Shop *(source + destination + inventory)* | ✅ Live |
+| Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DPD · DHL · FedEx · ORLEN Paczka · GLS | Shipping *(pending `ShippingProviderPort` from #727)* | 📋 Planned |
 | Fakturownia · iFirma · wFirma · inFakt | Invoicing *(siblings of Subiekt under `InvoicingPort`)* | 📋 Planned |
@@ -223,7 +224,7 @@ cd openlinker
 pnpm install
 cp apps/api/.env.example apps/api/.env
 
-pnpm dev:stack:up        # PostgreSQL · Redis · MySQL · PrestaShop in Docker
+pnpm dev:stack:up        # PostgreSQL · Redis · MySQL · PrestaShop · WooCommerce in Docker
 pnpm start:dev:api       # NestJS API on :3000
 pnpm start:dev:worker    # Background job worker
 pnpm start:dev:web       # React admin UI on :5173
@@ -237,7 +238,9 @@ Then follow [`docs/getting-started.md`](./docs/getting-started.md) — a walkthr
 - Docker + Docker Compose (dev stack + integration tests)
 - An [Allegro sandbox account](https://apps.developer.allegro.pl.allegrosandbox.pl/) if you want to exercise the marketplace path
 
-The dev stack starts PostgreSQL, Redis, MySQL, and a pre-configured PrestaShop in containers — you do not need any of those installed locally.
+The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in containers — you do not need any of those installed locally.
+
+**WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080). Run `pnpm dev:stack:wc-credentials` after startup to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./docs/integrations/woocommerce/setup-guide.md) for full configuration steps.
 
 ---
 
