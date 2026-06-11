@@ -64,7 +64,31 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
     return this.request<T>('GET', url);
   }
 
-  private async request<T>(method: string, url: string, redirectCount = 0): Promise<T> {
+  async post<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('POST', url, body);
+  }
+
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.siteUrl}${path}`;
+    return this.request<T>('PUT', url, body);
+  }
+
+  async delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
+    const qs = params
+      ? new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    const separator = qs ? (path.includes('?') ? '&' : '?') : '';
+    const url = `${this.siteUrl}${path}${separator}${qs}`;
+    return this.request<T>('DELETE', url);
+  }
+
+  private async request<T>(
+    method: string,
+    url: string,
+    body?: unknown,
+    redirectCount = 0,
+  ): Promise<T> {
     let delay = this.retryConfig.initialDelayMs;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
@@ -72,12 +96,18 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
       try {
+        const headers: Record<string, string> = {
+          Authorization: this.buildAuthHeader(),
+          Accept: 'application/json',
+        };
+        if (body !== undefined) {
+          headers['Content-Type'] = 'application/json';
+        }
+
         const response = await fetch(url, {
           method,
-          headers: {
-            Authorization: this.buildAuthHeader(),
-            Accept: 'application/json',
-          },
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
           signal: controller.signal,
           // Do NOT auto-follow — re-check each redirect target for SSRF (#969).
           redirect: 'manual',
@@ -85,7 +115,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
 
         // 3xx with a Location — SSRF-guard the target before following it.
         if (response.status >= 300 && response.status < 400) {
-          return this.followRedirect<T>(response, method, url, redirectCount);
+          return this.followRedirect<T>(response, method, url, body, redirectCount);
         }
 
         if (response.ok) {
@@ -99,25 +129,33 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           );
         }
 
+        // Read the machine-readable WC error code (e.g. product_invalid_sku)
+        // so adapters can map known codes to domain exceptions.
+        const errorCode = await this.extractErrorCode(response);
+
         if (response.status === 404) {
           throw new WooCommerceHttpResponseException(
             response.status,
             `WooCommerce returned HTTP ${response.status}: ${url}`,
+            errorCode,
           );
         }
 
-        // Retryable: 429 and 5xx
-        if (attempt < this.retryConfig.maxRetries) {
+        // Only retry 429 (rate limit) and 5xx (server errors)
+        const isRetryable = response.status === 429 || response.status >= 500;
+        if (isRetryable && attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
           continue;
         }
 
-        // Retries exhausted — still a known HTTP error response
-        throw new WooCommerceHttpResponseException(
-          response.status,
-          `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`,
-        );
+        // Distinguish "retries exhausted" (we actually retried) from a
+        // non-retryable error that failed on the first attempt — the message
+        // must not claim retries that did not happen.
+        const message = isRetryable
+          ? `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`
+          : `WooCommerce returned HTTP ${response.status}: ${url}`;
+        throw new WooCommerceHttpResponseException(response.status, message, errorCode);
       } catch (err) {
         if (
           err instanceof WooCommerceUnauthorizedException ||
@@ -160,6 +198,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
     response: Response,
     method: string,
     fromUrl: string,
+    body: unknown,
     redirectCount: number,
   ): Promise<T> {
     const location = response.headers.get('location');
@@ -195,7 +234,29 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       );
     }
 
-    return this.request<T>(method, target.toString(), redirectCount + 1);
+    return this.request<T>(method, target.toString(), body, redirectCount + 1);
+  }
+
+  /**
+   * Reads the WC REST error envelope `{ code, message, data }` and returns the
+   * machine-readable `code`. Best-effort: a non-JSON or bodyless error response
+   * yields `undefined` rather than throwing.
+   */
+  private async extractErrorCode(response: Response): Promise<string | undefined> {
+    try {
+      const parsed: unknown = await response.json();
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'code' in parsed &&
+        typeof (parsed as { code: unknown }).code === 'string'
+      ) {
+        return (parsed as { code: string }).code;
+      }
+    } catch {
+      // Non-JSON / empty body — no code to extract.
+    }
+    return undefined;
   }
 
   private buildAuthHeader(): string {

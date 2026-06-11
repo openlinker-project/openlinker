@@ -134,15 +134,14 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
             latencyMs: Date.now() - startedAt,
           };
         }
-        // Raw OS error (e.g. "ECONNREFUSED 10.0.0.5:5432") logged server-side only —
-        // never returned to caller to avoid leaking internal network topology.
-        this.logger.warn('WooCommerce connection test failed: network error', {
+        this.logger.warn('WooCommerce connection test failed', {
           connectionId: connection.id,
-          error: error.originalError?.message ?? error.message,
+          error: error.message,
         });
         return {
           success: false,
-          message: 'Could not reach the WooCommerce site — check the URL and network connectivity',
+          // Include the original error message so operators see e.g. "ECONNREFUSED"
+          message: error.originalError?.message ?? error.message,
           latencyMs: Date.now() - startedAt,
         };
       }
@@ -154,7 +153,7 @@ export class WooCommerceConnectionTesterAdapter implements ConnectionTesterPort 
       });
       return {
         success: false,
-        message: 'WooCommerce connection test failed — check server logs for details',
+        message: err.message ?? 'WooCommerce connection test failed',
         latencyMs: Date.now() - startedAt,
       };
     }

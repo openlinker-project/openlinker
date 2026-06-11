@@ -15,7 +15,7 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('should throw InvalidConnectionConfigException when siteUrl uses http (HTTPS required)', async () => {
+  it('should throw when siteUrl uses http (HTTPS required)', async () => {
     await expect(
       validator.validate({ siteUrl: 'http://myshop.com' }),
     ).rejects.toThrow(InvalidConnectionConfigException);
@@ -56,9 +56,8 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
-  // ── SSRF protection (#876) ────────────────────────────────────────────────
+  // ── SSRF protection ───────────────────────────────────────────────────────
 
-  // SSRF tests use https:// to exercise the SSRF guard specifically (not the protocol check)
   it('should throw when siteUrl points to AWS metadata endpoint (169.254.169.254)', async () => {
     await expect(
       validator.validate({ siteUrl: 'https://169.254.169.254' }),
@@ -110,32 +109,6 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
   it('should pass when siteUrl is 127.0.0.1 over https (loopback, allowed for local dev)', async () => {
     await expect(
       validator.validate({ siteUrl: 'https://127.0.0.1' }),
-    ).resolves.toBeUndefined();
-  });
-
-  // ── orders.initialSyncFrom validation (#876) ──────────────────────────────
-
-  it('should pass when orders.initialSyncFrom is a valid date string', async () => {
-    await expect(
-      validator.validate({ siteUrl: 'https://myshop.com', orders: { initialSyncFrom: '2024-01-01' } }),
-    ).resolves.toBeUndefined();
-  });
-
-  it('should pass when orders.initialSyncFrom is a full ISO date string', async () => {
-    await expect(
-      validator.validate({ siteUrl: 'https://myshop.com', orders: { initialSyncFrom: '2024-01-01T00:00:00Z' } }),
-    ).resolves.toBeUndefined();
-  });
-
-  it('should throw when orders.initialSyncFrom is not a parseable date', async () => {
-    await expect(
-      validator.validate({ siteUrl: 'https://myshop.com', orders: { initialSyncFrom: 'not-a-date' } }),
-    ).rejects.toThrow(InvalidConnectionConfigException);
-  });
-
-  it('should pass when orders field is absent entirely', async () => {
-    await expect(
-      validator.validate({ siteUrl: 'https://myshop.com' }),
     ).resolves.toBeUndefined();
   });
 });

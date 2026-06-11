@@ -2,7 +2,7 @@
  * WooCommerce HTTP Client — unit tests
  *
  * Covers: Basic Auth, siteUrl normalisation, query params, retry behaviour,
- * typed exception mapping, and timeout/abort handling.
+ * typed exception mapping, and timeout/abort handling for all HTTP methods.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/http/__tests__
  */
@@ -24,6 +24,16 @@ function makeFetchStub(status: number, body: unknown = {}): jest.Mock {
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+  });
+}
+
+function makeClient(overrides?: Partial<{ maxRetries: number; initialDelayMs: number }>): WooCommerceHttpClient {
+  return new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+    maxRetries: 0,
+    initialDelayMs: 0,
+    backoffMultiplier: 1,
+    maxDelayMs: 0,
+    ...overrides,
   });
 }
 
@@ -261,6 +271,166 @@ describe('WooCommerceHttpClient', () => {
     });
   });
 
+  // ─── Write methods ─────────────────────────────────────────────────────────
+
+  describe('post', () => {
+    it('should send POST with JSON body and Content-Type header', async () => {
+      const stub = makeFetchStub(201, { id: 10 });
+      jest.spyOn(global, 'fetch').mockImplementation(stub);
+      const client = makeClient();
+      const body = { name: 'New Product', sku: 'SKU-1' };
+      await client.post('/wp-json/wc/v3/products', body);
+      const [url, init] = stub.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${SITE_URL}/wp-json/wc/v3/products`);
+      expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      expect(init.body).toBe(JSON.stringify(body));
+    });
+
+    it('should return parsed JSON on success', async () => {
+      const response = { id: 10, name: 'New Product' };
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(201, response));
+      const client = makeClient();
+      const result = await client.post<typeof response>('/wp-json/wc/v3/products', {});
+      expect(result).toEqual(response);
+    });
+
+    it('should throw WooCommerceUnauthorizedException on 401', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(401));
+      const client = makeClient();
+      await expect(client.post('/test', {})).rejects.toBeInstanceOf(WooCommerceUnauthorizedException);
+    });
+
+    it('should throw WooCommerceHttpResponseException on 404', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(404));
+      const client = makeClient();
+      const err = await client.post('/test', {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(WooCommerceHttpResponseException);
+      expect((err as WooCommerceHttpResponseException).statusCode).toBe(404);
+    });
+
+    it('should retry on 5xx and succeed on second attempt', async () => {
+      const stub = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
+        .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ id: 1 }) });
+      jest.spyOn(global, 'fetch').mockImplementation(stub);
+      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
+        maxRetries: 1,
+        initialDelayMs: 0,
+        backoffMultiplier: 1,
+        maxDelayMs: 0,
+      });
+      const result = await client.post('/test', {});
+      expect(result).toEqual({ id: 1 });
+      expect(stub).toHaveBeenCalledTimes(2);
+    });
+
+    it('should throw WooCommerceNetworkException on timeout', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      jest.spyOn(global, 'fetch').mockRejectedValue(abortError);
+      const client = makeClient();
+      await expect(client.post('/test', {})).rejects.toBeInstanceOf(WooCommerceNetworkException);
+    });
+  });
+
+  describe('put', () => {
+    it('should send PUT with JSON body and Content-Type header', async () => {
+      const stub = makeFetchStub(200, { id: 5 });
+      jest.spyOn(global, 'fetch').mockImplementation(stub);
+      const client = makeClient();
+      const body = { name: 'Updated' };
+      await client.put('/wp-json/wc/v3/products/5', body);
+      const [url, init] = stub.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${SITE_URL}/wp-json/wc/v3/products/5`);
+      expect(init.method).toBe('PUT');
+      expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      expect(init.body).toBe(JSON.stringify(body));
+    });
+
+    it('should return parsed JSON on success', async () => {
+      const response = { id: 5, name: 'Updated' };
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(200, response));
+      const client = makeClient();
+      const result = await client.put<typeof response>('/wp-json/wc/v3/products/5', {});
+      expect(result).toEqual(response);
+    });
+
+    it('should throw WooCommerceUnauthorizedException on 401', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(401));
+      const client = makeClient();
+      await expect(client.put('/test', {})).rejects.toBeInstanceOf(WooCommerceUnauthorizedException);
+    });
+
+    it('should throw WooCommerceHttpResponseException on 404', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(404));
+      const client = makeClient();
+      const err = await client.put('/test', {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(WooCommerceHttpResponseException);
+      expect((err as WooCommerceHttpResponseException).statusCode).toBe(404);
+    });
+
+    it('should throw WooCommerceNetworkException on timeout', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      jest.spyOn(global, 'fetch').mockRejectedValue(abortError);
+      const client = makeClient();
+      await expect(client.put('/test', {})).rejects.toBeInstanceOf(WooCommerceNetworkException);
+    });
+  });
+
+  describe('delete', () => {
+    it('should send DELETE request to correct URL', async () => {
+      const stub = makeFetchStub(200, { id: 5, status: 'trash' });
+      jest.spyOn(global, 'fetch').mockImplementation(stub);
+      const client = makeClient();
+      await client.delete('/wp-json/wc/v3/products/5');
+      const [url, init] = stub.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${SITE_URL}/wp-json/wc/v3/products/5`);
+      expect(init.method).toBe('DELETE');
+    });
+
+    it('should append query params when provided', async () => {
+      const stub = makeFetchStub(200, {});
+      jest.spyOn(global, 'fetch').mockImplementation(stub);
+      const client = makeClient();
+      await client.delete('/wp-json/wc/v3/products/5', { force: true });
+      const [url] = stub.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('force=true');
+    });
+
+    it('should return parsed JSON on success', async () => {
+      const response = { id: 5, status: 'trash' };
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(200, response));
+      const client = makeClient();
+      const result = await client.delete<typeof response>('/wp-json/wc/v3/products/5');
+      expect(result).toEqual(response);
+    });
+
+    it('should throw WooCommerceUnauthorizedException on 401', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(401));
+      const client = makeClient();
+      await expect(client.delete('/test')).rejects.toBeInstanceOf(WooCommerceUnauthorizedException);
+    });
+
+    it('should throw WooCommerceHttpResponseException on 404', async () => {
+      jest.spyOn(global, 'fetch').mockImplementation(makeFetchStub(404));
+      const client = makeClient();
+      const err = await client.delete('/test').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(WooCommerceHttpResponseException);
+      expect((err as WooCommerceHttpResponseException).statusCode).toBe(404);
+    });
+
+    it('should throw WooCommerceNetworkException on timeout', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      jest.spyOn(global, 'fetch').mockRejectedValue(abortError);
+      const client = makeClient();
+      await expect(client.delete('/test')).rejects.toBeInstanceOf(WooCommerceNetworkException);
+    });
+  });
+
   // ── SSRF redirect guard (#969) ─────────────────────────────────────────────
 
   describe('redirect SSRF guard', () => {
@@ -277,21 +447,12 @@ describe('WooCommerceHttpClient', () => {
       return { ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) };
     }
 
-    function makeClient(): WooCommerceHttpClient {
-      return new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, {
-        maxRetries: 0,
-        initialDelayMs: 0,
-        backoffMultiplier: 1,
-        maxDelayMs: 0,
-      });
-    }
-
     it('should reject a redirect to a private IP target', async () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(
-        redirectResponse(302, 'https://10.0.0.5/wp-json/wc/v3/orders') as Response,
+        redirectResponse(302, 'https://10.0.0.5/wp-json/wc/v3/products') as Response,
       );
       const client = makeClient();
-      await expect(client.get('/wp-json/wc/v3/orders')).rejects.toBeInstanceOf(
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
         WooCommerceNetworkException,
       );
     });
@@ -301,7 +462,7 @@ describe('WooCommerceHttpClient', () => {
         redirectResponse(301, 'http://attacker.example.com/') as Response,
       );
       const client = makeClient();
-      await expect(client.get('/wp-json/wc/v3/orders')).rejects.toBeInstanceOf(
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
         WooCommerceNetworkException,
       );
     });
@@ -311,7 +472,7 @@ describe('WooCommerceHttpClient', () => {
         redirectResponse(307, 'https://169.254.169.254/latest/meta-data/') as Response,
       );
       const client = makeClient();
-      await expect(client.get('/wp-json/wc/v3/orders')).rejects.toBeInstanceOf(
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
         WooCommerceNetworkException,
       );
     });
@@ -319,7 +480,7 @@ describe('WooCommerceHttpClient', () => {
     it('should reject a redirect with no Location header', async () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(redirectResponse(302, null) as Response);
       const client = makeClient();
-      await expect(client.get('/wp-json/wc/v3/orders')).rejects.toBeInstanceOf(
+      await expect(client.get('/wp-json/wc/v3/products')).rejects.toBeInstanceOf(
         WooCommerceNetworkException,
       );
     });
@@ -327,18 +488,18 @@ describe('WooCommerceHttpClient', () => {
     it('should follow a redirect to a safe public https target and return its body', async () => {
       const stub = jest
         .fn()
-        .mockResolvedValueOnce(redirectResponse(302, 'https://other.example.com/wp-json/wc/v3/orders'))
+        .mockResolvedValueOnce(redirectResponse(302, 'https://other.example.com/wp-json/wc/v3/products'))
         .mockResolvedValueOnce(okResponse({ id: 1 }));
       jest.spyOn(global, 'fetch').mockImplementation(stub as unknown as typeof fetch);
       const client = makeClient();
 
-      const result = await client.get<{ id: number }>('/wp-json/wc/v3/orders');
+      const result = await client.get<{ id: number }>('/wp-json/wc/v3/products');
 
       expect(result).toEqual({ id: 1 });
       expect(stub).toHaveBeenCalledTimes(2);
       expect(stub).toHaveBeenNthCalledWith(
         2,
-        'https://other.example.com/wp-json/wc/v3/orders',
+        'https://other.example.com/wp-json/wc/v3/products',
         expect.objectContaining({ redirect: 'manual' }),
       );
     });
@@ -346,7 +507,7 @@ describe('WooCommerceHttpClient', () => {
     it('should normal (non-redirect) requests still work', async () => {
       jest.spyOn(global, 'fetch').mockResolvedValue(okResponse({ id: 7 }) as Response);
       const client = makeClient();
-      await expect(client.get<{ id: number }>('/wp-json/wc/v3/orders/7')).resolves.toEqual({ id: 7 });
+      await expect(client.get<{ id: number }>('/wp-json/wc/v3/products/7')).resolves.toEqual({ id: 7 });
     });
   });
 });

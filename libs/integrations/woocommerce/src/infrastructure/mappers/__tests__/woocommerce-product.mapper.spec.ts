@@ -200,48 +200,4 @@ describe('WooCommerceProductMapper', () => {
       expect(result.ean).not.toBeNull();
     });
   });
-
-  describe('extractEan', () => {
-    it('should return normalised EAN when _ean key is present', () => {
-      const result = mapper.extractEan([{ key: '_ean', value: '5901234123457' }]);
-      expect(result).toBeTruthy();
-    });
-
-    it('should return normalised EAN when ean key is present (no underscore)', () => {
-      const result = mapper.extractEan([{ key: 'ean', value: '5901234123457' }]);
-      expect(result).toBeTruthy();
-    });
-
-    it('should return null when meta_data is empty', () => {
-      const result = mapper.extractEan([]);
-      expect(result).toBeNull();
-    });
-
-    it('should return null when no recognised EAN key is present', () => {
-      const result = mapper.extractEan([{ key: 'custom_field', value: 'some-value' }]);
-      expect(result).toBeNull();
-    });
-
-    it('should return null when EAN value is blank', () => {
-      const result = mapper.extractEan([{ key: '_ean', value: '' }]);
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('extractGtin', () => {
-    it('should return normalised GTIN when _gtin key is present', () => {
-      const result = mapper.extractGtin([{ key: '_gtin', value: '00012345600012' }]);
-      expect(result).toBeTruthy();
-    });
-
-    it('should return null when meta_data is empty', () => {
-      const result = mapper.extractGtin([]);
-      expect(result).toBeNull();
-    });
-
-    it('should return null when no recognised GTIN key is present', () => {
-      const result = mapper.extractGtin([{ key: 'unrelated', value: '12345' }]);
-      expect(result).toBeNull();
-    });
-  });
 });

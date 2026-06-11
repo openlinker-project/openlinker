@@ -82,6 +82,10 @@ describe('woocommerceAdapterManifest', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('ProductMaster');
   });
 
+  it('should include InventoryMaster in supportedCapabilities (#875)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('InventoryMaster');
+  });
+
   it('should include OrderSource in supportedCapabilities (#876)', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('OrderSource');
   });
@@ -151,7 +155,7 @@ describe('createWooCommercePlugin → createCapabilityAdapter', () => {
     const { host } = makeHostStub();
     const plugin = createWooCommercePlugin();
     await expect(
-      plugin.createCapabilityAdapter(mockConnection, 'InventoryMaster', host),
+      plugin.createCapabilityAdapter(mockConnection, 'OfferManager', host),
     ).rejects.toThrow('WooCommerce');
   });
 });

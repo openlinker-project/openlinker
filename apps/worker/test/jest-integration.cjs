@@ -51,14 +51,6 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/ai/src/$1',
     ),
-    '^@openlinker/integrations-inpost$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/inpost/src/index.ts',
-    ),
-    '^@openlinker/integrations-inpost/(.*)$': path.resolve(
-      __dirname,
-      '../../../libs/integrations/inpost/src/$1',
-    ),
     '^@openlinker/integrations-woocommerce$': path.resolve(
       __dirname,
       '../../../libs/integrations/woocommerce/src/index.ts',
@@ -66,6 +58,14 @@ module.exports = {
     '^@openlinker/integrations-woocommerce/(.*)$': path.resolve(
       __dirname,
       '../../../libs/integrations/woocommerce/src/$1',
+    ),
+    '^@openlinker/integrations-inpost$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/inpost/src/index.ts',
+    ),
+    '^@openlinker/integrations-inpost/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/inpost/src/$1',
     ),
   },
 };

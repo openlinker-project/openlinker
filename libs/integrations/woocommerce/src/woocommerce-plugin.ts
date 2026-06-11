@@ -22,9 +22,11 @@ import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrast
 import { WooCommerceHttpClient } from './infrastructure/http/woocommerce-http-client';
 import { WooCommerceProductMapper } from './infrastructure/mappers/woocommerce-product.mapper';
 import { WooCommerceProductMasterAdapter } from './infrastructure/adapters/product-master/woocommerce-product-master.adapter';
+import { WooCommerceOrderProcessorAdapter } from './infrastructure/adapters/order-processor/woocommerce-order-processor.adapter';
 import { WooCommerceConfigException } from './domain/exceptions/woocommerce-config.exception';
 import type { WooCommerceCredentials } from './domain/types/woocommerce-credentials.types';
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
+import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
 import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
@@ -41,7 +43,7 @@ import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/wooco
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster', 'OrderSource'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -99,23 +101,28 @@ export function createWooCommercePlugin(): AdapterPlugin {
         credentials.consumerKey,
         credentials.consumerSecret,
       );
+      const mapper = new WooCommerceProductMapper({});
       try {
         return Promise.resolve(
           dispatchCapability<T>(
             capability,
             {
-              // Lazy factories — each adapter is only constructed when its
-              // capability is actually requested, not on every call.
-              // TODO(#879): WooCommerceProductMapper currency is always null until
-              // WooCommerceConnectionConfig grows a currency field. WC exposes the
-              // store currency at GET /wp-json/wc/v3/settings/general/woocommerce_currency.
-              ProductMaster: () =>
-                new WooCommerceProductMasterAdapter(
-                  httpClient,
-                  host.identifierMapping,
-                  new WooCommerceProductMapper({}),
-                  connection,
-                ),
+              ProductMaster: () => new WooCommerceProductMasterAdapter(
+                httpClient,
+                host.identifierMapping,
+                mapper,
+                connection,
+              ),
+              InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
+                httpClient,
+                host.identifierMapping,
+                connection,
+              ),
+              OrderProcessorManager: () => new WooCommerceOrderProcessorAdapter(
+                httpClient,
+                host.identifierMapping,
+                connection,
+              ),
               OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,

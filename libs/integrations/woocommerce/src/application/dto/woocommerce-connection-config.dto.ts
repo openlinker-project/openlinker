@@ -36,7 +36,15 @@
  * @module libs/integrations/woocommerce/src/application/dto
  */
 import type { ValidatorConstraintInterface } from 'class-validator';
-import { IsUrl, IsOptional, ValidateNested, Validate, ValidatorConstraint } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsUrl,
+  Min,
+  ValidateNested,
+  Validate,
+  ValidatorConstraint,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { isUrlSsrfSafe } from '../../infrastructure/http/woocommerce-url-safety';
 import { WooCommerceOrdersConfigDto } from './woocommerce-orders-config.dto';
@@ -56,10 +64,27 @@ export class IsSsrfSafeUrlConstraint implements ValidatorConstraintInterface {
   }
 }
 
+/**
+ * Optional per-connection inventory tuning (#969). Validated as a nested
+ * object so an out-of-range cap is rejected at save-time rather than silently
+ * coerced at read-time.
+ */
+export class WooCommerceInventoryConfigDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  unmanagedStockQuantity?: number;
+}
+
 export class WooCommerceConnectionConfigDto {
   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   @Validate(IsSsrfSafeUrlConstraint)
   siteUrl!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WooCommerceInventoryConfigDto)
+  inventory?: WooCommerceInventoryConfigDto;
 
   @IsOptional()
   @ValidateNested()

@@ -1,10 +1,11 @@
 /**
  * WooCommerce Product Master Adapter
  *
- * Implements the read half of ProductMasterPort for WooCommerce REST API v3.
- * Write methods (createProduct, updateProduct, deleteProduct,
- * upsertProductVariant, assignCategories) throw WooCommerceNotSupportedException
- * and are deferred to #879.
+ * Implements ProductMasterPort for WooCommerce REST API v3.
+ * Read methods (#874): getProduct, getProducts, getProductVariants,
+ *   getProductCategories, getCategories, searchProducts, listExternalIds.
+ * Write methods (#879): createProduct, updateProduct, deleteProduct,
+ *   upsertProductVariant, assignCategories.
  *
  * Pagination: single-page fetch consistent with PrestashopProductMasterAdapter.
  * The caller (master-product-sync-all.handler.ts) drives the loop via
@@ -12,10 +13,9 @@
  * using page = Math.floor(offset / perPage) + 1.
  *
  * 404 handling: WooCommerceHttpClient throws WooCommerceHttpResponseException(404)
- * for not-found responses. Adapter catches and rethrows as
- * WooCommerceResourceNotFoundException with full entity context (entityType,
- * OL internal ID, connectionId) — consistent with PrestashopResourceNotFoundException
- * at the PS adapter boundary.
+ * for not-found responses. All read and write methods catch and rethrow as
+ * WooCommerceResourceNotFoundException with full entity context — consistent
+ * boundary contract across the adapter.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-master
  * @implements {ProductMasterPort}
@@ -36,17 +36,16 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
-import { WooCommerceNotSupportedException } from '../../../domain/exceptions/woocommerce-not-supported.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
   WooCommerceProductCategory,
+  WooCommerceProductWriteRequest,
+  WooCommerceVariationWriteRequest,
 } from './woocommerce-product.types';
-
-// Safety cap for fetchAllPages: 500 pages × 100 items = 50,000 items max.
-// Mirrors the MAX_PAGES guard in master-product-sync-all.handler.ts.
-const FETCH_ALL_MAX_PAGES = 500;
+import { fetchAllPages } from '../../utils/woocommerce-utils';
 
 export class WooCommerceProductMasterAdapter implements ProductMasterPort {
   private readonly logger = new Logger(WooCommerceProductMasterAdapter.name);
@@ -58,40 +57,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     private readonly connection: Connection,
   ) {}
 
-  // ─── Internal pagination helper ───────────────────────────────────────────
-
-  /**
-   * Exhausts all WC REST API pages for a given path and returns a flat array.
-   * Used only for methods whose contract is "return all" (getCategories, getProductVariants).
-   * For externally-paged methods (listExternalIds, getProducts) the caller drives the loop.
-   */
-  private async fetchAllPages<T>(
-    path: string,
-    params?: Record<string, string | number | boolean>,
-    perPage = 100,
-  ): Promise<T[]> {
-    const results: T[] = [];
-    let page = 1;
-    while (true) {
-      this.logger.debug(
-        `fetchAllPages: GET ${path} page=${page} per_page=${perPage} (connection: ${this.connection.id})`,
-      );
-      const batch = await this.httpClient.get<T[]>(path, { ...params, per_page: perPage, page });
-      results.push(...batch);
-      if (batch.length < perPage) break;
-      if (page >= FETCH_ALL_MAX_PAGES) {
-        this.logger.warn(
-          `fetchAllPages: hit MAX_PAGES (${FETCH_ALL_MAX_PAGES}) for ${path} ` +
-            `(connection: ${this.connection.id}) — catalog may be truncated`,
-        );
-        break;
-      }
-      page++;
-    }
-    return results;
-  }
-
-  // ─── Port methods ──────────────────────────────────────────────────────────
+  // ─── Read methods ──────────────────────────────────────────────────────────
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
     this.logger.debug(
@@ -100,20 +66,6 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     const perPage = filters?.limit ?? 100;
     const page =
       filters?.offset !== undefined ? Math.floor(filters.offset / perPage) + 1 : 1;
-    // WC uses page-based pagination: offset must be an exact multiple of perPage.
-    // A non-multiple offset maps to the nearest lower page, silently returning
-    // overlapping items. The current caller (master-product-sync-all.handler)
-    // always passes clean multiples, but we warn here to surface misuse early.
-    if (
-      filters?.offset !== undefined &&
-      perPage > 0 &&
-      filters.offset % perPage !== 0
-    ) {
-      this.logger.warn(
-        `listExternalIds: offset ${String(filters.offset)} is not a clean multiple of limit ${String(perPage)}; ` +
-          `WC pagination is page-based — returning page ${String(page)} which may overlap with previous results`,
-      );
-    }
     const raw = await this.httpClient.get<Array<{ id: number }>>(
       '/wp-json/wc/v3/products',
       { _fields: 'id', per_page: perPage, page },
@@ -241,35 +193,31 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       );
       const price =
         product.price !== undefined ? this.parseVariantPrice(product.price) : undefined;
-      const metaData = product.meta_data ?? [];
       return [
         {
           id: internalVariantId,
           productId,
           sku: product.sku || `product-${wcId}`,
           attributes: null,
-          ean: this.mapper.extractEan(metaData),
-          gtin: this.mapper.extractGtin(metaData),
+          ean: null,
+          gtin: null,
           price,
         },
       ];
     }
 
     // Variable product — delete stale synthetic (safe no-op if absent)
-    try {
-      await this.identifierMapping.deleteMapping(
-        CORE_ENTITY_TYPE.ProductVariant,
-        `product:${wcId}`,
-        this.connection.id,
-      );
-    } catch (err) {
-      this.logger.warn('Failed to delete stale synthetic variant', err);
-      // Continue — variants fetch is more important than cleanup
-    }
+    await this.identifierMapping.deleteMapping(
+      CORE_ENTITY_TYPE.ProductVariant,
+      `product:${wcId}`,
+      this.connection.id,
+    );
 
     // Exhaust all pages — products with >100 variations exist (configurable products, apparel).
-    const variations = await this.fetchAllPages<WooCommerceProductVariation>(
+    const variations = await fetchAllPages<WooCommerceProductVariation>(
       `/wp-json/wc/v3/products/${wcId}/variations`,
+      this.httpClient,
+      this.logger,
     );
 
     const validVariations = variations.filter(
@@ -342,8 +290,10 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
   async getCategories(): Promise<Category[]> {
     this.logger.debug(`Getting all categories (connection: ${this.connection.id})`);
-    const raw = await this.fetchAllPages<WooCommerceProductCategory>(
+    const raw = await fetchAllPages<WooCommerceProductCategory>(
       '/wp-json/wc/v3/products/categories',
+      this.httpClient,
+      this.logger,
     );
     return raw
       .filter(
@@ -362,45 +312,248 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     return this.getProducts({ ...filters, query });
   }
 
-  // ─── Write stubs (deferred to #879) ───────────────────────────────────────
+  // ─── Write methods ─────────────────────────────────────────────────────────
 
-  createProduct(_product: ProductCreate): Promise<Product> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('createProduct', 'Use the WooCommerce admin or #879'),
+  async createProduct(product: ProductCreate): Promise<Product> {
+    this.logger.debug(`Creating product: ${product.sku} (connection: ${this.connection.id})`);
+    const payload: WooCommerceProductWriteRequest = {
+      name: product.name,
+      sku: product.sku,
+      ...(product.description !== undefined ? { description: product.description } : {}),
+      regular_price: String(product.price),
+      ...(product.weight !== undefined ? { weight: String(product.weight) } : {}),
+    };
+    let raw: WooCommerceProduct;
+    try {
+      raw = await this.httpClient.post<WooCommerceProduct>('/wp-json/wc/v3/products', payload);
+    } catch (err) {
+      if (this.isDuplicateSkuError(err)) {
+        throw new WooCommerceDuplicateSkuException(product.sku, this.connection.id);
+      }
+      throw err;
+    }
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      String(raw.id),
+      this.connection.id,
     );
+    return { ...this.mapper.mapProduct(raw), id: internalId };
   }
 
-  updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('updateProduct', 'Use the WooCommerce admin or #879'),
+  async updateProduct(productId: string, product: ProductUpdate): Promise<Product> {
+    this.logger.debug(`Updating product: ${productId} (connection: ${this.connection.id})`);
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
     );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    const wcId = mapping.externalId;
+    const payload: WooCommerceProductWriteRequest = {};
+    if (product.name !== undefined) payload.name = product.name;
+    if (product.sku !== undefined) payload.sku = product.sku;
+    if (product.description !== undefined) payload.description = product.description;
+    if (product.price !== undefined) payload.regular_price = String(product.price);
+    if (product.weight !== undefined) payload.weight = String(product.weight);
+
+    let raw: WooCommerceProduct;
+    try {
+      raw = await this.httpClient.put<WooCommerceProduct>(
+        `/wp-json/wc/v3/products/${wcId}`,
+        payload,
+      );
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${wcId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
+    return { ...this.mapper.mapProduct(raw), id: productId };
   }
 
-  deleteProduct(_productId: string): Promise<void> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException('deleteProduct', 'Use the WooCommerce admin or #879'),
+  async deleteProduct(productId: string): Promise<void> {
+    this.logger.debug(`Deleting product: ${productId} (connection: ${this.connection.id})`);
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
     );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    try {
+      // force=true is a permanent delete (bypasses the WC trash). Without it WC
+      // soft-deletes (trashes) the product, leaving its SKU occupied — which
+      // breaks the port contract ("delete from the external system") and blocks
+      // re-creating a product with the same SKU.
+      await this.httpClient.delete(`/wp-json/wc/v3/products/${mapping.externalId}`, {
+        force: true,
+      });
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        // Product is already trashed/deleted — caller's intent is satisfied.
+        return;
+      }
+      throw err;
+    }
   }
 
-  upsertProductVariant(
-    _productId: string,
-    _variant: ProductVariantCreate,
-  ): Promise<ProductVariant> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException(
-        'upsertProductVariant',
-        'Use the WooCommerce admin or #879',
-      ),
+  async upsertProductVariant(productId: string, variant: ProductVariantCreate): Promise<ProductVariant> {
+    this.logger.debug(
+      `Upserting variant sku=${variant.sku} for product: ${productId} (connection: ${this.connection.id})`,
     );
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    const wcId = mapping.externalId;
+
+    // Exhaust all pages so the existing-SKU lookup is correct regardless of
+    // variation count. A single per_page=100 fetch silently misses a target
+    // SKU on page 2+, causing a duplicate variation to be POSTed instead of an
+    // update for variable products with >100 variations.
+    let variations: WooCommerceProductVariation[];
+    try {
+      variations = await fetchAllPages<WooCommerceProductVariation>(
+        `/wp-json/wc/v3/products/${wcId}/variations`,
+        this.httpClient,
+        this.logger,
+      );
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${wcId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
+
+    const varPayload: WooCommerceVariationWriteRequest = {
+      sku: variant.sku,
+      ...(variant.price !== undefined ? { regular_price: String(variant.price) } : {}),
+      ...(variant.weight !== undefined ? { weight: String(variant.weight) } : {}),
+      ...(variant.attributes
+        ? {
+            attributes: Object.entries(variant.attributes).map(([name, option]) => ({
+              name,
+              option,
+            })),
+          }
+        : {}),
+    };
+
+    const variantContext = {
+      parentEntityType: CORE_ENTITY_TYPE.Product,
+      parentInternalId: productId,
+    };
+
+    const existing = variations.find((v) => v.sku === variant.sku);
+
+    if (existing) {
+      const varId = existing.id;
+      let raw: WooCommerceProductVariation;
+      try {
+        raw = await this.httpClient.put<WooCommerceProductVariation>(
+          `/wp-json/wc/v3/products/${wcId}/variations/${String(varId)}`,
+          varPayload,
+        );
+      } catch (err) {
+        if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+          throw new WooCommerceResourceNotFoundException(
+            `WooCommerce variation ${String(varId)} not found (deleted?)`,
+            CORE_ENTITY_TYPE.ProductVariant,
+            String(varId),
+            this.connection.id,
+          );
+        }
+        throw err;
+      }
+      // Use existing.id (known from the SKU-match) rather than raw.id (PUT response field
+      // is optional in the type) to guarantee we never register "undefined" as an external ID.
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.ProductVariant,
+        String(existing.id),
+        this.connection.id,
+        { ...variantContext, metadata: { variantExternalId: String(existing.id) } },
+      );
+      return { ...this.mapper.mapVariation(raw, productId), id: internalId };
+    }
+
+    // SKU not found — create new variation
+    const raw = await this.httpClient.post<WooCommerceProductVariation>(
+      `/wp-json/wc/v3/products/${wcId}/variations`,
+      varPayload,
+    );
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      String(raw.id),
+      this.connection.id,
+      { ...variantContext, metadata: { variantExternalId: String(raw.id) } },
+    );
+    return { ...this.mapper.mapVariation(raw, productId), id: internalId };
   }
 
-  assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
-    return Promise.reject(
-      new WooCommerceNotSupportedException(
-        'assignCategories',
-        'Use the WooCommerce admin or #879',
-      ),
+  async assignCategories(productId: string, categoryIds: string[]): Promise<void> {
+    this.logger.debug(
+      `Assigning ${categoryIds.length} categories to product: ${productId} (connection: ${this.connection.id})`,
     );
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId,
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new WooCommerceResourceNotFoundException(
+        `Product not found: ${productId} (no mapping for connection ${this.connection.id})`,
+        CORE_ENTITY_TYPE.Product,
+        productId,
+        this.connection.id,
+      );
+    }
+    try {
+      await this.httpClient.put(`/wp-json/wc/v3/products/${mapping.externalId}`, {
+        categories: categoryIds.map((id) => ({ id: Number(id) })),
+      });
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce product ${mapping.externalId} not found (deleted?)`,
+          CORE_ENTITY_TYPE.Product,
+          productId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
@@ -434,6 +587,15 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     }
 
     return Object.keys(params).length > 0 ? params : undefined;
+  }
+
+  // WC rejects a duplicate SKU with HTTP 400 + error code `product_invalid_sku`.
+  private isDuplicateSkuError(err: unknown): boolean {
+    return (
+      err instanceof WooCommerceHttpResponseException &&
+      err.statusCode === 400 &&
+      err.errorCode === 'product_invalid_sku'
+    );
   }
 
   // Inline price parse for synthetic variant — mirrors parseOptionalNumber in the mapper.

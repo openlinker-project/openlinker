@@ -2,6 +2,7 @@
  * WooCommerce Product Master Adapter — unit tests
  *
  * Mocks IWooCommerceHttpClient (interface) and IdentifierMappingPort.
+ * Covers all read methods (#874) and write methods (#879).
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-master/__tests__
  */
@@ -11,7 +12,7 @@ import type { IWooCommerceProductMapper } from '../../../mappers/woocommerce-pro
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
-import { WooCommerceNotSupportedException } from '../../../../domain/exceptions/woocommerce-not-supported.exception';
+import { WooCommerceDuplicateSkuException } from '../../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
 import type { WooCommerceProduct, WooCommerceProductVariation } from '../woocommerce-product.types';
 
@@ -31,10 +32,17 @@ const mockConnection: Connection = {
 };
 
 function makeHttpClient(): jest.Mocked<IWooCommerceHttpClient> {
-  return { get: jest.fn() };
+  return {
+    get: jest.fn(),
+    post: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
+  };
 }
 
 function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
+  // SECURITY WARNING: These are test fixtures only, never use hardcoded credentials in production.
+  // Use environment variables or secure credential storage instead.
   return {
     getOrCreateInternalId: jest.fn(),
     getOrCreateExactMapping: jest.fn(),
@@ -67,8 +75,6 @@ function makeMapper(): jest.Mocked<IWooCommerceProductMapper> {
       ean: null,
       gtin: null,
     }),
-    extractEan: jest.fn().mockReturnValue(null),
-    extractGtin: jest.fn().mockReturnValue(null),
   };
 }
 
@@ -200,11 +206,9 @@ describe('WooCommerceProductMasterAdapter', () => {
       const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
       await adapter.getProducts();
       const [, params] = httpClient.get.mock.calls[0];
-      // No filters → params is undefined or has no status key
       if (params !== undefined) {
         expect(params).not.toHaveProperty('status');
       }
-      // If params is undefined, no status filter was sent — test passes
     });
 
     it('should filter out products with undefined id before batch mapping', async () => {
@@ -269,67 +273,6 @@ describe('WooCommerceProductMasterAdapter', () => {
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       const result = await adapter.getProductVariants('prod-1');
       expect(result[0].price).toBe(0);
-    });
-
-    it('should extract EAN from _ean meta key in product meta_data', async () => {
-      const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue({
-        id: 10,
-        type: 'simple',
-        sku: 'EAN-PRODUCT',
-        meta_data: [{ key: '_ean', value: '5901234123457' }],
-      } as WooCommerceProduct);
-      const identifierMapping = makeIdentifierMapping();
-      identifierMapping.getExternalIds.mockResolvedValue([
-        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
-      ]);
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-ean-1');
-      const mapper = makeMapper();
-      mapper.extractEan.mockReturnValue('5901234123457');
-      mapper.extractGtin.mockReturnValue(null);
-      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
-      const result = await adapter.getProductVariants('prod-ean');
-      expect(mapper.extractEan).toHaveBeenCalledWith([{ key: '_ean', value: '5901234123457' }]);
-      expect(result[0].ean).toBe('5901234123457');
-    });
-
-    it('should return null ean/gtin when meta_data is empty', async () => {
-      const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue({
-        id: 11,
-        type: 'simple',
-        sku: 'NO-BARCODE',
-        meta_data: [],
-      } as WooCommerceProduct);
-      const identifierMapping = makeIdentifierMapping();
-      identifierMapping.getExternalIds.mockResolvedValue([
-        { externalId: '11', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
-      ]);
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-no-barcode');
-      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
-      const result = await adapter.getProductVariants('prod-no-barcode');
-      expect(result[0].ean).toBeNull();
-      expect(result[0].gtin).toBeNull();
-    });
-
-    it('should pass empty array to extractEan/extractGtin when meta_data is absent', async () => {
-      const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue({
-        id: 12,
-        type: 'simple',
-        sku: 'NO-META',
-        // meta_data absent
-      } as WooCommerceProduct);
-      const identifierMapping = makeIdentifierMapping();
-      identifierMapping.getExternalIds.mockResolvedValue([
-        { externalId: '12', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
-      ]);
-      identifierMapping.getOrCreateInternalId.mockResolvedValue('variant-no-meta');
-      const mapper = makeMapper();
-      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
-      await adapter.getProductVariants('prod-no-meta');
-      expect(mapper.extractEan).toHaveBeenCalledWith([]);
-      expect(mapper.extractGtin).toHaveBeenCalledWith([]);
     });
   });
 
@@ -404,7 +347,6 @@ describe('WooCommerceProductMasterAdapter', () => {
   describe('getCategories', () => {
     it('should map categories with id/name/parentId', async () => {
       const httpClient = makeHttpClient();
-      // Single page with fewer than 100 items — fetchAllPages terminates
       httpClient.get.mockResolvedValue([
         { id: 1, name: 'Root', parent: 0 },
         { id: 2, name: 'Child', parent: 1 },
@@ -486,40 +428,331 @@ describe('WooCommerceProductMasterAdapter', () => {
     });
   });
 
-  describe('write stubs', () => {
-    let adapter: WooCommerceProductMasterAdapter;
+  // ─── Write methods ─────────────────────────────────────────────────────────
 
-    beforeEach(() => {
-      adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping(), makeMapper());
+  describe('createProduct', () => {
+    it('should POST to /wp-json/wc/v3/products, register mapping, and return mapped product', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.post.mockResolvedValue({ id: 55, name: 'New Product', sku: 'NP-1' } as WooCommerceProduct);
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('prod-internal-new');
+      const mapper = makeMapper();
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+
+      const result = await adapter.createProduct({ name: 'New Product', sku: 'NP-1', price: 19.99 });
+
+      expect(httpClient.post).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({ name: 'New Product', sku: 'NP-1', regular_price: '19.99' }),
+      );
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        CORE_ENTITY_TYPE.Product,
+        '55',
+        CONNECTION_ID,
+      );
+      expect(mapper.mapProduct).toHaveBeenCalled();
+      expect(result.id).toBe('prod-internal-new');
     });
 
-    it('createProduct should reject with WooCommerceNotSupportedException', async () => {
+    it('should propagate HTTP errors from POST', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.post.mockRejectedValue(new WooCommerceHttpResponseException(422, 'Invalid data'));
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
       await expect(
-        adapter.createProduct({ name: 'x', sku: 'x', price: 0 }),
-      ).rejects.toBeInstanceOf(WooCommerceNotSupportedException);
+        adapter.createProduct({ name: 'Bad', sku: 'BAD', price: 0 }),
+      ).rejects.toBeInstanceOf(WooCommerceHttpResponseException);
     });
 
-    it('updateProduct should reject with WooCommerceNotSupportedException', async () => {
-      await expect(adapter.updateProduct('id', {})).rejects.toBeInstanceOf(
-        WooCommerceNotSupportedException,
+    it('should map WC product_invalid_sku (400) to WooCommerceDuplicateSkuException', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.post.mockRejectedValue(
+        new WooCommerceHttpResponseException(400, 'Invalid or duplicated SKU.', 'product_invalid_sku'),
+      );
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+      await expect(
+        adapter.createProduct({ name: 'Dup', sku: 'DUP-1', price: 1 }),
+      ).rejects.toBeInstanceOf(WooCommerceDuplicateSkuException);
+    });
+  });
+
+  describe('updateProduct', () => {
+    it('should PUT to /wp-json/wc/v3/products/{id} and return mapped product with original internal ID', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.put.mockResolvedValue({ id: 42, name: 'Updated', sku: 'UP-1' } as WooCommerceProduct);
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const mapper = makeMapper();
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+
+      const result = await adapter.updateProduct('prod-internal-1', { name: 'Updated', price: 25 });
+
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/42',
+        expect.objectContaining({ name: 'Updated', regular_price: '25' }),
+      );
+      expect(mapper.mapProduct).toHaveBeenCalled();
+      expect(result.id).toBe('prod-internal-1');
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when no OL identifier mapping exists', async () => {
+      const httpClient = makeHttpClient();
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.updateProduct('prod-missing', { name: 'x' })).rejects.toBeInstanceOf(
+        WooCommerceResourceNotFoundException,
+      );
+      expect(httpClient.put).not.toHaveBeenCalled();
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when WC returns 404 on PUT (stale mapping)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.updateProduct('prod-internal-1', { name: 'x' })).rejects.toBeInstanceOf(
+        WooCommerceResourceNotFoundException,
+      );
+    });
+  });
+
+  describe('deleteProduct', () => {
+    it('should DELETE /wp-json/wc/v3/products/{id} and return void', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.delete.mockResolvedValue({ id: 42, status: 'trash' });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.deleteProduct('prod-internal-1');
+
+      // force=true permanently deletes (bypasses WC trash), freeing the SKU.
+      expect(httpClient.delete).toHaveBeenCalledWith('/wp-json/wc/v3/products/42', {
+        force: true,
+      });
+      expect(result).toBeUndefined();
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when no OL identifier mapping exists', async () => {
+      const httpClient = makeHttpClient();
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.deleteProduct('prod-missing')).rejects.toBeInstanceOf(
+        WooCommerceResourceNotFoundException,
+      );
+      expect(httpClient.delete).not.toHaveBeenCalled();
+    });
+
+    it('should return void (idempotent) when WC returns 404 on DELETE (already trashed)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.delete.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.deleteProduct('prod-internal-1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('upsertProductVariant', () => {
+    function makeVariationResponse(id: number): WooCommerceProductVariation {
+      return { id, sku: `VAR-${id}`, price: '9.99' };
+    }
+
+    it('should POST new variation when SKU not found, register mapping, and return mapped variant', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]); // no existing variations
+      httpClient.post.mockResolvedValue(makeVariationResponse(200));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-internal-new');
+      const mapper = makeMapper();
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+
+      const result = await adapter.upsertProductVariant('prod-internal-1', { sku: 'VAR-NEW', price: 9.99 });
+
+      expect(httpClient.post).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/10/variations',
+        expect.objectContaining({ sku: 'VAR-NEW', regular_price: '9.99' }),
+      );
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        CORE_ENTITY_TYPE.ProductVariant,
+        '200',
+        CONNECTION_ID,
+        expect.objectContaining({ parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: 'prod-internal-1' }),
+      );
+      expect(mapper.mapVariation).toHaveBeenCalled();
+      expect(result.id).toBe('var-internal-new');
+    });
+
+    it('should PUT existing variation when SKU matches and register mapping', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 101, sku: 'VAR-EXIST' }] as WooCommerceProductVariation[]);
+      httpClient.put.mockResolvedValue(makeVariationResponse(101));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-internal-exist');
+      const mapper = makeMapper();
+      const adapter = makeAdapter(httpClient, identifierMapping, mapper);
+
+      const result = await adapter.upsertProductVariant('prod-internal-1', { sku: 'VAR-EXIST', price: 15 });
+
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/10/variations/101',
+        expect.objectContaining({ sku: 'VAR-EXIST', regular_price: '15' }),
+      );
+      expect(httpClient.post).not.toHaveBeenCalled();
+      // Should use the pre-known existing.id (101), not the PUT response id,
+      // to avoid registering "undefined" if WC omitted id from the response.
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        CORE_ENTITY_TYPE.ProductVariant,
+        '101',
+        CONNECTION_ID,
+        expect.objectContaining({ parentEntityType: CORE_ENTITY_TYPE.Product }),
+      );
+      expect(result.id).toBe('var-internal-exist');
+    });
+
+    it('should call getOrCreateInternalId on update path even when mapping already existed (idempotent)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 101, sku: 'VAR-EXIST' }] as WooCommerceProductVariation[]);
+      httpClient.put.mockResolvedValue(makeVariationResponse(101));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      // Already exists — returns the same existing ID
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-already-mapped');
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.upsertProductVariant('prod-internal-1', { sku: 'VAR-EXIST' });
+
+      expect(identifierMapping.getOrCreateInternalId).toHaveBeenCalledTimes(1);
+      expect(result.id).toBe('var-already-mapped');
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when no OL mapping for parent product', async () => {
+      const httpClient = makeHttpClient();
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(
+        adapter.upsertProductVariant('prod-missing', { sku: 'VAR-1' }),
+      ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when WC returns 404 on variation PUT (variation deleted between GET and PUT)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 101, sku: 'VAR-EXIST' }] as WooCommerceProductVariation[]);
+      httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(
+        adapter.upsertProductVariant('prod-internal-1', { sku: 'VAR-EXIST' }),
+      ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalled();
+    });
+
+    it('should throw WooCommerceResourceNotFoundException when WC returns 404 on variations GET (parent deleted)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(
+        adapter.upsertProductVariant('prod-deleted', { sku: 'VAR-1' }),
+      ).rejects.toBeInstanceOf(WooCommerceResourceNotFoundException);
+    });
+
+    it('should exhaust all variation pages so a SKU on page 2+ is updated, not duplicated', async () => {
+      const httpClient = makeHttpClient();
+      // Page 1 returns a full 100 items (none matching the target SKU); the
+      // target SKU lives on page 2. fetchAllPages must fetch page 2 and find
+      // it — otherwise a duplicate variation would be POSTed.
+      const page1 = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        sku: `SKU-${i + 1}`,
+      })) as WooCommerceProductVariation[];
+      const page2 = [{ id: 201, sku: 'SKU-PAGE-2' }] as WooCommerceProductVariation[];
+      httpClient.get.mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+      httpClient.put.mockResolvedValue(makeVariationResponse(201));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '10', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('var-page-2');
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.upsertProductVariant('prod-internal-1', { sku: 'SKU-PAGE-2' });
+
+      // Found on page 2 → PUT (update), never POST (duplicate).
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/10/variations/201',
+        expect.objectContaining({ sku: 'SKU-PAGE-2' }),
+      );
+      expect(httpClient.post).not.toHaveBeenCalled();
+      expect(result.id).toBe('var-page-2');
+    });
+  });
+
+  describe('assignCategories', () => {
+    it('should PUT /wp-json/wc/v3/products/{id} with categories as numeric IDs', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.put.mockResolvedValue({ id: 42 });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await adapter.assignCategories('prod-internal-1', ['5', '12']);
+
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/42',
+        { categories: [{ id: 5 }, { id: 12 }] },
       );
     });
 
-    it('deleteProduct should reject with WooCommerceNotSupportedException', async () => {
-      await expect(adapter.deleteProduct('id')).rejects.toBeInstanceOf(
-        WooCommerceNotSupportedException,
+    it('should throw WooCommerceResourceNotFoundException when no OL identifier mapping exists', async () => {
+      const httpClient = makeHttpClient();
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.assignCategories('prod-missing', ['5'])).rejects.toBeInstanceOf(
+        WooCommerceResourceNotFoundException,
       );
+      expect(httpClient.put).not.toHaveBeenCalled();
     });
 
-    it('upsertProductVariant should reject with WooCommerceNotSupportedException', async () => {
-      await expect(
-        adapter.upsertProductVariant('id', { sku: 'x' }),
-      ).rejects.toBeInstanceOf(WooCommerceNotSupportedException);
-    });
-
-    it('assignCategories should reject with WooCommerceNotSupportedException', async () => {
-      await expect(adapter.assignCategories('id', [])).rejects.toBeInstanceOf(
-        WooCommerceNotSupportedException,
+    it('should throw WooCommerceResourceNotFoundException when WC returns 404 on PUT (stale mapping)', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(404, 'Not found'));
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+      await expect(adapter.assignCategories('prod-deleted', ['5'])).rejects.toBeInstanceOf(
+        WooCommerceResourceNotFoundException,
       );
     });
   });
