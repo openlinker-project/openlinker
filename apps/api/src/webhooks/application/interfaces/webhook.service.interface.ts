@@ -8,33 +8,28 @@
  * @module apps/api/src/webhooks/application/interfaces
  * @see {@link WebhookService} for the implementation
  */
-import type { WebhookRequestDto } from '../../http/dto/webhook-request.dto';
-
 export interface IWebhookService {
   /**
-   * Process an inbound webhook request
+   * Process an inbound webhook request (ADR-021)
    *
    * Orchestrates the complete webhook processing flow:
-   * 1. Validate connection exists and is active
-   * 2. Verify signature (via IWebhookAuthService)
-   * 3. Validate timestamp (replay protection)
-   * 4. Check deduplication (via IWebhookDedupService)
-   * 5. Publish event (via IWebhookEventPublisher)
-   * 6. Mark as done (via IWebhookDedupService)
+   * 1. Resolve the per-provider decoder (default = OL-HMAC + WebhookRequestDto)
+   * 2. Connection gate (exists, active, platformType matches)
+   * 3. Verify signature via the decoder; replay-check the normalized timestamp
+   * 4. Decode the body → route | ignore (202, no publish) | reject (400)
+   * 5. Dedup gate → publish event → record delivery
    *
-   * @param provider - Provider identifier (e.g., 'prestashop')
+   * @param provider - Provider identifier (e.g., 'prestashop', 'inpost')
    * @param connectionId - Connection identifier (UUID)
-   * @param request - Webhook request DTO
-   * @param rawBody - Raw request body bytes for signature verification
-   * @param headers - Request headers (including X-OpenLinker-Timestamp and X-OpenLinker-Signature)
-   * @throws WebhookAuthenticationException if signature is invalid
-   * @throws WebhookReplayException if timestamp is out of window
-   * @throws Error if connection not found or processing fails
+   * @param rawBody - Raw request body bytes (the decoder verifies + parses these)
+   * @param headers - Request headers (provider-specific signature/timestamp/topic)
+   * @throws WebhookAuthenticationException if signature/connection is invalid (401)
+   * @throws WebhookReplayException if timestamp is out of window (401)
+   * @throws WebhookDecodeException if the body can't be decoded (400)
    */
   processWebhook(
     provider: string,
     connectionId: string,
-    request: WebhookRequestDto,
     rawBody: Buffer,
     headers: Record<string, string>
   ): Promise<void>;

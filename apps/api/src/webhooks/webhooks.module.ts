@@ -24,6 +24,7 @@ import { WebhookController } from './http/webhook.controller';
 import { WebhookDeliveryController } from './http/webhook-delivery.controller';
 import { WebhookService } from './application/services/webhook.service';
 import { WebhookAuthService } from './application/services/webhook-auth.service';
+import { DefaultWebhookDecoder } from './application/decoders/default-webhook-decoder';
 import { WebhookDedupService } from './application/services/webhook-dedup.service';
 import { WebhookEventPublisher } from './application/services/webhook-event-publisher.service';
 import { WebhookDeliveryQueryService } from './application/services/webhook-delivery-query.service';
@@ -50,6 +51,7 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
   providers: [
     WebhookService,
     WebhookAuthService,
+    DefaultWebhookDecoder,
     WebhookDedupService,
     WebhookEventPublisher,
     WebhookDeliveryQueryService,

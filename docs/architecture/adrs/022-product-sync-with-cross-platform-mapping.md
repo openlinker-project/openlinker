@@ -1,4 +1,4 @@
-# ADR-021: Product synchronization with cross-platform category and attribute mapping
+# ADR-022: Product synchronization with cross-platform category and attribute mapping
 
 - **Status**: Proposed
 - **Date**: 2026-06-09

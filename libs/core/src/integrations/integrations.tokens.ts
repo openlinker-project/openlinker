@@ -22,6 +22,9 @@ export const WEBHOOK_PROVISIONING_REGISTRY_TOKEN = Symbol('WebhookProvisioningRe
 export const WEBHOOK_EVENT_TRANSLATOR_REGISTRY_TOKEN = Symbol(
   'WebhookEventTranslatorRegistryService',
 );
+export const INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN = Symbol(
+  'InboundWebhookDecoderRegistryService',
+);
 export const PLUGIN_REGISTRY_OPTIONS_TOKEN = Symbol('PluginRegistryOptions');
 export const EMAIL_NORMALIZER_REGISTRY_TOKEN = Symbol('EmailNormalizerRegistryService');
 export const CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN = Symbol(
