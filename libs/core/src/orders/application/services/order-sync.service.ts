@@ -99,6 +99,12 @@ export class OrderSyncService implements IOrderSyncService {
       pickupPoint: order.pickupPoint,
       source: { connectionId: sourceConnectionId, eventId: sourceEventId },
       metadata: {
+        // Required by destination adapters (e.g. WooCommerce) for idempotency checks.
+        internalOrderId: order.id,
+        // Neutral buyer email passthrough (#948 source → destination). Destination
+        // adapters that provision a customer keyed on email (e.g. WooCommerce)
+        // read this; platform-neutral and omitted when the source has no email.
+        ...(order.customerEmail ? { buyerEmail: order.customerEmail } : {}),
         // Stamped once and shared across destinations: marks when OL started
         // dispatching this order, not per-destination completion time.
         syncedAt: new Date().toISOString(),

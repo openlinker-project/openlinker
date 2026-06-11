@@ -23,10 +23,12 @@ import { apiPluginMigrations } from '../plugin-migrations';
 // If dotenv is not installed, rely on environment variables being set
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment -- typeorm CLI requires CommonJS require() for migration glob resolution
-  const { config } = require('dotenv') as { config: (options: { path: string }) => { error?: Error } };
+  const { config } = require('dotenv') as {
+    config: (options: { path: string }) => { error?: Error };
+  };
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment -- typeorm CLI requires CommonJS require() for migration glob resolution
   const { resolve } = require('path') as { resolve: (...paths: string[]) => string };
-  
+
   // Priority: .env.local > .env (matching NestJS ConfigModule behavior)
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- untyped runtime config read at boot
   config({ path: resolve(__dirname, '../../../.env.local') });
@@ -53,30 +55,24 @@ export default new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'openlinker',
-  
+
   // Entity discovery: all ORM entities from libs/core
   // Note: In compiled JS, this resolves to dist/libs/core/src/**/*.orm-entity.js
-  entities: [
-    __dirname + '/../../../../libs/core/src/**/*.orm-entity{.ts,.js}',
-  ],
-  
+  entities: [__dirname + '/../../../../libs/core/src/**/*.orm-entity{.ts,.js}'],
+
   // Migration discovery: core migrations from apps/api/src/migrations,
   // plus plugin-owned migrations from `apiPluginMigrations` (#599).
   // Note: In compiled JS, the core glob resolves to dist/apps/api/src/migrations/**/*.js;
   // plugin globs resolve to their respective `dist/migrations/**/*.js` via the
   // `{.ts,.js}` alternation.
-  migrations: [
-    __dirname + '/../migrations/**/*{.ts,.js}',
-    ...apiPluginMigrations,
-  ],
-  
+  migrations: [__dirname + '/../migrations/**/*{.ts,.js}', ...apiPluginMigrations],
+
   // Migration table name (TypeORM tracks executed migrations here)
   migrationsTableName: 'migrations',
-  
+
   // Disable synchronize - migrations are the source of truth
   synchronize: false,
-  
+
   // Logging (useful for migration debugging)
   logging: process.env.NODE_ENV === 'development',
 });
-
