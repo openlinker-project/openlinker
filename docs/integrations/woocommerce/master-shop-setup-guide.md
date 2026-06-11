@@ -148,6 +148,11 @@ cp apps/worker/.env.example apps/worker/.env.local
 
 The defaults target the local dev stack (Postgres `localhost:5432`, Redis `localhost:6379`).
 
+> **Flip the WooCommerce order-poll flag now** (needed for § 5.4): `.env.example` ships
+> `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=false` — the poll cron is deliberately off until a
+> WooCommerce connection with the `OrderSource` capability exists. Set it to `true` in
+> `apps/worker/.env.local` before starting the worker (or restart the worker after changing it).
+
 ### 3.2 Run database migrations
 
 ```bash
@@ -186,7 +191,12 @@ Wait for all three to report ready. Log in to the web app with the admin credent
    - **Site URL:** the HTTPS URL of the store (see the callout below for local dev)
    - **Consumer Key:** `ck_…` (from § 2)
    - **Consumer Secret:** `cs_…` (from § 2)
-4. Click **Test connection** to verify the credentials, then **Create connection**.
+4. Click **Connect WooCommerce** — the connection is created and you land back on the
+   Connections list.
+5. Open the new connection's **detail page** and click **Test connection** to verify the
+   credentials live. (The test endpoint requires a saved connection, so the wizard itself
+   has no pre-save test button — validation in the wizard is shape-only: HTTPS URL,
+   `ck_` / `cs_` prefixes.)
 
 > **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
 >
@@ -212,7 +222,10 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 > Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
 
 **[Screenshot Placeholder: WooCommerce setup form, filled]**
-- Fields: Connection name, Site URL, Consumer Key (masked), Consumer Secret (masked); green "Test connection" result.
+- Fields: Connection name, Site URL, Consumer Key (masked), Consumer Secret (masked); the **Connect WooCommerce** button.
+
+**[Screenshot Placeholder: Connection detail page after a successful Test connection]**
+- **Active** status, capability pills, green "Test connection" result in the actions panel.
 
 The connection detail page shows **Active** with capability pills.
 
@@ -265,11 +278,12 @@ The seed (§ 1) created two WooCommerce orders; OpenLinker ingests them via the
 `OrderSource` capability (`woocommerce-orders-poll`, every 5 minutes,
 `modified_after` watermark).
 
-**Prerequisites** (both already set if you followed § 3.1 / § 4):
+**Prerequisites**:
 
-- `OrderSource` is among the connection's enabled capabilities.
-- `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=true` in `apps/worker/.env.local`
-  (shipped by `.env.example`) — without it the poll cron never fires.
+- `OrderSource` is among the connection's enabled capabilities (seeded by the § 4 wizard).
+- `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED=true` in `apps/worker/.env.local` — **`.env.example`
+  ships this flag as `false`**, so it must be flipped manually (§ 3.1 callout) and the worker
+  restarted. Without it the poll cron never fires and the Orders list stays empty.
 
 Within ~5 minutes of the worker starting, the poll enqueues one
 `marketplace.order.sync` job per order. Open **Orders** and verify both seed
