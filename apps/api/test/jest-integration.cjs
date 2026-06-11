@@ -61,6 +61,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/woocommerce/src/$1',
     ),
+    '^@openlinker/integrations-erli$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/erli/src/index.ts',
+    ),
+    '^@openlinker/integrations-erli/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/erli/src/$1',
+    ),
     '^@openlinker/integrations-dpd-polska$': path.resolve(
       __dirname,
       '../../../libs/integrations/dpd-polska/src/index.ts',

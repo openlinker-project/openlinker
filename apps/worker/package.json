@@ -24,6 +24,7 @@
     "@nestjs/config": "3.2.0",
     "@nestjs/typeorm": "10.0.2",
     "@openlinker/core": "workspace:*",
+    "@openlinker/integrations-erli": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",
     "@openlinker/shared": "workspace:*",
