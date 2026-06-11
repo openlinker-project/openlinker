@@ -231,6 +231,30 @@ describe('WooCommerceOrderSourceAdapter', () => {
 
       expect(result.items[0].eventType).toBe('updated');
     });
+
+    it('should produce distinct eventKeys for two modifications without a status change', async () => {
+      const order = (modifiedGmt: string): WooCommerceOrder =>
+        makeOrder({
+          id: 1,
+          status: 'completed',
+          date_modified_gmt: modifiedGmt,
+          date_created_gmt: '2024-01-10T08:00:00',
+        });
+      const httpClient = makeHttpClient({
+        get: jest
+          .fn()
+          .mockResolvedValueOnce([order('2024-01-15T12:00:00')])
+          .mockResolvedValueOnce([order('2024-01-15T13:00:00')]),
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const first = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+      const second = await adapter.listOrderFeed({ fromCursor: first.nextCursor, limit: 10 });
+
+      expect(first.items[0].eventKey).toBe('1:completed:2024-01-15T12:00:00Z');
+      expect(second.items[0].eventKey).toBe('1:completed:2024-01-15T13:00:00Z');
+      expect(first.items[0].eventKey).not.toBe(second.items[0].eventKey);
+    });
   });
 
   describe('getOrder', () => {

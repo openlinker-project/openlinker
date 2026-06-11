@@ -83,6 +83,10 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
 
     // Cursor computed over ALL orders before filtering — prevents cursor freeze
     // when every item is filtered out by eventTypes.
+    // Known watermark edge: WC treats modified_after as exclusive, so an order
+    // modified within the same second as the committed cursor (after the page
+    // was read) can be skipped. Second-granularity risk accepted — the §904-style
+    // reconciliation re-pull heals it on the next change to that order.
     const nextCursor = orders.reduce<string | null>((acc, o) => {
       const ts = normGmt(o.date_modified_gmt, o.date_modified);
       return !acc || ts > acc ? ts : acc;
@@ -95,7 +99,10 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
         externalOrderId: String(o.id),
         eventType: mapWooCommerceEventType(o.status, occurredAt === createdAt),
         occurredAt,
-        eventKey: `${o.id}:${o.status}`,
+        // occurredAt is part of the key so two modifications WITHOUT a status
+        // change (e.g. an address edit) still produce distinct events instead
+        // of colliding on `${id}:${status}` in downstream dedup.
+        eventKey: `${o.id}:${o.status}:${occurredAt}`,
       };
     });
 
