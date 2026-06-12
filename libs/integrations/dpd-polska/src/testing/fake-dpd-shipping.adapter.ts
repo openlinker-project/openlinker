@@ -40,6 +40,7 @@ export class FakeDpdShippingAdapter
   private counter = 0;
   private seededFailure: Error | null = null;
   private seededPoints: PickupPoint[] = [];
+  private seededTracking: TrackingSnapshot = { status: 'in-transit' };
 
   getSupportedMethods(): readonly ShippingMethod[] {
     return SUPPORTED_METHODS;
@@ -95,13 +96,10 @@ export class FakeDpdShippingAdapter
   }
 
   getTracking(_input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
-    return Promise.reject(
-      new ShippingProviderRejectionException(
-        'dpd',
-        'tracking.unavailable',
-        'DPD tracking is not available until DPD InfoServices is wired (#965)',
-      ),
-    );
+    if (this.seededFailure) {
+      return Promise.reject(this.seededFailure);
+    }
+    return Promise.resolve(this.seededTracking);
   }
 
   generateProtocol(_input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
@@ -126,10 +124,16 @@ export class FakeDpdShippingAdapter
     this.seededPoints = [...points];
   }
 
+  /** Set the snapshot returned by `getTracking`. */
+  seedTracking(snapshot: TrackingSnapshot): void {
+    this.seededTracking = snapshot;
+  }
+
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.counter = 0;
     this.seededFailure = null;
     this.seededPoints = [];
+    this.seededTracking = { status: 'in-transit' };
   }
 }

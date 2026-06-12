@@ -18,19 +18,18 @@
  *
  * @module libs/integrations/dpd-polska/src/infrastructure/adapters
  */
-import {
-  ShippingProviderRejectionException,
-  type DispatchProtocolReader,
-  type FindPickupPointsQuery,
-  type GenerateLabelCommand,
-  type GenerateLabelResult,
-  type LabelDocument,
-  type LabelDocumentReader,
-  type PickupPoint,
-  type PickupPointFinder,
-  type ShippingMethod,
-  type ShippingProviderManagerPort,
-  type TrackingSnapshot,
+import type {
+  DispatchProtocolReader,
+  FindPickupPointsQuery,
+  GenerateLabelCommand,
+  GenerateLabelResult,
+  LabelDocument,
+  LabelDocumentReader,
+  PickupPoint,
+  PickupPointFinder,
+  ShippingMethod,
+  ShippingProviderManagerPort,
+  TrackingSnapshot,
 } from '@openlinker/core/shipping';
 import type { DpdConnectionConfig } from '../../domain/types/dpd-config.types';
 import type {
@@ -40,6 +39,7 @@ import type {
   DpdPointSearchResponse,
 } from '../../domain/types/dpd-rest.types';
 import type { IDpdHttpClient } from '../http/dpd-http-client.interface';
+import type { IDpdInfoSoapClient } from '../http/dpd-info-soap-client.interface';
 import {
   assertCreateSucceededAndExtractWaybill,
   buildCreatePackagesRequest,
@@ -51,6 +51,7 @@ import {
   toGenerateLabelResult,
   toPickupPoint,
 } from '../mappers/dpd-shipment.mapper';
+import { toTrackingSnapshot } from '../mappers/dpd-tracking.mapper';
 
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['kurier', 'pickup'];
 
@@ -74,6 +75,7 @@ export class DpdShippingAdapter
   constructor(
     private readonly http: IDpdHttpClient,
     private readonly config: DpdConnectionConfig,
+    private readonly infoClient: IDpdInfoSoapClient,
   ) {}
 
   getSupportedMethods(): readonly ShippingMethod[] {
@@ -130,18 +132,14 @@ export class DpdShippingAdapter
     return (response.points ?? []).map(toPickupPoint);
   }
 
-  getTracking(_input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
-    // DPD tracking is a separate service (DPD InfoServices, #965). Until then
-    // we throw rather than fabricate a status — the adapter receives only the
-    // waybill, so any returned status would be a lie. The #838 status-sync
-    // poller catches this and logs a warn (no crash); DPD should stay out of
-    // that scan until #965 wires real tracking.
-    return Promise.reject(
-      new ShippingProviderRejectionException(
-        'dpd',
-        'tracking.unavailable',
-        'DPD tracking is not available until DPD InfoServices is wired (#965)',
-      ),
-    );
+  async getTracking(input: { providerShipmentId: string }): Promise<TrackingSnapshot> {
+    // DPD tracking lives in the separate SOAP DPDInfoServices service (#965 /
+    // ADR-022): read the waybill's full event history, then fold it into the
+    // neutral snapshot (terminal-precedence + offset-less-timestamp handling in
+    // the mapper). `providerShipmentId` is the DPD waybill.
+    const events = await this.infoClient.getEventsForWaybill({
+      waybill: input.providerShipmentId,
+    });
+    return toTrackingSnapshot(events);
   }
 }

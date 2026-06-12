@@ -16,6 +16,7 @@ import {
 } from '@openlinker/core/shipping';
 import type { DpdConnectionConfig } from '../../../domain/types/dpd-config.types';
 import type { IDpdHttpClient } from '../../http/dpd-http-client.interface';
+import type { IDpdInfoSoapClient } from '../../http/dpd-info-soap-client.interface';
 import { DpdShippingAdapter } from '../dpd-shipping.adapter';
 
 function makeConfig(): DpdConnectionConfig {
@@ -52,11 +53,13 @@ function makeCmd(overrides: Partial<GenerateLabelCommand> = {}): GenerateLabelCo
 
 describe('DpdShippingAdapter', () => {
   let http: jest.Mocked<IDpdHttpClient>;
+  let infoClient: jest.Mocked<IDpdInfoSoapClient>;
   let adapter: DpdShippingAdapter;
 
   beforeEach(() => {
     http = { request: jest.fn() };
-    adapter = new DpdShippingAdapter(http, makeConfig());
+    infoClient = { getEventsForWaybill: jest.fn() };
+    adapter = new DpdShippingAdapter(http, makeConfig(), infoClient);
   });
 
   it('should declare kurier and pickup as supported methods', () => {
@@ -161,11 +164,23 @@ describe('DpdShippingAdapter', () => {
     );
   });
 
-  it('should throw a typed tracking.unavailable rejection from getTracking', async () => {
-    await expect(adapter.getTracking({ providerShipmentId: 'WB1' })).rejects.toMatchObject({
-      providerName: 'dpd',
-      providerCode: 'tracking.unavailable',
-    });
+  it('should read the waybill events via InfoServices and map them to a snapshot', async () => {
+    infoClient.getEventsForWaybill.mockResolvedValueOnce([
+      { businessCode: '040101', eventTime: '2026-06-10T09:00:00' },
+      { businessCode: '190101', eventTime: '2026-06-11T14:30:00' },
+    ]);
+
+    const snapshot = await adapter.getTracking({ providerShipmentId: 'WB1' });
+
+    expect(infoClient.getEventsForWaybill).toHaveBeenCalledWith({ waybill: 'WB1' });
+    expect(snapshot.status).toBe('delivered');
+    expect(snapshot.providerStatus).toBe('190101');
+  });
+
+  it('should propagate an InfoServices failure from getTracking', async () => {
+    const boom = new Error('soap down');
+    infoClient.getEventsForWaybill.mockRejectedValueOnce(boom);
+    await expect(adapter.getTracking({ providerShipmentId: 'WB1' })).rejects.toBe(boom);
   });
 
   it('should create a pickup shipment to a DPD point (pudoReceiver + DPD_PICKUP)', async () => {
