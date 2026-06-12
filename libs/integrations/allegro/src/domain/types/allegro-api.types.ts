@@ -176,11 +176,14 @@ export interface AllegroOfferEventsResponse {
  * Request body for PUT /sale/offer-quantity-change-commands/{commandId} endpoint.
  */
 export interface AllegroOfferQuantityChangeCommand {
-  offerId: string;
-  quantityChange: {
-    changeType: 'FIXED';
+  modification: {
+    changeType: 'FIXED' | 'GAIN';
     value: number;
   };
+  offerCriteria: Array<{
+    offers: Array<{ id: string }>;
+    type: 'CONTAINS_OFFERS';
+  }>;
 }
 
 /**
