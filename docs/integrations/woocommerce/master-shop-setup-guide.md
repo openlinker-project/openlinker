@@ -185,7 +185,13 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 ## § 4: Add the WooCommerce connection
 
 1. In the web app, go to **Connections → Add Connection** (`/connections/new`).
+
+   ![Connections list — New Connection button](./screenshots/1.png)
+
 2. Select **WooCommerce**.
+
+   ![Add Connection — WooCommerce integration selected](./screenshots/2.png)
+
 3. Fill in the setup form:
    - **Connection name:** `WooCommerce Store`
    - **Site URL:** the HTTPS URL of the store (see the callout below for local dev)
@@ -197,6 +203,8 @@ Wait for all three to report ready. Log in to the web app with the admin credent
    credentials live. (The test endpoint requires a saved connection, so the wizard itself
    has no pre-save test button — validation in the wizard is shape-only: HTTPS URL,
    `ck_` / `cs_` prefixes.)
+
+   ![Connection detail page — Test connection action](./screenshots/4.png)
 
 > **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
 >
@@ -221,13 +229,11 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 >
 > Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
 
-**[Screenshot Placeholder: WooCommerce setup form, filled]**
-- Fields: Connection name, Site URL, Consumer Key (masked), Consumer Secret (masked); the **Connect WooCommerce** button.
-
-**[Screenshot Placeholder: Connection detail page after a successful Test connection]**
-- **Active** status, capability pills, green "Test connection" result in the actions panel.
+![WooCommerce setup form, filled — Connection name, Site URL, Consumer Key/Secret and the Connect WooCommerce button](./screenshots/2a.png)
 
 The connection detail page shows **Active** with capability pills.
+
+![Connection detail page — Active status with WooCommerce capability pills](./screenshots/3.png)
 
 > **Capability pills:** this flow uses `ProductMaster` and `InventoryMaster` (read the catalog/stock) plus `OrderProcessorManager` (write Allegro orders into WooCommerce). `OrderSource` (#876) may also appear — it is not part of the master-shop flow and you can leave it unused.
 
@@ -262,13 +268,17 @@ Open **Products**. You should see the WooCommerce products with:
 - Name, SKU/reference
 - Variants (variable products list one row per variation; simple products map to a single deterministic synthetic variant)
 
-**[Screenshot Placeholder: OpenLinker Products list populated from WooCommerce]**
+![OpenLinker Products list populated from WooCommerce](./screenshots/5.png)
 
 ### 5.3 Verify inventory in OpenLinker
 
 Open **Inventory**. Stock is tracked **per variant**, read from each WooCommerce variation's `stock_quantity` (simple products report on their synthetic variant).
 
-**[Screenshot Placeholder: OpenLinker Inventory list with per-variant stock]**
+![OpenLinker Inventory list with per-variant stock](./screenshots/6.png)
+
+Opening an inventory row shows the per-variant detail:
+
+![OpenLinker inventory item detail page](./screenshots/7.png)
 
 > This is a one-way read: OpenLinker reflects WooCommerce's stock. Changing stock in OpenLinker does not write back to WooCommerce.
 
@@ -293,7 +303,7 @@ orders arrived with their items resolved to internal catalog entries:
 - order `19` — *completed*, 1× OL Test Jeans-S, total **79.99** — the line item
   links to the internal **variant** (`ol_variant_…`), not just the product
 
-**[Screenshot Placeholder: OpenLinker Orders list with the two WooCommerce orders]**
+![OpenLinker Orders list with the two WooCommerce orders](./screenshots/8.png)
 
 > **Expected error in a single-shop setup:** the worker logs
 > `No OrderProcessorManager destinations available` for these jobs and retries
