@@ -132,15 +132,20 @@ export function toTrackingSnapshot(events: DpdWaybillEvent[]): TrackingSnapshot 
     return { status: 'generated' };
   }
 
+  const unrecognized = new Set<string>();
   const classified: ClassifiedEvent[] = events.map((event) => {
     const { status, recognized } = classifyDpdEventCode(event.businessCode);
     if (!recognized) {
-      logger.warn(
-        `DPD InfoServices: unrecognized businessCode ${event.businessCode} — defaulting to in-transit`,
-      );
+      unrecognized.add(event.businessCode);
     }
     return { event, status, instant: parseDpdEventTime(event.eventTime)?.getTime() };
   });
+  // Warn once per distinct unknown code (not per event) to avoid per-poll spam.
+  if (unrecognized.size > 0) {
+    logger.warn(
+      `DPD InfoServices: unrecognized businessCode(s) [${[...unrecognized].join(', ')}] — defaulting to in-transit`,
+    );
+  }
 
   // Stable chronological order (events without a parsable time keep input order).
   const ordered = classified
@@ -159,7 +164,6 @@ export function toTrackingSnapshot(events: DpdWaybillEvent[]): TrackingSnapshot 
   const terminalEvents = ordered.filter((c) => TERMINAL.has(c.status));
   const selected = terminalEvents.length > 0 ? terminalEvents[terminalEvents.length - 1] : ordered[ordered.length - 1];
 
-  const deliveredEvent = [...ordered].reverse().find((c) => c.status === 'delivered');
   const dispatchedEvent = ordered.find((c) => c.status === 'dispatched');
 
   // Redirect: parcel moved to a new waybill; OL keeps polling the old one (stall).
@@ -174,10 +178,16 @@ export function toTrackingSnapshot(events: DpdWaybillEvent[]): TrackingSnapshot 
     status: selected.status,
     providerStatus: selected.event.businessCode,
   };
-  const deliveredAt = deliveredEvent && parseDpdEventTime(deliveredEvent.event.eventTime);
-  if (deliveredAt) {
-    snapshot.deliveredAt = deliveredAt;
+  // deliveredAt only when the snapshot is actually delivered — `selected` is the
+  // delivered terminal in that case. A return-after-delivery resolves to
+  // `failed`, where a deliveredAt would be semantically muddy for #838.
+  if (selected.status === 'delivered') {
+    const deliveredAt = parseDpdEventTime(selected.event.eventTime);
+    if (deliveredAt) {
+      snapshot.deliveredAt = deliveredAt;
+    }
   }
+  // dispatchedAt reflects pickup regardless of final status (it was dispatched).
   const dispatchedAt = dispatchedEvent && parseDpdEventTime(dispatchedEvent.event.eventTime);
   if (dispatchedAt) {
     snapshot.dispatchedAt = dispatchedAt;

@@ -89,8 +89,8 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        const body = await this.fetchOnce(envelope, input.waybill);
-        return this.parseEvents(body);
+        const parsed = await this.fetchOnce(envelope, input.waybill);
+        return this.parseEvents(parsed);
       } catch (error) {
         if (!(error instanceof RetryableSoapError)) {
           throw error; // auth / fault / parse failures are terminal
@@ -110,8 +110,12 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
     throw new DpdNetworkException('DPD InfoServices request exhausted its retry budget');
   }
 
-  /** One round-trip → raw response text. Throws on transport/auth; never logs the body. */
-  private async fetchOnce(envelope: string, waybill: string): Promise<string> {
+  /**
+   * One round-trip → the parsed SOAP body. Parses exactly once and routes:
+   * SOAP `<Fault>` (on HTTP 200 *or* 5xx) → auth/tracking exception; non-ok
+   * status → retryable/unauthorized/tracking. Never logs the body.
+   */
+  private async fetchOnce(envelope: string, waybill: string): Promise<SoapParsed> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response: Response;
@@ -130,13 +134,23 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
     }
 
     const text = await response.text();
-    // A SOAP fault can arrive on HTTP 200 OR 500 — inspect the body first.
-    const fault = this.extractFault(text);
+    let parsed: SoapParsed | null = null;
+    try {
+      parsed = this.parser.parse(text) as SoapParsed;
+    } catch {
+      parsed = null; // resolved below: non-ok → status path; ok → unparseable
+    }
+
+    // A SOAP fault can arrive on HTTP 200 OR 5xx — inspect the parsed body first.
+    const fault = parsed?.Envelope?.Body?.Fault;
     if (fault) {
-      if (/denied|authoriz|authentic/i.test(fault)) {
-        throw new DpdUnauthorizedException(`DPD InfoServices auth failed for waybill ${waybill}: ${fault}`);
+      const faultstring = fault.faultstring ?? 'unknown SOAP fault';
+      if (/denied|authoriz|authentic/i.test(faultstring)) {
+        throw new DpdUnauthorizedException(
+          `DPD InfoServices auth failed for waybill ${waybill}: ${faultstring}`,
+        );
       }
-      throw new DpdTrackingException(`DPD InfoServices fault for waybill ${waybill}: ${fault}`);
+      throw new DpdTrackingException(`DPD InfoServices fault for waybill ${waybill}: ${faultstring}`);
     }
 
     if (!response.ok) {
@@ -148,31 +162,13 @@ export class DpdInfoSoapClient implements IDpdInfoSoapClient {
       }
       throw new DpdTrackingException(`DPD InfoServices returned ${response.status} for waybill ${waybill}`);
     }
-    return text;
+    if (!parsed) {
+      throw new DpdTrackingException('DPD InfoServices returned an unparseable response body');
+    }
+    return parsed;
   }
 
-  /** Return the SOAP `<faultstring>` text if the body is a fault, else null. */
-  private extractFault(text: string): string | null {
-    let parsed: SoapParsed;
-    try {
-      parsed = this.parser.parse(text) as SoapParsed;
-    } catch {
-      return null; // unparseable → handled by parseEvents (terminal) on the ok path
-    }
-    const fault = parsed?.Envelope?.Body?.Fault;
-    if (!fault) {
-      return null;
-    }
-    return fault.faultstring ?? 'unknown SOAP fault';
-  }
-
-  private parseEvents(text: string): DpdWaybillEvent[] {
-    let parsed: SoapParsed;
-    try {
-      parsed = this.parser.parse(text) as SoapParsed;
-    } catch (error) {
-      throw new DpdTrackingException('DPD InfoServices returned an unparseable response body', error);
-    }
+  private parseEvents(parsed: SoapParsed): DpdWaybillEvent[] {
     const ret = parsed?.Envelope?.Body?.getEventsForWaybillV1Response?.return;
     if (!ret) {
       throw new DpdTrackingException('DPD InfoServices response missing getEventsForWaybillV1Response/return');
