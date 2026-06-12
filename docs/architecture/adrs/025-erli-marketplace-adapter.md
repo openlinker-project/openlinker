@@ -1,7 +1,7 @@
 # ADR-025: Erli marketplace adapter — reconciliation-first posture, API-key auth, Allegro-ID taxonomy reuse
 
 - **Status**: Accepted
-- **Date**: 2026-06-11
+- **Date**: 2026-06-12
 - **Authors**: OpenLinker maintainers
 
 ## Context
