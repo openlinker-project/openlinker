@@ -2,6 +2,10 @@ packages:
   - 'apps/*'
   - 'libs/*'
   - 'libs/integrations/*'
+
+overrides:
+  typeorm: 0.3.17
+
 allowBuilds:
   '@nestjs/core': false
   '@scarf/scarf': false
