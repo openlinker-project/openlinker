@@ -23,6 +23,11 @@ pnpm install
 pnpm dev:stack:up
 ```
 
+> **pnpm 11+ users:** After `pnpm install`, run `pnpm approve-builds` to allow lifecycle
+> scripts required by some dependencies. pnpm 11 blocks these by default as a security
+> measure; without this step some packages may silently skip their build phase, causing
+> hard-to-diagnose failures later.
+
 Wait until PrestaShop finishes its unattended install (~2–3 min). Check:
 
 ```bash
