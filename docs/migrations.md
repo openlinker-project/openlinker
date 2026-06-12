@@ -128,11 +128,7 @@ A plugin shipping its own ORM entities (e.g. Allegro's `AllegroQuantityCommandOr
 1. Ensure database is running and accessible
 2. Ensure environment variables are set (`.env` or `.env.local`, or set as system environment variables)
 3. Ensure current database schema matches the last committed migration
-4. **Optional**: Install `dotenv` package for automatic `.env` file loading:
-   ```bash
-   pnpm add -D dotenv
-   ```
-   Note: If `dotenv` is not installed, environment variables must be set as system environment variables.
+4. `dotenv` is a declared `devDependency` in `apps/api` — no manual install step needed. Migration commands automatically load `apps/api/.env.local` then `apps/api/.env`.
 
 ### Generate Migration Command
 
