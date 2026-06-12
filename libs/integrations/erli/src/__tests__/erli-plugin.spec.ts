@@ -11,8 +11,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
-import { createErliPlugin, erliAdapterManifest } from '../erli-plugin';
-import { ErliIntegrationModule } from '../erli-integration.module';
+import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
 
 const connection: Connection = {
   id: 'conn-erli-1',
@@ -43,7 +42,7 @@ describe('erliAdapterManifest', () => {
   it('should declare no capabilities while the skeleton ships no adapters', () => {
     // #993 adds 'OrderSource' and #984 adds 'OfferManager' alongside their
     // adapters — declaring them earlier would let listCapabilityAdapters
-    // construct an adapter the factory cannot deliver.
+    // request an adapter the factory cannot deliver.
     expect(erliAdapterManifest.supportedCapabilities).toEqual([]);
   });
 

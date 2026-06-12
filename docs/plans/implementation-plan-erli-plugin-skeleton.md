@@ -22,8 +22,8 @@
 
 ### In Scope
 - New workspace package `@openlinker/integrations-erli` at `libs/integrations/erli/`.
-- Static `erliAdapterManifest` (`adapterKey: 'erli.shopapi.v1'`, `platformType: 'erli'`, `supportedCapabilities: ['OrderSource', 'OfferManager']`, `displayName: 'Erli Shop API v1'`, `version: '1.0.0'`, `isDefault: true`).
-- `createErliPlugin()` descriptor implementing the `AdapterPlugin` contract; `createCapabilityAdapter` throws a typed not-yet-implemented domain exception until #984/#993 land.
+- Static `erliAdapterManifest` (`adapterKey: 'erli.shopapi.v1'`, `platformType: 'erli'`, `supportedCapabilities: []` — see assumption 2, `displayName: 'Erli Shop API v1'`, `version: '1.0.0'`, `isDefault: true`).
+- `createErliPlugin()` descriptor implementing the `AdapterPlugin` contract; `createCapabilityAdapter` uses an empty `dispatchCapability` table (SDK uniform unsupported-capability error) until #984/#993 land.
 - `ErliIntegrationModule` via `createNestAdapterModule` (the easy path — skeleton needs no plugin-specific Nest providers).
 - Registration in `apps/api/src/plugins.ts` + `apps/worker/src/plugins.ts`, jest-integration mapper entries in both apps, `tsconfig.base.json` path aliases.
 - Unit tests mirroring `woocommerce-plugin.spec.ts` (manifest fields, static===runtime manifest identity, unsupported-capability error).
@@ -35,7 +35,7 @@
 
 ### Constraints
 - Purely additive; no core or migration changes. No `OL_*` env vars needed.
-- Until #982 lands, an Erli connection created via raw API has no shape validation and capability resolution throws the typed exception — acceptable for a dormant skeleton (no FE affordance exists either until #990).
+- Until #982 lands, an Erli connection created via raw API has no shape validation, and capability resolution is gated off in core before the factory ever runs (`CapabilityNotSupportedException` at `IntegrationsService.getCapabilityAdapter`; enumeration paths skip the connection) — acceptable for a dormant skeleton (no FE affordance exists either until #990).
 
 ---
 
@@ -43,7 +43,7 @@
 
 **Target Layer**: Integration (`libs/integrations/erli/`) + App registration seams.
 
-**Capabilities involved**: `OfferManager`, `OrderSource` — declared in the manifest only; adapters arrive in #984/#993. Declaring them now matches the issue AC and lets `IntegrationsService.resolveAdapterMetadata` answer for Erli connections immediately.
+**Capabilities involved**: none declared yet — `OfferManager` (#984) and `OrderSource` (#993) join the manifest together with the adapters that deliver them (see assumption 2). `IntegrationsService.resolveAdapterMetadata` answers for Erli connections off the registered default adapterKey regardless of capability count.
 
 **Existing components reused** (nothing new invented):
 - `AdapterPlugin`, `HostServices`, `createNestAdapterModule` from `@openlinker/plugin-sdk` (`libs/plugin-sdk/src/adapter-plugin.ts`, `host-services.ts`, `create-nest-adapter-module.ts`).
@@ -118,7 +118,7 @@
 ## 7. Alternatives Considered
 
 1. **Custom `@Module` + `onModuleInit` (Allegro/PrestaShop Shape A)** — rejected: that pattern exists for plugins carrying their own Nest providers (TypeORM repos, OAuth services). The skeleton has none; `createNestAdapterModule` is the documented easy path and WooCommerce proves it end-to-end. If a later Erli issue needs Nest providers, the module can be promoted then without changing the descriptor.
-2. **Empty `supportedCapabilities: []` until adapters exist** — rejected: contradicts issue AC and would make `isDefault` registration pointless; the runtime gate at `IntegrationsService.getCapabilityAdapter` plus the typed not-implemented exception communicate the state honestly.
+2. ~~**Empty `supportedCapabilities: []` until adapters exist** — rejected~~ — **adopted during PR #1019 review** (see assumption 2). The original rejection rationale did not account for `listCapabilityAdapters` treating any non-`AdapterNotFoundException` factory error as fatal (one active Erli connection would have aborted cross-platform capability enumeration), and `isDefault` registration is not pointless with an empty set — it still serves default-adapterKey resolution for `resolveAdapterMetadata`. The previously-preferred shape (declared capabilities + typed not-implemented exception) is the rejected alternative.
 3. **Deferring the ADR to a docs-only PR** — rejected: #983 says the decisions should be recorded *before* the build leans on them, and a one-PR skeleton+ADR keeps Wave 0b atomic (also matches the user's one-branch-one-PR preference).
 
 ---
@@ -126,8 +126,8 @@
 ## 8. Validation & Risks
 
 - **Architecture compliance** ✅ — plugin self-registration via plugin-sdk; zero core edits; no boundary crossings.
-- **Naming** ✅ — `erli-plugin.ts`, `erli-integration.module.ts`, exception in `domain/exceptions/`, `{platform}.{api}.{version}` adapterKey.
-- **Risk: unvalidated Erli connections pre-#982** — low; no FE affordance, capability use throws a typed error. Documented in §2.
+- **Naming** ✅ — `erli-plugin.ts`, `erli-integration.module.ts`, `{platform}.{api}.{version}` adapterKey.
+- **Risk: unvalidated Erli connections pre-#982** — low; no FE affordance, and the empty capability set makes the connection inert (core gates reject/skip before the factory runs). Documented in §2.
 - **Risk: routing/registration int-spec ripple** — `#998`'s AC warns manifest capability changes ripple into routing int-specs. For the skeleton, full `pnpm test` (unit) is the gate; existing integration suites don't enumerate platforms exhaustively (WooCommerce landed the same way). If CI's integration job flags a platform-enumeration assert, fix the fixture in this PR.
 - **Backward compatibility** ✅ — purely additive.
 
@@ -144,6 +144,6 @@
 - [x] Hexagonal architecture / CORE-Integration boundary respected (no core edits)
 - [x] Existing patterns reused (`createNestAdapterModule`, WooCommerce precedent)
 - [x] Idempotency / rate limits — N/A for skeleton (deferred to #981 by design)
-- [x] Error handling — typed domain exception for the not-implemented seam
+- [x] Error handling — SDK uniform unsupported-capability rejection; core gates reject before the plugin factory runs
 - [x] Naming + file structure per standards
 - [x] Testing strategy complete; plan execution-ready
