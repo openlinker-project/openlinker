@@ -3,6 +3,12 @@ packages:
   - 'libs/*'
   - 'libs/integrations/*'
 
+overrides:
+  typeorm: 0.3.17
 
-
-
+allowBuilds:
+  '@nestjs/core': false
+  '@scarf/scarf': false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
