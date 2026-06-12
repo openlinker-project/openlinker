@@ -47,7 +47,7 @@
 
 **Existing components reused** (nothing new invented):
 - `AdapterPlugin`, `HostServices`, `createNestAdapterModule` from `@openlinker/plugin-sdk` (`libs/plugin-sdk/src/adapter-plugin.ts`, `host-services.ts`, `create-nest-adapter-module.ts`).
-- `AdapterMetadata` from `@openlinker/core/integrations` (`libs/core/src/integrations/domain/types/adapter.types.ts:54`).
+- `AdapterMetadata` from `@openlinker/core/integrations` (`libs/core/src/integrations/domain/types/adapter.types.ts`).
 - `PluginRegistryModule.forRoot` host composition (unchanged).
 
 **Reference precedent**: WooCommerce (`libs/integrations/woocommerce/`) — the newest plugin, uses `createNestAdapterModule`, has the canonical manifest + plugin spec shape. Verified 2026-06-11; no `erli` token collisions anywhere in `libs/ apps/ scripts/ tsconfig.base.json`.
@@ -58,7 +58,7 @@
 
 ## 4. External / Domain Research
 
-- **Erli Shop API**: REST over HTTPS, GET/POST/PATCH only, static API-key bearer auth, async writes (HTTP 202 + ~20-min cache lag), inbox-based order feed, no-retry/5 s webhooks. Docs: https://erli.pl/svc/shop-api/doc/. None of this is exercised by the skeleton — it shapes ADR-025 and the manifest capability set.
+- **Erli Shop API**: REST over HTTPS, GET/POST/PATCH only, static API-key bearer auth, async writes (HTTP 202 + ~20-min cache lag), inbox-based order feed, no-retry/5 s webhooks. Docs: https://erli.pl/svc/shop-api/doc/. None of this is exercised by the skeleton — it shapes ADR-025 and the capability roadmap (#984/#993).
 - **adapterKey convention**: `{platform}.{api}.{version}` — `woocommerce.restapi.v3`, `allegro.publicapi.v1`, `inpost.shipx.v1` → **`erli.shopapi.v1`** (matches the issue text and the Shop API product name).
 
 ---
