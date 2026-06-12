@@ -33,6 +33,7 @@ import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
+import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -40,4 +41,5 @@ export const workerPlugins: PluginEntry[] = [
   AiIntegrationModule.register(),
   InpostIntegrationModule,
   WooCommerceIntegrationModule,
+  ErliIntegrationModule,
 ];

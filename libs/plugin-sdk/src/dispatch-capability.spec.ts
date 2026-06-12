@@ -58,7 +58,7 @@ describe('dispatchCapability', () => {
   it('treats an empty dispatch table as "no supported capabilities" rather than crashing', () => {
     expect(() => dispatchCapability<unknown>('OfferManager', {}, 'Empty')).toThrow(
       'Empty adapter does not support capability: OfferManager. ' +
-        'Supported capabilities: ',
+        'Supported capabilities: <none>',
     );
   });
 
@@ -71,7 +71,7 @@ describe('dispatchCapability', () => {
     const inheritedKeys = ['hasOwnProperty', 'toString', 'valueOf', 'constructor', '__proto__'];
     for (const key of inheritedKeys) {
       expect(() => dispatchCapability<unknown>(key, {}, 'Plug')).toThrow(
-        `Plug adapter does not support capability: ${key}. Supported capabilities: `,
+        `Plug adapter does not support capability: ${key}. Supported capabilities: <none>`,
       );
     }
   });
