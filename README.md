@@ -263,6 +263,7 @@ For schema changes, also run `pnpm --filter @openlinker/api migration:show` to c
 
 ## Architecture & docs
 
+- [Operator Guide](./docs/user-guide/README.md) — UI walkthrough for self-hosters (setup + day-to-day usage)
 - [Architecture Overview](./docs/architecture-overview.md) — bounded contexts, capability ports, data flow
 - [Engineering Standards](./docs/engineering-standards.md) — naming, file layout, repository-port pattern
 - [Frontend Architecture](./docs/frontend-architecture.md) — admin UI conventions, state rules

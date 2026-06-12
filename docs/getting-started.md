@@ -218,7 +218,7 @@ Category mapping connects your PrestaShop categories to Allegro's category tree 
 
 ### 7.1 Open the mapping page
 
-1. In OpenLinker → **Integrations** → click your **PrestaShop connection**.
+1. In OpenLinker → **Connections** → click your **PrestaShop connection**.
 2. Click **Category Mappings** in the connection detail page.
 3. The page loads with:
    - **Left panel**: PrestaShop category tree
@@ -242,6 +242,10 @@ Category mapping connects your PrestaShop categories to Allegro's category tree 
 Repeat for each category you intend to list products in on Allegro.
 
 ## What's next
+
+Your dev stack is running, connections are configured, and the catalog is syncing.
+
+→ **[Operator Guide](./user-guide/README.md)** — tour of the admin UI, day-to-day usage, and diagnostics.
 
 With both connections active, products discovered, and at least one category mapped, you're ready to:
 
