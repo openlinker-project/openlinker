@@ -5,7 +5,7 @@
  * consumes adapter-supplied values; use this constant only when an
  * exhaustive in-tree list is genuinely needed (e.g. fixture defaults).
  */
-export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro'] as const;
+export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro', 'woocommerce'] as const;
 
 /**
  * Connection platform type — an opaque string. Plugins are resolved by

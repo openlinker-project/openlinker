@@ -17,6 +17,8 @@
  * "treat as plenty available" stand-in; operators may override it per
  * connection via `inventory.unmanagedStockQuantity`.
  */
+import type { WooCommerceOrdersConfig } from './woocommerce-orders-config.types';
+
 export const DEFAULT_UNMANAGED_STOCK_QUANTITY = 1000;
 
 export interface WooCommerceInventoryConfig {
@@ -38,4 +40,7 @@ export interface WooCommerceConnectionConfig {
 
   // Optional per-connection inventory tuning (#969).
   inventory?: WooCommerceInventoryConfig;
+
+  /** OrderSource capability configuration (#876). */
+  orders?: WooCommerceOrdersConfig;
 }

@@ -47,6 +47,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { isUrlSsrfSafe } from '../../infrastructure/http/woocommerce-url-safety';
+import { WooCommerceOrdersConfigDto } from './woocommerce-orders-config.dto';
 
 // Re-exported so consumers that previously imported the predicate from the DTO
 // module keep working, and so the SSRF surface has a single named entry point.
@@ -84,4 +85,9 @@ export class WooCommerceConnectionConfigDto {
   @ValidateNested()
   @Type(() => WooCommerceInventoryConfigDto)
   inventory?: WooCommerceInventoryConfigDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WooCommerceOrdersConfigDto)
+  orders?: WooCommerceOrdersConfigDto;
 }

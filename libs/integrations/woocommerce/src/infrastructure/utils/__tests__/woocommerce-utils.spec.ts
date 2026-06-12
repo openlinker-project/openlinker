@@ -1,7 +1,7 @@
 /**
  * @module libs/integrations/woocommerce/src/infrastructure/utils/__tests__
  */
-import { fetchAllPages, FETCH_ALL_MAX_PAGES, toPositiveInt } from '../woocommerce-utils';
+import { fetchAllPages, FETCH_ALL_MAX_PAGES, normGmt, toPositiveInt } from '../woocommerce-utils';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -92,5 +92,23 @@ describe('fetchAllPages', () => {
 
     expect(result).toEqual([]);
     expect(httpClient.get).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('normGmt', () => {
+  it('should append Z when gmt field is present without Z', () => {
+    expect(normGmt('2024-01-15T10:30:00', '')).toBe('2024-01-15T10:30:00Z');
+  });
+
+  it('should fall back to local field + Z when gmt is absent', () => {
+    expect(normGmt('', '2024-01-15T10:30:00')).toBe('2024-01-15T10:30:00Z');
+  });
+
+  it('should return epoch sentinel when both fields are empty', () => {
+    expect(normGmt('', '')).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('should not double-append Z when gmt already has it', () => {
+    expect(normGmt('2024-01-15T10:30:00Z', '')).toBe('2024-01-15T10:30:00Z');
   });
 });

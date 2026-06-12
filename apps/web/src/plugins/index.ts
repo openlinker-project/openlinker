@@ -45,12 +45,14 @@ import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants'
 import { dpdPlugin } from './dpd';
 import { inpostPlugin } from './inpost';
 import { prestashopPlugin } from './prestashop';
+import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
   prestashopPlugin,
   allegroPlugin,
   dpdPlugin,
   inpostPlugin,
+  woocommercePlugin,
 ];
 
 assertUniquePluginInvariants(plugins);
