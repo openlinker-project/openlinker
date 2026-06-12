@@ -52,8 +52,7 @@
  *   capability's factory runs.
  * @param pluginName - Human-readable plugin identifier used in error
  *   messages (e.g. `'Allegro'`, `'PrestaShop'`). Surfaces in the
- *   `CapabilityNotSupportedByPluginError` thrown when `capability` isn't a
- *   key in `table`.
+ *   `Error` thrown when `capability` isn't a key in `table`.
  * @returns The factory's return value, cast to `T`.
  * @throws Error when `capability` is not a key in `table`. The error message
  *   includes the plugin name, the requested capability, and the supported
