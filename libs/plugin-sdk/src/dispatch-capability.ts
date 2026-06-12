@@ -77,7 +77,7 @@ export function dispatchCapability<T>(
   if (!factory) {
     throw new Error(
       `${pluginName} adapter does not support capability: ${capability}. ` +
-        `Supported capabilities: ${Object.keys(table).join(', ')}`,
+        `Supported capabilities: ${Object.keys(table).join(', ') || '<none>'}`,
     );
   }
   return factory() as T;
