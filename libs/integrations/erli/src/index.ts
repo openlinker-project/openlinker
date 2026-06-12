@@ -11,9 +11,6 @@
  * @module libs/integrations/erli/src
  */
 
-// Domain exceptions
-export { ErliCapabilityNotImplementedException } from './domain/exceptions/erli-capability-not-implemented.exception';
-
 // Plugin descriptor + static manifest (#575)
 export { erliAdapterManifest, createErliPlugin } from './erli-plugin';
 

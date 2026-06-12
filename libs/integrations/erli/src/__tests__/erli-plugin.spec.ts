@@ -1,30 +1,34 @@
 /**
  * Erli Plugin Descriptor Tests (#980)
  *
- * Asserts the static manifest shape, the static === runtime manifest
- * identity (no-drift invariant, #575), and the skeleton's typed rejection
- * from `createCapabilityAdapter` until the real adapters land (#984 / #993).
+ * Asserts the static manifest shape (including the empty capability set the
+ * skeleton ships), the static === runtime manifest identity (no-drift
+ * invariant, #575), the SDK's uniform unsupported-capability rejection from
+ * `createCapabilityAdapter` until the real adapters land (#984 / #993), and
+ * that `ErliIntegrationModule` constructs via `createNestAdapterModule`.
  *
  * @module libs/integrations/erli/src/__tests__
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest } from '../erli-plugin';
-import { ErliCapabilityNotImplementedException } from '../domain/exceptions/erli-capability-not-implemented.exception';
+import { ErliIntegrationModule } from '../erli-integration.module';
 
 const connection: Connection = {
   id: 'conn-erli-1',
   platformType: 'erli',
   name: 'Test Erli',
   status: 'active',
-  config: {} as Record<string, unknown>,
+  config: {},
   credentialsRef: 'ref-1',
-  enabledCapabilities: ['OrderSource', 'OfferManager'],
+  enabledCapabilities: [],
   adapterKey: 'erli.shopapi.v1',
   createdAt: new Date(),
   updatedAt: new Date(),
 };
 
+// The skeleton's factory never reads the host bag; replace with a
+// WooCommerce-style makeHostStub() when #982 adds register(host) tests.
 const host = {} as HostServices;
 
 describe('erliAdapterManifest', () => {
@@ -36,12 +40,20 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.platformType).toBe('erli');
   });
 
-  it('should declare OrderSource and OfferManager capabilities', () => {
-    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OrderSource', 'OfferManager']);
+  it('should declare no capabilities while the skeleton ships no adapters', () => {
+    // #993 adds 'OrderSource' and #984 adds 'OfferManager' alongside their
+    // adapters — declaring them earlier would let listCapabilityAdapters
+    // construct an adapter the factory cannot deliver.
+    expect(erliAdapterManifest.supportedCapabilities).toEqual([]);
   });
 
   it('should be the platform-default adapter', () => {
     expect(erliAdapterManifest.isDefault).toBe(true);
+  });
+
+  it('should carry a display name and version', () => {
+    expect(erliAdapterManifest.displayName).toBe('Erli Shop API v1');
+    expect(erliAdapterManifest.version).toBe('1.0.0');
   });
 });
 
@@ -56,31 +68,22 @@ describe('createErliPlugin', () => {
   });
 
   describe('createCapabilityAdapter', () => {
-    it.each(['OrderSource', 'OfferManager'])(
-      'should reject with ErliCapabilityNotImplementedException when %s is requested',
+    it.each(['OrderSource', 'OfferManager', 'ProductMaster'])(
+      'should reject %s with the SDK unsupported-capability error while no adapters ship',
       async (capability) => {
         const plugin = createErliPlugin();
 
         await expect(
           plugin.createCapabilityAdapter(connection, capability, host),
-        ).rejects.toThrow(ErliCapabilityNotImplementedException);
+        ).rejects.toThrow(`Erli adapter does not support capability: ${capability}`);
       },
     );
+  });
+});
 
-    it('should reject a capability not declared in the manifest with the same typed exception', async () => {
-      const plugin = createErliPlugin();
-
-      await expect(
-        plugin.createCapabilityAdapter(connection, 'ProductMaster', host),
-      ).rejects.toThrow(ErliCapabilityNotImplementedException);
-    });
-
-    it('should name the requested capability in the rejection message', async () => {
-      const plugin = createErliPlugin();
-
-      await expect(plugin.createCapabilityAdapter(connection, 'OfferManager', host)).rejects.toThrow(
-        /OfferManager/,
-      );
-    });
+describe('ErliIntegrationModule', () => {
+  it('should construct a DynamicModule via createNestAdapterModule when the package is loaded', () => {
+    expect(ErliIntegrationModule.module).toBeDefined();
+    expect(ErliIntegrationModule.imports?.length).toBeGreaterThan(0);
   });
 });

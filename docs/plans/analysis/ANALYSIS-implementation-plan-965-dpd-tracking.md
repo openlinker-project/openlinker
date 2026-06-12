@@ -26,7 +26,7 @@ No Critical contract breaks; no reuse collisions. One Warning (declare a direct 
 - **No migration.** The plan touches no `*.orm-entity.ts` — the `shipments` table + #838 entity already exist; tracking only reads + patches via the existing repo. ✅
 - **Warning — under-declared direct dependency.** The plan uses `fast-xml-parser` from inside `libs/integrations/dpd-polska`, but that package's `package.json` does **not** declare it (only root + prestashop do). It resolves today via hoisting, but per the monorepo under-declaration trap it should be added to `libs/integrations/dpd-polska/package.json` `dependencies` in this PR. **Migration path:** add `"fast-xml-parser": "^5.3.3"` (match the root pin).
 - **`check:invariants` — clean / addressed.** `check-jest-integration-mappers`: api side already has DPD (plugins.ts + 2 mapper lines); the plan adds the matching 2 worker lines (guard satisfied). `check-cross-context-imports`: plugin imports from `@openlinker/core/shipping` + `@openlinker/core/sync` top-level barrels only (types, capability const, `SchedulerTaskConfig`) — allowed shapes. No deep-barrel or service-interface violations.
-- **ADR number:** plan now targets **ADR-022** — confirmed the next free number (019/020/021 are taken: bulk-dispatch / delivery-intent / inbound-webhook). ✅
+- **ADR number:** plan now targets **ADR-025** — confirmed the next free number (019/020/021 are taken: bulk-dispatch / delivery-intent / inbound-webhook). ✅
 
 ## Open questions (external-API — flagged in plan, non-blocking to start)
 

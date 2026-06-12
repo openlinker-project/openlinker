@@ -67,7 +67,7 @@
 
 ### Assumptions (safe defaults)
 1. **`register(host)` is a no-op in the skeleton.** Validators/tester arrive in #982; webhook translator in #996. The descriptor keeps the optional `register` hook absent (or empty) rather than stubbing registries with placeholders.
-2. **`createCapabilityAdapter` throws `ErliCapabilityNotImplementedException`** (domain exception in `domain/exceptions/`) naming the capability and pointing at the tracking issue. This is more honest than `dispatchCapability` with an empty table (whose error message implies the capability is *unsupported*, while the manifest says it *is* supported — just not built yet).
+2. **The skeleton manifest declares `supportedCapabilities: []` and `createCapabilityAdapter` uses `dispatchCapability` with an empty table.** A registered manifest must only declare capabilities the factory can deliver: `IntegrationsService.listCapabilityAdapters` re-throws any non-`AdapterNotFoundException` factory error, so a declared-but-unbuilt capability on one active Erli connection would abort capability enumeration for every platform (review finding on PR #1019). With an empty capability set the platform is inert by construction, the SDK's uniform unsupported-capability error is accurate, and #984/#993 add each capability together with its dispatch-table entry.
 3. **Worker registration included now.** WooCommerce/Allegro/PrestaShop register in both hosts; Erli's offer-creation jobs (#984) and inbox poll (#993) will run in the worker, so wiring both seams now avoids a guaranteed follow-up edit. DPD's worker-exclusion precedent doesn't apply (DPD is API-only by design).
 4. **ADR-025 ships `Status: Accepted`** — issue #983's AC is "ADR merged, status Accepted", and this PR is the merge vehicle. (The generic plan-skill default of `Proposed` is overridden by the issue AC.)
 5. **Capability-matrix note**: Erli is added as *Future Implementations* under `OfferManagerPort` and `OrderSourcePort` in `architecture-overview.md` (adapters don't exist yet), plus the plugin list mention. When #984/#993 land they move to *Current Implementations*.
@@ -83,15 +83,15 @@
 1. **`libs/integrations/erli/package.json`** — mirror WooCommerce: name `@openlinker/integrations-erli`, `main ./dist/index.js`, `types ./dist/index.d.ts`, exports `.` (CJS + types), deps `@openlinker/{core,plugin-sdk,shared} workspace:*`, peerDep `@nestjs/common ^10.0.0`, scripts (`build`, `test`, `lint`, `type-check`) copied from WooCommerce.
    - *Acceptance*: `pnpm install` links the package; `pnpm --filter @openlinker/integrations-erli build` compiles.
 2. **`libs/integrations/erli/tsconfig.json`** (+ `jest.config` mirroring WooCommerce) — extends `../../../tsconfig.base.json`, `outDir ./dist`, `rootDir ./src`, references `../../core`, `../../shared`, `../../plugin-sdk`.
-3. **`libs/integrations/erli/src/domain/exceptions/erli-capability-not-implemented.exception.ts`** — extends `Error`, message: `Erli capability "{capability}" is not implemented yet (see #984 / #993)`; file header per standards.
+3. ~~Dedicated `ErliCapabilityNotImplementedException`~~ — dropped during PR #1019 review (see assumption 2): the empty-manifest + empty-`dispatchCapability`-table shape makes the SDK's uniform error correct, so no plugin-specific exception is needed.
 
 ### Phase 2 — Manifest + descriptor + module
 4. **`libs/integrations/erli/src/erli-plugin.ts`**
-   - `export const erliAdapterManifest: AdapterMetadata = { adapterKey: 'erli.shopapi.v1', platformType: 'erli', supportedCapabilities: ['OrderSource', 'OfferManager'], displayName: 'Erli Shop API v1', version: '1.0.0', isDefault: true }`.
-   - `export function createErliPlugin(): AdapterPlugin` returning `{ manifest: erliAdapterManifest, createCapabilityAdapter: () => Promise.reject(new ErliCapabilityNotImplementedException(capability)) }`.
+   - `export const erliAdapterManifest: AdapterMetadata = { adapterKey: 'erli.shopapi.v1', platformType: 'erli', supportedCapabilities: [], displayName: 'Erli Shop API v1', version: '1.0.0', isDefault: true }` — capabilities join the array in #984/#993 alongside their adapters.
+   - `export function createErliPlugin(): AdapterPlugin` returning `{ manifest: erliAdapterManifest, createCapabilityAdapter: <T>(…) => dispatchCapability<T>(capability, {}, 'Erli') }` (empty dispatch table; #984/#993 add entries).
    - *Acceptance*: static export and `createErliPlugin().manifest` are the **same object reference** (no drift — #575 pattern).
 5. **`libs/integrations/erli/src/erli-integration.module.ts`** — `export const ErliIntegrationModule: DynamicModule = createNestAdapterModule({ plugin: createErliPlugin() });` (WooCommerce pattern, `woocommerce-integration.module.ts:20-22`).
-6. **`libs/integrations/erli/src/index.ts`** — barrel exporting `erliAdapterManifest`, `createErliPlugin`, `ErliIntegrationModule`, the exception.
+6. **`libs/integrations/erli/src/index.ts`** — barrel exporting `erliAdapterManifest`, `createErliPlugin`, `ErliIntegrationModule`.
 
 ### Phase 3 — Host wiring (the 3-seam checklist from testing-guide #917)
 7. **`tsconfig.base.json`** — add `@openlinker/integrations-erli` + `/*` path aliases (woocommerce shape).
@@ -102,7 +102,8 @@
 10. **`libs/integrations/erli/src/__tests__/erli-plugin.spec.ts`** — mirror `woocommerce-plugin.spec.ts`:
     - manifest fields (adapterKey/platformType/capabilities/isDefault),
     - `createErliPlugin().manifest === erliAdapterManifest` (reference identity),
-    - `createCapabilityAdapter` rejects with `ErliCapabilityNotImplementedException` for `OfferManager`, `OrderSource`, and an unknown capability alike.
+    - `createCapabilityAdapter` rejects `OfferManager`, `OrderSource`, and an unknown capability alike with the SDK's uniform unsupported-capability error (empty dispatch table — see assumption 2),
+    - `ErliIntegrationModule` constructs a `DynamicModule` via `createNestAdapterModule` (smoke test).
 
 ### Phase 5 — Documentation
 11. **`docs/architecture/adrs/025-erli-marketplace-adapter.md`** — Status `Accepted`, sections per `template.md`: reconciliation-first posture (202 + cache lag + no-retry webhooks ⇒ inbox poll mandatory backstop, snapshot-reconciled offer status à la ADR-009); static API-key bearer vs Allegro OAuth2; Allegro-ID taxonomy reuse (`source:"allegro"`); asymmetric stock + `frozen` field ownership as adapter invariants. Alternatives: Erli-native taxonomy (rejected — kills the near-free-listing bet, spec R2), OAuth-style credential rotation (rejected — Erli has none), trusting 202 as confirmation (rejected — cache lag would lie to operators).
