@@ -2362,6 +2362,13 @@ textarea {
 .mono {
   font-family: var(--font-mono);
   letter-spacing: -0.01em;
+  /* Long space-free tokens (redirect URIs, IDs) must wrap, not overflow — without
+     this they escape cards with `overflow: visible` and collide with neighbouring
+     layout (e.g. the Allegro setup callout's redirect URI overlapping the wizard
+     summary card). `anywhere` only breaks when needed and feeds min-content sizing
+     so grid/flex tracks behave. The `.data-table td .mono-text` variant keeps its
+     own max-width + ellipsis. */
+  overflow-wrap: anywhere;
 }
 
 .tabular {
