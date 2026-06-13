@@ -81,8 +81,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
    *
    * Adapters may omit createdAt/updatedAt — the repository populates them on
    * save via TypeORM's @CreateDateColumn/@UpdateDateColumn. Master-derived
-   * fields (currency/weight/categories) spread through untouched; the ORM
-   * has no columns for them, so they're silently dropped on persist.
+   * fields spread through untouched; `currency` and `categories` (#1034) are
+   * persisted by the repository, while `weight` remains intentionally transient
+   * (no column — master-derived only).
    */
   private toDomainProduct(product: Product): Product {
     return {
