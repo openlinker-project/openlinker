@@ -109,8 +109,8 @@ The destination's own schema is the source of truth for ids/sections/dictionarie
 
 The neutral shape represents Allegro + eBay cleanly; to avoid getting stuck on a 3rd marketplace, add now (harmless for Allegro/ERLI/shops):
 
-- `multiValue: boolean` (eBay `itemToAspectCardinality: MULTI`, Allegro `variantsAllowed`).
-- `dictionary[].id?` — Allegro uses value **ids**; eBay/Amazon use **labels**. Carry both.
+- `multiValue` (eBay `itemToAspectCardinality: MULTI`; Allegro `restrictions.multipleChoices` or `allowedNumberOfValues > 1` — there is no single Allegro `variantsAllowed` field). Shipped in #1035 as **optional** (`multiValue?: boolean`, additive) — promote to required when a second producing adapter lands.
+- `dictionary[].id` already exists and is **required** on `CategoryParameterDictionaryEntry` (Allegro uses value **ids**); eBay/Amazon use **labels**, so a labels-only adapter synthesises an id at its boundary rather than the field being made optional (avoids a breaking change for current consumers).
 - **Documented limit**: Amazon's Product-Type JSON-Schema conditional/nested requirements don't fit a flat list — the abstraction captures Amazon's *flattened top-level* required attributes only.
 
 ## Flow
