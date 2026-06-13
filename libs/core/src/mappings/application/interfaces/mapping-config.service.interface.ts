@@ -74,19 +74,21 @@ export interface IMappingConfigService {
    */
   resolveOrderStateMapping(connectionId: string, olStatus: OrderStatus): Promise<string | null>;
 
-  getCategoryMappings(connectionId: string): Promise<CategoryMapping[]>;
+  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]>;
   upsertCategoryMapping(
-    connectionId: string,
+    destinationConnectionId: string,
     input: CategoryMappingInput
   ): Promise<CategoryMapping>;
-  deleteCategoryMapping(connectionId: string, prestashopCategoryId: string): Promise<void>;
+  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void>;
 
   /**
-   * Resolve configured Allegro category ID for a given PrestaShop category.
-   * Returns null if no mapping is configured for this connection + prestashopCategoryId pair.
+   * Resolve the configured destination category ID for a given source category.
+   * `destinationConnectionId` is the marketplace/shop connection the mapping
+   * targets. Returns null if no mapping is configured for this destination +
+   * sourceCategoryId pair.
    */
-  resolveAllegroCategory(
-    connectionId: string,
-    prestashopCategoryId: string
+  resolveDestinationCategory(
+    destinationConnectionId: string,
+    sourceCategoryId: string
   ): Promise<string | null>;
 }

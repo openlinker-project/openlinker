@@ -49,8 +49,8 @@ describe('MappingConfigService', () => {
       replaceForConnection: jest.fn(),
     };
     categoryRepo = {
-      findByConnectionId: jest.fn(),
-      findByPrestashopCategoryId: jest.fn(),
+      findByDestinationConnection: jest.fn(),
+      findBySourceCategory: jest.fn(),
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
@@ -283,18 +283,20 @@ describe('MappingConfigService', () => {
       const mappings = [
         new CategoryMapping(
           'id-1',
+          null,
           CONNECTION_ID,
           '3',
           '258066',
           'Smartphones',
-          'Electronics > Phones > Smartphones'
+          'Electronics > Phones > Smartphones',
+          'allegro'
         ),
       ];
-      categoryRepo.findByConnectionId.mockResolvedValue(mappings);
+      categoryRepo.findByDestinationConnection.mockResolvedValue(mappings);
 
       const result = await service.getCategoryMappings(CONNECTION_ID);
 
-      expect(categoryRepo.findByConnectionId).toHaveBeenCalledWith(CONNECTION_ID);
+      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID);
       expect(result).toEqual(mappings);
     });
   });
@@ -302,18 +304,20 @@ describe('MappingConfigService', () => {
   describe('upsertCategoryMapping', () => {
     it('should delegate to repository upsertMapping', async () => {
       const input = {
-        prestashopCategoryId: '5',
-        allegroCategoryId: '258066',
-        allegroCategoryName: 'Smartphones',
-        allegroCategoryPath: 'Electronics > Phones > Smartphones',
+        sourceCategoryId: '5',
+        destinationCategoryId: '258066',
+        destinationCategoryName: 'Smartphones',
+        destinationCategoryPath: 'Electronics > Phones > Smartphones',
       };
       const saved = new CategoryMapping(
         'id-5',
+        null,
         CONNECTION_ID,
         '5',
         '258066',
         'Smartphones',
-        'Electronics > Phones > Smartphones'
+        'Electronics > Phones > Smartphones',
+        'allegro'
       );
       categoryRepo.upsertMapping.mockResolvedValue(saved);
 
@@ -334,27 +338,29 @@ describe('MappingConfigService', () => {
     });
   });
 
-  describe('resolveAllegroCategory', () => {
-    it('should return allegroCategoryId when mapping exists', async () => {
+  describe('resolveDestinationCategory', () => {
+    it('should return destinationCategoryId when mapping exists', async () => {
       const mapping = new CategoryMapping(
         'id-1',
+        null,
         CONNECTION_ID,
         '3',
         '258066',
         'Smartphones',
-        null
+        null,
+        'allegro'
       );
-      categoryRepo.findByPrestashopCategoryId.mockResolvedValue(mapping);
+      categoryRepo.findBySourceCategory.mockResolvedValue(mapping);
 
-      const result = await service.resolveAllegroCategory(CONNECTION_ID, '3');
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3');
 
       expect(result).toBe('258066');
     });
 
     it('should return null when no mapping exists', async () => {
-      categoryRepo.findByPrestashopCategoryId.mockResolvedValue(null);
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
 
-      const result = await service.resolveAllegroCategory(CONNECTION_ID, '999');
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '999');
 
       expect(result).toBeNull();
     });

@@ -117,7 +117,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     sourceCategoryIds: string[]
   ): Promise<string | null> {
     for (const categoryId of sourceCategoryIds) {
-      const resolved = await this.mappingConfig.resolveAllegroCategory(connectionId, categoryId);
+      const resolved = await this.mappingConfig.resolveDestinationCategory(connectionId, categoryId);
       if (resolved) {
         return resolved;
       }
