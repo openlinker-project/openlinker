@@ -111,5 +111,7 @@ One pointer per section, identical format every time.
 | [ADR-020](./020-neutral-delivery-intent-shipping-dispatch.md) | Neutral delivery intent as the shipping-dispatch caller contract | Accepted | 2026-06-05 |
 | [ADR-021](./021-third-party-native-inbound-webhook-ingestion.md) | Third-party-native inbound webhook ingestion via a per-provider decoder | Proposed | 2026-06-08 |
 | [ADR-022](./022-dpd-tracking-soap-dpdinfoservices.md) | DPD Polska tracking transport: SOAP DPDInfoServices (dual-transport plugin) | Proposed | 2026-06-11 |
+| [ADR-023](./023-cross-platform-category-and-attribute-projection.md) | Cross-platform category placement and attribute projection | Accepted | 2026-06-13 |
+| [ADR-024](./024-destination-listing-capabilities.md) | Destination listing capabilities — marketplace OfferManager vs shop ProductPublisher | Accepted | 2026-06-13 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
