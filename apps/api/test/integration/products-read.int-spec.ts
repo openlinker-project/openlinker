@@ -202,4 +202,50 @@ describe('Products Read API Integration — currency persistence', () => {
     expect(item).toBeDefined();
     expect(item.currency).toBe('PLN');
   });
+
+  // #1034 — source category ids persist + survive reload. Asserted via the
+  // repository (not GET /products): the response DTO does not expose
+  // `categories` yet (that surface is #1044). The AC is the persistence
+  // round-trip against real Postgres.
+  describe('source categories persistence (#1034)', () => {
+    const baseProduct = (id: string): Product => ({
+      id,
+      name: 'Categories Roundtrip',
+      sku: null,
+      price: null,
+      currency: null,
+      description: null,
+      images: null,
+    });
+
+    const getRepo = (): ProductRepositoryPort =>
+      harness.getApp().get<ProductRepositoryPort>(PRODUCT_REPOSITORY_TOKEN);
+
+    it('round-trips populated source category ids', async () => {
+      const repo = getRepo();
+      const id = `ol_product_cats_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), categories: ['10', '25', '100'] });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.categories).toEqual(['10', '25', '100']);
+    });
+
+    it('preserves an empty categories array (not coerced to absent)', async () => {
+      const repo = getRepo();
+      const id = `ol_product_cats_empty_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), categories: [] });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.categories).toEqual([]);
+    });
+
+    it('returns absent categories when unset (DB null → undefined)', async () => {
+      const repo = getRepo();
+      const id = `ol_product_cats_none_${Date.now()}`;
+      await repo.upsert(baseProduct(id));
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.categories).toBeUndefined();
+    });
+  });
 });
