@@ -18,6 +18,11 @@
  * Conflating them would mis-render both classes of category — see issue #410
  * for context.
  *
+ * Scope note (#1035, ADR-023 §6): this shape captures a destination's
+ * *flattened, top-level* required parameters. Amazon's Product-Type
+ * JSON-Schema conditional / nested requirements are out of scope — they don't
+ * fit a flat list and are intentionally not represented here.
+ *
  * @module libs/core/src/listings/domain/types
  */
 
@@ -99,6 +104,17 @@ export interface CategoryParameter {
   name: string;
   type: CategoryParameterType;
   required: boolean;
+  /**
+   * Neutral multi-value cardinality roll-up (#1035, ADR-023 §6): `true` when the
+   * parameter accepts more than one value — eBay `itemToAspectCardinality: MULTI`,
+   * Allegro `restrictions.multipleChoices` or `allowedNumberOfValues > 1`. A
+   * convenience flag so cross-platform consumers (e.g. attribute projection)
+   * needn't decode each platform's `restrictions` shape; `restrictions` still
+   * carries the platform-precise counts. `undefined` ⇒ single-valued. Optional
+   * for now (additive); adapters that can express it SHOULD set it explicitly —
+   * promote to required once a second producing adapter lands.
+   */
+  multiValue?: boolean;
   /** Optional unit label (e.g. "mm", "kg"). */
   unit?: string;
   /** Present when type === 'dictionary'. Entries may carry their own `dependsOnParameterValueIds`. */
