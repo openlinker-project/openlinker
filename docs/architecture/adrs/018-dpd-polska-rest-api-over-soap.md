@@ -34,7 +34,7 @@ Build the DPD Polska adapter against the **native REST `DPDServices` API** — J
 
 **Cons / trade-offs:**
 - REST **test-server credentials** live in the gated Swagger/redoc doc — needed for the Phase-0 spike (the public-internet OpenAPI JSON returns 403).
-- Tracking is a **separate service** (`DPD InfoServices`) regardless of transport — unchanged (#965).
+- Tracking is a **separate service** (`DPD InfoServices`) regardless of transport — unchanged (#965). **Resolved by [ADR-022](./022-dpd-tracking-soap-dpdinfoservices.md): tracking is SOAP `DPDInfoServices`; the DPD plugin is now dual-transport.**
 
 **Migration path:** none — this is a pre-implementation reversal of the draft; no code shipped against SOAP.
 
