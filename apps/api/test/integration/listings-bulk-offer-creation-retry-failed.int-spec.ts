@@ -9,7 +9,7 @@
  *
  * Direct seeding (skipping the submit service) keeps the spec focused on the
  * retry surface — the submit-side flow is covered by
- * `listings-bulk-offer-creation.int-spec.ts`.
+ * `listings-bulk-listing.int-spec.ts`.
  *
  * **Deferred — AC end-to-end happy path** (issue #742 AC: submit → drain →
  * retry → drain → final `partially-failed`): requires booting the
@@ -21,7 +21,7 @@
  * (Product + ProductVariant fixtures + a second connection with
  * `masterCatalogConnectionId`). The orchestration semantics (counter
  * reopen, wave-distinct idempotency key, per-record decrement) are fully
- * covered by `bulk-offer-creation-retry.service.spec.ts`'s 15 cases; the
+ * covered by `bulk-listing-retry.service.spec.ts`'s 15 cases; the
  * remaining gap is the worker-side drain wiring, which is exercised in
  * `apps/worker/src/sync/handlers/__tests__/marketplace-offer-create.handler.spec.ts`.
  *

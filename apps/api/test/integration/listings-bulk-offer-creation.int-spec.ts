@@ -14,9 +14,9 @@
  * the bulk service requires a connection whose adapter supports the
  * `OfferCreator` capability (Allegro), which needs live OAuth
  * credentials. That orchestration is covered by:
- *  - `BulkOfferCreationSubmitService` unit spec (fan-out + status flips)
+ *  - `BulkListingSubmitService` unit spec (fan-out + status flips)
  *  - `OfferCreationEnqueueService` unit spec (V2 payload, bulk idempotency key)
- *  - `BulkOfferCreationController` unit spec (DTO mapping, error → HTTP)
+ *  - `BulkListingController` unit spec (DTO mapping, error → HTTP)
  *
  * This int-spec proves Nest wiring + DB plumbing for the operator-facing
  * read contract the FE wizard's progress page (#741) will call every few

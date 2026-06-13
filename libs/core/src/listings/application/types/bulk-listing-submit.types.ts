@@ -4,12 +4,12 @@
  * Input / result contracts for the bulk submission service that fans an
  * N-product bulk submission out across the existing offer-creation enqueue
  * flow: validate connection + capability, persist a parent
- * `BulkOfferCreationBatch`, enqueue one `marketplace.offer.create` job per
+ * `BulkListingBatch`, enqueue one `marketplace.offer.create` job per
  * product carrying `MarketplaceOfferCreatePayloadV2`, return the batchId +
  * jobIds for FE polling.
  *
  * Worker-side handling (consuming the V2 payload, calling
- * `BulkOfferCreationBatchRepositoryPort.incrementCounters` on terminal
+ * `BulkListingBatchRepositoryPort.incrementCounters` on terminal
  * status) lands in **#737**; this slice defines the submit/read seam only.
  *
  * @module libs/core/src/listings/application/types
@@ -18,7 +18,7 @@
 import type { CreateOfferOverrides } from '@openlinker/core/listings';
 import type { OfferDescriptionTone } from '@openlinker/core/sync';
 
-import type { BulkOfferCreationBatch } from '../../domain/entities/bulk-offer-creation-batch.entity';
+import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 
 /**
@@ -58,14 +58,14 @@ export interface PerProductOverride {
 }
 
 /**
- * Service-layer input to `IBulkOfferCreationSubmitService.submit`.
+ * Service-layer input to `IBulkListingSubmitService.submit`.
  *
  * Distinct from the HTTP DTO: the controller maps from
  * `BulkOfferCreateRequestDto` to this shape and adds `initiatedBy` from
  * the authenticated session. Keeps the service free of HTTP framework
  * coupling.
  */
-export interface BulkOfferCreationSubmitInput {
+export interface BulkListingSubmitInput {
   /** Target marketplace connection id. */
   connectionId: string;
   /**
@@ -100,7 +100,7 @@ export interface BulkOfferCreationSubmitInput {
  * pre-#824 behaviour is byte-identical for them.
  *
  * Not exported from the package barrel — purely an implementation detail of
- * `BulkOfferCreationSubmitService`.
+ * `BulkListingSubmitService`.
  */
 export interface ExpandedVariantJob {
   /** The variant this offer-creation job lists. */
@@ -131,7 +131,7 @@ export interface ExpandedVariantJob {
  * Service-layer result returned by `submit`. The controller maps to
  * `BulkOfferCreateResponseDto` for the HTTP boundary.
  */
-export interface BulkOfferCreationSubmitResult {
+export interface BulkListingSubmitResult {
   /** Persisted batch id (UUID). */
   batchId: string;
   /**
@@ -144,12 +144,12 @@ export interface BulkOfferCreationSubmitResult {
 }
 
 /**
- * Aggregate summary returned by `IBulkOfferCreationSubmitService.getBatch`.
+ * Aggregate summary returned by `IBulkListingSubmitService.getBatch`.
  * The controller maps to `BulkBatchSummaryDto`; the FE poll page in #741
  * renders this shape directly.
  */
 export interface BulkBatchSummary {
-  batch: BulkOfferCreationBatch;
+  batch: BulkListingBatch;
   /**
    * Per-product child rows, ordered by `createdAt ASC` so the wizard's
    * review table renders rows in submission order even after retries.

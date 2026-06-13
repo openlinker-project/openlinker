@@ -1,7 +1,7 @@
 /**
  * No Failed Children to Retry Exception (#742)
  *
- * Thrown by `BulkOfferCreationRetryService.retryFailed` when the addressed
+ * Thrown by `BulkListingRetryService.retryFailed` when the addressed
  * batch exists but has zero `OfferCreationRecord` children at
  * `status='failed'` — i.e. nothing to retry.
  *

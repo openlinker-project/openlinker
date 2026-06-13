@@ -6,8 +6,8 @@
  * flows). Lets core stay NestJS-free — the controller / global filter maps
  * the domain exception to HTTP 422.
  *
- * Today this is thrown by `BulkOfferCreationRetryService`. Other services
- * (`OfferCreationEnqueueService`, `BulkOfferCreationSubmitService`) still
+ * Today this is thrown by `BulkListingRetryService`. Other services
+ * (`OfferCreationEnqueueService`, `BulkListingSubmitService`) still
  * throw the NestJS `UnprocessableEntityException` directly from core —
  * pre-existing violation tracked as a cross-cutting cleanup follow-up.
  *

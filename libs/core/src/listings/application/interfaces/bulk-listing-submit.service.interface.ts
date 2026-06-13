@@ -2,7 +2,7 @@
  * Bulk Offer Creation Submit Service Interface (#736)
  *
  * Contract for the bulk-submission orchestration: validate connection +
- * capability, persist the parent `BulkOfferCreationBatch`, fan out to
+ * capability, persist the parent `BulkListingBatch`, fan out to
  * `IOfferCreationEnqueueService` once per product (emitting
  * `MarketplaceOfferCreatePayloadV2`), advance the batch to `'running'`,
  * and expose a `getBatch` read for the FE progress page.
@@ -10,7 +10,7 @@
  * Terminal-status derivation (deriving `completed | partially-failed |
  * failed` when `succeededCount + failedCount === totalCount`) lives in
  * this service per `architecture-overview.md` §7 and the entity header in
- * `bulk-offer-creation-batch.entity.ts`. The state-machine method that
+ * `bulk-listing-batch.entity.ts`. The state-machine method that
  * does the derivation is added by the worker handler change in **#737** —
  * this slice exposes only `submit` + `getBatch`.
  *
@@ -19,11 +19,11 @@
 
 import type {
   BulkBatchSummary,
-  BulkOfferCreationSubmitInput,
-  BulkOfferCreationSubmitResult,
-} from '../types/bulk-offer-creation-submit.types';
+  BulkListingSubmitInput,
+  BulkListingSubmitResult,
+} from '../types/bulk-listing-submit.types';
 
-export interface IBulkOfferCreationSubmitService {
+export interface IBulkListingSubmitService {
   /**
    * Validate + persist batch + fan out enqueues.
    *
@@ -41,7 +41,7 @@ export interface IBulkOfferCreationSubmitService {
    * is re-thrown — the FE wizard treats this as an end-to-end failure
    * and offers a fresh submit.
    */
-  submit(input: BulkOfferCreationSubmitInput): Promise<BulkOfferCreationSubmitResult>;
+  submit(input: BulkListingSubmitInput): Promise<BulkListingSubmitResult>;
 
   /**
    * Return the batch + every child `OfferCreationRecord` belonging to it,

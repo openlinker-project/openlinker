@@ -31,7 +31,7 @@ import type {
   BulkBatchSummary,
   BulkOfferCreateRequest,
   BulkOfferCreateResponse,
-  BulkOfferCreationRetryResponse,
+  BulkListingRetryResponse,
 } from './bulk-listings.types';
 
 export interface CreateOfferOptions {
@@ -103,7 +103,7 @@ export interface ListingsApi {
   /** Read a bulk batch + its per-record summary. Used for polling on #741. */
   getBulkBatch: (batchId: string) => Promise<BulkBatchSummary>;
   /** Re-enqueue failed children of a batch (#742). Batch-level retry only. */
-  retryBulkFailed: (batchId: string) => Promise<BulkOfferCreationRetryResponse>;
+  retryBulkFailed: (batchId: string) => Promise<BulkListingRetryResponse>;
 }
 
 interface ApiRequest {
@@ -218,8 +218,8 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
         `/listings/bulk-create/${encodeURIComponent(batchId)}`,
       );
     },
-    retryBulkFailed(batchId): Promise<BulkOfferCreationRetryResponse> {
-      return request<BulkOfferCreationRetryResponse>(
+    retryBulkFailed(batchId): Promise<BulkListingRetryResponse> {
+      return request<BulkListingRetryResponse>(
         `/listings/bulk-create/${encodeURIComponent(batchId)}/retry-failed`,
         { method: 'POST' },
       );

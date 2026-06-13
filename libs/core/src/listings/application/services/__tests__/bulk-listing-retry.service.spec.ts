@@ -23,19 +23,19 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
-import { BulkOfferCreationBatch } from '../../../domain/entities/bulk-offer-creation-batch.entity';
+import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { AdapterCapabilityNotSupportedException } from '../../../domain/exceptions/adapter-capability-not-supported.exception';
-import { BulkOfferCreationBatchNotFoundException } from '../../../domain/exceptions/bulk-offer-creation-batch-not-found.exception';
+import { BulkListingBatchNotFoundException } from '../../../domain/exceptions/bulk-listing-batch-not-found.exception';
 import { BulkRetryMissingSnapshotException } from '../../../domain/exceptions/bulk-retry-missing-snapshot.exception';
 import { NoFailedChildrenToRetryException } from '../../../domain/exceptions/no-failed-children-to-retry.exception';
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import type { BulkBatchAdvancementRepositoryPort } from '../../../domain/ports/bulk-batch-advancement-repository.port';
-import type { BulkOfferCreationBatchRepositoryPort } from '../../../domain/ports/bulk-offer-creation-batch-repository.port';
+import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
-import { BULK_BATCH_STATUS } from '../../../domain/types/bulk-offer-creation-batch.types';
+import { BULK_BATCH_STATUS } from '../../../domain/types/bulk-listing-batch.types';
 import type { OfferCreationStatus } from '../../../domain/types/offer-creation-record.types';
 import type { OfferCreationRequestSnapshot } from '../../../domain/types/offer-creation-request-snapshot.types';
-import { BulkOfferCreationRetryService } from '../bulk-offer-creation-retry.service';
+import { BulkListingRetryService } from '../bulk-listing-retry.service';
 
 const BATCH_ID = 'batch-uuid-1';
 const CONNECTION_ID = 'conn-allegro-1';
@@ -83,10 +83,10 @@ function makeRecord(
 }
 
 function makeBatch(
-  overrides: Partial<BulkOfferCreationBatch> = {}
-): BulkOfferCreationBatch {
+  overrides: Partial<BulkListingBatch> = {}
+): BulkListingBatch {
   const now = new Date('2026-05-18T09:00:00Z');
-  return new BulkOfferCreationBatch(
+  return new BulkListingBatch(
     overrides.id ?? BATCH_ID,
     overrides.connectionId ?? CONNECTION_ID,
     overrides.initiatedBy ?? 'user-1',
@@ -100,9 +100,9 @@ function makeBatch(
   );
 }
 
-describe('BulkOfferCreationRetryService', () => {
-  let service: BulkOfferCreationRetryService;
-  let batches: jest.Mocked<BulkOfferCreationBatchRepositoryPort>;
+describe('BulkListingRetryService', () => {
+  let service: BulkListingRetryService;
+  let batches: jest.Mocked<BulkListingBatchRepositoryPort>;
   let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let advancements: jest.Mocked<BulkBatchAdvancementRepositoryPort>;
   let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
@@ -141,7 +141,7 @@ describe('BulkOfferCreationRetryService', () => {
       enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
     } as unknown as jest.Mocked<JobEnqueuePort>;
 
-    service = new BulkOfferCreationRetryService(
+    service = new BulkListingRetryService(
       batches,
       records,
       advancements,
@@ -152,11 +152,11 @@ describe('BulkOfferCreationRetryService', () => {
 
   // ── Throw paths ─────────────────────────────────────────────────────
 
-  it('throws BulkOfferCreationBatchNotFoundException when batch missing', async () => {
+  it('throws BulkListingBatchNotFoundException when batch missing', async () => {
     batches.findById.mockResolvedValueOnce(null);
 
     await expect(service.retryFailed(BATCH_ID)).rejects.toBeInstanceOf(
-      BulkOfferCreationBatchNotFoundException
+      BulkListingBatchNotFoundException
     );
     expect(records.findByBulkBatchId).not.toHaveBeenCalled();
   });

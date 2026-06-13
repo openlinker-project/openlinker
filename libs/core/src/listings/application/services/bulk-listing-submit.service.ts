@@ -1,7 +1,7 @@
 /**
  * Bulk Offer Creation Submit Service (#736)
  *
- * Composes the just-shipped `BulkOfferCreationBatch` aggregate (#734) into
+ * Composes the just-shipped `BulkListingBatch` aggregate (#734) into
  * an operator-facing bulk-listing flow: validates connection + adapter
  * capability up front, persists the parent batch row, fans N enqueues out
  * through the existing `IOfferCreationEnqueueService` (so the per-record
@@ -23,8 +23,8 @@
  * one variant listing. `totalCount` reflects the expanded count.
  *
  * @module libs/core/src/listings/application/services
- * @implements {IBulkOfferCreationSubmitService}
- * @see {@link IBulkOfferCreationSubmitService} for the service contract
+ * @implements {IBulkListingSubmitService}
+ * @see {@link IBulkListingSubmitService} for the service contract
  * @see {@link IOfferCreationEnqueueService} for the per-product enqueue half
  */
 
@@ -36,7 +36,7 @@ import {
   isOfferCreator,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
 
-  BulkOfferCreationBatchRepositoryPort,
+  BulkListingBatchRepositoryPort,
   IOfferCreationEnqueueService,
   OfferCreationRecordRepositoryPort} from '@openlinker/core/listings';
 import type {
@@ -59,26 +59,26 @@ import {
 
 import { EmptyBulkSubmissionException } from '../../domain/exceptions/empty-bulk-submission.exception';
 import {
-  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
 } from '../../listings.tokens';
-import type { IBulkOfferCreationSubmitService } from '../interfaces/bulk-offer-creation-submit.service.interface';
+import type { IBulkListingSubmitService } from '../interfaces/bulk-listing-submit.service.interface';
 import type {
   BulkBatchSummary,
-  BulkOfferCreationSubmitInput,
-  BulkOfferCreationSubmitResult,
+  BulkListingSubmitInput,
+  BulkListingSubmitResult,
   ExpandedVariantJob,
   PerProductOverride,
-} from '../types/bulk-offer-creation-submit.types';
+} from '../types/bulk-listing-submit.types';
 import type { EnqueueOfferCreationInput } from '../types/offer-creation-enqueue.types';
 
 @Injectable()
-export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitService {
-  private readonly logger = new Logger(BulkOfferCreationSubmitService.name);
+export class BulkListingSubmitService implements IBulkListingSubmitService {
+  private readonly logger = new Logger(BulkListingSubmitService.name);
 
   constructor(
-    @Inject(BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN)
-    private readonly bulkBatchRepository: BulkOfferCreationBatchRepositoryPort,
+    @Inject(BULK_LISTING_BATCH_REPOSITORY_TOKEN)
+    private readonly bulkBatchRepository: BulkListingBatchRepositoryPort,
     @Inject(OFFER_CREATION_RECORD_REPOSITORY_TOKEN)
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(OFFER_CREATION_ENQUEUE_SERVICE_TOKEN)
@@ -91,7 +91,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
     private readonly inventoryQuery: IInventoryQueryService
   ) {}
 
-  async submit(input: BulkOfferCreationSubmitInput): Promise<BulkOfferCreationSubmitResult> {
+  async submit(input: BulkListingSubmitInput): Promise<BulkListingSubmitResult> {
     if (input.productIds.length === 0) {
       throw new EmptyBulkSubmissionException();
     }
@@ -132,7 +132,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
     );
 
     // 3. Persist the batch row. Status defaults to 'pending' per the
-    //    `CreateBulkOfferCreationBatchInput` contract; `sharedConfig` is
+    //    `CreateBulkListingBatchInput` contract; `sharedConfig` is
     //    stored as the unstructured persistence projection of the typed
     //    `BulkSharedConfig` shape so future schema iterations don't require
     //    a migration.
@@ -217,7 +217,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
    * the operator-facing submit stays responsive for large selections.
    */
   private async expandVariantJobs(
-    input: BulkOfferCreationSubmitInput
+    input: BulkListingSubmitInput
   ): Promise<ExpandedVariantJob[]> {
     const uniqueSelectedIds = [...new Set(input.productIds)];
 
@@ -330,7 +330,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
    * product by barcode.
    */
   private buildEnqueueInput(
-    input: BulkOfferCreationSubmitInput,
+    input: BulkListingSubmitInput,
     bulkBatchId: string,
     job: ExpandedVariantJob,
     masterStock: Map<string, number>
@@ -394,7 +394,7 @@ export class BulkOfferCreationSubmitService implements IBulkOfferCreationSubmitS
 }
 
 /*
- * Worker-handler seam: shipped as `BulkOfferCreationProgressService.advanceBatchStatus`
+ * Worker-handler seam: shipped as `BulkListingProgressService.advanceBatchStatus`
  * in #737. The terminal-state derivation rule lives there. See
- * `bulk-offer-creation-progress.service.ts`.
+ * `bulk-listing-progress.service.ts`.
  */

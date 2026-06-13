@@ -3,7 +3,7 @@
  *
  * Covers both V1 (single-offer) and V2 (bulk-aware) payload paths and the
  * two V2 side-effects the handler owns: AI description prep and
- * BulkOfferCreationProgressService counter advancement.
+ * BulkListingProgressService counter advancement.
  *
  * Smart classification readback was moved into OfferCreationExecutionService
  * (so the handler stays cross-context-clean — no repository-port imports).
@@ -18,7 +18,7 @@ import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import {
   OfferCreationRecord,
-  type IBulkOfferCreationProgressService,
+  type IBulkListingProgressService,
   type IOfferCreationExecutionService,
 } from '@openlinker/core/listings';
 import type { IContentSuggestionService } from '@openlinker/core/content';
@@ -55,7 +55,7 @@ describe('MarketplaceOfferCreateHandler', () => {
   let offerCreation: jest.Mocked<IOfferCreationExecutionService>;
   let contentSuggestion: jest.Mocked<IContentSuggestionService>;
   let products: jest.Mocked<IProductsService>;
-  let bulkProgress: jest.Mocked<IBulkOfferCreationProgressService>;
+  let bulkProgress: jest.Mocked<IBulkListingProgressService>;
 
   beforeEach(() => {
     offerCreation = {
@@ -72,7 +72,7 @@ describe('MarketplaceOfferCreateHandler', () => {
 
     bulkProgress = {
       advanceBatchStatus: jest.fn().mockResolvedValue(null),
-    } as unknown as jest.Mocked<IBulkOfferCreationProgressService>;
+    } as unknown as jest.Mocked<IBulkListingProgressService>;
 
     handler = new MarketplaceOfferCreateHandler(
       offerCreation,

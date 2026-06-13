@@ -3,15 +3,15 @@
  *
  * @module libs/core/src/listings/domain/entities
  */
-import { BulkOfferCreationBatch } from './bulk-offer-creation-batch.entity';
-import type { BulkBatchStatus } from '../types/bulk-offer-creation-batch.types';
+import { BulkListingBatch } from './bulk-listing-batch.entity';
+import type { BulkBatchStatus } from '../types/bulk-listing-batch.types';
 
-describe('BulkOfferCreationBatch', () => {
+describe('BulkListingBatch', () => {
   it('should preserve all constructor fields', () => {
     const now = new Date('2026-05-17T10:00:00Z');
     const sharedConfig = { publishImmediately: true, shippingRatePackageId: 'pkg-1' };
 
-    const batch = new BulkOfferCreationBatch(
+    const batch = new BulkListingBatch(
       'batch-uuid',
       'conn-uuid',
       'user-1',

@@ -14,9 +14,9 @@
  * @module libs/core/src/listings/domain/entities
  */
 
-import type { BulkBatchStatus } from '../types/bulk-offer-creation-batch.types';
+import type { BulkBatchStatus } from '../types/bulk-listing-batch.types';
 
-export class BulkOfferCreationBatch {
+export class BulkListingBatch {
   constructor(
     public readonly id: string,
     public readonly connectionId: string,

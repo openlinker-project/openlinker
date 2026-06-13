@@ -1,13 +1,13 @@
 /**
  * Bulk Offer Creation Retry Service Interface (#742)
  *
- * Re-enqueues only the failed children of a `BulkOfferCreationBatch`,
+ * Re-enqueues only the failed children of a `BulkListingBatch`,
  * reopening the batch counters + status so the worker handler's next
  * advancement wave drives terminal-status derivation again.
  *
  * Sibling to:
- *  - `IBulkOfferCreationSubmitService` (#736) — initial submit / HTTP intake.
- *  - `IBulkOfferCreationProgressService` (#737) — counter advancement + terminal-state derivation.
+ *  - `IBulkListingSubmitService` (#736) — initial submit / HTTP intake.
+ *  - `IBulkListingProgressService` (#737) — counter advancement + terminal-state derivation.
  *
  * Keeps the per-phase orchestration pattern uniform: each phase of the
  * bulk lifecycle (submit → run → progress → retry) is its own service with
@@ -15,9 +15,9 @@
  *
  * @module libs/core/src/listings/application/interfaces
  */
-import type { BulkOfferCreationRetryResult } from '../types/bulk-offer-creation-retry.types';
+import type { BulkListingRetryResult } from '../types/bulk-listing-retry.types';
 
-export interface IBulkOfferCreationRetryService {
+export interface IBulkListingRetryService {
   /**
    * Re-enqueue every `OfferCreationRecord` for the given batch whose status
    * is `'failed'`. Decrements `failedCount` per retried record (lock-stepped
@@ -28,7 +28,7 @@ export interface IBulkOfferCreationRetryService {
    * enqueued under a wave-distinct idempotency key.
    *
    * Throws:
-   * - `BulkOfferCreationBatchNotFoundException` → 404 (unknown batch id).
+   * - `BulkListingBatchNotFoundException` → 404 (unknown batch id).
    * - `NoFailedChildrenToRetryException` → 409 (batch exists but has zero
    *   failed children).
    * - `AdapterCapabilityNotSupportedException` → 422 (connection's adapter
@@ -36,5 +36,5 @@ export interface IBulkOfferCreationRetryService {
    * - `BulkRetryMissingSnapshotException` → 500 (failed record has
    *   `request === null` — documented invariant violation, non-retryable).
    */
-  retryFailed(batchId: string): Promise<BulkOfferCreationRetryResult>;
+  retryFailed(batchId: string): Promise<BulkListingRetryResult>;
 }

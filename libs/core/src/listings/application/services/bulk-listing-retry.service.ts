@@ -1,7 +1,7 @@
 /**
  * Bulk Offer Creation Retry Service (#742)
  *
- * Re-runs the failed children of a `BulkOfferCreationBatch`. Owns the
+ * Re-runs the failed children of a `BulkListingBatch`. Owns the
  * counter-reopen policy: deletes per-record `bulk_batch_advancements` rows,
  * decrements `failedCount` per-record (lock-stepped to local writes),
  * transitions terminal-state batches back to `'running'` after the loop,
@@ -9,8 +9,8 @@
  * idempotency key.
  *
  * Sibling to:
- *  - `BulkOfferCreationSubmitService` (#736) — initial submit.
- *  - `BulkOfferCreationProgressService` (#737) — counter advancement.
+ *  - `BulkListingSubmitService` (#736) — initial submit.
+ *  - `BulkListingProgressService` (#737) — counter advancement.
  *
  * Closes out the bulk-listing backend epic (#726).
  *
@@ -21,8 +21,8 @@
  * hot-path service. The retry service assembles the V2 payload inline.
  *
  * @module libs/core/src/listings/application/services
- * @implements {IBulkOfferCreationRetryService}
- * @see {@link IBulkOfferCreationRetryService} for the contract
+ * @implements {IBulkListingRetryService}
+ * @see {@link IBulkListingRetryService} for the contract
  */
 import { randomUUID } from 'node:crypto';
 
@@ -42,37 +42,37 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import { AdapterCapabilityNotSupportedException } from '../../domain/exceptions/adapter-capability-not-supported.exception';
-import { BulkOfferCreationBatchNotFoundException } from '../../domain/exceptions/bulk-offer-creation-batch-not-found.exception';
+import { BulkListingBatchNotFoundException } from '../../domain/exceptions/bulk-listing-batch-not-found.exception';
 import { BulkRetryMissingSnapshotException } from '../../domain/exceptions/bulk-retry-missing-snapshot.exception';
 import { NoFailedChildrenToRetryException } from '../../domain/exceptions/no-failed-children-to-retry.exception';
 import { BulkBatchAdvancementRepositoryPort } from '../../domain/ports/bulk-batch-advancement-repository.port';
-import { BulkOfferCreationBatchRepositoryPort } from '../../domain/ports/bulk-offer-creation-batch-repository.port';
+import { BulkListingBatchRepositoryPort } from '../../domain/ports/bulk-listing-batch-repository.port';
 import { isOfferCreator } from '../../domain/ports/capabilities/offer-creator.capability';
 import type { OfferManagerPort } from '../../domain/ports/offer-manager.port';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
 import {
   BULK_BATCH_STATUS,
   type BulkBatchStatus,
-} from '../../domain/types/bulk-offer-creation-batch.types';
+} from '../../domain/types/bulk-listing-batch.types';
 import { OFFER_CREATION_STATUS } from '../../domain/types/offer-creation-record.types';
 import {
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
 } from '../../listings.tokens';
-import type { IBulkOfferCreationRetryService } from '../interfaces/bulk-offer-creation-retry.service.interface';
+import type { IBulkListingRetryService } from '../interfaces/bulk-listing-retry.service.interface';
 import type {
-  BulkOfferCreationRetryAiFlags,
-  BulkOfferCreationRetryResult,
-} from '../types/bulk-offer-creation-retry.types';
+  BulkListingRetryAiFlags,
+  BulkListingRetryResult,
+} from '../types/bulk-listing-retry.types';
 
 @Injectable()
-export class BulkOfferCreationRetryService implements IBulkOfferCreationRetryService {
-  private readonly logger = new Logger(BulkOfferCreationRetryService.name);
+export class BulkListingRetryService implements IBulkListingRetryService {
+  private readonly logger = new Logger(BulkListingRetryService.name);
 
   constructor(
-    @Inject(BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN)
-    private readonly bulkBatchRepository: BulkOfferCreationBatchRepositoryPort,
+    @Inject(BULK_LISTING_BATCH_REPOSITORY_TOKEN)
+    private readonly bulkBatchRepository: BulkListingBatchRepositoryPort,
     @Inject(OFFER_CREATION_RECORD_REPOSITORY_TOKEN)
     private readonly offerCreationRecords: OfferCreationRecordRepositoryPort,
     @Inject(BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN)
@@ -83,11 +83,11 @@ export class BulkOfferCreationRetryService implements IBulkOfferCreationRetrySer
     private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
-  async retryFailed(batchId: string): Promise<BulkOfferCreationRetryResult> {
+  async retryFailed(batchId: string): Promise<BulkListingRetryResult> {
     // 1. Verify batch exists.
     const batch = await this.bulkBatchRepository.findById(batchId);
     if (!batch) {
-      throw new BulkOfferCreationBatchNotFoundException(batchId);
+      throw new BulkListingBatchNotFoundException(batchId);
     }
 
     // 2. Load children + filter to failed. `findByBulkBatchId` returns
@@ -210,7 +210,7 @@ export class BulkOfferCreationRetryService implements IBulkOfferCreationRetrySer
    * `descriptionTone` strings log a WARN and drop to undefined (preserving
    * the retry rather than failing on a bad value).
    */
-  private extractAiFlags(sharedConfig: Record<string, unknown>): BulkOfferCreationRetryAiFlags {
+  private extractAiFlags(sharedConfig: Record<string, unknown>): BulkListingRetryAiFlags {
     const generateDescription = sharedConfig.generateDescription === true;
 
     const rawTone = sharedConfig.descriptionTone;

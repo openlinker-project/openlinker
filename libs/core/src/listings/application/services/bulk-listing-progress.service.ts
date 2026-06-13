@@ -1,7 +1,7 @@
 /**
  * Bulk Offer Creation Progress Service (#737)
  *
- * Worker-side state-machine for `BulkOfferCreationBatch`. Per
+ * Worker-side state-machine for `BulkListingBatch`. Per
  * `architecture-overview.md § 7`, orchestration policies live in core
  * application services, not in worker handlers — so the terminal-status
  * derivation rule lives here, with the handler reduced to a thin shell
@@ -13,33 +13,33 @@
  * double-increment the counters.
  *
  * @module libs/core/src/listings/application/services
- * @implements {IBulkOfferCreationProgressService}
+ * @implements {IBulkListingProgressService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
 
-import type { BulkOfferCreationBatch } from '../../domain/entities/bulk-offer-creation-batch.entity';
+import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
 import { BulkBatchAdvancementRepositoryPort } from '../../domain/ports/bulk-batch-advancement-repository.port';
-import { BulkOfferCreationBatchRepositoryPort } from '../../domain/ports/bulk-offer-creation-batch-repository.port';
+import { BulkListingBatchRepositoryPort } from '../../domain/ports/bulk-listing-batch-repository.port';
 import type { BulkChildOutcome } from '../../domain/types/bulk-child-outcome.types';
 import {
   BULK_BATCH_STATUS,
   type BulkBatchStatus,
-} from '../../domain/types/bulk-offer-creation-batch.types';
+} from '../../domain/types/bulk-listing-batch.types';
 import {
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
 } from '../../listings.tokens';
-import type { IBulkOfferCreationProgressService } from './bulk-offer-creation-progress.service.interface';
+import type { IBulkListingProgressService } from './bulk-listing-progress.service.interface';
 
 @Injectable()
-export class BulkOfferCreationProgressService implements IBulkOfferCreationProgressService {
-  private readonly logger = new Logger(BulkOfferCreationProgressService.name);
+export class BulkListingProgressService implements IBulkListingProgressService {
+  private readonly logger = new Logger(BulkListingProgressService.name);
 
   constructor(
-    @Inject(BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN)
-    private readonly bulkBatchRepository: BulkOfferCreationBatchRepositoryPort,
+    @Inject(BULK_LISTING_BATCH_REPOSITORY_TOKEN)
+    private readonly bulkBatchRepository: BulkListingBatchRepositoryPort,
     @Inject(BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN)
     private readonly advancementRepository: BulkBatchAdvancementRepositoryPort
   ) {}
@@ -48,7 +48,7 @@ export class BulkOfferCreationProgressService implements IBulkOfferCreationProgr
     batchId: string,
     offerCreationRecordId: string,
     outcome: BulkChildOutcome
-  ): Promise<BulkOfferCreationBatch | null> {
+  ): Promise<BulkListingBatch | null> {
     const { created } = await this.advancementRepository.markAdvancedIfNotExists(
       batchId,
       offerCreationRecordId
