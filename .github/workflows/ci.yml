@@ -18,11 +18,21 @@ jobs:
       # `refs/remotes/origin/main` is absent on pull_request builds. The
       # migration-ordering invariant (#1013) in check-migration-timestamps.mjs
       # derives its baseline from `git ls-tree origin/main`; without this fetch
-      # it silently skips on the one path that can catch a mis-ordered migration
+      # it can't run on the one path that catches a mis-ordered migration
       # pre-merge (#1020). Forced refspec tolerates a stale ref on reused
       # self-hosted workspaces; main is never force-pushed.
+      #
+      # Guarded on `git` being present: some self-hosted runners have no git
+      # binary (actions/checkout then uses its tarball/API fallback), where a
+      # bare `git fetch` would exit 127 and fail the job. When git is absent the
+      # guard skips gracefully (it can't run without git anyway — see #662/#557).
       - name: Fetch origin/main (baseline for migration-ordering invariant)
-        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+        run: |
+          if command -v git >/dev/null 2>&1; then
+            git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          else
+            echo "git not available on this runner — migration-ordering guard will skip (#1020/#662)"
+          fi
       - uses: pnpm/action-setup@v2
         with:
           version: 9
