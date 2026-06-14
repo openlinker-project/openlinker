@@ -10,6 +10,7 @@
  * @module libs/integrations/erli/src/__tests__
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { isOfferCreator, type OfferManagerPort } from '@openlinker/core/listings';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
 
@@ -26,25 +27,43 @@ const connection: Connection = {
   updatedAt: new Date(),
 };
 
-// The capability factory never reads the host bag; register(host) does.
-const host = {} as HostServices;
+/** Host stub for `createCapabilityAdapter` — the factory resolves credentials. */
+function makeDispatchHost(): HostServices {
+  return {
+    identifierMapping: {},
+    credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'k-123' }) },
+  } as unknown as HostServices;
+}
 
-/** Host stub exposing only the registries `register(host)` touches (#982). */
+/** Host stub exposing only the registries `register(host)` touches (#982/#984). */
 function makeRegisterHost(): {
   host: HostServices;
   configRegistry: { register: jest.Mock };
   credentialsRegistry: { register: jest.Mock };
   testerRegistry: { register: jest.Mock };
+  retryClassifierRegistry: { register: jest.Mock };
+  authFailureClassifierRegistry: { register: jest.Mock };
 } {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
   const testerRegistry = { register: jest.fn() };
+  const retryClassifierRegistry = { register: jest.fn() };
+  const authFailureClassifierRegistry = { register: jest.fn() };
   const hostStub = {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     connectionTesterRegistry: testerRegistry,
+    retryClassifierRegistry,
+    authFailureClassifierRegistry,
   } as unknown as HostServices;
-  return { host: hostStub, configRegistry, credentialsRegistry, testerRegistry };
+  return {
+    host: hostStub,
+    configRegistry,
+    credentialsRegistry,
+    testerRegistry,
+    retryClassifierRegistry,
+    authFailureClassifierRegistry,
+  };
 }
 
 describe('erliAdapterManifest', () => {
@@ -56,11 +75,11 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.platformType).toBe('erli');
   });
 
-  it('should declare no capabilities while the skeleton ships no adapters', () => {
-    // #993 adds 'OrderSource' and #984 adds 'OfferManager' alongside their
-    // adapters — declaring them earlier would let listCapabilityAdapters
-    // request an adapter the factory cannot deliver.
-    expect(erliAdapterManifest.supportedCapabilities).toEqual([]);
+  it('should declare OfferManager (the capability #984 delivers)', () => {
+    // Each capability is declared in lockstep with its adapter; #993 adds
+    // 'OrderSource'. Declaring a capability the factory cannot build would let
+    // listCapabilityAdapters request an undeliverable adapter.
+    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OfferManager']);
   });
 
   it('should be the platform-default adapter', () => {
@@ -108,16 +127,38 @@ describe('createErliPlugin', () => {
         expect.objectContaining({ test: expect.any(Function) }),
       );
     });
+
+    it('should register the retry + auth-failure classifiers at erli.shopapi.v1 (#984)', () => {
+      const { host, retryClassifierRegistry, authFailureClassifierRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(retryClassifierRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ isNonRetryable: expect.any(Function) }),
+      );
+      expect(authFailureClassifierRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ isCredentialRejected: expect.any(Function) }),
+      );
+    });
   });
 
   describe('createCapabilityAdapter', () => {
-    it.each(['OrderSource', 'OfferManager', 'ProductMaster'])(
-      'should reject %s with the SDK unsupported-capability error while no adapters ship',
-      async (capability) => {
-        const plugin = createErliPlugin();
+    it('should resolve OfferManager to an offer-creator adapter (#984)', async () => {
+      const adapter = await createErliPlugin().createCapabilityAdapter<OfferManagerPort>(
+        connection,
+        'OfferManager',
+        makeDispatchHost(),
+      );
 
+      expect(isOfferCreator(adapter)).toBe(true);
+    });
+
+    it.each(['OrderSource', 'ProductMaster'])(
+      'should reject %s with the SDK unsupported-capability error',
+      async (capability) => {
         await expect(
-          plugin.createCapabilityAdapter(connection, capability, host),
+          createErliPlugin().createCapabilityAdapter(connection, capability, makeDispatchHost()),
         ).rejects.toThrow(`Erli adapter does not support capability: ${capability}`);
       },
     );

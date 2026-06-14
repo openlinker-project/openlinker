@@ -8,7 +8,8 @@
  * @module libs/integrations/erli/src/application/__tests__
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { isOfferCreator, isOfferFieldUpdater } from '@openlinker/core/listings';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliAdapterFactory } from '../erli-adapter.factory';
 
@@ -129,5 +130,28 @@ describe('ErliAdapterFactory', () => {
       ),
     ).rejects.toBeInstanceOf(ErliConfigException);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('createAdapters', () => {
+    it('should return an offerManager supporting OfferCreator + OfferFieldUpdater', async () => {
+      const adapters = await factory.createAdapters(
+        connection(),
+        {} as IdentifierMappingPort,
+        resolverFor({ apiKey: 'k-123' }),
+      );
+
+      expect(isOfferCreator(adapters.offerManager)).toBe(true);
+      expect(isOfferFieldUpdater(adapters.offerManager)).toBe(true);
+    });
+
+    it('should propagate credential errors', async () => {
+      await expect(
+        factory.createAdapters(
+          connection({ credentialsRef: undefined }),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k' }),
+        ),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+    });
   });
 });
