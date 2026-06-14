@@ -31,6 +31,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: `apps/api/src/migrations/`, plugin migration dirs in `scripts/plugin-migration-dirs.json`.
 **Source**: #1013 (escaped via PR #881); fix migration `1802000000000-add-shipment-carrier.ts`.
 
+## A `check:invariants` guard that shells out to `git … origin/main` must be paired with a CI fetch step AND hard-fail (not skip) under `CI=true`
+
+**Context**: `scripts/check-migration-timestamps.mjs`'s ordering invariant (#1013) derives its baseline from `git ls-tree origin/main`, degrading to a skip when the ref is unavailable.
+**Problem**: `actions/checkout@v4` shallow-fetches only the triggering ref, so `refs/remotes/origin/main` is absent on `pull_request` builds — the guard silently skipped on the *only* path that could catch a mis-ordered migration pre-merge. The skip notice was advertised as "CI always has the ref", which was false; the prevention pillar never ran in CI.
+**Rule**: Any lint/invariant script that reads git history relative to `origin/main` must (a) be paired with an explicit `git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main` step in the CI job that runs it (a forced refspec, to tolerate reused self-hosted workspaces), and (b) **hard-fail rather than skip when `process.env.CI === 'true'`**, so a future ref-availability regression fails loudly. Graceful skip stays for local/exotic setups.
+**Applies to**: `scripts/check-*.mjs` guards that shell out to git; the `lint` job in `.github/workflows/ci.yml`.
+**Source**: #1020 (reviewer-caught on PR #1015).
+
 ## Create destination PrestaShop orders via `validateOrder`, never the raw webservice `POST /orders`
 
 **Context**: Creating marketplace orders on a destination PrestaShop shop.

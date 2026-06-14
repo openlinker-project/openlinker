@@ -21,8 +21,12 @@
  *   4. A migration file that is NOT yet on `origin/main` must have a
  *      timestamp strictly greater than every migration that IS (#1013 —
  *      `migration:generate` emits a real `Date.now()` prefix; re-prefix it
- *      to the next free synthetic timestamp before committing). Skipped
- *      with a one-line notice when the `origin/main` ref is unavailable.
+ *      to the next free synthetic timestamp before committing). When the
+ *      `origin/main` ref is unavailable this is skipped locally with a
+ *      one-line notice, but is a HARD FAILURE in CI (`CI=true`) — the lint
+ *      workflow fetches `origin/main` explicitly so the check runs on every
+ *      PR build (#1020). `push: [main]` builds pass vacuously (the migration
+ *      is already in the baseline) — the guard is a pre-merge gate.
  *
  * Wired into `pnpm lint` via the root `check:invariants` chain, so a
  * collision fails pre-commit and CI runs before the broken migration can
@@ -150,11 +154,27 @@ export function validateOrdering({ entries, baselineFilenames }) {
 }
 
 /**
+ * Decide what to do when the `origin/main` baseline ref is unavailable
+ * (#1020). Locally (no CI) the ordering check degrades to a skip — exotic
+ * setups without the remote shouldn't block a commit. In CI a missing ref
+ * means the workflow failed to provide it, so the guard would silently stop
+ * enforcing the #1013 invariant on exactly the pre-merge path that matters;
+ * we refuse to skip and fail loudly instead. Pure (env-free) so the
+ * self-check can drive it with fixtures; the single call site passes
+ * `isCi: process.env.CI === 'true'`.
+ */
+export function resolveMissingBaselineAction({ isCi }) {
+  return isCi ? 'fail' : 'skip';
+}
+
+/**
  * Basenames of migration files present on `origin/main` across the given
  * repo-root-relative directories, via `git ls-tree` (no checkout needed).
  * Returns `null` when the ref is unavailable (no remote, shallow clone
- * without the ref) — the caller skips the ordering check with a notice;
- * CI always has the ref, so the skip only relaxes exotic local setups.
+ * without the ref). The caller then consults `resolveMissingBaselineAction`:
+ * a skip with a notice locally, a hard failure in CI (`CI=true`). The lint
+ * workflow fetches `origin/main` after checkout so PR builds always have it
+ * (#1020).
  */
 function loadBaselineFilenames(relativeDirs) {
   try {
@@ -265,7 +285,15 @@ function runAgainstTree() {
   const baselineFilenames = loadBaselineFilenames(['apps/api/src/migrations', ...pluginDirs]);
   let orderingSummary;
   if (baselineFilenames === null) {
-    orderingSummary = 'ordering vs origin/main: skipped (no origin/main ref)';
+    if (resolveMissingBaselineAction({ isCi: process.env.CI === 'true' }) === 'fail') {
+      violations.push(
+        'ordering vs origin/main: ref unavailable in CI — the lint job must fetch origin/main ' +
+          '(see .github/workflows/ci.yml); refusing to skip the #1013 ordering invariant (#1020)',
+      );
+      orderingSummary = 'ordering vs origin/main: FAILED (ref unavailable in CI)';
+    } else {
+      orderingSummary = 'ordering vs origin/main: skipped (no origin/main ref)';
+    }
   } else {
     const ordering = validateOrdering({ entries, baselineFilenames });
     violations.push(...ordering.violations);
@@ -512,6 +540,19 @@ function runSelfCheck() {
     },
     'sorts before',
   );
+
+  // --- Missing-baseline action (#1020): hard-fail in CI, skip locally ---
+
+  const expectAction = (label, input, expected) => {
+    const got = resolveMissingBaselineAction(input);
+    if (got !== expected) {
+      console.error(`self-check FAIL: "${label}" expected '${expected}', got '${got}'`);
+      process.exit(1);
+    }
+  };
+
+  expectAction('missing baseline in CI → fail', { isCi: true }, 'fail');
+  expectAction('missing baseline locally → skip', { isCi: false }, 'skip');
 
   console.log('migration-timestamps: self-check OK');
 }

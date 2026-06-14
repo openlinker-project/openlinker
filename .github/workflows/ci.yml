@@ -14,6 +14,15 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+      # actions/checkout@v4 shallow-fetches only the triggering ref, so
+      # `refs/remotes/origin/main` is absent on pull_request builds. The
+      # migration-ordering invariant (#1013) in check-migration-timestamps.mjs
+      # derives its baseline from `git ls-tree origin/main`; without this fetch
+      # it silently skips on the one path that can catch a mis-ordered migration
+      # pre-merge (#1020). Forced refspec tolerates a stale ref on reused
+      # self-hosted workspaces; main is never force-pushed.
+      - name: Fetch origin/main (baseline for migration-ordering invariant)
+        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
       - uses: pnpm/action-setup@v2
         with:
           version: 9
