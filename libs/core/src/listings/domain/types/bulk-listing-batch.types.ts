@@ -1,7 +1,7 @@
 /**
  * Bulk Offer Creation Batch Types
  *
- * Types for BulkOfferCreationBatch — the parent aggregate for a single bulk
+ * Types for BulkListingBatch — the parent aggregate for a single bulk
  * offer-creation submission (one row per "user clicks bulk-create on N
  * variants"). Child offer-creation attempts reference the batch via
  * `offer_creation_records.bulkBatchId`.
@@ -60,9 +60,9 @@ export const BULK_BATCH_STATUS = {
 >;
 
 /**
- * Input contract for `BulkOfferCreationBatchRepositoryPort.create`.
+ * Input contract for `BulkListingBatchRepositoryPort.create`.
  *
- * Dedicated input type (not `Omit<BulkOfferCreationBatch, ...>`) so the
+ * Dedicated input type (not `Omit<BulkListingBatch, ...>`) so the
  * write contract is decoupled from the entity's readonly shape and future
  * entity changes (added fields, derived behavior) don't silently affect
  * callers.
@@ -71,7 +71,7 @@ export const BULK_BATCH_STATUS = {
  * those defaults are applied by the repository at write time so the input
  * type captures the invariant.
  */
-export interface CreateBulkOfferCreationBatchInput {
+export interface CreateBulkListingBatchInput {
   /** Target marketplace connection id. */
   connectionId: string;
   /** Operator user id that submitted the bulk request. Required — bulk is

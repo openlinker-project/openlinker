@@ -2,7 +2,7 @@
  * Bulk Batch Advancement ORM Entity (#737)
  *
  * TypeORM entity for the `bulk_batch_advancements` table — the at-most-once
- * guard for bulk-offer-creation counter advancement.
+ * guard for bulk-listing counter advancement.
  *
  * Composite PK on `(bulkBatchId, offerCreationRecordId)` makes the
  * INSERT-ON-CONFLICT-DO-NOTHING path in `BulkBatchAdvancementRepository`

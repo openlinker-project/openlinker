@@ -16,16 +16,16 @@ import type { IProductsService, ProductVariant } from '@openlinker/core/products
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 
 import type { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
-import { BulkOfferCreationBatch } from '../../../domain/entities/bulk-offer-creation-batch.entity';
+import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { EmptyBulkSubmissionException } from '../../../domain/exceptions/empty-bulk-submission.exception';
-import type { BulkOfferCreationBatchRepositoryPort } from '../../../domain/ports/bulk-offer-creation-batch-repository.port';
+import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { IOfferCreationEnqueueService } from '../../interfaces/offer-creation-enqueue.service.interface';
-import { BulkOfferCreationSubmitService } from '../bulk-offer-creation-submit.service';
+import { BulkListingSubmitService } from '../bulk-listing-submit.service';
 
-describe('BulkOfferCreationSubmitService', () => {
-  let service: BulkOfferCreationSubmitService;
-  let bulkBatchRepo: jest.Mocked<BulkOfferCreationBatchRepositoryPort>;
+describe('BulkListingSubmitService', () => {
+  let service: BulkListingSubmitService;
+  let bulkBatchRepo: jest.Mocked<BulkListingBatchRepositoryPort>;
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let enqueueService: jest.Mocked<IOfferCreationEnqueueService>;
   let integrations: jest.Mocked<IIntegrationsService>;
@@ -48,8 +48,8 @@ describe('BulkOfferCreationSubmitService', () => {
     ...overrides,
   });
 
-  const makeBatch = (overrides: Partial<BulkOfferCreationBatch> = {}): BulkOfferCreationBatch =>
-    new BulkOfferCreationBatch(
+  const makeBatch = (overrides: Partial<BulkListingBatch> = {}): BulkListingBatch =>
+    new BulkListingBatch(
       overrides.id ?? 'batch-1',
       overrides.connectionId ?? connectionId,
       overrides.initiatedBy ?? initiatedBy,
@@ -115,7 +115,7 @@ describe('BulkOfferCreationSubmitService', () => {
       getAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
     };
 
-    service = new BulkOfferCreationSubmitService(
+    service = new BulkListingSubmitService(
       bulkBatchRepo,
       offerCreationRecords,
       enqueueService,

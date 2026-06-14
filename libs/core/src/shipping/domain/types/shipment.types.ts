@@ -2,7 +2,7 @@
  * Shipment Input Types
  *
  * Repository write contracts decoupled from the `Shipment` entity's
- * readonly shape. Mirrors the `CreateBulkOfferCreationBatchInput` /
+ * readonly shape. Mirrors the `CreateBulkListingBatchInput` /
  * `OfferCreationRecord` discipline — entity-shape changes (added fields,
  * derived behavior) don't silently affect repository callers.
  *

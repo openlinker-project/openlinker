@@ -1,8 +1,8 @@
 /**
  * Bulk Offer Creation Retry Types (#742)
  *
- * Result shape returned by `IBulkOfferCreationRetryService.retryFailed`,
- * plus the internal `BulkOfferCreationRetryAiFlags` projection extracted
+ * Result shape returned by `IBulkListingRetryService.retryFailed`,
+ * plus the internal `BulkListingRetryAiFlags` projection extracted
  * from the parent batch's `sharedConfig` JSONB at retry time. The submit
  * snapshot doesn't carry the AI flags (they're batch-scoped, not
  * per-record), so the retry service rebuilds them once per `retryFailed`
@@ -16,14 +16,14 @@
  */
 import type { OfferDescriptionTone } from '@openlinker/core/sync';
 
-import type { BulkBatchStatus } from '../../domain/types/bulk-offer-creation-batch.types';
+import type { BulkBatchStatus } from '../../domain/types/bulk-listing-batch.types';
 
-export interface BulkOfferCreationRetryAiFlags {
+export interface BulkListingRetryAiFlags {
   generateDescription: boolean;
   descriptionTone?: OfferDescriptionTone;
 }
 
-export interface BulkOfferCreationRetryResult {
+export interface BulkListingRetryResult {
   /**
    * Count of records re-enqueued. Always > 0 — `NoFailedChildrenToRetryException`
    * is thrown instead of returning a zero.

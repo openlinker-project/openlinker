@@ -1,7 +1,7 @@
 /**
  * Bulk Retry Missing Snapshot Exception (#742)
  *
- * Thrown by `BulkOfferCreationRetryService.retryFailed` when a failed
+ * Thrown by `BulkListingRetryService.retryFailed` when a failed
  * `OfferCreationRecord` for a bulk batch has `request === null`. The
  * `request` snapshot is required to reconstruct the V2 payload for the
  * retry wave — without it, retry can't proceed for that record.

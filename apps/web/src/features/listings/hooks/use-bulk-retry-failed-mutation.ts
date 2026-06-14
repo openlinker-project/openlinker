@@ -14,13 +14,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { listingsQueryKeys } from '../api/listings.query-keys';
-import type { BulkOfferCreationRetryResponse } from '../api/bulk-listings.types';
+import type { BulkListingRetryResponse } from '../api/bulk-listings.types';
 
 export function useBulkRetryFailedMutation() {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
 
-  return useMutation<BulkOfferCreationRetryResponse, Error, string>({
+  return useMutation<BulkListingRetryResponse, Error, string>({
     mutationFn: (batchId: string) => apiClient.listings.retryBulkFailed(batchId),
     onSuccess: (_data, batchId) => {
       void queryClient.invalidateQueries({

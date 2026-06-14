@@ -44,7 +44,7 @@ export type ShipmentStatus = (typeof ShipmentStatusValues)[number];
  * Named-constant map for the shipment lifecycle status. Lets call sites
  * reference status values by name (`SHIPMENT_STATUS.Delivered`) rather
  * than repeating bare string literals. Mirrors the `BULK_BATCH_STATUS`
- * shape in `bulk-offer-creation-batch.types.ts`.
+ * shape in `bulk-listing-batch.types.ts`.
  */
 export const SHIPMENT_STATUS = {
   Draft: 'draft',

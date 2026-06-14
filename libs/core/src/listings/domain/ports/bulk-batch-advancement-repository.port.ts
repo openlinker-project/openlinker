@@ -2,8 +2,8 @@
  * Bulk Batch Advancement Repository Port
  *
  * Persistence contract for `BulkBatchAdvancement`. Consumed by
- * `BulkOfferCreationProgressService` (gate for at-most-once counter
- * advancement, #737) and `BulkOfferCreationRetryService` (#742, to undo
+ * `BulkListingProgressService` (gate for at-most-once counter
+ * advancement, #737) and `BulkListingRetryService` (#742, to undo
  * the gate on retry).
  *
  * @module libs/core/src/listings/domain/ports

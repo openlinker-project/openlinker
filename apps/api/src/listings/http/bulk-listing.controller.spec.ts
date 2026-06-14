@@ -4,7 +4,7 @@
  * Verifies routing, status codes, DTO → service-input mapping, and
  * error → HTTP mapping for `POST /listings/bulk-create` and
  * `GET /listings/bulk-create/:batchId`. Mocks the
- * `IBulkOfferCreationSubmitService` token; per-product flow + Redis are
+ * `IBulkListingSubmitService` token; per-product flow + Redis are
  * covered by the int-spec.
  *
  * @module apps/api/src/listings/http
@@ -21,28 +21,28 @@ import { Test } from '@nestjs/testing';
 
 import {
   AdapterCapabilityNotSupportedException,
-  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-  BulkOfferCreationBatch,
-  BulkOfferCreationBatchNotFoundException,
+  BULK_LISTING_RETRY_SERVICE_TOKEN,
+  BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+  BulkListingBatch,
+  BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
   EmptyBulkSubmissionException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
-  IBulkOfferCreationRetryService,
-  IBulkOfferCreationSubmitService,
+  IBulkListingRetryService,
+  IBulkListingSubmitService,
   OfferCreationRecord,
 } from '@openlinker/core/listings';
 
-import { BulkOfferCreationController } from './bulk-offer-creation.controller';
+import { BulkListingController } from './bulk-listing.controller';
 import type { BulkOfferCreateRequestDto } from './dto/bulk-offer-create.dto';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 
-describe('BulkOfferCreationController', () => {
-  let controller: BulkOfferCreationController;
-  let bulkSubmit: jest.Mocked<IBulkOfferCreationSubmitService>;
-  let bulkRetry: jest.Mocked<IBulkOfferCreationRetryService>;
+describe('BulkListingController', () => {
+  let controller: BulkListingController;
+  let bulkSubmit: jest.Mocked<IBulkListingSubmitService>;
+  let bulkRetry: jest.Mocked<IBulkListingRetryService>;
 
   const adminUser: AuthenticatedUser = {
     id: 'user-admin',
@@ -60,14 +60,14 @@ describe('BulkOfferCreationController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [BulkOfferCreationController],
+      controllers: [BulkListingController],
       providers: [
-        { provide: BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN, useValue: bulkSubmit },
-        { provide: BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN, useValue: bulkRetry },
+        { provide: BULK_LISTING_SUBMIT_SERVICE_TOKEN, useValue: bulkSubmit },
+        { provide: BULK_LISTING_RETRY_SERVICE_TOKEN, useValue: bulkRetry },
       ],
     }).compile();
 
-    controller = module.get<BulkOfferCreationController>(BulkOfferCreationController);
+    controller = module.get<BulkListingController>(BulkListingController);
   });
 
   describe('POST /listings/bulk-create', () => {
@@ -163,7 +163,7 @@ describe('BulkOfferCreationController', () => {
 
   describe('GET /listings/bulk-create/:batchId', () => {
     it('returns the serialised summary when the batch exists', async () => {
-      const batch = new BulkOfferCreationBatch(
+      const batch = new BulkListingBatch(
         'b-1',
         'conn-1',
         'user-1',
@@ -260,9 +260,9 @@ describe('BulkOfferCreationController', () => {
       expect(bulkRetry.retryFailed).toHaveBeenCalledWith(BATCH_ID);
     });
 
-    it('maps BulkOfferCreationBatchNotFoundException to NotFoundException (HTTP 404)', async () => {
+    it('maps BulkListingBatchNotFoundException to NotFoundException (HTTP 404)', async () => {
       bulkRetry.retryFailed.mockRejectedValue(
-        new BulkOfferCreationBatchNotFoundException(BATCH_ID)
+        new BulkListingBatchNotFoundException(BATCH_ID)
       );
 
       await expect(controller.retryFailed(BATCH_ID)).rejects.toBeInstanceOf(NotFoundException);

@@ -2,7 +2,7 @@
  * Bulk Offer Creation Controller (#736)
  *
  * HTTP endpoints for operator-driven bulk offer creation. Thin wrapper
- * over `IBulkOfferCreationSubmitService`: validates the request DTO, maps
+ * over `IBulkListingSubmitService`: validates the request DTO, maps
  * to the service input (stamping `initiatedBy` from the authenticated
  * session), and serialises the typed result back through the response
  * DTOs.
@@ -32,18 +32,18 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 
 import {
   AdapterCapabilityNotSupportedException,
-  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-  BulkOfferCreationBatchNotFoundException,
+  BULK_LISTING_RETRY_SERVICE_TOKEN,
+  BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+  BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
   EmptyBulkSubmissionException,
-  IBulkOfferCreationRetryService,
-  IBulkOfferCreationSubmitService,
+  IBulkListingRetryService,
+  IBulkListingSubmitService,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
   BulkBatchSummary,
-  BulkOfferCreationSubmitInput,
+  BulkListingSubmitInput,
 } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -56,18 +56,18 @@ import {
   BulkBatchSummaryDto,
   BulkOfferCreateResponseDto,
 } from './dto/bulk-offer-create-response.dto';
-import { BulkOfferCreationRetryResponseDto } from './dto/bulk-offer-creation-retry-response.dto';
+import { BulkListingRetryResponseDto } from './dto/bulk-listing-retry-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('listings')
 @Controller('listings/bulk-create')
-export class BulkOfferCreationController {
+export class BulkListingController {
   constructor(
-    @Inject(BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN)
-    private readonly bulkSubmit: IBulkOfferCreationSubmitService,
-    @Inject(BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN)
-    private readonly bulkRetry: IBulkOfferCreationRetryService
+    @Inject(BULK_LISTING_SUBMIT_SERVICE_TOKEN)
+    private readonly bulkSubmit: IBulkListingSubmitService,
+    @Inject(BULK_LISTING_RETRY_SERVICE_TOKEN)
+    private readonly bulkRetry: IBulkListingRetryService
   ) {}
 
   @Post()
@@ -75,7 +75,7 @@ export class BulkOfferCreationController {
   @ApiOperation({
     summary: 'Submit a bulk offer-creation batch (1..100 products)',
     description:
-      'Validates the connection + adapter capability, persists a BulkOfferCreationBatch, enqueues one marketplace.offer.create job per product, and returns the batchId + per-job message ids. The worker handler change consuming the V2 payload lands in #737; this endpoint is the submit + read seam for the wizard.',
+      'Validates the connection + adapter capability, persists a BulkListingBatch, enqueues one marketplace.offer.create job per product, and returns the batchId + per-job message ids. The worker handler change consuming the V2 payload lands in #737; this endpoint is the submit + read seam for the wizard.',
   })
   @ApiResponse({
     status: 202,
@@ -90,7 +90,7 @@ export class BulkOfferCreationController {
     @Body() dto: BulkOfferCreateRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<BulkOfferCreateResponseDto> {
-    const input: BulkOfferCreationSubmitInput = {
+    const input: BulkListingSubmitInput = {
       connectionId: dto.connectionId,
       initiatedBy: user.id,
       productIds: dto.productIds,
@@ -157,7 +157,7 @@ export class BulkOfferCreationController {
   @ApiResponse({
     status: 202,
     description: 'Retry wave dispatched',
-    type: BulkOfferCreationRetryResponseDto,
+    type: BulkListingRetryResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Batch not found' })
   @ApiResponse({ status: 409, description: 'Batch has no failed children to retry' })
@@ -165,7 +165,7 @@ export class BulkOfferCreationController {
   @ApiResponse({ status: 500, description: 'Documented invariant violation (snapshot missing)' })
   async retryFailed(
     @Param('batchId', new ParseUUIDPipe()) batchId: string
-  ): Promise<BulkOfferCreationRetryResponseDto> {
+  ): Promise<BulkListingRetryResponseDto> {
     try {
       const result = await this.bulkRetry.retryFailed(batchId);
       return {
@@ -174,7 +174,7 @@ export class BulkOfferCreationController {
         batchStatus: result.batchStatus,
       };
     } catch (error) {
-      if (error instanceof BulkOfferCreationBatchNotFoundException) {
+      if (error instanceof BulkListingBatchNotFoundException) {
         throw new NotFoundException(error.message);
       }
       if (error instanceof NoFailedChildrenToRetryException) {

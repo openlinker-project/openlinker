@@ -11,21 +11,21 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository, UpdateResult } from 'typeorm';
 
-import { BulkOfferCreationBatchRepository } from './bulk-offer-creation-batch.repository';
-import { BulkOfferCreationBatchOrmEntity } from '../entities/bulk-offer-creation-batch.orm-entity';
-import { BulkOfferCreationBatch } from '../../../domain/entities/bulk-offer-creation-batch.entity';
-import { BulkOfferCreationBatchNotFoundException } from '../../../domain/exceptions/bulk-offer-creation-batch-not-found.exception';
-import type { CreateBulkOfferCreationBatchInput } from '../../../domain/types/bulk-offer-creation-batch.types';
+import { BulkListingBatchRepository } from './bulk-listing-batch.repository';
+import { BulkListingBatchOrmEntity } from '../entities/bulk-listing-batch.orm-entity';
+import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
+import { BulkListingBatchNotFoundException } from '../../../domain/exceptions/bulk-listing-batch-not-found.exception';
+import type { CreateBulkListingBatchInput } from '../../../domain/types/bulk-listing-batch.types';
 
-describe('BulkOfferCreationBatchRepository', () => {
-  let repository: BulkOfferCreationBatchRepository;
-  let ormRepository: jest.Mocked<Repository<BulkOfferCreationBatchOrmEntity>>;
+describe('BulkListingBatchRepository', () => {
+  let repository: BulkListingBatchRepository;
+  let ormRepository: jest.Mocked<Repository<BulkListingBatchOrmEntity>>;
 
   const now = new Date('2026-05-17T10:00:00Z');
 
   const buildOrm = (
-    overrides: Partial<BulkOfferCreationBatchOrmEntity> = {},
-  ): BulkOfferCreationBatchOrmEntity => ({
+    overrides: Partial<BulkListingBatchOrmEntity> = {},
+  ): BulkListingBatchOrmEntity => ({
     id: 'batch-uuid',
     connectionId: 'conn-uuid',
     initiatedBy: 'user-1',
@@ -47,25 +47,25 @@ describe('BulkOfferCreationBatchRepository', () => {
       findOne: jest.fn(),
       save: jest.fn(),
       increment: jest.fn(),
-    } as unknown as jest.Mocked<Repository<BulkOfferCreationBatchOrmEntity>>;
+    } as unknown as jest.Mocked<Repository<BulkListingBatchOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        BulkOfferCreationBatchRepository,
+        BulkListingBatchRepository,
         {
-          provide: getRepositoryToken(BulkOfferCreationBatchOrmEntity),
+          provide: getRepositoryToken(BulkListingBatchOrmEntity),
           useValue: mockOrmRepo,
         },
       ],
     }).compile();
 
-    repository = module.get<BulkOfferCreationBatchRepository>(BulkOfferCreationBatchRepository);
-    ormRepository = module.get(getRepositoryToken(BulkOfferCreationBatchOrmEntity));
+    repository = module.get<BulkListingBatchRepository>(BulkListingBatchRepository);
+    ormRepository = module.get(getRepositoryToken(BulkListingBatchOrmEntity));
   });
 
   describe('create', () => {
     it('should persist a new batch with defaults and return a domain entity', async () => {
-      const input: CreateBulkOfferCreationBatchInput = {
+      const input: CreateBulkListingBatchInput = {
         connectionId: 'conn-uuid',
         initiatedBy: 'user-1',
         totalCount: 10,
@@ -76,7 +76,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       const result = await repository.create(input);
 
       expect(ormRepository.save).toHaveBeenCalledTimes(1);
-      const savedArg = ormRepository.save.mock.calls[0][0] as BulkOfferCreationBatchOrmEntity;
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
       expect(savedArg.connectionId).toBe('conn-uuid');
       expect(savedArg.initiatedBy).toBe('user-1');
       expect(savedArg.totalCount).toBe(10);
@@ -85,7 +85,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       expect(savedArg.failedCount).toBe(0);
       expect(savedArg.sharedConfig).toEqual({ publishImmediately: true });
 
-      expect(result).toBeInstanceOf(BulkOfferCreationBatch);
+      expect(result).toBeInstanceOf(BulkListingBatch);
       expect(result.id).toBe('batch-uuid');
       expect(result.status).toBe('pending');
       expect(result.succeededCount).toBe(0);
@@ -93,7 +93,7 @@ describe('BulkOfferCreationBatchRepository', () => {
     });
 
     it('should accept an empty sharedConfig object', async () => {
-      const input: CreateBulkOfferCreationBatchInput = {
+      const input: CreateBulkListingBatchInput = {
         connectionId: 'conn-uuid',
         initiatedBy: 'user-1',
         totalCount: 5,
@@ -103,7 +103,7 @@ describe('BulkOfferCreationBatchRepository', () => {
 
       const result = await repository.create(input);
 
-      const savedArg = ormRepository.save.mock.calls[0][0] as BulkOfferCreationBatchOrmEntity;
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
       expect(savedArg.sharedConfig).toEqual({});
       expect(result.sharedConfig).toEqual({});
     });
@@ -116,7 +116,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       const result = await repository.findById('batch-uuid');
 
       expect(ormRepository.findOne).toHaveBeenCalledWith({ where: { id: 'batch-uuid' } });
-      expect(result).toBeInstanceOf(BulkOfferCreationBatch);
+      expect(result).toBeInstanceOf(BulkListingBatch);
       expect(result?.id).toBe('batch-uuid');
     });
 
@@ -171,7 +171,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       const result = await repository.incrementCounters('batch-uuid', { succeeded: 0, failed: 0 });
 
       expect(ormRepository.increment).not.toHaveBeenCalled();
-      expect(result).toBeInstanceOf(BulkOfferCreationBatch);
+      expect(result).toBeInstanceOf(BulkListingBatch);
     });
 
     it('should accept negative deltas (compensation flow)', async () => {
@@ -183,22 +183,22 @@ describe('BulkOfferCreationBatchRepository', () => {
       expect(ormRepository.increment).toHaveBeenCalledWith({ id: 'batch-uuid' }, 'succeededCount', -1);
     });
 
-    it('should throw BulkOfferCreationBatchNotFoundException when increment affects no rows', async () => {
+    it('should throw BulkListingBatchNotFoundException when increment affects no rows', async () => {
       ormRepository.increment.mockResolvedValue(buildUpdateResult(0));
 
       await expect(
         repository.incrementCounters('missing', { succeeded: 1 }),
-      ).rejects.toBeInstanceOf(BulkOfferCreationBatchNotFoundException);
+      ).rejects.toBeInstanceOf(BulkListingBatchNotFoundException);
       expect(ormRepository.findOne).not.toHaveBeenCalled();
     });
 
-    it('should throw BulkOfferCreationBatchNotFoundException when row is deleted between increment and read', async () => {
+    it('should throw BulkListingBatchNotFoundException when row is deleted between increment and read', async () => {
       ormRepository.increment.mockResolvedValue(buildUpdateResult(1));
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(
         repository.incrementCounters('batch-uuid', { succeeded: 1 }),
-      ).rejects.toBeInstanceOf(BulkOfferCreationBatchNotFoundException);
+      ).rejects.toBeInstanceOf(BulkListingBatchNotFoundException);
     });
   });
 
@@ -211,7 +211,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       const result = await repository.updateStatus('batch-uuid', 'running');
 
       expect(ormRepository.findOne).toHaveBeenCalledWith({ where: { id: 'batch-uuid' } });
-      const savedArg = ormRepository.save.mock.calls[0][0] as BulkOfferCreationBatchOrmEntity;
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
       expect(savedArg.status).toBe('running');
       expect(result.status).toBe('running');
     });
@@ -223,16 +223,16 @@ describe('BulkOfferCreationBatchRepository', () => {
 
       const result = await repository.updateStatus('batch-uuid', 'completed');
 
-      const savedArg = ormRepository.save.mock.calls[0][0] as BulkOfferCreationBatchOrmEntity;
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
       expect(savedArg.status).toBe('completed');
       expect(result.status).toBe('completed');
     });
 
-    it('should throw BulkOfferCreationBatchNotFoundException when row is missing', async () => {
+    it('should throw BulkListingBatchNotFoundException when row is missing', async () => {
       ormRepository.findOne.mockResolvedValue(null);
 
       await expect(repository.updateStatus('missing', 'running')).rejects.toBeInstanceOf(
-        BulkOfferCreationBatchNotFoundException,
+        BulkListingBatchNotFoundException,
       );
       expect(ormRepository.save).not.toHaveBeenCalled();
     });
@@ -253,7 +253,7 @@ describe('BulkOfferCreationBatchRepository', () => {
       const result = await repository.findById('batch-uuid');
 
       expect(result).toEqual(
-        new BulkOfferCreationBatch(
+        new BulkListingBatch(
           'batch-uuid',
           'conn-uuid',
           'user-1',

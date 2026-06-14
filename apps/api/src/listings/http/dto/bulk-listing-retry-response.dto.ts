@@ -17,7 +17,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { BulkBatchStatusValues, type BulkBatchStatus } from '@openlinker/core/listings';
 
-export class BulkOfferCreationRetryResponseDto {
+export class BulkListingRetryResponseDto {
   @ApiProperty({ description: 'Internal IDs of records re-enqueued, in original createdAt order.' })
   retriedRecordIds!: string[];
 

@@ -1,7 +1,7 @@
 /**
  * Bulk Offer Creation Batch Repository Port
  *
- * Persistence contract for BulkOfferCreationBatch. Implemented in the
+ * Persistence contract for BulkListingBatch. Implemented in the
  * listings infrastructure layer. Returns domain entities only — ORM
  * mapping stays inside the repository.
  *
@@ -13,13 +13,13 @@
  * @module libs/core/src/listings/domain/ports
  */
 
-import type { BulkOfferCreationBatch } from '../entities/bulk-offer-creation-batch.entity';
+import type { BulkListingBatch } from '../entities/bulk-listing-batch.entity';
 import type {
   BulkBatchStatus,
-  CreateBulkOfferCreationBatchInput,
-} from '../types/bulk-offer-creation-batch.types';
+  CreateBulkListingBatchInput,
+} from '../types/bulk-listing-batch.types';
 
-export interface BulkOfferCreationBatchRepositoryPort {
+export interface BulkListingBatchRepositoryPort {
   /**
    * Persist a new bulk batch.
    *
@@ -28,12 +28,12 @@ export interface BulkOfferCreationBatchRepositoryPort {
    * invariant. `id`, `createdAt`, and `updatedAt` are assigned by the
    * repository.
    */
-  create(input: CreateBulkOfferCreationBatchInput): Promise<BulkOfferCreationBatch>;
+  create(input: CreateBulkListingBatchInput): Promise<BulkListingBatch>;
 
   /**
    * Look up a batch by primary key. Returns null when not found.
    */
-  findById(id: string): Promise<BulkOfferCreationBatch | null>;
+  findById(id: string): Promise<BulkListingBatch | null>;
 
   /**
    * Atomically apply counter deltas via single-column `UPDATE` statements
@@ -52,13 +52,13 @@ export interface BulkOfferCreationBatchRepositoryPort {
    * decide whether the batch has reached its terminal state without an
    * additional `findById`.
    *
-   * Throws `BulkOfferCreationBatchNotFoundException` if the row is
+   * Throws `BulkListingBatchNotFoundException` if the row is
    * missing.
    */
   incrementCounters(
     id: string,
     deltas: { succeeded?: number; failed?: number },
-  ): Promise<BulkOfferCreationBatch>;
+  ): Promise<BulkListingBatch>;
 
   /**
    * Update batch lifecycle status. Idempotent at the same status value.
@@ -68,8 +68,8 @@ export interface BulkOfferCreationBatchRepositoryPort {
    * `succeededCount + failedCount === totalCount`) live in the
    * application service in #736 per architecture-overview.md § 7.
    *
-   * Throws `BulkOfferCreationBatchNotFoundException` if the row is
+   * Throws `BulkListingBatchNotFoundException` if the row is
    * missing.
    */
-  updateStatus(id: string, status: BulkBatchStatus): Promise<BulkOfferCreationBatch>;
+  updateStatus(id: string, status: BulkBatchStatus): Promise<BulkListingBatch>;
 }

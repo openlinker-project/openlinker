@@ -21,19 +21,19 @@ import { CategoryResolutionService } from './application/services/category-resol
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
-import { BulkOfferCreationBatchOrmEntity } from './infrastructure/persistence/entities/bulk-offer-creation-batch.orm-entity';
-import { BulkOfferCreationBatchRepository } from './infrastructure/persistence/repositories/bulk-offer-creation-batch.repository';
+import { BulkListingBatchOrmEntity } from './infrastructure/persistence/entities/bulk-listing-batch.orm-entity';
+import { BulkListingBatchRepository } from './infrastructure/persistence/repositories/bulk-listing-batch.repository';
 import { BulkBatchAdvancementOrmEntity } from './infrastructure/persistence/entities/bulk-batch-advancement.orm-entity';
 import { BulkBatchAdvancementRepository } from './infrastructure/persistence/repositories/bulk-batch-advancement.repository';
-import { BulkOfferCreationProgressService } from './application/services/bulk-offer-creation-progress.service';
+import { BulkListingProgressService } from './application/services/bulk-listing-progress.service';
 import { OfferBuilderService } from './application/services/offer-builder.service';
 import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
 import { OfferCreationEnqueueService } from './application/services/offer-creation-enqueue.service';
-import { BulkOfferCreationSubmitService } from './application/services/bulk-offer-creation-submit.service';
-import { BulkOfferCreationRetryService } from './application/services/bulk-offer-creation-retry.service';
+import { BulkListingSubmitService } from './application/services/bulk-listing-submit.service';
+import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
@@ -44,15 +44,15 @@ import {
   OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+  BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
+  BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+  BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
@@ -67,15 +67,15 @@ export {
   OFFER_MAPPINGS_SERVICE_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
-  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+  BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
+  BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+  BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
@@ -88,7 +88,7 @@ export {
     TypeOrmModule.forFeature([
       IdentifierMappingOrmEntity,
       OfferCreationRecordOrmEntity,
-      BulkOfferCreationBatchOrmEntity,
+      BulkListingBatchOrmEntity,
       BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
       OfferStatusSnapshotOrmEntity,
@@ -111,14 +111,14 @@ export {
     CategoryResolutionService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
-    BulkOfferCreationBatchRepository,
+    BulkListingBatchRepository,
     BulkBatchAdvancementRepository,
-    BulkOfferCreationProgressService,
+    BulkListingProgressService,
     OfferBuilderService,
     OfferCreationExecutionService,
     OfferCreationEnqueueService,
-    BulkOfferCreationSubmitService,
-    BulkOfferCreationRetryService,
+    BulkListingSubmitService,
+    BulkListingRetryService,
     OfferStatusPollService,
     OfferStatusSyncService,
     OfferStatusSnapshotRepository,
@@ -145,16 +145,16 @@ export {
       useExisting: OfferCreationRecordRepository,
     },
     {
-      provide: BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
-      useExisting: BulkOfferCreationBatchRepository,
+      provide: BULK_LISTING_BATCH_REPOSITORY_TOKEN,
+      useExisting: BulkListingBatchRepository,
     },
     {
       provide: BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
       useExisting: BulkBatchAdvancementRepository,
     },
     {
-      provide: BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
-      useExisting: BulkOfferCreationProgressService,
+      provide: BULK_LISTING_PROGRESS_SERVICE_TOKEN,
+      useExisting: BulkListingProgressService,
     },
     {
       provide: CATEGORY_RESOLUTION_SERVICE_TOKEN,
@@ -173,12 +173,12 @@ export {
       useExisting: OfferCreationEnqueueService,
     },
     {
-      provide: BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-      useExisting: BulkOfferCreationSubmitService,
+      provide: BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+      useExisting: BulkListingSubmitService,
     },
     {
-      provide: BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
-      useExisting: BulkOfferCreationRetryService,
+      provide: BULK_LISTING_RETRY_SERVICE_TOKEN,
+      useExisting: BulkListingRetryService,
     },
     {
       provide: OFFER_STATUS_POLL_SERVICE_TOKEN,
@@ -207,15 +207,15 @@ export {
     OFFER_MAPPINGS_SERVICE_TOKEN,
     OFFER_MAPPING_REPOSITORY_TOKEN,
     OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
-    BULK_OFFER_CREATION_BATCH_REPOSITORY_TOKEN,
+    BULK_LISTING_BATCH_REPOSITORY_TOKEN,
     BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
-    BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+    BULK_LISTING_PROGRESS_SERVICE_TOKEN,
     CATEGORY_RESOLUTION_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
-    BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-    BULK_OFFER_CREATION_RETRY_SERVICE_TOKEN,
+    BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+    BULK_LISTING_RETRY_SERVICE_TOKEN,
     OFFER_STATUS_POLL_SERVICE_TOKEN,
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,

@@ -3,10 +3,10 @@
  *
  * FE transport types for the bulk offer-creation endpoints (#736 / #742).
  * Mirrors the BE DTOs in `apps/api/src/listings/http/dto/bulk-offer-create*.dto.ts`
- * and `bulk-offer-creation-retry-response.dto.ts`.
+ * and `bulk-listing-retry-response.dto.ts`.
  *
  * Note: the BE field `productIds` actually carries **variant IDs** (see
- * `libs/core/src/listings/application/services/bulk-offer-creation-submit.service.ts:182`
+ * `libs/core/src/listings/application/services/bulk-listing-submit.service.ts:182`
  * where `internalVariantId: productId`). The FE picks one canonical variant
  * per selected product before submit.
  *
@@ -103,7 +103,7 @@ export interface BulkBatchSummary {
   records: BulkBatchRecordSummary[];
 }
 
-export interface BulkOfferCreationRetryResponse {
+export interface BulkListingRetryResponse {
   retriedRecordIds: string[];
   retriedCount: number;
   batchStatus: BulkBatchStatus;

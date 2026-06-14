@@ -7,18 +7,18 @@
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
-import { BulkOfferCreationProgressService } from '../bulk-offer-creation-progress.service';
-import { BulkOfferCreationBatch } from '../../../domain/entities/bulk-offer-creation-batch.entity';
-import { BULK_BATCH_STATUS } from '../../../domain/types/bulk-offer-creation-batch.types';
+import { BulkListingProgressService } from '../bulk-listing-progress.service';
+import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
+import { BULK_BATCH_STATUS } from '../../../domain/types/bulk-listing-batch.types';
 import type { BulkBatchAdvancementRepositoryPort } from '../../../domain/ports/bulk-batch-advancement-repository.port';
-import type { BulkOfferCreationBatchRepositoryPort } from '../../../domain/ports/bulk-offer-creation-batch-repository.port';
+import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 
 const BATCH_ID = 'batch-uuid-1';
 const RECORD_ID = 'rec-uuid-1';
 
-const buildBatch = (overrides: Partial<BulkOfferCreationBatch> = {}): BulkOfferCreationBatch => {
+const buildBatch = (overrides: Partial<BulkListingBatch> = {}): BulkListingBatch => {
   const now = new Date('2026-05-17T10:00:00Z');
-  return new BulkOfferCreationBatch(
+  return new BulkListingBatch(
     overrides.id ?? BATCH_ID,
     overrides.connectionId ?? 'conn-1',
     overrides.initiatedBy ?? 'user-1',
@@ -32,9 +32,9 @@ const buildBatch = (overrides: Partial<BulkOfferCreationBatch> = {}): BulkOfferC
   );
 };
 
-describe('BulkOfferCreationProgressService', () => {
-  let service: BulkOfferCreationProgressService;
-  let batches: jest.Mocked<BulkOfferCreationBatchRepositoryPort>;
+describe('BulkListingProgressService', () => {
+  let service: BulkListingProgressService;
+  let batches: jest.Mocked<BulkListingBatchRepositoryPort>;
   let advancements: jest.Mocked<BulkBatchAdvancementRepositoryPort>;
 
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe('BulkOfferCreationProgressService', () => {
       markAdvancedIfNotExists: jest.fn(),
       deleteForRecord: jest.fn(),
     };
-    service = new BulkOfferCreationProgressService(batches, advancements);
+    service = new BulkListingProgressService(batches, advancements);
   });
 
   it('skips counter increment when advancement already exists (idempotent retry)', async () => {
