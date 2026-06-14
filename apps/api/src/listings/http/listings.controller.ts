@@ -493,7 +493,9 @@ export class ListingsController {
     });
 
     return {
-      allegroCategoryId: result.allegroCategoryId,
+      // Wire field stays `allegroCategoryId` (FE contract); neutralising it +
+      // surfacing `provenance` is #1044's API/FE-surfaces job.
+      allegroCategoryId: result.destinationCategoryId,
       method: result.method,
     };
   }

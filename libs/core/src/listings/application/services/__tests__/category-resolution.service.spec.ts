@@ -51,7 +51,11 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-123', method: 'auto_detect' });
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-123',
+      provenance: 'borrows',
+      method: 'auto_detect',
+    });
     expect(marketplace.matchCategoryByBarcode).toHaveBeenCalledWith('5901234123457');
     expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
   });
@@ -66,7 +70,11 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-456', method: 'category_mapping' });
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-456',
+      provenance: 'borrows',
+      method: 'category_mapping',
+    });
     expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-1');
   });
 
@@ -80,7 +88,11 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: null, method: 'manual' });
+    expect(result).toEqual({
+      destinationCategoryId: null,
+      provenance: 'borrows',
+      method: 'manual',
+    });
   });
 
   it('should skip auto-detect when no barcode is provided', async () => {
@@ -91,7 +103,11 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-789', method: 'category_mapping' });
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-789',
+      provenance: null,
+      method: 'category_mapping',
+    });
     expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
   });
 
@@ -105,7 +121,11 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-shallow', 'ps-cat-deep'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-deep', method: 'category_mapping' });
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-deep',
+      provenance: null,
+      method: 'category_mapping',
+    });
     expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(2);
     expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-shallow');
     expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-deep');
@@ -116,7 +136,11 @@ describe('CategoryResolutionService', () => {
       connectionId: 'conn-1',
     });
 
-    expect(result).toEqual({ allegroCategoryId: null, method: 'manual' });
+    expect(result).toEqual({
+      destinationCategoryId: null,
+      provenance: null,
+      method: 'manual',
+    });
   });
 
   it('should handle auto-detect error gracefully and fall back to mapping', async () => {
@@ -130,7 +154,8 @@ describe('CategoryResolutionService', () => {
     });
 
     expect(result).toEqual({
-      allegroCategoryId: 'allegro-cat-fallback',
+      destinationCategoryId: 'allegro-cat-fallback',
+      provenance: null,
       method: 'category_mapping',
     });
   });
@@ -146,6 +171,10 @@ describe('CategoryResolutionService', () => {
       sourceCategoryIds: ['ps-cat-1'],
     });
 
-    expect(result).toEqual({ allegroCategoryId: 'allegro-cat-mapped', method: 'category_mapping' });
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-mapped',
+      provenance: 'borrows',
+      method: 'category_mapping',
+    });
   });
 });

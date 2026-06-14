@@ -1,10 +1,17 @@
 /**
  * Category Resolution Service
  *
- * Resolves the marketplace category for an offer using a 3-step fallback chain:
- * 1. Auto-detect via GTIN/EAN barcode (marketplace catalog lookup)
- * 2. Category mapping fallback (configured source → marketplace mappings)
- * 3. Manual pick (returns null for the merchant to choose)
+ * Resolves the destination category for a listing via the provenance-aware
+ * placement chain (ADR-023 §1), each step gated on a declared capability:
+ * 1. Provision — mirror/create on the destination (gated on `CategoryProvisioner`,
+ *    delivered by #1041; a no-op seam until then)
+ * 2. Barcode — GTIN/EAN catalog auto-detect (`CategoryBarcodeMatcher`)
+ * 3. Mapping — configured per-source-category → destination mapping
+ * 4. Manual — returns null for the operator to choose
+ *
+ * Returns a neutral `{ destinationCategoryId, provenance, method }`; `provenance`
+ * (owns/borrows/open) is derived from the destination adapter's capabilities,
+ * never its `platformType`.
  *
  * @module libs/core/src/listings/application/services
  * @implements {ICategoryResolutionService}
@@ -19,6 +26,8 @@ import type {
 } from '@openlinker/core/listings';
 import {
   isCategoryBarcodeMatcher,
+  isCategoryBrowser,
+  isCategoryParametersReader,
   isEanCategoryMatcher,
   AdapterCapabilityNotSupportedException,
 } from '@openlinker/core/listings';
@@ -26,6 +35,7 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type {
+  CategoryProvenance,
   CategoryResolutionInput,
   CategoryResolutionResult,
 } from '../types/category-resolution.types';
@@ -44,31 +54,51 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   async resolveCategory(input: CategoryResolutionInput): Promise<CategoryResolutionResult> {
     const { connectionId, barcode, sourceCategoryIds } = input;
 
-    // Step 1: Auto-detect via barcode
+    // `provenance` is populated once the destination adapter is resolved (the
+    // barcode step). Mapping-only / manual paths leave it null until #1045
+    // makes the mapping lookup provenance-bearing.
+    let provenance: CategoryProvenance | null = null;
+
+    // Step 1: Provision (open provenance). No-op seam — the `CategoryProvisioner`
+    // capability is delivered by #1041; until then this always falls through.
+    const provisioned = await this.tryProvision();
+    if (provisioned) {
+      this.logger.debug(
+        `Category resolved via provision (connection=${connectionId}, categoryId=${provisioned})`
+      );
+      return { destinationCategoryId: provisioned, provenance: 'open', method: 'provision' };
+    }
+
+    // Step 2: Auto-detect via barcode
     if (barcode) {
       const autoDetected = await this.tryAutoDetect(connectionId, barcode);
-      if (autoDetected) {
+      provenance = autoDetected.provenance;
+      if (autoDetected.categoryId) {
         this.logger.debug(
-          `Category resolved via auto_detect (connection=${connectionId}, barcode=${barcode}, categoryId=${autoDetected})`
+          `Category resolved via auto_detect (connection=${connectionId}, barcode=${barcode}, categoryId=${autoDetected.categoryId})`
         );
-        return { allegroCategoryId: autoDetected, method: 'auto_detect' };
+        return {
+          destinationCategoryId: autoDetected.categoryId,
+          provenance,
+          method: 'auto_detect',
+        };
       }
     }
 
-    // Step 2: Category mapping fallback
+    // Step 3: Category mapping fallback
     if (sourceCategoryIds && sourceCategoryIds.length > 0) {
       const mapped = await this.tryCategoryMapping(connectionId, sourceCategoryIds);
       if (mapped) {
         this.logger.debug(
           `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
         );
-        return { allegroCategoryId: mapped, method: 'category_mapping' };
+        return { destinationCategoryId: mapped, provenance, method: 'category_mapping' };
       }
     }
 
-    // Step 3: Manual pick
+    // Step 4: Manual pick
     this.logger.debug(`Category unresolved, manual pick required (connection=${connectionId})`);
-    return { allegroCategoryId: null, method: 'manual' };
+    return { destinationCategoryId: null, provenance, method: 'manual' };
   }
 
   async resolveCategoriesBatch(
@@ -91,25 +121,66 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     return adapter.resolveCategoriesForBatchByEan(input);
   }
 
-  private async tryAutoDetect(connectionId: string, barcode: string): Promise<string | null> {
+  /**
+   * Provision step (ADR-023 §1, step 1) — mirror/create the source category on
+   * the destination. Gated on the `CategoryProvisioner` capability (ADR-024),
+   * delivered by #1041; a no-op until then, so the chain always falls through
+   * to the barcode step. #1041 resolves the destination adapter, narrows via
+   * `isCategoryProvisioner`, calls `provisionCategory(...)`, and returns the
+   * provisioned id (provenance `open`).
+   */
+  private tryProvision(): Promise<string | null> {
+    // No-op seam: returns a resolved Promise so the async contract #1041 fills
+    // is already in place at the call site (non-`async` avoids an empty-await lint).
+    return Promise.resolve(null);
+  }
+
+  /**
+   * Barcode step — resolve the destination adapter (capturing its provenance)
+   * and, when it supports barcode matching, auto-detect the category.
+   *
+   * Returns the matched category id (or null) alongside the destination's
+   * taxonomy provenance. On adapter-resolution failure the step degrades
+   * gracefully (null id, null provenance) so the chain can still fall through
+   * to mapping.
+   */
+  private async tryAutoDetect(
+    connectionId: string,
+    barcode: string
+  ): Promise<{ categoryId: string | null; provenance: CategoryProvenance | null }> {
     try {
       const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
         connectionId,
         'OfferManager'
       );
+      const provenance = this.deriveProvenance(marketplace);
       if (!isCategoryBarcodeMatcher(marketplace)) {
         this.logger.debug(
-          `Marketplace adapter does not support matchCategoryByBarcode (connection=${connectionId})`
+          `Destination adapter does not support matchCategoryByBarcode (connection=${connectionId})`
         );
-        return null;
+        return { categoryId: null, provenance };
       }
-      return await marketplace.matchCategoryByBarcode(barcode);
+      return { categoryId: await marketplace.matchCategoryByBarcode(barcode), provenance };
     } catch (error) {
       this.logger.warn(
         `Auto-detect category failed (connection=${connectionId}): ${(error as Error).message}`
       );
-      return null;
+      return { categoryId: null, provenance: null };
     }
+  }
+
+  /**
+   * Derive how the destination relates to the taxonomy it resolves against,
+   * from its declared capabilities (never `platformType`). A destination that
+   * browses its own category tree / exposes per-category parameters `owns` the
+   * taxonomy (Allegro); one that does neither `borrows` it (ERLI). `open`
+   * (shop provisioning) is reachable once #1041 adds `CategoryProvisioner`.
+   */
+  private deriveProvenance(adapter: OfferManagerPort): CategoryProvenance {
+    if (isCategoryBrowser(adapter) || isCategoryParametersReader(adapter)) {
+      return 'owns';
+    }
+    return 'borrows';
   }
 
   private async tryCategoryMapping(

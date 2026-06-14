@@ -1,10 +1,12 @@
 /**
  * Category Resolution Service — unit tests
  *
- * Covers the 3-step single-resolve chain and the #795 batch path
- * (`resolveCategoriesBatch`): delegation to the `EanCategoryMatcher`
- * sub-capability when supported, and the `AdapterCapabilityNotSupportedException`
- * branch when the resolved adapter cannot batch-resolve EANs.
+ * Covers the provenance-aware single-resolve chain (provision → barcode →
+ * mapping → manual), provenance derivation from destination capabilities, and
+ * the #795 batch path (`resolveCategoriesBatch`): delegation to the
+ * `EanCategoryMatcher` sub-capability when supported, and the
+ * `AdapterCapabilityNotSupportedException` branch when the resolved adapter
+ * cannot batch-resolve EANs.
  *
  * @module libs/core/src/listings/application/services
  */
@@ -35,7 +37,8 @@ describe('CategoryResolutionService', () => {
   });
 
   describe('resolveCategory', () => {
-    it('should resolve via auto_detect when the adapter matches the barcode', async () => {
+    it('should resolve via auto_detect when the adapter matches the barcode (borrows provenance)', async () => {
+      // Adapter matches barcodes but ships no own category tree → borrows.
       integrationsService.getCapabilityAdapter.mockResolvedValue({
         updateOfferQuantity: jest.fn(),
         matchCategoryByBarcode: jest.fn().mockResolvedValue('allegro-cat-1'),
@@ -43,10 +46,42 @@ describe('CategoryResolutionService', () => {
 
       const result = await service.resolveCategory({ connectionId: CONNECTION_ID, barcode: '590' });
 
-      expect(result).toEqual({ allegroCategoryId: 'allegro-cat-1', method: 'auto_detect' });
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-1',
+        provenance: 'borrows',
+        method: 'auto_detect',
+      });
     });
 
-    it('should fall back to category_mapping when auto_detect misses', async () => {
+    it('should report owns provenance when the adapter browses its own category tree', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        matchCategoryByBarcode: jest.fn().mockResolvedValue('allegro-cat-1'),
+        fetchCategories: jest.fn(),
+      });
+
+      const result = await service.resolveCategory({ connectionId: CONNECTION_ID, barcode: '590' });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-1',
+        provenance: 'owns',
+        method: 'auto_detect',
+      });
+    });
+
+    it('should report owns provenance when the adapter exposes per-category parameters', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        matchCategoryByBarcode: jest.fn().mockResolvedValue('allegro-cat-1'),
+        fetchCategoryParameters: jest.fn(),
+      });
+
+      const result = await service.resolveCategory({ connectionId: CONNECTION_ID, barcode: '590' });
+
+      expect(result.provenance).toBe('owns');
+    });
+
+    it('should fall back to category_mapping when auto_detect misses (carrying barcode-path provenance)', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue({
         updateOfferQuantity: jest.fn(),
         matchCategoryByBarcode: jest.fn().mockResolvedValue(null),
@@ -59,7 +94,28 @@ describe('CategoryResolutionService', () => {
         sourceCategoryIds: ['src-1'],
       });
 
-      expect(result).toEqual({ allegroCategoryId: 'allegro-cat-mapped', method: 'category_mapping' });
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-mapped',
+        provenance: 'borrows',
+        method: 'category_mapping',
+      });
+    });
+
+    it('should leave provenance null on the mapping path when no barcode is supplied', async () => {
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
+
+      const result = await service.resolveCategory({
+        connectionId: CONNECTION_ID,
+        sourceCategoryIds: ['src-1'],
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-mapped',
+        provenance: null,
+        method: 'category_mapping',
+      });
+      // Laziness preserved — no adapter resolution without a barcode.
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
     it('should return manual with null id when nothing resolves', async () => {
@@ -70,7 +126,25 @@ describe('CategoryResolutionService', () => {
 
       const result = await service.resolveCategory({ connectionId: CONNECTION_ID, barcode: '590' });
 
-      expect(result).toEqual({ allegroCategoryId: null, method: 'manual' });
+      expect(result).toEqual({
+        destinationCategoryId: null,
+        provenance: 'borrows',
+        method: 'manual',
+      });
+    });
+
+    it('should treat the provision step as a no-op until CategoryProvisioner ships (#1041)', async () => {
+      // Even a fully-capable adapter never yields method=provision today.
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        matchCategoryByBarcode: jest.fn().mockResolvedValue('allegro-cat-1'),
+        fetchCategories: jest.fn(),
+      });
+
+      const result = await service.resolveCategory({ connectionId: CONNECTION_ID, barcode: '590' });
+
+      expect(result.method).toBe('auto_detect');
+      expect(result.method).not.toBe('provision');
     });
   });
 
