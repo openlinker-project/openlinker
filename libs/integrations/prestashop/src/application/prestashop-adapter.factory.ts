@@ -34,6 +34,7 @@ import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/pre
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
+import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -44,6 +45,11 @@ import { Logger } from '@openlinker/shared/logging';
  */
 export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   private readonly logger = new Logger(PrestashopAdapterFactory.name);
+
+  // Held on the factory (a process-singleton) so its option-value cache
+  // survives across the per-product adapter instances the master sync creates
+  // (#1050). A per-adapter cache would never hit.
+  private readonly attributeResolver = new PrestashopAttributeResolver();
 
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
@@ -97,7 +103,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       httpClient,
       identifierMapping,
       productMapper,
-      connection
+      connection,
+      this.attributeResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
