@@ -84,6 +84,24 @@ describe('ErliConnectionTesterAdapter', () => {
     expect(result.message).toContain('Erli network error');
   });
 
+  it('should collapse an unrecognized error to a fixed message (no detail leak)', async () => {
+    // A non-Erli error must NOT have its raw message surfaced in the result —
+    // only recognized Erli exceptions carry bounded, bearer-safe messages.
+    const leakyFactory = {
+      createHttpClient: jest
+        .fn()
+        .mockRejectedValue(new Error('connect ECONNREFUSED https://internal.host/secret-path')),
+    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[0];
+    const leakyTester = new ErliConnectionTesterAdapter(leakyFactory);
+
+    const result = await leakyTester.test(connection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBeUndefined();
+    expect(result.message).toBe('Erli probe failed');
+    expect(result.message).not.toContain('internal.host');
+  });
+
   it('should return a failure (not throw) when credential resolution fails', async () => {
     // No HTTP call is made — the factory throws ErliConfigException before the
     // probe; the tester must still return a structured failure, never throw.
