@@ -13,6 +13,7 @@
  */
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
+import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
 import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { ErliRateLimitException } from '../../../domain/exceptions/erli-rate-limit.exception';
 import { ErliHttpClient } from '../erli-http-client';
@@ -65,12 +66,12 @@ describe('ErliHttpClient', () => {
   describe('construction', () => {
     it('should reject a non-https baseUrl when constructed', () => {
       expect(() => new ErliHttpClient('conn-1', 'http://erli.pl/svc', API_KEY)).toThrow(
-        ErliApiException,
+        ErliConfigException,
       );
     });
 
     it('should reject an invalid baseUrl when constructed', () => {
-      expect(() => new ErliHttpClient('conn-1', 'not-a-url', API_KEY)).toThrow(ErliApiException);
+      expect(() => new ErliHttpClient('conn-1', 'not-a-url', API_KEY)).toThrow(ErliConfigException);
     });
   });
 
@@ -115,7 +116,7 @@ describe('ErliHttpClient', () => {
       fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{}' }));
 
       await expect(client.get('https://evil.example/steal')).rejects.toBeInstanceOf(
-        ErliApiException,
+        ErliConfigException,
       );
       expect(fetchMock).not.toHaveBeenCalled();
     });

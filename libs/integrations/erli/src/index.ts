@@ -25,3 +25,6 @@ export { ErliApiException } from './domain/exceptions/erli-api.exception';
 export { ErliAuthenticationException } from './domain/exceptions/erli-authentication.exception';
 export { ErliRateLimitException } from './domain/exceptions/erli-rate-limit.exception';
 export { ErliNetworkException } from './domain/exceptions/erli-network.exception';
+// Config/construction guard (bad baseUrl, host-escape) — surfaced to the
+// #982 factory, distinct from the HTTP-response exceptions above.
+export { ErliConfigException } from './domain/exceptions/erli-config.exception';

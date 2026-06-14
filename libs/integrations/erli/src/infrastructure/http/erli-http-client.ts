@@ -28,6 +28,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
+import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
 import { ErliRateLimitException } from '../../domain/exceptions/erli-rate-limit.exception';
 import type { IErliHttpClient } from './erli-http-client.interface';
@@ -77,11 +78,12 @@ export class ErliHttpClient implements IErliHttpClient {
     try {
       parsed = new URL(baseUrl);
     } catch {
-      throw new ErliApiException(`ErliHttpClient: invalid baseUrl "${baseUrl}"`);
+      throw new ErliConfigException(`ErliHttpClient: invalid baseUrl "${baseUrl}"`, connectionId);
     }
     if (parsed.protocol !== 'https:') {
-      throw new ErliApiException(
+      throw new ErliConfigException(
         `ErliHttpClient: baseUrl must be https, got "${parsed.protocol}"`,
+        connectionId,
       );
     }
     // Trailing slash so `new URL('offers', base)` keeps a path prefix like
@@ -257,8 +259,9 @@ export class ErliHttpClient implements IErliHttpClient {
     // scheme must never carry the bearer key. Re-assert the construction guard
     // per request, since `path` is the one caller-varying input.
     if (url.protocol !== 'https:' || url.origin !== this.baseOrigin) {
-      throw new ErliApiException(
+      throw new ErliConfigException(
         `ErliHttpClient: request path escaped the configured host (resolved origin "${url.origin}")`,
+        this.connectionId,
       );
     }
     if (queryParams) {

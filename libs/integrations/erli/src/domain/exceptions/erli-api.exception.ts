@@ -8,8 +8,8 @@
  *
  * **Classifier intent (D4 / #984+):** maps to `RetryClassifierPort
  * .isNonRetryable = true` — the sync-job runner must NOT re-run a job that
- * failed this way. Also reused as the constructor guard for a non-HTTPS
- * `baseUrl` (a config error surfaced before any request leaves).
+ * failed this way. Config/construction errors (bad `baseUrl`, host-escape) are
+ * a distinct concern — see `ErliConfigException`.
  *
  * **`responseBody` is diagnostics-only**: it may echo back submitted data, so
  * it MUST NOT be logged above `debug`.
