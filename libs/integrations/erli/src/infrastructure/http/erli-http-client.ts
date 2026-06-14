@@ -46,6 +46,12 @@ import {
 // the outer time-bound tier.
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// Hard ceiling on a buffered response body. The per-request timeout bounds
+// *time* but not *bytes*; a buggy or hostile upstream streaming an unbounded
+// body would otherwise exhaust worker memory. Erli's JSON payloads are tiny —
+// 8 MiB is generous headroom while still capping the blast radius.
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
 /**
  * Internal marker for a retryable transport failure. Never escapes the client —
  * the retry loop converts it to the right typed exception once the budget is
@@ -202,7 +208,12 @@ export class ErliHttpClient implements IErliHttpClient {
     if (response.status === 204) {
       return { status: response.status, data: undefined as T };
     }
-    const text = await response.text();
+    const { text, truncated } = await this.readBodyBounded(response);
+    if (truncated) {
+      throw new ErliNetworkException(
+        `Erli response body exceeded the ${MAX_RESPONSE_BYTES}-byte ceiling`,
+      );
+    }
     if (!text) {
       return { status: response.status, data: undefined as T };
     }
@@ -299,11 +310,56 @@ export class ErliHttpClient implements IErliHttpClient {
 
   private async safeReadBody(response: Response): Promise<string | undefined> {
     try {
-      const text = await response.text();
+      // Bounded read on the error path too: a truncated diagnostic body is
+      // fine, an unbounded one is the same DoS vector as the success path.
+      const { text } = await this.readBodyBounded(response);
       return text === '' ? undefined : text;
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Read a response body bounded to `MAX_RESPONSE_BYTES`. Streams via the
+   * `ReadableStream` reader and stops at the ceiling (cancelling the stream so
+   * the socket is released), reporting `truncated` so the caller decides how to
+   * react — the success path rejects, the diagnostic path keeps the prefix.
+   * Falls back to `response.text()` when no stream is present (e.g. a stubbed
+   * test response).
+   */
+  private async readBodyBounded(response: Response): Promise<{ text: string; truncated: boolean }> {
+    const body = response.body;
+    if (!body) {
+      return { text: await response.text(), truncated: false };
+    }
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    let total = 0;
+    let truncated = false;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (!value) {
+          continue;
+        }
+        total += value.byteLength;
+        if (total > MAX_RESPONSE_BYTES) {
+          truncated = true;
+          break;
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+    if (!truncated) {
+      text += decoder.decode();
+    }
+    return { text, truncated };
   }
 
   private jitter(delayMs: number): number {

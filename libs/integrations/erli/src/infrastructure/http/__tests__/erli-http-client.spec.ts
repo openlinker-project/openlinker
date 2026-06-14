@@ -167,6 +167,29 @@ describe('ErliHttpClient', () => {
       expect(res.data).toBeUndefined();
     });
 
+    it('should reject a response body that exceeds the size ceiling', async () => {
+      // A streamed body over the 8 MiB ceiling must be cut off and surfaced as
+      // ErliNetworkException rather than buffered unbounded (DoS guard).
+      const oversized = new Uint8Array(8 * 1024 * 1024 + 1);
+      const streamed = {
+        ok: true,
+        status: 200,
+        headers: { get: (): string | null => null },
+        body: new ReadableStream<Uint8Array>({
+          start(controller): void {
+            controller.enqueue(oversized);
+            controller.close();
+          },
+        }),
+        text: (): Promise<string> => Promise.resolve(''),
+      } as unknown as Response;
+      fetchMock.mockResolvedValue(streamed);
+
+      await expect(client.get('/offers/o1')).rejects.toBeInstanceOf(ErliNetworkException);
+      // Direct (non-retryable) classification → single attempt.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('should throw ErliNetworkException on an unparseable 200 body without in-client retry', async () => {
       // A 200 with a non-JSON body surfaces as ErliNetworkException directly (not
       // the internal RetryableHttpError marker), so the in-client loop does NOT
