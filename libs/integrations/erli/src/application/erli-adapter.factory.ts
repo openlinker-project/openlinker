@@ -23,8 +23,9 @@ import {
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
 import type { IErliHttpClient } from '../infrastructure/http/erli-http-client.interface';
 import type { RetryConfig } from '../infrastructure/http/erli-http-client.types';
+import type { IErliAdapterFactory } from './interfaces/erli-adapter.factory.interface';
 
-export class ErliAdapterFactory {
+export class ErliAdapterFactory implements IErliAdapterFactory {
   /**
    * Build a per-connection Erli HTTP client. Pass `retryConfig` to override the
    * default retry budget — the connection tester passes a no-retry config so a
