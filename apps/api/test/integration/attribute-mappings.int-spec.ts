@@ -136,6 +136,8 @@ describe('Attribute Mappings Integration', () => {
       });
       expect(created.destinationCategoryId).toBeNull();
       expect(created.values).toHaveLength(1);
+      // Upsert-return path is fully hydrated (matches the read path).
+      expect(created.values[0].attributeMappingId).toBe(created.id);
 
       // Re-upsert same key replaces the value set (orphan-delete) in place.
       const updated = await service.upsertAttributeMapping(dest, {

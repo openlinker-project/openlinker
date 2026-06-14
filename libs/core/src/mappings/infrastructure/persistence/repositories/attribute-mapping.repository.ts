@@ -76,7 +76,12 @@ export class AttributeMappingRepository implements AttributeMappingRepositoryPor
         return child;
       });
 
-      return em.save(entity);
+      const persisted = await em.save(entity);
+      // Re-read so the returned children are fully hydrated (scalar
+      // `attributeMappingId`, ids, timestamps) — identical to the read path.
+      // Cascade-save doesn't reliably set the child FK scalar on new in-memory
+      // rows.
+      return em.findOneOrFail(AttributeMappingOrmEntity, { where: { id: persisted.id } });
     });
     return this.toDomain(saved);
   }
