@@ -12,7 +12,7 @@
 
 **Objective**: Ship the shared HTTP client every Erli adapter (offers half #984+, orders half #993+) routes through: static API-key **bearer** auth on every request, **keep-alive pooled** connections (Erli docs recommend it to avoid repeated SSL handshakes), bounded **429 backoff-retry** with typed exhaustion error, structured logging via the shared `Logger`, and typed GET / POST / PATCH wrappers (the only methods Erli's REST API uses).
 
-**Context**: Wave 1 of the Erli integration (spec `docs/specs/product-spec-978-erli-marketplace-integration.md`, ADR-022). The client is pure infrastructure inside the plugin package — nothing consumes it yet; #982/#984/#993 wire it into the adapter factory per connection.
+**Context**: Wave 1 of the Erli integration (spec `docs/specs/product-spec-978-erli-marketplace-integration.md`, ADR-025). The client is pure infrastructure inside the plugin package — nothing consumes it yet; #982/#984/#993 wire it into the adapter factory per connection.
 
 **Classification**: Integration (`libs/integrations/erli/` only). No core, app, or migration changes.
 
@@ -56,7 +56,7 @@
 **Reuse audit — no SDK infrastructure is being reinvented** (verified 2026-06-12 against `libs/plugin-sdk/**` and `libs/shared/**`):
 - **No shared HTTP client, retry loop, or backoff/rate-limit helper exists** anywhere in `@openlinker/plugin-sdk` or `libs/shared`. Allegro, DPD, and InPost each own a `fetch`-based client with a home-grown retry loop — a per-plugin `ErliHttpClient` is the established pattern, not duplication. (Pre-empts the "why not a shared base class?" review question — the reuse check was done and came back empty.)
 - **`HostServices.logger` / `credentialsResolver`** are reused: logging via the shared `Logger` (sibling convention, see D-Logger note in Step 4), and the API key arrives already resolved (the future `ErliAdapterFactory` calls `host.credentialsResolver.get<ErliCredentials>(connection.credentialsRef)` in #982 — the client itself never touches the resolver).
-- **`HostServices.cache` is intentionally unused.** Allegro caches token state + category-params there; Erli has a static API key (ADR-022, no token to refresh and no expensive read this client owns), so the client touches no cache. Deliberate, not an overlooked affordance.
+- **`HostServices.cache` is intentionally unused.** Allegro caches token state + category-params there; Erli has a static API key (ADR-025, no token to refresh and no expensive read this client owns), so the client touches no cache. Deliberate, not an overlooked affordance.
 
 **Transport exceptions live in `domain/exceptions/`, not `infrastructure/`, by design** (hexagonal). A network/rate-limit error looks like an infrastructure concern, but these four exception *types* are the plugin's **published contract that the host sync-runner classifies against** (`RetryClassifierPort` #581, `AuthFailureClassifierPort` #819 — see Decision D4). They cross the plugin boundary, so they belong in the domain layer. Matches InPost/Allegro/DPD placement.
 
@@ -98,7 +98,7 @@ So there are two retry tiers, by design (Allegro does both):
 
 ## 4. External / Domain Research
 
-- **Erli Shop API** (https://erli.pl/svc/shop-api/doc/): REST over HTTPS, GET/POST/PATCH only; static API-key bearer auth (no OAuth, no refresh, no expiry signal — ADR-022); writes return **202** with ~20-min cache lag; only **429** is documented for rate limiting (load-dependent, no published quota); keep-alive recommended by Erli.
+- **Erli Shop API** (https://erli.pl/svc/shop-api/doc/): REST over HTTPS, GET/POST/PATCH only; static API-key bearer auth (no OAuth, no refresh, no expiry signal — ADR-025); writes return **202** with ~20-min cache lag; only **429** is documented for rate limiting (load-dependent, no published quota); keep-alive recommended by Erli.
 - **Base URLs**: prod `https://erli.pl/svc/shop-api` (path per docs), sandbox `https://sandbox.erli.dev` — the client takes `baseUrl` via constructor; which URL applies per connection is #982's config concern. Exact path prefix to be confirmed against docs during implementation; the client itself is URL-agnostic.
 - **401 vs Allegro**: no token refresh exists — 401/403 maps straight to `ErliAuthenticationException`, never retried (simpler than Allegro's refresh dance; matches InPost).
 

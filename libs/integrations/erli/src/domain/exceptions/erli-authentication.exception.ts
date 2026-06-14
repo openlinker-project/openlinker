@@ -2,7 +2,7 @@
  * Erli Authentication Exception
  *
  * Thrown when Erli rejects the static API key — `401 Unauthorized` or
- * `403 Forbidden`. Erli has no token-refresh flow (ADR-022: static bearer
+ * `403 Forbidden`. Erli has no token-refresh flow (ADR-025: static bearer
  * key), so this is never retried inside the client.
  *
  * **Classifier intent (D4 / #984+):** maps to `AuthFailureClassifierPort

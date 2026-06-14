@@ -51,7 +51,7 @@ export interface ErliRequestOptions {
 
 /**
  * Response envelope. Exposes `status` (not just the body) so adapters can tell
- * a synchronous `200` from Erli's asynchronous `202` accepted-write (ADR-022:
+ * a synchronous `200` from Erli's asynchronous `202` accepted-write (ADR-025:
  * ~20-min cache lag) — the #989 reconciliation flow keys off this.
  */
 export interface ErliHttpResponse<T> {
