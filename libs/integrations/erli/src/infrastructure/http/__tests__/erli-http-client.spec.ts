@@ -166,6 +166,16 @@ describe('ErliHttpClient', () => {
       expect(res.status).toBe(204);
       expect(res.data).toBeUndefined();
     });
+
+    it('should throw ErliNetworkException on an unparseable 200 body without in-client retry', async () => {
+      // A 200 with a non-JSON body surfaces as ErliNetworkException directly (not
+      // the internal RetryableHttpError marker), so the in-client loop does NOT
+      // re-issue it — the host runner (D4) owns any retry of this classification.
+      fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '<<not json>>' }));
+
+      await expect(client.get('/offers/o1')).rejects.toBeInstanceOf(ErliNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('status classification', () => {
@@ -277,6 +287,23 @@ describe('ErliHttpClient', () => {
       await expect(client.get('/offers')).rejects.toBeInstanceOf(ErliRateLimitException);
       // maxRetries: 2 → 3 total attempts.
       expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('should clamp the Retry-After carried on the exhausted ErliRateLimitException', async () => {
+      // The host RetryClassifier (D4) reads `retryAfterMs` off the escaping
+      // exception — an absurd upstream header must be clamped before it escapes,
+      // not just for the in-loop wait.
+      const sleepSpy = jest
+        .spyOn(
+          ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep',
+        )
+        .mockResolvedValue(undefined);
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 429, retryAfter: '999999999' }));
+
+      // FAST_RETRY.maxDelayMs is 1 — the multi-year header must not survive onto the exception.
+      await expect(client.get('/offers')).rejects.toMatchObject({ retryAfterMs: 1 });
+      sleepSpy.mockRestore();
     });
   });
 

@@ -40,6 +40,10 @@ import {
   type RetryConfig,
 } from './erli-http-client.types';
 
+// Per-ATTEMPT timeout, not a whole-call deadline: an idempotent request can be
+// re-issued up to `maxRetries` times, so worst-case wall-clock is roughly
+// `(maxRetries + 1) × REQUEST_TIMEOUT_MS` plus backoff. The host runner (D4) is
+// the outer time-bound tier.
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
@@ -136,7 +140,7 @@ export class ErliHttpClient implements IErliHttpClient {
         // buggy upstream can't stall a worker on an absurd backoff.
         const waitMs =
           error.retryAfterMs !== undefined
-            ? Math.min(Math.max(error.retryAfterMs, 0), this.retryConfig.maxDelayMs)
+            ? this.clampDelayMs(error.retryAfterMs)
             : this.jitter(delay);
         this.logger.warn(
           `Erli ${method} ${path} failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}); retrying in ${waitMs}ms [connectionId=${this.connectionId} requestId=${requestId}]`,
@@ -166,11 +170,13 @@ export class ErliHttpClient implements IErliHttpClient {
     try {
       response = await fetch(url, {
         method,
+        // Caller headers first so the fixed auth/content headers always win —
+        // a future adapter can't accidentally clobber the bearer key.
         headers: {
+          ...options?.headers,
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          ...options?.headers,
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
@@ -246,8 +252,25 @@ export class ErliHttpClient implements IErliHttpClient {
 
   private toExhaustedException(error: RetryableHttpError, url: string): Error {
     return error.kind === 'rate-limit'
-      ? new ErliRateLimitException(error.message, error.retryAfterMs, url)
+      ? new ErliRateLimitException(
+          error.message,
+          // Clamp before it escapes: the host RetryClassifier (D4) reads this
+          // hint, so an absurd upstream `Retry-After` must not survive onto the
+          // exception and schedule a multi-year re-run.
+          error.retryAfterMs !== undefined ? this.clampDelayMs(error.retryAfterMs) : undefined,
+          url,
+        )
       : new ErliNetworkException(error.message, error.retryCause);
+  }
+
+  /**
+   * Clamp a delay to `[0, maxDelayMs]`. Shared by the in-loop backoff wait and
+   * the `Retry-After` hint carried on an exhausted `ErliRateLimitException`, so
+   * neither a worker thread nor the host runner can be stalled by a hostile or
+   * buggy upstream backoff value.
+   */
+  private clampDelayMs(ms: number): number {
+    return Math.min(Math.max(ms, 0), this.retryConfig.maxDelayMs);
   }
 
   private buildUrl(path: string, queryParams?: ErliRequestOptions['queryParams']): string {
