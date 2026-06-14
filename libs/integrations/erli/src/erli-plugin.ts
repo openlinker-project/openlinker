@@ -11,7 +11,8 @@
  * capability enumeration for every platform. #993 adds `'OrderSource'` and
  * #984 adds `'OfferManager'` together with the adapters that deliver them
  * (the platform-level capability roadmap lives in the #978 spec and ADR-025).
- * Side-registrations (connection tester, shape validators) arrive with #982.
+ * Side-registrations (connection tester + config/credentials shape validators)
+ * land here in `register(host)` (#982); `createNestAdapterModule` invokes it.
  *
  * Erli needs no plugin-specific NestJS providers, so the host wires it via
  * `createNestAdapterModule` — see `erli-integration.module.ts`.
@@ -22,6 +23,9 @@
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { ErliConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-config-shape-validator.adapter';
+import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-credentials-shape-validator.adapter';
+import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
 
 /** Human-readable plugin identifier surfaced in dispatch errors (#573). */
 const ERLI_BRAND = 'Erli';
@@ -52,6 +56,19 @@ export const erliAdapterManifest: AdapterMetadata = {
 export function createErliPlugin(): AdapterPlugin {
   return {
     manifest: erliAdapterManifest,
+
+    register(host: HostServices): void {
+      const adapterKey = erliAdapterManifest.adapterKey;
+      host.connectionConfigShapeValidatorRegistry.register(
+        adapterKey,
+        new ErliConnectionConfigShapeValidatorAdapter(ERLI_BRAND),
+      );
+      host.connectionCredentialsShapeValidatorRegistry.register(
+        adapterKey,
+        new ErliConnectionCredentialsShapeValidatorAdapter(ERLI_BRAND),
+      );
+      host.connectionTesterRegistry.register(adapterKey, new ErliConnectionTesterAdapter());
+    },
 
     createCapabilityAdapter<T>(
       _connection: Connection,

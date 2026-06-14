@@ -26,9 +26,26 @@ const connection: Connection = {
   updatedAt: new Date(),
 };
 
-// The skeleton's factory never reads the host bag; replace with a
-// WooCommerce-style makeHostStub() when #982 adds register(host) tests.
+// The capability factory never reads the host bag; register(host) does.
 const host = {} as HostServices;
+
+/** Host stub exposing only the registries `register(host)` touches (#982). */
+function makeRegisterHost(): {
+  host: HostServices;
+  configRegistry: { register: jest.Mock };
+  credentialsRegistry: { register: jest.Mock };
+  testerRegistry: { register: jest.Mock };
+} {
+  const configRegistry = { register: jest.fn() };
+  const credentialsRegistry = { register: jest.fn() };
+  const testerRegistry = { register: jest.fn() };
+  const hostStub = {
+    connectionConfigShapeValidatorRegistry: configRegistry,
+    connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
+    connectionTesterRegistry: testerRegistry,
+  } as unknown as HostServices;
+  return { host: hostStub, configRegistry, credentialsRegistry, testerRegistry };
+}
 
 describe('erliAdapterManifest', () => {
   it('should declare the erli.shopapi.v1 adapter key', () => {
@@ -61,9 +78,36 @@ describe('createErliPlugin', () => {
     expect(createErliPlugin().manifest).toBe(erliAdapterManifest);
   });
 
-  it('should not define a register hook while the skeleton has no side-registrations', () => {
-    // Side-registrations (connection tester, shape validators) arrive in #982.
-    expect(createErliPlugin().register).toBeUndefined();
+  describe('register', () => {
+    it('should register the config-shape validator at erli.shopapi.v1 (#982)', () => {
+      const { host, configRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(configRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ validate: expect.any(Function) }),
+      );
+    });
+
+    it('should register the credentials-shape validator at erli.shopapi.v1 (#982)', () => {
+      const { host, credentialsRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(credentialsRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ validate: expect.any(Function) }),
+      );
+    });
+
+    it('should register the connection tester at erli.shopapi.v1 (#982)', () => {
+      const { host, testerRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(testerRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ test: expect.any(Function) }),
+      );
+    });
   });
 
   describe('createCapabilityAdapter', () => {
