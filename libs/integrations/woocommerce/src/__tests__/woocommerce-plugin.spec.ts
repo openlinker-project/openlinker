@@ -13,6 +13,7 @@
 import type { HostServices } from '@openlinker/plugin-sdk';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { woocommerceAdapterManifest, createWooCommercePlugin } from '../woocommerce-plugin';
+import { WooCommerceIntegrationModule } from '../woocommerce-integration.module';
 import { WooCommerceConfigException } from '../domain/exceptions/woocommerce-config.exception';
 import { WooCommerceAuthFailureClassifierAdapter } from '../infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 
@@ -181,5 +182,19 @@ describe('createWooCommercePlugin → register(host) — #876 additions', () => 
     expect(schedulerRegistry.register).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'woocommerce-orders-poll' }),
     );
+  });
+});
+
+describe('WooCommerceIntegrationModule', () => {
+  // The module is a top-level `DynamicModule` const built by
+  // `createNestAdapterModule({ plugin: createWooCommercePlugin() })`, so merely
+  // importing this spec already exercises the composition — a regression there
+  // throws at module load. These assertions lock the composed shape so the
+  // breakage surfaces at unit speed (#1023; no host bootstrap required).
+  it('composes a DynamicModule (host module class + framework imports)', () => {
+    expect(WooCommerceIntegrationModule.module).toBeDefined();
+    expect(typeof WooCommerceIntegrationModule.module).toBe('function');
+    expect(Array.isArray(WooCommerceIntegrationModule.imports)).toBe(true);
+    expect(WooCommerceIntegrationModule.imports!.length).toBeGreaterThan(0);
   });
 });
