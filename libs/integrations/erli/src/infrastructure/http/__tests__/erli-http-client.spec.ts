@@ -91,15 +91,52 @@ describe('ErliHttpClient', () => {
       expect(calls[2][1].method).toBe('PATCH');
     });
 
+    it('should preserve the base-URL path prefix when joining the request path', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{}' }));
+
+      await client.get('/offers/o1');
+
+      // Regression: `new URL('/offers', base)` used to drop the `/svc/shop-api`
+      // prefix and hit the host root. The full URL must keep it.
+      expect(recordedCalls(fetchMock)[0][0]).toBe('https://erli.pl/svc/shop-api/offers/o1');
+    });
+
     it('should serialize query params and drop undefined values', async () => {
       fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{}' }));
 
       await client.get('/offers', { queryParams: { limit: 10, cursor: undefined, active: true } });
 
       const calledUrl = recordedCalls(fetchMock)[0][0];
-      expect(calledUrl).toContain('limit=10');
-      expect(calledUrl).toContain('active=true');
+      expect(calledUrl).toBe('https://erli.pl/svc/shop-api/offers?limit=10&active=true');
       expect(calledUrl).not.toContain('cursor');
+    });
+
+    it('should reject a request path that escapes the configured host', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: true, status: 200, body: '{}' }));
+
+      await expect(client.get('https://evil.example/steal')).rejects.toBeInstanceOf(
+        ErliApiException,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should surface a timeout as ErliNetworkException for an idempotent GET', async () => {
+      // Reject only when our AbortController fires, so the per-request timeout
+      // drives the failure rather than a synthetic rejection.
+      fetchMock.mockImplementation(
+        (_url: string, init: { signal: AbortSignal }): Promise<Response> =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      );
+
+      await expect(client.get('/offers', { timeoutMs: 1 })).rejects.toMatchObject({
+        message: expect.stringContaining('timed out'),
+      });
+      // Idempotent GET → retried to exhaustion (maxRetries: 2 → 3 attempts).
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
     it('should return status and parsed data on success', async () => {
@@ -178,7 +215,12 @@ describe('ErliHttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('should honor a numeric Retry-After header', async () => {
+    it('should honor a numeric Retry-After header within the delay ceiling', async () => {
+      // maxDelayMs well above the header value so it passes through unclamped.
+      const honoringClient = new ErliHttpClient('conn-1', BASE_URL, API_KEY, {
+        ...FAST_RETRY,
+        maxDelayMs: 5000,
+      });
       const sleepSpy = jest
         .spyOn(ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> }, 'sleep')
         .mockResolvedValue(undefined);
@@ -186,7 +228,7 @@ describe('ErliHttpClient', () => {
         .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '2' }))
         .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{}' }));
 
-      await client.get('/offers');
+      await honoringClient.get('/offers');
 
       expect(sleepSpy).toHaveBeenCalledWith(2000);
       sleepSpy.mockRestore();
@@ -207,6 +249,24 @@ describe('ErliHttpClient', () => {
       const waited = sleepSpy.mock.calls[0][0];
       expect(Number.isFinite(waited)).toBe(true);
       expect(Number.isNaN(waited)).toBe(false);
+      sleepSpy.mockRestore();
+    });
+
+    it('should clamp an absurd Retry-After to maxDelayMs', async () => {
+      const sleepSpy = jest
+        .spyOn(
+          ErliHttpClient.prototype as unknown as { sleep: (ms: number) => Promise<void> },
+          'sleep',
+        )
+        .mockResolvedValue(undefined);
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '999999999' }))
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{}' }));
+
+      await client.get('/offers');
+
+      // FAST_RETRY.maxDelayMs is 1 — the multi-year header must not reach setTimeout.
+      expect(sleepSpy).toHaveBeenCalledWith(1);
       sleepSpy.mockRestore();
     });
 

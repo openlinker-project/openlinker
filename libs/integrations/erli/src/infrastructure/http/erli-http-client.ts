@@ -61,23 +61,33 @@ class RetryableHttpError extends Error {
 export class ErliHttpClient implements IErliHttpClient {
   private readonly logger = new Logger(ErliHttpClient.name);
   private readonly retryConfig: RetryConfig;
+  /** Base URL normalized to a trailing slash so a path prefix survives joins. */
+  private readonly baseUrl: string;
+  /** Expected origin; every resolved per-request URL is re-checked against it. */
+  private readonly baseOrigin: string;
 
   constructor(
     private readonly connectionId: string,
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly apiKey: string,
     retryConfig?: Partial<RetryConfig>,
   ) {
     // Config guard: never let the bearer key leave over plaintext (Assumption 6).
-    let protocol: string;
+    let parsed: URL;
     try {
-      protocol = new URL(baseUrl).protocol;
+      parsed = new URL(baseUrl);
     } catch {
       throw new ErliApiException(`ErliHttpClient: invalid baseUrl "${baseUrl}"`);
     }
-    if (protocol !== 'https:') {
-      throw new ErliApiException(`ErliHttpClient: baseUrl must be https, got "${protocol}"`);
+    if (parsed.protocol !== 'https:') {
+      throw new ErliApiException(
+        `ErliHttpClient: baseUrl must be https, got "${parsed.protocol}"`,
+      );
     }
+    // Trailing slash so `new URL('offers', base)` keeps a path prefix like
+    // `/svc/shop-api` instead of resolving it away to the host root.
+    this.baseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    this.baseOrigin = parsed.origin;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
 
@@ -120,7 +130,12 @@ export class ErliHttpClient implements IErliHttpClient {
         if (attempt === this.retryConfig.maxRetries) {
           throw this.toExhaustedException(error, this.buildUrl(path, options?.queryParams));
         }
-        const waitMs = error.retryAfterMs ?? this.jitter(delay);
+        // Honor server `Retry-After`, but clamp to `maxDelayMs` so a hostile or
+        // buggy upstream can't stall a worker on an absurd backoff.
+        const waitMs =
+          error.retryAfterMs !== undefined
+            ? Math.min(Math.max(error.retryAfterMs, 0), this.retryConfig.maxDelayMs)
+            : this.jitter(delay);
         this.logger.warn(
           `Erli ${method} ${path} failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}); retrying in ${waitMs}ms [connectionId=${this.connectionId} requestId=${requestId}]`,
         );
@@ -141,11 +156,9 @@ export class ErliHttpClient implements IErliHttpClient {
     options?: ErliRequestOptions,
   ): Promise<ErliHttpResponse<T>> {
     const url = this.buildUrl(path, options?.queryParams);
+    const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      options?.timeoutMs ?? REQUEST_TIMEOUT_MS,
-    );
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     let response: Response;
     try {
@@ -161,7 +174,12 @@ export class ErliHttpClient implements IErliHttpClient {
         signal: controller.signal,
       });
     } catch (error) {
-      const message = `Erli network error: ${(error as Error).message}`;
+      // Distinguish a timeout (our AbortController fired) from a genuine
+      // transport failure — the message feeds the host RetryClassifier.
+      const message =
+        (error as Error)?.name === 'AbortError'
+          ? `Erli ${method} ${path} timed out after ${timeoutMs}ms`
+          : `Erli network error: ${(error as Error).message}`;
       // Transport failure: retry only if idempotent, else fail fast (D3).
       if (idempotent) {
         throw new RetryableHttpError(message, 'transport', undefined, error);
@@ -171,7 +189,7 @@ export class ErliHttpClient implements IErliHttpClient {
       clearTimeout(timeout);
     }
 
-    await this.throwIfNotOk(response, method, path, idempotent);
+    await this.throwIfNotOk(response, method, path, idempotent, options?.queryParams);
 
     if (response.status === 204) {
       return { status: response.status, data: undefined as T };
@@ -193,12 +211,13 @@ export class ErliHttpClient implements IErliHttpClient {
     method: ErliHttpMethod,
     path: string,
     idempotent: boolean,
+    queryParams?: ErliRequestOptions['queryParams'],
   ): Promise<void> {
     if (response.ok) {
       return;
     }
 
-    const url = this.buildUrl(path);
+    const url = this.buildUrl(path, queryParams);
     const responseBody = await this.safeReadBody(response);
     const message = `Erli ${method} ${path} failed (${response.status})`;
 
@@ -230,7 +249,18 @@ export class ErliHttpClient implements IErliHttpClient {
   }
 
   private buildUrl(path: string, queryParams?: ErliRequestOptions['queryParams']): string {
-    const url = new URL(path, this.baseUrl);
+    // Strip leading slashes so an absolute-looking path can neither drop the
+    // base prefix nor (via `//host`) retarget the origin — the join stays
+    // relative to the configured base.
+    const url = new URL(path.replace(/^\/+/, ''), this.baseUrl);
+    // Defense in depth: a resolved URL that escaped the host or downgraded the
+    // scheme must never carry the bearer key. Re-assert the construction guard
+    // per request, since `path` is the one caller-varying input.
+    if (url.protocol !== 'https:' || url.origin !== this.baseOrigin) {
+      throw new ErliApiException(
+        `ErliHttpClient: request path escaped the configured host (resolved origin "${url.origin}")`,
+      );
+    }
     if (queryParams) {
       for (const [key, value] of Object.entries(queryParams)) {
         if (value !== undefined) {
