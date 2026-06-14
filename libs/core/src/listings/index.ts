@@ -31,8 +31,12 @@ export type {
   CategoryResolutionInput,
   CategoryResolutionResult,
   CategoryResolutionMethod,
+  CategoryProvenance,
 } from './application/types/category-resolution.types';
-export { CategoryResolutionMethodValues } from './application/types/category-resolution.types';
+export {
+  CategoryResolutionMethodValues,
+  CategoryProvenanceValues,
+} from './application/types/category-resolution.types';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
   OfferLinkMethod,

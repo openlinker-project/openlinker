@@ -155,7 +155,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       connectionId: input.connectionId,
       barcode,
     });
-    return result.allegroCategoryId;
+    return result.destinationCategoryId;
   }
 
   private resolvePrice(
