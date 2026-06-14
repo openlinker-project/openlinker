@@ -25,7 +25,11 @@ import type {
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ErliAdapterFactory } from '../../application/erli-adapter.factory';
+import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
+import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
+import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
+import { ErliRateLimitException } from '../../domain/exceptions/erli-rate-limit.exception';
 
 /**
  * PLACEHOLDER probe path — replaced by #992 with a confirmed cheap
@@ -59,15 +63,21 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
   }
 
   private toFailure(error: unknown, latencyMs: number): ConnectionTestResult {
-    if (error instanceof ErliAuthenticationException) {
-      return { success: false, status: error.statusCode, message: error.message, latencyMs };
+    // Only a recognized Erli exception's message/status reaches the
+    // operator-facing result: their messages are bounded and never carry the
+    // bearer key. Any other error (e.g. a raw fetch/undici error, whose message
+    // can embed internal request details) collapses to a fixed string so
+    // nothing unexpected is surfaced in OL Admin.
+    if (
+      error instanceof ErliAuthenticationException ||
+      error instanceof ErliApiException ||
+      error instanceof ErliNetworkException ||
+      error instanceof ErliConfigException ||
+      error instanceof ErliRateLimitException
+    ) {
+      const status = 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined;
+      return { success: false, status, message: error.message, latencyMs };
     }
-    const err = error as { statusCode?: number; message?: string };
-    return {
-      success: false,
-      status: typeof err.statusCode === 'number' ? err.statusCode : undefined,
-      message: err.message ?? 'Erli probe failed',
-      latencyMs,
-    };
+    return { success: false, status: undefined, message: 'Erli probe failed', latencyMs };
   }
 }
