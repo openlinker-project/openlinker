@@ -25,6 +25,7 @@ import type {
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ErliAdapterFactory } from '../../application/erli-adapter.factory';
+import type { IErliAdapterFactory } from '../../application/interfaces/erli-adapter.factory.interface';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
@@ -41,7 +42,10 @@ const ERLI_CONNECTION_PROBE_PATH = '/offers?limit=1';
 const NO_RETRY = { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 } as const;
 
 export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
-  constructor(private readonly factory: ErliAdapterFactory = new ErliAdapterFactory()) {}
+  // Depends on the IErliAdapterFactory abstraction (defaulting to the concrete
+  // factory) so the construction seam is injectable and the infra→application
+  // edge is against an interface, not a concrete application class.
+  constructor(private readonly factory: IErliAdapterFactory = new ErliAdapterFactory()) {}
 
   async test(
     connection: Connection,
