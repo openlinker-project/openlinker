@@ -16,3 +16,12 @@ export { erliAdapterManifest, createErliPlugin } from './erli-plugin';
 
 // Host wiring
 export { ErliIntegrationModule } from './erli-integration.module';
+
+// HTTP-client domain exceptions (#981). The client + interface stay
+// package-private (siblings keep theirs private too); these typed exceptions
+// are the public surface — they feed the host RetryClassifier /
+// AuthFailureClassifier the Erli adapters register in #984/#993 (ADR-008).
+export { ErliApiException } from './domain/exceptions/erli-api.exception';
+export { ErliAuthenticationException } from './domain/exceptions/erli-authentication.exception';
+export { ErliRateLimitException } from './domain/exceptions/erli-rate-limit.exception';
+export { ErliNetworkException } from './domain/exceptions/erli-network.exception';
