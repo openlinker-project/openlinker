@@ -12,6 +12,7 @@ import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-ident
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { samplePrestashopProduct } from '../../../__tests__/fixtures/prestashop-product.fixture';
 import { PrestashopProductMapper } from '../../mappers/prestashop-product.mapper';
+import { PrestashopAttributeResolver } from '../../provisioners/prestashop-attribute.resolver';
 import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
@@ -542,6 +543,76 @@ describe('PrestashopProductMasterAdapter', () => {
         undefined,
         undefined
       );
+    });
+  });
+
+  describe('getProductVariants — semantic attributes (#1050)', () => {
+    const externalProductId = '42';
+    const productId = 'internal-product-123';
+    const combinations: PrestashopCombination[] = [
+      {
+        id: '101',
+        id_product: '42',
+        reference: 'VAR-RED',
+        associations: { product_option_values: [{ id: '20' }] },
+      },
+    ];
+    const options = [{ id: '1', name: 'Color' }];
+    const optionValues = [{ id: '20', name: 'Red', id_attribute_group: '1' }];
+
+    function seedIdentifierMapping(): void {
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: externalProductId, entityType: 'Product' },
+      ]);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+        .fn()
+        .mockResolvedValue(new Map([['101:test-connection-id', 'internal-variant-1']]));
+    }
+
+    it('emits semantic { group: value } attributes when the resolver is wired', async () => {
+      seedIdentifierMapping();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.listResources = jest.fn((resource: string) => {
+        if (resource === 'combinations') return Promise.resolve(combinations);
+        if (resource === 'product_options') return Promise.resolve(options);
+        if (resource === 'product_option_values') return Promise.resolve(optionValues);
+        return Promise.resolve([]);
+      }) as unknown as typeof mockHttpClient.listResources;
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver()
+      );
+
+      const result = await adapterWithResolver.getProductVariants(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].attributes).toEqual({ Color: 'Red' });
+    });
+
+    it('falls back to positional attributes when the option fetch fails', async () => {
+      seedIdentifierMapping();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.listResources = jest.fn((resource: string) => {
+        if (resource === 'combinations') return Promise.resolve(combinations);
+        return Promise.reject(new Error('options endpoint down'));
+      }) as unknown as typeof mockHttpClient.listResources;
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver()
+      );
+
+      const result = await adapterWithResolver.getProductVariants(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].attributes).toEqual({ option_0: '20' });
     });
   });
 });

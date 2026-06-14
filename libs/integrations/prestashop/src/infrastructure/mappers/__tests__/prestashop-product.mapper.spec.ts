@@ -8,6 +8,7 @@
  */
 import { PrestashopProductMapper } from '../prestashop-product.mapper';
 import type { PrestashopProduct, PrestashopCombination } from '../prestashop.mapper.interface';
+import type { OptionValueResolver } from '../../../domain/types/prestashop-product-option.types';
 
 const STOREFRONT_BASE_URL = 'https://shop.test';
 
@@ -682,6 +683,64 @@ describe('PrestashopProductMapper', () => {
 
       expect(result.ean).toBeNull();
       expect(result.gtin).toBeNull();
+    });
+
+    it('should emit semantic attributes when a resolver resolves the option-value ids (#1050)', () => {
+      const combination: PrestashopCombination = {
+        id: '100',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        associations: {
+          product_option_values: [{ id: '20' }, { id: '30' }],
+        },
+      };
+      const resolve: OptionValueResolver = (id) =>
+        id === '20'
+          ? { groupName: 'Color', valueName: 'Red' }
+          : id === '30'
+            ? { groupName: 'Size', valueName: 'M' }
+            : null;
+
+      const result = mapper.mapVariant(combination, 'internal-product-id', resolve);
+
+      expect(result.attributes).toEqual({ Color: 'Red', Size: 'M' });
+    });
+
+    it('should fall back to the positional id for option values the resolver cannot resolve (#1050)', () => {
+      const combination: PrestashopCombination = {
+        id: '100',
+        id_product: '1',
+        reference: 'TEST-001-RED',
+        associations: {
+          product_option_values: [{ id: '20' }, { id: '99' }],
+        },
+      };
+      const resolve: OptionValueResolver = (id) =>
+        id === '20' ? { groupName: 'Color', valueName: 'Red' } : null;
+
+      const result = mapper.mapVariant(combination, 'internal-product-id', resolve);
+
+      expect(result.attributes).toEqual({ Color: 'Red', option_1: '99' });
+    });
+  });
+
+  describe('localizeField', () => {
+    it('should read a flat string field', () => {
+      expect(mapper.localizeField('Red')).toBe('Red');
+    });
+
+    it('should read the preferred language from a JSON [{id,value}] field', () => {
+      const field = [
+        { id: '1', value: 'Red' },
+        { id: '2', value: 'Czerwony' },
+      ];
+      expect(mapper.localizeField(field, 1)).toBe('Red');
+      expect(mapper.localizeField(field, 2)).toBe('Czerwony');
+    });
+
+    it('should return undefined for an empty field', () => {
+      expect(mapper.localizeField(undefined)).toBeUndefined();
+      expect(mapper.localizeField('   ')).toBeUndefined();
     });
   });
 });
