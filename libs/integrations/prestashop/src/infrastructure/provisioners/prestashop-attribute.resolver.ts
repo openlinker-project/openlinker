@@ -68,9 +68,16 @@ export class PrestashopAttributeResolver {
       this.cache.delete(connectionId);
     }
 
+    // Field-selection keeps this per-connection bootstrap lean — we only read
+    // id/name (+ id_attribute_group for values), not full option bodies. Uses
+    // the same `display` override `listExternalIds` relies on.
     const [options, values] = await Promise.all([
-      client.listResources<PrestashopProductOption>('product_options'),
-      client.listResources<PrestashopProductOptionValue>('product_option_values'),
+      client.listResources<PrestashopProductOption>('product_options', {
+        display: '[id,name]',
+      }),
+      client.listResources<PrestashopProductOptionValue>('product_option_values', {
+        display: '[id,name,id_attribute_group]',
+      }),
     ]);
 
     const groupNameById = new Map<string, string>();
