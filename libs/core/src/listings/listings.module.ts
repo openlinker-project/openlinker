@@ -18,6 +18,7 @@ import { OfferLinkingService } from './application/services/offer-linking.servic
 import { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
 import { OfferMappingsService } from './application/services/offer-mappings.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
+import { AttributeProjectionService } from './application/services/attribute-projection.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { OfferCreationRecordOrmEntity } from './infrastructure/persistence/entities/offer-creation-record.orm-entity';
 import { OfferCreationRecordRepository } from './infrastructure/persistence/repositories/offer-creation-record.repository';
@@ -48,6 +49,7 @@ import {
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -71,6 +73,7 @@ export {
   BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN,
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
+  ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -109,6 +112,7 @@ export {
     OfferMappingSyncService,
     OfferMappingsService,
     CategoryResolutionService,
+    AttributeProjectionService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
     BulkListingBatchRepository,
@@ -159,6 +163,10 @@ export {
     {
       provide: CATEGORY_RESOLUTION_SERVICE_TOKEN,
       useExisting: CategoryResolutionService,
+    },
+    {
+      provide: ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+      useExisting: AttributeProjectionService,
     },
     {
       provide: OFFER_BUILDER_SERVICE_TOKEN,

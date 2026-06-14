@@ -4,6 +4,7 @@
  * @module libs/core/src/listings
  */
 
+export const ATTRIBUTE_PROJECTION_SERVICE_TOKEN = Symbol('IAttributeProjectionService');
 export const OFFER_LINKING_SERVICE_TOKEN = Symbol('OfferLinkingService');
 export const OFFER_MAPPING_SYNC_SERVICE_TOKEN = Symbol('OfferMappingSyncService');
 export const OFFER_MAPPINGS_SERVICE_TOKEN = Symbol('IOfferMappingsService');

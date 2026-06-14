@@ -37,6 +37,12 @@ export {
   CategoryResolutionMethodValues,
   CategoryProvenanceValues,
 } from './application/types/category-resolution.types';
+export type { IAttributeProjectionService } from './application/interfaces/attribute-projection.service.interface';
+export type {
+  AttributeProjectionInput,
+  AttributeProjectionResult,
+  ResolvedParameter,
+} from './application/types/attribute-projection.types';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
   OfferLinkMethod,
