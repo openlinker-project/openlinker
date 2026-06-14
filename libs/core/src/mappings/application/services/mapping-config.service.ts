@@ -125,29 +125,29 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.externalStateId ?? null;
   }
 
-  getCategoryMappings(connectionId: string): Promise<CategoryMapping[]> {
-    return this.categoryRepo.findByConnectionId(connectionId);
+  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]> {
+    return this.categoryRepo.findByDestinationConnection(destinationConnectionId);
   }
 
   upsertCategoryMapping(
-    connectionId: string,
+    destinationConnectionId: string,
     input: CategoryMappingInput
   ): Promise<CategoryMapping> {
-    return this.categoryRepo.upsertMapping(connectionId, input);
+    return this.categoryRepo.upsertMapping(destinationConnectionId, input);
   }
 
-  deleteCategoryMapping(connectionId: string, prestashopCategoryId: string): Promise<void> {
-    return this.categoryRepo.deleteMapping(connectionId, prestashopCategoryId);
+  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void> {
+    return this.categoryRepo.deleteMapping(destinationConnectionId, sourceCategoryId);
   }
 
-  async resolveAllegroCategory(
-    connectionId: string,
-    prestashopCategoryId: string
+  async resolveDestinationCategory(
+    destinationConnectionId: string,
+    sourceCategoryId: string
   ): Promise<string | null> {
-    const mapping = await this.categoryRepo.findByPrestashopCategoryId(
-      connectionId,
-      prestashopCategoryId
+    const mapping = await this.categoryRepo.findBySourceCategory(
+      destinationConnectionId,
+      sourceCategoryId
     );
-    return mapping?.allegroCategoryId ?? null;
+    return mapping?.destinationCategoryId ?? null;
   }
 }

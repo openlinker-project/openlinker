@@ -34,8 +34,20 @@ export interface PaymentMappingInput {
 }
 
 export interface CategoryMappingInput {
-  prestashopCategoryId: string;
-  allegroCategoryId: string;
-  allegroCategoryName: string;
-  allegroCategoryPath?: string;
+  sourceCategoryId: string;
+  destinationCategoryId: string;
+  destinationCategoryName: string;
+  destinationCategoryPath?: string;
+  /**
+   * Owning source connection. Optional for now (#1036 record-only): the API
+   * create path doesn't yet supply it, so rows are created with `null` and the
+   * lookup falls back to the destination+source-category key. Threading the
+   * source connection through create/resolve is a follow-up.
+   */
+  sourceConnectionId?: string | null;
+  /**
+   * Owner-taxonomy identifier the mapping is authored against (e.g. `'allegro'`).
+   * Defaults to `'allegro'` when omitted (only marketplace pair today).
+   */
+  destinationTaxonomyProvenance?: string;
 }

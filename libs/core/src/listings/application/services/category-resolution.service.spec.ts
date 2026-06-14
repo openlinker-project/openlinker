@@ -22,12 +22,12 @@ const CONNECTION_ID = 'conn-123';
 
 describe('CategoryResolutionService', () => {
   let integrationsService: { getCapabilityAdapter: jest.Mock };
-  let mappingConfig: { resolveAllegroCategory: jest.Mock };
+  let mappingConfig: { resolveDestinationCategory: jest.Mock };
   let service: CategoryResolutionService;
 
   beforeEach(() => {
     integrationsService = { getCapabilityAdapter: jest.fn() };
-    mappingConfig = { resolveAllegroCategory: jest.fn() };
+    mappingConfig = { resolveDestinationCategory: jest.fn() };
     service = new CategoryResolutionService(
       integrationsService as unknown as IIntegrationsService,
       mappingConfig as unknown as IMappingConfigService
@@ -51,7 +51,7 @@ describe('CategoryResolutionService', () => {
         updateOfferQuantity: jest.fn(),
         matchCategoryByBarcode: jest.fn().mockResolvedValue(null),
       });
-      mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-mapped');
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
 
       const result = await service.resolveCategory({
         connectionId: CONNECTION_ID,

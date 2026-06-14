@@ -15,7 +15,7 @@ import type { IMappingConfigService } from '@openlinker/core/mappings';
 describe('CategoryResolutionService', () => {
   let service: CategoryResolutionService;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
-  let mappingConfig: jest.Mocked<Pick<IMappingConfigService, 'resolveAllegroCategory'>>;
+  let mappingConfig: jest.Mocked<Pick<IMappingConfigService, 'resolveDestinationCategory'>>;
   let marketplace: { matchCategoryByBarcode: jest.Mock };
 
   beforeEach(async () => {
@@ -28,7 +28,7 @@ describe('CategoryResolutionService', () => {
     };
 
     mappingConfig = {
-      resolveAllegroCategory: jest.fn(),
+      resolveDestinationCategory: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -53,12 +53,12 @@ describe('CategoryResolutionService', () => {
 
     expect(result).toEqual({ allegroCategoryId: 'allegro-cat-123', method: 'auto_detect' });
     expect(marketplace.matchCategoryByBarcode).toHaveBeenCalledWith('5901234123457');
-    expect(mappingConfig.resolveAllegroCategory).not.toHaveBeenCalled();
+    expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
   });
 
   it('should fall back to category_mapping when auto-detect returns null', async () => {
     marketplace.matchCategoryByBarcode.mockResolvedValue(null);
-    mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-456');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-456');
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',
@@ -67,12 +67,12 @@ describe('CategoryResolutionService', () => {
     });
 
     expect(result).toEqual({ allegroCategoryId: 'allegro-cat-456', method: 'category_mapping' });
-    expect(mappingConfig.resolveAllegroCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-1');
+    expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-1');
   });
 
   it('should return manual when both auto-detect and mapping fail', async () => {
     marketplace.matchCategoryByBarcode.mockResolvedValue(null);
-    mappingConfig.resolveAllegroCategory.mockResolvedValue(null);
+    mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',
@@ -84,7 +84,7 @@ describe('CategoryResolutionService', () => {
   });
 
   it('should skip auto-detect when no barcode is provided', async () => {
-    mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-789');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-789');
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',
@@ -96,7 +96,7 @@ describe('CategoryResolutionService', () => {
   });
 
   it('should try multiple source categories in order until one resolves', async () => {
-    mappingConfig.resolveAllegroCategory
+    mappingConfig.resolveDestinationCategory
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce('allegro-cat-deep');
 
@@ -106,9 +106,9 @@ describe('CategoryResolutionService', () => {
     });
 
     expect(result).toEqual({ allegroCategoryId: 'allegro-cat-deep', method: 'category_mapping' });
-    expect(mappingConfig.resolveAllegroCategory).toHaveBeenCalledTimes(2);
-    expect(mappingConfig.resolveAllegroCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-shallow');
-    expect(mappingConfig.resolveAllegroCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-deep');
+    expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(2);
+    expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-shallow');
+    expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('conn-1', 'ps-cat-deep');
   });
 
   it('should return manual when no barcode and no source categories', async () => {
@@ -121,7 +121,7 @@ describe('CategoryResolutionService', () => {
 
   it('should handle auto-detect error gracefully and fall back to mapping', async () => {
     integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('adapter unavailable'));
-    mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-fallback');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-fallback');
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',
@@ -138,7 +138,7 @@ describe('CategoryResolutionService', () => {
   it('should handle adapter without matchCategoryByBarcode support', async () => {
     const adapterWithoutMethod = {} as OfferManagerPort;
     integrationsService.getCapabilityAdapter.mockResolvedValue(adapterWithoutMethod);
-    mappingConfig.resolveAllegroCategory.mockResolvedValue('allegro-cat-mapped');
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
 
     const result = await service.resolveCategory({
       connectionId: 'conn-1',

@@ -95,7 +95,7 @@ describe('OrderSyncService', () => {
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
-      resolveAllegroCategory: jest.fn(),
+      resolveDestinationCategory: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;
 
     syncLock = {
