@@ -37,9 +37,12 @@ function createCmd(overrides: Partial<CreateOfferCommand> = {}): CreateOfferComm
     stock: 10,
     publishImmediately: true,
     ...rest,
+    // Default to a resolvable Allegro category: ADR-025 §3 makes a missing one a
+    // terminal rejection, so the happy-path/unrelated tests must carry one.
     overrides: {
       title: 'Default Widget',
       imageUrls: ['https://cdn.example.com/default.jpg'],
+      categoryId: '18654',
       ...ov,
     },
   };
@@ -75,13 +78,20 @@ describe('ErliOfferManagerAdapter', () => {
     it('should map the basic command fields into the create body', async () => {
       await adapter.createOffer(
         createCmd({
-          overrides: { title: 'Widget', description: 'A nice widget', imageUrls: ['https://cdn.example.com/a.jpg'] },
+          overrides: {
+            categoryId: '18654',
+            title: 'Widget',
+            description: 'A nice widget',
+            imageUrls: ['https://cdn.example.com/a.jpg'],
+          },
           variantBarcode: '5901234123457',
         }),
       );
 
       const body = httpClient.post.mock.calls[0][1];
-      expect(body).toEqual({
+      // toMatchObject: this test covers basic-field mapping, not taxonomy
+      // (externalCategories is asserted by the #985 reuse tests).
+      expect(body).toMatchObject({
         price: 4999,
         stock: 10,
         images: [{ url: 'https://cdn.example.com/a.jpg' }],
@@ -100,7 +110,12 @@ describe('ErliOfferManagerAdapter', () => {
 
     it('should let a per-offer platformParams.dispatchTime override the connection default', async () => {
       await adapter.createOffer(
-        createCmd({ overrides: { platformParams: { dispatchTime: { period: 5, unit: 'hour' } } } }),
+        createCmd({
+          overrides: {
+            categoryId: '18654',
+            platformParams: { dispatchTime: { period: 5, unit: 'hour' } },
+          },
+        }),
       );
       const body = httpClient.post.mock.calls[0][1] as { dispatchTime?: unknown };
       expect(body.dispatchTime).toEqual({ period: 5, unit: 'hour' });
@@ -144,6 +159,7 @@ describe('ErliOfferManagerAdapter', () => {
       await adapter.createOffer(
         createCmd({
           overrides: {
+            categoryId: '18654',
             imageUrls: ['https://cdn.example.com/ok.jpg', 'http://x/insecure.jpg', 'https://169.254.169.254/meta'],
           },
         }),
@@ -261,14 +277,12 @@ describe('ErliOfferManagerAdapter', () => {
         ]);
       });
 
-      it('should omit both taxonomy keys and still POST when no Allegro data is present', async () => {
-        const result = await adapter.createOffer(createCmd());
-
-        expect(httpClient.post).toHaveBeenCalledTimes(1);
-        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body).not.toHaveProperty('externalCategories');
-        expect(body).not.toHaveProperty('externalAttributes');
-        expect(result.status).toBe('draft');
+      it('should throw OfferCreateRejectedException and NOT POST when no Allegro taxonomy resolves (ADR-025 §3)', async () => {
+        // Explicitly clear the helper's default categoryId so no Allegro taxonomy resolves.
+        await expect(
+          adapter.createOffer(createCmd({ overrides: { categoryId: undefined } })),
+        ).rejects.toBeInstanceOf(OfferCreateRejectedException);
+        expect(httpClient.post).not.toHaveBeenCalled();
       });
 
       it('should omit externalAttributes when the category is present but no params map', async () => {

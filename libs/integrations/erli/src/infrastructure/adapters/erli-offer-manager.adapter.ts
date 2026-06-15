@@ -164,11 +164,19 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     if (externalCategories.length > 0) {
       body.externalCategories = externalCategories;
     } else {
-      // No Allegro category → list without taxonomy reuse (ADR-025 §3 / #978
-      // §6.2): graceful-omit, not a hard create failure.
-      this.logger.warn(
-        `Erli offer has no Allegro category; listing without taxonomy reuse — #985/#978 §6.2 [connectionId=${this.connectionId}]`,
-      );
+      // ADR-025 §3: OL builds no Erli-native taxonomy in v1 — a product without
+      // resolved Allegro taxonomy cannot list on Erli. Fail closed with a clear,
+      // terminal rejection (OfferCreationExecutionService derives business_failure
+      // from OfferCreateRejectedException) rather than silently listing it
+      // untaxonomised (spec #978 §6).
+      throw new OfferCreateRejectedException(this.adapterKey, 422, [
+        {
+          field: 'category',
+          code: 'NO_ALLEGRO_TAXONOMY',
+          message:
+            'No Allegro category resolved for this product; Erli v1 requires Allegro-ID taxonomy reuse (ADR-025 §3).',
+        },
+      ]);
     }
     const externalAttributes = buildExternalAttributes(cmd);
     if (externalAttributes.length > 0) {
