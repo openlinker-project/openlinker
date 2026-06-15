@@ -48,14 +48,18 @@
  * already exists (`updateOfferQuantity`); #993 only needs to observe the
  * `cancelled` event and call it.
  *
- * Variant grouping (#986): the create body carries `externalVariantGroup` (the
- * parent/base product id shared by sibling variants) + per-variant `attributes`
- * when the command's `overrides.platformParams.erliVariantGroup` is populated.
- * Single/simple products omit it and list ungrouped. The CORE plumbing that
- * POPULATES that key (threading the parent product id + flattened distinguishing
- * attributes through OfferBuilderService / the #824 bulk expansion) is a deferred
- * follow-up — until it lands, the key is absent and offers list ungrouped (no
- * regression). Create-path only; `buildPatchFromFields` never emits grouping.
+ * Variant grouping (#986 emit half, #1065 core populator): the create body
+ * carries `externalVariantGroup` (the parent/base product id shared by sibling
+ * variants) + per-variant `attributes` when the command carries the neutral,
+ * core-populated `cmd.variantGroup` (`OfferBuilderService` stamps it for a
+ * sibling of a multi-variant product — #1065). Single/simple products omit it
+ * and list ungrouped. The adapter MAPS the neutral `variantGroup` to Erli's wire
+ * shape (`groupId` → `externalVariantGroup.id`; `attributes` field-for-field) —
+ * no erli-named key lives in core. `externalVariantGroup.id` is BODY-ONLY: it is
+ * the parent product id (`ol_product_*`), a different shape from the variant id
+ * the path pattern enforces, so it MUST never be routed through `productPath()`
+ * or any path-building helper (#992 must not promote it to a path component).
+ * Create-path only; `buildPatchFromFields` never emits grouping.
  *
  * Out of scope (own issues, marked seams): master-price → offer propagation (no
  * core trigger today), offer-status reconciliation #989.
@@ -92,7 +96,6 @@ import type {
   ErliProductImage,
   ErliProductPatchBody,
   ErliProductResource,
-  ErliVariantAttribute,
 } from './erli-product.types';
 
 /**
@@ -469,14 +472,17 @@ export class ErliOfferManagerAdapter
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
-    // #986: explicit multi-variant grouping. Present only when core populated
-    // `overrides.platformParams.erliVariantGroup` (deferred follow-up); single/
-    // simple products list ungrouped.
-    const group = buildVariantGroup(cmd);
-    if (group) {
-      body.externalVariantGroup = { id: group.id };
-      if (group.attributes.length > 0) {
-        body.attributes = group.attributes;
+    // #986/#1065: explicit multi-variant grouping. Present only when core
+    // populated the neutral `cmd.variantGroup` (OfferBuilderService); single/
+    // simple products omit it and list ungrouped. `groupId` is BODY-ONLY —
+    // never path-validated (it is the parent product id, not a variant id).
+    const g = cmd.variantGroup;
+    if (g && g.groupId.length > 0) {
+      body.externalVariantGroup = { id: g.groupId };
+      if (g.attributes.length > 0) {
+        // Neutral OfferVariantAttribute and wire ErliVariantAttribute are
+        // structurally identical (`{ name, value }`) — assign directly.
+        body.attributes = g.attributes;
       }
     }
     return body;
@@ -704,68 +710,6 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
-}
-
-function toUnknownArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? (value as unknown[]) : [];
-}
-
-/** Resolved #986 grouping inputs after narrowing the opaque platformParams bag. */
-interface ResolvedVariantGroup {
-  id: string;
-  attributes: ErliVariantAttribute[];
-}
-
-/**
- * Read the #986 grouping inputs from the command's adapter-neutral
- * `overrides.platformParams.erliVariantGroup` bag (mirrors how #985 reads
- * `platformParams.parameters`). Returns null — list UNGROUPED — when the key is
- * absent or carries no non-empty `groupId` (single/simple products, and the
- * not-yet-populated default state until the deferred core follow-up lands).
- * Distinguishing `attributes` are narrowed per-entry; malformed entries drop.
- */
-function buildVariantGroup(cmd: CreateOfferCommand): ResolvedVariantGroup | null {
-  const candidate = cmd.overrides?.platformParams?.erliVariantGroup;
-  if (!isErliVariantGroupShape(candidate)) {
-    return null;
-  }
-  const attributes: ErliVariantAttribute[] = [];
-  for (const entry of toUnknownArray(candidate.attributes)) {
-    if (isVariantAttributeShape(entry)) {
-      attributes.push({ name: entry.name, value: entry.value });
-    }
-  }
-  return { id: candidate.groupId, attributes };
-}
-
-/** Erli grouping input on `platformParams`, after narrowing. */
-interface ErliVariantGroupShape {
-  groupId: string;
-  attributes?: unknown;
-}
-
-/**
- * Narrow the opaque `platformParams.erliVariantGroup` value: require a non-empty
- * `groupId: string`. `attributes` (if present) is validated per-entry in
- * {@link buildVariantGroup}, so it stays `unknown` here.
- */
-function isErliVariantGroupShape(candidate: unknown): candidate is ErliVariantGroupShape {
-  if (typeof candidate !== 'object' || candidate === null) {
-    return false;
-  }
-  const c = candidate as { groupId?: unknown };
-  return typeof c.groupId === 'string' && c.groupId.length > 0;
-}
-
-/** Narrow a single distinguishing-attribute entry to `{ name, value }` strings. */
-function isVariantAttributeShape(candidate: unknown): candidate is ErliVariantAttribute {
-  if (typeof candidate !== 'object' || candidate === null) {
-    return false;
-  }
-  const c = candidate as { name?: unknown; value?: unknown };
-  return (
-    typeof c.name === 'string' && c.name.length > 0 && typeof c.value === 'string' && c.value.length > 0
-  );
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

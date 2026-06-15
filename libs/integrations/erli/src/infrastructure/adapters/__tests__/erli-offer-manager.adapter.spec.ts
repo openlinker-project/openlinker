@@ -333,20 +333,15 @@ describe('ErliOfferManagerAdapter', () => {
       });
     });
 
-    describe('variant grouping (#986)', () => {
+    describe('variant grouping (#986/#1065)', () => {
       const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
 
-      it('should emit externalVariantGroup + attributes for a multi-variant product', async () => {
+      it('should map the neutral variantGroup to externalVariantGroup + attributes for a multi-variant product', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: {
-                erliVariantGroup: {
-                  groupId: GROUP_ID,
-                  attributes: [{ name: 'Color', value: 'Red' }],
-                },
-              },
+            variantGroup: {
+              groupId: GROUP_ID,
+              attributes: [{ name: 'Color', value: 'Red' }],
             },
           }),
         );
@@ -359,7 +354,7 @@ describe('ErliOfferManagerAdapter', () => {
         expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
       });
 
-      it('should list ungrouped (no externalVariantGroup/attributes) for a single/simple product', async () => {
+      it('should list ungrouped (no externalVariantGroup/attributes) when no variantGroup is present', async () => {
         await adapter.createOffer(createCmd());
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
@@ -368,9 +363,7 @@ describe('ErliOfferManagerAdapter', () => {
       });
 
       it('should ignore an empty groupId (treats as ungrouped)', async () => {
-        await adapter.createOffer(
-          createCmd({ overrides: { categoryId: '18654', platformParams: { erliVariantGroup: { groupId: '' } } } }),
-        );
+        await adapter.createOffer(createCmd({ variantGroup: { groupId: '', attributes: [] } }));
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
         expect(body).not.toHaveProperty('externalVariantGroup');
@@ -380,14 +373,10 @@ describe('ErliOfferManagerAdapter', () => {
       it('should give sibling variants the same group id while each posts to its own path', async () => {
         const variantA = `ol_variant_${'a'.repeat(32)}`;
         const variantB = `ol_variant_${'c'.repeat(32)}`;
-        const platformParams = { erliVariantGroup: { groupId: GROUP_ID } };
+        const variantGroup = { groupId: GROUP_ID, attributes: [] };
 
-        await adapter.createOffer(
-          createCmd({ internalVariantId: variantA, overrides: { categoryId: '18654', platformParams } }),
-        );
-        await adapter.createOffer(
-          createCmd({ internalVariantId: variantB, overrides: { categoryId: '18654', platformParams } }),
-        );
+        await adapter.createOffer(createCmd({ internalVariantId: variantA, variantGroup }));
+        await adapter.createOffer(createCmd({ internalVariantId: variantB, variantGroup }));
 
         const [pathA, bodyA] = httpClient.post.mock.calls[0] as [string, { externalVariantGroup?: unknown }];
         const [pathB, bodyB] = httpClient.post.mock.calls[1] as [string, { externalVariantGroup?: unknown }];
@@ -397,38 +386,32 @@ describe('ErliOfferManagerAdapter', () => {
         expect(bodyB.externalVariantGroup).toEqual({ id: GROUP_ID });
       });
 
-      it('should emit externalVariantGroup with no attributes key when attributes are absent', async () => {
-        await adapter.createOffer(
-          createCmd({ overrides: { categoryId: '18654', platformParams: { erliVariantGroup: { groupId: GROUP_ID } } } }),
-        );
+      it('should emit externalVariantGroup with no attributes key when attributes are empty', async () => {
+        await adapter.createOffer(createCmd({ variantGroup: { groupId: GROUP_ID, attributes: [] } }));
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
         expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
         expect(body).not.toHaveProperty('attributes');
       });
 
-      it('should drop malformed attribute entries and omit the key when none survive', async () => {
+      it('should copy the neutral attributes through field-for-field without transformation', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: {
-                erliVariantGroup: {
-                  groupId: GROUP_ID,
-                  attributes: [
-                    { name: 'Color', value: 'Red' },
-                    { name: 'Size' }, // missing value → dropped
-                    { value: 'X' }, // missing name → dropped
-                    { name: 5, value: 'Y' }, // non-string name → dropped
-                  ],
-                },
-              },
+            variantGroup: {
+              groupId: GROUP_ID,
+              attributes: [
+                { name: 'Color', value: 'Red' },
+                { name: 'Size', value: 'M' },
+              ],
             },
           }),
         );
 
         const body = httpClient.post.mock.calls[0][1] as { attributes?: unknown };
-        expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+        expect(body.attributes).toEqual([
+          { name: 'Color', value: 'Red' },
+          { name: 'Size', value: 'M' },
+        ]);
       });
 
       it('should never emit grouping on a field-update or quantity PATCH (create-only)', async () => {
