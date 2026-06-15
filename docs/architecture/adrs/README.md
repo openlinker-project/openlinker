@@ -113,5 +113,6 @@ One pointer per section, identical format every time.
 | [ADR-022](./022-dpd-tracking-soap-dpdinfoservices.md) | DPD Polska tracking transport: SOAP DPDInfoServices (dual-transport plugin) | Proposed | 2026-06-11 |
 | [ADR-023](./023-cross-platform-category-and-attribute-projection.md) | Cross-platform category placement and attribute projection | Accepted | 2026-06-13 |
 | [ADR-024](./024-destination-listing-capabilities.md) | Destination listing capabilities — marketplace OfferManager vs shop ProductPublisher | Accepted | 2026-06-13 |
+| [ADR-025](./025-erli-marketplace-adapter.md) | Erli marketplace adapter — reconciliation-first posture, API-key auth, Allegro-ID taxonomy reuse | Accepted | 2026-06-12 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
