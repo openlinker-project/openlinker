@@ -168,6 +168,34 @@ describe('ErliSetupForm', () => {
     expect(screen.getByText(/Unauthorized/)).toBeInTheDocument();
   });
 
+  it('surfaces the "Unable to test connection" alert when the test request rejects', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    // A rejected test request (network failure / 5xx) leaves testResult null and
+    // surfaces the error via testConnection.error — distinct from a resolved
+    // { success: false } result.
+    const test = vi.fn().mockRejectedValue(new Error('Network unreachable'));
+    const apiClient = createMockApiClient({ connections: { create, test } });
+
+    renderWithProviders(<ErliSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Erli Store' },
+    });
+    fireEvent.change(screen.getByLabelText('API key'), {
+      target: { value: 'sk_test_123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+    const testButton = await screen.findByRole('button', { name: 'Test connection' });
+    fireEvent.click(testButton);
+
+    expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
+    expect(screen.getByText(/Network unreachable/)).toBeInTheDocument();
+    // The success/fail result alert must NOT appear on the rejected path.
+    expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
+  });
+
   it('disables the submit button during the create mutation', async () => {
     const create = vi
       .fn()
