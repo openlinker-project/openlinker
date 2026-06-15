@@ -2,7 +2,7 @@
  * Erli Offer Manager Adapter — unit tests (#984, #985, #986, #988, #989)
  *
  * Mocks `IErliHttpClient` to verify: seller-keyed path build (validate+encode),
- * 202→'validating' create mapping (#989), sparse PATCH for field/quantity
+ * 202→'draft' create mapping (#989/#1063), sparse PATCH for field/quantity
  * updates, the safe 4xx→OfferCreateRejectedException mapping (no responseBody
  * leak), auth propagation, hostile-id rejection, imageUrl hygiene, the #985
  * Allegro category/parameter reuse, the #988 frozen-field exclusion, and the
@@ -72,14 +72,17 @@ describe('ErliOfferManagerAdapter', () => {
   });
 
   describe('createOffer', () => {
-    it("should submit to the seller-keyed product path and return status 'validating' on 202", async () => {
+    it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
       const result = await adapter.createOffer(createCmd());
 
       expect(httpClient.post).toHaveBeenCalledTimes(1);
       const [path, , options] = httpClient.post.mock.calls[0];
       expect(path).toBe(`products/${VALID_ID}`);
       expect(options).toEqual({ idempotent: true });
-      expect(result).toEqual({ externalOfferId: VALID_ID, status: 'validating' });
+      // 'draft' (not 'validating'): avoids the Allegro-tuned creation poll that
+      // would falsely fail valid offers during Erli's ~20-min cache lag (#1063);
+      // the steady-state erli-offer-status-sync reconciles publication instead.
+      expect(result).toEqual({ externalOfferId: VALID_ID, status: 'draft' });
     });
 
     it('should map the basic command fields into the create body', async () => {
