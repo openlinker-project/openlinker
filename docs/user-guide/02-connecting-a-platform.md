@@ -54,14 +54,12 @@ OpenLinker calls the PrestaShop API using a webservice key. Create one in the Pr
 4. Set a description (e.g. `OpenLinker`), tick **GET** permissions on all resources, and save.
 5. Copy the generated key — you'll paste it into the OpenLinker wizard.
 
-> ⚠️ Never paste a real API key into a screenshot. Use placeholder data during testing, or blur the key field before capturing.
-
 ### Step 1 — Credentials form
 
 After selecting **PrestaShop**, fill in the wizard form:
 
 <!-- screenshot: PrestaShop credential form with all fields visible; API key field blurred/redacted -->
-![PrestaShop connection form](./images/02-new-connection-pretashop.png)
+![PrestaShop connection form](./images/02-new-connection-prestashop-form.png)
 
 | Field | Description |
 |---|---|
@@ -79,7 +77,7 @@ Click **Create connection**. OpenLinker validates the credentials and, if succes
 On the connection detail page, click **Test connection** in the **Actions** tab.
 
 <!-- screenshot: PrestaShop connection detail — Actions tab, with "Connection OK" toast notification visible at bottom-right -->
-![Connection test — success](./images/02-connection-test-success-pretashop.png)
+![Connection test — success](./images/02-prestashop-test-connection.png)
 
 A **Connection OK** toast confirms the webservice key is valid and all registered capabilities resolve correctly.
 
@@ -98,7 +96,7 @@ The connection detail page has four tabs:
 - **Config** — current configuration values stored for this connection
 
 <!-- screenshot: PrestaShop connection Health tab showing diagnostic checks and recent jobs -->
-![PrestaShop connection — Health tab](./images/02-pretashop-diagnostics.png)
+![PrestaShop connection — Health tab](./images/02-prestashop-diagnostics.png)
 
 ### Category Mappings
 
@@ -113,7 +111,7 @@ The PrestaShop connection detail also exposes a **Category Mappings** page, acce
 After selecting **Allegro**, the wizard asks for OAuth credentials from your registered Allegro application:
 
 <!-- screenshot: Allegro connection wizard — Credentials step showing Connection name, Client ID, Client secret fields and the OAuth/Allegro API tab selector -->
-![Allegro connection wizard — Credentials](./images/02-allgero-connect.png)
+![Allegro connection wizard — Credentials](./images/02-allegro-connect.png)
 
 | Field | Description |
 |---|---|
@@ -134,7 +132,7 @@ After filling in credentials, the wizard redirects you to Allegro's authorizatio
 On the Allegro connection detail, click **Test connection**:
 
 <!-- screenshot: Allegro connection detail — Actions tab with "Connection OK" toast notification -->
-![Allegro connection — test success](./images/02-allegro-test-connection.png)
+![Allegro connection — test success](./images/02-allegro-test-succes.png)
 
 The **Connection OK** toast and the displayed response time confirm the Allegro API credentials are valid.
 

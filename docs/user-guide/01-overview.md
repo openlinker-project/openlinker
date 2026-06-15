@@ -73,8 +73,7 @@ The top bar carries:
 
 The Dashboard is your at-a-glance view of system and integration health.
 
-<!-- screenshot: dashboard overview showing metric cards at the top and status panels below -->
-![Dashboard overview](./images/01-dashboard1.png)
+![Dashboard overview](./images/01-dashboard-2.png)
 
 ### Summary cards
 
@@ -82,20 +81,24 @@ Four cards at the top give a quick health read:
 
 | Card | What it shows |
 |---|---|
-| **Integration health** | Status of your connected platforms |
-| **System health** | Core dependencies (PostgreSQL, Redis, PrestaShop, Worker) — shows OK when all are reachable |
+| **Integration health** | `2 / 2` — how many connections are active out of the total configured |
+| **System health** | OK when all core dependencies (PostgreSQL, Redis, PrestaShop, Worker) are reachable |
 | **Failed jobs** | Count of jobs in `dead` state that need attention |
 | **Queued jobs** | Jobs currently waiting to be picked up by the worker |
 
 ### Incidents panel
 
-The **INCIDENTS — What's broken right now** panel lists any connections or system components that are currently in an error state. An empty panel means everything is healthy.
+The **INCIDENTS — What's broken right now** panel lists any connections or system components that are currently in an error state. An empty panel ("No failed jobs. All clear.") means everything is healthy.
 
 ### Connection health & Infrastructure
 
-Below the incidents panel, two side-by-side sections show:
-- **INTEGRATIONS — Connection health** — per-connection status for each configured platform
-- **INFRASTRUCTURE — System health** — PostgreSQL, Redis, and other core service statuses
+Two side-by-side sections show:
+- **INTEGRATIONS — Connection health** — per-connection status chip (ACTIVE / error) for each configured platform (e.g. Allegro, Pretashop)
+- **INFRASTRUCTURE — System health** — PostgreSQL, Redis, PrestaShop module, and Worker process — each with an OK / error chip
+
+### Recent sync jobs
+
+The **ACTIVITY — Recent sync jobs** table at the bottom shows the latest background jobs across all connections: job type, status chip, attempt count, and last-updated timestamp. Use this as a quick sanity check that syncs are running.
 
 ---
 

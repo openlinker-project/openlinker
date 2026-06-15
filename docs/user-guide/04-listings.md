@@ -10,27 +10,18 @@ For Allegro-specific category parameter details, see the **[Allegro Setup Guide]
 
 Open **Listings** in the sidebar (under **Operations**).
 
-<!-- screenshot: listings list showing offer rows with status banners or chips and connection filter -->
-![Listings list](./images/04-offer-pending.png)
+![Listings list](./images/04-listings-list.png)
 
 The Listings page is the **offer mapping workbench** — it shows offer-to-variant identifier mappings across platforms. Each row represents one offer on a marketplace. Columns include:
 
-- **Product / variant** — the linked OpenLinker product and variant
-- **Offer ID** — the marketplace's own offer identifier (e.g. Allegro offer ID)
-- **Connection** — which marketplace connection this offer belongs to
-- **Status** — current publication status:
+- **External ID** — the marketplace's own offer identifier (e.g. Allegro offer ID)
+- **Internal ID** — the corresponding OpenLinker variant identifier (`ol_variant_…`)
+- **Platform** — the integration platform (e.g. `allegro`)
+- **Entity type** — always `Offer` for listing mappings
+- **Connection** — the connection UUID this offer belongs to
+- **Created** — when the mapping was recorded
 
-| Status | Meaning |
-|---|---|
-| **active** | The offer is live and visible to buyers |
-| **activating** | The offer was submitted and is being processed by the marketplace |
-| **inactivating** | The offer is being deactivated |
-| **inactive** | The offer exists on the marketplace but is not currently published |
-| **ended** | The offer has ended and is no longer visible |
-
-While an offer creation job is running, a banner at the top shows **Offer creation · PENDING** with a progress indicator. Once the job completes, the new offer appears in the list.
-
-Use the **connection filter** to narrow the list to one marketplace account, and the **search bar** to find by SKU or EAN.
+Use the filters at the top (**External ID**, **Connection ID**, **Platform type**) to narrow the list to a specific offer or marketplace account.
 
 ---
 
@@ -38,17 +29,15 @@ Use the **connection filter** to narrow the list to one marketplace account, and
 
 Click **Create offer** to open the connection picker dialog.
 
-<!-- screenshot: "Create offer" connection picker dialog showing available marketplace connections -->
-![Create offer — connection picker](./images/04-offer-creation.png)
+![Create offer — connection picker](./images/04-offer-creation1.png)
 
-Select the marketplace connection to create the offer on (e.g. your Allegro account). The offer-creation wizard opens.
+A small modal appears with a **Connection** dropdown listing your configured marketplace accounts. Select the account (e.g. `Allegro (allegro)`) and click **Continue** — the offer-creation wizard opens.
 
 ### Step 1 — Variant
 
-<!-- screenshot: offer-creation wizard step 1 showing the product/variant search field -->
-![Offer wizard — step 1: Variant selection](./images/04-create-allegro-offer.png)
+![Offer wizard — step 1: Variant selection](./images/04-offer-creation.png)
 
-Search for the product you want to list by name, SKU, or EAN. Select the specific variant (for multi-variant products like a T-shirt with sizes S/M/L, each size is a separate variant).
+The wizard header shows the 5 steps: **Variant → Offer details → Category parameters → Policies → Review**. Use the search field to find a product by name, SKU, or EAN. Results show the product name and available variants — select the specific variant you want to list. For multi-variant products (e.g. a ring with multiple sizes), each variant becomes its own Allegro offer.
 
 ### Step 2 — Offer details
 
@@ -102,8 +91,7 @@ Allegro automatically groups the resulting per-variant offers into a single buye
 
 Category mappings connect your PrestaShop product categories to Allegro's category tree. Without a mapping, the offer wizard cannot pre-select a category — you'll need to browse the tree manually for each offer.
 
-<!-- screenshot: Category Mappings page showing PrestaShop category tree on the left and Allegro category browser on the right -->
-![Category Mappings](./images/04-category-mappings-allgero.png)
+![Category Mappings](./images/04-category-mappings-allegro.png)
 
 To open the Category Mappings page:
 
@@ -111,9 +99,9 @@ To open the Category Mappings page:
 2. Click your **PrestaShop connection**.
 3. Click **Category Mappings** in the connection's action bar.
 
-The page shows:
-- **Left panel** — your PrestaShop category tree
-- **Right panel** — the Allegro category browser with a **Marketplace connection** selector at the top
+The page header shows how many categories are mapped (e.g. "8 of 8 categories mapped"). It has:
+- **Left panel** — your PrestaShop category tree; each mapped category displays the mapped Allegro category name as a chip
+- **Right panel** — the Allegro category browser, with a **Marketplace connection** selector at the top to choose which Allegro account's tree to browse
 
 ### Mapping a category
 

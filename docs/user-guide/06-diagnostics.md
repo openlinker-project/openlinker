@@ -67,6 +67,9 @@ OpenLinker receives inbound webhooks from connected platforms (currently PrestaS
 
 ### Webhook list
 
+<!-- screenshot: webhook deliveries list showing one published test.ping row from prestashop -->
+![Webhook deliveries](./images/06-webhook.png)
+
 Each row represents one inbound webhook delivery. Columns include:
 
 - **Provider** — the platform that sent the webhook (e.g. `prestashop`)

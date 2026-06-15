@@ -76,10 +76,11 @@ Click any order row to open the order detail page.
 
 ### Header
 
-The header shows three summary tiles:
-- **Destinations** — how many destination shops this order has been pushed to
-- **Shipment status** — whether the order has been dispatched ("Not shipped" / shipment details)
-- **Total** — order amount
+The order title and status badges are shown at the top: the order reference, source platform chip (e.g. `Pretashop`), and lifecycle status badges (e.g. `NO DESTINATIONS`, `PENDING`). Below the header, three summary panels provide a quick read:
+
+- **SYNC** — whether the order has been pushed to a destination shop ("No destinations configured" = no destination set up yet)
+- **FULFILLMENT** — shipment status ("Not shipped / Awaiting dispatch" or shipment details once dispatched)
+- **TOTAL** — order value
 
 ### Pricing & tax
 
@@ -87,34 +88,31 @@ A breakdown of subtotal, shipping, tax, and total.
 
 ### Summary
 
-Key order metadata:
-- **Name** — the marketplace order reference
+Key order metadata displayed in a definition list:
+- **Order #** — the marketplace order reference
 - **Status** — current lifecycle status
-- **Source** — which connection this order came from
+- **Source** — which connection this order came from (with connection ID)
 - **Source event ID** — the marketplace-native event identifier
-- **Placed / Received / Modified / Updated** — lifecycle timestamps
+- **Placed** — when the order was placed on the source platform
+- **Received (OL)** — when OpenLinker first ingested the order
 
 ### Sync status
 
-Shows whether the order has been synced to a destination shop. If "No sync destinations configured" appears, no destination shop connection has been set up yet.
-
-### Activity
-
-A chronological log of significant events in the order's lifecycle:
-- **Order received** — when OpenLinker first ingested the order
-- **Logged and ready for sync** — order saved and queued for destination processing
-- **Order created** — when the PrestaShop/WooCommerce order was created
-- **Status updates** — each status change
-
-If order creation failed, the activity log shows the failure reason. Check **Jobs & Logs** for the full job payload and error detail.
+Shows the destination sync state. "No sync destinations configured. Idempotent create — a retry won't double-create; a synced row shows its destination order ID." means no destination shop has been connected yet.
 
 ### Shipment panel
 
-<!-- screenshot: order detail — Shipment section showing "Generate label" form or tracking details once a shipment is dispatched -->
-![Order detail — Shipment panel](./images/05-order-detail-shipment.png)
+![Order detail — Shipment panel with Generate label form](./images/05-order-detail-shipment.png)
 
-The shipment panel is on the right side of the order detail. Before dispatch it shows a **Generate label** button. Once a shipment is associated it shows:
+The shipment panel is on the right side of the order detail. Before dispatch it shows a **Generate label** button. Clicking it expands the label-generation form:
 
+- **Missing recipient data** warning — lists any required fields that could not be extracted from the order (e.g. buyer email, phone, street, city, postal code, country ISO). If this appears, the operator needs to obtain the missing details directly from the buyer.
+- **Recipient** — extracted from the order; shows "Could not extract from order — operator must contact buyer" if data is missing.
+- **Dimensions (mm)** — Length, Width, Height fields
+- **Weight (g)**
+- **Cash on delivery (optional)** — amount and currency to collect on delivery
+
+Once a shipment label is generated and the order is dispatched, the panel shows:
 - **Carrier** — the physical carrier (InPost, DHL, etc.)
 - **Tracking number** — the carrier's tracking reference
 - **Pickup point** (InPost paczkomat orders) — the selected paczkomat machine ID and address
@@ -130,6 +128,34 @@ If an order you expect to see hasn't appeared:
 1. **Check Jobs & Logs** — search for `marketplace.order.sync` jobs around the time the order was placed. A `dead` status means the job exhausted its retries; click the job for the error detail.
 2. **Check the Webhooks log** — if the order arrived via webhook, it will appear in the **Webhooks** delivery log. A missing entry means the webhook was never delivered to OpenLinker (check the Allegro developer console for delivery failures).
 3. **Check Cursors** — if the poll cursor is stuck, orders after a certain timestamp won't be re-fetched. See [Diagnostics → Cursors](./06-diagnostics.md#cursors) for how to inspect and reset.
+
+---
+
+## Customers
+
+Open **Customers** in the sidebar (under **Operations**).
+
+<!-- screenshot: customers list showing empty state with Browse orders CTA -->
+![Customers](./images/05-customers.png)
+
+The Customers page shows **customer identity projections** — OpenLinker's internal view of every buyer whose order has been processed. A projection is created automatically the first time an order arrives for a buyer; it is not editable here.
+
+### What is a customer projection?
+
+When an order arrives from Allegro (or another source), OpenLinker resolves the buyer's identity and provisions them in the destination shop (e.g. PrestaShop). The projection stored here is a lightweight, non-authoritative copy used for:
+
+- **Lookup** — confirm which internal customer ID maps to a buyer
+- **Debugging** — trace an order back to its buyer if an identity-resolution issue occurred
+- **Retry support** — allows order re-processing without re-fetching from the source platform
+
+### Filter bar
+
+- **Search by email or name** — find a customer by their email address or display name
+- **Source connection ID** — filter projections originating from a specific connection
+
+### Empty state
+
+If no orders have been processed yet, the page shows "No customer projections have been recorded yet." with a **Browse orders** shortcut. Projections appear as orders are ingested — you don't create them manually.
 
 ---
 

@@ -79,14 +79,15 @@ Open **Prompt templates** in the sidebar (under the **AI** group). Prompt templa
 
 ### Template list
 
-Each row represents one template version. Columns include:
+Each row represents one template. Columns include:
 
 - **Key** — the template's identifier (e.g. `offer.description.suggest`)
-- **Channel** — `master` for shop-generic prompts, or a platform type (e.g. `allegro`) for channel-specific overrides
-- **Status** — `draft`, `published`, or `archived`
-- **Version** — monotonically increasing version number
+- **Channel** — `MASTER` chip for shop-generic prompts, or a platform type chip (e.g. `allegro`) for channel-specific overrides
+- **Published** — the currently published version (dash if none published yet)
+- **Draft** — avatar icon of the user who last saved a draft (present when an unpublished draft exists)
+- **Updated** — when the template was last modified
 
-At any time, at most one template per `(key, channel)` combination can be **published** — that's the version the AI uses.
+At any time, at most one template per `(key, channel)` combination can be **published** — that's the version the AI uses. Rows with only a draft and no published version are not yet active. Use the **Archive** action to retire a template.
 
 ### Editing and publishing a template
 
