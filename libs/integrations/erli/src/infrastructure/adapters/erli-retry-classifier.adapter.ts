@@ -18,15 +18,26 @@
  * and `ErliRateLimitException` (429 — handled with Retry-After in the client),
  * plus anything unrecognized.
  *
+ * `ErliConfigException` is also non-retryable: it signals a deterministic
+ * programmer/config error raised before any request leaves the client (bad
+ * `baseUrl`/host escape, or a hostile product id failing the `productPath`
+ * allowlist). Retrying re-throws the same error every attempt, so it must fail
+ * fast instead of burning the whole retry budget (review #1058).
+ *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
  */
 import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
+import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 
 export class ErliRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
-    return cause instanceof ErliApiException || cause instanceof ErliAuthenticationException;
+    return (
+      cause instanceof ErliApiException ||
+      cause instanceof ErliAuthenticationException ||
+      cause instanceof ErliConfigException
+    );
   }
 }
