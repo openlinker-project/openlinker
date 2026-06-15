@@ -27,7 +27,7 @@ import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/e
 
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
@@ -61,7 +61,10 @@ describe('OfferBuilderService', () => {
   };
 
   beforeEach(async () => {
-    productsService = { getVariant: jest.fn().mockResolvedValue(defaultVariant) };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue(defaultVariant),
+      getVariantsByProductId: jest.fn().mockResolvedValue([defaultVariant]),
+    };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
     };
@@ -623,6 +626,104 @@ describe('OfferBuilderService', () => {
         })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
       expect(attributeProjection.project).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('variant grouping (#1065)', () => {
+    const siblingVariant = {
+      id: 'ol_variant_sibling',
+      productId: 'ol_product_456',
+    } as unknown as ProductVariant;
+
+    function multiVariant(attributes: Record<string, string> | null): void {
+      productsService.getVariant.mockResolvedValue({
+        ...(defaultVariant as unknown as Record<string, unknown>),
+        attributes,
+      } as unknown as ProductVariant);
+      productsService.getVariantsByProductId.mockResolvedValue([
+        defaultVariant,
+        siblingVariant,
+      ]);
+    }
+
+    it('should populate variantGroup when the product has more than one variant', async () => {
+      multiVariant({ Color: 'Red', Size: 'M' });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toEqual({
+        groupId: 'ol_product_456',
+        attributes: [
+          { name: 'Color', value: 'Red' },
+          { name: 'Size', value: 'M' },
+        ],
+      });
+    });
+
+    it('should leave variantGroup absent when the product has a single variant', async () => {
+      // beforeEach default already returns one sibling.
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toBeUndefined();
+    });
+
+    it('should populate the group ref with empty attributes when variant attributes are null', async () => {
+      multiVariant(null);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toEqual({ groupId: 'ol_product_456', attributes: [] });
+    });
+
+    it('should drop empty attribute names/values and sort the survivors by name', async () => {
+      multiVariant({ Size: 'M', Color: 'Red', '': 'x', Empty: '' });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup?.attributes).toEqual([
+        { name: 'Color', value: 'Red' },
+        { name: 'Size', value: 'M' },
+      ]);
+    });
+
+    it('should give sibling variants the same groupId when built independently', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([defaultVariant, siblingVariant]);
+      productsService.getVariant
+        .mockResolvedValueOnce(defaultVariant)
+        .mockResolvedValueOnce({
+          ...(siblingVariant as unknown as Record<string, unknown>),
+          ean: '5901234123457',
+        } as unknown as ProductVariant);
+
+      const first = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+      const second = await service.buildCreateOfferCommand({
+        internalVariantId: 'ol_variant_sibling',
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(first.variantGroup?.groupId).toBe('ol_product_456');
+      expect(second.variantGroup?.groupId).toBe('ol_product_456');
     });
   });
 });
