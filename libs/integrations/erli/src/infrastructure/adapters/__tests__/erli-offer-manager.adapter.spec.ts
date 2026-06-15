@@ -1,5 +1,5 @@
 /**
- * Erli Offer Manager Adapter — unit tests (#984, #985, #988)
+ * Erli Offer Manager Adapter — unit tests (#984, #985, #986, #988)
  *
  * Mocks `IErliHttpClient` to verify: seller-keyed path build (validate+encode),
  * 202→'draft' create mapping, sparse PATCH for field/quantity updates, the
@@ -313,6 +313,114 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
         expect(body).not.toHaveProperty('externalAttributes');
+      });
+    });
+
+    describe('variant grouping (#986)', () => {
+      const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
+
+      it('should emit externalVariantGroup + attributes for a multi-variant product', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {
+              platformParams: {
+                erliVariantGroup: {
+                  groupId: GROUP_ID,
+                  attributes: [{ name: 'Color', value: 'Red' }],
+                },
+              },
+            },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalVariantGroup?: unknown;
+          attributes?: unknown;
+        };
+        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+      });
+
+      it('should list ungrouped (no externalVariantGroup/attributes) for a single/simple product', async () => {
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body).not.toHaveProperty('externalVariantGroup');
+        expect(body).not.toHaveProperty('attributes');
+      });
+
+      it('should ignore an empty groupId (treats as ungrouped)', async () => {
+        await adapter.createOffer(
+          createCmd({ overrides: { platformParams: { erliVariantGroup: { groupId: '' } } } }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body).not.toHaveProperty('externalVariantGroup');
+        expect(body).not.toHaveProperty('attributes');
+      });
+
+      it('should give sibling variants the same group id while each posts to its own path', async () => {
+        const variantA = `ol_variant_${'a'.repeat(32)}`;
+        const variantB = `ol_variant_${'c'.repeat(32)}`;
+        const platformParams = { erliVariantGroup: { groupId: GROUP_ID } };
+
+        await adapter.createOffer(
+          createCmd({ internalVariantId: variantA, overrides: { platformParams } }),
+        );
+        await adapter.createOffer(
+          createCmd({ internalVariantId: variantB, overrides: { platformParams } }),
+        );
+
+        const [pathA, bodyA] = httpClient.post.mock.calls[0] as [string, { externalVariantGroup?: unknown }];
+        const [pathB, bodyB] = httpClient.post.mock.calls[1] as [string, { externalVariantGroup?: unknown }];
+        expect(pathA).toBe(`products/${variantA}`);
+        expect(pathB).toBe(`products/${variantB}`);
+        expect(bodyA.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(bodyB.externalVariantGroup).toEqual({ id: GROUP_ID });
+      });
+
+      it('should emit externalVariantGroup with no attributes key when attributes are absent', async () => {
+        await adapter.createOffer(
+          createCmd({ overrides: { platformParams: { erliVariantGroup: { groupId: GROUP_ID } } } }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(body).not.toHaveProperty('attributes');
+      });
+
+      it('should drop malformed attribute entries and omit the key when none survive', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {
+              platformParams: {
+                erliVariantGroup: {
+                  groupId: GROUP_ID,
+                  attributes: [
+                    { name: 'Color', value: 'Red' },
+                    { name: 'Size' }, // missing value → dropped
+                    { value: 'X' }, // missing name → dropped
+                    { name: 5, value: 'Y' }, // non-string name → dropped
+                  ],
+                },
+              },
+            },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { attributes?: unknown };
+        expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+      });
+
+      it('should never emit grouping on a field-update or quantity PATCH (create-only)', async () => {
+        await adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
+        await adapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 3 });
+
+        for (const call of httpClient.patch.mock.calls) {
+          const body = call[1] as Record<string, unknown>;
+          expect(body).not.toHaveProperty('externalVariantGroup');
+          expect(body).not.toHaveProperty('attributes');
+        }
       });
     });
   });
