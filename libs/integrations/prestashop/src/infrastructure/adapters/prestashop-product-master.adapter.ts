@@ -32,6 +32,8 @@ import {
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
+import type { PrestashopAttributeResolver } from '../provisioners/prestashop-attribute.resolver';
+import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
  * PrestaShop Product Master Adapter
@@ -45,7 +47,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly productMapper: IPrestashopProductMapper,
-    private readonly connection: Connection
+    private readonly connection: Connection,
+    // Optional so existing constructions (tests) stay valid; the factory always
+    // supplies a process-singleton instance so its option-value cache persists
+    // across per-product adapter instances (#1050).
+    private readonly attributeResolver?: PrestashopAttributeResolver
   ) {}
 
   async getProduct(productId: string): Promise<Product> {
@@ -75,11 +81,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     // Map to OpenLinker schema
-    const config = this.connection.config as unknown as PrestashopConnectionConfig;
-    // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-    const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
-    const langIdValue: number = configLangId ?? 1;
+    const langIdValue: number = this.resolveLangId();
 
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
@@ -118,11 +120,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(mappingRequests);
 
     // Map products with internal IDs
-    const config = this.connection.config as unknown as PrestashopConnectionConfig;
-    // Support both preferredLanguageId (new) and langId (deprecated, backward compatibility)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
-    const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
-    const langIdValue: number = configLangId ?? 1;
+    const langIdValue: number = this.resolveLangId();
 
     return prestashopProducts
       .map((prestashopProduct) => {
@@ -261,6 +259,12 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     const productEan = this.normalizeEan(prestashopProduct.ean13);
     const productGtin = this.normalizeGtin(prestashopProduct.upc);
 
+    // Resolve the option-value id → semantic-name map so variants carry
+    // `{ Color: 'Red' }` instead of positional ids (#1050). A transient options
+    // fetch must never break variant sync — on failure we fall back to the
+    // positional shape via a null resolver.
+    const resolveOptionValue = await this.buildOptionValueResolver();
+
     // Map variants with internal IDs
     return combinations
       .map((combination) => {
@@ -273,7 +277,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
           return null;
         }
 
-        const mapped = this.productMapper.mapVariant(combination, productId);
+        const mapped = this.productMapper.mapVariant(combination, productId, resolveOptionValue);
         if (combinations.length === 1) {
           if (!mapped.ean && productEan) {
             mapped.ean = productEan;
@@ -288,6 +292,47 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         };
       })
       .filter((v): v is ProductVariant => v !== null);
+  }
+
+  /**
+   * Build the per-call resolver that turns a combination's
+   * `product_option_value` id into `{ groupName, valueName }` (#1050). Returns
+   * `undefined` (mapper falls back to the positional shape) when no resolver is
+   * wired or the option dictionary can't be fetched — a transient options
+   * failure must not break variant sync.
+   */
+  private async buildOptionValueResolver(): Promise<OptionValueResolver | undefined> {
+    if (!this.attributeResolver) {
+      return undefined;
+    }
+    try {
+      const optionMap = await this.attributeResolver.getOptionValueMap(
+        this.connection.id,
+        this.httpClient,
+        (field, langId) => this.productMapper.localizeField(field, langId),
+        this.resolveLangId()
+      );
+      return (optionValueId: string) => optionMap.get(optionValueId) ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve PrestaShop option values (connection: ${this.connection.id}); ` +
+          `falling back to positional variant attributes: ${(error as Error).message}`
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * Resolve the connection's preferred language id for localized reads,
+   * supporting both `preferredLanguageId` (current) and `langId` (deprecated),
+   * defaulting to 1. Single source for product, product-list, and attribute
+   * localization so all three agree on language.
+   */
+  private resolveLangId(): number {
+    const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop connection config is dynamically shaped; narrowed to number | undefined here
+    const configLangId: number | undefined = config.preferredLanguageId ?? config.langId;
+    return configLangId ?? 1;
   }
 
   private normalizeEan(value?: string | null): string | null {

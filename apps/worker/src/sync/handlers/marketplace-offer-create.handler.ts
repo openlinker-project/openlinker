@@ -12,7 +12,7 @@
  *      and thread the result into `overrides.description`. AI failure falls
  *      through — operator override or builder default takes over (AC-9).
  *   2. **After** `executeCreation`, terminal outcome: advance the parent
- *      batch's counters via `BulkOfferCreationProgressService` — which
+ *      batch's counters via `BulkListingProgressService` — which
  *      gates on the `bulk_batch_advancements` table to give at-most-once
  *      counter semantics across retries + concurrent workers.
  *
@@ -33,10 +33,10 @@ import {
   type IContentSuggestionService,
 } from '@openlinker/core/content';
 import {
-  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
+  BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   type BulkChildOutcome,
   type CreateOfferOverrides,
-  type IBulkOfferCreationProgressService,
+  type IBulkListingProgressService,
   type IOfferCreationExecutionService,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OfferCreationInvariantException,
@@ -69,8 +69,8 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     private readonly contentSuggestion: IContentSuggestionService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
-    @Inject(BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN)
-    private readonly bulkProgress: IBulkOfferCreationProgressService
+    @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
+    private readonly bulkProgress: IBulkListingProgressService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {

@@ -189,11 +189,14 @@ export class MappingsController {
     @Param('prestashopCategoryId') prestashopCategoryId: string,
     @Body() dto: CategoryMappingInputDto
   ): Promise<CategoryMappingResponseDto> {
+    // #1036: map the (still Allegro/PS-named) wire DTO to the neutral core input.
+    // `connectionId` route param is the destination connection. `sourceConnectionId`
+    // is not yet supplied by the wire contract (record-only) — left undefined.
     const mapping = await this.mappingConfigService.upsertCategoryMapping(connectionId, {
-      prestashopCategoryId,
-      allegroCategoryId: dto.allegroCategoryId,
-      allegroCategoryName: dto.allegroCategoryName,
-      allegroCategoryPath: dto.allegroCategoryPath,
+      sourceCategoryId: prestashopCategoryId,
+      destinationCategoryId: dto.allegroCategoryId,
+      destinationCategoryName: dto.allegroCategoryName,
+      destinationCategoryPath: dto.allegroCategoryPath,
     });
     return CategoryMappingResponseDto.fromDomain(mapping);
   }

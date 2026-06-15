@@ -72,7 +72,11 @@ describe('OfferBuilderService', () => {
     categoryResolution = {
       resolveCategory: jest
         .fn()
-        .mockResolvedValue({ allegroCategoryId: 'allegro-cat-999', method: 'auto_detect' }),
+        .mockResolvedValue({
+          destinationCategoryId: 'allegro-cat-999',
+          provenance: 'owns',
+          method: 'auto_detect',
+        }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -185,7 +189,8 @@ describe('OfferBuilderService', () => {
 
     it('throws OfferBuilderValidationException when resolution returns null', async () => {
       categoryResolution.resolveCategory.mockResolvedValue({
-        allegroCategoryId: null,
+        destinationCategoryId: null,
+        provenance: null,
         method: 'manual',
       });
 

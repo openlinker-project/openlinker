@@ -21,8 +21,15 @@
  *   4. A migration file that is NOT yet on `origin/main` must have a
  *      timestamp strictly greater than every migration that IS (#1013 —
  *      `migration:generate` emits a real `Date.now()` prefix; re-prefix it
- *      to the next free synthetic timestamp before committing). Skipped
- *      with a one-line notice when the `origin/main` ref is unavailable.
+ *      to the next free synthetic timestamp before committing). Baseline
+ *      resolution depends on `git` (#1020): when `git` works but the
+ *      `origin/main` ref is missing it's skipped locally / a HARD FAILURE in
+ *      CI (`CI=true`) — the lint workflow fetches the ref so git-capable PR
+ *      builds enforce it; when `git` is absent entirely (self-hosted runners
+ *      where `actions/checkout` used its tarball fallback) the check skips
+ *      even in CI, since the runner can't support it (gated on #662/#557).
+ *      `push: [main]` builds pass vacuously (the migration is already in the
+ *      baseline) — the guard is a pre-merge gate.
  *
  * Wired into `pnpm lint` via the root `check:invariants` chain, so a
  * collision fails pre-commit and CI runs before the broken migration can
@@ -150,11 +157,53 @@ export function validateOrdering({ entries, baselineFilenames }) {
 }
 
 /**
+ * Decide what to do when the `origin/main` baseline ref is unavailable but
+ * `git` itself works (#1020). Locally (no CI) the ordering check degrades to a
+ * skip — exotic setups without the remote shouldn't block a commit. In CI a
+ * missing ref means the workflow failed to fetch it, so the guard would
+ * silently stop enforcing the #1013 invariant on exactly the pre-merge path
+ * that matters; we refuse to skip and fail loudly instead. Pure (env-free) so
+ * the self-check can drive it with fixtures; the single call site passes
+ * `isCi: process.env.CI === 'true'`.
+ *
+ * NOTE: this governs only the *ref-missing* case. When `git` is absent
+ * entirely (see `classifyBaselineError`) the check skips even in CI — a runner
+ * with no git binary cannot support the guard, and that's an environment
+ * limitation, not a per-PR failure.
+ */
+export function resolveMissingBaselineAction({ isCi }) {
+  return isCi ? 'fail' : 'skip';
+}
+
+/**
+ * Classify a failed `git ls-tree origin/main` into the reason it failed, so
+ * the caller can treat the two cases differently (#1020):
+ *   - `'no-git'`: the `git` binary is unavailable. The shell returns 127
+ *     ("command not found") — on self-hosted runners where `actions/checkout`
+ *     used its tarball/API fallback there is no git at all. Node throws
+ *     `ENOENT` if git is exec'd directly. This is an environment limitation;
+ *     the guard skips (even in CI).
+ *   - `'no-ref'`: git works but `origin/main` isn't present (git exits 128).
+ *     Fixable by fetching the ref — hard-fail in CI via
+ *     `resolveMissingBaselineAction`.
+ * Pure (no I/O) so the self-check can drive it with fixtures.
+ */
+export function classifyBaselineError(error) {
+  if (error && (error.code === 'ENOENT' || error.status === 127)) {
+    return 'no-git';
+  }
+  return 'no-ref';
+}
+
+/**
  * Basenames of migration files present on `origin/main` across the given
  * repo-root-relative directories, via `git ls-tree` (no checkout needed).
- * Returns `null` when the ref is unavailable (no remote, shallow clone
- * without the ref) — the caller skips the ordering check with a notice;
- * CI always has the ref, so the skip only relaxes exotic local setups.
+ * Returns a tagged result:
+ *   - `{ kind: 'ok', filenames }` on success;
+ *   - `{ kind: 'no-git' }` when the `git` binary is unavailable;
+ *   - `{ kind: 'no-ref' }` when git works but the `origin/main` ref is missing.
+ * The lint workflow fetches `origin/main` after checkout (when git is present)
+ * so git-capable PR builds resolve to `'ok'` (#1020).
  */
 function loadBaselineFilenames(relativeDirs) {
   try {
@@ -162,12 +211,13 @@ function loadBaselineFilenames(relativeDirs) {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString();
-    return out
+    const filenames = out
       .split('\n')
       .filter((line) => line.endsWith('.ts'))
       .map((line) => line.split('/').pop());
-  } catch {
-    return null;
+    return { kind: 'ok', filenames };
+  } catch (error) {
+    return { kind: classifyBaselineError(error) };
   }
 }
 
@@ -262,14 +312,28 @@ function runAgainstTree() {
 
   // Ordering invariant (#1013): files new on this branch must sort after
   // everything already on origin/main (core + plugin dirs, same union).
-  const baselineFilenames = loadBaselineFilenames(['apps/api/src/migrations', ...pluginDirs]);
+  const baseline = loadBaselineFilenames(['apps/api/src/migrations', ...pluginDirs]);
   let orderingSummary;
-  if (baselineFilenames === null) {
-    orderingSummary = 'ordering vs origin/main: skipped (no origin/main ref)';
-  } else {
-    const ordering = validateOrdering({ entries, baselineFilenames });
+  if (baseline.kind === 'ok') {
+    const ordering = validateOrdering({ entries, baselineFilenames: baseline.filenames });
     violations.push(...ordering.violations);
     orderingSummary = 'ordering vs origin/main: checked';
+  } else if (baseline.kind === 'no-git') {
+    // `git` is unavailable on this runner (e.g. a self-hosted runner where
+    // actions/checkout used its tarball/API fallback). The guard cannot run
+    // without git — skip even in CI; this is an environment limitation, not a
+    // per-PR failure. Full CI enforcement is gated on a git-capable runner
+    // (see #662 / #557 — move CI off self-hosted runners).
+    orderingSummary = 'ordering vs origin/main: skipped (git unavailable)';
+  } else if (resolveMissingBaselineAction({ isCi: process.env.CI === 'true' }) === 'fail') {
+    violations.push(
+      'ordering vs origin/main: git works but the origin/main ref is unavailable in CI — the ' +
+        'lint job must fetch it (git fetch --no-tags --depth=1 origin ' +
+        '+refs/heads/main:refs/remotes/origin/main); refusing to skip the #1013 invariant (#1020)',
+    );
+    orderingSummary = 'ordering vs origin/main: FAILED (ref unavailable in CI)';
+  } else {
+    orderingSummary = 'ordering vs origin/main: skipped (no origin/main ref)';
   }
 
   if (!ok || violations.length > 0) {
@@ -512,6 +576,33 @@ function runSelfCheck() {
     },
     'sorts before',
   );
+
+  // --- Missing-baseline action (#1020): hard-fail in CI, skip locally ---
+
+  const expectAction = (label, input, expected) => {
+    const got = resolveMissingBaselineAction(input);
+    if (got !== expected) {
+      console.error(`self-check FAIL: "${label}" expected '${expected}', got '${got}'`);
+      process.exit(1);
+    }
+  };
+
+  expectAction('missing baseline in CI → fail', { isCi: true }, 'fail');
+  expectAction('missing baseline locally → skip', { isCi: false }, 'skip');
+
+  // --- Baseline-error classification (#1020): git-absent vs ref-missing ---
+
+  const expectClass = (label, error, expected) => {
+    const got = classifyBaselineError(error);
+    if (got !== expected) {
+      console.error(`self-check FAIL: "${label}" expected '${expected}', got '${got}'`);
+      process.exit(1);
+    }
+  };
+
+  expectClass('git binary absent (shell 127) → no-git', { status: 127 }, 'no-git');
+  expectClass('git binary absent (ENOENT) → no-git', { code: 'ENOENT' }, 'no-git');
+  expectClass('git present, ref missing (128) → no-ref', { status: 128 }, 'no-ref');
 
   console.log('migration-timestamps: self-check OK');
 }

@@ -34,7 +34,7 @@ export class OfferCreationRecord {
      */
     public readonly request: OfferCreationRequestSnapshot | null = null,
     /**
-     * Parent BulkOfferCreationBatch id. Null for single-offer attempts; set
+     * Parent BulkListingBatch id. Null for single-offer attempts; set
      * when the record was created as part of a bulk submission (#736).
      */
     public readonly bulkBatchId: string | null = null,

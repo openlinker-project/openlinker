@@ -33,13 +33,11 @@
     "ai": "^6.0.168"
   },
   "peerDependencies": {
-    "@nestjs/common": "^10.0.0"
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "devDependencies": {
     "@types/jest": "29.5.12",

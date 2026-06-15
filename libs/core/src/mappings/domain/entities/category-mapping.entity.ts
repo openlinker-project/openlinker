@@ -1,13 +1,17 @@
 /**
  * Category Mapping Domain Entity
  *
- * Represents a connection-scoped mapping from a PrestaShop category
- * to an Allegro category. Pure domain entity with no framework deps.
+ * Connection-scoped mapping from a source category (on a product master, e.g.
+ * PrestaShop) to a destination category (on a marketplace/shop, e.g. Allegro),
+ * used to place an offer/listing in the right destination category. Pure domain
+ * entity with no framework deps.
  *
- * Note: Unlike other mapping types (StatusMapping, CarrierMapping, PaymentMapping)
- * which map Allegro source values to PrestaShop target values, CategoryMapping
- * maps PrestaShop → Allegro because the use case is "given a PrestaShop product
- * category, which Allegro category should be used for offer creation?"
+ * Neutralised in #1036 (ADR-023 §2): fields are source/destination-neutral and
+ * carry both connection ids plus `destinationTaxonomyProvenance` — the
+ * owner-taxonomy identifier (e.g. `'allegro'`) a borrowed-taxonomy destination
+ * (ERLI) resolves against. `sourceConnectionId` is nullable: historical rows and
+ * rows created before source-connection threading lands (record-only, #1036) may
+ * not know their source store.
  *
  * @module libs/core/src/mappings/domain/entities
  */
@@ -15,10 +19,12 @@
 export class CategoryMapping {
   constructor(
     public readonly id: string,
-    public readonly connectionId: string,
-    public readonly prestashopCategoryId: string,
-    public readonly allegroCategoryId: string,
-    public readonly allegroCategoryName: string,
-    public readonly allegroCategoryPath: string | null,
+    public readonly sourceConnectionId: string | null,
+    public readonly destinationConnectionId: string,
+    public readonly sourceCategoryId: string,
+    public readonly destinationCategoryId: string,
+    public readonly destinationCategoryName: string,
+    public readonly destinationCategoryPath: string | null,
+    public readonly destinationTaxonomyProvenance: string,
   ) {}
 }

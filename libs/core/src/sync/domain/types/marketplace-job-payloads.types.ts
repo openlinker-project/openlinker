@@ -122,8 +122,8 @@ export interface MarketplaceOfferCreatePayloadV2 {
   /** Pre-created OfferCreationRecord id — always set for V2 (bulk pre-creates). */
   offerCreationRecordId: string;
   /**
-   * Parent BulkOfferCreationBatch id. The worker handler (#737) uses this
-   * to call `BulkOfferCreationBatchRepositoryPort.incrementCounters` after
+   * Parent BulkListingBatch id. The worker handler (#737) uses this
+   * to call `BulkListingBatchRepositoryPort.incrementCounters` after
    * terminal status, and the bulk service uses it as part of the
    * idempotency key (`bulk:{batchId}:variant:{variantId}`).
    */

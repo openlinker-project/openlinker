@@ -1,10 +1,10 @@
 /**
  * Bulk Batch Drain Helper (#742)
  *
- * Synchronously drains pending children of a `BulkOfferCreationBatch` for
+ * Synchronously drains pending children of a `BulkListingBatch` for
  * int-spec end-to-end coverage. Stands in for the worker handler when the
  * worker process isn't booted: invokes `IOfferCreationExecutionService`
- * + `IBulkOfferCreationProgressService` directly per-record, mirroring the
+ * + `IBulkListingProgressService` directly per-record, mirroring the
  * `MarketplaceOfferCreateHandler.execute(job)` V2 path step-by-step.
  *
  * The fake adapter registered by `allegro-test-offer-manager-stub.helper.ts`
@@ -22,10 +22,10 @@
  * @module apps/api/test/integration/helpers
  */
 import {
-  BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN,
-  BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN,
-  IBulkOfferCreationProgressService,
-  IBulkOfferCreationSubmitService,
+  BULK_LISTING_PROGRESS_SERVICE_TOKEN,
+  BULK_LISTING_SUBMIT_SERVICE_TOKEN,
+  IBulkListingProgressService,
+  IBulkListingSubmitService,
   IOfferCreationExecutionService,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
@@ -54,11 +54,11 @@ export async function drainBulkBatch(
   const executeService = app.get<IOfferCreationExecutionService>(
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN
   );
-  const progressService = app.get<IBulkOfferCreationProgressService>(
-    BULK_OFFER_CREATION_PROGRESS_SERVICE_TOKEN
+  const progressService = app.get<IBulkListingProgressService>(
+    BULK_LISTING_PROGRESS_SERVICE_TOKEN
   );
-  const submitService = app.get<IBulkOfferCreationSubmitService>(
-    BULK_OFFER_CREATION_SUBMIT_SERVICE_TOKEN
+  const submitService = app.get<IBulkListingSubmitService>(
+    BULK_LISTING_SUBMIT_SERVICE_TOKEN
   );
 
   const summary = await submitService.getBatch(batchId);

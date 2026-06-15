@@ -34,13 +34,14 @@
     "image-size": "^1.0.0"
   },
   "peerDependencies": {
-    "@nestjs/common": "^10.0.0"
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.0.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "redis": "^4.0.0",
+    "typeorm": "^0.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "devDependencies": {
     "@types/jest": "29.5.12",

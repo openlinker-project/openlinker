@@ -31,8 +31,18 @@ export type {
   CategoryResolutionInput,
   CategoryResolutionResult,
   CategoryResolutionMethod,
+  CategoryProvenance,
 } from './application/types/category-resolution.types';
-export { CategoryResolutionMethodValues } from './application/types/category-resolution.types';
+export {
+  CategoryResolutionMethodValues,
+  CategoryProvenanceValues,
+} from './application/types/category-resolution.types';
+export type { IAttributeProjectionService } from './application/interfaces/attribute-projection.service.interface';
+export type {
+  AttributeProjectionInput,
+  AttributeProjectionResult,
+  ResolvedParameter,
+} from './application/types/attribute-projection.types';
 export type { IOfferLinkingService } from './application/interfaces/offer-linking.service.interface';
 export type {
   OfferLinkMethod,
@@ -76,36 +86,36 @@ export type {
 } from './domain/types/offer-creation-request-snapshot.types';
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
-export { BulkOfferCreationBatch } from './domain/entities/bulk-offer-creation-batch.entity';
+export { BulkListingBatch } from './domain/entities/bulk-listing-batch.entity';
 export {
   BulkBatchStatusValues,
   BULK_BATCH_STATUS,
-} from './domain/types/bulk-offer-creation-batch.types';
+} from './domain/types/bulk-listing-batch.types';
 export type {
   BulkBatchStatus,
-  CreateBulkOfferCreationBatchInput,
-} from './domain/types/bulk-offer-creation-batch.types';
-export type { BulkOfferCreationBatchRepositoryPort } from './domain/ports/bulk-offer-creation-batch-repository.port';
-export { BulkOfferCreationBatchNotFoundException } from './domain/exceptions/bulk-offer-creation-batch-not-found.exception';
+  CreateBulkListingBatchInput,
+} from './domain/types/bulk-listing-batch.types';
+export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
+export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { BulkBatchAdvancement } from './domain/entities/bulk-batch-advancement.entity';
 export type { BulkBatchAdvancementRepositoryPort } from './domain/ports/bulk-batch-advancement-repository.port';
 export { BulkChildOutcomeValues } from './domain/types/bulk-child-outcome.types';
 export type { BulkChildOutcome } from './domain/types/bulk-child-outcome.types';
-export type { IBulkOfferCreationProgressService } from './application/services/bulk-offer-creation-progress.service.interface';
-export type { IBulkOfferCreationSubmitService } from './application/interfaces/bulk-offer-creation-submit.service.interface';
+export type { IBulkListingProgressService } from './application/services/bulk-listing-progress.service.interface';
+export type { IBulkListingSubmitService } from './application/interfaces/bulk-listing-submit.service.interface';
 export type {
   BulkSharedConfig,
   PerProductOverride,
-  BulkOfferCreationSubmitInput,
-  BulkOfferCreationSubmitResult,
+  BulkListingSubmitInput,
+  BulkListingSubmitResult,
   BulkBatchSummary,
-} from './application/types/bulk-offer-creation-submit.types';
-export type { IBulkOfferCreationRetryService } from './application/interfaces/bulk-offer-creation-retry.service.interface';
+} from './application/types/bulk-listing-submit.types';
+export type { IBulkListingRetryService } from './application/interfaces/bulk-listing-retry.service.interface';
 export type {
-  BulkOfferCreationRetryAiFlags,
-  BulkOfferCreationRetryResult,
-} from './application/types/bulk-offer-creation-retry.types';
+  BulkListingRetryAiFlags,
+  BulkListingRetryResult,
+} from './application/types/bulk-listing-retry.types';
 export { AdapterCapabilityNotSupportedException } from './domain/exceptions/adapter-capability-not-supported.exception';
 export { BulkRetryMissingSnapshotException } from './domain/exceptions/bulk-retry-missing-snapshot.exception';
 export { NoFailedChildrenToRetryException } from './domain/exceptions/no-failed-children-to-retry.exception';

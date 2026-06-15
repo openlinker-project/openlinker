@@ -131,7 +131,9 @@ Open that link in your browser, enter a new password, and log in normally.
 2. The webservice is already enabled by the dev stack. Click **Add new webservice key**.
 3. In the key form:
    - **Description**: e.g. `OpenLinker dev`
-   - **Permissions**: tick the **View (GET)** column header to grant read on all resources (tighten later for production).
+   - **Permissions**:
+     - Tick the **View (GET)** column header to grant read on all resources.
+     - Also tick **Modify (PUT)** and **Add (POST)** on the **Configurations** row — OpenLinker writes to `ps_configuration` to push the webhook URL and shared secret when you click **Configure webhooks** on the connection detail page.
 4. Save and copy the generated key.
 
 > Ignore the "Webservice URL rewriting not functional" warning on the status panel — that check runs from inside the container against `localhost:8080` and is irrelevant for calls from the host.
@@ -166,6 +168,8 @@ Click **Test connection** — it should return a green success indicator confirm
    - **Name**: e.g. `OpenLinker dev`
    - **Redirect URI**: `http://localhost:4173/integrations/allegro/connect/callback`
 4. Save and copy the generated **Client ID** and **Client Secret**.
+
+> **Allegro API permissions:** Allegro asks you to grant permissions during the OAuth consent screen (not at app registration time). When the browser redirects to Allegro and shows the authorization dialog, accept all listed permissions — OpenLinker requires access to offers (read/write for listing and quantity updates) and orders (read for ingestion).
 
 ### 5.2 Create the connection in OpenLinker
 
@@ -241,15 +245,99 @@ Category mapping connects your PrestaShop categories to Allegro's category tree 
 
 Repeat for each category you intend to list products in on Allegro.
 
-## What's next
+## 8. Create first Allegro offer
+
+With a product synced from PrestaShop (§6) and a category mapped (§7), you can publish your first offer to Allegro.
+
+### 8.1 Open the offer creation wizard
+
+1. In the OpenLinker web app → **Listings** in the left nav.
+2. Click **Create offer** (top-right button). The bulk offer wizard opens.
+
+### 8.2 Select a product
+
+The first step of the wizard shows your synced product catalog. Pick your first product.
+
+Click **Next**.
+
+### 8.3 Configure the offer
+
+The wizard walks through several configuration panels:
+
+- **Category** — the Allegro category for this offer. If a category mapping exists (§7), it is pre-filled. Browse or search to change.
+- **Parameters** — category-specific attributes (brand, model, condition, etc.). Required parameters are marked; fill them in. For sandbox testing use realistic but fictional values.
+- **Pricing** — set the unit price in PLN. For sandbox you can use any value.
+- **Stock** — quantity to publish. The wizard pre-fills from the master inventory stock level synced from PrestaShop.
+- **Description** — uses the product description from PrestaShop by default. You can also click **Generate with AI** if an AI provider is configured.
+- **Shipping & policies** — select a delivery method and choose pre-configured seller policies from Allegro (implied policies work for sandbox).
+
+Click **Submit** when all required fields are filled.
+
+### 8.4 Watch the offer job
+
+After submit, a `marketplace.offer.create` job is enqueued. Open **Jobs & Logs** to track it:
+
+- Status `queued` → `running` → `succeeded` means the offer was published.
+- If `dead`, click the job row to read the error (most common on sandbox: missing required parameter or category mismatch). Fix and use **Retry** on the offer record in the **Listings** page.
+
+Once succeeded, open **Listings** in the left nav — the offer row shows its Allegro offer ID and publication status (`active`).
+
+---
+
+## 9. Watch an Allegro order land in PrestaShop
 
 Your dev stack is running, connections are configured, and the catalog is syncing.
 
 → **[Operator Guide](./user-guide/README.md)** — tour of the admin UI, day-to-day usage, and diagnostics.
 
 With both connections active, products discovered, and at least one category mapped, you're ready to:
+With an active offer on Allegro sandbox (§8), you can place a test order and watch it flow end-to-end into PrestaShop.
 
-- **Create your first Allegro offer from a PrestaShop product.** Walkthrough in progress — tracked in [#429](https://github.com/openlinker-project/openlinker/issues/429) (Allegro offer-creation epic). The flow is functional today; the screenshot-level guide is the next doc to land.
-- **Watch an Allegro order land in PrestaShop.** End-to-end sandbox walkthrough tracked in [#152](https://github.com/openlinker-project/openlinker/issues/152) (clean-state E2E epic). The ingestion path is exercised today by the carrier-mapping vertical-slice int-spec (landed in [PR #671](https://github.com/openlinker-project/openlinker/pull/671), closing [#535](https://github.com/openlinker-project/openlinker/issues/535)) — the user-facing walkthrough is the missing piece.
+### 9.1 (Optional) Configure webhooks for near-real-time ingestion
 
-Until those walkthroughs land, the **Jobs & Logs** page in the OpenLinker web app (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity, and the **Orders** page (`http://localhost:4173/orders`) surfaces orders as they ingest.
+Without webhooks, OpenLinker polls Allegro for new orders every 10 minutes. To get near-real-time delivery:
+
+1. Open the connection detail page for your Allegro connection.
+2. Click **Configure webhooks** — this registers your OpenLinker instance as a webhook receiver with Allegro.
+
+> Webhooks require your OpenLinker API to be reachable from the internet. In a local dev setup this usually isn't possible, so the polling path is the practical fallback. Skip this step if you're running locally behind NAT.
+
+### 9.2 Place a test order on Allegro sandbox
+
+Use the Allegro sandbox buyer account to place an order on the offer you published in §8:
+
+1. Open the Allegro sandbox storefront (`https://salescenter.allegro.com.allegrosandbox.pl/my-assortment`).
+2. Search for your offer by name or paste the offer URL from the connection detail page.
+3. Proceed to checkout and complete the order. Use fictional shipping details — sandbox orders don't ship anywhere.
+
+> Allegro sandbox's checkout flow is identical to production. You'll need a separate sandbox buyer login (different from your seller/developer account).
+
+### 9.3 Watch the order appear in OpenLinker
+
+Depending on whether webhooks are configured:
+
+- **With webhooks**: The order appears within seconds. A `marketplace.order.sync` job is created immediately after Allegro delivers the webhook.
+- **Without webhooks (polling)**: Wait up to 10 minutes for the `marketplace.orders.poll` job to fire. You can also manually trigger a poll: in **Jobs & Logs**, look for the most recent `marketplace.orders.poll` job, open it, and click **Run now** (if exposed) — or wait for the next scheduled run.
+
+In **Jobs & Logs** (`http://localhost:4173/jobs-logs`):
+1. Filter by job type `marketplace.order.sync`. A new row should appear with status `succeeded`.
+2. Click the job row to see its payload — it shows the Allegro checkout-form ID and the resulting OpenLinker order ID.
+
+### 9.4 Verify the order in OpenLinker and PrestaShop
+
+**In OpenLinker:**
+1. Open **Orders** (`http://localhost:4173/orders`). The order appears in the list.
+2. Click the order row — the detail page shows the source (Allegro sandbox connection), status, line items, and the sync destination (PrestaShop order ID once created).
+
+**In PrestaShop:**
+1. Open the PrestaShop admin → **Orders → Orders**.
+2. The Allegro order appears as a new order, created by the OpenLinker module's `importorder` front controller.
+3. The order is linked to a guest customer (provisioned automatically by OpenLinker) and shows the correct line items, shipping method, and total.
+
+---
+
+## What's next
+
+The **user guide** at [`docs/user-guide/README.md`](./user-guide/README.md) covers the full OpenLinker admin UI — Listings, Diagnostics, Settings, and AI offer description generation — with screenshots of every surface.
+
+The **Jobs & Logs** page (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity and investigate stalled jobs. The **Webhooks** page shows every inbound event delivery. See [Diagnostics](./user-guide/06-diagnostics.md) in the user guide for details.

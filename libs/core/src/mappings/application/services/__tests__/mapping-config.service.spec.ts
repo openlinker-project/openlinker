@@ -13,12 +13,14 @@ import {
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
+  ATTRIBUTE_MAPPING_REPOSITORY_TOKEN,
 } from '../../../mappings.tokens';
 import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
 import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
 import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
 import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
 import type { OrderStateMappingRepositoryPort } from '../../../domain/ports/order-state-mapping-repository.port';
+import type { AttributeMappingRepositoryPort } from '../../../domain/ports/attribute-mapping-repository.port';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
@@ -32,6 +34,7 @@ describe('MappingConfigService', () => {
   let paymentRepo: jest.Mocked<PaymentMappingRepositoryPort>;
   let categoryRepo: jest.Mocked<CategoryMappingRepositoryPort>;
   let orderStateRepo: jest.Mocked<OrderStateMappingRepositoryPort>;
+  let attributeRepo: jest.Mocked<AttributeMappingRepositoryPort>;
 
   const CONNECTION_ID = 'conn-uuid-1';
 
@@ -49,14 +52,19 @@ describe('MappingConfigService', () => {
       replaceForConnection: jest.fn(),
     };
     categoryRepo = {
-      findByConnectionId: jest.fn(),
-      findByPrestashopCategoryId: jest.fn(),
+      findByDestinationConnection: jest.fn(),
+      findBySourceCategory: jest.fn(),
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
     orderStateRepo = {
       findByConnectionId: jest.fn(),
       replaceForConnection: jest.fn(),
+    };
+    attributeRepo = {
+      findByDestinationConnection: jest.fn(),
+      upsertMapping: jest.fn(),
+      deleteMapping: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -67,6 +75,7 @@ describe('MappingConfigService', () => {
         { provide: PAYMENT_MAPPING_REPOSITORY_TOKEN, useValue: paymentRepo },
         { provide: CATEGORY_MAPPING_REPOSITORY_TOKEN, useValue: categoryRepo },
         { provide: ORDER_STATE_MAPPING_REPOSITORY_TOKEN, useValue: orderStateRepo },
+        { provide: ATTRIBUTE_MAPPING_REPOSITORY_TOKEN, useValue: attributeRepo },
       ],
     }).compile();
 
@@ -283,18 +292,20 @@ describe('MappingConfigService', () => {
       const mappings = [
         new CategoryMapping(
           'id-1',
+          null,
           CONNECTION_ID,
           '3',
           '258066',
           'Smartphones',
-          'Electronics > Phones > Smartphones'
+          'Electronics > Phones > Smartphones',
+          'allegro'
         ),
       ];
-      categoryRepo.findByConnectionId.mockResolvedValue(mappings);
+      categoryRepo.findByDestinationConnection.mockResolvedValue(mappings);
 
       const result = await service.getCategoryMappings(CONNECTION_ID);
 
-      expect(categoryRepo.findByConnectionId).toHaveBeenCalledWith(CONNECTION_ID);
+      expect(categoryRepo.findByDestinationConnection).toHaveBeenCalledWith(CONNECTION_ID);
       expect(result).toEqual(mappings);
     });
   });
@@ -302,18 +313,20 @@ describe('MappingConfigService', () => {
   describe('upsertCategoryMapping', () => {
     it('should delegate to repository upsertMapping', async () => {
       const input = {
-        prestashopCategoryId: '5',
-        allegroCategoryId: '258066',
-        allegroCategoryName: 'Smartphones',
-        allegroCategoryPath: 'Electronics > Phones > Smartphones',
+        sourceCategoryId: '5',
+        destinationCategoryId: '258066',
+        destinationCategoryName: 'Smartphones',
+        destinationCategoryPath: 'Electronics > Phones > Smartphones',
       };
       const saved = new CategoryMapping(
         'id-5',
+        null,
         CONNECTION_ID,
         '5',
         '258066',
         'Smartphones',
-        'Electronics > Phones > Smartphones'
+        'Electronics > Phones > Smartphones',
+        'allegro'
       );
       categoryRepo.upsertMapping.mockResolvedValue(saved);
 
@@ -334,27 +347,29 @@ describe('MappingConfigService', () => {
     });
   });
 
-  describe('resolveAllegroCategory', () => {
-    it('should return allegroCategoryId when mapping exists', async () => {
+  describe('resolveDestinationCategory', () => {
+    it('should return destinationCategoryId when mapping exists', async () => {
       const mapping = new CategoryMapping(
         'id-1',
+        null,
         CONNECTION_ID,
         '3',
         '258066',
         'Smartphones',
-        null
+        null,
+        'allegro'
       );
-      categoryRepo.findByPrestashopCategoryId.mockResolvedValue(mapping);
+      categoryRepo.findBySourceCategory.mockResolvedValue(mapping);
 
-      const result = await service.resolveAllegroCategory(CONNECTION_ID, '3');
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3');
 
       expect(result).toBe('258066');
     });
 
     it('should return null when no mapping exists', async () => {
-      categoryRepo.findByPrestashopCategoryId.mockResolvedValue(null);
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
 
-      const result = await service.resolveAllegroCategory(CONNECTION_ID, '999');
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '999');
 
       expect(result).toBeNull();
     });

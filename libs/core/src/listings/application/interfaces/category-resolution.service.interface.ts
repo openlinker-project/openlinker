@@ -1,8 +1,9 @@
 /**
  * Category Resolution Service Interface
  *
- * Contract for resolving the marketplace category for an offer using a 3-step
- * fallback chain: auto-detect by barcode → category mapping → manual.
+ * Contract for the provenance-aware destination-category placement chain
+ * (ADR-023 §1), each step capability-gated:
+ * provision → barcode auto-detect → per-source-category mapping → manual.
  *
  * @module libs/core/src/listings/application/interfaces
  */
@@ -18,12 +19,16 @@ import type {
 
 export interface ICategoryResolutionService {
   /**
-   * Resolve the marketplace category for an offer.
+   * Resolve the destination category for a listing.
    *
-   * Fallback chain:
-   * 1. Auto-detect via GTIN/EAN — query marketplace for matching categories
-   * 2. Category mapping — look up source category in configured mappings
-   * 3. Manual — return null for merchant to pick
+   * Capability-gated chain (ADR-023 §1):
+   * 1. Provision — mirror/create on the destination (`CategoryProvisioner`, #1041)
+   * 2. Auto-detect via GTIN/EAN — query the destination catalog (`CategoryBarcodeMatcher`)
+   * 3. Category mapping — look up source category in configured mappings
+   * 4. Manual — return null for the operator to pick
+   *
+   * Returns `{ destinationCategoryId, provenance, method }`; `provenance`
+   * (owns/borrows/open) describes the destination taxonomy relationship.
    */
   resolveCategory(input: CategoryResolutionInput): Promise<CategoryResolutionResult>;
 

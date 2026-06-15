@@ -94,7 +94,7 @@ export interface CreateOfferCreationRecordInput {
    */
   request?: OfferCreationRequestSnapshot | null;
   /**
-   * Parent BulkOfferCreationBatch id for records created via the bulk
+   * Parent BulkListingBatch id for records created via the bulk
    * submission flow (#736). Omitted or `null` for single-offer creates.
    */
   bulkBatchId?: string | null;

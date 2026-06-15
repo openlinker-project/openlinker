@@ -105,10 +105,15 @@ One pointer per section, identical format every time.
 | [ADR-013](./013-neutral-oauth-completion-port.md) | Neutral OAuth-completion port — relocate Allegro OAuth into the plugin | Accepted | 2026-05-28 |
 | [ADR-014](./014-source-authoritative-order-pricing.md) | Source-authoritative order pricing | Proposed | 2026-05-30 |
 | [ADR-015](./015-inbound-event-routing-capability-translated.md) | Capability-driven, plugin-translated inbound webhook event routing | Accepted | 2026-05-30 |
+| [ADR-016](./016-prestashop-order-create-via-validateorder.md) | Create PrestaShop orders through `validateOrder`, not the raw webservice | Proposed | 2026-05-30 |
 | [ADR-017](./017-cross-origin-order-reingestion-guard.md) | Skip re-ingestion of orders re-read from a destination connection | Accepted | 2026-06-01 |
 | [ADR-018](./018-dpd-polska-rest-api-over-soap.md) | DPD Polska transport: native REST DPDServices API over legacy SOAP | Proposed | 2026-06-02 |
 | [ADR-019](./019-synchronous-bulk-shipment-dispatch.md) | Synchronous bulk shipment dispatch (loop the per-order seam) | Accepted | 2026-06-03 |
 | [ADR-020](./020-neutral-delivery-intent-shipping-dispatch.md) | Neutral delivery intent as the shipping-dispatch caller contract | Accepted | 2026-06-05 |
 | [ADR-021](./021-third-party-native-inbound-webhook-ingestion.md) | Third-party-native inbound webhook ingestion via a per-provider decoder | Proposed | 2026-06-08 |
+| [ADR-022](./022-dpd-tracking-soap-dpdinfoservices.md) | DPD Polska tracking transport: SOAP DPDInfoServices (dual-transport plugin) | Proposed | 2026-06-11 |
+| [ADR-023](./023-cross-platform-category-and-attribute-projection.md) | Cross-platform category placement and attribute projection | Accepted | 2026-06-13 |
+| [ADR-024](./024-destination-listing-capabilities.md) | Destination listing capabilities — marketplace OfferManager vs shop ProductPublisher | Accepted | 2026-06-13 |
+| [ADR-025](./025-erli-marketplace-adapter.md) | Erli marketplace adapter — reconciliation-first posture, API-key auth, Allegro-ID taxonomy reuse | Accepted | 2026-06-12 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
