@@ -145,7 +145,7 @@ Rationale:
 
 - **Build sequencing: offers first, orders second** — chosen at Gate C (rationale above).
 - **Allegro-ID reuse** for category/parameter resolution (`source:"allegro"`) — locked as a design constraint at issue creation.
-- **Async/reconciliation posture:** Erli writes are HTTP 202 + ~20-min cache lag; no-retry 5 s webhooks. The adapter is *reconciliation-first* (snapshot-based offer status, inbox poll as mandatory order backstop), not synchronous-confirmation like Allegro. Tier 2 / ADR decision (see [ADR-025](../architecture/adrs/025-erli-marketplace-adapter.md)), flagged here because it shapes the "manage offers" UX promise.
+- **Async/reconciliation posture:** Erli writes are HTTP 202 + ~20-min cache lag; no-retry 5 s webhooks. The adapter is *reconciliation-first* (snapshot-based offer status, inbox poll as mandatory order backstop), not synchronous-confirmation like Allegro. Tier 2 / ADR decision, flagged here because it shapes the "manage offers" UX promise.
 
 ## 5. Product specification
 
