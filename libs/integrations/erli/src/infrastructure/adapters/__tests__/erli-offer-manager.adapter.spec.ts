@@ -331,6 +331,7 @@ describe('ErliOfferManagerAdapter', () => {
         await adapter.createOffer(
           createCmd({
             overrides: {
+              categoryId: '18654',
               platformParams: {
                 erliVariantGroup: {
                   groupId: GROUP_ID,
@@ -359,7 +360,7 @@ describe('ErliOfferManagerAdapter', () => {
 
       it('should ignore an empty groupId (treats as ungrouped)', async () => {
         await adapter.createOffer(
-          createCmd({ overrides: { platformParams: { erliVariantGroup: { groupId: '' } } } }),
+          createCmd({ overrides: { categoryId: '18654', platformParams: { erliVariantGroup: { groupId: '' } } } }),
         );
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
@@ -373,10 +374,10 @@ describe('ErliOfferManagerAdapter', () => {
         const platformParams = { erliVariantGroup: { groupId: GROUP_ID } };
 
         await adapter.createOffer(
-          createCmd({ internalVariantId: variantA, overrides: { platformParams } }),
+          createCmd({ internalVariantId: variantA, overrides: { categoryId: '18654', platformParams } }),
         );
         await adapter.createOffer(
-          createCmd({ internalVariantId: variantB, overrides: { platformParams } }),
+          createCmd({ internalVariantId: variantB, overrides: { categoryId: '18654', platformParams } }),
         );
 
         const [pathA, bodyA] = httpClient.post.mock.calls[0] as [string, { externalVariantGroup?: unknown }];
@@ -389,7 +390,7 @@ describe('ErliOfferManagerAdapter', () => {
 
       it('should emit externalVariantGroup with no attributes key when attributes are absent', async () => {
         await adapter.createOffer(
-          createCmd({ overrides: { platformParams: { erliVariantGroup: { groupId: GROUP_ID } } } }),
+          createCmd({ overrides: { categoryId: '18654', platformParams: { erliVariantGroup: { groupId: GROUP_ID } } } }),
         );
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
@@ -401,6 +402,7 @@ describe('ErliOfferManagerAdapter', () => {
         await adapter.createOffer(
           createCmd({
             overrides: {
+              categoryId: '18654',
               platformParams: {
                 erliVariantGroup: {
                   groupId: GROUP_ID,
