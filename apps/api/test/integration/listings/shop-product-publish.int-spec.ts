@@ -144,10 +144,12 @@ describe('Shop Product Publish Integration (#1042)', () => {
     );
   });
 
-  async function countRecords(): Promise<number> {
+  async function countRecordsForConnection(connectionId: string): Promise<number> {
     const rows = (await harness
       .getDataSource()
-      .query(`SELECT count(*)::int AS n FROM listing_creation_records`)) as { n: number }[];
+      .query(`SELECT count(*)::int AS n FROM listing_creation_records WHERE "connectionId" = $1`, [
+        connectionId,
+      ])) as { n: number }[];
     return rows[0].n;
   }
 
@@ -221,8 +223,8 @@ describe('Shop Product Publish Integration (#1042)', () => {
     expect(second.outcome).toBe('ok');
     // The adapter saw the existing external id (upsert).
     expect(publisher.lastCommand()?.externalProductId).toBe('wc-100');
-    // Two attempt rows (one per publish), still a single mapping.
-    expect(await countRecords()).toBe(2);
+    // Two attempt rows (one per publish) for this shop, still a single mapping.
+    expect(await countRecordsForConnection(shopConnectionId)).toBe(2);
     const mapping = harness
       .getApp()
       .get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
