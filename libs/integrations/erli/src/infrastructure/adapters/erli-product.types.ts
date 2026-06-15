@@ -144,7 +144,12 @@ export type ErliProductPatchBody = Pick<
 export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
 
 export interface ErliProductResource {
-  /** Erli field names the seller has frozen via manual panel edits (#988). */
+  /**
+   * Erli field names the seller has frozen via manual panel edits (#988). May
+   * include `"stock"` (#1066): reconciliation reads it to populate the per-offer
+   * frozen-stock cache flag the hot quantity path honors. No shape change — the
+   * flat `string[]` already covers it (#992-provisional, same as the other names).
+   */
   frozenFields?: string[];
   /** Current Erli-side publication status (#989). */
   status?: ErliProductStatus;
