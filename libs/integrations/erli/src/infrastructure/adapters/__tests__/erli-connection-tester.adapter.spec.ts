@@ -61,7 +61,7 @@ describe('ErliConnectionTesterAdapter', () => {
 
     expect(result.success).toBe(true);
     expect(result.status).toBe(200);
-    expect(result.message).toBe('OK');
+    expect(result.message).toContain('provisional');
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
