@@ -222,7 +222,7 @@ Category mapping connects your PrestaShop categories to Allegro's category tree 
 
 ### 7.1 Open the mapping page
 
-1. In OpenLinker → **Integrations** → click your **PrestaShop connection**.
+1. In OpenLinker → **Connections** → click your **PrestaShop connection**.
 2. Click **Category Mappings** in the connection detail page.
 3. The page loads with:
    - **Left panel**: PrestaShop category tree
@@ -286,6 +286,11 @@ Once succeeded, open **Listings** in the left nav — the offer row shows its Al
 
 ## 9. Watch an Allegro order land in PrestaShop
 
+Your dev stack is running, connections are configured, and the catalog is syncing.
+
+→ **[Operator Guide](./user-guide/README.md)** — tour of the admin UI, day-to-day usage, and diagnostics.
+
+With both connections active, products discovered, and at least one category mapped, you're ready to:
 With an active offer on Allegro sandbox (§8), you can place a test order and watch it flow end-to-end into PrestaShop.
 
 ### 9.1 (Optional) Configure webhooks for near-real-time ingestion
