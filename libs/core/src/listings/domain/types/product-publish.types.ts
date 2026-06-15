@@ -10,15 +10,17 @@
  * draft/published status, owned-record content/images/SEO, and price/stock as
  * product fields (ADR-024 §1, §3).
  *
- * Platform-specific fields (and projected category parameters, applied by the
- * #1042 builder) ride in `platformParams` as an opaque record the adapter
- * interprets — mirroring `CreateOfferOverrides.platformParams`. The command is
- * deliberately free of the application-layer `ResolvedParameter` shape so it
- * stays domain-pure (no domain→application edge).
+ * Projected/operator category parameters travel on the typed neutral
+ * `parameters: OfferParameter[]` field (#1072) — the same domain channel the
+ * offer side uses (#1039), not the opaque `platformParams` bag. `OfferParameter`
+ * is a domain type, so the command references it without a domain→application
+ * edge. `platformParams` is reserved for un-modeled shop knobs only.
  *
  * @module libs/core/src/listings/domain/types
  * @see {@link ShopProductManagerPort} for the port that consumes these.
  */
+
+import type { OfferParameter } from './offer-parameter.types';
 
 /**
  * Publication state of a shop product. Distinct from record existence and from
@@ -82,6 +84,17 @@ export interface PublishProductCommand {
   /** Owned-record content fields (title, description, images, SEO). */
   content?: PublishProductContent;
   /**
+   * Neutral, section-tagged projected/operator category parameters (#1072,
+   * ADR-024 §Flow). Produced by core (attribute projection on the ADR-023
+   * open-provenance pass-through); shaped to the shop's wire form **only** in
+   * the destination adapter (WooCommerce → global/custom attributes, Shopify →
+   * category metafields). Shares the exact `OfferParameter` channel the offer
+   * side uses (#1039) so offer and shop carry projected parameters identically
+   * — they do **not** ride `platformParams`. Absent/empty ⇒ no projected
+   * parameters for this product.
+   */
+  parameters?: OfferParameter[];
+  /**
    * Shop-native product id when this is an upsert (already published). Absent /
    * `null` → create a new product and map it. Resolved by the #1042 execution
    * service via `IdentifierMapping`.
@@ -90,9 +103,10 @@ export interface PublishProductCommand {
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
   /**
-   * Platform-specific fields the adapter interprets directly (tax class,
-   * shipping class, product type, projected category parameters, …). The
-   * core command stays platform-neutral; adapters read only the keys they know.
+   * Un-modeled platform-specific shop knobs the adapter interprets directly
+   * (tax class, shipping class, product type, …). **NOT** category parameters —
+   * those travel on `parameters` as the neutral `OfferParameter` channel (#1072).
+   * The core command stays platform-neutral; adapters read only the keys they know.
    */
   platformParams?: Record<string, unknown>;
 }

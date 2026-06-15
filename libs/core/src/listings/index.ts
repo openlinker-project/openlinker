@@ -299,5 +299,30 @@ export type {
 } from './domain/types/category-provision.types';
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
 
+// Shop publish execution (#1042, #1072) — pure contracts only (the two service
+// classes live on `@openlinker/core/listings/services`, never here).
+export { ListingCreationRecord } from './domain/entities/listing-creation-record.entity';
+export {
+  ListingCreationStatusValues,
+  LISTING_CREATION_STATUS,
+} from './domain/types/listing-creation-record.types';
+export type {
+  ListingCreationStatus,
+  ListingCreationError,
+  CreateListingCreationRecordInput,
+} from './domain/types/listing-creation-record.types';
+export type { ListingCreationRecordRepositoryPort } from './domain/ports/listing-creation-record-repository.port';
+export { ListingCreationInvariantException } from './domain/exceptions/listing-creation-invariant.exception';
+export { ListingCreationRecordNotFoundException } from './domain/exceptions/listing-creation-record-not-found.exception';
+export { ProductPublishBuilderValidationException } from './domain/exceptions/product-publish-builder-validation.exception';
+export type { ProductPublishBuilderValidationIssue } from './domain/exceptions/product-publish-builder-validation.exception';
+export type { IProductPublishBuilderService } from './application/interfaces/product-publish-builder.service.interface';
+export type { BuildPublishProductCommandInput } from './application/types/product-publish-builder.types';
+export type { IProductPublishExecutionService } from './application/interfaces/product-publish-execution.service.interface';
+export type {
+  ExecutePublishProductInput,
+  ExecutePublishProductResult,
+} from './application/types/product-publish-execution.types';
+
 // Tokens
 export * from './listings.tokens';
