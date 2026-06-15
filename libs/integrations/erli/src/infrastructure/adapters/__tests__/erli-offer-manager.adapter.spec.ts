@@ -21,6 +21,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
+import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { ERLI_ADAPTER_KEY } from '../../../erli.constants';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import { ErliOfferManagerAdapter } from '../erli-offer-manager.adapter';
@@ -403,7 +404,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
           name: 'T',
-          price: { amount: 5, currency: 'PLN' },
+          price: 500,
         });
       });
 
@@ -417,7 +418,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
           name: 'T',
-          price: { amount: 5, currency: 'PLN' },
+          price: 500,
         });
       });
 
@@ -446,12 +447,26 @@ describe('ErliOfferManagerAdapter', () => {
 
         expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
           name: 'T',
-          price: { amount: 5, currency: 'PLN' },
+          price: 500,
         });
       });
 
-      it('should re-throw a non-404 GET error rather than failing open', async () => {
-        httpClient.get.mockRejectedValue(new ErliApiException('server error', 500));
+      it('should re-throw a transient network/5xx GET error rather than failing open', async () => {
+        // The client surfaces a transient 5xx / connection failure as
+        // ErliNetworkException (NOT ErliApiException — only deterministic 4xx
+        // become ErliApiException). Only a 404 fails open; everything else,
+        // including this realistic transient error, must re-throw so the
+        // runner's retry classifier decides (#1061).
+        httpClient.get.mockRejectedValue(new ErliNetworkException('connection reset'));
+
+        await expect(
+          adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } }),
+        ).rejects.toBeInstanceOf(ErliNetworkException);
+        expect(httpClient.patch).not.toHaveBeenCalled();
+      });
+
+      it('should re-throw a non-404 ErliApiException (e.g. 403) rather than failing open', async () => {
+        httpClient.get.mockRejectedValue(new ErliApiException('forbidden', 403));
 
         await expect(
           adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } }),

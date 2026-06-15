@@ -194,16 +194,17 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
       return body;
     }
     const frozen = new Set(frozenFields);
-    const result: ErliProductPatchBody = {};
-    for (const key of Object.keys(body) as (keyof ErliProductPatchBody)[]) {
+    // Shallow-copy then delete frozen keys — avoids a per-key index-write cast
+    // while preserving each value's own type.
+    const result: ErliProductPatchBody = { ...body };
+    for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
       const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
       if (erliName !== undefined && frozen.has(erliName)) {
         this.logger.debug(
           `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
         );
-        continue;
+        delete result[key];
       }
-      result[key] = body[key] as never;
     }
     return result;
   }
