@@ -58,7 +58,10 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
       return {
         success: true,
         status: response.status,
-        message: 'OK',
+        // The probe endpoint is provisional until the #992 sandbox spike confirms
+        // it actually requires auth. Until then a 2xx proves reachability but not
+        // a verified credential, so the message stays conservative (#982/#992).
+        message: 'Connection reachable (probe endpoint provisional until #992)',
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
