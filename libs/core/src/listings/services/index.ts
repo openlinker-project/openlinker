@@ -31,3 +31,5 @@ export { OfferBuilderService } from '../application/services/offer-builder.servi
 export { OfferCreationExecutionService } from '../application/services/offer-creation-execution.service';
 export { SellerPoliciesService } from '../application/services/seller-policies.service';
 export { OfferCreationEnqueueService } from '../application/services/offer-creation-enqueue.service';
+export { ProductPublishBuilderService } from '../application/services/product-publish-builder.service';
+export { ProductPublishExecutionService } from '../application/services/product-publish-execution.service';

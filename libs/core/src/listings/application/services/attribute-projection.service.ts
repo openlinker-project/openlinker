@@ -47,7 +47,8 @@ export class AttributeProjectionService implements IAttributeProjectionService {
   ) {}
 
   async project(input: AttributeProjectionInput): Promise<AttributeProjectionResult> {
-    const { sourceConnectionId, destinationConnectionId, destinationCategoryId, attributes } = input;
+    const { sourceConnectionId, destinationConnectionId, destinationCategoryId, attributes } =
+      input;
 
     const all = await this.mappingConfig.getAttributeMappings(destinationConnectionId);
     const applicable = this.selectApplicableMappings(
@@ -58,7 +59,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
 
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       destinationConnectionId,
-      'OfferManager'
+      input.destinationCapability ?? 'OfferManager'
     );
 
     const parameters: ResolvedParameter[] = [];

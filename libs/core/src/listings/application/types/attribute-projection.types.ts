@@ -22,6 +22,17 @@ export interface AttributeProjectionInput {
   destinationCategoryId: string;
   /** The variant's descriptive attributes (e.g. `{ Color: 'Red' }`). */
   attributes: Record<string, string>;
+  /**
+   * Capability the destination adapter is resolved under to read its live
+   * category schema (the `CategoryParametersReader` provenance branch). Defaults
+   * to `'OfferManager'` (the marketplace offer path). The shop-publish path
+   * (#1042) passes `'ProductPublisher'` — a shop connection never supports
+   * `'OfferManager'`, so resolving it would throw. The structural
+   * `isCategoryParametersReader` guard is capability-agnostic: a destination
+   * without a parameters reader falls through to the name-keyed pass-through
+   * branch regardless of which capability resolved it.
+   */
+  destinationCapability?: string;
 }
 
 /**
