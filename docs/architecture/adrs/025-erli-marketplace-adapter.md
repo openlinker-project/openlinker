@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-06-12
-- **Authors**: OpenLinker maintainers
+- **Authors**: @norbert-kulus-blockydevs
 
 ## Context
 
@@ -18,7 +18,7 @@ Erli is the second PL marketplace OpenLinker integrates (product spec #978, issu
 
 1. **Reconciliation-first posture.** No Erli write is treated as confirmed by its 202 response. Offer state is reconciled from snapshot reads (mirroring the `offer_status_snapshots` model of [ADR-009](./009-persisted-offer-status-snapshots.md)); order ingestion uses webhooks only as a low-latency *trigger* with a scheduled **inbox poll as the mandatory backstop** (the same trigger-vs-reconciliation split as PrestaShop's #904), converging idempotently on `OrderIngestionService.syncOrderFromSource`.
 2. **Static API-key bearer auth.** Credentials are a single `apiKey` in the encrypted `integration_credentials` store, resolved via `host.credentialsResolver`. No OAuth completion port, no token-refresh service.
-3. **Allegro-ID taxonomy reuse.** Erli offers are populated with the product's already-resolved **Allegro** category/parameter ids (`source:"allegro"` in `externalCategories` / `externalAttributes`). OL builds no Erli-native taxonomy path in v1; products without Allegro taxonomy data are skipped with a clear error (spec #978 §6).
+3. **Allegro-ID taxonomy reuse.** Erli offers are populated with the product's already-resolved **Allegro** category/parameter ids, tagged `source:"allegro"` (the concrete field names are pinned by the implementing PR, #984+). OL builds no Erli-native taxonomy path in v1; products without Allegro taxonomy data are skipped with a clear error (spec #978 §6).
 4. **Adapter-level stock/ownership invariants.** The adapter owns two Erli-specific compensations: (a) on order cancellation OL issues a stock-restore PATCH (because Erli won't), and (b) before any PATCH, fields marked `frozen` by seller-panel edits are excluded so OL never overwrites a manual edit.
 
 ## Alternatives considered

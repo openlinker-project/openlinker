@@ -105,6 +105,7 @@ One pointer per section, identical format every time.
 | [ADR-013](./013-neutral-oauth-completion-port.md) | Neutral OAuth-completion port — relocate Allegro OAuth into the plugin | Accepted | 2026-05-28 |
 | [ADR-014](./014-source-authoritative-order-pricing.md) | Source-authoritative order pricing | Proposed | 2026-05-30 |
 | [ADR-015](./015-inbound-event-routing-capability-translated.md) | Capability-driven, plugin-translated inbound webhook event routing | Accepted | 2026-05-30 |
+| [ADR-016](./016-prestashop-order-create-via-validateorder.md) | Create PrestaShop orders through `validateOrder`, not the raw webservice | Proposed | 2026-05-30 |
 | [ADR-017](./017-cross-origin-order-reingestion-guard.md) | Skip re-ingestion of orders re-read from a destination connection | Accepted | 2026-06-01 |
 | [ADR-018](./018-dpd-polska-rest-api-over-soap.md) | DPD Polska transport: native REST DPDServices API over legacy SOAP | Proposed | 2026-06-02 |
 | [ADR-019](./019-synchronous-bulk-shipment-dispatch.md) | Synchronous bulk shipment dispatch (loop the per-order seam) | Accepted | 2026-06-03 |
