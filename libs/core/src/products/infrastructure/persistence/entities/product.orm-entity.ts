@@ -32,6 +32,13 @@ export class ProductOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   images!: string[] | null;
 
+  /**
+   * Source-platform external category ids (#1034 / ADR-023 §0) — the input for
+   * per-source-category mapping. Null until a product sync populates it.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  categories!: string[] | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

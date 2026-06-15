@@ -2,7 +2,7 @@
  * Bulk Batch Advancement Domain Entity (#737)
  *
  * Records that a single `OfferCreationRecord`'s outcome has been counted
- * toward its parent `BulkOfferCreationBatch`. Acts as the at-most-once
+ * toward its parent `BulkListingBatch`. Acts as the at-most-once
  * guard for the worker handler's counter-advancement path: composite-PK
  * `(bulkBatchId, offerCreationRecordId)` + INSERT-ON-CONFLICT-DO-NOTHING
  * makes the guarantee race-free across N concurrent worker invocations

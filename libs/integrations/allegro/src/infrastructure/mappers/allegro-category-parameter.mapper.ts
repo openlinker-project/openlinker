@@ -37,6 +37,12 @@ export function toNeutralCategoryParameter(
     name: raw.name,
     type: raw.type,
     required: raw.required,
+    // #1035 — neutral multi-value roll-up. Allegro has no single `multiValue`
+    // flag; multi-value is expressed either as a dictionary multi-select
+    // (`multipleChoices`) or a capped value count (`allowedNumberOfValues > 1`).
+    multiValue:
+      raw.restrictions?.multipleChoices === true ||
+      (raw.restrictions?.allowedNumberOfValues ?? 1) > 1,
     unit: raw.unit,
     dictionary: raw.dictionary?.map(toNeutralEntry),
     restrictions: {

@@ -100,9 +100,20 @@ describe('FakeDpdShippingAdapter', () => {
     );
   });
 
-  it('should throw tracking.unavailable from getTracking', async () => {
-    await expect(adapter.getTracking({ providerShipmentId: 'fake-dpd-1' })).rejects.toMatchObject({
-      providerCode: 'tracking.unavailable',
+  it('should return the seeded tracking snapshot (default in-transit)', async () => {
+    await expect(adapter.getTracking({ providerShipmentId: 'fake-dpd-1' })).resolves.toEqual({
+      status: 'in-transit',
+    });
+
+    adapter.seedTracking({ status: 'delivered', providerStatus: '190101' });
+    await expect(adapter.getTracking({ providerShipmentId: 'fake-dpd-1' })).resolves.toEqual({
+      status: 'delivered',
+      providerStatus: '190101',
+    });
+
+    adapter.clear();
+    await expect(adapter.getTracking({ providerShipmentId: 'fake-dpd-1' })).resolves.toEqual({
+      status: 'in-transit',
     });
   });
 

@@ -682,7 +682,8 @@ describe('ListingsController', () => {
     it('returns method=auto_detect when the barcode resolves', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
       categoryResolution.resolveCategory.mockResolvedValue({
-        allegroCategoryId: '257933',
+        destinationCategoryId: '257933',
+        provenance: 'borrows',
         method: 'auto_detect',
       });
 
@@ -705,7 +706,8 @@ describe('ListingsController', () => {
     it('returns method=category_mapping when sourceCategoryIds resolve', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
       categoryResolution.resolveCategory.mockResolvedValue({
-        allegroCategoryId: '12345',
+        destinationCategoryId: '12345',
+        provenance: null,
         method: 'category_mapping',
       });
 
@@ -728,7 +730,8 @@ describe('ListingsController', () => {
     it('returns method=manual with null allegroCategoryId when nothing resolves', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue(opaqueAdapter);
       categoryResolution.resolveCategory.mockResolvedValue({
-        allegroCategoryId: null,
+        destinationCategoryId: null,
+        provenance: null,
         method: 'manual',
       });
 

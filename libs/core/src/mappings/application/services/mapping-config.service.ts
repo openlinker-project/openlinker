@@ -17,24 +17,28 @@ import type { CarrierMapping } from '../../domain/entities/carrier-mapping.entit
 import type { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
 import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
 import type { OrderStateMapping } from '../../domain/entities/order-state-mapping.entity';
+import type { AttributeMapping } from '../../domain/entities/attribute-mapping.entity';
 import type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
   OrderStateMappingInput,
+  AttributeMappingInput,
 } from '../../domain/types/mapping.types';
 import { StatusMappingRepositoryPort } from '../../domain/ports/status-mapping-repository.port';
 import { CarrierMappingRepositoryPort } from '../../domain/ports/carrier-mapping-repository.port';
 import { PaymentMappingRepositoryPort } from '../../domain/ports/payment-mapping-repository.port';
 import { CategoryMappingRepositoryPort } from '../../domain/ports/category-mapping-repository.port';
 import { OrderStateMappingRepositoryPort } from '../../domain/ports/order-state-mapping-repository.port';
+import { AttributeMappingRepositoryPort } from '../../domain/ports/attribute-mapping-repository.port';
 import {
   STATUS_MAPPING_REPOSITORY_TOKEN,
   CARRIER_MAPPING_REPOSITORY_TOKEN,
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
+  ATTRIBUTE_MAPPING_REPOSITORY_TOKEN,
 } from '../../mappings.tokens';
 
 @Injectable()
@@ -49,7 +53,9 @@ export class MappingConfigService implements IMappingConfigService {
     @Inject(CATEGORY_MAPPING_REPOSITORY_TOKEN)
     private readonly categoryRepo: CategoryMappingRepositoryPort,
     @Inject(ORDER_STATE_MAPPING_REPOSITORY_TOKEN)
-    private readonly orderStateRepo: OrderStateMappingRepositoryPort
+    private readonly orderStateRepo: OrderStateMappingRepositoryPort,
+    @Inject(ATTRIBUTE_MAPPING_REPOSITORY_TOKEN)
+    private readonly attributeRepo: AttributeMappingRepositoryPort
   ) {}
 
   getStatusMappings(connectionId: string): Promise<StatusMapping[]> {
@@ -125,29 +131,44 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.externalStateId ?? null;
   }
 
-  getCategoryMappings(connectionId: string): Promise<CategoryMapping[]> {
-    return this.categoryRepo.findByConnectionId(connectionId);
+  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]> {
+    return this.categoryRepo.findByDestinationConnection(destinationConnectionId);
   }
 
   upsertCategoryMapping(
-    connectionId: string,
+    destinationConnectionId: string,
     input: CategoryMappingInput
   ): Promise<CategoryMapping> {
-    return this.categoryRepo.upsertMapping(connectionId, input);
+    return this.categoryRepo.upsertMapping(destinationConnectionId, input);
   }
 
-  deleteCategoryMapping(connectionId: string, prestashopCategoryId: string): Promise<void> {
-    return this.categoryRepo.deleteMapping(connectionId, prestashopCategoryId);
+  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void> {
+    return this.categoryRepo.deleteMapping(destinationConnectionId, sourceCategoryId);
   }
 
-  async resolveAllegroCategory(
-    connectionId: string,
-    prestashopCategoryId: string
+  async resolveDestinationCategory(
+    destinationConnectionId: string,
+    sourceCategoryId: string
   ): Promise<string | null> {
-    const mapping = await this.categoryRepo.findByPrestashopCategoryId(
-      connectionId,
-      prestashopCategoryId
+    const mapping = await this.categoryRepo.findBySourceCategory(
+      destinationConnectionId,
+      sourceCategoryId
     );
-    return mapping?.allegroCategoryId ?? null;
+    return mapping?.destinationCategoryId ?? null;
+  }
+
+  getAttributeMappings(destinationConnectionId: string): Promise<AttributeMapping[]> {
+    return this.attributeRepo.findByDestinationConnection(destinationConnectionId);
+  }
+
+  upsertAttributeMapping(
+    destinationConnectionId: string,
+    input: AttributeMappingInput
+  ): Promise<AttributeMapping> {
+    return this.attributeRepo.upsertMapping(destinationConnectionId, input);
+  }
+
+  deleteAttributeMapping(id: string): Promise<void> {
+    return this.attributeRepo.deleteMapping(id);
   }
 }

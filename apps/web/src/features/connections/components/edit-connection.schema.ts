@@ -66,6 +66,18 @@ export type AllegroSellerDefaultsFormValues = z.input<typeof allegroSellerDefaul
 export const editConnectionSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   baseUrl: z.string().trim().optional(),
+  // WooCommerce-only structured field surfacing `config.siteUrl` — the key
+  // the WooCommerce backend config DTO validates (#975). Mirrors the setup
+  // wizard's https-only rule (Basic Auth credentials must not travel in
+  // cleartext); empty string stays allowed (delete-on-empty merge semantics).
+  siteUrl: z
+    .union([
+      z
+        .url('Site URL must be a valid URL (e.g. https://shop.example.com)')
+        .refine((value) => value.startsWith('https://'), 'Site URL must use HTTPS'),
+      z.literal(''),
+    ])
+    .optional(),
   shopId: z.string().trim().optional(),
   // Optional override for the split-host case (webservice host ≠ public storefront).
   // Accepts a validated URL or an empty string (to unset). See #271 / #283.
@@ -112,6 +124,19 @@ export const editConnectionSchema = z.object({
       z.literal(''),
     ])
     .optional(),
+  // WooCommerce-only structured field surfacing `config.inventory.unmanagedStockQuantity`
+  // (#969 §7.3). Quantity reported for products with stock management disabled but
+  // `stock_status=instock`. String on the form (same shape as defaultCarrierId);
+  // `mergeStructuredIntoConfig` coerces to an integer nested under `inventory` at
+  // submit. Empty clears the override so the adapter default (1000) applies.
+  unmanagedStockQuantity: z
+    .union([
+      z.string().refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), {
+        message: 'Unmanaged stock quantity must be a positive integer.',
+      }),
+      z.literal(''),
+    ])
+    .optional(),
   configText: z
     .string()
     .trim()
@@ -143,6 +168,8 @@ export function toUpdateConnectionInput(values: EditConnectionFormSubmission): U
 
 export interface StructuredConfigPatch {
   baseUrl?: string;
+  /** WooCommerce store root URL — `config.siteUrl` (#975). */
+  siteUrl?: string;
   shopId?: string;
   storefrontBaseUrl?: string;
   openlinkerCallbackBaseUrl?: string;
@@ -155,6 +182,13 @@ export interface StructuredConfigPatch {
    * `""` or a valid digit-only string.
    */
   defaultCarrierId?: string;
+  /**
+   * WooCommerce unmanaged-stock cap — `config.inventory.unmanagedStockQuantity`
+   * (#969 §7.3). Empty string clears the key (and drops an emptied `inventory`
+   * object); a non-empty value is coerced to a positive integer. Sibling keys
+   * under `inventory` are preserved.
+   */
+  unmanagedStockQuantity?: string;
   /**
    * #430 — Allegro seller defaults. The merge helper writes a fully
    * resolved object into `config.sellerDefaults` whenever `sellerDefaults`
@@ -180,6 +214,32 @@ export function mergeStructuredIntoConfig(
       delete next.baseUrl;
     } else {
       next.baseUrl = structured.baseUrl;
+    }
+  }
+  if (structured.siteUrl !== undefined) {
+    if (structured.siteUrl.length === 0) {
+      delete next.siteUrl;
+    } else {
+      next.siteUrl = structured.siteUrl;
+    }
+  }
+  if (structured.unmanagedStockQuantity !== undefined) {
+    // Nested under `config.inventory` — preserve sibling inventory keys, and
+    // drop the `inventory` object entirely when clearing leaves it empty.
+    const inventory: Record<string, unknown> =
+      typeof next.inventory === 'object' && next.inventory !== null
+        ? { ...(next.inventory as Record<string, unknown>) }
+        : {};
+    if (structured.unmanagedStockQuantity.length === 0) {
+      delete inventory.unmanagedStockQuantity;
+    } else {
+      // Schema's Zod refine guarantees this is a positive-integer string.
+      inventory.unmanagedStockQuantity = Number.parseInt(structured.unmanagedStockQuantity, 10);
+    }
+    if (Object.keys(inventory).length === 0) {
+      delete next.inventory;
+    } else {
+      next.inventory = inventory;
     }
   }
   if (structured.shopId !== undefined) {

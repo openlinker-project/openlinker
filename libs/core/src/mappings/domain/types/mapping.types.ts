@@ -34,8 +34,37 @@ export interface PaymentMappingInput {
 }
 
 export interface CategoryMappingInput {
-  prestashopCategoryId: string;
-  allegroCategoryId: string;
-  allegroCategoryName: string;
-  allegroCategoryPath?: string;
+  sourceCategoryId: string;
+  destinationCategoryId: string;
+  destinationCategoryName: string;
+  destinationCategoryPath?: string;
+  /**
+   * Owning source connection. Optional for now (#1036 record-only): the API
+   * create path doesn't yet supply it, so rows are created with `null` and the
+   * lookup falls back to the destination+source-category key. Threading the
+   * source connection through create/resolve is a follow-up.
+   */
+  sourceConnectionId?: string | null;
+  /**
+   * Owner-taxonomy identifier the mapping is authored against (e.g. `'allegro'`).
+   * Defaults to `'allegro'` when omitted (only marketplace pair today).
+   */
+  destinationTaxonomyProvenance?: string;
+}
+
+/**
+ * Upsert input for an attribute mapping (#1038, ADR-023 §4). Maps a source
+ * attribute key to a destination parameter name, scoped by source connection
+ * with an optional per-category override (`destinationCategoryId` null ⇒
+ * connection-wide default). `values` carries the per-value translations and
+ * **replaces** the existing set on each upsert.
+ */
+export interface AttributeMappingInput {
+  sourceConnectionId: string;
+  sourceAttributeKey: string;
+  destinationParameterName: string;
+  /** Per-category override; `null`/omitted ⇒ the connection-wide default row. */
+  destinationCategoryId?: string | null;
+  /** Source→destination value translations (e.g. `Red → Czerwony`). */
+  values?: { sourceValue: string; destinationValue: string }[];
 }

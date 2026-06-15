@@ -391,12 +391,21 @@ export class AllegroOfferManagerAdapter
     try {
       const commandId = this.generateCommandIdFromIdempotencyKey(cmd.idempotencyKey);
 
+      // PUT /sale/offer-quantity-change-commands/{id} is the BATCH modification
+      // resource — the payload is modification + offerCriteria (CONTAINS_OFFERS
+      // with a single offer id), not a flat offerId/quantityChange pair; the
+      // latter 422s with "modification: musi być podane".
       const commandBody: Record<string, unknown> = {
-        offerId: cmd.offerId,
-        quantityChange: {
+        modification: {
           changeType: 'FIXED',
           value: cmd.quantity,
         },
+        offerCriteria: [
+          {
+            offers: [{ id: cmd.offerId }],
+            type: 'CONTAINS_OFFERS',
+          },
+        ],
       };
 
       const response = await this.httpClient.put<AllegroOfferQuantityChangeCommandResponse>(

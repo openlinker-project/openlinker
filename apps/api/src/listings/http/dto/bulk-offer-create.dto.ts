@@ -2,7 +2,7 @@
  * Bulk Offer Create DTOs (#736)
  *
  * Request DTO for `POST /listings/bulk-create`. The controller maps this
- * validated shape into `BulkOfferCreationSubmitInput` and stamps
+ * validated shape into `BulkListingSubmitInput` and stamps
  * `initiatedBy` from the authenticated session before handing off to the
  * core service.
  *

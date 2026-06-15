@@ -10,6 +10,7 @@
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
 import type { Order, OrderCreate, OrderStatus } from '@openlinker/core/orders';
+import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
  * PrestaShop product data (from API response)
@@ -140,9 +141,30 @@ export interface IPrestashopProductMapper {
    *
    * @param combination - PrestaShop combination data
    * @param productId - Internal OpenLinker product ID
+   * @param resolveOptionValue - Optional resolver turning a combination's
+   *   `product_option_value` id into `{ attributeGroupName, valueName }` so the
+   *   variant carries semantic attributes (e.g. `{ Color: 'Red' }`). When
+   *   omitted or unresolved, falls back to the positional `option_${index}` id
+   *   shape (variant distinctness + back-compat). The mapper performs no I/O —
+   *   the adapter fetches the option dictionary and passes this in (#1050).
    * @returns OpenLinker ProductVariant (without ID - ID mapping handled by adapter)
    */
-  mapVariant(combination: PrestashopCombination, productId: string): Omit<ProductVariant, 'id'>;
+  mapVariant(
+    combination: PrestashopCombination,
+    productId: string,
+    resolveOptionValue?: OptionValueResolver
+  ): Omit<ProductVariant, 'id'>;
+
+  /**
+   * Read a PrestaShop localized field (flat string, JSON `[{id,value}]`, or XML
+   * `{language:[…]}`) into a single trimmed string for the given language.
+   * Exposed so the attribute resolver reuses the one battle-tested parser
+   * rather than duplicating it (#1050).
+   *
+   * @param field - Raw localized field value from a PS WS response
+   * @param langId - Preferred language ID (default: 1)
+   */
+  localizeField(field: unknown, langId?: number): string | undefined;
 }
 
 /**

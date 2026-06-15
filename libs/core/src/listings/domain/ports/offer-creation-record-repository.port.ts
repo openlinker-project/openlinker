@@ -107,7 +107,7 @@ export interface OfferCreationRecordRepositoryPort {
    * Return all records that belong to a bulk batch, ordered by
    * `createdAt ASC` for stable summary rendering. Returns an empty array
    * when the batch id is unknown — callers that need batch existence
-   * should query `BulkOfferCreationBatchRepositoryPort.findById` instead
+   * should query `BulkListingBatchRepositoryPort.findById` instead
    * (this port is intentionally agnostic to batch existence).
    *
    * Backed by `IDX_offer_creation_records_bulkBatchId` (#734).

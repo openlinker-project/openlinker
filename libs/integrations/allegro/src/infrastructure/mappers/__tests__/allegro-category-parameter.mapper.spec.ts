@@ -103,6 +103,24 @@ describe('toNeutralCategoryParameter', () => {
     });
   });
 
+  describe('multi-value cardinality (#1035)', () => {
+    it('sets multiValue=true for a multipleChoices dictionary parameter', () => {
+      const neutral = toNeutralCategoryParameter(findRaw(fixture, '14349')); // "Stabilizacja", multipleChoices
+      expect(neutral.multiValue).toBe(true);
+    });
+
+    it('sets multiValue=true when allowedNumberOfValues > 1', () => {
+      const neutral = toNeutralCategoryParameter(findRaw(fixture, '218145')); // "Model załączonego obiektywu", anv=5
+      expect(neutral.multiValue).toBe(true);
+    });
+
+    it('sets multiValue=false for single-value parameters', () => {
+      expect(toNeutralCategoryParameter(findRaw(fixture, '237206')).multiValue).toBe(false); // "Model", string, anv=1
+      expect(toNeutralCategoryParameter(findRaw(fixture, '38')).multiValue).toBe(false); // float, no value restriction
+      expect(toNeutralCategoryParameter(findRaw(fixture, '11323')).multiValue).toBe(false); // "Stan", single-select dictionary
+    });
+  });
+
   describe('parameter-level visibility (dependsOn)', () => {
     it('returns undefined when there is no parameter-level dependency', () => {
       const raw = findRaw(fixture, '11323'); // "Stan", no dependsOnParameterId

@@ -19,6 +19,7 @@ import { DpdEnvironmentValues } from '../domain/types/dpd-config.types';
 import type { DpdCredentials } from '../domain/types/dpd-credentials.types';
 import { DpdShippingAdapter } from '../infrastructure/adapters/dpd-shipping.adapter';
 import { DpdHttpClient } from '../infrastructure/http/dpd-http-client';
+import { DpdInfoSoapClient } from '../infrastructure/http/dpd-info-soap-client';
 
 // OQ-3 (#962): test is credentials-gated, not host-gated — both environments
 // resolve to the same DPDServices host today. Split here if a sandbox host
@@ -26,6 +27,15 @@ import { DpdHttpClient } from '../infrastructure/http/dpd-http-client';
 const BASE_URLS: Readonly<Record<DpdEnvironment, string>> = {
   sandbox: 'https://dpdservices.dpd.com.pl',
   production: 'https://dpdservices.dpd.com.pl',
+};
+
+// DPD InfoServices SOAP tracking endpoint (#965 / ADR-022). A SEPARATE host
+// from the REST shipment API above — `dpdinfoservices.dpd.com.pl` (PROD,
+// confirmed from INFO_Services_v2 §1.4), ObjEvents interface. The demo host
+// follows the `…demo…` naming pattern; // TODO confirm against the demo WSDL.
+const INFO_BASE_URLS: Readonly<Record<DpdEnvironment, string>> = {
+  sandbox: 'https://dpdinfoservicesdemo.dpd.com.pl/DPDInfoServicesObjEventsService/DPDInfoServicesObjEvents',
+  production: 'https://dpdinfoservices.dpd.com.pl/DPDInfoServicesObjEventsService/DPDInfoServicesObjEvents',
 };
 
 export async function createDpdShippingAdapter(
@@ -39,7 +49,13 @@ export async function createDpdShippingAdapter(
     password: credentials.password,
     masterFid: config.masterFid,
   });
-  return new DpdShippingAdapter(client, config);
+  // InfoServices tracking auth is `login`/`password` in the SOAP body (channel
+  // empty for the waybill method) — masterFid is shipment-only (ADR-022).
+  const infoClient = new DpdInfoSoapClient(INFO_BASE_URLS[config.environment], {
+    login: credentials.login,
+    password: credentials.password,
+  });
+  return new DpdShippingAdapter(client, config, infoClient);
 }
 
 function extractConfig(connection: Connection): DpdConnectionConfig {

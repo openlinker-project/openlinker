@@ -23,6 +23,22 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Re-prefix every generated migration timestamp to the synthetic sequence before committing
+
+**Context**: `migration:generate` names files with a real `Date.now()` millisecond prefix; the repo's migrations use synthetic sequential prefixes (`17XX000000000` + small offsets).
+**Problem**: A real epoch prefix can sort into the *middle* of merged history (PR #881's `1779985594755-AddShipmentCarrier.ts` sorted before the migration creating the `shipments` table), so fresh-database `migration:run` fails with `relation … does not exist` while incremental dev DBs keep working — the break stays invisible until someone installs from scratch.
+**Rule**: After generating a migration, bump its filename prefix to the next free synthetic timestamp greater than every migration on `main` (current tail + 1 step) and update the class suffix to match. `scripts/check-migration-timestamps.mjs` now fails lint on any new file that sorts at or below `origin/main`'s max.
+**Applies to**: `apps/api/src/migrations/`, plugin migration dirs in `scripts/plugin-migration-dirs.json`.
+**Source**: #1013 (escaped via PR #881); fix migration `1802000000000-add-shipment-carrier.ts`.
+
+## A `check:invariants` guard that shells out to `git` must tolerate the self-hosted runner having NO git binary, and distinguish git-absent from ref-missing
+
+**Context**: `scripts/check-migration-timestamps.mjs`'s ordering invariant (#1013) derives its baseline from `git ls-tree origin/main`, degrading to a skip when the command fails.
+**Problem**: Two layered gotchas. (1) `actions/checkout@v4` shallow-fetches only the triggering ref, so `refs/remotes/origin/main` is absent on `pull_request` builds. (2) **The self-hosted runner has no `git` binary on the `run`-step PATH at all** — `actions/checkout` silently uses its tarball/API fallback, so even `git ls-tree` (and a naive `git fetch` step) fail with `git: command not found` (exit 127). A first fix that added a bare `git fetch origin/main` step + a `CI=true` hard-fail-on-missing-ref turned a green-but-skipping CI **red** on every PR (the fetch 127'd; the hard-fail would have blocked all PRs once git was absent).
+**Rule**: For any CI step / invariant that shells out to git on a self-hosted runner: (a) **guard `git` invocations on `command -v git`** so a missing binary degrades gracefully instead of exit-127-failing the job; (b) in the guard, **distinguish git-absent (exit 127 / `ENOENT`) → skip even in CI** (the runner can't support the check — an environment limitation, not a per-PR failure) **from git-present-but-ref-missing (exit 128) → hard-fail in CI** (a fixable workflow misconfig); (c) pair the git-capable path with an explicit `git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main` (forced refspec, tolerates reused workspaces). Full CI enforcement of git-history-dependent guards is gated on a git-capable runner (#662/#557).
+**Applies to**: `scripts/check-*.mjs` guards that shell out to git; the `lint` job in `.github/workflows/ci.yml`.
+**Source**: #1020 (reviewer-caught on PR #1015; git-absence surfaced on the live CI run).
+
 ## Create destination PrestaShop orders via `validateOrder`, never the raw webservice `POST /orders`
 
 **Context**: Creating marketplace orders on a destination PrestaShop shop.

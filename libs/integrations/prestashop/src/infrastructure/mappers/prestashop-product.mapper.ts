@@ -14,6 +14,7 @@ import type {
   PrestashopProduct,
   PrestashopCombination,
 } from './prestashop.mapper.interface';
+import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
 
 /**
@@ -55,7 +56,11 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     };
   }
 
-  mapVariant(combination: PrestashopCombination, productId: string): Omit<ProductVariant, 'id'> {
+  mapVariant(
+    combination: PrestashopCombination,
+    productId: string,
+    resolveOptionValue?: OptionValueResolver
+  ): Omit<ProductVariant, 'id'> {
     const attributes: Record<string, string> = {};
     const ean = normalizeToEan13(combination.ean13 ?? null);
     const gtin = normalizeBarcode(combination.upc ?? null);
@@ -69,7 +74,16 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
     );
     optionValues.forEach((ov, index) => {
       const id = this.readAssociationId(ov);
-      if (id !== null) {
+      if (id === null) {
+        return;
+      }
+      // Prefer semantic `{ attributeGroupName: valueName }` (#1050); fall back
+      // to the positional id shape when no resolver is supplied or the id is
+      // unknown (keeps variants distinct + back-compat).
+      const resolved = resolveOptionValue?.(id) ?? null;
+      if (resolved) {
+        attributes[resolved.groupName] = resolved.valueName;
+      } else {
         attributes[`option_${index}`] = id;
       }
     });
@@ -100,6 +114,10 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
    * @param preferredLangId - Preferred language ID (defaults to 1)
    * @returns Extracted text value (trimmed, or undefined if empty/whitespace)
    */
+  localizeField(field: unknown, langId: number = 1): string | undefined {
+    return this.getLocalizedField(field, langId);
+  }
+
   private getLocalizedField(field: unknown, preferredLangId: number = 1): string | undefined {
     if (!field) {
       return undefined;

@@ -177,11 +177,16 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(httpClient.put).toHaveBeenCalledWith(
         expect.stringMatching(/^\/sale\/offer-quantity-change-commands\/[a-f0-9-]+$/),
         expect.objectContaining({
-          offerId: 'offer-1',
-          quantityChange: {
+          modification: {
             changeType: 'FIXED',
             value: 10,
           },
+          offerCriteria: [
+            {
+              offers: [{ id: 'offer-1' }],
+              type: 'CONTAINS_OFFERS',
+            },
+          ],
         })
       );
     });

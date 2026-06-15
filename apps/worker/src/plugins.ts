@@ -32,10 +32,17 @@ import { PrestashopIntegrationModule } from '@openlinker/integrations-prestashop
 import { AllegroIntegrationModule } from '@openlinker/integrations-allegro';
 import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
+import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
+import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
   AllegroIntegrationModule,
   AiIntegrationModule.register(),
   InpostIntegrationModule,
+  WooCommerceIntegrationModule,
+  // #965: resolve the DPD `ShippingProviderManager` adapter when the worker
+  // runs `marketplace.shipment.statusSync` for DPD connections (tracking via
+  // SOAP DPDInfoServices, ADR-022). Scheduler runs api-side; worker only drains.
+  DpdIntegrationModule,
 ];

@@ -55,12 +55,17 @@ Migrations are automatically named with timestamp prefix:
 
 #### Timestamp uniqueness invariant
 
-Every migration filename begins with exactly **13 digits** (the `Date.now()` millisecond shape TypeORM generates). Two rules are non-negotiable:
+Every migration filename begins with exactly **13 digits** (the `Date.now()` millisecond shape TypeORM generates). Three rules are non-negotiable:
 
 1. **Unique**: no two files across `apps/api/src/migrations/` AND every plugin migration directory listed in `scripts/plugin-migration-dirs.json` (#599) share a 13-digit prefix. TypeORM 0.3.17 sorts migrations by timestamp alone with no deterministic tie-breaker — a collision can leave one `up()` body silently unapplied while both class names still appear in the `migrations` table (see [#374](https://github.com/openlinker-project/openlinker/issues/374)). Uniqueness is enforced across the *union*, so Allegro + a hypothetical Shopify plugin can't both pick the same prefix.
 2. **Consistent**: the class declared in the file repeats the same timestamp suffix as the filename prefix. This catches half-renames where one side is updated but not the other.
+3. **Ordered** (#1013): a new migration's timestamp must be **strictly greater** than every migration already on `main` (core + plugin dirs). The repo uses **synthetic sequential prefixes** (`17XX000000000` plus small offsets like `…001`, `…002`), not real epoch timestamps. `migration:generate` emits a real `Date.now()` prefix — **re-prefix it to the next free synthetic timestamp (current tail + 1 step) and update the class suffix before committing**. A real epoch prefix can sort into the *middle* of merged history, making the migration run before tables it depends on exist — fresh-database `migration:run` then fails (`relation … does not exist`) while incremental dev DBs keep working, so the break stays invisible until a from-scratch install (see [#1013](https://github.com/openlinker-project/openlinker/issues/1013)).
 
-Both rules are enforced by `scripts/check-migration-timestamps.mjs`, chained into the root `check:invariants` command and therefore into every `pnpm lint` run (including pre-commit). A collision fails `pnpm lint` immediately.
+All three rules are enforced by `scripts/check-migration-timestamps.mjs`, chained into the root `check:invariants` command and therefore into every `pnpm lint` run (including pre-commit). A collision fails `pnpm lint` immediately; the ordering check compares the working tree against `origin/main` via `git ls-tree`, so its enforcement depends on `git` (#1020):
+
+- **`git` present, `origin/main` missing** — skipped with a notice **locally**; a **hard lint failure** in CI (`CI=true`). `actions/checkout@v4` shallow-fetches only the triggering ref, so the `lint` job fetches `origin/main` after checkout to make git-capable PR builds enforce the invariant.
+- **`git` absent** — some self-hosted runners have no `git` binary (`actions/checkout` then uses its tarball/API fallback); the check **skips even in CI** because it cannot run without git. Full CI enforcement there is gated on a git-capable runner (see issues #662/#557).
+- **`push: [main]`** builds pass vacuously (the migration is already in the baseline) — the guard is a pre-merge gate.
 
 If `migration:generate` produces a timestamp that happens to be already taken (rare, but possible in branch-merge windows), bump the new file's prefix to the next free millisecond and update the class suffix to match before committing.
 
@@ -127,11 +132,7 @@ A plugin shipping its own ORM entities (e.g. Allegro's `AllegroQuantityCommandOr
 1. Ensure database is running and accessible
 2. Ensure environment variables are set (`.env` or `.env.local`, or set as system environment variables)
 3. Ensure current database schema matches the last committed migration
-4. **Optional**: Install `dotenv` package for automatic `.env` file loading:
-   ```bash
-   pnpm add -D dotenv
-   ```
-   Note: If `dotenv` is not installed, environment variables must be set as system environment variables.
+4. `dotenv` is a declared `devDependency` in `apps/api` — no manual install step needed. Migration commands automatically load `apps/api/.env.local` then `apps/api/.env`.
 
 ### Generate Migration Command
 
@@ -334,6 +335,20 @@ ALTER TABLE "products" ADD "currency" character varying(3);
 DELETE FROM migrations WHERE name = 'AddCurrencyToProducts1790000000000';
 DELETE FROM migrations WHERE name = 'RenameMarketplaceCapability1788000000000';
 ```
+
+#### 6. Migration sorts before its dependency (fresh-DB-only failure)
+
+**Problem**: A migration kept the real `Date.now()` prefix from `migration:generate` instead of the synthetic sequential convention, so it sorts into the *middle* of merged history — before a migration that creates the table it alters. Fresh databases fail `migration:run` with `QueryFailedError: relation "X" does not exist`; incremental databases (where the table already existed when the migration landed) keep working, so the break only surfaces on from-scratch installs and Testcontainers integration boots.
+
+**Prevention**: rule 3 of the [Timestamp uniqueness invariant](#timestamp-uniqueness-invariant) — `scripts/check-migration-timestamps.mjs` fails `pnpm lint` when a migration not yet on `origin/main` sorts at or below `origin/main`'s newest timestamp.
+
+**Recovery** (worked example: `1802000000000-add-shipment-carrier.ts`, the [#1013](https://github.com/openlinker-project/openlinker/issues/1013) fix for the mis-timestamped `AddShipmentCarrier1779985594755`): replace the file with a re-timestamped, **self-healing** migration that sorts after the current tail — same pattern as the #374 recovery above:
+
+1. `up()` first `DELETE`s the orphaned `migrations` row written under the old class name (no-op on fresh DBs — the failed original run was rolled back and left no row).
+2. All DDL is `IF [NOT] EXISTS`-guarded, so re-applying after a successful original run is a no-op instead of a `column already exists` failure.
+3. Delete the mis-timestamped original file in the same commit.
+
+Both already-migrated and fresh databases then converge on a plain `migration:run` — no manual SQL required.
 
 ### Debugging Tips
 

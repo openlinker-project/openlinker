@@ -51,6 +51,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/ai/src/$1',
     ),
+    '^@openlinker/integrations-woocommerce$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/woocommerce/src/index.ts',
+    ),
+    '^@openlinker/integrations-woocommerce/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/woocommerce/src/$1',
+    ),
     '^@openlinker/integrations-inpost$': path.resolve(
       __dirname,
       '../../../libs/integrations/inpost/src/index.ts',
@@ -58,6 +66,14 @@ module.exports = {
     '^@openlinker/integrations-inpost/(.*)$': path.resolve(
       __dirname,
       '../../../libs/integrations/inpost/src/$1',
+    ),
+    '^@openlinker/integrations-dpd-polska$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/dpd-polska/src/index.ts',
+    ),
+    '^@openlinker/integrations-dpd-polska/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/dpd-polska/src/$1',
     ),
   },
 };

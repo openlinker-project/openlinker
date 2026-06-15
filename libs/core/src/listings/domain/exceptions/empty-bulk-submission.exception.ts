@@ -1,7 +1,7 @@
 /**
  * Empty Bulk Submission Exception
  *
- * Domain exception raised by `BulkOfferCreationSubmitService.submit` when
+ * Domain exception raised by `BulkListingSubmitService.submit` when
  * the caller passes an empty `productIds` array. The controller DTO
  * already enforces `@IsArray @ArrayMinSize(1) @ArrayMaxSize(100)`, so
  * surfacing this exception means the service was reached via an internal

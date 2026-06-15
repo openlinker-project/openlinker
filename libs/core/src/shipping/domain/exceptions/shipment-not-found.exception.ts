@@ -5,7 +5,7 @@
  * exist. Raised by `ShipmentRepositoryPort.update` when no row matches —
  * i.e. infrastructure `Repository.update(id, ...)` returns `affected === 0`.
  *
- * Mirrors `BulkOfferCreationBatchNotFoundException` shape.
+ * Mirrors `BulkListingBatchNotFoundException` shape.
  *
  * @module libs/core/src/shipping/domain/exceptions
  */

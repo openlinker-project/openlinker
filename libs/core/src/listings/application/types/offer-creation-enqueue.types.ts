@@ -35,7 +35,7 @@ export interface EnqueueOfferCreationInput {
   /** Caller-supplied idempotency key; defaults to `offer-create:{record.id}` (per-call-unique). */
   idempotencyKey?: string;
   /**
-   * Parent BulkOfferCreationBatch id when this enqueue is part of a bulk
+   * Parent BulkListingBatch id when this enqueue is part of a bulk
    * submission (#736). When set the emitted job payload is
    * `MarketplaceOfferCreatePayloadV2` (carries `bulkBatchId` +
    * `generateDescription` + optional `descriptionTone`); when omitted, V1

@@ -18,6 +18,7 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createDpdShippingAdapter } from './application/dpd-adapter.factory';
 import { DpdConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/dpd-connection-config-shape-validator.adapter';
+import { buildDpdSchedulerTasks } from './infrastructure/scheduler/dpd-scheduler-tasks';
 
 /**
  * Static plugin manifest (#575). Exported as a top-level `const` so host-side
@@ -48,6 +49,12 @@ export function createDpdPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ login, password }` shape is
       // enforced at adapter construction time by the factory.
+
+      // Shipment-status poll (#965, ADR-022) — the only DPD tracking path
+      // (no DPD webhook). Env-gated; takes effect worker-side via the scheduler.
+      for (const task of buildDpdSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     async createCapabilityAdapter<T>(
