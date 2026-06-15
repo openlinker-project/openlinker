@@ -118,7 +118,9 @@ describe('AttributeProjectionService', () => {
 
     const result = await service.project(input({ Color: 'Red' }));
 
-    expect(result.unresolvedRequired).toEqual([{ id: 'p-brand', name: 'Marka' }]);
+    expect(result.unresolvedRequired).toEqual([
+      { id: 'p-brand', name: 'Marka', section: 'offer' },
+    ]);
     expect(result.parameters).toEqual([]);
   });
 
@@ -137,7 +139,9 @@ describe('AttributeProjectionService', () => {
     const result = await service.project(input({ Color: 'Magenta' }));
 
     expect(result.parameters).toEqual([]);
-    expect(result.unresolvedRequired).toEqual([{ id: 'p-color', name: 'Kolor' }]);
+    expect(result.unresolvedRequired).toEqual([
+      { id: 'p-color', name: 'Kolor', section: 'offer' },
+    ]);
   });
 
   it('passes through name-keyed parameters when the destination does not own its taxonomy', async () => {

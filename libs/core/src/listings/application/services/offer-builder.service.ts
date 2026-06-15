@@ -4,10 +4,20 @@
  * Assembles a platform-neutral `CreateOfferCommand` from an OL internal variant
  * id. Fetches variant metadata via `IProductsService`, resolves the parent
  * master product via `ProductMasterPort` (for name/description/images/price),
- * resolves the marketplace category via `ICategoryResolutionService`, and
- * validates required fields. Throws `OfferBuilderValidationException` with a
- * list of issues when anything is missing so callers can surface all problems
- * at once.
+ * resolves the marketplace category via `ICategoryResolutionService`
+ * (barcode → per-source-category mapping → manual, provenance-aware), projects
+ * the variant's attributes into neutral `OfferParameter[]` via
+ * `IAttributeProjectionService`, and validates required fields. Throws
+ * `OfferBuilderValidationException` with a list of issues when anything is
+ * missing so callers can surface all problems at once — `OfferCreationExecution`
+ * maps that to `business_failure` (ADR-007).
+ *
+ * Two publish gates (ADR-023 §5):
+ *  1. unresolved category / price → `business_failure`.
+ *  2. unresolved **offer-section** required parameters → `business_failure`.
+ *     Product-section required params are deferred to the adapter / marketplace
+ *     because Allegro catalog smart-link (#431/#808) inherits them from the
+ *     card; gating them here would false-fail card-linked / bulk (#824) offers.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
@@ -18,7 +28,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { CreateOfferCommand } from '@openlinker/core/listings';
+import type { CreateOfferCommand, OfferParameter } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   IProductsService,
@@ -28,7 +38,11 @@ import {
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
 import type { OfferBuilderValidationIssue } from '../../domain/exceptions/offer-builder-validation.exception';
 import { OfferBuilderValidationException } from '../../domain/exceptions/offer-builder-validation.exception';
-import { CATEGORY_RESOLUTION_SERVICE_TOKEN } from '../../listings.tokens';
+import {
+  ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
+} from '../../listings.tokens';
+import { IAttributeProjectionService } from '../interfaces/attribute-projection.service.interface';
 import { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type { IOfferBuilderService } from '../interfaces/offer-builder.service.interface';
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
@@ -45,7 +59,9 @@ export class OfferBuilderService implements IOfferBuilderService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(CATEGORY_RESOLUTION_SERVICE_TOKEN)
-    private readonly categoryResolution: ICategoryResolutionService
+    private readonly categoryResolution: ICategoryResolutionService,
+    @Inject(ATTRIBUTE_PROJECTION_SERVICE_TOKEN)
+    private readonly attributeProjection: IAttributeProjectionService
   ) {}
 
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
@@ -74,7 +90,11 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
     const product = await productMaster.getProduct(variant.productId);
 
-    const categoryId = await this.resolveCategory(input, variant.ean ?? variant.gtin ?? null);
+    const categoryId = await this.resolveCategory(
+      input,
+      variant.ean ?? variant.gtin ?? null,
+      product.categories
+    );
     if (!categoryId) {
       issues.push({
         field: 'overrides.categoryId',
@@ -86,9 +106,21 @@ export class OfferBuilderService implements IOfferBuilderService {
 
     const price = this.resolvePrice(input, product, issues);
 
+    // Gate 1 — category / price. Throw before projection: projection needs a
+    // resolved category, and surfacing all field problems at once is the
+    // builder's contract.
     if (issues.length > 0) {
       throw new OfferBuilderValidationException(issues);
     }
+
+    // `categoryId` is guaranteed non-null here — Gate 1 pushed a `REQUIRED`
+    // issue and threw otherwise.
+    const parameters = await this.projectParameters(
+      input,
+      masterConnectionId,
+      categoryId as string,
+      variant.attributes ?? {}
+    );
 
     const title = input.overrides?.title ?? product.name;
     const description = input.overrides?.description ?? product.description;
@@ -123,6 +155,11 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      // Neutral projected parameters (#1039). The adapter merges these with any
+      // operator-supplied `platformParams.parameters`/`productParameters` and
+      // shapes them to platform wire. Omitted when empty so offers with no
+      // mappable attributes keep their existing command shape.
+      ...(parameters.length > 0 ? { parameters } : {}),
       // #431 — smart-link by barcode. Pre-resolved here so adapters that
       // need it (Allegro) don't have to re-fetch the variant.
       variantBarcode: variant.ean ?? variant.gtin ?? null,
@@ -135,7 +172,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     };
 
     this.logger.debug(
-      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} productCardId=${command.productCardId ?? 'null'}`
+      `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} params=${parameters.length} productCardId=${command.productCardId ?? 'null'}`
     );
 
     return command;
@@ -143,19 +180,96 @@ export class OfferBuilderService implements IOfferBuilderService {
 
   private async resolveCategory(
     input: BuildCreateOfferCommandInput,
-    barcode: string | null
+    barcode: string | null,
+    sourceCategoryIds: string[] | undefined
   ): Promise<string | null> {
     if (input.overrides?.categoryId) {
       return input.overrides.categoryId;
     }
-    if (!barcode) {
+    const hasSourceCategories = sourceCategoryIds != null && sourceCategoryIds.length > 0;
+    // Nothing to resolve from: no override, no barcode, no source categories.
+    if (!barcode && !hasSourceCategories) {
       return null;
     }
     const result = await this.categoryResolution.resolveCategory({
       connectionId: input.connectionId,
       barcode,
+      // Only include when present so the call shape stays minimal (the chain
+      // treats an absent list the same as an empty one).
+      ...(hasSourceCategories ? { sourceCategoryIds } : {}),
     });
     return result.destinationCategoryId;
+  }
+
+  /**
+   * Project the variant's attributes into neutral `OfferParameter[]` and apply
+   * Gate 2 (offer-section required params). Returns the projected parameters
+   * for the command; the adapter merges them with operator-supplied params.
+   */
+  private async projectParameters(
+    input: BuildCreateOfferCommandInput,
+    sourceConnectionId: string,
+    destinationCategoryId: string,
+    attributes: Record<string, string>
+  ): Promise<OfferParameter[]> {
+    const projection = await this.attributeProjection.project({
+      sourceConnectionId,
+      destinationConnectionId: input.connectionId,
+      destinationCategoryId,
+      attributes,
+    });
+
+    // Gate 2 — offer-section required params only. Product-section required
+    // params are deferred to the adapter / marketplace (Allegro catalog-card
+    // inheritance, #431/#808; bulk self-link, #824). Operator-supplied
+    // offer-section params (FE wizard, carried on `platformParams.parameters`)
+    // satisfy the requirement, so subtract their ids before gating.
+    const operatorOfferParamIds = this.readOperatorOfferParamIds(input.overrides?.platformParams);
+    const blockingRequired = projection.unresolvedRequired.filter(
+      (param) => param.section === 'offer' && !operatorOfferParamIds.has(param.id)
+    );
+    if (blockingRequired.length > 0) {
+      throw new OfferBuilderValidationException(
+        blockingRequired.map((param) => ({
+          field: `parameters.${param.name}`,
+          code: 'PARAMETER_REQUIRED',
+          message: `Required offer parameter "${param.name}" (id=${param.id}) has no resolvable value; map the source attribute or supply it explicitly`,
+        }))
+      );
+    }
+
+    if (projection.unmappedSourceKeys.length > 0) {
+      this.logger.warn(
+        `Omitting ${projection.unmappedSourceKeys.length} unmapped source attribute(s) for variant=${input.internalVariantId} connection=${input.connectionId}: ${projection.unmappedSourceKeys.join(', ')}`
+      );
+    }
+
+    return projection.parameters;
+  }
+
+  /**
+   * Collect the ids of operator-supplied **offer-section** parameters from the
+   * (transitional) FE channel `platformParams.parameters`. Ids only, narrowed
+   * with a type guard — used solely to keep Gate 2 from false-failing a wizard
+   * offer whose required param the operator already supplied. Removed once the
+   * FE migrates to the neutral channel (#1071).
+   */
+  private readOperatorOfferParamIds(
+    platformParams: Record<string, unknown> | undefined
+  ): Set<string> {
+    const ids = new Set<string>();
+    const raw = platformParams?.['parameters'];
+    if (!Array.isArray(raw)) return ids;
+    for (const entry of raw) {
+      if (
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as { id?: unknown }).id === 'string'
+      ) {
+        ids.add((entry as { id: string }).id);
+      }
+    }
+    return ids;
   }
 
   private resolvePrice(

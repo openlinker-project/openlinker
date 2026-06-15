@@ -62,7 +62,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     );
 
     const parameters: ResolvedParameter[] = [];
-    const unresolvedRequired: { id: string; name: string }[] = [];
+    const unresolvedRequired: AttributeProjectionResult['unresolvedRequired'] = [];
     const usedSourceKeys = new Set<string>();
 
     if (isCategoryParametersReader(adapter)) {
@@ -71,7 +71,9 @@ export class AttributeProjectionService implements IAttributeProjectionService {
         const mapping = this.findMappingForParameter(applicable, param.name);
         const sourceValue = mapping ? attributes[mapping.sourceAttributeKey] : undefined;
         if (!mapping || sourceValue === undefined || sourceValue === '') {
-          if (param.required) unresolvedRequired.push({ id: param.id, name: param.name });
+          if (param.required) {
+            unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
+          }
           continue;
         }
         usedSourceKeys.add(mapping.sourceAttributeKey);
@@ -79,7 +81,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
         if (resolved) {
           parameters.push(resolved);
         } else if (param.required) {
-          unresolvedRequired.push({ id: param.id, name: param.name });
+          unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
         }
       }
     } else {

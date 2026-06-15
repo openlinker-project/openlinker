@@ -1211,6 +1211,71 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).not.toHaveProperty('unknownField');
     });
 
+    it('splits neutral cmd.parameters by section into offer + product params (#1039)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-neutral', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        parameters: [
+          { id: 'cond-1', values: ['Nowy'], section: 'offer' },
+          { id: '248811', valuesIds: ['248811_canon'], section: 'product' },
+        ],
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as {
+        parameters?: Array<{ id: string }>;
+        productSet?: Array<{ product?: { parameters?: Array<{ id: string }> } }>;
+      };
+      // Offer-section → body.parameters; section field stripped to wire shape.
+      expect(body.parameters).toEqual([{ id: 'cond-1', values: ['Nowy'] }]);
+      // Product-section → productSet[0].product.parameters (inline path).
+      expect(body.productSet?.[0]?.product?.parameters).toEqual([
+        { id: '248811', valuesIds: ['248811_canon'] },
+      ]);
+    });
+
+    it('lets operator-supplied platformParams win by id over projected cmd.parameters (#1039)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-merge', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        parameters: [{ id: 'cond-1', values: ['Projected'], section: 'offer' }],
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: { parameters: [{ id: 'cond-1', values: ['Operator'] }] },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as { parameters?: Array<{ values?: string[] }> };
+      expect(body.parameters).toEqual([{ id: 'cond-1', values: ['Operator'] }]);
+    });
+
+    it('lets operator productParameters win by id over projected product params (#1039)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-prod-merge', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        parameters: [{ id: '248811', valuesIds: ['projected_brand'], section: 'product' }],
+        overrides: {
+          ...baseCmd.overrides,
+          platformParams: { productParameters: [{ id: '248811', valuesIds: ['operator_brand'] }] },
+        },
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as {
+        productSet?: Array<{ product?: { parameters?: Array<{ valuesIds?: string[] }> } }>;
+      };
+      expect(body.productSet?.[0]?.product?.parameters).toEqual([
+        { id: '248811', valuesIds: ['operator_brand'] },
+      ]);
+    });
+
     it('omits afterSalesServices entirely when impliedWarrantyId is set but warrantyId, returnPolicyId are not (#406)', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-iwar-only', publication: { status: 'INACTIVE' } })

@@ -9,6 +9,7 @@
  */
 
 import type { CategoryParameterSection } from '../../domain/types/category-parameter.types';
+import type { OfferParameter } from '../../domain/types/offer-parameter.types';
 
 /**
  * Projection input. `sourceConnectionId` selects the source-scoped attribute
@@ -26,28 +27,26 @@ export interface AttributeProjectionInput {
 /**
  * One projected destination parameter.
  *
- * `id` dual semantics: on the **owns** path it is the live `CategoryParameter.id`
- * (the destination's parameter identifier); on the **pass-through** path it is
- * the `destinationParameterName` (the adapter interprets, since no schema is
- * available to resolve an id). `valuesIds` carries resolved dictionary entry ids
- * (owns + dictionary type); `values` carries free-text / pass-through values.
+ * Alias of the canonical domain {@link OfferParameter} (#1039): projection is
+ * the producer, and its output travels verbatim on `CreateOfferCommand
+ * .parameters`. Kept as a named alias so existing projection-internal call
+ * sites read in projection terms while the command references the domain type
+ * directly (no domain→application edge).
  */
-export interface ResolvedParameter {
-  id: string;
-  values?: string[];
-  valuesIds?: string[];
-  section: CategoryParameterSection;
-}
+export type ResolvedParameter = OfferParameter;
 
 /**
  * Projection result. `parameters` are ready for the adapter to serialize;
  * `unmappedSourceKeys` are present source attributes that didn't reach the
  * destination (no mapping, or mapped to a parameter absent from the category);
  * `unresolvedRequired` are required destination parameters that couldn't be
- * populated — the publish gate (#1039) consumes these.
+ * populated — the publish gate (#1039) consumes these. `section` lets the gate
+ * enforce **offer-section** required params at the builder while deferring
+ * product-section ones to the adapter / marketplace (Allegro catalog-card
+ * inheritance, #431/#808).
  */
 export interface AttributeProjectionResult {
   parameters: ResolvedParameter[];
   unmappedSourceKeys: string[];
-  unresolvedRequired: { id: string; name: string }[];
+  unresolvedRequired: { id: string; name: string; section: CategoryParameterSection }[];
 }
