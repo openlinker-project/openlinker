@@ -13,12 +13,14 @@ import type { CarrierMapping } from '../../domain/entities/carrier-mapping.entit
 import type { PaymentMapping } from '../../domain/entities/payment-mapping.entity';
 import type { CategoryMapping } from '../../domain/entities/category-mapping.entity';
 import type { OrderStateMapping } from '../../domain/entities/order-state-mapping.entity';
+import type { AttributeMapping } from '../../domain/entities/attribute-mapping.entity';
 import type {
   StatusMappingInput,
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
   OrderStateMappingInput,
+  AttributeMappingInput,
 } from '../../domain/types/mapping.types';
 
 export interface IMappingConfigService {
@@ -91,4 +93,17 @@ export interface IMappingConfigService {
     destinationConnectionId: string,
     sourceCategoryId: string
   ): Promise<string | null>;
+
+  /**
+   * Attribute mappings for a destination connection (#1038, ADR-023 §4) — the
+   * full set across source connections and categories, each with its value
+   * translations. The projection service filters by source connection +
+   * category in memory.
+   */
+  getAttributeMappings(destinationConnectionId: string): Promise<AttributeMapping[]>;
+  upsertAttributeMapping(
+    destinationConnectionId: string,
+    input: AttributeMappingInput
+  ): Promise<AttributeMapping>;
+  deleteAttributeMapping(id: string): Promise<void>;
 }
