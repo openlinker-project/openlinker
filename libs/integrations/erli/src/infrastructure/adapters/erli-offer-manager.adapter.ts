@@ -86,11 +86,16 @@ const ERLI_PRODUCT_ID_PATTERN = /^ol_variant_[a-f0-9]{32}$/;
  * PROVISIONAL alongside the wire shape in `erli-product.types.ts` (#992): if the
  * confirmed frozen-name set differs, this is the single change point.
  */
+// OL patch-key → Erli frozen-marker wire name. Provisional #992 wire vocabulary,
+// coupled to `ErliProductResource.frozenFields` (erli-product.types.ts) — reconcile
+// both against the sandbox together. `stock` is intentionally absent: the hot
+// quantity path (`updateOfferQuantity`) does not read frozen state in v1, so a
+// `stock` entry here would be dead code asserting a guarantee no path delivers.
+// Honoring frozen-stock is deferred to #1066 (ADR-025 §4b).
 const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, string>> = {
   price: 'price',
   name: 'name',
   description: 'description',
-  stock: 'stock',
 };
 
 export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, OfferFieldUpdater {
@@ -138,7 +143,20 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     const body = this.buildPatchFromFields(cmd.fields);
     // #988 / ADR-025 §4b: never overwrite a field the seller froze in the panel.
     // Read the live product, drop frozen keys per-field; an empty body is a no-op.
-    const current = await this.fetchErliProduct(cmd.externalOfferId);
+    let current: ErliProductResource;
+    try {
+      current = await this.fetchErliProduct(cmd.externalOfferId);
+    } catch (error) {
+      // ADR-025 is reconciliation-first: within Erli's ~20-min read-after-write
+      // cache lag a just-created offer GET-404s. Fail open — PATCH the full body
+      // (frozen state unknown, and a just-created offer has no manual freezes yet)
+      // rather than blocking the update. Re-throw anything that isn't a 404 (#1061).
+      if (error instanceof ErliApiException && error.statusCode === 404) {
+        current = {} as ErliProductResource;
+      } else {
+        throw error;
+      }
+    }
     const filtered = this.dropFrozenFields(body, current.frozenFields);
     if (Object.keys(filtered).length === 0) {
       this.logger.debug(
@@ -191,6 +209,10 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
+    // Frozen-stock is intentionally NOT honored here in v1: this runs on every
+    // inventory tick and skips the read-before-write GET for performance, so a
+    // seller-frozen `stock` is not detectable on this path. Deferred to #1066
+    // (ADR-025 §4b) — to be done without a per-tick GET via a cached frozen flag.
     const body: ErliProductPatchBody = { stock: cmd.quantity };
     await this.httpClient.patch(this.productPath(cmd.offerId), body);
   }
