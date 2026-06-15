@@ -40,6 +40,7 @@ import type {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
   CreateOfferCommand,
+  OfferParameter,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
@@ -1501,14 +1502,46 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cardLinkResult);
+    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult);
 
     return body;
+  }
+
+  /**
+   * Merge core-projected neutral parameters (#1039) with the operator-supplied
+   * legacy `platformParams.parameters`/`productParameters` (FE wizard) for one
+   * section, keyed by parameter `id`. **Operator-supplied wins** — a manual
+   * pick overrides a projected value for the same parameter. The neutral
+   * `section` field is dropped here (the offer/product split is the caller's
+   * concern); the result is the Allegro wire shape.
+   *
+   * Transitional: once the FE emits the neutral channel (#1071) the legacy
+   * `legacyRaw` source disappears and this collapses to a passthrough.
+   */
+  private mergeSectionParameters(
+    projected: readonly OfferParameter[],
+    legacyRaw: unknown
+  ): AllegroOfferParameter[] {
+    const byId = new Map<string, AllegroOfferParameter>();
+    for (const param of projected) {
+      byId.set(param.id, {
+        id: param.id,
+        ...(param.values ? { values: param.values } : {}),
+        ...(param.valuesIds ? { valuesIds: param.valuesIds } : {}),
+      });
+    }
+    if (Array.isArray(legacyRaw)) {
+      for (const entry of legacyRaw) {
+        if (isAllegroOfferParameterShape(entry)) byId.set(entry.id, entry);
+      }
+    }
+    return Array.from(byId.values());
   }
 
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
+    projectedParameters: readonly OfferParameter[] | undefined,
     cardLinkResult: ResolveProductCardResult
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
@@ -1547,9 +1580,17 @@ export class AllegroOfferManagerAdapter
       body.payments = { invoice };
     }
 
-    const parameters = platformParams['parameters'];
-    if (Array.isArray(parameters)) {
-      body.parameters = parameters.filter(isAllegroOfferParameterShape);
+    // Offer-section parameters: core-projected (#1039) merged with the legacy
+    // FE `platformParams.parameters` (operator wins by id). Applied before the
+    // smart-link short-circuit so card-linked offers still carry offer-section
+    // params (the card only supplies product-section ones).
+    const offerProjected = (projectedParameters ?? []).filter((p) => p.section === 'offer');
+    const offerParameters = this.mergeSectionParameters(
+      offerProjected,
+      platformParams['parameters']
+    );
+    if (offerParameters.length > 0) {
+      body.parameters = offerParameters;
     }
 
     // #431 — smart-link short-circuit. When the variant's EAN uniquely
@@ -1618,10 +1659,15 @@ export class AllegroOfferManagerAdapter
     // needed at this site. Keeping a single sanitization point per request
     // lifecycle avoids "why is this being sanitized — wasn't it already?"
     // reader confusion.
-    const productParameters = platformParams['productParameters'];
-    const filtered = Array.isArray(productParameters)
-      ? productParameters.filter(isAllegroOfferParameterShape)
-      : [];
+    // Product-section parameters: core-projected (#1039) merged with the legacy
+    // FE `platformParams.productParameters` (operator wins by id). Reached only
+    // on the inline-product path — the `unique` smart-link branch above
+    // early-returned, inheriting product params from the catalog card.
+    const productProjected = (projectedParameters ?? []).filter((p) => p.section === 'product');
+    const filtered = this.mergeSectionParameters(
+      productProjected,
+      platformParams['productParameters']
+    );
     // `parameters` is attached only when the operator supplied any — Allegro
     // rejects an explicit empty array on inline products. Spread-with-conditional
     // keeps the construction declarative and avoids a post-create mutation.

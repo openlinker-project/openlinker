@@ -168,6 +168,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
 } from './domain/types/offer-create.types';
+export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
 
