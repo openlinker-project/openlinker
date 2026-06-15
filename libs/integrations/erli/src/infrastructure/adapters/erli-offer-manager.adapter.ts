@@ -9,10 +9,12 @@
  *
  * Async write model (ADR-025): Erli returns HTTP 202 (validated + stored,
  * ~20-min cache lag — no read-after-write). A 202/2xx create maps to
- * `CreateOfferResult.status = 'validating'`: the core poll then reads the real
- * Erli status back via this adapter's `OfferStatusReader.getOfferStatus` (#989)
- * and the steady-state `erli-offer-status-sync` scheduler task reconciles mapped
- * offers into `offer_status_snapshots` — never trusting the 202 as confirmation.
+ * `CreateOfferResult.status = 'draft'` (submitted, not confirmed — it does NOT
+ * schedule the Allegro-tuned creation poll, whose 404-is-terminal + ~9.5-min
+ * budget collide with Erli's ~20-min lag; review #1063). Publication is instead
+ * reconciled by the steady-state `erli-offer-status-sync` scheduler task, which
+ * reads the real Erli status back via this adapter's `OfferStatusReader.getOfferStatus`
+ * (#989) into `offer_status_snapshots` — never trusting the 202 as confirmation.
  *
  * Category/parameter reuse (#985): the create body carries `externalCategories`
  * + `externalAttributes` tagged `source:"allegro"`, built from the already-
@@ -145,10 +147,14 @@ export class ErliOfferManagerAdapter
       // Auth / network / rate-limit propagate to the runner + classifiers.
       throw error;
     }
-    // 202/2xx = submitted, not confirmed (ADR-025). 'validating' schedules the
-    // core status poll, which reads the real Erli status back via this adapter's
-    // OfferStatusReader (#989) — safe now that getOfferStatus exists.
-    return { externalOfferId, status: 'validating' };
+    // 202/2xx = submitted, not confirmed (ADR-025). Stay 'draft' (outcome 'ok',
+    // no creation poll): the Allegro-tuned OfferStatusPollService treats a GET
+    // 404 as terminal OFFER_NOT_FOUND on the first iteration and its ~9.5-min
+    // budget is shorter than Erli's documented ~20-min cache lag — flipping to
+    // 'validating' would falsely fail valid offers (review #1063). Publication is
+    // reconciled by the steady-state erli-offer-status-sync task instead, which
+    // tolerates the lag; that path still exercises getOfferStatus (#989).
+    return { externalOfferId, status: 'draft' };
   }
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
