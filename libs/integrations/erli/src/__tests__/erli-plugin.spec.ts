@@ -43,18 +43,21 @@ function makeRegisterHost(): {
   testerRegistry: { register: jest.Mock };
   retryClassifierRegistry: { register: jest.Mock };
   authFailureClassifierRegistry: { register: jest.Mock };
+  schedulerTaskRegistry: { register: jest.Mock };
 } {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
   const testerRegistry = { register: jest.fn() };
   const retryClassifierRegistry = { register: jest.fn() };
   const authFailureClassifierRegistry = { register: jest.fn() };
+  const schedulerTaskRegistry = { register: jest.fn() };
   const hostStub = {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     connectionTesterRegistry: testerRegistry,
     retryClassifierRegistry,
     authFailureClassifierRegistry,
+    schedulerTaskRegistry,
   } as unknown as HostServices;
   return {
     host: hostStub,
@@ -63,6 +66,7 @@ function makeRegisterHost(): {
     testerRegistry,
     retryClassifierRegistry,
     authFailureClassifierRegistry,
+    schedulerTaskRegistry,
   };
 }
 
@@ -139,6 +143,20 @@ describe('createErliPlugin', () => {
       expect(authFailureClassifierRegistry.register).toHaveBeenCalledWith(
         'erli.shopapi.v1',
         expect.objectContaining({ isCredentialRejected: expect.any(Function) }),
+      );
+    });
+
+    it('should register the erli-offer-status-sync scheduler task (#989)', () => {
+      const { host, schedulerTaskRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'erli-offer-status-sync',
+          platformType: 'erli',
+          jobType: 'marketplace.offer.statusSync',
+          enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+        }),
       );
     });
   });

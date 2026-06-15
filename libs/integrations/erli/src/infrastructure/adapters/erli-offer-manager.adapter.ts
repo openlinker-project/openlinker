@@ -9,10 +9,10 @@
  *
  * Async write model (ADR-025): Erli returns HTTP 202 (validated + stored,
  * ~20-min cache lag — no read-after-write). A 202/2xx create maps to
- * `CreateOfferResult.status = 'draft'` ("submitted, not yet confirmed") — NOT
- * `'validating'`, which would schedule the #989 status poll that has no
- * `OfferStatusReader` yet and would flip the record to `business_failure`.
- * #989 introduces `OfferStatusReader` and flips this to `'validating'`.
+ * `CreateOfferResult.status = 'validating'`: the core poll then reads the real
+ * Erli status back via this adapter's `OfferStatusReader.getOfferStatus` (#989)
+ * and the steady-state `erli-offer-status-sync` scheduler task reconciles mapped
+ * offers into `offer_status_snapshots` — never trusting the 202 as confirmation.
  *
  * Category/parameter reuse (#985): the create body carries `externalCategories`
  * + `externalAttributes` tagged `source:"allegro"`, built from the already-
@@ -53,6 +53,7 @@
  */
 import {
   OfferCreateRejectedException,
+  OfferNotFoundOnMarketplaceException,
   type CreateOfferCommand,
   type CreateOfferResult,
   type CreateOfferValidationError,
@@ -61,6 +62,8 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type OfferStatusReadResult,
+  type OfferStatusReader,
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
@@ -108,7 +111,9 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
   description: 'description',
 };
 
-export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, OfferFieldUpdater {
+export class ErliOfferManagerAdapter
+  implements OfferManagerPort, OfferCreator, OfferFieldUpdater, OfferStatusReader
+{
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
   constructor(
@@ -140,13 +145,10 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
       // Auth / network / rate-limit propagate to the runner + classifiers.
       throw error;
     }
-    // 202/2xx = submitted, not confirmed (ADR-025). 'draft' → outcome 'ok',
-    // no status poll. #989 flips to 'validating' once OfferStatusReader exists.
-    // `cmd.publishImmediately` is intentionally not actionable here: Erli's write
-    // is async with no read-after-write, so the live publication state can't be
-    // confirmed synchronously — it is reconciled later via #989's OfferStatusReader
-    // regardless of the requested flag.
-    return { externalOfferId, status: 'draft' };
+    // 202/2xx = submitted, not confirmed (ADR-025). 'validating' schedules the
+    // core status poll, which reads the real Erli status back via this adapter's
+    // OfferStatusReader (#989) — safe now that getOfferStatus exists.
+    return { externalOfferId, status: 'validating' };
   }
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
@@ -175,6 +177,26 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
       return;
     }
     await this.httpClient.patch(this.productPath(cmd.externalOfferId), filtered);
+  }
+
+  /**
+   * OfferStatusReader (#989). Reads the real Erli-side status (despite the
+   * async-202 cache lag) and maps it to the neutral `OfferPublicationStatus`.
+   * Reuses {@link fetchErliProduct}. A 404 (offer not on Erli) becomes
+   * `OfferNotFoundOnMarketplaceException`; other transport errors propagate so
+   * the runner's transient-retry path absorbs the blip (capability contract).
+   */
+  async getOfferStatus(externalOfferId: string): Promise<OfferStatusReadResult> {
+    let product: ErliProductResource;
+    try {
+      product = await this.fetchErliProduct(externalOfferId);
+    } catch (error) {
+      if (error instanceof ErliApiException && error.statusCode === 404) {
+        throw new OfferNotFoundOnMarketplaceException(externalOfferId, this.connectionId);
+      }
+      throw error;
+    }
+    return mapErliStatusToReadResult(product);
   }
 
   /**
@@ -463,6 +485,33 @@ function readDispatchTimeParam(
   return candidate.unit === undefined
     ? { period }
     : { period, unit: candidate.unit as ErliDispatchTime['unit'] };
+}
+
+/**
+ * Map Erli's native product status onto the neutral closed `OfferPublicationStatus`
+ * union (#989). Erli has no `'rejected'` member in OL's union, so a rejection is
+ * surfaced as `'inactive'` carrying the reason in `validationErrors` (no core enum
+ * change — additive-only per offer-status-read.types ADR-009 note). `'accepted'`
+ * (stored but still propagating through Erli's ~20-min cache) → `'activating'`.
+ * Unknown/absent → `'inactive'` (conservative; never claims live).
+ */
+function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusReadResult {
+  switch (product.status) {
+    case 'active':
+      return { publicationStatus: 'active', validationErrors: [] };
+    case 'accepted':
+      return { publicationStatus: 'activating', validationErrors: [] };
+    case 'rejected':
+      return {
+        publicationStatus: 'inactive',
+        validationErrors: [
+          { code: 'ERLI_REJECTED', message: product.statusReason ?? 'Erli rejected the offer.' },
+        ],
+      };
+    case 'inactive':
+    default:
+      return { publicationStatus: 'inactive', validationErrors: [] };
+  }
 }
 
 /**
