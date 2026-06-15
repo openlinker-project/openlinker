@@ -10,8 +10,10 @@
  */
 import type { ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -72,6 +74,58 @@ export class CreateOfferPriceDto {
   currency!: string;
 }
 
+/** Numeric-range value for integer/float range parameters (Allegro from–to). */
+export class OfferParameterRangeDto {
+  @ApiProperty({ example: '1.0' })
+  @IsString()
+  @MaxLength(64)
+  from!: string;
+
+  @ApiProperty({ example: '5.0' })
+  @IsString()
+  @MaxLength(64)
+  to!: string;
+}
+
+/**
+ * One neutral, section-tagged offer/category parameter (#1071). Replaces the
+ * Allegro-shaped `platformParams.parameters`/`productParameters` arrays; the
+ * destination adapter splits these by `section` and shapes them to wire.
+ */
+export class OfferParameterDto {
+  @ApiProperty({ description: 'Destination parameter id (or pass-through name).' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  id!: string;
+
+  @ApiPropertyOptional({ isArray: true, type: String })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(256, { each: true })
+  values?: string[];
+
+  @ApiPropertyOptional({ isArray: true, type: String })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(128, { each: true })
+  valuesIds?: string[];
+
+  @ApiPropertyOptional({ type: OfferParameterRangeDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OfferParameterRangeDto)
+  rangeValue?: OfferParameterRangeDto;
+
+  @ApiProperty({ enum: ['offer', 'product'] })
+  @IsIn(['offer', 'product'])
+  section!: 'offer' | 'product';
+}
+
 export class CreateOfferOverridesDto {
   @ApiPropertyOptional({
     description: 'Offer title (overrides variant name). Capped at 75 chars (Allegro limit).',
@@ -126,6 +180,18 @@ export class CreateOfferOverridesDto {
   @IsObject()
   @Validate(PlatformParamsSizeValidator)
   platformParams?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    type: [OfferParameterDto],
+    description:
+      'Operator-picked neutral category parameters (#1071). Section-tagged; the adapter shapes them to platform wire. Replaces the legacy platformParams.parameters/productParameters arrays.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OfferParameterDto)
+  parameters?: OfferParameterDto[];
 }
 
 export class CreateOfferDto {

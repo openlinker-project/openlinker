@@ -119,27 +119,6 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
 const SINGLE_ITEM_KEY = 'single';
 
 /**
- * Type guard used when filtering untyped `platformParams.parameters` into the
- * Allegro-accepted shape. Requires `id: string` and, when present, `values` /
- * `valuesIds` must be arrays of strings. Anything that fails this check is
- * silently dropped — Allegro would reject it anyway, and keeping the guard
- * strict means invalid shapes fail fast at the request-build step.
- */
-function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroOfferParameter {
-  if (typeof candidate !== 'object' || candidate === null) return false;
-  const c = candidate as { id?: unknown; values?: unknown; valuesIds?: unknown };
-  if (typeof c.id !== 'string' || c.id.length === 0) return false;
-  if (c.values !== undefined) {
-    if (!Array.isArray(c.values) || !c.values.every((v) => typeof v === 'string')) return false;
-  }
-  if (c.valuesIds !== undefined) {
-    if (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string'))
-      return false;
-  }
-  return true;
-}
-
-/**
  * Defensive runtime check for the persisted `Connection.config.allegro
  * .sellerDefaults` blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
  * marks every sub-field non-optional, but the JSONB column can carry partial
@@ -1508,40 +1487,26 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * Merge core-projected neutral parameters (#1039) with the operator-supplied
-   * legacy `platformParams.parameters`/`productParameters` (FE wizard) for one
-   * section, keyed by parameter `id`. **Operator-supplied wins** — a manual
-   * pick overrides a projected value for the same parameter. The neutral
-   * `section` field is dropped here (the offer/product split is the caller's
-   * concern); the result is the Allegro wire shape.
-   *
-   * Transitional: once the FE emits the neutral channel (#1071) the legacy
-   * `legacyRaw` source disappears and this collapses to a passthrough.
+   * Map neutral `OfferParameter`s (already merged operator+projected by the
+   * core builder, #1071) to the Allegro wire shape for one section: drop the
+   * `section` axis (the caller has already filtered by it) and carry
+   * `values` / `valuesIds` / `rangeValue`. The Allegro adapter is the **sole**
+   * shaper of the offer/product split — `platformParams` no longer carries
+   * category parameters.
    */
-  private mergeSectionParameters(
-    projected: readonly OfferParameter[],
-    legacyRaw: unknown
-  ): AllegroOfferParameter[] {
-    const byId = new Map<string, AllegroOfferParameter>();
-    for (const param of projected) {
-      byId.set(param.id, {
-        id: param.id,
-        ...(param.values ? { values: param.values } : {}),
-        ...(param.valuesIds ? { valuesIds: param.valuesIds } : {}),
-      });
-    }
-    if (Array.isArray(legacyRaw)) {
-      for (const entry of legacyRaw) {
-        if (isAllegroOfferParameterShape(entry)) byId.set(entry.id, entry);
-      }
-    }
-    return Array.from(byId.values());
+  private toAllegroParameters(params: readonly OfferParameter[]): AllegroOfferParameter[] {
+    return params.map((param) => ({
+      id: param.id,
+      ...(param.values ? { values: param.values } : {}),
+      ...(param.valuesIds ? { valuesIds: param.valuesIds } : {}),
+      ...(param.rangeValue ? { rangeValue: param.rangeValue } : {}),
+    }));
   }
 
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
-    projectedParameters: readonly OfferParameter[] | undefined,
+    parameters: readonly OfferParameter[] | undefined,
     cardLinkResult: ResolveProductCardResult
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
@@ -1580,14 +1545,11 @@ export class AllegroOfferManagerAdapter
       body.payments = { invoice };
     }
 
-    // Offer-section parameters: core-projected (#1039) merged with the legacy
-    // FE `platformParams.parameters` (operator wins by id). Applied before the
-    // smart-link short-circuit so card-linked offers still carry offer-section
-    // params (the card only supplies product-section ones).
-    const offerProjected = (projectedParameters ?? []).filter((p) => p.section === 'offer');
-    const offerParameters = this.mergeSectionParameters(
-      offerProjected,
-      platformParams['parameters']
+    // Offer-section parameters from the neutral `cmd.parameters` (#1071).
+    // Applied before the smart-link short-circuit so card-linked offers still
+    // carry offer-section params (the card only supplies product-section ones).
+    const offerParameters = this.toAllegroParameters(
+      (parameters ?? []).filter((p) => p.section === 'offer')
     );
     if (offerParameters.length > 0) {
       body.parameters = offerParameters;
@@ -1659,14 +1621,11 @@ export class AllegroOfferManagerAdapter
     // needed at this site. Keeping a single sanitization point per request
     // lifecycle avoids "why is this being sanitized — wasn't it already?"
     // reader confusion.
-    // Product-section parameters: core-projected (#1039) merged with the legacy
-    // FE `platformParams.productParameters` (operator wins by id). Reached only
-    // on the inline-product path — the `unique` smart-link branch above
-    // early-returned, inheriting product params from the catalog card.
-    const productProjected = (projectedParameters ?? []).filter((p) => p.section === 'product');
-    const filtered = this.mergeSectionParameters(
-      productProjected,
-      platformParams['productParameters']
+    // Product-section parameters from the neutral `cmd.parameters` (#1071).
+    // Reached only on the inline-product path — the `unique` smart-link branch
+    // above early-returned, inheriting product params from the catalog card.
+    const filtered = this.toAllegroParameters(
+      (parameters ?? []).filter((p) => p.section === 'product')
     );
     // `parameters` is attached only when the operator supplied any — Allegro
     // rejects an explicit empty array on inline products. Spread-with-conditional

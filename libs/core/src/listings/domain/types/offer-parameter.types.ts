@@ -29,6 +29,12 @@ export interface OfferParameter {
   values?: string[];
   /** Resolved dictionary entry ids (owns path + dictionary-typed parameter). */
   valuesIds?: string[];
+  /**
+   * Numeric-range value (integer/float range parameters, e.g. Allegro "weight
+   * from–to"). Operator-supplied only — attribute projection never produces a
+   * range. Mutually exclusive with `values`/`valuesIds` in practice.
+   */
+  rangeValue?: { from: string; to: string };
   /** Neutral offer/product axis; the adapter buckets the wire payload on it. */
   section: CategoryParameterSection;
 }

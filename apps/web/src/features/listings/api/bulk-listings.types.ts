@@ -13,7 +13,7 @@
  * @module apps/web/src/features/listings/api
  */
 
-import type { OfferCreationError, OfferCreationStatus } from './listings.types';
+import type { OfferCreationError, OfferCreationStatus, OfferParameter } from './listings.types';
 
 export const BulkBatchStatusValues = [
   'pending',
@@ -43,6 +43,8 @@ export interface BulkOfferOverrides {
   /** Catalogue product-card id from a unique EAN match (#808). */
   productCardId?: string;
   imageUrls?: string[] | null;
+  /** Operator-picked neutral category parameters (#1071). */
+  parameters?: OfferParameter[];
   platformParams?: Record<string, unknown>;
 }
 

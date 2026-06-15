@@ -503,7 +503,36 @@ describe('OfferBuilderService', () => {
       expect(result.internalVariantId).toBe(VARIANT_ID);
     });
 
-    it('subtracts operator-supplied offer-param ids before gating (no false business_failure)', async () => {
+    it('merges operator overrides.parameters with projected (operator wins by id) (#1071)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [
+          { id: 'cond-1', valuesIds: ['proj'], section: 'offer' },
+          { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+        ],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: {
+          parameters: [{ id: 'cond-1', values: ['Operator'], section: 'offer' }],
+        },
+      });
+
+      expect(result.parameters).toEqual([
+        // operator wins for cond-1; projected brand-1 retained.
+        { id: 'cond-1', values: ['Operator'], section: 'offer' },
+        { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+      ]);
+      // S1 — operator params are consumed into command.parameters, not leaked
+      // onto command.overrides (the adapter reads only cmd.parameters).
+      expect(result.overrides).not.toHaveProperty('parameters');
+    });
+
+    it('satisfies Gate 2 from an operator overrides.parameters offer-section param (#1071)', async () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
@@ -514,10 +543,37 @@ describe('OfferBuilderService', () => {
         internalVariantId: VARIANT_ID,
         connectionId: MARKETPLACE_CONN_ID,
         stock: 1,
-        overrides: { platformParams: { parameters: [{ id: 'cond-1', values: ['Nowy'] }] } },
+        overrides: { parameters: [{ id: 'cond-1', values: ['Nowy'], section: 'offer' }] },
       });
 
       expect(result.internalVariantId).toBe(VARIANT_ID);
+    });
+
+    it('hoists legacy platformParams params for pre-#1071 snapshots (fallback, I3)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+      });
+
+      // No overrides.parameters → fallback reads platformParams.{parameters,productParameters}.
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: {
+          platformParams: {
+            parameters: [{ id: 'cond-1', values: ['Nowy'] }],
+            productParameters: [{ id: 'brand-1', valuesIds: ['canon'] }],
+          },
+        },
+      });
+
+      // Gate 2 satisfied (cond-1 hoisted) AND both hoisted into command.parameters.
+      expect(result.parameters).toEqual([
+        { id: 'cond-1', values: ['Nowy'], section: 'offer' },
+        { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+      ]);
     });
 
     it('builds and warns (no throw) when there are unmapped source keys', async () => {

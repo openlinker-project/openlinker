@@ -40,9 +40,9 @@ import { CategoryParametersStep } from '../category-parameters-step';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import {
   MissingCategoryParameterSectionError,
-  serializeAllegroParameters,
-} from '../serialize-allegro-parameters';
-import type { CategoryParameter } from '../../api/listings.types';
+  categoryParametersToOfferParameters,
+} from '../category-parameters-to-offer-parameters';
+import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
 import type { CategoryParameterFormValues } from '../category-parameter-form.types';
 import {
   bulkEditModalSchema,
@@ -170,18 +170,14 @@ function BulkEditModalForm({
   const categoryParameters: CategoryParameter[] = parametersQuery.data ?? [];
 
   const handleSubmit = form.handleSubmit((values) => {
-    const platformParams: Record<string, unknown> = {};
+    let parameters: OfferParameter[] = [];
 
     if (categoryParameters.length > 0 && values.parameters) {
       try {
-        const { offerParameters, productParameters } = serializeAllegroParameters(
+        parameters = categoryParametersToOfferParameters(
           values.parameters as CategoryParameterFormValues,
           categoryParameters,
         );
-        if (offerParameters.length > 0) platformParams.parameters = offerParameters;
-        if (productParameters.length > 0) {
-          platformParams.productParameters = productParameters;
-        }
       } catch (error) {
         if (error instanceof MissingCategoryParameterSectionError) {
           form.setError('categoryId', {
@@ -207,7 +203,7 @@ function BulkEditModalForm({
         description: values.description,
         categoryId: values.categoryId,
         ...(values.productCardId ? { productCardId: values.productCardId } : {}),
-        ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
+        ...(parameters.length > 0 ? { parameters } : {}),
       },
     };
 
