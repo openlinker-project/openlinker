@@ -1,20 +1,20 @@
-# Implementation Plan: Erli Plugin Skeleton + Static Manifest + Host Registration + ADR (#980, #983)
+# Implementation Plan: Erli Plugin Skeleton + Static Manifest + Host Registration (#980)
 
 **Date**: 2026-06-11
 **Status**: Ready for Review
 **Estimated Effort**: 1–2 days
-**Issues**: Closes #980, Closes #983
+**Issues**: Closes #980. (ADR-025 / #983 was split into its own PR #1059 so each issue maps to one PR — this PR ships the skeleton only.)
 **Branch**: `980-983-erli-plugin-skeleton-adr`
 
 ---
 
 ## 1. Task Summary
 
-**Objective**: Stand up the `libs/integrations/erli/` plugin package and wire it into both host apps — manifest, plugin descriptor, NestJS module, host registration. No capability logic yet; just the seam every other Erli issue (#981–#998) builds on. Additionally, author ADR-025 recording the non-obvious Erli architecture decisions (reconciliation-first posture, static API-key auth, Allegro-ID taxonomy reuse, asymmetric stock + frozen-field ownership) before the build leans on them.
+**Objective**: Stand up the `libs/integrations/erli/` plugin package and wire it into both host apps — manifest, plugin descriptor, NestJS module, host registration. No capability logic yet; just the seam every other Erli issue (#981–#998) builds on. (ADR-025 — recording the non-obvious Erli architecture decisions: reconciliation-first posture, static API-key auth, Allegro-ID taxonomy reuse, asymmetric stock + frozen-field ownership — is split into its own PR #1059 / issue #983. This PR's `architecture-overview.md` capability-matrix mentions link to it.)
 
 **Context**: First slice of the Erli marketplace integration (product spec `docs/specs/product-spec-978-erli-marketplace-integration.md`, Gate D = YES, offers-first sequencing). A half-built Erli plugin in `main` is inert — it activates only when an operator creates an Erli connection — so this lands trunk-based as the first of ~12 small PRs.
 
-**Classification**: Integration (new package) + App (registration seams) + Documentation (ADR).
+**Classification**: Integration (new package) + App (registration seams) + Documentation (capability-matrix mentions linking to ADR-025, which ships in #1059).
 
 ---
 
@@ -27,14 +27,15 @@
 - `ErliIntegrationModule` via `createNestAdapterModule` (the easy path — skeleton needs no plugin-specific Nest providers).
 - Registration in `apps/api/src/plugins.ts` + `apps/worker/src/plugins.ts`, jest-integration mapper entries in both apps, `tsconfig.base.json` path aliases.
 - Unit tests mirroring `woocommerce-plugin.spec.ts` (manifest fields, static===runtime manifest identity, unsupported-capability error).
-- ADR-025 (`docs/architecture/adrs/025-erli-marketplace-adapter.md`) + index row in the ADR README.
-- `docs/architecture-overview.md` capability-matrix mentions for Erli.
+- `docs/architecture-overview.md` capability-matrix mentions for Erli (their inline `see ADR-025` references resolve once #1059 merges).
+
+> **Split note:** ADR-025 (`docs/architecture/adrs/025-erli-marketplace-adapter.md`) + its ADR-README index row were moved to a dedicated PR (#1059 / issue #983) so each issue maps to one PR. They are **not** in this PR. Merge #1059 first (or together) so this PR's `architecture-overview.md` links don't dangle — there is no markdown-link invariant to catch a missing target.
 
 ### Out of Scope (own issues)
 - `ErliHttpClient` (#981), connection validators/tester (#982), `ErliOfferManagerAdapter` (#984), `ErliOrderSourceAdapter` (#993), FE plugin (#990), all sync/webhook logic.
 
 ### Constraints
-- Purely additive; no core or migration changes. No `OL_*` env vars needed.
+- Purely additive; no migration changes and no behavioural core changes. No `OL_*` env vars needed. (The single core touch is a doc-comment-only clarification in `adapter.types.ts` relaxing the "must be non-empty" `supportedCapabilities` contract to permit an empty array for a registration-only skeleton — no code/type change.)
 - Until #982 lands, an Erli connection created via raw API has no shape validation, and capability resolution is gated off in core before the factory ever runs (`CapabilityNotSupportedException` at `IntegrationsService.getCapabilityAdapter`; enumeration paths skip the connection) — acceptable for a dormant skeleton (no FE affordance exists either until #990).
 
 ---
@@ -52,7 +53,7 @@
 
 **Reference precedent**: WooCommerce (`libs/integrations/woocommerce/`) — the newest plugin, uses `createNestAdapterModule`, has the canonical manifest + plugin spec shape. Verified 2026-06-11; no `erli` token collisions anywhere in `libs/ apps/ scripts/ tsconfig.base.json`.
 
-**Core vs Integration justification**: zero core edits; the plugin self-registers through the registry seams designed for exactly this (#570/#571/#593).
+**Core vs Integration justification**: no behavioural core edits — the only core touch is a doc-comment clarification in `adapter.types.ts` (empty `supportedCapabilities` now documented as valid for skeletons). The plugin self-registers through the registry seams designed for exactly this (#570/#571/#593).
 
 ---
 
@@ -69,7 +70,7 @@
 1. **`register(host)` is a no-op in the skeleton.** Validators/tester arrive in #982; webhook translator in #996. The descriptor keeps the optional `register` hook absent (or empty) rather than stubbing registries with placeholders.
 2. **The skeleton manifest declares `supportedCapabilities: []` and `createCapabilityAdapter` uses `dispatchCapability` with an empty table.** A registered manifest must only declare capabilities the factory can deliver: `IntegrationsService.listCapabilityAdapters` re-throws any non-`AdapterNotFoundException` factory error, so a declared-but-unbuilt capability on one active Erli connection would abort capability enumeration for every platform (review finding on PR #1019). With an empty capability set the platform is inert by construction, the SDK's uniform unsupported-capability error is accurate, and #984/#993 add each capability together with its dispatch-table entry.
 3. **Worker registration included now.** WooCommerce/Allegro/PrestaShop register in both hosts; Erli's offer-creation jobs (#984) and inbox poll (#993) will run in the worker, so wiring both seams now avoids a guaranteed follow-up edit. DPD's worker-exclusion precedent doesn't apply (DPD is API-only by design).
-4. **ADR-025 ships `Status: Accepted`** — issue #983's AC is "ADR merged, status Accepted", and this PR is the merge vehicle. (The generic plan-skill default of `Proposed` is overridden by the issue AC.)
+4. **ADR-025 ships `Status: Accepted`** — issue #983's AC is "ADR merged, status Accepted". The ADR was split into its own PR #1059 (the merge vehicle for #983); this PR ships the skeleton (#980) only. (The generic plan-skill default of `Proposed` is overridden by the issue AC.)
 5. **Capability-matrix note**: Erli is added as *Future Implementations* under `OfferManagerPort` and `OrderSourcePort` in `architecture-overview.md` (adapters don't exist yet), plus the plugin list mention. When #984/#993 land they move to *Current Implementations*.
 
 ### Open Questions
@@ -106,9 +107,9 @@
     - `ErliIntegrationModule` constructs a `DynamicModule` via `createNestAdapterModule` (smoke test).
 
 ### Phase 5 — Documentation
-11. **`docs/architecture/adrs/025-erli-marketplace-adapter.md`** — Status `Accepted`, sections per `template.md`: reconciliation-first posture (202 + cache lag + no-retry webhooks ⇒ inbox poll mandatory backstop, snapshot-reconciled offer status à la ADR-009); static API-key bearer vs Allegro OAuth2; Allegro-ID taxonomy reuse (`source:"allegro"`); asymmetric stock + `frozen` field ownership as adapter invariants. Alternatives: Erli-native taxonomy (rejected — kills the near-free-listing bet, spec R2), OAuth-style credential rotation (rejected — Erli has none), trusting 202 as confirmation (rejected — cache lag would lie to operators).
-12. **`docs/architecture/adrs/README.md`** — add ADR-025 index row.
-13. **`docs/architecture-overview.md`** — add `ErliOfferManagerAdapter` / `ErliOrderSourceAdapter` to the *Future Implementations* lists under `OfferManagerPort` / `OrderSourcePort`; link ADR-025.
+11. **`docs/architecture-overview.md`** — add `ErliOfferManagerAdapter` / `ErliOrderSourceAdapter` to the *Future Implementations* lists under `OfferManagerPort` / `OrderSourcePort`; link ADR-025.
+
+> **Moved to PR #1059 (issue #983):** the ADR file (`docs/architecture/adrs/025-erli-marketplace-adapter.md`) and its ADR-README index row. Originally Phase 5 items of this plan, they were split out so each issue maps to one PR. Content unchanged: reconciliation-first posture (202 + cache lag + no-retry webhooks ⇒ inbox poll mandatory backstop, snapshot-reconciled offer status à la ADR-009); static API-key bearer vs Allegro OAuth2; Allegro-ID taxonomy reuse (`source:"allegro"`); asymmetric stock + `frozen` field ownership as adapter invariants.
 
 ### Phase 6 — Quality gate
 14. Scoped first (resource-constrained machine): `pnpm --filter @openlinker/integrations-erli test`, then `pnpm lint`, `pnpm type-check`, full `pnpm test` before PR. No migration (`migration:show` not applicable — zero ORM entities).
@@ -119,13 +120,13 @@
 
 1. **Custom `@Module` + `onModuleInit` (Allegro/PrestaShop Shape A)** — rejected: that pattern exists for plugins carrying their own Nest providers (TypeORM repos, OAuth services). The skeleton has none; `createNestAdapterModule` is the documented easy path and WooCommerce proves it end-to-end. If a later Erli issue needs Nest providers, the module can be promoted then without changing the descriptor.
 2. ~~**Empty `supportedCapabilities: []` until adapters exist** — rejected~~ — **adopted during PR #1019 review** (see assumption 2). The original rejection rationale did not account for `listCapabilityAdapters` treating any non-`AdapterNotFoundException` factory error as fatal (one active Erli connection would have aborted cross-platform capability enumeration), and `isDefault` registration is not pointless with an empty set — it still serves default-adapterKey resolution for `resolveAdapterMetadata`. The previously-preferred shape (declared capabilities + typed not-implemented exception) is the rejected alternative.
-3. **Deferring the ADR to a docs-only PR** — rejected: #983 says the decisions should be recorded *before* the build leans on them, and a one-PR skeleton+ADR keeps Wave 0b atomic (also matches the user's one-branch-one-PR preference).
+3. ~~**One PR for skeleton + ADR**~~ — **reversed during review.** The plan originally bundled the ADR with the skeleton to keep Wave 0b atomic; it was ultimately split into a dedicated PR #1059 so each issue maps to exactly one PR (#980 = skeleton here, #983 = ADR there). #983's "record the decisions before the build leans on them" intent still holds — #1059 merges first (or together), and this PR's `architecture-overview.md` links resolve against it.
 
 ---
 
 ## 8. Validation & Risks
 
-- **Architecture compliance** ✅ — plugin self-registration via plugin-sdk; zero core edits; no boundary crossings.
+- **Architecture compliance** ✅ — plugin self-registration via plugin-sdk; no behavioural core edits (only a doc-comment contract clarification in `adapter.types.ts`); no boundary crossings.
 - **Naming** ✅ — `erli-plugin.ts`, `erli-integration.module.ts`, `{platform}.{api}.{version}` adapterKey.
 - **Risk: unvalidated Erli connections pre-#982** — low; no FE affordance, and the empty capability set makes the connection inert (core gates reject/skip before the factory runs). Documented in §2.
 - **Risk: routing/registration int-spec ripple** — `#998`'s AC warns manifest capability changes ripple into routing int-specs. For the skeleton, full `pnpm test` (unit) is the gate; existing integration suites don't enumerate platforms exhaustively (WooCommerce landed the same way). If CI's integration job flags a platform-enumeration assert, fix the fixture in this PR.
@@ -137,7 +138,7 @@
 
 - Unit: `erli-plugin.spec.ts` (Phase 4). No int-spec — there is no behavior beyond registration, and `createNestAdapterModule` is already covered by plugin-sdk + WooCommerce suites.
 - AC (from #980): API + worker boot with Erli registered; manifest resolvable via `IntegrationsService`; static === runtime manifest; capability matrix lists Erli; tests green; zero new lint/type errors.
-- AC (from #983): ADR-025 merged `Accepted`, linked from spec + architecture-overview, ADR index updated.
+- AC (from #983): satisfied by PR #1059 (ADR-025 merged `Accepted`, linked from spec + architecture-overview, ADR index updated) — out of scope for this PR, which closes #980 only.
 
 ## 10. Alignment Checklist
 
