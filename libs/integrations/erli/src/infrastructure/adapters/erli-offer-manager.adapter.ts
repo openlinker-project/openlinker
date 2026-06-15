@@ -36,8 +36,17 @@
  * already exists (`updateOfferQuantity`); #993 only needs to observe the
  * `cancelled` event and call it.
  *
- * Out of scope (own issues, marked seams): variant grouping #986, master-price
- * → offer propagation (no core trigger today), offer-status reconciliation #989.
+ * Variant grouping (#986): the create body carries `externalVariantGroup` (the
+ * parent/base product id shared by sibling variants) + per-variant `attributes`
+ * when the command's `overrides.platformParams.erliVariantGroup` is populated.
+ * Single/simple products omit it and list ungrouped. The CORE plumbing that
+ * POPULATES that key (threading the parent product id + flattened distinguishing
+ * attributes through OfferBuilderService / the #824 bulk expansion) is a deferred
+ * follow-up — until it lands, the key is absent and offers list ungrouped (no
+ * regression). Create-path only; `buildPatchFromFields` never emits grouping.
+ *
+ * Out of scope (own issues, marked seams): master-price → offer propagation (no
+ * core trigger today), offer-status reconciliation #989.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link OfferManagerPort}
@@ -67,6 +76,7 @@ import type {
   ErliProductImage,
   ErliProductPatchBody,
   ErliProductResource,
+  ErliVariantAttribute,
 } from './erli-product.types';
 
 /**
@@ -293,7 +303,16 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
-    // #986: externalVariantGroup is assembled here.
+    // #986: explicit multi-variant grouping. Present only when core populated
+    // `overrides.platformParams.erliVariantGroup` (deferred follow-up); single/
+    // simple products list ungrouped.
+    const group = buildVariantGroup(cmd);
+    if (group) {
+      body.externalVariantGroup = { id: group.id };
+      if (group.attributes.length > 0) {
+        body.attributes = group.attributes;
+      }
+    }
     return body;
   }
 
@@ -492,6 +511,68 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
+}
+
+function toUnknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? (value as unknown[]) : [];
+}
+
+/** Resolved #986 grouping inputs after narrowing the opaque platformParams bag. */
+interface ResolvedVariantGroup {
+  id: string;
+  attributes: ErliVariantAttribute[];
+}
+
+/**
+ * Read the #986 grouping inputs from the command's adapter-neutral
+ * `overrides.platformParams.erliVariantGroup` bag (mirrors how #985 reads
+ * `platformParams.parameters`). Returns null — list UNGROUPED — when the key is
+ * absent or carries no non-empty `groupId` (single/simple products, and the
+ * not-yet-populated default state until the deferred core follow-up lands).
+ * Distinguishing `attributes` are narrowed per-entry; malformed entries drop.
+ */
+function buildVariantGroup(cmd: CreateOfferCommand): ResolvedVariantGroup | null {
+  const candidate = cmd.overrides?.platformParams?.erliVariantGroup;
+  if (!isErliVariantGroupShape(candidate)) {
+    return null;
+  }
+  const attributes: ErliVariantAttribute[] = [];
+  for (const entry of toUnknownArray(candidate.attributes)) {
+    if (isVariantAttributeShape(entry)) {
+      attributes.push({ name: entry.name, value: entry.value });
+    }
+  }
+  return { id: candidate.groupId, attributes };
+}
+
+/** Erli grouping input on `platformParams`, after narrowing. */
+interface ErliVariantGroupShape {
+  groupId: string;
+  attributes?: unknown;
+}
+
+/**
+ * Narrow the opaque `platformParams.erliVariantGroup` value: require a non-empty
+ * `groupId: string`. `attributes` (if present) is validated per-entry in
+ * {@link buildVariantGroup}, so it stays `unknown` here.
+ */
+function isErliVariantGroupShape(candidate: unknown): candidate is ErliVariantGroupShape {
+  if (typeof candidate !== 'object' || candidate === null) {
+    return false;
+  }
+  const c = candidate as { groupId?: unknown };
+  return typeof c.groupId === 'string' && c.groupId.length > 0;
+}
+
+/** Narrow a single distinguishing-attribute entry to `{ name, value }` strings. */
+function isVariantAttributeShape(candidate: unknown): candidate is ErliVariantAttribute {
+  if (typeof candidate !== 'object' || candidate === null) {
+    return false;
+  }
+  const c = candidate as { name?: unknown; value?: unknown };
+  return (
+    typeof c.name === 'string' && c.name.length > 0 && typeof c.value === 'string' && c.value.length > 0
+  );
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {
