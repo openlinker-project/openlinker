@@ -246,12 +246,10 @@ describe('computeBlockers', () => {
         override: {
           overrides: {
             categoryId: 'cat-1',
-            platformParams: {
-              productParameters: [
-                { id: 'brand', valuesIds: ['x'] },
-                { id: 'model', values: ['Z9'] },
-              ],
-            },
+            parameters: [
+              { id: 'brand', valuesIds: ['x'], section: 'product' },
+              { id: 'model', values: ['Z9'], section: 'product' },
+            ],
           },
         },
       }),

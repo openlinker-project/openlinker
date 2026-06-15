@@ -153,6 +153,21 @@ export interface CreateOfferPrice {
   currency: string;
 }
 
+/**
+ * Neutral, section-tagged offer/category parameter (#1071) — mirrors the
+ * backend `OfferParameter` domain shape. The wizard emits these on
+ * `overrides.parameters`; the Allegro adapter splits them by `section` into
+ * the offer/product wire arrays. Replaces the legacy Allegro-shaped
+ * `platformParams.parameters` / `platformParams.productParameters`.
+ */
+export interface OfferParameter {
+  id: string;
+  values?: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
 export interface CreateOfferOverrides {
   title?: string;
   description?: string | null;
@@ -164,6 +179,12 @@ export interface CreateOfferOverrides {
    */
   productCardId?: string;
   imageUrls?: string[] | null;
+  /**
+   * Operator-picked neutral category parameters (#1071). The BE merges these
+   * with attribute projection and the adapter shapes them to platform wire.
+   */
+  parameters?: OfferParameter[];
+  /** Un-modeled platform knobs only (policy ids, etc.) — NOT category params. */
   platformParams?: Record<string, unknown>;
 }
 
@@ -290,8 +311,9 @@ export interface CategoryParameterDependsOn {
  * `useCategoryParametersQuery`'s `staleTime`). When a required field is
  * added to the interface, browsers holding pre-bump cached responses serve
  * stale data that violates the type contract — causing the
- * `MissingCategoryParameterSectionError` throw in `serializeAllegroParameters`
- * (the runtime backstop). Bumping this constant routes around the staleness
+ * `MissingCategoryParameterSectionError` throw in
+ * `categoryParametersToOfferParameters` (the runtime backstop). Bumping this
+ * constant routes around the staleness
  * by changing the queryKey, so old caches become orphaned and a fresh fetch
  * is forced.
  *

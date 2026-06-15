@@ -28,7 +28,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { CreateOfferCommand, OfferParameter } from '@openlinker/core/listings';
+import type { CreateOfferCommand, CreateOfferOverrides, OfferParameter } from '@openlinker/core/listings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import {
   IProductsService,
@@ -115,7 +115,7 @@ export class OfferBuilderService implements IOfferBuilderService {
 
     // `categoryId` is guaranteed non-null here — Gate 1 pushed a `REQUIRED`
     // issue and threw otherwise.
-    const parameters = await this.projectParameters(
+    const parameters = await this.buildOfferParameters(
       input,
       masterConnectionId,
       categoryId as string,
@@ -155,10 +155,10 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
-      // Neutral projected parameters (#1039). The adapter merges these with any
-      // operator-supplied `platformParams.parameters`/`productParameters` and
-      // shapes them to platform wire. Omitted when empty so offers with no
-      // mappable attributes keep their existing command shape.
+      // Neutral parameters (#1039/#1071): projected attributes merged with
+      // operator-picked `overrides.parameters` (operator wins by id). The
+      // destination adapter is the sole shaper (splits by `section`). Omitted
+      // when empty so offers with no params keep their existing command shape.
       ...(parameters.length > 0 ? { parameters } : {}),
       // #431 — smart-link by barcode. Pre-resolved here so adapters that
       // need it (Allegro) don't have to re-fetch the variant.
@@ -202,11 +202,11 @@ export class OfferBuilderService implements IOfferBuilderService {
   }
 
   /**
-   * Project the variant's attributes into neutral `OfferParameter[]` and apply
-   * Gate 2 (offer-section required params). Returns the projected parameters
-   * for the command; the adapter merges them with operator-supplied params.
+   * Project the variant's attributes, merge with operator-picked params, and
+   * apply Gate 2 (offer-section required params). Returns the merged neutral
+   * `OfferParameter[]` for `command.parameters`; the adapter is the sole shaper.
    */
-  private async projectParameters(
+  private async buildOfferParameters(
     input: BuildCreateOfferCommandInput,
     sourceConnectionId: string,
     destinationCategoryId: string,
@@ -219,14 +219,17 @@ export class OfferBuilderService implements IOfferBuilderService {
       attributes,
     });
 
+    const operatorParameters = this.normalizeOperatorParameters(input.overrides);
+
     // Gate 2 — offer-section required params only. Product-section required
     // params are deferred to the adapter / marketplace (Allegro catalog-card
-    // inheritance, #431/#808; bulk self-link, #824). Operator-supplied
-    // offer-section params (FE wizard, carried on `platformParams.parameters`)
-    // satisfy the requirement, so subtract their ids before gating.
-    const operatorOfferParamIds = this.readOperatorOfferParamIds(input.overrides?.platformParams);
+    // inheritance, #431/#808; bulk self-link, #824). An operator-supplied
+    // offer-section param satisfies the requirement, so exclude those ids.
+    const operatorOfferIds = new Set(
+      operatorParameters.filter((p) => p.section === 'offer').map((p) => p.id)
+    );
     const blockingRequired = projection.unresolvedRequired.filter(
-      (param) => param.section === 'offer' && !operatorOfferParamIds.has(param.id)
+      (param) => param.section === 'offer' && !operatorOfferIds.has(param.id)
     );
     if (blockingRequired.length > 0) {
       throw new OfferBuilderValidationException(
@@ -244,32 +247,66 @@ export class OfferBuilderService implements IOfferBuilderService {
       );
     }
 
-    return projection.parameters;
+    // Operator-picked params win over projected by id.
+    const byId = new Map<string, OfferParameter>();
+    for (const p of projection.parameters) byId.set(p.id, p);
+    for (const p of operatorParameters) byId.set(p.id, p);
+    return Array.from(byId.values());
   }
 
   /**
-   * Collect the ids of operator-supplied **offer-section** parameters from the
-   * (transitional) FE channel `platformParams.parameters`. Ids only, narrowed
-   * with a type guard — used solely to keep Gate 2 from false-failing a wizard
-   * offer whose required param the operator already supplied. Removed once the
-   * FE migrates to the neutral channel (#1071).
+   * Resolve operator-supplied neutral parameters (#1071): prefer the neutral
+   * `overrides.parameters`; for pre-migration persisted snapshots that still
+   * carry params under `platformParams.{parameters,productParameters}`, hoist
+   * them to the neutral shape so retrying an old failed record neither loses
+   * params nor newly trips Gate 2. The fallback is transitional — removable
+   * once such records age out.
    */
-  private readOperatorOfferParamIds(
-    platformParams: Record<string, unknown> | undefined
-  ): Set<string> {
-    const ids = new Set<string>();
-    const raw = platformParams?.['parameters'];
-    if (!Array.isArray(raw)) return ids;
-    for (const entry of raw) {
-      if (
-        typeof entry === 'object' &&
-        entry !== null &&
-        typeof (entry as { id?: unknown }).id === 'string'
-      ) {
-        ids.add((entry as { id: string }).id);
-      }
+  private normalizeOperatorParameters(
+    overrides: CreateOfferOverrides | undefined
+  ): OfferParameter[] {
+    if (overrides?.parameters && overrides.parameters.length > 0) {
+      return overrides.parameters;
     }
-    return ids;
+    const platformParams = overrides?.platformParams;
+    if (!platformParams) return [];
+    const out: OfferParameter[] = [];
+    this.appendLegacyParams(out, platformParams['parameters'], 'offer');
+    this.appendLegacyParams(out, platformParams['productParameters'], 'product');
+    return out;
+  }
+
+  /** Narrow a legacy `platformParams` wire array into neutral `OfferParameter`s. */
+  private appendLegacyParams(
+    out: OfferParameter[],
+    raw: unknown,
+    section: OfferParameter['section']
+  ): void {
+    if (!Array.isArray(raw)) return;
+    for (const entry of raw) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const e = entry as {
+        id?: unknown;
+        values?: unknown;
+        valuesIds?: unknown;
+        rangeValue?: unknown;
+      };
+      if (typeof e.id !== 'string' || e.id === '') continue;
+      const param: OfferParameter = { id: e.id, section };
+      if (Array.isArray(e.values) && e.values.every((v) => typeof v === 'string')) {
+        param.values = e.values as string[];
+      }
+      if (Array.isArray(e.valuesIds) && e.valuesIds.every((v) => typeof v === 'string')) {
+        param.valuesIds = e.valuesIds as string[];
+      }
+      if (e.rangeValue !== null && typeof e.rangeValue === 'object') {
+        const r = e.rangeValue as { from?: unknown; to?: unknown };
+        if (typeof r.from === 'string' && typeof r.to === 'string') {
+          param.rangeValue = { from: r.from, to: r.to };
+        }
+      }
+      out.push(param);
+    }
   }
 
   private resolvePrice(

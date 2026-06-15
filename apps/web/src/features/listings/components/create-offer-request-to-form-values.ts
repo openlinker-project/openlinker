@@ -19,6 +19,7 @@
  */
 import {
   SUPPORTED_OFFER_CREATION_REQUEST_SCHEMA_VERSION,
+  type CreateOfferOverrides,
   type CreateOfferRequest,
 } from '../api/listings.types';
 import {
@@ -46,16 +47,19 @@ function readString(params: Record<string, unknown> | undefined, key: string): s
  * Once the parameters meta resolves, the renderer interprets the raw value
  * correctly even when our heuristic guessed the wrong shape.
  *
- * Reads from BOTH `params.parameters` (offer-section) and
- * `params.productParameters` (product-section, #415). The form-state map is
- * keyed by parameter id alone — re-submission re-derives the section split
- * from the freshly-loaded category-parameters metadata, so the section
- * distinction is not preserved on the form side.
+ * Reads the neutral `overrides.parameters` (#1071); for pre-migration
+ * persisted snapshots, falls back to the legacy Allegro-shaped
+ * `platformParams.parameters` (offer) + `platformParams.productParameters`
+ * (product). The form-state map is keyed by parameter id alone — re-submission
+ * re-derives the section split from the freshly-loaded category-parameters
+ * metadata, so the section distinction is not preserved on the form side.
  */
-function readParameters(params: Record<string, unknown> | undefined): CategoryParameterFormValues {
+function readParameters(overrides: CreateOfferOverrides | undefined): CategoryParameterFormValues {
   const out: CategoryParameterFormValues = {};
-  appendWireParameters(out, params?.parameters);
-  appendWireParameters(out, params?.productParameters);
+  appendWireParameters(out, overrides?.parameters);
+  // Transitional fallback for snapshots persisted before #1071.
+  appendWireParameters(out, overrides?.platformParams?.parameters);
+  appendWireParameters(out, overrides?.platformParams?.productParameters);
   return out;
 }
 
@@ -135,7 +139,7 @@ export function createOfferRequestToFormValues(
     stock: request.stock,
     description: overrides?.description ?? '',
     publishImmediately: request.publishImmediately,
-    parameters: readParameters(platformParams),
+    parameters: readParameters(overrides),
     deliveryPolicyId: readString(platformParams, 'deliveryPolicyId'),
     returnPolicyId: readString(platformParams, 'returnPolicyId'),
     warrantyId: readString(platformParams, 'warrantyId'),

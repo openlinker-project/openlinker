@@ -203,18 +203,17 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
 
 /**
  * Extract the set of product-section parameter ids the operator has supplied
- * for a row, read from the serialized `platformParams.productParameters` wire
- * array (`{ id, … }[]`, see `serializeAllegroParameters`). Used to coverage-
- * check the required product params so the `needs-product-parameters` blocker
- * clears once they're filled (#810).
+ * for a row, read from the neutral `overrides.parameters` (#1071) filtered to
+ * `section === 'product'`. Used to coverage-check the required product params
+ * so the `needs-product-parameters` blocker clears once they're filled (#810).
  */
 function suppliedProductParamIds(override: BulkPerProductOverride): Set<string> {
-  const params: unknown = override.overrides?.platformParams?.productParameters;
+  const params = override.overrides?.parameters;
   const ids = new Set<string>();
   if (!Array.isArray(params)) return ids;
   for (const p of params) {
-    if (p && typeof p === 'object' && typeof (p as { id?: unknown }).id === 'string') {
-      ids.add((p as { id: string }).id);
+    if (p.section === 'product' && typeof p.id === 'string' && p.id !== '') {
+      ids.add(p.id);
     }
   }
   return ids;

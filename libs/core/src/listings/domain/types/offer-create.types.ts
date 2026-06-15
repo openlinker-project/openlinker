@@ -46,6 +46,18 @@ export interface CreateOfferOverrides {
    */
   imageUrls?: string[] | null;
   /**
+   * Operator-supplied neutral category parameters (#1071). Section-tagged
+   * `OfferParameter[]` the operator picked in the wizard — the *request* half
+   * of the carriage `CreateOfferCommand.parameters` carries as merged output.
+   * The builder merges these with attribute-projection output (operator wins
+   * by id) into `command.parameters`; the destination adapter does the wire
+   * shaping. Distinct from `platformParams` (un-modeled platform knobs) — and
+   * **not** copied onto `command.overrides`; it is consumed into
+   * `command.parameters` only. Rides the existing `overrides` threading
+   * (enqueue → execute → snapshot → retry) so operator params persist for free.
+   */
+  parameters?: OfferParameter[];
+  /**
    * Platform-specific parameters the adapter interprets directly.
    *
    * Examples by platform:
@@ -53,7 +65,9 @@ export interface CreateOfferOverrides {
    * - eBay: shipping service options, listing duration
    * - WooCommerce: tax class, shipping class, product type
    *
-   * The core command stays platform-neutral; adapters read only the keys they know.
+   * `platformParams` no longer carries category parameters (#1071) — those
+   * travel on `parameters` above. The core command stays platform-neutral;
+   * adapters read only the keys they know.
    */
   platformParams?: Record<string, unknown>;
 }

@@ -68,13 +68,14 @@ import type { CatalogProduct } from '../api/listings.types';
 import { buildParametersZodSchema } from './build-parameters-zod-schema';
 import {
   MissingCategoryParameterSectionError,
-  serializeAllegroParameters,
-} from './serialize-allegro-parameters';
+  categoryParametersToOfferParameters,
+} from './category-parameters-to-offer-parameters';
 import type { CategoryParameterFormValues } from './category-parameter-form.types';
 import type {
   CategoryParameter,
   CategoryResolutionMethod,
   CreateOfferRequest,
+  OfferParameter,
 } from '../api/listings.types';
 import {
   CREATE_OFFER_DEFAULT_VALUES,
@@ -721,38 +722,28 @@ export function AllegroCreateOfferWizard({
     if (values.warrantyId) platformParams.warrantyId = values.warrantyId;
     if (values.impliedWarrantyId) platformParams.impliedWarrantyId = values.impliedWarrantyId;
 
-    // Serialise Step-3 parameter values into Allegro's wire shape. The
-    // serialiser drops empty / hidden values so an underfilled draft just
-    // produces a smaller payload — server-side validation surfaces any
-    // remaining required-field gaps via `mutation.error`. The output is
-    // split into offer-section and product-section arrays per #415; each
-    // travels under a different key on the create-offer body.
+    // Serialise Step-3 parameter values into the neutral, section-tagged
+    // `OfferParameter[]` (#1071). The serialiser drops empty / hidden values
+    // so an underfilled draft just produces a smaller payload — server-side
+    // validation surfaces any remaining required-field gaps via `mutation.error`.
     //
-    // #423 — `serializeAllegroParameters` throws `MissingCategoryParameterSectionError`
-    // when a CategoryParameter arrives without a `section` value (a stale
-    // cache predating #417). Catch the typed error and surface it through
-    // `staleSchemaError` so the operator gets an actionable "reload the
-    // wizard" message — anything else rethrows as a real bug.
-    let offerParameters: ReturnType<typeof serializeAllegroParameters>['offerParameters'];
-    let productParameters: ReturnType<typeof serializeAllegroParameters>['productParameters'];
+    // #423 — `categoryParametersToOfferParameters` throws
+    // `MissingCategoryParameterSectionError` when a CategoryParameter arrives
+    // without a `section` value (a stale cache predating #417). Catch the typed
+    // error and surface it via `staleSchemaError` so the operator gets an
+    // actionable "reload the wizard" message — anything else rethrows.
+    let parameters: OfferParameter[];
     try {
-      ({ offerParameters, productParameters } = serializeAllegroParameters(
+      parameters = categoryParametersToOfferParameters(
         (values.parameters as CategoryParameterFormValues | undefined) ?? {},
         categoryParameters,
-      ));
+      );
     } catch (error) {
       if (error instanceof MissingCategoryParameterSectionError) {
         setStaleSchemaError(error.parameterName);
         return;
       }
       throw error;
-    }
-
-    if (offerParameters.length > 0) {
-      platformParams.parameters = offerParameters;
-    }
-    if (productParameters.length > 0) {
-      platformParams.productParameters = productParameters;
     }
 
     const request: CreateOfferRequest = {
@@ -764,6 +755,7 @@ export function AllegroCreateOfferWizard({
         title: values.title,
         categoryId: values.categoryId,
         description: values.description ? values.description : null,
+        ...(parameters.length > 0 ? { parameters } : {}),
         platformParams,
       },
     };

@@ -180,12 +180,10 @@ describe('recomputeRowBlockers (#810)', () => {
       override: {
         overrides: {
           categoryId: 'cat-X',
-          platformParams: {
-            productParameters: [
-              { id: 'brand', valuesIds: ['1'] },
-              { id: 'model', values: ['Z'] },
-            ],
-          },
+          parameters: [
+            { id: 'brand', valuesIds: ['1'], section: 'product' },
+            { id: 'model', values: ['Z'], section: 'product' },
+          ],
         },
       },
     });

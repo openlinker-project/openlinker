@@ -85,6 +85,32 @@ describe('createOfferRequestToFormValues', () => {
     });
   });
 
+  it('reverse-maps the neutral overrides.parameters into the form-shape slice (#1071)', () => {
+    const request: CreateOfferRequest = {
+      internalVariantId: 'ol_variant_xyz',
+      stock: 1,
+      publishImmediately: false,
+      overrides: {
+        title: 't',
+        categoryId: 'c',
+        parameters: [
+          { id: 'single', valuesIds: ['v1'], section: 'offer' },
+          { id: 'multi', valuesIds: ['m1', 'm2'], section: 'offer' },
+          { id: 'scalar', values: ['hello'], section: 'product' },
+          { id: 'range', rangeValue: { from: '1', to: '10' }, section: 'offer' },
+        ],
+      },
+    };
+
+    const values = createOfferRequestToFormValues(request, 'conn_1');
+    expect(values.parameters).toEqual({
+      single: 'v1',
+      multi: ['m1', 'm2'],
+      scalar: 'hello',
+      range: { from: '1', to: '10' },
+    });
+  });
+
   it('returns an empty parameters slice when the snapshot omits the array', () => {
     const request: CreateOfferRequest = {
       internalVariantId: 'ol_variant_xyz',
