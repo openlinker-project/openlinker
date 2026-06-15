@@ -27,10 +27,20 @@
  * edits `frozen`; OL must not overwrite them. `updateOfferFields` reads the
  * current product (`fetchErliProduct`) and DROPS any supplied field whose Erli
  * frozen-name is in `frozenFields` before issuing the PATCH (per-nested-field
- * granularity); an all-frozen update issues no PATCH. The hot `updateOfferQuantity`
- * inventory path deliberately does NOT pre-fetch — that would double every
- * inventory tick's API calls; stock drift is guarded by reconciliation (#989),
- * not a per-PATCH GET (decision recorded in the #988 plan).
+ * granularity); an all-frozen update issues no PATCH.
+ *
+ * Frozen-`stock` on the hot path (#1066, ADR-025 §4b): `updateOfferQuantity`
+ * runs on every inventory tick and deliberately does NOT pre-fetch — a per-tick
+ * GET would double the tick's API calls. Frozen-`stock` is instead honored via a
+ * per-offer cache flag populated by the steady-state `erli-offer-status-sync`
+ * reconciliation (#989), which already GETs each mapped offer and sees
+ * `frozenFields`. `getOfferStatus` (and opportunistically `updateOfferFields`)
+ * writes that flag; `updateOfferQuantity` reads it and skips the stock PATCH when
+ * set. A cache miss fails OPEN (push), preserving the pre-#1066 behaviour when the
+ * flag is unknown. The honoring holds from the first reconciliation pass onward;
+ * a freeze landing between ticks is overwritten once until the next pass — the
+ * reconciliation-first / eventual-consistency posture of ADR-025 §1 (window
+ * bounded by the cron cadence, not the cache TTL).
  *
  * Stock-restore-on-cancel (#988 / ADR-025 §4a) is DEFERRED to the orders half:
  * it needs an Erli order-cancel signal (OrderSource / inbox poll, #993) that
@@ -69,6 +79,7 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
@@ -103,15 +114,36 @@ const ERLI_PRODUCT_ID_PATTERN = /^ol_variant_[a-f0-9]{32}$/;
  */
 // OL patch-key → Erli frozen-marker wire name. Provisional #992 wire vocabulary,
 // coupled to `ErliProductResource.frozenFields` (erli-product.types.ts) — reconcile
-// both against the sandbox together. `stock` is intentionally absent: the hot
-// quantity path (`updateOfferQuantity`) does not read frozen state in v1, so a
-// `stock` entry here would be dead code asserting a guarantee no path delivers.
-// Honoring frozen-stock is deferred to #1066 (ADR-025 §4b).
+// both against the sandbox together. `stock` is intentionally absent from THIS map:
+// it drives `dropFrozenFields` on the field-update path, which reads live
+// `frozenFields` per call — the quantity path doesn't read live frozen state. Frozen
+// `stock` IS now honored (#1066, ADR-025 §4b), but via the separate cache-flag check
+// in `updateOfferQuantity` (see {@link ERLI_FROZEN_STOCK_FIELD}), not this map.
 const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, string>> = {
   price: 'price',
   name: 'name',
   description: 'description',
 };
+
+/**
+ * Erli `frozenFields` wire-name for stock (#1066, ADR-025 §4b). Looked for during
+ * reconciliation to populate the per-offer frozen-stock cache flag the hot
+ * `updateOfferQuantity` path reads. Colocated with {@link PATCH_KEY_TO_ERLI_FROZEN_NAME}
+ * (the same provisional #992 wire vocabulary): if the sandbox spike confirms a
+ * different name, this is the single change point alongside that map.
+ */
+const ERLI_FROZEN_STOCK_FIELD = 'stock';
+
+/**
+ * Frozen-stock cache TTL (#1066). Sized for the WORST-case reconciliation cadence
+ * (an operator who loosens the reconciliation cron `ERLI_OFFER_STATUS_SYNC_CRON` in
+ * erli-scheduler-tasks.ts from hourly to daily) — so it must exceed 24h. The
+ * eventual-consistency window is bounded by the cron cadence (the flag is re-asserted
+ * every reconciliation tick), not this TTL; the TTL only governs self-healing once
+ * reconciliation STOPS. If that cron default changes, re-evaluate this constant in
+ * lockstep.
+ */
+const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
 
 export class ErliOfferManagerAdapter
   implements OfferManagerPort, OfferCreator, OfferFieldUpdater, OfferStatusReader
@@ -128,6 +160,12 @@ export class ErliOfferManagerAdapter
      * is absent; create fails closed if neither is present (Erli requires it).
      */
     private readonly defaultDispatchTime?: ErliDispatchTime,
+    /**
+     * Distributed cache for the per-offer frozen-stock flag (#1066). Optional:
+     * unit-test hosts and `CacheModule`-less bootstraps leave it `undefined`, in
+     * which case every consult fails open (push stock = pre-#1066 behaviour).
+     */
+    private readonly cache?: CachePort,
   ) {}
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
@@ -175,6 +213,10 @@ export class ErliOfferManagerAdapter
         throw error;
       }
     }
+    // #1066: opportunistically refresh the frozen-stock cache flag — `frozenFields`
+    // is already in hand from the read above. On the 404 fail-open branch `current`
+    // is `{}` so `frozenFields` is undefined and the helper no-ops.
+    await this.writeFrozenStockFlag(cmd.externalOfferId, current.frozenFields);
     const filtered = this.dropFrozenFields(body, current.frozenFields);
     if (Object.keys(filtered).length === 0) {
       this.logger.debug(
@@ -202,6 +244,11 @@ export class ErliOfferManagerAdapter
       }
       throw error;
     }
+    // #1066: this is the primary writer of the frozen-stock cache flag — the
+    // reconciliation sweep GETs every mapped offer here, so the hot quantity path
+    // gets the flag without its own GET. Written before mapping/returning; a 404
+    // (handled above → OfferNotFoundOnMarketplaceException) never reaches here.
+    await this.writeFrozenStockFlag(externalOfferId, product.frozenFields);
     return mapErliStatusToReadResult(product);
   }
 
@@ -248,12 +295,99 @@ export class ErliOfferManagerAdapter
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
-    // Frozen-stock is intentionally NOT honored here in v1: this runs on every
-    // inventory tick and skips the read-before-write GET for performance, so a
-    // seller-frozen `stock` is not detectable on this path. Deferred to #1066
-    // (ADR-025 §4b) — to be done without a per-tick GET via a cached frozen flag.
+    // #1066 / ADR-025 §4b: honor a seller-frozen stock WITHOUT a per-tick GET.
+    // The flag is cached during erli-offer-status-sync reconciliation (which
+    // already GETs each offer); a cache miss fails OPEN (push), preserving the
+    // pre-#1066 behaviour when the flag is unknown. The key builder applies the
+    // same validate-or-null + encode hygiene as `productPath`, so a hostile id
+    // reads as a miss here and still throws on the push branch below.
+    if (await this.isStockFrozenCached(cmd.offerId)) {
+      this.logger.debug(
+        `Skipping stock push for frozen Erli offer [connectionId=${this.connectionId}, offerId=${cmd.offerId}]`,
+      );
+      return;
+    }
     const body: ErliProductPatchBody = { stock: cmd.quantity };
     await this.httpClient.patch(this.productPath(cmd.offerId), body);
+  }
+
+  /**
+   * Build the connection-scoped frozen-stock cache key (#1066). Both writer
+   * (`writeFrozenStockFlag`) and reader (`isStockFrozenCached`) go through this
+   * single builder so they cannot drift to disjoint keys. Validates the id with
+   * the same {@link ERLI_PRODUCT_ID_PATTERN} as {@link productPath} and returns
+   * `null` on a non-match (never builds a key from an unvalidated string);
+   * `encodeURIComponent` is the backstop so a stray `:` can't blur the
+   * namespace separator across connections. Uses the trusted constructor-injected
+   * `this.connectionId`, never a value off the command.
+   */
+  private frozenStockCacheKey(externalOfferId: string): string | null {
+    if (!ERLI_PRODUCT_ID_PATTERN.test(externalOfferId)) {
+      return null;
+    }
+    return `erli:frozen-stock:${this.connectionId}:${encodeURIComponent(externalOfferId)}`;
+  }
+
+  /**
+   * Persist the per-offer frozen-stock flag from a reconciliation read (#1066).
+   * Write-on-frozen-only: stock frozen → `set(true)`; stock NOT frozen →
+   * `delete` (unfreeze transition) — "known not-frozen" and "unknown" both read
+   * as fail-open, so storing `false` buys nothing but write amplification. A
+   * bodyless 2xx leaves `frozenFields` `undefined` (GET carried no frozen info):
+   * leave the cache untouched so a previously-cached `true` is not clobbered.
+   * Cache errors are swallowed at debug — a cache write must never break
+   * reconciliation.
+   */
+  private async writeFrozenStockFlag(
+    externalOfferId: string,
+    frozenFields: string[] | undefined,
+  ): Promise<void> {
+    if (!this.cache || frozenFields === undefined) {
+      return;
+    }
+    const key = this.frozenStockCacheKey(externalOfferId);
+    if (key === null) {
+      return;
+    }
+    try {
+      if (frozenFields.includes(ERLI_FROZEN_STOCK_FIELD)) {
+        await this.cache.set(key, true, ERLI_FROZEN_STOCK_CACHE_TTL_SEC);
+      } else {
+        await this.cache.delete(key);
+      }
+    } catch (error) {
+      this.logger.debug(
+        `Frozen-stock cache write failed (ignored) [connectionId=${this.connectionId}, offerId=${externalOfferId}]: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Read the cached frozen-stock flag for the hot quantity path (#1066). Returns
+   * `false` (fail-open ⇒ push) when the id is invalid/hostile (null key), no
+   * cache is wired, the key is absent, or the cache read errors — so the only
+   * behaviour change vs. pre-#1066 is the positive case (cached `true` ⇒ skip).
+   */
+  private async isStockFrozenCached(externalOfferId: string): Promise<boolean> {
+    if (!this.cache) {
+      return false;
+    }
+    const key = this.frozenStockCacheKey(externalOfferId);
+    if (key === null) {
+      return false;
+    }
+    try {
+      return (await this.cache.get<boolean>(key)) === true;
+    } catch (error) {
+      this.logger.debug(
+        `Frozen-stock cache read failed (failing open) [connectionId=${this.connectionId}, offerId=${externalOfferId}]: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
   }
 
   /**

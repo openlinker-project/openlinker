@@ -20,6 +20,7 @@ import {
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import type { CachePort } from '@openlinker/shared';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
@@ -663,6 +664,150 @@ describe('ErliOfferManagerAdapter', () => {
 
     it('should reject a hostile externalOfferId before any GET', async () => {
       await expect(adapter.getOfferStatus('evil/../x')).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('frozen-stock cache flag (#1066)', () => {
+    let cache: jest.Mocked<CachePort>;
+    let cachedAdapter: ErliOfferManagerAdapter;
+    const EXPECTED_KEY = `erli:frozen-stock:conn-1:${VALID_ID}`;
+    // 26h — must match ERLI_FROZEN_STOCK_CACHE_TTL_SEC in the adapter.
+    const EXPECTED_TTL = 26 * 60 * 60;
+
+    beforeEach(() => {
+      cache = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      cachedAdapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient, cache);
+    });
+
+    it('should skip the stock PATCH after reconciliation observed a frozen stock (write→read round-trip)', async () => {
+      // Linchpin: writer (getOfferStatus) and reader (updateOfferQuantity) MUST
+      // build the same key. Drive a real round-trip through one mocked cache.
+      const store = new Map<string, unknown>();
+      cache.set.mockImplementation((key, value) => {
+        store.set(key, value);
+        return Promise.resolve();
+      });
+      cache.get.mockImplementation((key) => Promise.resolve((store.get(key) ?? null) as never));
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', frozenFields: ['stock'] },
+      });
+
+      await cachedAdapter.getOfferStatus(VALID_ID);
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
+      expect(httpClient.patch).not.toHaveBeenCalled();
+    });
+
+    it('should NOT PATCH stock when the cached flag is true (frozen → skipped)', async () => {
+      cache.get.mockResolvedValue(true);
+
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
+      expect(cache.get).toHaveBeenCalledWith(EXPECTED_KEY);
+      expect(httpClient.patch).not.toHaveBeenCalled();
+    });
+
+    it('should PATCH stock when the cached flag is absent (not-frozen → pushed)', async () => {
+      cache.get.mockResolvedValue(null);
+
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { stock: 7 });
+    });
+
+    it('should PATCH stock when the cache read errors (fail-open)', async () => {
+      cache.get.mockRejectedValue(new Error('redis down'));
+
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { stock: 7 });
+    });
+
+    it('should not touch the cache and still run the push path for a hostile id', async () => {
+      await expect(
+        cachedAdapter.updateOfferQuantity({ offerId: 'not-a-valid-id', quantity: 1 }),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+
+      expect(cache.get).not.toHaveBeenCalled();
+    });
+
+    it('should produce disjoint keys per connection for the same variant id', async () => {
+      const adapterA = new ErliOfferManagerAdapter('conn-A', ERLI_ADAPTER_KEY, httpClient, cache);
+      const adapterB = new ErliOfferManagerAdapter('conn-B', ERLI_ADAPTER_KEY, httpClient, cache);
+
+      await adapterA.updateOfferQuantity({ offerId: VALID_ID, quantity: 1 });
+      await adapterB.updateOfferQuantity({ offerId: VALID_ID, quantity: 1 });
+
+      const keyA = cache.get.mock.calls[0][0];
+      const keyB = cache.get.mock.calls[1][0];
+      expect(keyA).toBe(`erli:frozen-stock:conn-A:${VALID_ID}`);
+      expect(keyB).toBe(`erli:frozen-stock:conn-B:${VALID_ID}`);
+      expect(keyA).not.toBe(keyB);
+    });
+
+    it('should set the flag with the TTL when reconciliation sees a frozen stock', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', frozenFields: ['stock'] },
+      });
+
+      await cachedAdapter.getOfferStatus(VALID_ID);
+
+      expect(cache.set).toHaveBeenCalledWith(EXPECTED_KEY, true, EXPECTED_TTL);
+      expect(cache.delete).not.toHaveBeenCalled();
+    });
+
+    it('should delete the flag (not store false) when reconciliation sees stock not frozen', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', frozenFields: [] },
+      });
+
+      await cachedAdapter.getOfferStatus(VALID_ID);
+
+      expect(cache.delete).toHaveBeenCalledWith(EXPECTED_KEY);
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('should leave the cache untouched on a bodyless 2xx (frozenFields undefined)', async () => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: undefined });
+
+      await cachedAdapter.getOfferStatus(VALID_ID);
+
+      expect(cache.set).not.toHaveBeenCalled();
+      expect(cache.delete).not.toHaveBeenCalled();
+    });
+
+    it('should not touch the cache when getOfferStatus 404s', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('not found', 404));
+
+      await expect(cachedAdapter.getOfferStatus(VALID_ID)).rejects.toBeInstanceOf(
+        OfferNotFoundOnMarketplaceException,
+      );
+      expect(cache.set).not.toHaveBeenCalled();
+      expect(cache.delete).not.toHaveBeenCalled();
+    });
+
+    it('should opportunistically set the flag from updateOfferFields (secondary writer)', async () => {
+      httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['stock'] } });
+
+      await cachedAdapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
+
+      expect(cache.set).toHaveBeenCalledWith(EXPECTED_KEY, true, EXPECTED_TTL);
+    });
+
+    it('should issue NO GET on the hot quantity path whether frozen or not (#1066 AC)', async () => {
+      cache.get.mockResolvedValueOnce(true);
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+      cache.get.mockResolvedValueOnce(null);
+      await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
       expect(httpClient.get).not.toHaveBeenCalled();
     });
   });
