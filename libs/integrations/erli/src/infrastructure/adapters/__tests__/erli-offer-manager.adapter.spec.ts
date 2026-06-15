@@ -426,6 +426,30 @@ describe('ErliOfferManagerAdapter', () => {
 
         expect(httpClient.patch).not.toHaveBeenCalled();
       });
+
+      it('should fail open and PATCH the full body when the GET 404s in the cache-lag window', async () => {
+        // ADR-025: a just-created offer GET-404s during Erli's ~20-min cache lag (#1061).
+        httpClient.get.mockRejectedValue(new ErliApiException('not found', 404));
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
+          name: 'T',
+          price: { amount: 5, currency: 'PLN' },
+        });
+      });
+
+      it('should re-throw a non-404 GET error rather than failing open', async () => {
+        httpClient.get.mockRejectedValue(new ErliApiException('server error', 500));
+
+        await expect(
+          adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } }),
+        ).rejects.toBeInstanceOf(ErliApiException);
+        expect(httpClient.patch).not.toHaveBeenCalled();
+      });
     });
   });
 
