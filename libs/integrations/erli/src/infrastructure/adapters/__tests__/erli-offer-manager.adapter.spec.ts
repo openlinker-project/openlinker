@@ -26,7 +26,10 @@ import { ErliConfigException } from '../../../domain/exceptions/erli-config.exce
 import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { ERLI_ADAPTER_KEY } from '../../../erli.constants';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
-import { ErliOfferManagerAdapter } from '../erli-offer-manager.adapter';
+import {
+  ErliOfferManagerAdapter,
+  ERLI_FROZEN_STOCK_CACHE_TTL_SEC,
+} from '../erli-offer-manager.adapter';
 
 const VALID_ID = `ol_variant_${'a'.repeat(32)}`;
 
@@ -664,8 +667,8 @@ describe('ErliOfferManagerAdapter', () => {
     let cache: jest.Mocked<CachePort>;
     let cachedAdapter: ErliOfferManagerAdapter;
     const EXPECTED_KEY = `erli:frozen-stock:conn-1:${VALID_ID}`;
-    // 26h — must match ERLI_FROZEN_STOCK_CACHE_TTL_SEC in the adapter.
-    const EXPECTED_TTL = 26 * 60 * 60;
+    // Imported from the adapter — single source of truth, no hand-synced copy.
+    const EXPECTED_TTL = ERLI_FROZEN_STOCK_CACHE_TTL_SEC;
 
     beforeEach(() => {
       cache = {

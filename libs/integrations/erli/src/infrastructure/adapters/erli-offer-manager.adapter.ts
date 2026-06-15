@@ -143,7 +143,7 @@ const ERLI_FROZEN_STOCK_FIELD = 'stock';
  * reconciliation STOPS. If that cron default changes, re-evaluate this constant in
  * lockstep.
  */
-const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
+export const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
 
 export class ErliOfferManagerAdapter
   implements OfferManagerPort, OfferCreator, OfferFieldUpdater, OfferStatusReader
