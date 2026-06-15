@@ -1,18 +1,20 @@
 /**
- * Erli Offer Manager Adapter — unit tests (#984, #985, #986, #988)
+ * Erli Offer Manager Adapter — unit tests (#984, #985, #986, #988, #989)
  *
  * Mocks `IErliHttpClient` to verify: seller-keyed path build (validate+encode),
- * 202→'draft' create mapping, sparse PATCH for field/quantity updates, the
- * safe 4xx→OfferCreateRejectedException mapping (no responseBody leak), auth
- * propagation, hostile-id rejection, imageUrl hygiene, the #985 Allegro
- * category/parameter reuse (source:"allegro" externalCategories/Attributes),
- * and the #988 frozen-field exclusion (read-before-PATCH drops frozen fields;
- * all-frozen → no-op; hot quantity path stays single-call).
+ * 202→'validating' create mapping (#989), sparse PATCH for field/quantity
+ * updates, the safe 4xx→OfferCreateRejectedException mapping (no responseBody
+ * leak), auth propagation, hostile-id rejection, imageUrl hygiene, the #985
+ * Allegro category/parameter reuse, the #988 frozen-field exclusion, and the
+ * #989 OfferStatusReader.getOfferStatus mapping (Erli status → neutral
+ * OfferPublicationStatus; 404 → OfferNotFoundOnMarketplaceException).
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
 import {
+  isOfferStatusReader,
   OfferCreateRejectedException,
+  OfferNotFoundOnMarketplaceException,
   type CreateOfferCommand,
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
@@ -69,14 +71,14 @@ describe('ErliOfferManagerAdapter', () => {
   });
 
   describe('createOffer', () => {
-    it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
+    it("should submit to the seller-keyed product path and return status 'validating' on 202", async () => {
       const result = await adapter.createOffer(createCmd());
 
       expect(httpClient.post).toHaveBeenCalledTimes(1);
       const [path, , options] = httpClient.post.mock.calls[0];
       expect(path).toBe(`products/${VALID_ID}`);
       expect(options).toEqual({ idempotent: true });
-      expect(result).toEqual({ externalOfferId: VALID_ID, status: 'draft' });
+      expect(result).toEqual({ externalOfferId: VALID_ID, status: 'validating' });
     });
 
     it('should map the basic command fields into the create body', async () => {
@@ -597,6 +599,60 @@ describe('ErliOfferManagerAdapter', () => {
       await expect(
         adapter.updateOfferQuantity({ offerId: 'evil/../x', quantity: 1 }),
       ).rejects.toBeInstanceOf(ErliConfigException);
+    });
+  });
+
+  describe('getOfferStatus (#989)', () => {
+    it('should be detectable as an OfferStatusReader', () => {
+      expect(isOfferStatusReader(adapter)).toBe(true);
+    });
+
+    it.each([
+      ['active', 'active'],
+      ['accepted', 'activating'],
+      ['inactive', 'inactive'],
+      [undefined, 'inactive'],
+    ])('should map Erli status %s → publicationStatus %s', async (erliStatus, expected) => {
+      httpClient.get.mockResolvedValueOnce({ status: 200, data: { status: erliStatus } });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.publicationStatus).toBe(expected);
+      expect(result.validationErrors).toEqual([]);
+      expect(httpClient.get).toHaveBeenCalledWith(`products/${VALID_ID}`);
+    });
+
+    it('should map rejected → inactive carrying the reason in validationErrors', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'rejected', statusReason: 'EAN already used' },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toEqual([
+        { code: 'ERLI_REJECTED', message: 'EAN already used' },
+      ]);
+    });
+
+    it('should throw OfferNotFoundOnMarketplaceException on a 404', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('not found', 404));
+
+      await expect(adapter.getOfferStatus(VALID_ID)).rejects.toBeInstanceOf(
+        OfferNotFoundOnMarketplaceException,
+      );
+    });
+
+    it('should propagate non-404 transport errors', async () => {
+      httpClient.get.mockRejectedValueOnce(new ErliApiException('server error', 500));
+
+      await expect(adapter.getOfferStatus(VALID_ID)).rejects.toBeInstanceOf(ErliApiException);
+    });
+
+    it('should reject a hostile externalOfferId before any GET', async () => {
+      await expect(adapter.getOfferStatus('evil/../x')).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
   });
 });
