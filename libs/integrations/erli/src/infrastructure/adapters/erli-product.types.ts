@@ -9,8 +9,11 @@
  * minor units (grosze, PLN-only — no currency field), `images` is an array of
  * image objects, the barcode key is `ean`, and `dispatchTime` is a required
  * create field. This file is the SINGLE wire-shape reconciliation point — the
- * adapter imports wire shapes only from here. Category/parameters (#985) and
- * variant grouping (#986) are layered in by their own issues.
+ * adapter imports wire shapes only from here.
+ *
+ * The #985 taxonomy fields (`externalCategories` / `externalAttributes`, tagged
+ * `source:"allegro"`, reusing OL's already-resolved Allegro ids — ADR-025 §3)
+ * are layered in here. Variant grouping (#986) is added by its own issue.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
@@ -21,6 +24,36 @@ export interface ErliProductImage {
   url: string;
   isVariantImage?: boolean;
   isLifestyleImage?: boolean;
+}
+
+/**
+ * Value-kind discriminator for an `externalAttribute` (#985). v1 maps Allegro
+ * `valuesIds` → `dictionary` and free-text `values` → `string`; `number` is
+ * reserved (single change point if #992 confirms Erli wants `integer`/`float`).
+ */
+export type ErliExternalAttributeType = 'dictionary' | 'string' | 'number';
+
+/**
+ * Category reuse tagged `source:"allegro"` (#985). Erli processes only the `id`
+ * (the OL-resolved Allegro category id); names are ignored (ADR-025 §3).
+ */
+export interface ErliExternalCategory {
+  source: 'allegro';
+  id: string;
+}
+
+/**
+ * Parameter reuse tagged `source:"allegro"` (#985). `id` is the OL-resolved
+ * Allegro parameter id; `values` carries dictionary value-ids or free-text
+ * scalars depending on `type`. `unit` is type-present but unwired in v1 — the
+ * neutral command parameter entries don't carry unit metadata.
+ */
+export interface ErliExternalAttribute {
+  source: 'allegro';
+  id: string;
+  type: ErliExternalAttributeType;
+  values: string[];
+  unit?: string;
 }
 
 /**
@@ -39,6 +72,10 @@ export interface ErliProductCreateBody {
   ean?: string;
   sku?: string;
   dispatchTime?: ErliDispatchTime;
+  /** Allegro category reuse (#985); omitted when empty. */
+  externalCategories?: ErliExternalCategory[];
+  /** Allegro parameter reuse (#985); omitted when empty. */
+  externalAttributes?: ErliExternalAttribute[];
 }
 
 /**
