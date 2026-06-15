@@ -51,3 +51,20 @@ export interface CategoryMappingInput {
    */
   destinationTaxonomyProvenance?: string;
 }
+
+/**
+ * Upsert input for an attribute mapping (#1038, ADR-023 §4). Maps a source
+ * attribute key to a destination parameter name, scoped by source connection
+ * with an optional per-category override (`destinationCategoryId` null ⇒
+ * connection-wide default). `values` carries the per-value translations and
+ * **replaces** the existing set on each upsert.
+ */
+export interface AttributeMappingInput {
+  sourceConnectionId: string;
+  sourceAttributeKey: string;
+  destinationParameterName: string;
+  /** Per-category override; `null`/omitted ⇒ the connection-wide default row. */
+  destinationCategoryId?: string | null;
+  /** Source→destination value translations (e.g. `Red → Czerwony`). */
+  values?: { sourceValue: string; destinationValue: string }[];
+}

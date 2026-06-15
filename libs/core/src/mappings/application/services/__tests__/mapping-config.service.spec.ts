@@ -13,12 +13,14 @@ import {
   PAYMENT_MAPPING_REPOSITORY_TOKEN,
   CATEGORY_MAPPING_REPOSITORY_TOKEN,
   ORDER_STATE_MAPPING_REPOSITORY_TOKEN,
+  ATTRIBUTE_MAPPING_REPOSITORY_TOKEN,
 } from '../../../mappings.tokens';
 import type { StatusMappingRepositoryPort } from '../../../domain/ports/status-mapping-repository.port';
 import type { CarrierMappingRepositoryPort } from '../../../domain/ports/carrier-mapping-repository.port';
 import type { PaymentMappingRepositoryPort } from '../../../domain/ports/payment-mapping-repository.port';
 import type { CategoryMappingRepositoryPort } from '../../../domain/ports/category-mapping-repository.port';
 import type { OrderStateMappingRepositoryPort } from '../../../domain/ports/order-state-mapping-repository.port';
+import type { AttributeMappingRepositoryPort } from '../../../domain/ports/attribute-mapping-repository.port';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
 import { PaymentMapping } from '../../../domain/entities/payment-mapping.entity';
@@ -32,6 +34,7 @@ describe('MappingConfigService', () => {
   let paymentRepo: jest.Mocked<PaymentMappingRepositoryPort>;
   let categoryRepo: jest.Mocked<CategoryMappingRepositoryPort>;
   let orderStateRepo: jest.Mocked<OrderStateMappingRepositoryPort>;
+  let attributeRepo: jest.Mocked<AttributeMappingRepositoryPort>;
 
   const CONNECTION_ID = 'conn-uuid-1';
 
@@ -58,6 +61,11 @@ describe('MappingConfigService', () => {
       findByConnectionId: jest.fn(),
       replaceForConnection: jest.fn(),
     };
+    attributeRepo = {
+      findByDestinationConnection: jest.fn(),
+      upsertMapping: jest.fn(),
+      deleteMapping: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -67,6 +75,7 @@ describe('MappingConfigService', () => {
         { provide: PAYMENT_MAPPING_REPOSITORY_TOKEN, useValue: paymentRepo },
         { provide: CATEGORY_MAPPING_REPOSITORY_TOKEN, useValue: categoryRepo },
         { provide: ORDER_STATE_MAPPING_REPOSITORY_TOKEN, useValue: orderStateRepo },
+        { provide: ATTRIBUTE_MAPPING_REPOSITORY_TOKEN, useValue: attributeRepo },
       ],
     }).compile();
 
