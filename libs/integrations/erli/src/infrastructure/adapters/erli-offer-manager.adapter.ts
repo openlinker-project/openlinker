@@ -156,7 +156,10 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
    */
   private async fetchErliProduct(externalId: string): Promise<ErliProductResource> {
     const res = await this.httpClient.get<ErliProductResource>(this.productPath(externalId));
-    return res.data;
+    // The client returns `data: undefined` for a 204 / empty-body 2xx. Treat a
+    // bodyless read as "no frozen info known" (empty resource) so the PATCH still
+    // proceeds rather than throwing on `current.frozenFields` (review #1061).
+    return res.data ?? ({} as ErliProductResource);
   }
 
   /**

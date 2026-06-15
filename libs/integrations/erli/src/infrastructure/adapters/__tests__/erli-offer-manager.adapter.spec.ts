@@ -391,6 +391,22 @@ describe('ErliOfferManagerAdapter', () => {
         expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { name: 'Keep me' });
       });
 
+      it('should patch the full body when the GET returns an empty body (no frozen info)', async () => {
+        // The client yields `data: undefined` for a 204 / empty-body 2xx; the read
+        // must degrade to "nothing frozen" rather than throwing on current.frozenFields (#1061).
+        httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
+          name: 'T',
+          price: { amount: 5, currency: 'PLN' },
+        });
+      });
+
       it('should patch every supplied field when none are frozen', async () => {
         httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: [] } });
 
