@@ -14,12 +14,12 @@ Give OL trustworthy Erli offer status despite async 202 + ~20-min cache lag. Aft
 2. **`erli-offer-manager.adapter.ts`**:
    - `implements … OfferStatusReader`.
    - `getOfferStatus(externalOfferId)` — reuses `fetchErliProduct` (GET via `productPath`, validate+encode → hostile id fails closed); 404 → `OfferNotFoundOnMarketplaceException(externalOfferId, connectionId)` (capability contract); other transport errors propagate. Maps via `mapErliStatusToReadResult` (module fn).
-   - **Flip `createOffer` 202 → `'validating'`** — safe now that an `OfferStatusReader` exists (the core poll's `OFFER_POLL_NOT_SUPPORTED` path no longer fires). #984 docblock updated.
+   - **`createOffer` 202 stays `'draft'`** (NOT flipped to `'validating'`). Although an `OfferStatusReader` now exists, the Allegro-tuned `OfferStatusPollService` treats a GET-404 as terminal on iteration 1 and its ~9.5-min budget is shorter than Erli's ~20-min cache lag — flipping to `'validating'` would let the poller falsely fail valid-but-not-yet-readable offers. Steady-state reconciliation (the `erli-offer-status-sync` scheduler task below) is the correct mechanism to surface the real status, not the creation poller. The #984 docblock + adapter comment record this.
 3. **`infrastructure/scheduler/erli-scheduler-tasks.ts`** (new) — `buildErliSchedulerTasks()` → one `SchedulerTaskConfig` `erli-offer-status-sync` (jobType `marketplace.offer.statusSync`, cursor `erli.offerStatus.scanOffset`, hourly default, `enabledEnvVar OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`). No `ConfigService` (Erli uses `createNestAdapterModule`); registered unconditionally, the env gate is re-checked by the scheduler at each tick.
 4. **`erli-plugin.ts` `register(host)`** — `host.schedulerTaskRegistry.register(task)` for each.
 
 ## Tests
-`getOfferStatus` mapping (active/accepted/inactive/undefined → publicationStatus; rejected → inactive + ERLI_REJECTED validationError); 404 → `OfferNotFoundOnMarketplaceException`; non-404 propagates; hostile id fails closed; `isOfferStatusReader(adapter)` true; createOffer now returns `'validating'`; plugin registers the scheduler task. **113 erli tests green, type-check + lint clean.**
+`getOfferStatus` mapping (active/accepted/inactive/undefined → publicationStatus; rejected → inactive + ERLI_REJECTED validationError); 404 → `OfferNotFoundOnMarketplaceException`; non-404 propagates; hostile id fails closed; `isOfferStatusReader(adapter)` true; createOffer still returns `'draft'` (see Implementation §2 — deliberately not flipped to `'validating'`); plugin registers the scheduler task. **113 erli tests green, type-check + lint clean.**
 
 ## Risks
 - **#992-provisional**: Erli status field name + value set unconfirmed → isolated in `erli-product.types.ts`.
