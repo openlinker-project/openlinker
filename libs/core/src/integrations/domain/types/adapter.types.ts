@@ -25,6 +25,11 @@ export const CoreCapabilityValues = [
   'OrderProcessorManager',
   'OrderSource',
   'OfferManager',
+  // Shop-listing (cross-platform listing, ADR-024). 'ProductPublisher' resolves
+  // a `ShopProductManagerPort` (the base shop-listing port); 'CategoryProvisioner'
+  // is its provision sub-capability.
+  'ProductPublisher',
+  'CategoryProvisioner',
 ] as const;
 
 /**

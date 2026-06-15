@@ -278,5 +278,25 @@ export type {
 } from './domain/types/responsible-producer.types';
 export { ResponsibleProducerKindValues } from './domain/types/responsible-producer.types';
 
+// Shop-listing capabilities (#1041, ADR-024): the shop sibling of OfferManager.
+// `ShopProductManagerPort` is the base port (mandatory `publishProduct`, registry
+// name 'ProductPublisher'); `CategoryProvisioner` is its provision sub-capability.
+export type { ShopProductManagerPort } from './domain/ports/shop-product-manager.port';
+export type { CategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+export { isCategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+export { PublishProductStatusValues } from './domain/types/product-publish.types';
+export type {
+  PublishProductStatus,
+  PublishProductContent,
+  PublishProductCommand,
+  PublishProductResult,
+} from './domain/types/product-publish.types';
+export type {
+  ProvisionCategoryPathNode,
+  ProvisionCategoryCommand,
+  ProvisionCategoryResult,
+} from './domain/types/category-provision.types';
+export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+
 // Tokens
 export * from './listings.tokens';

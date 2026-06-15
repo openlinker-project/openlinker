@@ -68,7 +68,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:22-28`](../libs/core/src/integrations/domain/types/adapter.types.ts#L22-L28):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:22-33`](../libs/core/src/integrations/domain/types/adapter.types.ts#L22-L33):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -77,6 +77,11 @@ export const CoreCapabilityValues = [
   'OrderProcessorManager',
   'OrderSource',
   'OfferManager',
+  // Shop-listing (cross-platform listing, ADR-024). 'ProductPublisher' resolves
+  // a `ShopProductManagerPort` (the base shop-listing port); 'CategoryProvisioner'
+  // is its provision sub-capability.
+  'ProductPublisher',
+  'CategoryProvisioner',
 ] as const;
 ```
 
@@ -87,6 +92,8 @@ export const CoreCapabilityValues = [
 | `OrderProcessorManager`| Order lifecycle on the destination shop (create / status).| [`libs/core/src/orders/domain/ports/order-processor-manager.port.ts`](../libs/core/src/orders/domain/ports/order-processor-manager.port.ts) |
 | `OrderSource`          | Cursor-based order-event ingestion.                       | [`libs/core/src/orders/domain/ports/order-source.port.ts`](../libs/core/src/orders/domain/ports/order-source.port.ts)               |
 | `OfferManager`         | Marketplace offer/listing management (split into sub-capabilities). | [`libs/core/src/listings/domain/ports/offer-manager.port.ts`](../libs/core/src/listings/domain/ports/offer-manager.port.ts)         |
+| `ProductPublisher`     | Shop product publishing — create/own the product record (base shop-listing port, sub-capabilities). | [`libs/core/src/listings/domain/ports/shop-product-manager.port.ts`](../libs/core/src/listings/domain/ports/shop-product-manager.port.ts) |
+| `CategoryProvisioner`  | Mirror/create a destination category tree (shop sub-capability).    | [`libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts`](../libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts) |
 
 **Open at the registry boundary (#576).** The set above is closed at
 the type-system level (`CoreCapability` union). At the registry
