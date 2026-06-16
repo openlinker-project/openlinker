@@ -29,6 +29,10 @@ import { BulkBatchAdvancementRepository } from './infrastructure/persistence/rep
 import { BulkListingProgressService } from './application/services/bulk-listing-progress.service';
 import { OfferBuilderService } from './application/services/offer-builder.service';
 import { OfferCreationExecutionService } from './application/services/offer-creation-execution.service';
+import { ListingCreationRecordOrmEntity } from './infrastructure/persistence/entities/listing-creation-record.orm-entity';
+import { ListingCreationRecordRepository } from './infrastructure/persistence/repositories/listing-creation-record.repository';
+import { ProductPublishBuilderService } from './application/services/product-publish-builder.service';
+import { ProductPublishExecutionService } from './application/services/product-publish-execution.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
@@ -60,6 +64,9 @@ import {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
+  LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
+  PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
+  PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -84,6 +91,9 @@ export {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
+  LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
+  PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
+  PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -91,6 +101,7 @@ export {
     TypeOrmModule.forFeature([
       IdentifierMappingOrmEntity,
       OfferCreationRecordOrmEntity,
+      ListingCreationRecordOrmEntity,
       BulkListingBatchOrmEntity,
       BulkBatchAdvancementOrmEntity,
       SellerPoliciesCacheOrmEntity,
@@ -120,6 +131,9 @@ export {
     BulkListingProgressService,
     OfferBuilderService,
     OfferCreationExecutionService,
+    ListingCreationRecordRepository,
+    ProductPublishBuilderService,
+    ProductPublishExecutionService,
     OfferCreationEnqueueService,
     BulkListingSubmitService,
     BulkListingRetryService,
@@ -177,6 +191,18 @@ export {
       useExisting: OfferCreationExecutionService,
     },
     {
+      provide: LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
+      useExisting: ListingCreationRecordRepository,
+    },
+    {
+      provide: PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
+      useExisting: ProductPublishBuilderService,
+    },
+    {
+      provide: PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
+      useExisting: ProductPublishExecutionService,
+    },
+    {
       provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
       useExisting: OfferCreationEnqueueService,
     },
@@ -228,6 +254,9 @@ export {
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
+    LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
+    PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
+    PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

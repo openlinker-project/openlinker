@@ -10,6 +10,8 @@
  * @module libs/core/src/listings/domain/types
  */
 
+import type { OfferParameter } from './offer-parameter.types';
+
 /**
  * Overrides for fields that can optionally be customized per-offer.
  * Any field omitted here falls back to a value derived by the core builder
@@ -44,6 +46,18 @@ export interface CreateOfferOverrides {
    */
   imageUrls?: string[] | null;
   /**
+   * Operator-supplied neutral category parameters (#1071). Section-tagged
+   * `OfferParameter[]` the operator picked in the wizard — the *request* half
+   * of the carriage `CreateOfferCommand.parameters` carries as merged output.
+   * The builder merges these with attribute-projection output (operator wins
+   * by id) into `command.parameters`; the destination adapter does the wire
+   * shaping. Distinct from `platformParams` (un-modeled platform knobs) — and
+   * **not** copied onto `command.overrides`; it is consumed into
+   * `command.parameters` only. Rides the existing `overrides` threading
+   * (enqueue → execute → snapshot → retry) so operator params persist for free.
+   */
+  parameters?: OfferParameter[];
+  /**
    * Platform-specific parameters the adapter interprets directly.
    *
    * Examples by platform:
@@ -51,7 +65,9 @@ export interface CreateOfferOverrides {
    * - eBay: shipping service options, listing duration
    * - WooCommerce: tax class, shipping class, product type
    *
-   * The core command stays platform-neutral; adapters read only the keys they know.
+   * `platformParams` no longer carries category parameters (#1071) — those
+   * travel on `parameters` above. The core command stays platform-neutral;
+   * adapters read only the keys they know.
    */
   platformParams?: Record<string, unknown>;
 }
@@ -75,6 +91,19 @@ export interface CreateOfferCommand {
   publishImmediately: boolean;
   /** Optional overrides and platform-specific fields. */
   overrides?: CreateOfferOverrides;
+  /**
+   * Neutral, section-tagged offer/category parameters (#1039, ADR-023 §3 /
+   * ADR-024 §Flow) — produced in core by attribute projection (and, in the
+   * end-state, operator picks). The destination adapter is the **only** place
+   * that shapes these to platform wire: Allegro splits by `section` into
+   * `body.parameters[]` (offer) vs `productSet[].product.parameters[]`
+   * (product); a borrows/open destination maps them to its own param shape.
+   *
+   * Distinct from `overrides.platformParams`, which carries un-modeled
+   * platform knobs (delivery policy id, invoice type, …) the adapter reads
+   * by key. Absent/empty ⇒ no projected parameters for this offer.
+   */
+  parameters?: OfferParameter[];
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
   /**

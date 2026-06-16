@@ -18,7 +18,9 @@ describe('identifier-mapping.types', () => {
       // Guards against silent reordering or accidental additions/removals
       // of the published well-known set. The architecture doc enumerates
       // the same values at §"Internal Identifier Format". `Shipment`
-      // joined in #763 (foundation slice for the InPost shipping epic).
+      // joined in #763 (foundation slice for the InPost shipping epic);
+      // `ShopProduct` joined in #1042 (variant→destination-product key for
+      // the shop-publish vertical).
       expect([...CoreEntityTypeValues]).toEqual([
         'Product',
         'ProductVariant',
@@ -28,6 +30,7 @@ describe('identifier-mapping.types', () => {
         'Inventory',
         'Customer',
         'Shipment',
+        'ShopProduct',
       ]);
     });
   });

@@ -40,6 +40,7 @@ import type {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
   CreateOfferCommand,
+  OfferParameter,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
@@ -116,27 +117,6 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
  * consumed by one read in the same call.
  */
 const SINGLE_ITEM_KEY = 'single';
-
-/**
- * Type guard used when filtering untyped `platformParams.parameters` into the
- * Allegro-accepted shape. Requires `id: string` and, when present, `values` /
- * `valuesIds` must be arrays of strings. Anything that fails this check is
- * silently dropped — Allegro would reject it anyway, and keeping the guard
- * strict means invalid shapes fail fast at the request-build step.
- */
-function isAllegroOfferParameterShape(candidate: unknown): candidate is AllegroOfferParameter {
-  if (typeof candidate !== 'object' || candidate === null) return false;
-  const c = candidate as { id?: unknown; values?: unknown; valuesIds?: unknown };
-  if (typeof c.id !== 'string' || c.id.length === 0) return false;
-  if (c.values !== undefined) {
-    if (!Array.isArray(c.values) || !c.values.every((v) => typeof v === 'string')) return false;
-  }
-  if (c.valuesIds !== undefined) {
-    if (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string'))
-      return false;
-  }
-  return true;
-}
 
 /**
  * Defensive runtime check for the persisted `Connection.config.allegro
@@ -1501,14 +1481,32 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cardLinkResult);
+    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult);
 
     return body;
+  }
+
+  /**
+   * Map neutral `OfferParameter`s (already merged operator+projected by the
+   * core builder, #1071) to the Allegro wire shape for one section: drop the
+   * `section` axis (the caller has already filtered by it) and carry
+   * `values` / `valuesIds` / `rangeValue`. The Allegro adapter is the **sole**
+   * shaper of the offer/product split — `platformParams` no longer carries
+   * category parameters.
+   */
+  private toAllegroParameters(params: readonly OfferParameter[]): AllegroOfferParameter[] {
+    return params.map((param) => ({
+      id: param.id,
+      ...(param.values ? { values: param.values } : {}),
+      ...(param.valuesIds ? { valuesIds: param.valuesIds } : {}),
+      ...(param.rangeValue ? { rangeValue: param.rangeValue } : {}),
+    }));
   }
 
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
+    parameters: readonly OfferParameter[] | undefined,
     cardLinkResult: ResolveProductCardResult
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
@@ -1547,9 +1545,14 @@ export class AllegroOfferManagerAdapter
       body.payments = { invoice };
     }
 
-    const parameters = platformParams['parameters'];
-    if (Array.isArray(parameters)) {
-      body.parameters = parameters.filter(isAllegroOfferParameterShape);
+    // Offer-section parameters from the neutral `cmd.parameters` (#1071).
+    // Applied before the smart-link short-circuit so card-linked offers still
+    // carry offer-section params (the card only supplies product-section ones).
+    const offerParameters = this.toAllegroParameters(
+      (parameters ?? []).filter((p) => p.section === 'offer')
+    );
+    if (offerParameters.length > 0) {
+      body.parameters = offerParameters;
     }
 
     // #431 — smart-link short-circuit. When the variant's EAN uniquely
@@ -1618,10 +1621,12 @@ export class AllegroOfferManagerAdapter
     // needed at this site. Keeping a single sanitization point per request
     // lifecycle avoids "why is this being sanitized — wasn't it already?"
     // reader confusion.
-    const productParameters = platformParams['productParameters'];
-    const filtered = Array.isArray(productParameters)
-      ? productParameters.filter(isAllegroOfferParameterShape)
-      : [];
+    // Product-section parameters from the neutral `cmd.parameters` (#1071).
+    // Reached only on the inline-product path — the `unique` smart-link branch
+    // above early-returned, inheriting product params from the catalog card.
+    const filtered = this.toAllegroParameters(
+      (parameters ?? []).filter((p) => p.section === 'product')
+    );
     // `parameters` is attached only when the operator supplied any — Allegro
     // rejects an explicit empty array on inline products. Spread-with-conditional
     // keeps the construction declarative and avoids a post-create mutation.

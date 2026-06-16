@@ -250,16 +250,16 @@ export interface AllegroOffersResponse {
  * `GET /sale/product-offers/{offerId}` — `name` is populated server-side)
  * and as a POST request shape (`body.parameters[]` /
  * `body.productSet[].product.parameters[]` — adapters omit `name`, Allegro
- * infers it from `id`). Allegro's actual POST API also accepts
- * `rangeValue?: { from, to }` here; the adapter's shape validator
- * (`isAllegroOfferParameterShape`) currently filters that branch out —
- * pre-existing gap, tracked separately.
+ * infers it from `id`). `rangeValue` carries integer/float range parameters
+ * (#1071 — previously a documented gap; now emitted from the neutral
+ * `OfferParameter.rangeValue` operator-supplied path).
  */
 export interface AllegroOfferParameter {
   id: string;
   name?: string;
   values?: string[];
   valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
 }
 
 /**

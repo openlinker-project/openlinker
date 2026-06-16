@@ -15,8 +15,13 @@ import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
 import { OfferBuilderService } from '../offer-builder.service';
-import { CATEGORY_RESOLUTION_SERVICE_TOKEN } from '../../../listings.tokens';
+import {
+  ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
+  CATEGORY_RESOLUTION_SERVICE_TOKEN,
+} from '../../../listings.tokens';
 import type { ICategoryResolutionService } from '../../interfaces/category-resolution.service.interface';
+import type { IAttributeProjectionService } from '../../interfaces/attribute-projection.service.interface';
+import type { AttributeProjectionResult } from '../../types/attribute-projection.types';
 import { OfferBuilderValidationException } from '../../../domain/exceptions/offer-builder-validation.exception';
 import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
 
@@ -26,7 +31,14 @@ describe('OfferBuilderService', () => {
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
+  let attributeProjection: jest.Mocked<IAttributeProjectionService>;
   let productMaster: { getProduct: jest.Mock };
+
+  const emptyProjection: AttributeProjectionResult = {
+    parameters: [],
+    unmappedSourceKeys: [],
+    unresolvedRequired: [],
+  };
 
   const VARIANT_ID = 'ol_variant_123';
   const MARKETPLACE_CONN_ID = 'conn-allegro';
@@ -78,6 +90,9 @@ describe('OfferBuilderService', () => {
           method: 'auto_detect',
         }),
     };
+    attributeProjection = {
+      project: jest.fn().mockResolvedValue(emptyProjection),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -86,6 +101,7 @@ describe('OfferBuilderService', () => {
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
+        { provide: ATTRIBUTE_PROJECTION_SERVICE_TOKEN, useValue: attributeProjection },
       ],
     }).compile();
 
@@ -383,6 +399,230 @@ describe('OfferBuilderService', () => {
         'https://example.com/img1.jpg',
         'https://example.com/img2.jpg',
       ]);
+    });
+  });
+
+  describe('attribute projection (#1039)', () => {
+    it('forwards the master product categories as sourceCategoryIds to resolution', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'desc',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['ps-cat-15', 'ps-cat-22'],
+      });
+
+      await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
+        connectionId: MARKETPLACE_CONN_ID,
+        barcode: '5901234123457',
+        sourceCategoryIds: ['ps-cat-15', 'ps-cat-22'],
+      });
+    });
+
+    it('projects against the resolved category and puts the parameters on the command', async () => {
+      productsService.getVariant.mockResolvedValue({
+        ...(defaultVariant as unknown as Record<string, unknown>),
+        attributes: { Color: 'Red' },
+      } as unknown as ProductVariant);
+      attributeProjection.project.mockResolvedValue({
+        parameters: [{ id: '224017', valuesIds: ['11954'], section: 'product' }],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(attributeProjection.project).toHaveBeenCalledWith({
+        sourceConnectionId: MASTER_CONN_ID,
+        destinationConnectionId: MARKETPLACE_CONN_ID,
+        destinationCategoryId: 'allegro-cat-999',
+        attributes: { Color: 'Red' },
+      });
+      expect(result.parameters).toEqual([
+        { id: '224017', valuesIds: ['11954'], section: 'product' },
+      ]);
+    });
+
+    it('omits the parameters field when projection yields none', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result).not.toHaveProperty('parameters');
+    });
+
+    it('business_failures when an OFFER-section required param is unresolved', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+      });
+
+      const error = await service
+        .buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+        })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OfferBuilderValidationException);
+      expect((error as OfferBuilderValidationException).issues).toEqual([
+        expect.objectContaining({ field: 'parameters.Stan', code: 'PARAMETER_REQUIRED' }),
+      ]);
+    });
+
+    it('does NOT gate PRODUCT-section required params (deferred to adapter / card inheritance)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.internalVariantId).toBe(VARIANT_ID);
+    });
+
+    it('merges operator overrides.parameters with projected (operator wins by id) (#1071)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [
+          { id: 'cond-1', valuesIds: ['proj'], section: 'offer' },
+          { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+        ],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: {
+          parameters: [{ id: 'cond-1', values: ['Operator'], section: 'offer' }],
+        },
+      });
+
+      expect(result.parameters).toEqual([
+        // operator wins for cond-1; projected brand-1 retained.
+        { id: 'cond-1', values: ['Operator'], section: 'offer' },
+        { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+      ]);
+      // S1 — operator params are consumed into command.parameters, not leaked
+      // onto command.overrides (the adapter reads only cmd.parameters).
+      expect(result.overrides).not.toHaveProperty('parameters');
+    });
+
+    it('satisfies Gate 2 from an operator overrides.parameters offer-section param (#1071)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { parameters: [{ id: 'cond-1', values: ['Nowy'], section: 'offer' }] },
+      });
+
+      expect(result.internalVariantId).toBe(VARIANT_ID);
+    });
+
+    it('hoists legacy platformParams params for pre-#1071 snapshots (fallback, I3)', async () => {
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: [],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+      });
+
+      // No overrides.parameters → fallback reads platformParams.{parameters,productParameters}.
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: {
+          platformParams: {
+            parameters: [{ id: 'cond-1', values: ['Nowy'] }],
+            productParameters: [{ id: 'brand-1', valuesIds: ['canon'] }],
+          },
+        },
+      });
+
+      // Gate 2 satisfied (cond-1 hoisted) AND both hoisted into command.parameters.
+      expect(result.parameters).toEqual([
+        { id: 'cond-1', values: ['Nowy'], section: 'offer' },
+        { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
+      ]);
+    });
+
+    it('builds and warns (no throw) when there are unmapped source keys', async () => {
+      const warnSpy = jest
+        .spyOn((service as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      attributeProjection.project.mockResolvedValue({
+        parameters: [],
+        unmappedSourceKeys: ['Material', 'Pattern'],
+        unresolvedRequired: [],
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.internalVariantId).toBe(VARIANT_ID);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Material, Pattern'));
+    });
+
+    it('propagates a projection infra error (not swallowed → job retries)', async () => {
+      attributeProjection.project.mockRejectedValue(new Error('Allegro category-params fetch failed'));
+
+      await expect(
+        service.buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+        })
+      ).rejects.toThrow('Allegro category-params fetch failed');
+    });
+
+    it('does not project when the category is unresolved (Gate 1 throws first)', async () => {
+      categoryResolution.resolveCategory.mockResolvedValue({
+        destinationCategoryId: null,
+        provenance: null,
+        method: 'manual',
+      });
+
+      await expect(
+        service.buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+        })
+      ).rejects.toBeInstanceOf(OfferBuilderValidationException);
+      expect(attributeProjection.project).not.toHaveBeenCalled();
     });
   });
 });
