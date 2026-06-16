@@ -131,6 +131,12 @@ const harness = createIntegrationTestHarness({
     // match the file's "disable all background schedulers" intent (#991); the
     // offers int-spec drives OfferStatusSyncService directly regardless.
     OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    // Erli orders-poll scheduler (#993). The API app boots the real Erli plugin,
+    // which registers the `erli-orders-poll` cron; left enabled it fires in-suite
+    // against an empty inbox, keeps the event loop alive (Jest hang), and races
+    // the deterministic direct-invocation scenarios. The orders int-spec (#998)
+    // drives ingestion directly, so disable it like every other scheduler.
+    OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
 
