@@ -49,7 +49,7 @@ export const erliAdapterManifest: AdapterMetadata = {
   platformType: 'erli',
   // Each capability is added by the PR that ships its adapter, in lockstep with
   // a dispatch-table entry below: #984 → 'OfferManager', #993 → 'OrderSource'.
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'OrderSource'],
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,
@@ -77,8 +77,10 @@ export function createErliPlugin(): AdapterPlugin {
         ERLI_ADAPTER_KEY,
         new ErliAuthFailureClassifierAdapter(),
       );
-      // Offer-status reconciliation scheduler task (#989). Registered
-      // unconditionally; the OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED env gate
+      // Scheduler tasks: offer-status reconciliation (#989) and the
+      // `erli-orders-poll` order-source poll (#993) — `buildErliSchedulerTasks`
+      // now returns both. Registered unconditionally; each task's env gate
+      // (OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED / OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED)
       // is re-checked by the scheduler at each tick (no ConfigService dependency —
       // Erli is wired via createNestAdapterModule).
       for (const task of buildErliSchedulerTasks()) {
@@ -102,7 +104,10 @@ export function createErliPlugin(): AdapterPlugin {
       );
       return dispatchCapability<T>(
         capability,
-        { OfferManager: () => adapters.offerManager },
+        {
+          OfferManager: () => adapters.offerManager,
+          OrderSource: () => adapters.orderSource,
+        },
         ERLI_BRAND,
       );
     },

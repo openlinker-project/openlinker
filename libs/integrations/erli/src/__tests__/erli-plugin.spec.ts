@@ -11,6 +11,7 @@
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { isOfferCreator, type OfferManagerPort } from '@openlinker/core/listings';
+import type { OrderSourcePort } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
 
@@ -79,11 +80,11 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.platformType).toBe('erli');
   });
 
-  it('should declare OfferManager (the capability #984 delivers)', () => {
-    // Each capability is declared in lockstep with its adapter; #993 adds
-    // 'OrderSource'. Declaring a capability the factory cannot build would let
-    // listCapabilityAdapters request an undeliverable adapter.
-    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OfferManager']);
+  it('should declare OfferManager + OrderSource (the capabilities #984/#993 deliver)', () => {
+    // Each capability is declared in lockstep with its adapter; declaring a
+    // capability the factory cannot build would let listCapabilityAdapters
+    // request an undeliverable adapter.
+    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OfferManager', 'OrderSource']);
   });
 
   it('should be the platform-default adapter', () => {
@@ -184,6 +185,20 @@ describe('createErliPlugin', () => {
         else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
       }
     });
+
+    it('should register the erli-orders-poll scheduler task (#993)', () => {
+      const { host, schedulerTaskRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'erli-orders-poll',
+          platformType: 'erli',
+          jobType: 'marketplace.orders.poll',
+          enabledEnvVar: 'OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED',
+        }),
+      );
+    });
   });
 
   describe('createCapabilityAdapter', () => {
@@ -197,14 +212,22 @@ describe('createErliPlugin', () => {
       expect(isOfferCreator(adapter)).toBe(true);
     });
 
-    it.each(['OrderSource', 'ProductMaster'])(
-      'should reject %s with the SDK unsupported-capability error',
-      async (capability) => {
-        await expect(
-          createErliPlugin().createCapabilityAdapter(connection, capability, makeDispatchHost()),
-        ).rejects.toThrow(`Erli adapter does not support capability: ${capability}`);
-      },
-    );
+    it('should resolve OrderSource to an order-source adapter (#993)', async () => {
+      const adapter = await createErliPlugin().createCapabilityAdapter<OrderSourcePort>(
+        connection,
+        'OrderSource',
+        makeDispatchHost(),
+      );
+
+      expect(typeof adapter.listOrderFeed).toBe('function');
+      expect(typeof adapter.getOrder).toBe('function');
+    });
+
+    it('should reject an unsupported capability with the SDK unsupported-capability error', async () => {
+      await expect(
+        createErliPlugin().createCapabilityAdapter(connection, 'ProductMaster', makeDispatchHost()),
+      ).rejects.toThrow('Erli adapter does not support capability: ProductMaster');
+    });
   });
 });
 
