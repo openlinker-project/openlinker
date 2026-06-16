@@ -2,190 +2,176 @@
  * Erli Order Mapper — unit tests (#994)
  *
  * Locks the Erli order → IncomingOrder translation: the status table, the
- * COD-arrives-paid payment encoding, totals derivation, address mapping, and
- * raw-PII passthrough (no internal `ol_*` ids — the #995 identity boundary).
+ * COD-arrives-paid payment encoding off `delivery.cod`, grosze→decimal money
+ * conversion, totals reconciliation, address mapping, and the email-only
+ * identity passthrough (no buyer id; no internal `ol_*` ids — the #995 boundary).
  *
- * PROVISIONAL (#992): fixtures are AUTHORED (sandbox capture impossible until
- * the #992 spike), typed against the provisional wire shapes in
- * `erli-order.types.ts`. They MUST be re-asserted once the spike confirms the
- * real Erli order JSON. PII in fixtures is obviously-fake test data — never real
- * customer data or credentials.
+ * Fixtures are authored from the #992-verified Erli order contract (sandbox was
+ * empty at spike time): money is INTEGER grosze, the buyer is `user` with no id,
+ * line items are `items`, COD is `delivery.cod`. PII is obviously-fake test data.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
 import type { ErliOrder } from '../erli-order.types';
 import { mapErliOrderToIncomingOrder } from '../erli-order.mapper';
 
-// --- Authored, obviously-fake fixtures (#992-PROVISIONAL) ---------------------
-const FAKE_SHIPPING_ADDRESS = {
-  firstName: 'Jan',
-  lastName: 'Testowy',
-  street: 'ul. Testowa 1',
-  city: 'Testowo',
-  postalCode: '00-001',
-  countryCode: 'PL',
-  phone: '+48000000000',
-};
-
 function buildErliOrder(overrides: Partial<ErliOrder> = {}): ErliOrder {
   return {
     id: 'erli-order-1001',
-    orderNumber: 'ERL-1001',
+    externalOrderId: 'ERL-1001',
     status: 'purchased',
-    paymentMethod: 'cod',
-    buyer: {
-      id: 'erli-buyer-1',
+    sellerStatus: 'created',
+    user: {
       email: 'buyer-1@example.test',
-      firstName: 'Jan',
-      lastName: 'Testowy',
+      deliveryAddress: {
+        firstName: 'Jan',
+        lastName: 'Testowy',
+        address: 'ul. Testowa 1',
+        street: 'Testowa',
+        buildingNumber: '1',
+        zip: '00-001',
+        city: 'Testowo',
+        country: 'PL',
+        phone: '+48000000000',
+      },
     },
-    lineItems: [
+    items: [
       {
-        id: 'line-1',
-        productExternalId: 'erli-prod-aaa',
+        id: 1,
+        externalId: 'erli-prod-aaa',
         quantity: 2,
-        price: { amount: 50, currency: 'PLN' },
-        sku: 'SKU-AAA',
+        unitPrice: 5000, // 50.00 PLN in grosze
         name: 'Test Widget',
+        sku: 'SKU-AAA',
       },
     ],
-    totals: {
-      subtotal: 100,
-      tax: 0,
-      shipping: 10,
-      total: 110,
-      currency: 'PLN',
-    },
-    shippingAddress: { ...FAKE_SHIPPING_ADDRESS },
-    createdAt: '2026-06-16T10:00:00.000Z',
-    updatedAt: '2026-06-16T10:05:00.000Z',
-    placedAt: '2026-06-16T09:59:00.000Z',
+    delivery: { name: 'Kurier', typeId: 'courier', price: 1000, cod: true }, // 10.00 PLN
+    totalPrice: 11000, // 110.00 PLN
+    created: '2026-06-16T10:00:00.000Z',
+    updated: '2026-06-16T10:05:00.000Z',
+    purchasedAt: '2026-06-16T09:59:00.000Z',
     ...overrides,
   };
 }
 
 describe('mapErliOrderToIncomingOrder', () => {
-  it('should map a COD order to processing + paymentStatus cod when status is purchased and method is cod', () => {
-    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'purchased', paymentMethod: 'cod' }));
+  it('should map a COD purchased order to processing + paymentStatus cod', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
+    );
 
     expect(result.status).toBe('processing');
     expect(result.paymentStatus).toBe('cod');
   });
 
-  it('should map a settled online order to processing + paymentStatus paid when status is purchased and method is payu', () => {
-    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'purchased', paymentMethod: 'payu' }));
+  it('should map a settled online (non-COD) purchased order to processing + paid', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ status: 'purchased', delivery: { cod: false } }),
+    );
 
     expect(result.status).toBe('processing');
     expect(result.paymentStatus).toBe('paid');
   });
 
-  it('should map a pending online order to pending + paymentStatus awaiting when status is pending', () => {
-    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'pending', paymentMethod: 'payu' }));
+  it('should map a pending order to pending + paymentStatus awaiting', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'pending' }));
 
     expect(result.status).toBe('pending');
     expect(result.paymentStatus).toBe('awaiting');
   });
 
-  it('should map a cancelled order to cancelled with undefined paymentStatus when status is cancelled', () => {
+  it('should map a cancelled order to cancelled with undefined paymentStatus', () => {
     const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'cancelled' }));
 
     expect(result.status).toBe('cancelled');
     expect(result.paymentStatus).toBeUndefined();
   });
 
+  it('should map a returned order to refunded + paymentStatus refunded', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status: 'returned' }));
+
+    expect(result.status).toBe('refunded');
+    expect(result.paymentStatus).toBe('refunded');
+  });
+
   it('should fall back to pending when the status is unknown', () => {
     const result = mapErliOrderToIncomingOrder(
-      buildErliOrder({ status: 'shipped' as unknown as ErliOrder['status'] })
+      buildErliOrder({ status: 'shipped' as unknown as ErliOrder['status'] }),
     );
 
     expect(result.status).toBe('pending');
     expect(result.paymentStatus).toBeUndefined();
   });
 
-  it('should map all line items and reconcile totals when the order has multiple lines', () => {
+  it('should convert grosze to decimal PLN for line-item prices', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder());
+
+    expect(result.items[0].price).toBe(50);
+    expect(result.items[0].quantity).toBe(2);
+    expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: 'erli-prod-aaa' });
+    expect(result.items[0].id).toBe('1');
+  });
+
+  it('should reconcile totals from the gross total and delivery price (grosze → decimal)', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({
-        lineItems: [
-          {
-            id: 'line-1',
-            productExternalId: 'erli-prod-aaa',
-            quantity: 2,
-            price: { amount: 50, currency: 'PLN' },
-            sku: 'SKU-AAA',
-            name: 'Test Widget',
-          },
-          {
-            id: 'line-2',
-            productExternalId: 'erli-prod-bbb',
-            quantity: 1,
-            price: { amount: 30, currency: 'PLN' },
-            sku: 'SKU-BBB',
-            name: 'Test Gadget',
-          },
+        items: [
+          { id: 1, externalId: 'erli-prod-aaa', quantity: 2, unitPrice: 5000, name: 'A' },
+          { id: 2, externalId: 'erli-prod-bbb', quantity: 1, unitPrice: 3000, name: 'B' },
         ],
-        totals: { subtotal: 130, tax: 0, shipping: 10, total: 140, currency: 'PLN' },
-      })
+        delivery: { cod: true, price: 1000 },
+        totalPrice: 14000, // 140.00
+      }),
     );
 
     expect(result.items).toHaveLength(2);
-    expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: 'erli-prod-aaa' });
-    expect(result.items[0].price).toBe(50);
-    expect(result.items[0].quantity).toBe(2);
-    expect(result.items[1].productRef).toEqual({ type: 'variant', externalId: 'erli-prod-bbb' });
-    expect(result.totals.subtotal).toBe(130);
     expect(result.totals.total).toBe(140);
+    expect(result.totals.shipping).toBe(10);
+    expect(result.totals.subtotal).toBe(130);
+    expect(result.totals.tax).toBe(0);
+    expect(result.totals.currency).toBe('PLN');
+    expect(result.totals.taxTreatment).toBe('inclusive');
   });
 
-  it('should derive safe defaults when optional fields are missing', () => {
+  it('should round to 2 decimals after grosze conversion (no IEEE-754 residue)', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({
-        buyer: { id: 'erli-buyer-2' },
-        totals: { total: 110, currency: 'PLN' },
-        shippingAddress: undefined,
-        billingAddress: undefined,
-        placedAt: undefined,
-      })
+        items: [{ id: 1, externalId: 'erli-prod-aaa', quantity: 3, unitPrice: 1999, name: 'A' }],
+        delivery: { cod: false, price: 1000 },
+        totalPrice: 6997, // 69.97
+      }),
     );
 
-    // tax defaults to 0
-    expect(result.totals.tax).toBe(0);
-    // subtotal derived from Σ(price × qty) = 50 × 2 = 100
-    expect(result.totals.subtotal).toBe(100);
-    // shipping derived from max(0, total − subtotal) = 110 − 100 = 10
+    expect(result.items[0].price).toBe(19.99);
+    expect(result.totals.total).toBe(69.97);
     expect(result.totals.shipping).toBe(10);
-    // omitted optionals
-    expect(result.customerEmail).toBeUndefined();
-    expect(result.shippingAddress).toBeUndefined();
-    expect(result.billingAddress).toBeUndefined();
-    expect(result.placedAt).toBeUndefined();
+    expect(result.totals.subtotal).toBe(59.97);
   });
 
-  it('should fall back to ingestion time when createdAt/updatedAt are absent', () => {
+  it('should key identity on email only — no customerExternalId (Erli has no buyer id)', () => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder());
+
+    expect(result.customerExternalId).toBeUndefined();
+    expect(result.customerEmail).toBe('buyer-1@example.test');
+    // metadata carries the non-PII seller status breadcrumb; the email is NEVER
+    // duplicated into the untyped metadata bag (PR1078-SEC-01).
+    expect(result.metadata).toEqual({ sellerStatus: 'created' });
+    expect(JSON.stringify(result.metadata)).not.toContain('buyer-1@example.test');
+  });
+
+  it('should fall back to ingestion time when created/updated are absent', () => {
     const before = Date.now();
     const result = mapErliOrderToIncomingOrder(
-      buildErliOrder({ createdAt: undefined, updatedAt: undefined })
+      buildErliOrder({ created: undefined, updated: undefined }),
     );
     const after = Date.now();
 
-    expect(typeof result.createdAt).toBe('string');
-    expect(typeof result.updatedAt).toBe('string');
     const created = new Date(result.createdAt).getTime();
     expect(created).toBeGreaterThanOrEqual(before);
     expect(created).toBeLessThanOrEqual(after);
   });
 
-  it('should pass buyer/PII fields through raw without identifier mapping', () => {
-    const order = buildErliOrder();
-    const result = mapErliOrderToIncomingOrder(order);
-
-    expect(result.customerExternalId).toBe(order.buyer.id);
-    expect(result.customerEmail).toBe(order.buyer.email);
-    expect(result.metadata).toEqual({
-      buyer: { id: order.buyer.id, email: order.buyer.email },
-    });
-  });
-
-  it('should map the shipping address field-for-field onto IncomingOrderAddress', () => {
+  it('should map the delivery address using the full formatted line (zip → postalCode, country)', () => {
     const result = mapErliOrderToIncomingOrder(buildErliOrder());
 
     expect(result.shippingAddress).toEqual({
@@ -195,50 +181,58 @@ describe('mapErliOrderToIncomingOrder', () => {
       address1: 'ul. Testowa 1',
       address2: undefined,
       city: 'Testowo',
-      state: undefined,
       postalCode: '00-001',
       country: 'PL',
       phone: '+48000000000',
     });
   });
 
-  it('should map the billing address field-for-field when present', () => {
+  it('should compose address1 from street + buildingNumber and surface flatNumber as address2', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({
-        billingAddress: {
-          firstName: 'Anna',
-          lastName: 'Przykład',
-          company: 'Test Sp. z o.o.',
-          street: 'ul. Fakturowa 7',
-          street2: 'lok. 3',
-          city: 'Rachunkowo',
-          region: 'Mazowieckie',
-          postalCode: '11-111',
-          countryCode: 'PL',
-          phone: '+48111111111',
+        user: {
+          email: 'b@example.test',
+          invoiceAddress: {
+            firstName: 'Anna',
+            lastName: 'Przykład',
+            companyName: 'Test Sp. z o.o.',
+            street: 'Fakturowa',
+            buildingNumber: '7',
+            flatNumber: '3',
+            zip: '11-111',
+            city: 'Rachunkowo',
+            country: 'PL',
+            phone: '+48111111111',
+          },
         },
-      })
+      }),
     );
 
     expect(result.billingAddress).toEqual({
       firstName: 'Anna',
       lastName: 'Przykład',
       company: 'Test Sp. z o.o.',
-      address1: 'ul. Fakturowa 7',
-      address2: 'lok. 3',
+      address1: 'Fakturowa 7',
+      address2: 'm. 3',
       city: 'Rachunkowo',
-      state: 'Mazowieckie',
       postalCode: '11-111',
       country: 'PL',
       phone: '+48111111111',
     });
   });
 
+  it('should return undefined for an absent address', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ user: { email: 'b@example.test' } }),
+    );
+
+    expect(result.shippingAddress).toBeUndefined();
+    expect(result.billingAddress).toBeUndefined();
+  });
+
   it('should never emit an internal ol_ id anywhere in the output (the #995 identity boundary)', () => {
     const result = mapErliOrderToIncomingOrder(buildErliOrder());
 
-    // Asserts the internal-id SHAPE (`ol_<entity>_…`), not an incidental `ol_`
-    // substring — catches `ol_variant_`/`ol_product_`/`ol_order_` prefixes.
     expect(JSON.stringify(result)).not.toMatch(/ol_[a-z]+_/);
   });
 });

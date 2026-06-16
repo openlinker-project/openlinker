@@ -1,33 +1,30 @@
 /**
  * Erli Order → IncomingOrder Mapper
  *
- * Pure translation from Erli's provisional order wire shape (`ErliOrder`) to the
- * neutral `IncomingOrder` DTO returned by `OrderSourcePort.getOrder`. The future
+ * Pure translation from Erli's order wire shape (`ErliOrder`) to the neutral
+ * `IncomingOrder` DTO returned by `OrderSourcePort.getOrder`. The
  * `ErliOrderSourceAdapter` (#993) composes this function, exactly as
  * `PrestashopOrderSourceAdapter` composes `PrestashopOrderMapper`.
  *
- * Encodes Erli's three-status set onto the neutral order status + payment status:
- * COD orders arrive already committed (`purchased` + paid-on-delivery) and map to
- * `processing` + `paymentStatus:'cod'`; settled online orders map to `processing`
- * + `'paid'`; not-yet-settled online orders (`pending`) map to `pending` +
- * `'awaiting'`; `cancelled` maps through faithfully (#993 observes it to trigger
- * Erli's stock-restore PATCH, ADR-025 §4a).
+ * Verified against the live Erli API (#992 spike):
+ *  - Money is INTEGER minor units (grosze); the neutral DTO is decimal-major, so
+ *    every amount is divided by 100 at this boundary.
+ *  - The buyer is `user` (NO buyer id); `user.email` rides `customerEmail` for
+ *    email-fallback identity (#995). `customerExternalId` is intentionally
+ *    omitted — Erli has no buyer id.
+ *  - COD is the `delivery.cod` boolean (not a payment-method string).
+ *  - Status enum is `pending | purchased | cancelled | returned`.
+ *  - Erli reports buyer-paid GROSS prices → `taxTreatment: 'inclusive'`.
  *
  * Identity resolution is DEFERRED to #995 and happens downstream in core
- * (`OrderIngestionService`) — this mapper carries buyer/PII fields and the
- * line-item product reference through RAW (external-only), never emitting
- * internal `ol_*` ids (same rationale as `allegro-order-source.adapter.ts`
- * lines 59-61, 226-227; contract: `incoming-order.types.ts` lines 38-43,
- * 119-124).
+ * (`OrderIngestionService`) — this mapper carries buyer email + the line-item
+ * product reference through RAW (external-only), never emitting internal `ol_*`
+ * ids.
  *
  * Pure + total: no `Logger`, no DI, no I/O. Because it cannot log, raw buyer PII
- * never reaches the logger — buyer data lives only on the returned DTO (its
- * fields + `metadata`). It does not throw for missing optional fields (returns
- * safe defaults); a genuinely malformed wire object is the #993 adapter's concern.
- *
- * PROVISIONAL (#992): all wire field names referenced here come from
- * `erli-order.types.ts`, the single reconciliation point — the spike updates
- * that file (+ re-asserts fixtures), not this mapper.
+ * never reaches the logger. It does not throw for missing optional fields
+ * (returns safe defaults); a genuinely malformed wire object is the #993
+ * adapter's concern (`assertErliOrder`).
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
@@ -44,11 +41,14 @@ import type {
 import type {
   ErliOrder,
   ErliOrderAddress,
-  ErliOrderLineItem,
-  ErliOrderPaymentMethod,
+  ErliOrderItem,
   ErliOrderStatus,
-  ErliOrderTotals,
 } from './erli-order.types';
+
+/** Erli prices are integer minor units (grosze); the neutral DTO is decimal PLN. */
+function toMajorUnits(minor: number | undefined): number {
+  return Math.round(minor ?? 0) / 100;
+}
 
 /**
  * Maps an Erli order resource onto the neutral `IncomingOrder` DTO.
@@ -56,39 +56,35 @@ import type {
  * Raw passthrough only — no identifier mapping (#995). Pure + total.
  */
 export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
-  const items = order.lineItems.map(mapLineItem);
+  const items = order.items.map(mapItem);
   const nowIso = new Date().toISOString();
 
   return {
     externalOrderId: order.id,
-    orderNumber: order.orderNumber,
     status: mapStatus(order.status),
-    customerExternalId: order.buyer.id,
-    customerEmail: order.buyer.email,
+    // No customerExternalId: Erli carries no buyer id — identity keys on email
+    // (#995, email_fallback). The email rides the typed field, never metadata.
+    customerEmail: order.user.email,
     items,
-    totals: mapTotals(order.totals, items),
-    shippingAddress: mapAddress(order.shippingAddress),
-    billingAddress: mapAddress(order.billingAddress),
-    paymentStatus: derivePaymentStatus(order.status, order.paymentMethod),
-    placedAt: order.placedAt,
-    createdAt: order.createdAt ?? nowIso,
-    updatedAt: order.updatedAt ?? nowIso,
-    // Buyer/PII placed on the DTO's metadata for observability — NEVER logged
-    // (the mapper has no Logger). Identity resolution is #995, downstream in core.
-    metadata: {
-      buyer: {
-        id: order.buyer.id,
-        email: order.buyer.email,
-      },
-    },
+    totals: mapTotals(order, items),
+    shippingAddress: mapAddress(order.user.deliveryAddress),
+    billingAddress: mapAddress(order.user.invoiceAddress),
+    paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
+    placedAt: order.purchasedAt,
+    createdAt: order.created ?? nowIso,
+    updatedAt: order.updated ?? nowIso,
+    // Non-PII breadcrumb only — the seller-side status. Buyer email is kept OFF
+    // the untyped metadata bag so no consumer logging `metadata` leaks PII.
+    metadata: order.sellerStatus ? { sellerStatus: order.sellerStatus } : undefined,
   };
 }
 
 /**
- * Maps Erli's wire status onto the neutral closed `OrderStatus` set. `purchased`
- * → `processing` (no neutral `purchased`/`paid` status exists; the COD-vs-PayU
- * distinction is carried on `paymentStatus`). Unknown/absent → `pending`
- * (conservative; mirrors `prestashop-order.mapper.ts:109`).
+ * Maps Erli's wire status onto the neutral closed `OrderStatus` set:
+ *  - `purchased` → `processing` (committed; COD-vs-online rides `paymentStatus`)
+ *  - `cancelled` → `cancelled`
+ *  - `returned`  → `refunded` (closest neutral terminal "goods back" state)
+ *  - `pending` / unknown → `pending` (conservative)
  */
 function mapStatus(status: ErliOrderStatus): OrderStatus {
   switch (status) {
@@ -96,6 +92,8 @@ function mapStatus(status: ErliOrderStatus): OrderStatus {
       return 'processing';
     case 'cancelled':
       return 'cancelled';
+    case 'returned':
+      return 'refunded';
     case 'pending':
       return 'pending';
     default:
@@ -104,89 +102,98 @@ function mapStatus(status: ErliOrderStatus): OrderStatus {
 }
 
 /**
- * Derives the neutral payment status from `(status, paymentMethod)` — the
- * COD-arrives-paid encoding (#992 / Q3). Isolated here so a wrong COD
- * discriminator assumption is a one-helper fix:
- *   - `purchased` + COD-method → `cod`   (committed, paid-on-delivery)
- *   - `purchased` + online     → `paid`  (settled at purchase)
- *   - `purchased` + absent     → `paid`  (no COD discriminator → treated as settled)
- *   - `pending`                → `awaiting` (online not yet settled)
- *   - `cancelled` / unknown    → undefined (no refund signal in v1)
+ * Derives the neutral payment status from `(status, delivery.cod)`:
+ *  - `purchased` + COD  → `cod`      (committed, paid-on-delivery)
+ *  - `purchased` + !COD → `paid`     (settled online at purchase)
+ *  - `pending`          → `awaiting` (online not yet settled)
+ *  - `returned`         → `refunded`
+ *  - `cancelled` / unknown → undefined (no payment signal in v1)
  */
-function derivePaymentStatus(
-  status: ErliOrderStatus,
-  paymentMethod?: ErliOrderPaymentMethod
-): PaymentStatus | undefined {
-  if (status === 'purchased') {
-    return paymentMethod === 'cod' ? 'cod' : 'paid';
+function derivePaymentStatus(status: ErliOrderStatus, cod: boolean): PaymentStatus | undefined {
+  switch (status) {
+    case 'purchased':
+      return cod ? 'cod' : 'paid';
+    case 'pending':
+      return 'awaiting';
+    case 'returned':
+      return 'refunded';
+    default:
+      return undefined;
   }
-  if (status === 'pending') {
-    return 'awaiting';
-  }
-  // cancelled / unknown — no refund signal in v1.
-  return undefined;
 }
 
 /**
  * Maps an Erli line item onto the neutral `IncomingOrderItem`. Emits a RAW
- * external product reference (`{ type: 'variant', externalId }`, #992 / Q5) —
- * core resolves it to internal ids (#995). `price` unwraps the money object to
- * its numeric `amount` (the DTO's `price` is a `number`, not a money object).
+ * external product reference (`{ type: 'variant', externalId }`) — core resolves
+ * it to internal ids (#995). `price` is the per-unit amount in decimal PLN.
  */
-function mapLineItem(li: ErliOrderLineItem): IncomingOrderItem {
+function mapItem(item: ErliOrderItem): IncomingOrderItem {
   return {
-    id: li.id,
-    productRef: { type: 'variant', externalId: li.productExternalId },
-    quantity: li.quantity,
-    price: li.price.amount,
-    sku: li.sku,
-    name: li.name,
+    id: String(item.id),
+    productRef: { type: 'variant', externalId: item.externalId },
+    quantity: item.quantity,
+    price: toMajorUnits(item.unitPrice),
+    sku: item.sku,
+    name: item.name,
   };
 }
 
 /**
- * Maps Erli order totals onto the neutral `IncomingOrderTotals`, deriving missing
- * components (#992 / Q4; mirrors `allegro-order-source.adapter.ts:254-290`):
- *   - `subtotal ?? Σ(price × qty)`
- *   - `tax ?? 0`
- *   - `shipping ?? max(0, total − subtotal)`
- * `taxTreatment` left undefined until #992 confirms gross vs net.
+ * Maps Erli order totals onto the neutral `IncomingOrderTotals`. Erli reports a
+ * gross grand total (`totalPrice`) and a gross delivery price; prices are
+ * tax-inclusive (`taxTreatment: 'inclusive'`), so there is no separately broken-
+ * out tax. `subtotal` is derived as `total − shipping` so the components
+ * reconcile exactly against the source-authoritative `total` (the destination's
+ * total-reconciliation gate compares `subtotal + tax + shipping`).
  */
-function mapTotals(totals: ErliOrderTotals, items: IncomingOrderItem[]): IncomingOrderTotals {
-  const subtotal =
-    totals.subtotal ?? items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const tax = totals.tax ?? 0;
-  const shipping = totals.shipping ?? Math.max(0, totals.total - subtotal);
+function mapTotals(order: ErliOrder, _items: IncomingOrderItem[]): IncomingOrderTotals {
+  const total = toMajorUnits(order.totalPrice);
+  const shipping = toMajorUnits(order.delivery.price);
+  const subtotal = round2(Math.max(0, total - shipping));
 
   return {
     subtotal,
-    tax,
+    tax: 0,
     shipping,
-    total: totals.total,
-    currency: totals.currency,
+    total,
+    currency: 'PLN',
+    taxTreatment: 'inclusive',
   };
 }
 
+/** Round a monetary amount to 2 decimals (guards IEEE-754 residue). */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /**
- * Maps an Erli address onto the neutral `IncomingOrderAddress` field-for-field
- * (`street→address1`, `street2→address2`, `region→state`,
- * `countryCode→country`). Returns `undefined` when the source address is absent.
+ * Maps an Erli address onto the neutral `IncomingOrderAddress`. `address1` uses
+ * Erli's full formatted street line when present, else composes
+ * `street buildingNumber`; `flatNumber` (when not already folded into the full
+ * line) rides `address2`. Field remap: `zip → postalCode`, `country → country`,
+ * `companyName → company`. Returns `undefined` when the source address is absent.
  */
 function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefined {
   if (!address) {
     return undefined;
   }
 
+  const composed = [address.street, address.buildingNumber].filter(Boolean).join(' ').trim();
+  const address1 = address.address ?? composed;
+  // Only surface flatNumber separately when address1 came from the structured
+  // parts (the full formatted line already includes it).
+  const address2 =
+    address.address === undefined && address.flatNumber ? `m. ${address.flatNumber}` : undefined;
+
   return {
     firstName: address.firstName,
     lastName: address.lastName,
-    company: address.company,
-    address1: address.street,
-    address2: address.street2,
-    city: address.city,
-    state: address.region,
-    postalCode: address.postalCode,
-    country: address.countryCode,
+    company: address.companyName,
+    address1,
+    address2,
+    city: address.city ?? '',
+    postalCode: address.zip ?? '',
+    country: address.country ?? '',
     phone: address.phone,
   };
 }
