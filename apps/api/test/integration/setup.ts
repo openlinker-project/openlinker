@@ -54,6 +54,10 @@ const harness = createIntegrationTestHarness({
     // publish attempts. No ORM/migration FK, so nothing cascades from
     // connections; truncate explicitly so each shop-publish case starts clean.
     'listing_creation_records',
+    // invoice_records (#751) — order- + connection-scoped invoicing projection.
+    // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
+    // the (connectionId, idempotencyKey) dedup assertion) starts clean.
+    'invoice_records',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
