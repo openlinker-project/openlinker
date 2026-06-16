@@ -83,6 +83,10 @@ export function ErliSetupForm(): ReactElement {
 
   const onTest = async (): Promise<void> => {
     if (!createdConnectionId) return;
+    // Clear any prior result first: otherwise a re-test that rejects would render
+    // a stale resolved-result Alert alongside the "unable to test" error Alert
+    // (PR1064-TECH-01).
+    setTestResult(null);
     try {
       const result = await testConnection.mutateAsync(createdConnectionId);
       setTestResult(result);

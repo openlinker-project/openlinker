@@ -196,6 +196,36 @@ describe('ErliSetupForm', () => {
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
   });
 
+  it('clears a stale failed result when a subsequent test request rejects', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    // First test resolves a failed result; the re-test rejects.
+    const test = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, status: 401, message: 'Unauthorized', latencyMs: 10 })
+      .mockRejectedValueOnce(new Error('Network unreachable'));
+    const apiClient = createMockApiClient({ connections: { create, test } });
+
+    renderWithProviders(<ErliSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Erli Store' },
+    });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+    const testButton = await screen.findByRole('button', { name: 'Test connection' });
+
+    // First test → resolved failure result shown.
+    fireEvent.click(testButton);
+    expect(await screen.findByText('Connection test failed')).toBeInTheDocument();
+
+    // Re-test → rejects. The stale failed-result alert must be cleared, leaving
+    // only the "Unable to test connection" error (PR1064-TECH-01).
+    fireEvent.click(testButton);
+    expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
+    expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
+  });
+
   it('disables the submit button during the create mutation', async () => {
     const create = vi
       .fn()
