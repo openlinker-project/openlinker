@@ -14,11 +14,6 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import type {
-  OfferCreator,
-  OfferFieldUpdater,
-  OfferManagerPort,
-} from '@openlinker/core/listings';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
@@ -31,12 +26,12 @@ import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-m
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
 import type { IErliHttpClient } from '../infrastructure/http/erli-http-client.interface';
 import type { RetryConfig } from '../infrastructure/http/erli-http-client.types';
-import type { IErliAdapterFactory } from './interfaces/erli-adapter.factory.interface';
+import type {
+  ErliAdapters,
+  IErliAdapterFactory,
+} from './interfaces/erli-adapter.factory.interface';
 
-/** Per-connection Erli capability adapters resolved by the factory (#984). */
-export interface ErliAdapters {
-  offerManager: OfferManagerPort & OfferCreator & OfferFieldUpdater;
-}
+export type { ErliAdapters };
 
 export class ErliAdapterFactory implements IErliAdapterFactory {
   /**

@@ -82,6 +82,10 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     }
     // 202/2xx = submitted, not confirmed (ADR-025). 'draft' → outcome 'ok',
     // no status poll. #989 flips to 'validating' once OfferStatusReader exists.
+    // `cmd.publishImmediately` is intentionally not actionable here: Erli's write
+    // is async with no read-after-write, so the live publication state can't be
+    // confirmed synchronously — it is reconciled later via #989's OfferStatusReader
+    // regardless of the requested flag.
     return { externalOfferId, status: 'draft' };
   }
 
@@ -109,7 +113,9 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   private productPath(rawId: string): string {
     if (!ERLI_PRODUCT_ID_PATTERN.test(rawId)) {
       throw new ErliConfigException(
-        `Erli product id failed validation: "${rawId}"`,
+        // Report only the shape, never the raw (attacker-influenceable) id, so a
+        // malformed value can't ride into logs/upstream verbatim (PR1058-SEC-05).
+        `Erli product id failed validation (expected ol_variant_<32 hex>, got ${rawId.length} chars)`,
         this.connectionId,
       );
     }
