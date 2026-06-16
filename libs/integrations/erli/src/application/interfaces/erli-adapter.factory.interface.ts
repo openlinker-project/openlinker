@@ -13,14 +13,16 @@
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { OfferCreator, OfferFieldUpdater, OfferManagerPort } from '@openlinker/core/listings';
+import type { OrderSourcePort } from '@openlinker/core/orders';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { IErliHttpClient } from '../../infrastructure/http/erli-http-client.interface';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { RetryConfig } from '../../infrastructure/http/erli-http-client.types';
 
-/** Per-connection Erli capability adapters resolved by `createAdapters` (#984). */
+/** Per-connection Erli capability adapters resolved by `createAdapters` (#984/#993). */
 export interface ErliAdapters {
   offerManager: OfferManagerPort & OfferCreator & OfferFieldUpdater;
+  orderSource: OrderSourcePort;
 }
 
 export interface IErliAdapterFactory {

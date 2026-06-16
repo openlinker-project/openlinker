@@ -2,7 +2,7 @@
  * Erli Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Erli contributes to the core
- * `SchedulerTaskRegistryService`. One task today:
+ * `SchedulerTaskRegistryService`. Two tasks today:
  *
  *   - `erli-offer-status-sync` (#989) — steady-state refresh of mapped Erli
  *     offers' publication status into `offer_status_snapshots` (the reconciliation
@@ -12,6 +12,15 @@
  *     `marketplace.offer.statusSync` job + `OfferStatusSyncService`, which resolve
  *     the Erli adapter via the `OfferStatusReader` capability (#989) — no new
  *     worker handler.
+ *
+ *   - `erli-orders-poll` (#993) — the MANDATORY order-ingestion backstop. Erli
+ *     webhooks fire-once with no retry (ADR-025 §1), so a missed/dropped webhook
+ *     would otherwise silently lose the order. Enqueues the platform-agnostic core
+ *     `marketplace.orders.poll` job, which drives `OrderIngestionService` →
+ *     `OrderSourcePort.listOrderFeed` (the Erli inbox poll, #993) → enqueue →
+ *     `getOrder`. Default every 5 min (matches the Allegro orders-poll cadence).
+ *     Inbox-message-id cursor key `erli.orders.inboxCursor`. Env gate
+ *     `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED`.
  *
  * Unlike the Allegro tasks (which read cron/page-size overrides off a NestJS
  * `ConfigService`), Erli is wired via `createNestAdapterModule` and has no
@@ -31,6 +40,11 @@ const ERLI_OFFER_STATUS_SYNC_CRON = '0 0 * * * *';
 /** Mapped offers refreshed per run (rolling scan-offset). */
 const ERLI_OFFER_STATUS_SYNC_PAGE_LIMIT = 50;
 
+/** Every 5 minutes (matches the Allegro orders-poll cadence). */
+const ERLI_ORDERS_POLL_CRON = '*/5 * * * *';
+/** Inbox messages read per poll (≤500 Erli unread cap). */
+const ERLI_ORDERS_POLL_LIMIT = 200;
+
 export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
   return [
     {
@@ -46,6 +60,20 @@ export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    },
+    {
+      taskId: 'erli-orders-poll',
+      platformType: 'erli',
+      jobType: 'marketplace.orders.poll',
+      cronExpression: ERLI_ORDERS_POLL_CRON,
+      enabledEnvVar: 'OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: ERLI_ORDERS_POLL_LIMIT,
+        cursorKey: 'erli.orders.inboxCursor',
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:orders:poll:${timestamp}`,
     },
   ];
 }

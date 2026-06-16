@@ -24,6 +24,7 @@ import {
 } from '../domain/types/erli-connection.types';
 import { ERLI_ADAPTER_KEY } from '../erli.constants';
 import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-manager.adapter';
+import { ErliOrderSourceAdapter } from '../infrastructure/adapters/erli-order-source.adapter';
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
 import type { IErliHttpClient } from '../infrastructure/http/erli-http-client.interface';
 import type { RetryConfig } from '../infrastructure/http/erli-http-client.types';
@@ -66,6 +67,9 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
         config.defaultDispatchTime,
         cache,
       ),
+      // Shares the one per-connection HTTP client with the offer adapter, exactly
+      // as Allegro shares one client across its order-source + offer adapters.
+      orderSource: new ErliOrderSourceAdapter(connection.id, httpClient),
     };
   }
 
