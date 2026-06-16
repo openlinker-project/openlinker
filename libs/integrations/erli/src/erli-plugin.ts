@@ -32,6 +32,7 @@ import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
 import { ErliEmailNormalizerAdapter } from './infrastructure/adapters/erli-email-normalizer.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
+import { ErliWebhookEventTranslator } from './infrastructure/adapters/erli-webhook-event-translator.adapter';
 import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
 
 /** Human-readable plugin identifier surfaced in dispatch errors (#573). */
@@ -92,6 +93,20 @@ export function createErliPlugin(): AdapterPlugin {
       for (const task of buildErliSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }
+      // Inbound webhook scaffolding (#996, ADR-015). The translator decodes
+      // Erli's id-only order webhooks into a neutral CanonicalInboundEvent the
+      // core routing policy maps to marketplace.order.sync. PROVISIONAL (#992):
+      // the host's fail-closed OL-HMAC default rejects 100% of real Erli
+      // webhooks until the native InboundWebhookDecoderPort lands, so this is
+      // fail-safe scaffolding — the #993 inbox poll is the authoritative path.
+      host.webhookEventTranslatorRegistry.register(
+        ERLI_ADAPTER_KEY,
+        new ErliWebhookEventTranslator(),
+      );
+      // The webhook PROVISIONER (#996) is registered by `ErliWebhookProvisioningModule`
+      // (composed via `createNestAdapterModule({ imports })`), NOT here: it needs
+      // NestJS-injected `ConnectionPort` + `IWebhookSecretService` that aren't in
+      // the framework-neutral `HostServices` bag.
     },
 
     async createCapabilityAdapter<T>(

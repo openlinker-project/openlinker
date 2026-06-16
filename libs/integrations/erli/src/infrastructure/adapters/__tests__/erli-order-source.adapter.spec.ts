@@ -31,6 +31,7 @@ function makeClient(): jest.Mocked<IErliHttpClient> {
     get: jest.fn(),
     post: jest.fn(),
     patch: jest.fn(),
+    put: jest.fn(),
   };
 }
 

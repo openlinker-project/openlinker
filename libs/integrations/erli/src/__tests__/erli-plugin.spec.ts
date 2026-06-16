@@ -46,6 +46,8 @@ function makeRegisterHost(): {
   retryClassifierRegistry: { register: jest.Mock };
   authFailureClassifierRegistry: { register: jest.Mock };
   schedulerTaskRegistry: { register: jest.Mock };
+  webhookEventTranslatorRegistry: { register: jest.Mock };
+  webhookProvisioningRegistry: { register: jest.Mock };
 } {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
@@ -54,6 +56,8 @@ function makeRegisterHost(): {
   const retryClassifierRegistry = { register: jest.fn() };
   const authFailureClassifierRegistry = { register: jest.fn() };
   const schedulerTaskRegistry = { register: jest.fn() };
+  const webhookEventTranslatorRegistry = { register: jest.fn() };
+  const webhookProvisioningRegistry = { register: jest.fn() };
   const hostStub = {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
@@ -62,6 +66,8 @@ function makeRegisterHost(): {
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
+    webhookEventTranslatorRegistry,
+    webhookProvisioningRegistry,
   } as unknown as HostServices;
   return {
     host: hostStub,
@@ -72,6 +78,8 @@ function makeRegisterHost(): {
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
+    webhookEventTranslatorRegistry,
+    webhookProvisioningRegistry,
   };
 }
 
@@ -214,6 +222,26 @@ describe('createErliPlugin', () => {
           enabledEnvVar: 'OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED',
         }),
       );
+    });
+
+    it('should register the webhook event translator at erli.shopapi.v1 (#996)', () => {
+      const { host, webhookEventTranslatorRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(webhookEventTranslatorRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ translate: expect.any(Function) }),
+      );
+    });
+
+    it('should NOT register the webhook provisioner from register() (#996)', () => {
+      // The automated provisioner needs NestJS-injected ConnectionPort +
+      // IWebhookSecretService (not in HostServices), so it is registered by
+      // ErliWebhookProvisioningModule's onModuleInit, NOT here.
+      const { host, webhookProvisioningRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(webhookProvisioningRegistry.register).not.toHaveBeenCalled();
     });
   });
 

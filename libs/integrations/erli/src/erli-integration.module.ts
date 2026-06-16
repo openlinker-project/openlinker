@@ -23,7 +23,12 @@
 import type { DynamicModule } from '@nestjs/common';
 import { createNestAdapterModule } from '@openlinker/plugin-sdk';
 import { createErliPlugin } from './erli-plugin';
+import { ErliWebhookProvisioningModule } from './erli-webhook-provisioning.module';
 
 export const ErliIntegrationModule: DynamicModule = createNestAdapterModule({
   plugin: createErliPlugin(),
+  // #996: the automated webhook provisioner needs NestJS-injected ConnectionPort
+  // + IWebhookSecretService (not in HostServices), so it self-registers from
+  // this companion module rather than from plugin.register(host).
+  imports: [ErliWebhookProvisioningModule],
 });

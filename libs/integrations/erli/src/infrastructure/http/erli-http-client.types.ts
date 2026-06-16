@@ -11,7 +11,7 @@
  */
 
 /** The only HTTP methods Erli's REST Shop API uses. */
-export type ErliHttpMethod = 'GET' | 'POST' | 'PATCH';
+export type ErliHttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT';
 
 /** Bounded-retry tuning. Overridable per-connection via the client constructor. */
 export interface RetryConfig {
