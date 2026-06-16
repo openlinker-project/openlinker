@@ -147,4 +147,32 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     expect(afterB?.failedCount).toBe(1);
     expect(afterB?.status).toBe('partially-failed');
   });
+
+  it('dedups a duplicate advance for the same child (at-most-once gate, #1084)', async () => {
+    // Real-DB coverage of the duplicate-advance path: a worker retry re-running
+    // the same child must NOT double-count. Guards the #1084 fix
+    // (markAdvancedIfNotExists deriving `created` from the RETURNING rows).
+    const { batchId, items } = await submitService().submit({
+      connectionId: shopConnectionId,
+      initiatedBy: 'user-int',
+      internalVariantIds: [VARIANT_A, VARIANT_B],
+      status: 'published',
+      stock: 1,
+    });
+    const [childA] = items;
+    const progress = progressService();
+
+    // First advance counts (1 of 2 → not terminal → returns null).
+    expect(await progress.advanceBatchStatus(batchId, childA.listingCreationRecordId, 'succeeded')).toBeNull();
+    expect((await submitService().getBatch(batchId))?.batch.succeededCount).toBe(1);
+
+    // Re-advancing the SAME child is a no-op (gate dedups). The regression guard
+    // is the counter holding at 1 below — before #1084 this double-counted to 2
+    // and flipped the batch to `completed`. (The null return alone is not proof:
+    // advanceBatchStatus also returns null on the non-terminal branch.)
+    expect(await progress.advanceBatchStatus(batchId, childA.listingCreationRecordId, 'succeeded')).toBeNull();
+    const afterDup = await submitService().getBatch(batchId);
+    expect(afterDup?.batch.succeededCount).toBe(1);
+    expect(afterDup?.batch.status).toBe('running');
+  });
 });
