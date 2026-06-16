@@ -16,10 +16,10 @@
  *
  * Category/parameter reuse (#985): the create body carries `externalCategories`
  * + `externalAttributes` tagged `source:"allegro"`, built from the already-
- * resolved Allegro ids riding on the command (`overrides.categoryId` +
- * `overrides.platformParams.parameters`/`.productParameters`). Erli processes
- * only the ids (ADR-025 §3); no Erli-native taxonomy authoring. Applies to the
- * create path only — `buildPatchFromFields` is untouched.
+ * resolved Allegro ids riding on the command (`overrides.categoryId` + the
+ * neutral section-tagged `cmd.parameters`, #1071). Erli processes only the ids
+ * (ADR-025 §3); no Erli-native taxonomy authoring. Applies to the create path
+ * only — `buildPatchFromFields` is untouched.
  *
  * Out of scope (own issues, marked seams): variant grouping #986, stock/price
  * master sourcing + frozen-field exclusion #988, offer-status reconciliation
@@ -348,68 +348,31 @@ function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[
 }
 
 /**
- * Flatten the Allegro offer-section + product-section parameter lists into one
- * `source:"allegro"` attribute array (Erli has a single flat list — the
- * offer/product split is Allegro-only). Each entry is narrowed with
- * {@link isAllegroParameterShape}; dictionary value-ids win over free-text
- * scalars, range-only and malformed entries are dropped (#985).
+ * Flatten the neutral, section-tagged `cmd.parameters` (#1071) into one
+ * `source:"allegro"` attribute array — Erli has a single flat list, so the
+ * Allegro offer/product section split collapses away. Dictionary value-ids win
+ * over free-text scalars; range-only and empty entries are dropped in v1
+ * (#985 risk R3).
+ *
+ * Reads `cmd.parameters` — where `OfferBuilderService` puts the resolved
+ * parameters — NOT `overrides.platformParams`, which no longer carries category
+ * parameters post-#1071 (reading it produced an empty list and silently shipped
+ * offers without their Allegro attribute reuse).
  */
 function buildExternalAttributes(cmd: CreateOfferCommand): ErliExternalAttribute[] {
-  const platformParams = cmd.overrides?.platformParams;
-  const raw = [
-    ...toUnknownArray(platformParams?.parameters),
-    ...toUnknownArray(platformParams?.productParameters),
-  ];
   const attributes: ErliExternalAttribute[] = [];
-  for (const entry of raw) {
-    if (!isAllegroParameterShape(entry)) {
+  for (const param of cmd.parameters ?? []) {
+    if (param.id.length === 0) {
       continue;
     }
-    if (entry.valuesIds !== undefined && entry.valuesIds.length > 0) {
-      attributes.push({ source: 'allegro', id: entry.id, type: 'dictionary', values: entry.valuesIds });
-    } else if (entry.values !== undefined && entry.values.length > 0) {
-      attributes.push({ source: 'allegro', id: entry.id, type: 'string', values: entry.values });
+    if (param.valuesIds !== undefined && param.valuesIds.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
+    } else if (param.values !== undefined && param.values.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
     }
-    // rangeValue-only / empty → dropped in v1 (#985 risk R3).
+    // range-only / empty → dropped in v1 (#985 risk R3).
   }
   return attributes;
-}
-
-function toUnknownArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? (value as unknown[]) : [];
-}
-
-/** Allegro command-parameter entry, after narrowing. */
-interface AllegroParameterShape {
-  id: string;
-  values?: string[];
-  valuesIds?: string[];
-}
-
-/**
- * Narrow an untyped `platformParams.parameters` entry to the Allegro parameter
- * shape (mirrors `isAllegroOfferParameterShape` in the Allegro adapter): require
- * a non-empty `id: string`, and `values`/`valuesIds` (when present) must be
- * string arrays. Anything else is dropped — Erli would reject it anyway.
- */
-function isAllegroParameterShape(candidate: unknown): candidate is AllegroParameterShape {
-  if (typeof candidate !== 'object' || candidate === null) {
-    return false;
-  }
-  const c = candidate as { id?: unknown; values?: unknown; valuesIds?: unknown };
-  if (typeof c.id !== 'string' || c.id.length === 0) {
-    return false;
-  }
-  if (c.values !== undefined && (!Array.isArray(c.values) || !c.values.every((v) => typeof v === 'string'))) {
-    return false;
-  }
-  if (
-    c.valuesIds !== undefined &&
-    (!Array.isArray(c.valuesIds) || !c.valuesIds.every((v) => typeof v === 'string'))
-  ) {
-    return false;
-  }
-  return true;
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

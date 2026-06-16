@@ -228,10 +228,7 @@ describe('ErliOfferManagerAdapter', () => {
       it('should map a dictionary parameter (valuesIds → type:dictionary)', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: { parameters: [{ id: '11323', valuesIds: ['11323_1'] }] },
-            },
+            parameters: [{ id: '11323', valuesIds: ['11323_1'], section: 'offer' }],
           }),
         );
 
@@ -244,10 +241,7 @@ describe('ErliOfferManagerAdapter', () => {
       it('should map a free-text parameter (values → type:string)', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: { parameters: [{ id: '224017', values: ['Acme'] }] },
-            },
+            parameters: [{ id: '224017', values: ['Acme'], section: 'product' }],
           }),
         );
 
@@ -260,13 +254,10 @@ describe('ErliOfferManagerAdapter', () => {
       it('should merge offer-section and product-section params into one flat list', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: {
-                parameters: [{ id: '11323', valuesIds: ['11323_1'] }],
-                productParameters: [{ id: '224017', values: ['Acme'] }],
-              },
-            },
+            parameters: [
+              { id: '11323', valuesIds: ['11323_1'], section: 'offer' },
+              { id: '224017', values: ['Acme'], section: 'product' },
+            ],
           }),
         );
 
@@ -293,21 +284,13 @@ describe('ErliOfferManagerAdapter', () => {
         expect(body).not.toHaveProperty('externalAttributes');
       });
 
-      it('should drop malformed parameter entries (missing/empty id)', async () => {
+      it('should drop empty-id parameter entries', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: {
-                parameters: [
-                  { id: '', values: ['x'] },
-                  { values: ['no id'] },
-                  null,
-                  'garbage',
-                  { id: '11323', valuesIds: ['11323_1'] },
-                ],
-              },
-            },
+            parameters: [
+              { id: '', values: ['x'], section: 'offer' },
+              { id: '11323', valuesIds: ['11323_1'], section: 'offer' },
+            ],
           }),
         );
 
@@ -320,12 +303,7 @@ describe('ErliOfferManagerAdapter', () => {
       it('should drop a rangeValue-only parameter (no values/valuesIds) in v1', async () => {
         await adapter.createOffer(
           createCmd({
-            overrides: {
-              categoryId: '18654',
-              platformParams: {
-                parameters: [{ id: '12345', rangeValue: { from: '1', to: '10' } }],
-              },
-            },
+            parameters: [{ id: '12345', rangeValue: { from: '1', to: '10' }, section: 'offer' }],
           }),
         );
 
