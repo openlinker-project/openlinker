@@ -13,7 +13,7 @@ import { CoreCapabilityValues } from '../adapter.types';
 
 describe('adapter.types', () => {
   describe('CoreCapabilityValues', () => {
-    it('should expose the documented five well-known capabilities', () => {
+    it('should expose the documented well-known capabilities', () => {
       // Guards against silent reordering or accidental additions/removals
       // of the published well-known set. If this fails, either the set
       // genuinely changed (update the test + arch doc) or someone extended
@@ -24,6 +24,9 @@ describe('adapter.types', () => {
         'OrderProcessorManager',
         'OrderSource',
         'OfferManager',
+        // Shop-listing (#1041, ADR-024)
+        'ProductPublisher',
+        'CategoryProvisioner',
       ]);
     });
   });

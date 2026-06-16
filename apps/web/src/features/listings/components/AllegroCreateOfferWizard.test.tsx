@@ -762,13 +762,11 @@ describe('AllegroCreateOfferWizard', () => {
           allegroConnection.id,
           expect.objectContaining({
             overrides: expect.objectContaining({
-              platformParams: expect.objectContaining({
-                deliveryPolicyId: 'del-1',
-                parameters: expect.arrayContaining([
-                  { id: 'p_ean', values: ['5901234567890'] },
-                  { id: 'p_stan', valuesIds: ['p_stan_new'] },
-                ]),
-              }),
+              platformParams: expect.objectContaining({ deliveryPolicyId: 'del-1' }),
+              parameters: expect.arrayContaining([
+                { id: 'p_ean', values: ['5901234567890'], section: 'offer' },
+                { id: 'p_stan', valuesIds: ['p_stan_new'], section: 'offer' },
+              ]),
             }),
           }),
           expect.objectContaining({ idempotencyKey: expect.stringMatching(/.+/) }),
@@ -777,11 +775,12 @@ describe('AllegroCreateOfferWizard', () => {
       expect(onSubmitted).toHaveBeenCalledWith('rec-1', allegroConnection.id);
     });
 
-    it('routes product-section parameters to platformParams.productParameters, not platformParams.parameters (#415)', async () => {
-      // Mixed fixture: p_ean (offer) + p_marka (product). The submit must
-      // place each in the correct platformParams key — sending a
-      // product-section parameter under `parameters` is exactly the
-      // ParameterCategoryException 422 from the bug report.
+    it('tags each parameter with its section on overrides.parameters (#415 / #1071)', async () => {
+      // Mixed fixture: p_ean (offer) + p_marka (product). The submit carries a
+      // single section-tagged `overrides.parameters` array; the adapter (BE)
+      // does the offer/product wire split. Sending a product-section parameter
+      // to the offer wire array was the ParameterCategoryException 422 bug —
+      // now the section travels with the parameter.
       const mixedFixture: CategoryParameter[] = [
         {
           id: 'p_ean',
@@ -848,27 +847,20 @@ describe('AllegroCreateOfferWizard', () => {
       await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
       const submittedRequest = createOffer.mock.calls[0][1] as {
         overrides: {
-          platformParams: {
-            parameters?: Array<{ id: string }>;
-            productParameters?: Array<{ id: string }>;
-          };
+          parameters?: Array<{ id: string; section: string }>;
+          platformParams?: Record<string, unknown>;
         };
       };
-      const platformParams = submittedRequest.overrides.platformParams;
+      const { parameters, platformParams } = submittedRequest.overrides;
 
-      // Offer-section is under `parameters` only.
-      expect(platformParams.parameters).toEqual([
-        { id: 'p_ean', values: ['5901234567890'] },
+      // Each parameter carries its section; one flat neutral array.
+      expect(parameters).toEqual([
+        { id: 'p_ean', values: ['5901234567890'], section: 'offer' },
+        { id: 'p_marka', valuesIds: ['p_marka_canon'], section: 'product' },
       ]);
-      // Product-section is under `productParameters` only.
-      expect(platformParams.productParameters).toEqual([
-        { id: 'p_marka', valuesIds: ['p_marka_canon'] },
-      ]);
-      // The cross-contamination that triggered the bug must NOT happen.
-      expect(platformParams.parameters?.find((p) => p.id === 'p_marka')).toBeUndefined();
-      expect(
-        platformParams.productParameters?.find((p) => p.id === 'p_ean'),
-      ).toBeUndefined();
+      // platformParams no longer carries category parameters (#1071).
+      expect(platformParams).not.toHaveProperty('parameters');
+      expect(platformParams).not.toHaveProperty('productParameters');
     });
 
     it('blocks advancement past Step 3 when a required dictionary parameter is empty', async () => {

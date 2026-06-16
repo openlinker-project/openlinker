@@ -28,6 +28,8 @@ const FORBIDDEN_EXPORTS = [
   'OfferCreationExecutionService',
   'SellerPoliciesService',
   'OfferCreationEnqueueService',
+  'ProductPublishBuilderService',
+  'ProductPublishExecutionService',
 ] as const;
 
 describe('@openlinker/core/listings barrel purity (#359)', () => {

@@ -225,6 +225,37 @@ describe('BulkListingSubmitService', () => {
       });
     });
 
+    it('replaces overrides.parameters wholesale per-product, else inherits shared (#1071)', async () => {
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a', 'v-b'],
+        sharedConfig: {
+          stock: 5,
+          publishImmediately: false,
+          overrides: {
+            parameters: [{ id: 'shared-1', values: ['S'], section: 'offer' }],
+          },
+        },
+        perProductOverrides: {
+          // No row params → inherit the shared parameters.
+          'v-a': { overrides: { categoryId: '257933' } },
+          // Row params → REPLACE the shared set wholesale (a row supplies the
+          // complete param set for its own category).
+          'v-b': { overrides: { parameters: [{ id: 'row-1', values: ['R'], section: 'product' }] } },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'v-a',
+        overrides: { parameters: [{ id: 'shared-1', values: ['S'], section: 'offer' }] },
+      });
+      expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+        internalVariantId: 'v-b',
+        overrides: { parameters: [{ id: 'row-1', values: ['R'], section: 'product' }] },
+      });
+    });
+
     it('forwards AI flags from shared config into every enqueue call', async () => {
       await service.submit({
         connectionId,

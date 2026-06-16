@@ -34,3 +34,9 @@ export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService')
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
+// Shop publish (#1042, ADR-024)
+export const LISTING_CREATION_RECORD_REPOSITORY_TOKEN = Symbol(
+  'ListingCreationRecordRepositoryPort'
+);
+export const PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN = Symbol('IProductPublishBuilderService');
+export const PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN = Symbol('IProductPublishExecutionService');

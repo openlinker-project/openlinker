@@ -168,6 +168,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
 } from './domain/types/offer-create.types';
+export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
 
@@ -277,6 +278,51 @@ export type {
   ResponsibleProducerKind,
 } from './domain/types/responsible-producer.types';
 export { ResponsibleProducerKindValues } from './domain/types/responsible-producer.types';
+
+// Shop-listing capabilities (#1041, ADR-024): the shop sibling of OfferManager.
+// `ShopProductManagerPort` is the base port (mandatory `publishProduct`, registry
+// name 'ProductPublisher'); `CategoryProvisioner` is its provision sub-capability.
+export type { ShopProductManagerPort } from './domain/ports/shop-product-manager.port';
+export type { CategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+export { isCategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+export { PublishProductStatusValues } from './domain/types/product-publish.types';
+export type {
+  PublishProductStatus,
+  PublishProductContent,
+  PublishProductCommand,
+  PublishProductResult,
+} from './domain/types/product-publish.types';
+export type {
+  ProvisionCategoryPathNode,
+  ProvisionCategoryCommand,
+  ProvisionCategoryResult,
+} from './domain/types/category-provision.types';
+export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+
+// Shop publish execution (#1042, #1072) — pure contracts only (the two service
+// classes live on `@openlinker/core/listings/services`, never here).
+export { ListingCreationRecord } from './domain/entities/listing-creation-record.entity';
+export {
+  ListingCreationStatusValues,
+  LISTING_CREATION_STATUS,
+} from './domain/types/listing-creation-record.types';
+export type {
+  ListingCreationStatus,
+  ListingCreationError,
+  CreateListingCreationRecordInput,
+} from './domain/types/listing-creation-record.types';
+export type { ListingCreationRecordRepositoryPort } from './domain/ports/listing-creation-record-repository.port';
+export { ListingCreationInvariantException } from './domain/exceptions/listing-creation-invariant.exception';
+export { ListingCreationRecordNotFoundException } from './domain/exceptions/listing-creation-record-not-found.exception';
+export { ProductPublishBuilderValidationException } from './domain/exceptions/product-publish-builder-validation.exception';
+export type { ProductPublishBuilderValidationIssue } from './domain/exceptions/product-publish-builder-validation.exception';
+export type { IProductPublishBuilderService } from './application/interfaces/product-publish-builder.service.interface';
+export type { BuildPublishProductCommandInput } from './application/types/product-publish-builder.types';
+export type { IProductPublishExecutionService } from './application/interfaces/product-publish-execution.service.interface';
+export type {
+  ExecutePublishProductInput,
+  ExecutePublishProductResult,
+} from './application/types/product-publish-execution.types';
 
 // Tokens
 export * from './listings.tokens';

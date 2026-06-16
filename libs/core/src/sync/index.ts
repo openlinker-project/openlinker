@@ -80,6 +80,7 @@ export {
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
 } from './domain/types/master-job-payloads.types';
+export { ShopProductPublishPayloadV1 } from './domain/types/shop-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

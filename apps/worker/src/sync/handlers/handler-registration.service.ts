@@ -27,6 +27,7 @@ import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
+import { ShopProductPublishHandler } from './shop-product-publish.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -49,7 +50,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
-    private readonly pickupPointRefreshHandler: PickupPointRefreshHandler
+    private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
+    private readonly shopProductPublishHandler: ShopProductPublishHandler
   ) {}
 
   onModuleInit(): void {
@@ -114,5 +116,8 @@ export class HandlerRegistrationService implements OnModuleInit {
       'inventory.propagateToMarketplaces',
       this.inventoryPropagateHandler
     );
+
+    // Register shop product publish handler (#1042, ADR-024)
+    this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler);
   }
 }

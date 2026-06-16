@@ -50,6 +50,10 @@ const harness = createIntegrationTestHarness({
     'sync_jobs',
     'inventory_items',
     'order_records',
+    // listing_creation_records (#1042) — variant- + connection-scoped shop
+    // publish attempts. No ORM/migration FK, so nothing cascades from
+    // connections; truncate explicitly so each shop-publish case starts clean.
+    'listing_creation_records',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',

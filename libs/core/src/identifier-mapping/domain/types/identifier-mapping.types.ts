@@ -25,6 +25,10 @@ export const CoreEntityTypeValues = [
   'Inventory',
   'Customer',
   'Shipment',
+  // Destination shop product record — maps an OL variant to its external
+  // product id on a shop connection (the publish create-vs-upsert key, #1042).
+  // Distinct from `Product` (master catalog) and `Offer` (marketplace listing).
+  'ShopProduct',
 ] as const;
 
 /**
@@ -60,6 +64,7 @@ export const CORE_ENTITY_TYPE = {
   Inventory: 'Inventory',
   Customer: 'Customer',
   Shipment: 'Shipment',
+  ShopProduct: 'ShopProduct',
 } as const satisfies Record<CoreEntityType, CoreEntityType>;
 
 /**

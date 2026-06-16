@@ -33,6 +33,9 @@ export const JobTypeValues = [
 
   'master.variants.autoMatch',
 
+  // Shop (cross-platform listing, ADR-024; executed by worker)
+  'shop.product.publish',
+
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
 

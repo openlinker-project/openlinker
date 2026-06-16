@@ -1679,4 +1679,5 @@ Future: Worker processes jobs
 
 - [Engineering Standards](./engineering-standards.md) - Coding standards and conventions
 - [AI Coding Assistant Guide](./ai-coding-assistant.md) - Behaviour, reasoning expectations and guardrails for AI coding assistants
+- [ADR-025: Erli marketplace adapter](./architecture/adrs/025-erli-marketplace-adapter.md) - reconciliation-first posture, static API-key auth, Allegro-ID taxonomy reuse
 

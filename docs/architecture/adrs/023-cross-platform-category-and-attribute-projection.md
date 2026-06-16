@@ -169,6 +169,8 @@ The Allegro naming is welded through the vertical; neutralisation must cover all
 - `CategoryResolutionResult.allegroCategoryId` → `destinationCategoryId` (+ `provenance`).
 - API DTOs + the FE mapping editor and create-offer wizard.
 
+> **Addendum (2026-06-15, #1039) — parameter carriage.** Projected parameters travel as the neutral domain type `OfferParameter` (`{id, values?, valuesIds?, section}`) on the first-class `CreateOfferCommand.parameters` field — *not* through the opaque `overrides.platformParams` bag (reserved for un-modeled platform knobs: delivery policy id, invoice type, …). The offer/product **section split** and wire-key naming live **only** in the destination adapter (Allegro: `body.parameters[]` vs `productSet[].product.parameters[]`). The publish gate enforces **offer-section** required params at the core builder; **product-section** required params are deferred to the adapter / marketplace because Allegro catalog smart-link (#431/#808) and bulk self-link (#824) inherit them from the catalog card. The application-layer `ResolvedParameter` is an alias of `OfferParameter`. The FE wizard's transitional Allegro-shaped `platformParams.parameters`/`productParameters` channel collapses onto `CreateOfferCommand.parameters` in #1071; the shop-side `PublishProductCommand` adopts the same neutral channel in #1072.
+
 ## Storage
 
 **Category — evolve + migrate (real production rows exist):**
