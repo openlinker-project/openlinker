@@ -236,10 +236,12 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
   const total = Number(order.total);
   const tax = Number(order.total_tax);
   const shipping = Number(order.shipping_total);
-  // WC has no order-level subtotal. Derived: total - tax - shipping
-  // = sum(line_items[].total) — post-discount product amount.
+  // Sum line_items[].total directly — avoids absorbing fee_lines into the
+  // product subtotal. WC total includes fee_lines, so total−tax−shipping
+  // overstates the product subtotal for fee-bearing orders.
+  const subtotal = order.line_items.reduce((sum, item) => sum + Number(item.total), 0);
   return {
-    subtotal: roundCurrency(total - tax - shipping),
+    subtotal: roundCurrency(subtotal),
     tax: roundCurrency(tax),
     shipping: roundCurrency(shipping),
     total: roundCurrency(total),

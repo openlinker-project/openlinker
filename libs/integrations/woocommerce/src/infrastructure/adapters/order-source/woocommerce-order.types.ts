@@ -24,9 +24,11 @@ export interface WooCommerceOrder {
   total: string; // decimal string
   total_tax: string; // decimal string
   shipping_total: string; // decimal string
+  fee_lines: WooCommerceFeeLine[];
   currency: string; // ISO 4217
   // NOTE: WC REST API v3 has NO top-level subtotal field.
-  // Derived: total - total_tax - shipping_total
+  // subtotal is computed from `line_items[].total`; `total` includes `fee_lines`, so
+  // the subtraction formula would overstate the product subtotal for orders with fees.
 }
 
 export interface WooCommerceBillingAddress {
@@ -78,4 +80,11 @@ export interface WooCommerceShippingLine {
   method_id: string;
   method_title: string;
   total: string;
+}
+
+export interface WooCommerceFeeLine {
+  id: number;
+  name: string;
+  total: string;     // decimal string; may be negative for discount-style fees
+  total_tax: string;
 }

@@ -76,6 +76,7 @@ const makeOrder = (overrides: Partial<WooCommerceOrder> = {}): WooCommerceOrder 
   total: '109.98',
   total_tax: '5.00',
   shipping_total: '5.00',
+  fee_lines: [],
   currency: 'PLN',
   ...overrides,
 });
@@ -361,6 +362,28 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
 
       await expect(adapter.getOrder({ externalOrderId: '1' })).rejects.toBe(serverError);
+    });
+
+    it('should compute subtotal from line_items total when fee_lines are present', async () => {
+      const feeOrder = makeOrder({
+        total: '130.00',
+        total_tax: '10.00',
+        shipping_total: '5.00',
+        line_items: [
+          { id: 10, name: 'Product A', product_id: 100, variation_id: 0, quantity: 1, sku: 'SKU-A', price: '100.00', subtotal: '100.00', total: '100.00', image: null },
+        ],
+        fee_lines: [{ id: 1, name: 'COD fee', total: '15.00', total_tax: '0.00' }],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(feeOrder) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: String(feeOrder.id) });
+
+      // subtotal must equal sum(line_items[].total), NOT 130 - 10 - 5 = 115
+      expect(result.totals.subtotal).toBe(100);
+      expect(result.totals.tax).toBe(10);
+      expect(result.totals.shipping).toBe(5);
+      expect(result.totals.total).toBe(130);
     });
   });
 });
