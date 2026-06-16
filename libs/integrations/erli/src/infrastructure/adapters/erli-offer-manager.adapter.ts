@@ -481,8 +481,11 @@ export class ErliOfferManagerAdapter
       body.externalVariantGroup = { id: g.groupId };
       if (g.attributes.length > 0) {
         // Neutral OfferVariantAttribute and wire ErliVariantAttribute are
-        // structurally identical (`{ name, value }`) — assign directly.
-        body.attributes = g.attributes;
+        // structurally identical (`{ name, value }`). Copy into a fresh array so
+        // the outbound body never aliases the core command's array — a future
+        // body-mutation step can't reach back and mutate cmd.variantGroup
+        // (PR1068-HEX-01).
+        body.attributes = [...g.attributes];
       }
     }
     return body;
