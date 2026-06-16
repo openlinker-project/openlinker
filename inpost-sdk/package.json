@@ -1,0 +1,18 @@
+{
+  "name": "@local/inpost-shipx-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Small hexagonal InPost ShipX SDK (fetch-based, fully DI-able). Throwaway prototype to validate the OpenLinker shipping flow against the InPost sandbox.",
+  "scripts": {
+    "probe": "node --experimental-strip-types examples/probe.ts",
+    "full-flow": "node --experimental-strip-types examples/full-flow.ts",
+    "ol:pickup-points": "node --experimental-strip-types examples/openlinker/01-pickup-points.ts",
+    "ol:dispatch-paczkomat": "node --experimental-strip-types examples/openlinker/02-dispatch-paczkomat.ts",
+    "ol:status-sync": "node --experimental-strip-types examples/openlinker/03-status-sync.ts",
+    "ol:cancel": "node --experimental-strip-types examples/openlinker/04-cancel.ts",
+    "ol:dispatch-kurier": "node --experimental-strip-types examples/openlinker/05-dispatch-kurier.ts",
+    "ol:order-lifecycle": "node --experimental-strip-types examples/openlinker/06-order-lifecycle.ts",
+    "ol:sending-methods": "node --experimental-strip-types examples/openlinker/07-sending-methods.ts"
+  }
+}
