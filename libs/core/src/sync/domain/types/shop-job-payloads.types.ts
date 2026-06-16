@@ -60,3 +60,23 @@ export interface ShopProductPublishPayloadV1 {
    */
   listingCreationRecordId?: string;
 }
+
+/**
+ * Payload for `shop.product.publish` jobs submitted as part of a **bulk**
+ * publish batch (#1044). Extends V1 with the parent `bulkBatchId`; the worker
+ * handler advances the shared `BulkListingProgressService` counter for that
+ * batch once the child publish terminates. `listingCreationRecordId` is always
+ * present (the bulk submit service pre-creates one child record per variant so
+ * batch progress can key on it).
+ */
+export interface ShopProductPublishPayloadV2
+  extends Omit<ShopProductPublishPayloadV1, 'schemaVersion'> {
+  schemaVersion: 2;
+  /** Parent bulk-batch id this child publish advances on completion. */
+  bulkBatchId: string;
+  /** Pre-created child listing-record id (required in the bulk path). */
+  listingCreationRecordId: string;
+}
+
+/** Discriminated union of all `shop.product.publish` payload versions the worker handler accepts. */
+export type ShopProductPublishPayload = ShopProductPublishPayloadV1 | ShopProductPublishPayloadV2;

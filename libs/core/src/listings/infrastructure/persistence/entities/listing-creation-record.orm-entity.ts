@@ -16,10 +16,8 @@ import {
   Index,
 } from 'typeorm';
 
-import type {
-  ListingCreationError,
-  ListingCreationStatus,
-} from '../../../domain/types/listing-creation-record.types';
+import { ListingCreationStatus } from '../../../domain/types/listing-creation-record.types';
+import type { ListingCreationError } from '../../../domain/types/listing-creation-record.types';
 
 @Entity('listing_creation_records')
 @Index(['internalVariantId', 'connectionId'])
@@ -34,7 +32,7 @@ import type {
   ['externalProductId', 'connectionId'],
   {
     where: '"externalProductId" IS NOT NULL',
-  }
+  },
 )
 export class ListingCreationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -54,6 +52,16 @@ export class ListingCreationRecordOrmEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   errors!: ListingCreationError[] | null;
+
+  /**
+   * Parent bulk-batch this publish belongs to (#1044). Null for single
+   * publishes. No FK enforced at the schema level (matches `connectionId` and
+   * the `offer_creation_records.bulkBatchId` precedent); application code
+   * maintains referential integrity.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  @Index('IDX_listing_creation_records_bulkBatchId')
+  bulkBatchId!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

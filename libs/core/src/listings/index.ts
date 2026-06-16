@@ -87,10 +87,7 @@ export type {
 export type { OfferCreationRecordRepositoryPort } from './domain/ports/offer-creation-record-repository.port';
 export { OfferCreationRecordNotFoundException } from './domain/exceptions/offer-creation-record-not-found.exception';
 export { BulkListingBatch } from './domain/entities/bulk-listing-batch.entity';
-export {
-  BulkBatchStatusValues,
-  BULK_BATCH_STATUS,
-} from './domain/types/bulk-listing-batch.types';
+export { BulkBatchStatusValues, BULK_BATCH_STATUS } from './domain/types/bulk-listing-batch.types';
 export type {
   BulkBatchStatus,
   CreateBulkListingBatchInput,
@@ -127,12 +124,8 @@ export type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
 } from './application/types/offer-creation-execution.types';
-export {
-  OfferBuilderValidationException,
-} from './domain/exceptions/offer-builder-validation.exception';
-export type {
-  OfferBuilderValidationIssue,
-} from './domain/exceptions/offer-builder-validation.exception';
+export { OfferBuilderValidationException } from './domain/exceptions/offer-builder-validation.exception';
+export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
 export type {
@@ -323,6 +316,20 @@ export type {
   ExecutePublishProductInput,
   ExecutePublishProductResult,
 } from './application/types/product-publish-execution.types';
+// Shop publish API + bulk surfaces (#1044)
+export type { IProductPublishEnqueueService } from './application/interfaces/product-publish-enqueue.service.interface';
+export type {
+  EnqueueProductPublishInput,
+  EnqueueProductPublishResult,
+} from './application/types/product-publish-enqueue.types';
+export type { IListingCreationQueryService } from './application/interfaces/listing-creation-query.service.interface';
+export type { IBulkShopPublishSubmitService } from './application/interfaces/bulk-shop-publish-submit.service.interface';
+export type {
+  BulkShopPublishSubmitInput,
+  BulkShopPublishSubmitResult,
+  BulkShopPublishItem,
+  BulkShopPublishBatchSummary,
+} from './application/types/bulk-shop-publish-submit.types';
 
 // Tokens
 export * from './listings.tokens';

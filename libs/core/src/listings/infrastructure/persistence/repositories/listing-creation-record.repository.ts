@@ -27,7 +27,7 @@ import { ListingCreationRecordOrmEntity } from '../entities/listing-creation-rec
 export class ListingCreationRecordRepository implements ListingCreationRecordRepositoryPort {
   constructor(
     @InjectRepository(ListingCreationRecordOrmEntity)
-    private readonly repository: Repository<ListingCreationRecordOrmEntity>
+    private readonly repository: Repository<ListingCreationRecordOrmEntity>,
   ) {}
 
   async create(input: CreateListingCreationRecordInput): Promise<ListingCreationRecord> {
@@ -41,9 +41,17 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByBulkBatchId(bulkBatchId: string): Promise<ListingCreationRecord[]> {
+    const entities = await this.repository.find({
+      where: { bulkBatchId },
+      order: { createdAt: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findLatestByVariantAndConnection(
     variantId: string,
-    connectionId: string
+    connectionId: string,
   ): Promise<ListingCreationRecord | null> {
     const entity = await this.repository.findOne({
       where: { internalVariantId: variantId, connectionId },
@@ -54,7 +62,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
 
   async findByExternalProductIdAndConnectionId(
     externalProductId: string,
-    connectionId: string
+    connectionId: string,
   ): Promise<ListingCreationRecord | null> {
     const entity = await this.repository.findOne({
       where: { externalProductId, connectionId },
@@ -65,7 +73,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
   async updateStatus(
     id: string,
     status: ListingCreationStatus,
-    errors?: ListingCreationError[] | null
+    errors?: ListingCreationError[] | null,
   ): Promise<ListingCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
@@ -83,7 +91,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     id: string,
     externalProductId: string,
     status: ListingCreationStatus,
-    errors?: ListingCreationError[] | null
+    errors?: ListingCreationError[] | null,
   ): Promise<ListingCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
@@ -105,6 +113,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     entity.status = input.status;
     entity.externalProductId = input.externalProductId ?? null;
     entity.errors = input.errors ?? null;
+    entity.bulkBatchId = input.bulkBatchId ?? null;
     return entity;
   }
 
@@ -117,7 +126,8 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
       entity.status,
       entity.errors,
       entity.createdAt,
-      entity.updatedAt
+      entity.updatedAt,
+      entity.bulkBatchId,
     );
   }
 }

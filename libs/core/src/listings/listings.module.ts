@@ -33,6 +33,9 @@ import { ListingCreationRecordOrmEntity } from './infrastructure/persistence/ent
 import { ListingCreationRecordRepository } from './infrastructure/persistence/repositories/listing-creation-record.repository';
 import { ProductPublishBuilderService } from './application/services/product-publish-builder.service';
 import { ProductPublishExecutionService } from './application/services/product-publish-execution.service';
+import { ProductPublishEnqueueService } from './application/services/product-publish-enqueue.service';
+import { ListingCreationQueryService } from './application/services/listing-creation-query.service';
+import { BulkShopPublishSubmitService } from './application/services/bulk-shop-publish-submit.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
@@ -67,6 +70,9 @@ import {
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
   PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
   PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
+  PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+  LISTING_CREATION_QUERY_SERVICE_TOKEN,
+  BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -94,6 +100,9 @@ export {
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
   PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
   PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
+  PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+  LISTING_CREATION_QUERY_SERVICE_TOKEN,
+  BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
 } from './listings.tokens';
 
 @Module({
@@ -134,6 +143,9 @@ export {
     ListingCreationRecordRepository,
     ProductPublishBuilderService,
     ProductPublishExecutionService,
+    ProductPublishEnqueueService,
+    ListingCreationQueryService,
+    BulkShopPublishSubmitService,
     OfferCreationEnqueueService,
     BulkListingSubmitService,
     BulkListingRetryService,
@@ -203,6 +215,18 @@ export {
       useExisting: ProductPublishExecutionService,
     },
     {
+      provide: PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+      useExisting: ProductPublishEnqueueService,
+    },
+    {
+      provide: LISTING_CREATION_QUERY_SERVICE_TOKEN,
+      useExisting: ListingCreationQueryService,
+    },
+    {
+      provide: BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+      useExisting: BulkShopPublishSubmitService,
+    },
+    {
       provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
       useExisting: OfferCreationEnqueueService,
     },
@@ -257,6 +281,9 @@ export {
     LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
     PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
     PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
+    PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
+    LISTING_CREATION_QUERY_SERVICE_TOKEN,
+    BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

@@ -8840,3 +8840,316 @@ html[data-density='compact'] .status-badge {
   font-size: 0.6875rem;
   color: var(--text-muted);
 }
+
+/* ── Shop publish (#1044) ──────────────────────────────────────────────
+   The wizard reuses existing primitives (dialog, button, form-field,
+   alert, status-badge, empty-state). New classes below cover the
+   segmented visibility toggle, the variant line / chips display, the
+   single-publish stepper, and the bulk-batch progress bar. */
+
+/* Segmented Draft / Published toggle */
+.segmented {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  align-self: flex-start;
+}
+.segmented__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.segmented__opt:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.segmented__opt--active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+.segmented__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+}
+.segmented__dot--draft {
+  background: var(--text-muted);
+}
+.segmented__dot--pub {
+  background: var(--status-success);
+}
+
+.shop-publish-hint {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Single-mode variant line + bulk-mode variant chips (display-only) */
+.shop-publish-variant-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-size: 0.8125rem;
+}
+.shop-publish-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.shop-publish-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stock + price-override two-column row */
+.shop-publish-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+@media (max-width: 480px) {
+  .shop-publish-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Price-override affix (currency prefix + input) */
+.shop-publish-affix {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+.shop-publish-affix__pre {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border-right: 1px solid var(--border-subtle);
+}
+.shop-publish-affix__input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.shop-publish-affix__input:focus-visible {
+  box-shadow: none;
+}
+
+.shop-publish-callout {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+/* Review key-value list (also reused by the single tracker) */
+.shop-publish-kv {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0;
+}
+.shop-publish-kv__row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.shop-publish-kv__row:last-child {
+  border-bottom: 0;
+}
+.shop-publish-kv__row dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+.shop-publish-kv__row dd {
+  color: var(--text-primary);
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Tracker shell */
+.shop-publish-tracker {
+  display: grid;
+  gap: var(--space-4);
+}
+.shop-publish-tracker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.shop-publish-tracker__title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+}
+
+/* Single-publish vertical stepper */
+.shop-publish-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.shop-publish-stepper__step {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: var(--space-3);
+  position: relative;
+  padding-bottom: var(--space-4);
+}
+.shop-publish-stepper__step:last-child {
+  padding-bottom: 0;
+}
+.shop-publish-stepper__step::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 16px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-subtle);
+}
+.shop-publish-stepper__step:last-child::before {
+  display: none;
+}
+.shop-publish-stepper__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  margin-top: 2px;
+  z-index: 1;
+}
+.shop-publish-stepper__step--done .shop-publish-stepper__dot {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.shop-publish-stepper__step--done::before {
+  background: var(--accent-primary);
+}
+.shop-publish-stepper__step--current .shop-publish-stepper__dot {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.shop-publish-stepper__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Bulk-batch progress */
+.shop-publish-batch {
+  display: grid;
+  gap: var(--space-4);
+}
+.shop-publish-batch__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.shop-publish-batch__count {
+  font-size: 1.375rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.shop-publish-batch__legend {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 0.75rem;
+}
+.shop-publish-batch__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+.shop-publish-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+}
+.shop-publish-dot--ok {
+  background: var(--status-success);
+}
+.shop-publish-dot--fail {
+  background: var(--status-error);
+}
+.shop-publish-dot--run {
+  background: var(--text-disabled);
+}
+.shop-publish-progress {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+  display: flex;
+}
+.shop-publish-progress__ok {
+  background: var(--status-success);
+}
+.shop-publish-progress__fail {
+  background: var(--status-error);
+}
+.shop-publish-batch__rows {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.shop-publish-batch__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.shop-publish-batch__row:last-child {
+  border-bottom: 0;
+}

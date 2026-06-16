@@ -16,10 +16,7 @@ import { LocaleProvider } from '../shared/i18n';
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { PluginRegistryProvider } from '../shared/plugins';
 import { plugins as inTreePlugins } from '../plugins';
-import {
-  IN_TREE_MOCK_API_NAMESPACES,
-  type PluginMockApiNamespacesFactory,
-} from './plugin-mocks';
+import { IN_TREE_MOCK_API_NAMESPACES, type PluginMockApiNamespacesFactory } from './plugin-mocks';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   apiClient?: ApiClient;
@@ -44,7 +41,12 @@ export const sampleConnection: Connection = {
   credentialsBacked: true,
   adapterKey: 'prestashop.webservice.v1',
   enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderProcessorManager',
+    'OrderSource',
+  ],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -258,14 +260,23 @@ export function createMockApiClient(
       // #464 — default to a 422 (capability missing) so component tests that
       // don't override fall through to the soft "live data unavailable"
       // branch rather than a real network round-trip.
-      getMarketplaceOffer: vi.fn().mockRejectedValue(
-        new ApiError('Adapter does not support live offer reading', 422, null),
-      ),
+      getMarketplaceOffer: vi
+        .fn()
+        .mockRejectedValue(new ApiError('Adapter does not support live offer reading', 422, null)),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
       createOffer: vi.fn().mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       // Tests that render the tracker must override with a full-shape response — the `null`
       // default mirrors the `getById` pattern and forces explicit test setup.
       getOfferCreationStatus: vi.fn().mockResolvedValue(null),
+      // #1044 — shop publish. Submit mocks return canned ids; status mocks
+      // return `null` (like `getById`) so tests that render a tracker must
+      // override with a full-shape response.
+      shopPublish: vi
+        .fn()
+        .mockResolvedValue({ jobId: 'job-sp-1', listingCreationRecordId: 'sp-rec-1' }),
+      getShopPublishStatus: vi.fn().mockResolvedValue(null),
+      shopPublishBulk: vi.fn().mockResolvedValue({ batchId: 'sp-batch-1', items: [] }),
+      getBulkShopPublishBatch: vi.fn().mockResolvedValue(null),
       getSellerPolicies: vi.fn().mockResolvedValue({
         deliveryPolicies: [],
         returnPolicies: [],
@@ -282,9 +293,11 @@ export function createMockApiClient(
       // a 422 (matches the `getMarketplaceOffer` convention from #464) and
       // forces tests that exercise the ambiguous-pick branch to override.
       findProductsByBarcode: vi.fn().mockResolvedValue({ kind: 'no_match' }),
-      getCatalogProduct: vi.fn().mockRejectedValue(
-        new ApiError('Adapter does not support catalog product reading', 422, null),
-      ),
+      getCatalogProduct: vi
+        .fn()
+        .mockRejectedValue(
+          new ApiError('Adapter does not support catalog product reading', 422, null),
+        ),
       // #632 — default to a no-match outcome so existing wizard tests that
       // don't opt in behave as if the BE returned "manual / null". Tests that
       // exercise the auto-prefill override this with the desired shape.
@@ -318,7 +331,9 @@ export function createMockApiClient(
       publish: vi.fn().mockResolvedValue(null),
       archive: vi.fn().mockResolvedValue(null),
       revert: vi.fn().mockResolvedValue(null),
-      render: vi.fn().mockResolvedValue({ templateId: '', version: 1, systemPrompt: '', userPrompt: '' }),
+      render: vi
+        .fn()
+        .mockResolvedValue({ templateId: '', version: 1, systemPrompt: '', userPrompt: '' }),
       remove: vi.fn().mockResolvedValue(undefined),
       ...overrides.promptTemplates,
     } as ApiClient['promptTemplates'],
@@ -468,7 +483,10 @@ export function getToastDescription(text: string | RegExp): HTMLElement {
   return screen.getByText(text, { selector: '.toast__description' });
 }
 
-export function renderWithProviders(ui: ReactElement, options: RenderWithProvidersOptions = {}): RenderResult {
+export function renderWithProviders(
+  ui: ReactElement,
+  options: RenderWithProvidersOptions = {},
+): RenderResult {
   const {
     apiClient = createMockApiClient(),
     route = '/',

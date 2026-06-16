@@ -37,6 +37,7 @@ const validPayload = {
 
 describe('ShopProductPublishHandler', () => {
   let execution: { executePublish: jest.Mock };
+  let bulkProgress: { advanceBatchStatus: jest.Mock };
   let handler: ShopProductPublishHandler;
 
   beforeEach(() => {
@@ -46,7 +47,8 @@ describe('ShopProductPublishHandler', () => {
         outcome: 'ok',
       }),
     };
-    handler = new ShopProductPublishHandler(execution as never);
+    bulkProgress = { advanceBatchStatus: jest.fn().mockResolvedValue(null) };
+    handler = new ShopProductPublishHandler(execution as never, bulkProgress as never);
   });
 
   it('should delegate a valid payload to the execution service and return its outcome', async () => {
@@ -58,9 +60,46 @@ describe('ShopProductPublishHandler', () => {
         connectionId: CONN,
         stock: 5,
         status: 'published',
-      })
+      }),
     );
     expect(result).toEqual({ outcome: 'ok' });
+  });
+
+  it('should not advance any batch for a V1 (single) payload', async () => {
+    await handler.execute(createJob(validPayload));
+    expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
+  });
+
+  it('should advance the parent batch counter for a V2 bulk payload', async () => {
+    const v2 = {
+      ...validPayload,
+      schemaVersion: 2,
+      bulkBatchId: 'batch-1',
+      listingCreationRecordId: 'rec-1',
+    };
+    await handler.execute(createJob(v2));
+    expect(bulkProgress.advanceBatchStatus).toHaveBeenCalledWith('batch-1', 'rec-1', 'succeeded');
+  });
+
+  it('should advance "failed" when a V2 child publish is a business_failure', async () => {
+    execution.executePublish.mockResolvedValue({
+      listingCreationRecord: { id: 'rec-1', status: 'failed', externalProductId: null },
+      outcome: 'business_failure',
+    });
+    const v2 = {
+      ...validPayload,
+      schemaVersion: 2,
+      bulkBatchId: 'batch-1',
+      listingCreationRecordId: 'rec-1',
+    };
+    await handler.execute(createJob(v2));
+    expect(bulkProgress.advanceBatchStatus).toHaveBeenCalledWith('batch-1', 'rec-1', 'failed');
+  });
+
+  it('should reject a V2 payload missing bulkBatchId', async () => {
+    const bad = { ...validPayload, schemaVersion: 2, listingCreationRecordId: 'rec-1' };
+    await expect(handler.execute(createJob(bad))).rejects.toBeInstanceOf(SyncJobExecutionError);
+    expect(execution.executePublish).not.toHaveBeenCalled();
   });
 
   it('should pass through a business_failure outcome', async () => {
@@ -85,7 +124,7 @@ describe('ShopProductPublishHandler', () => {
   it('should wrap a transient execution error as SyncJobExecutionError', async () => {
     execution.executePublish.mockRejectedValue(new Error('redis down'));
     await expect(handler.execute(createJob(validPayload))).rejects.toBeInstanceOf(
-      SyncJobExecutionError
+      SyncJobExecutionError,
     );
   });
 });

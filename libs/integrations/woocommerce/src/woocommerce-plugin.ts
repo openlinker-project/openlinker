@@ -28,6 +28,7 @@ import type { WooCommerceCredentials } from './domain/types/woocommerce-credenti
 import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-config.types';
 import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
 import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
+import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/product-publisher/woocommerce-product-publisher.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
@@ -43,7 +44,14 @@ import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/wooco
 export const woocommerceAdapterManifest: AdapterMetadata = {
   adapterKey: 'woocommerce.restapi.v3',
   platformType: 'woocommerce',
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderProcessorManager',
+    'OrderSource',
+    'ProductPublisher',
+    'CategoryProvisioner',
+  ],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
   isDefault: true,
@@ -107,23 +115,33 @@ export function createWooCommercePlugin(): AdapterPlugin {
           dispatchCapability<T>(
             capability,
             {
-              ProductMaster: () => new WooCommerceProductMasterAdapter(
-                httpClient,
-                host.identifierMapping,
-                mapper,
-                connection,
-              ),
-              InventoryMaster: () => new WooCommerceInventoryMasterAdapter(
-                httpClient,
-                host.identifierMapping,
-                connection,
-              ),
-              OrderProcessorManager: () => new WooCommerceOrderProcessorAdapter(
-                httpClient,
-                host.identifierMapping,
-                connection,
-              ),
+              ProductMaster: () =>
+                new WooCommerceProductMasterAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  mapper,
+                  connection,
+                ),
+              InventoryMaster: () =>
+                new WooCommerceInventoryMasterAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  connection,
+                ),
+              OrderProcessorManager: () =>
+                new WooCommerceOrderProcessorAdapter(
+                  httpClient,
+                  host.identifierMapping,
+                  connection,
+                ),
               OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),
+              // ProductPublisher + CategoryProvisioner are the same instance —
+              // CategoryProvisioner is a sub-capability of ShopProductManagerPort,
+              // narrowed at the call site via isCategoryProvisioner.
+              ProductPublisher: () =>
+                new WooCommerceProductPublisherAdapter(httpClient, connection),
+              CategoryProvisioner: () =>
+                new WooCommerceProductPublisherAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,
           ),

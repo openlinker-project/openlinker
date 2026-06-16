@@ -107,7 +107,9 @@ describe('ListingsListPage', () => {
       route: '/listings?search=unknown-offer',
     });
 
-    expect(await screen.findByText('No offer mappings match the current filters.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No offer mappings match the current filters.'),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
@@ -247,5 +249,45 @@ describe('ListingsListPage', () => {
     await screen.findByText('allegro-offer-999');
     expect(screen.queryByText(/offer creation/i)).not.toBeInTheDocument();
     expect(getOfferCreationStatus).not.toHaveBeenCalled();
+  });
+
+  it('hides the "Publish to shop" CTA when no ProductPublisher connection exists', async () => {
+    // Default connections mock returns a single PrestaShop connection with
+    // no ProductPublisher capability — the CTA must stay hidden.
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('allegro-offer-999');
+    expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the "Publish to shop" CTA when a ProductPublisher connection exists', async () => {
+    const mockApi = createMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_woo_1',
+            name: 'Main WooCommerce store',
+            platformType: 'woocommerce',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            adapterKey: 'woocommerce.restapi.v3',
+            enabledCapabilities: ['ProductPublisher'],
+            supportedCapabilities: ['ProductPublisher'],
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByRole('button', { name: /publish to shop/i })).toBeInTheDocument();
   });
 });

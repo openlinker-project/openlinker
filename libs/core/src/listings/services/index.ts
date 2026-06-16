@@ -33,3 +33,6 @@ export { SellerPoliciesService } from '../application/services/seller-policies.s
 export { OfferCreationEnqueueService } from '../application/services/offer-creation-enqueue.service';
 export { ProductPublishBuilderService } from '../application/services/product-publish-builder.service';
 export { ProductPublishExecutionService } from '../application/services/product-publish-execution.service';
+export { ProductPublishEnqueueService } from '../application/services/product-publish-enqueue.service';
+export { ListingCreationQueryService } from '../application/services/listing-creation-query.service';
+export { BulkShopPublishSubmitService } from '../application/services/bulk-shop-publish-submit.service';

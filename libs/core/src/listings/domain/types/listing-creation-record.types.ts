@@ -64,4 +64,6 @@ export interface CreateListingCreationRecordInput {
   externalProductId?: string | null;
   /** Structured errors when the initial status is already `'failed'`. Null otherwise. */
   errors?: ListingCreationError[] | null;
+  /** Parent bulk-batch id when created as part of a bulk submission (#1044). Null/omitted for single publishes. */
+  bulkBatchId?: string | null;
 }
