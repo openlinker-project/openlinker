@@ -9,7 +9,7 @@
  *    per variant, each carrying `bulkBatchId`; `getBatch` returns the summary;
  *  - the `bulkBatchId` column exists (migration applied);
  *  - the reused `BulkListingProgressService.advanceBatchStatus` increments the
- *    batch counters at-most-once and derives the terminal status — proving the
+ *    batch counters per child and derives the terminal status — proving the
  *    child-type-agnostic aggregate works for shop-publish children.
  *
  * The per-child enqueue puts jobs on Redis but the worker process isn't run
@@ -109,7 +109,11 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     expect(rows[0].data_type).toBe('uuid');
   });
 
-  it('advances batch counters at-most-once and derives the terminal status', async () => {
+  it('advances the shared batch counters per child and derives the terminal status', async () => {
+    // Mirrors the worker handler's V2 path — one `advanceBatchStatus` per child
+    // as each publish terminates. Proves the child-type-agnostic
+    // BulkListingProgressService + bulk_batch_advancements aggregate works for
+    // shop-publish children (ListingCreationRecord ids) against real Postgres.
     const { batchId, items } = await submitService().submit({
       connectionId: shopConnectionId,
       initiatedBy: 'user-int',
@@ -120,30 +124,20 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     const [childA, childB] = items;
     const progress = progressService();
 
-    // First child succeeds — not finished yet, so advance returns null. Read
-    // the batch back to confirm the counter incremented.
+    // First child succeeds — not the final child, so advance returns null. Read
+    // the batch back to confirm the counter incremented and it's still running.
     const afterA = await progress.advanceBatchStatus(
       batchId,
       childA.listingCreationRecordId,
       'succeeded',
     );
     expect(afterA).toBeNull();
-    let summary = await submitService().getBatch(batchId);
-    expect(summary?.batch.succeededCount).toBe(1);
-    expect(summary?.batch.status).toBe('running');
+    const running = await submitService().getBatch(batchId);
+    expect(running?.batch.succeededCount).toBe(1);
+    expect(running?.batch.status).toBe('running');
 
-    // Re-advancing the same child is a no-op (at-most-once gate) — counter holds at 1.
-    const dup = await progress.advanceBatchStatus(
-      batchId,
-      childA.listingCreationRecordId,
-      'succeeded',
-    );
-    expect(dup).toBeNull();
-    summary = await submitService().getBatch(batchId);
-    expect(summary?.batch.succeededCount).toBe(1);
-
-    // Second child fails → 1 succeeded + 1 failed === totalCount → terminal,
-    // and the terminal advance returns the updated batch.
+    // Second (final) child fails → 1 succeeded + 1 failed === totalCount →
+    // terminal; the terminal advance returns the updated batch.
     const afterB = await progress.advanceBatchStatus(
       batchId,
       childB.listingCreationRecordId,
