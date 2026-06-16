@@ -15,8 +15,9 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
-import type { OrderFeedInput } from '@openlinker/core/orders';
+import { isOrderDispatchNotifier, type OrderFeedInput } from '@openlinker/core/orders';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
+import { ErliOrderDispatchRejectedException } from '../../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import type { ErliHttpResponse } from '../../http/erli-http-client.types';
 import type { ErliOrder } from '../erli-order.types';
@@ -354,6 +355,106 @@ describe('ErliOrderSourceAdapter', () => {
       client.get.mockRejectedValue(notFound);
 
       await expect(adapter.getOrder({ externalOrderId: 'missing' })).rejects.toBe(notFound);
+    });
+  });
+
+  describe('notifyDispatched (#997 Half A — OrderDispatchNotifier)', () => {
+    const ORDER_ID = 'erli-order-xyz';
+
+    it('is narrowed by isOrderDispatchNotifier', () => {
+      expect(isOrderDispatchNotifier(adapter)).toBe(true);
+    });
+
+    it('attaches the waybill when trackingNumber is present (non-Erli carrier)', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockResolvedValue(ok(undefined, 202));
+
+      // The real orchestration passes a SHIPPING-carrier hint (never 'erli').
+      await adapter.notifyDispatched({
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      // One status writeback (mark dispatched).
+      expect(client.patch).toHaveBeenCalledTimes(1);
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/fulfillment`, {
+        status: 'dispatched',
+      });
+      // One tracking attach carrying the waybill + carrier hint passthrough.
+      expect(client.post).toHaveBeenCalledTimes(1);
+      expect(client.post).toHaveBeenCalledWith(
+        `/orders/${ORDER_ID}/shipments`,
+        { trackingNumber: 'WB-FAKE-123', carrier: 'inpost' },
+        { idempotent: true },
+      );
+    });
+
+    it('omits the tracking attach when trackingNumber is absent (Erli-managed)', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+
+      // Erli-managed / omp_fulfilled: orchestration passes trackingNumber undefined.
+      await adapter.notifyDispatched({ externalOrderId: ORDER_ID });
+
+      // Status writeback only — NO tracking attach.
+      expect(client.patch).toHaveBeenCalledTimes(1);
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/fulfillment`, {
+        status: 'dispatched',
+      });
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('treats a 409 on the status writeback as success (idempotent)', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('already dispatched', 409));
+
+      await expect(adapter.notifyDispatched({ externalOrderId: ORDER_ID })).resolves.toBeUndefined();
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('wraps a non-409 status-writeback failure in ErliOrderDispatchRejectedException', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('bad request', 400));
+
+      await expect(adapter.notifyDispatched({ externalOrderId: ORDER_ID })).rejects.toBeInstanceOf(
+        ErliOrderDispatchRejectedException,
+      );
+    });
+
+    it('never logs trackingNumber or externalOrderId on the success path', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockResolvedValue(ok(undefined, 202));
+      const logSpy = jest
+        .spyOn((adapter as unknown as { logger: { log: () => void } }).logger, 'log')
+        .mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: () => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      await adapter.notifyDispatched({
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-456',
+        carrier: { platformType: 'dpd' },
+      });
+
+      const emitted = [...logSpy.mock.calls, ...warnSpy.mock.calls].flat().join(' ');
+      expect(emitted).not.toContain('WB-FAKE-456');
+      expect(emitted).not.toContain(ORDER_ID);
+    });
+
+    it('error rejection message carries no waybill or order id', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('upstream 400', 400));
+
+      let caught: unknown;
+      try {
+        await adapter.notifyDispatched({
+          externalOrderId: ORDER_ID,
+          trackingNumber: 'WB-FAKE-789',
+        });
+      } catch (e) {
+        caught = e;
+      }
+      const message = (caught as Error).message;
+      expect(message).not.toContain('WB-FAKE-789');
+      expect(message).not.toContain(ORDER_ID);
     });
   });
 });

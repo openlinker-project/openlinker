@@ -11,6 +11,7 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import {
   isOfferStatusReader,
   OfferCreateRejectedException,
@@ -788,6 +789,58 @@ describe('ErliOfferManagerAdapter', () => {
       await cachedAdapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
 
       expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restoreStockOnCancellation (#997 Half B — mechanism, no live trigger)', () => {
+    const VARIANT_A = `ol_variant_${'a'.repeat(32)}`;
+    const VARIANT_B = `ol_variant_${'b'.repeat(32)}`;
+
+    function inventoryQuery(
+      availability: { productVariantId: string; totalAvailable: number; locationCount: number }[],
+    ): jest.Mocked<IInventoryQueryService> {
+      return {
+        listInventoryItems: jest.fn(),
+        getInventoryItem: jest.fn(),
+        getAvailabilityByVariantIds: jest.fn().mockResolvedValue(availability),
+      };
+    }
+
+    it('sets the absolute master-inventory target per variant (never reads back Erli stock)', async () => {
+      const query = inventoryQuery([
+        { productVariantId: VARIANT_A, totalAvailable: 5, locationCount: 1 },
+        { productVariantId: VARIANT_B, totalAvailable: 12, locationCount: 2 },
+      ]);
+
+      await adapter.restoreStockOnCancellation([VARIANT_A, VARIANT_B], query);
+
+      // The master read drives the value...
+      expect(query.getAvailabilityByVariantIds).toHaveBeenCalledWith([VARIANT_A, VARIANT_B]);
+      // ...and NO Erli read-back happens (no GET on the hot path).
+      expect(httpClient.get).not.toHaveBeenCalled();
+      // Absolute-set PATCH per variant with the master-derived quantity.
+      expect(httpClient.patch).toHaveBeenCalledTimes(2);
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_A}`, { stock: 5 });
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_B}`, { stock: 12 });
+    });
+
+    it('restores to 0 when master inventory zero-fills a variant (master authoritative incl. 0)', async () => {
+      const query = inventoryQuery([
+        { productVariantId: VARIANT_A, totalAvailable: 0, locationCount: 0 },
+      ]);
+
+      await adapter.restoreStockOnCancellation([VARIANT_A], query);
+
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_A}`, { stock: 0 });
+    });
+
+    it('is a no-op when the cancelled order has no Erli offer mapping (empty ids)', async () => {
+      const query = inventoryQuery([]);
+
+      await adapter.restoreStockOnCancellation([], query);
+
+      expect(query.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+      expect(httpClient.patch).not.toHaveBeenCalled();
     });
   });
 });
