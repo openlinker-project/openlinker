@@ -42,6 +42,7 @@ function makeRegisterHost(): {
   configRegistry: { register: jest.Mock };
   credentialsRegistry: { register: jest.Mock };
   testerRegistry: { register: jest.Mock };
+  emailNormalizerRegistry: { register: jest.Mock };
   retryClassifierRegistry: { register: jest.Mock };
   authFailureClassifierRegistry: { register: jest.Mock };
   schedulerTaskRegistry: { register: jest.Mock };
@@ -49,6 +50,7 @@ function makeRegisterHost(): {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
   const testerRegistry = { register: jest.fn() };
+  const emailNormalizerRegistry = { register: jest.fn() };
   const retryClassifierRegistry = { register: jest.fn() };
   const authFailureClassifierRegistry = { register: jest.fn() };
   const schedulerTaskRegistry = { register: jest.fn() };
@@ -56,6 +58,7 @@ function makeRegisterHost(): {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     connectionTesterRegistry: testerRegistry,
+    emailNormalizerRegistry,
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
@@ -65,6 +68,7 @@ function makeRegisterHost(): {
     configRegistry,
     credentialsRegistry,
     testerRegistry,
+    emailNormalizerRegistry,
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
@@ -130,6 +134,18 @@ describe('createErliPlugin', () => {
       expect(testerRegistry.register).toHaveBeenCalledWith(
         'erli.shopapi.v1',
         expect.objectContaining({ test: expect.any(Function) }),
+      );
+    });
+
+    it('should register the email normalizer at erli.shopapi.v1 (#995)', () => {
+      // PROVISIONAL (#992): the normalizer is baseline-only; this asserts the
+      // per-platform seam is wired under the Erli adapter key.
+      const { host, emailNormalizerRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(emailNormalizerRegistry.register).toHaveBeenCalledWith(
+        'erli.shopapi.v1',
+        expect.objectContaining({ normalize: expect.any(Function) }),
       );
     });
 
