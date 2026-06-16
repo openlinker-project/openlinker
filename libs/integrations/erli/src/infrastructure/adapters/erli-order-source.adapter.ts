@@ -32,14 +32,29 @@
  * the inbox message ID only. A malformed wire order raises `ErliApiException`
  * with a FIELD-LEVEL reason and NEVER the raw body in `responseBody`.
  *
- * ## Cancellation stock-restore — deferred (ADR-025 §4a / Q-CANCEL)
+ * ## Dispatch writeback — `notifyDispatched` (Half A of #997)
  *
- * Erli does not restore stock on cancel, and ADR-025 §4a tags the compensating
- * PATCH `#993`, but core has no order-cancellation orchestration hook from which
- * to trigger it (`OrderProcessorManagerPort` only has `createOrder`). The
- * `cancelled` status flows through the mapper faithfully so a future orchestration
- * can act on it; wiring the restore is a follow-up once core grows a cancel/observe
- * hook.
+ * Implements the `OrderDispatchNotifier` sub-capability: mark the Erli order
+ * dispatched and, when OL holds a real waybill, attach it. Mirrors
+ * `AllegroOrderSourceAdapter.notifyDispatched`. The adapter method ships tested,
+ * but its live trigger (`ShipmentDispatchNotificationService`) is itself awaiting
+ * a call-site under #837/#769 — end-to-end dispatch writeback goes live once that
+ * wiring lands. #997 only supplies the adapter method the trigger will call.
+ *
+ * Tracking inversion (omit-on-absence, §5.4): attach `trackingNumber` ⇔ it is
+ * present (a non-Erli carrier with a real waybill); OMIT it when absent (an
+ * Erli-managed / `omp_fulfilled` shipment produces no OL-side waybill — Erli
+ * generates and owns it server-side). NO `carrier.platformType === 'erli'`
+ * guard: the hint is the SHIPPING carrier's type (inpost/dpd/…), never `'erli'`.
+ *
+ * ## Cancellation stock-restore — mechanism in the offer adapter (ADR-025 §4a)
+ *
+ * Erli does not restore stock on cancel. The compensating PATCH (#997 Half B)
+ * now lands as `ErliOfferManagerAdapter.restoreStockOnCancellation` — but core
+ * still has NO order-cancellation-observe hook to trigger it
+ * (`OrderProcessorManagerPort` only has `createOrder`; no order-status-change
+ * event). The `cancelled` status flows through the mapper faithfully so a future
+ * orchestration can act on it; wiring the restore is the Q-T2 follow-up.
  *
  * Identity resolution stays downstream in core (`OrderIngestionService`, #995):
  * this adapter emits RAW external ids only and holds no `IdentifierMappingPort`,
@@ -47,9 +62,12 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @implements {OrderSourcePort}
+ * @implements {OrderDispatchNotifier}
  */
 import type {
+  DispatchCarrierHint,
   IncomingOrder,
+  OrderDispatchNotifier,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -58,6 +76,14 @@ import type {
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
+import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
+import {
+  ERLI_FULFILLMENT_STATUS_DISPATCHED,
+  erliFulfillmentPath,
+  erliFulfillmentShipmentsPath,
+  type ErliFulfillmentStatusBody,
+  type ErliFulfillmentTrackingBody,
+} from './erli-fulfillment.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import { mapErliOrderToIncomingOrder } from './erli-order.mapper';
 import type { ErliOrder, ErliOrderStatus } from './erli-order.types';
@@ -84,7 +110,7 @@ const ERLI_ORDER_STATUSES: ReadonlySet<ErliOrderStatus> = new Set<ErliOrderStatu
   'returned',
 ]);
 
-export class ErliOrderSourceAdapter implements OrderSourcePort {
+export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNotifier {
   private readonly logger = new Logger(ErliOrderSourceAdapter.name);
 
   /**
@@ -210,6 +236,87 @@ export class ErliOrderSourceAdapter implements OrderSourcePort {
 
     const order = assertErliOrder(response.data);
     return mapErliOrderToIncomingOrder(order);
+  }
+
+  /**
+   * Order-side dispatch writeback (#997; mirrors
+   * `AllegroOrderSourceAdapter.notifyDispatched`). Verified against the live Erli
+   * API (#992): marks the order dispatched via `PATCH /orders/{id}/status
+   * { status: 'sent' }` (the enum has no `dispatched`; `sent` is the dispatch
+   * state), then registers an external shipment via `POST /shipping/external`
+   * ONLY when a waybill is present.
+   *
+   * Tracking inversion (omit-on-absence, §5.4): a non-Erli carrier with a real
+   * waybill → `trackingNumber` present → register; an Erli-managed / `omp_fulfilled`
+   * shipment produces no OL-side waybill → `trackingNumber` absent → omit (Erli
+   * generates and owns the waybill server-side). NO `carrier.platformType ===
+   * 'erli'` guard — the hint is the SHIPPING carrier's type, never `'erli'`.
+   *
+   * `externalOrderId` is resolved upstream by the orchestration (this adapter
+   * does no identifier mapping). Log hygiene: NEVER log `trackingNumber` or
+   * `externalOrderId` at info/warn (waybill = PII); error wrapping is
+   * message-only.
+   *
+   * NOTE — live trigger: the orchestration that calls this
+   * (`ShipmentDispatchNotificationService`) is itself awaiting a call-site under
+   * #837/#769, so end-to-end dispatch writeback is not live until that wiring
+   * lands; this method is the tested seam it will invoke.
+   */
+  async notifyDispatched(input: {
+    externalOrderId: string;
+    trackingNumber?: string;
+    carrier?: DispatchCarrierHint;
+  }): Promise<void> {
+    // 1. Mark dispatched via the order status enum: PATCH /orders/{id}/status
+    //    { status: 'sent' }. A 409 (stale revision / already sent) is treated as
+    //    success for idempotency.
+    const statusBody: ErliOrderStatusBody = { status: ERLI_ORDER_STATUS_SENT };
+    try {
+      await this.httpClient.patch(erliOrderStatusPath(input.externalOrderId), statusBody);
+    } catch (error) {
+      if (this.isAlreadyDispatchedOrStale(error)) {
+        this.logger.debug(
+          `Erli order status already sent / stale revision — treating as success (connection: ${this.connectionId})`,
+        );
+      } else {
+        throw this.toDispatchRejected(error, 'mark Erli order sent');
+      }
+    }
+
+    // 2. Register the external shipment ONLY when a waybill is present
+    //    (omit-on-absence, §5.4) via POST /shipping/external. Absent is the
+    //    natural Erli-managed case — nothing to register.
+    if (input.trackingNumber) {
+      const shipmentBody: ErliExternalShipmentBody = {
+        orderId: input.externalOrderId,
+        trackingNumber: input.trackingNumber,
+        ...(input.carrier?.platformType ? { vendor: input.carrier.platformType } : {}),
+      };
+      try {
+        await this.httpClient.post(ERLI_EXTERNAL_SHIPPING_PATH, shipmentBody, { idempotent: true });
+      } catch (error) {
+        throw this.toDispatchRejected(error, 'register external shipment on Erli order');
+      }
+    }
+  }
+
+  /** Treat a 409 (already sent / stale optimistic-lock revision) as success. */
+  private isAlreadyDispatchedOrStale(error: unknown): boolean {
+    return (
+      error instanceof ErliApiException &&
+      (error.statusCode === 409 || /already/i.test(error.message))
+    );
+  }
+
+  /**
+   * Wrap a dispatch-writeback failure in the typed rejection. Message is the
+   * static context only — NEVER the order id or waybill (PII / log hygiene).
+   */
+  private toDispatchRejected(error: unknown, context: string): Error {
+    if (error instanceof ErliApiException) {
+      return new ErliOrderDispatchRejectedException(`Failed to ${context}: ${error.message}`);
+    }
+    return error instanceof Error ? error : new Error(String(error));
   }
 
   /**
