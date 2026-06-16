@@ -30,6 +30,7 @@ import { ErliAuthFailureClassifierAdapter } from './infrastructure/adapters/erli
 import { ErliConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-config-shape-validator.adapter';
 import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-credentials-shape-validator.adapter';
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
+import { ErliEmailNormalizerAdapter } from './infrastructure/adapters/erli-email-normalizer.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
 import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
 
@@ -69,6 +70,11 @@ export function createErliPlugin(): AdapterPlugin {
         new ErliConnectionCredentialsShapeValidatorAdapter(ERLI_BRAND),
       );
       host.connectionTesterRegistry.register(ERLI_ADAPTER_KEY, new ErliConnectionTesterAdapter());
+      // Buyer-identity email normalizer (#995). PROVISIONAL (#992): baseline-only
+      // (trim + lowercase, NO +suffix strip) — the per-platform seam + regression
+      // anchor; a domain-gated strip mirroring Allegro lands once Erli's relay
+      // domain is confirmed.
+      host.emailNormalizerRegistry.register(ERLI_ADAPTER_KEY, new ErliEmailNormalizerAdapter());
       // Classifiers (#984). The runner dispatches these OR-across-all (it holds
       // the raw error, not an adapterKey), so the key is a bookkeeping label;
       // safe because each classifier only recognises Erli's own exceptions.
