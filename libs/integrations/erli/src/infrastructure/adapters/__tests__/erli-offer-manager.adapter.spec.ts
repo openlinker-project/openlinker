@@ -684,7 +684,7 @@ describe('ErliOfferManagerAdapter', () => {
         set: jest.fn().mockResolvedValue(undefined),
         delete: jest.fn().mockResolvedValue(undefined),
       };
-      cachedAdapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient, cache);
+      cachedAdapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient, undefined, cache);
     });
 
     it('should skip the stock PATCH after reconciliation observed a frozen stock (write→read round-trip)', async () => {
@@ -741,8 +741,8 @@ describe('ErliOfferManagerAdapter', () => {
     });
 
     it('should produce disjoint keys per connection for the same variant id', async () => {
-      const adapterA = new ErliOfferManagerAdapter('conn-A', ERLI_ADAPTER_KEY, httpClient, cache);
-      const adapterB = new ErliOfferManagerAdapter('conn-B', ERLI_ADAPTER_KEY, httpClient, cache);
+      const adapterA = new ErliOfferManagerAdapter('conn-A', ERLI_ADAPTER_KEY, httpClient, undefined, cache);
+      const adapterB = new ErliOfferManagerAdapter('conn-B', ERLI_ADAPTER_KEY, httpClient, undefined, cache);
 
       await adapterA.updateOfferQuantity({ offerId: VALID_ID, quantity: 1 });
       await adapterB.updateOfferQuantity({ offerId: VALID_ID, quantity: 1 });
