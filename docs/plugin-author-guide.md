@@ -68,7 +68,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:22-33`](../libs/core/src/integrations/domain/types/adapter.types.ts#L22-L33):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:22-36`](../libs/core/src/integrations/domain/types/adapter.types.ts#L22-L36):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -82,6 +82,9 @@ export const CoreCapabilityValues = [
   // is its provision sub-capability.
   'ProductPublisher',
   'CategoryProvisioner',
+  // Invoicing (ADR-026). Resolves an `InvoicingPort` (issuance mechanism);
+  // regulatory transmission/clearance is a deferred ADR-002 sub-capability.
+  'Invoicing',
 ] as const;
 ```
 
@@ -94,6 +97,7 @@ export const CoreCapabilityValues = [
 | `OfferManager`         | Marketplace offer/listing management (split into sub-capabilities). | [`libs/core/src/listings/domain/ports/offer-manager.port.ts`](../libs/core/src/listings/domain/ports/offer-manager.port.ts)         |
 | `ProductPublisher`     | Shop product publishing — create/own the product record (base shop-listing port, sub-capabilities). | [`libs/core/src/listings/domain/ports/shop-product-manager.port.ts`](../libs/core/src/listings/domain/ports/shop-product-manager.port.ts) |
 | `CategoryProvisioner`  | Mirror/create a destination category tree (shop sub-capability).    | [`libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts`](../libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts) |
+| `Invoicing`            | Issue fiscal documents through a provider (ADR-026); country-agnostic. | [`libs/core/src/invoicing/domain/ports/invoicing.port.ts`](../libs/core/src/invoicing/domain/ports/invoicing.port.ts) |
 
 **Open at the registry boundary (#576).** The set above is closed at
 the type-system level (`CoreCapability` union). At the registry

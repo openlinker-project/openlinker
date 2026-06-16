@@ -30,6 +30,9 @@ export const CoreCapabilityValues = [
   // is its provision sub-capability.
   'ProductPublisher',
   'CategoryProvisioner',
+  // Invoicing (ADR-026). Resolves an `InvoicingPort` (issuance mechanism);
+  // regulatory transmission/clearance is a deferred ADR-002 sub-capability.
+  'Invoicing',
 ] as const;
 
 /**

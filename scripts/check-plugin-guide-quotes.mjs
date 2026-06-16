@@ -49,8 +49,8 @@ const VERBATIM_QUOTES = [
     label: 'CoreCapabilityValues',
     sourceFile: 'libs/core/src/integrations/domain/types/adapter.types.ts',
     sourceStart: 22, // 1-indexed
-    sourceEnd: 33,
-    guideLinkSubstring: 'adapter.types.ts:22-33',
+    sourceEnd: 36,
+    guideLinkSubstring: 'adapter.types.ts:22-36',
     fenceOpen: '```typescript',
   },
 ];

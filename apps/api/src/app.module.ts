@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
+import { InvoicingModule } from '@openlinker/core/invoicing';
 import { AiModule as CoreAiModule } from '@openlinker/core/ai';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -60,6 +61,7 @@ import { ShippingApiModule } from './shipping/shipping.module';
     CursorsModule,
     MappingsApiModule,
     ContentModule, // Product content draft buffer + reconcile + publish (#338)
+    InvoicingModule, // Invoicing domain foundation — port + record + repo (#751, ADR-026)
     CoreAiModule, // Editable prompt-template storage + render service (#341)
     AiApiModule, // REST surface for prompt templates (#341)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
