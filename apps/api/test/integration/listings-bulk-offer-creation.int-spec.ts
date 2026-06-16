@@ -163,14 +163,26 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
         .expect(400);
     });
 
-    // NOTE: a happy-path POST → enqueue end-to-end test for "unknown
-    // connection" is intentionally out of scope. The bulk service relies
-    // on `IntegrationsService.getCapabilityAdapter` to surface
-    // `ConnectionNotFoundException`, but the API has no global filter
-    // mapping that domain exception to HTTP 404 today (the existing
-    // single-offer endpoint has the same behaviour). Mapping is a
-    // separate cross-cutting concern tracked by the API's
-    // exception-filter posture — not by #736.
+    it('returns 404 for a well-formed but unknown connectionId (#1087)', async () => {
+      // The bulk service resolves the adapter via
+      // `IntegrationsService.getCapabilityAdapter`, which throws
+      // `ConnectionNotFoundException` for an unknown connection. The global
+      // `ConnectionExceptionFilter` (#1087) maps that to 404 — before the
+      // filter it surfaced as a misleading 500.
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      await http
+        .post('/listings/bulk-create')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          connectionId: CONN_A, // valid UUID, no such connection seeded
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 5, publishImmediately: false },
+        })
+        .expect(404);
+    });
 
     it('returns 401 without a bearer token', async () => {
       const http = harness.getHttp();

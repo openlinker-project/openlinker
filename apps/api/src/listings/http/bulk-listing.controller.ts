@@ -120,12 +120,10 @@ export class BulkListingController {
       if (error instanceof EmptyBulkSubmissionException) {
         throw new BadRequestException(error.message);
       }
-      // CapabilityNotSupportedException is mapped to HTTP 422 by the
-      // global `CapabilityNotSupportedFilter`. Other domain exceptions
-      // (`ConnectionNotFoundException`, `ConnectionDisabledException`)
-      // currently bubble up as HTTP 500 — the same posture as the
-      // existing single-offer POST endpoint. Mapping is a cross-cutting
-      // concern tracked outside #736.
+      // Remaining domain exceptions are mapped by global filters:
+      // `CapabilityNotSupportedException` → 400 (`CapabilityNotSupportedFilter`),
+      // `ConnectionNotFoundException` → 404 / `ConnectionDisabledException` → 409
+      // (`ConnectionExceptionFilter`, #1087). Re-throw so they reach those filters.
       throw error;
     }
   }

@@ -107,6 +107,13 @@ class IntegrationTestHarnessImpl implements IntegrationTestHarness {
       this.app.useGlobalPipes(new ValidationPipe(pipeOptions));
     }
 
+    // Run after pipes, before init — lets callers register the same global
+    // exception filters their production bootstrap applies (the `main.ts`
+    // filters are not otherwise wired into the int-test app).
+    if (this.config.configureApp) {
+      this.config.configureApp(this.app);
+    }
+
     await this.app.init();
 
     // Resolve DataSource — required for `reset()` to issue truncates.
