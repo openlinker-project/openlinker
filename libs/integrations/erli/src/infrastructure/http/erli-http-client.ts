@@ -185,7 +185,9 @@ export class ErliHttpClient implements IErliHttpClient {
         headers: {
           ...options?.headers,
           Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
+          // Only advertise a JSON entity body when one is actually sent — a
+          // bodyless GET/PATCH carries no `Content-Type`.
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           Accept: 'application/json',
         },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -193,11 +195,13 @@ export class ErliHttpClient implements IErliHttpClient {
       });
     } catch (error) {
       // Distinguish a timeout (our AbortController fired) from a genuine
-      // transport failure — the message feeds the host RetryClassifier.
-      const message =
-        (error as Error)?.name === 'AbortError'
-          ? `Erli ${method} ${path} timed out after ${timeoutMs}ms`
-          : `Erli network error: ${(error as Error).message}`;
+      // transport failure — the message feeds the host RetryClassifier. Newer
+      // undici can surface the abort as a TypeError wrapping the AbortError in
+      // `.cause`, so trust the signal first, then the error name.
+      const timedOut = controller.signal.aborted || (error as Error)?.name === 'AbortError';
+      const message = timedOut
+        ? `Erli ${method} ${path} timed out after ${timeoutMs}ms`
+        : `Erli network error: ${(error as Error).message}`;
       // Transport failure: retry only if idempotent, else fail fast (D3).
       if (idempotent) {
         throw new RetryableHttpError(message, 'transport', undefined, error);
@@ -240,7 +244,6 @@ export class ErliHttpClient implements IErliHttpClient {
       return;
     }
 
-    const responseBody = await this.safeReadBody(response);
     const message = `Erli ${method} ${path} failed (${response.status})`;
 
     if (response.status === 401 || response.status === 403) {
@@ -260,8 +263,9 @@ export class ErliHttpClient implements IErliHttpClient {
       }
       throw new ErliNetworkException(message);
     }
-    // Deterministic 4xx — non-retryable.
-    throw new ErliApiException(message, response.status, responseBody, url);
+    // Deterministic 4xx — non-retryable. Read the (bounded) diagnostic body
+    // only here; the retryable 401/403/429/5xx paths above never consume it.
+    throw new ErliApiException(message, response.status, await this.safeReadBody(response), url);
   }
 
   private toExhaustedException(error: RetryableHttpError, url: string): Error {
