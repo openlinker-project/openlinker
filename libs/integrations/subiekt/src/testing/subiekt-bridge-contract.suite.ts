@@ -65,7 +65,7 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       client = makeClient();
     });
 
-    it('issues a document with a provider id, number and a known regulatory status', async () => {
+    it('should issue a document with a provider id, number and a known regulatory status', async () => {
       const res = await client.issueInvoice(sampleIssueInvoiceRequest());
       expect(res.providerInvoiceId).toBeTruthy();
       expect(res.providerInvoiceNumber).toBeTruthy();
@@ -73,12 +73,12 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
     });
 
-    it('upserts a customer and returns a provider customer id', async () => {
+    it('should upsert a customer and return a provider customer id', async () => {
       const res = await client.upsertCustomer({ buyer: sampleBridgeBuyer() });
       expect(res.providerCustomerId).toBeTruthy();
     });
 
-    it('reads back the state of a just-issued document', async () => {
+    it('should read back the state of a just-issued document', async () => {
       const issued = await client.issueInvoice(sampleIssueInvoiceRequest());
       const status = await client.getInvoiceStatus({
         providerInvoiceId: issued.providerInvoiceId,

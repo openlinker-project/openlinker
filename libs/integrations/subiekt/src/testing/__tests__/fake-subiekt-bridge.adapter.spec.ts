@@ -29,21 +29,21 @@ describe('FakeSubiektBridgeAdapter', () => {
       fake = new FakeSubiektBridgeAdapter();
     });
 
-    it('numbers successive invoices deterministically', async () => {
+    it('should number successive invoices deterministically', async () => {
       const a = await fake.issueInvoice(sampleIssueInvoiceRequest());
       const b = await fake.issueInvoice(sampleIssueInvoiceRequest());
       expect(a.providerInvoiceNumber).toBe('FV-MOCK-001');
       expect(b.providerInvoiceNumber).toBe('FV-MOCK-002');
     });
 
-    it('rejects with SubiektBridgeUnreachableError when that failure is seeded', async () => {
+    it('should reject with SubiektBridgeUnreachableError when that failure is seeded', async () => {
       fake.seedFailure('bridge-unreachable');
       await expect(fake.issueInvoice(sampleIssueInvoiceRequest())).rejects.toBeInstanceOf(
         SubiektBridgeUnreachableError,
       );
     });
 
-    it('rejects with SubiektRejectedError carrying the reason when seeded', async () => {
+    it('should reject with SubiektRejectedError carrying the reason when seeded', async () => {
       fake.seedFailure('subiekt-rejected', { reason: 'invalid NIP' });
       await expect(fake.upsertCustomer({ buyer: sampleBridgeBuyer() })).rejects.toThrow(
         'invalid NIP',
@@ -53,19 +53,19 @@ describe('FakeSubiektBridgeAdapter', () => {
       );
     });
 
-    it('seed() overrides response fields (e.g. an accepted regulatory status)', async () => {
+    it('should override response fields when seed() is used (e.g. an accepted regulatory status)', async () => {
       fake.seed({ regulatoryStatus: 'accepted' });
       const res = await fake.issueInvoice(sampleIssueInvoiceRequest());
       expect(res.regulatoryStatus).toBe('accepted');
     });
 
-    it('returns a failed status for an unknown provider invoice id', async () => {
+    it('should return a failed status for an unknown provider invoice id', async () => {
       const status = await fake.getInvoiceStatus({ providerInvoiceId: 'does-not-exist' });
       expect(status.state).toBe('failed');
       expect(status.regulatoryStatus).toBe('none');
     });
 
-    it('clear() resets counters and seeded failure', async () => {
+    it('should reset counters and seeded failure on clear()', async () => {
       fake.seedFailure('bridge-unreachable');
       fake.seed({ regulatoryStatus: 'accepted' });
       await fake.issueInvoice(sampleIssueInvoiceRequest()).catch(() => undefined);
