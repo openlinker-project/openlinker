@@ -74,14 +74,39 @@ describe('ErliConnectionTesterAdapter', () => {
     expect(result.status).toBe(401);
   });
 
-  it('should return a failure (not throw) on a transport error', async () => {
-    fetchMock.mockRejectedValue(new Error('socket hang up'));
+  it('should return a failure (not throw) on a transport error, collapsing the raw cause', async () => {
+    fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.1:443 /secret-path'));
 
     const result = await tester.test(connection(), resolver);
 
     expect(result.success).toBe(false);
     expect(result.status).toBeUndefined();
-    expect(result.message).toContain('Erli network error');
+    // Bounded fixed string — the raw undici cause (which can embed host/path)
+    // must not reach the operator-facing result (PR1057-SEC-01).
+    expect(result.message).toBe('Erli connection failed (network error)');
+    expect(result.message).not.toContain('ECONNREFUSED');
+    expect(result.message).not.toContain('secret-path');
+  });
+
+  it('should return a failure with status 403 when the key is forbidden', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(false, 403));
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(403);
+  });
+
+  it('should surface status 429 on a rate-limit response', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(false, 429));
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result.success).toBe(false);
+    // Rate-limit carries retryAfterMs, not statusCode — the tester maps it to 429
+    // so the operator sees the real cause (PR1057-TECH-02).
+    expect(result.status).toBe(429);
+    expect(result.message).toContain('rate limit');
   });
 
   it('should collapse an unrecognized error to a fixed message (no detail leak)', async () => {

@@ -70,19 +70,37 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
   }
 
   private toFailure(error: unknown, latencyMs: number): ConnectionTestResult {
-    // Only a recognized Erli exception's message/status reaches the
-    // operator-facing result: their messages are bounded and never carry the
-    // bearer key. Any other error (e.g. a raw fetch/undici error, whose message
-    // can embed internal request details) collapses to a fixed string so
-    // nothing unexpected is surfaced in OL Admin.
+    // Rate-limit carries `retryAfterMs`, not `statusCode`, so surface the 429 it
+    // represents — otherwise the operator loses the real cause (PR1057-TECH-02).
+    if (error instanceof ErliRateLimitException) {
+      return {
+        success: false,
+        status: 429,
+        message: 'Erli rate limit reached while probing the connection',
+        latencyMs,
+      };
+    }
+    // A network-exception message wraps the raw undici cause, which can embed the
+    // resolved host/path; collapse it to a bounded fixed string so no internal
+    // request detail reaches OL Admin (PR1057-SEC-01).
+    if (error instanceof ErliNetworkException) {
+      return {
+        success: false,
+        status: undefined,
+        message: 'Erli connection failed (network error)',
+        latencyMs,
+      };
+    }
+    // Auth / API / config messages are bounded and never carry the bearer key,
+    // so they reach the operator-facing result verbatim. Anything else (e.g. a
+    // raw fetch/undici error) collapses to a fixed string.
     if (
       error instanceof ErliAuthenticationException ||
       error instanceof ErliApiException ||
-      error instanceof ErliNetworkException ||
-      error instanceof ErliConfigException ||
-      error instanceof ErliRateLimitException
+      error instanceof ErliConfigException
     ) {
-      const status = 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined;
+      const status =
+        'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined;
       return { success: false, status, message: error.message, latencyMs };
     }
     return { success: false, status: undefined, message: 'Erli probe failed', latencyMs };
