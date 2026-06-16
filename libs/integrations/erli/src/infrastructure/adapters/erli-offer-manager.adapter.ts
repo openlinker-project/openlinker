@@ -302,8 +302,12 @@ export class ErliOfferManagerAdapter
     // same validate-or-null + encode hygiene as `productPath`, so a hostile id
     // reads as a miss here and still throws on the push branch below.
     if (await this.isStockFrozenCached(cmd.offerId)) {
-      this.logger.debug(
-        `Skipping stock push for frozen Erli offer [connectionId=${this.connectionId}, offerId=${cmd.offerId}]`,
+      // warn (not debug): a frozen offer means OL stops propagating stock — INCLUDING
+      // a drop to 0 — so a sold-out variant can oversell on Erli until the seller
+      // unfreezes. Surface the skipped quantity so operators can spot oversell-risk
+      // freezes (PR1067-TECH-02).
+      this.logger.warn(
+        `Skipping stock push for seller-frozen Erli offer (stock=${cmd.quantity} not propagated) [connectionId=${this.connectionId}, offerId=${cmd.offerId}]`,
       );
       return;
     }
