@@ -34,6 +34,7 @@ import { AiIntegrationModule } from '@openlinker/integrations-ai';
 import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
+import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -45,4 +46,5 @@ export const workerPlugins: PluginEntry[] = [
   // runs `marketplace.shipment.statusSync` for DPD connections (tracking via
   // SOAP DPDInfoServices, ADR-022). Scheduler runs api-side; worker only drains.
   DpdIntegrationModule,
+  ErliIntegrationModule,
 ];

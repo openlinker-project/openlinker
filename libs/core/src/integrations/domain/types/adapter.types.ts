@@ -48,8 +48,13 @@ export type CoreCapability = (typeof CoreCapabilityValues)[number];
  * Adapter metadata.
  *
  * Describes an adapter's capabilities and metadata. Used by AdapterRegistry
- * to resolve adapters at runtime. Each adapter must declare at least one
- * supported capability.
+ * to resolve adapters at runtime. An adapter declares the capabilities its
+ * factory can construct — never more: `IntegrationsService` trusts the
+ * manifest when enumerating adapters, so a declared-but-undeliverable
+ * capability would surface as a thrown factory error inside shared loops.
+ * An empty array is valid for a registration-only plugin skeleton (the
+ * platform is then inert — every gate filters it out before the factory
+ * runs; precedent: the Erli skeleton, #980).
  *
  * `supportedCapabilities` is `string[]` so plugin
  * adapters can register capability names beyond the well-known core set
@@ -68,7 +73,10 @@ export interface AdapterMetadata {
   platformType: string;
 
   /**
-   * Array of capabilities supported by this adapter. Must be non-empty.
+   * Array of capabilities supported by this adapter. Normally non-empty;
+   * empty is permitted for registration-only skeletons (see the interface
+   * docblock above). Must never declare a capability the adapter factory
+   * cannot construct.
    * Open string set: well-known values come from {@link CoreCapabilityValues}
    * / {@link CoreCapability}; plugin adapters can register additional names
    * (#576). The runtime gate at `IntegrationsService.getCapabilityAdapter`

@@ -27,6 +27,7 @@
     "@openlinker/integrations-ai": "workspace:*",
     "@openlinker/integrations-allegro": "workspace:*",
     "@openlinker/integrations-dpd-polska": "workspace:*",
+    "@openlinker/integrations-erli": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",

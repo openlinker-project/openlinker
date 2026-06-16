@@ -29,6 +29,8 @@
       "@openlinker/integrations-allegro/*": ["../../libs/integrations/allegro/src/*"],
       "@openlinker/integrations-woocommerce": ["../../libs/integrations/woocommerce/src/index.ts"],
       "@openlinker/integrations-woocommerce/*": ["../../libs/integrations/woocommerce/src/*"],
+      "@openlinker/integrations-erli": ["../../libs/integrations/erli/src/index.ts"],
+      "@openlinker/integrations-erli/*": ["../../libs/integrations/erli/src/*"],
       "@openlinker/plugin-sdk": ["../../libs/plugin-sdk/src/index.ts"],
       "@openlinker/plugin-sdk/*": ["../../libs/plugin-sdk/src/*"]
     }
