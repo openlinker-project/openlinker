@@ -376,16 +376,17 @@ describe('ErliOrderSourceAdapter', () => {
         carrier: { platformType: 'inpost' },
       });
 
-      // One status writeback (mark dispatched).
+      // One status writeback (mark sent) via the order-status enum endpoint.
       expect(client.patch).toHaveBeenCalledTimes(1);
-      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/fulfillment`, {
-        status: 'dispatched',
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/status`, {
+        status: 'sent',
       });
-      // One tracking attach carrying the waybill + carrier hint passthrough.
+      // One external-shipment registration (array body) carrying the waybill +
+      // vendor (the shipping carrier's platformType).
       expect(client.post).toHaveBeenCalledTimes(1);
       expect(client.post).toHaveBeenCalledWith(
-        `/orders/${ORDER_ID}/shipments`,
-        { trackingNumber: 'WB-FAKE-123', carrier: 'inpost' },
+        '/shipping/external',
+        [{ vendor: 'inpost', orderId: ORDER_ID, trackingNumber: 'WB-FAKE-123' }],
         { idempotent: true },
       );
     });
@@ -396,10 +397,10 @@ describe('ErliOrderSourceAdapter', () => {
       // Erli-managed / omp_fulfilled: orchestration passes trackingNumber undefined.
       await adapter.notifyDispatched({ externalOrderId: ORDER_ID });
 
-      // Status writeback only — NO tracking attach.
+      // Status writeback only — NO shipment registration.
       expect(client.patch).toHaveBeenCalledTimes(1);
-      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/fulfillment`, {
-        status: 'dispatched',
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/status`, {
+        status: 'sent',
       });
       expect(client.post).not.toHaveBeenCalled();
     });
@@ -417,6 +418,37 @@ describe('ErliOrderSourceAdapter', () => {
       await expect(adapter.notifyDispatched({ externalOrderId: ORDER_ID })).rejects.toBeInstanceOf(
         ErliOrderDispatchRejectedException,
       );
+    });
+
+    it('treats a 409 on the waybill attach as success (retry convergence)', async () => {
+      // Status PATCH succeeds; the waybill POST 409s (already attached from a prior
+      // partial run) — must converge, not fail permanently (PR1082-TECH-03).
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockRejectedValue(new ErliApiException('shipment already attached', 409));
+
+      await expect(
+        adapter.notifyDispatched({
+          externalOrderId: ORDER_ID,
+          trackingNumber: 'WB-FAKE-123',
+          carrier: { platformType: 'inpost' },
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('wraps a non-409 waybill-attach failure after the status writeback succeeded', async () => {
+      // Partial failure: mark-dispatched landed, the attach POST fails terminally
+      // — surfaces as a rejection; the status writeback already happened (PR1082-TECH-04).
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockRejectedValue(new ErliApiException('bad request', 400));
+
+      await expect(
+        adapter.notifyDispatched({
+          externalOrderId: ORDER_ID,
+          trackingNumber: 'WB-FAKE-123',
+          carrier: { platformType: 'inpost' },
+        }),
+      ).rejects.toBeInstanceOf(ErliOrderDispatchRejectedException);
+      expect(client.patch).toHaveBeenCalledTimes(1);
     });
 
     it('never logs trackingNumber or externalOrderId on the success path', async () => {
