@@ -17,9 +17,17 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
+import { CapabilityNotSupportedFilter } from '../../src/common/filters/capability-not-supported.filter';
+import { ConnectionExceptionFilter } from '../../src/common/filters/connection-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
+  // Mirror `main.ts`'s global exception filters so int-specs see the same
+  // HTTP status mapping the running app does (domain exceptions → 400/404/409
+  // rather than a default 500).
+  configureApp: (app) => {
+    app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
+  },
   configureBodyParser: (app) => {
     // 1) /webhooks: JSON parser with a `verify` hook that captures the raw
     //    request bytes for HMAC signature verification. Must run before any

@@ -16,6 +16,7 @@ import * as express from 'express';
 import { installNestLogger } from '@openlinker/shared/logging/nest';
 import { AppModule } from './app.module';
 import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
+import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 
 async function bootstrap(): Promise<void> {
   // Route shared `Logger` calls through @nestjs/common before any other work,
@@ -74,8 +75,10 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // Map capability-related domain errors to 400 instead of the default 500
-  app.useGlobalFilters(new CapabilityNotSupportedFilter());
+  // Map capability + connection-lifecycle domain errors to accurate HTTP
+  // statuses instead of the default 500 (#1087). Filters catch disjoint
+  // exception types, so registration order is irrelevant.
+  app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
 
   // Swagger API documentation
   const config = new DocumentBuilder()

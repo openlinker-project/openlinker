@@ -53,6 +53,16 @@ export interface IntegrationTestHarnessConfig {
   configureBodyParser?: (app: INestApplication) => void;
 
   /**
+   * Optional app-configuration hook, run after body-parser + validation-pipe
+   * setup and immediately before `app.init()`. Receives the `INestApplication`
+   * so callers can register the same global exception filters / interceptors
+   * their production bootstrap applies — without this, the filters wired in
+   * `main.ts` (`app.useGlobalFilters(...)`) are NOT applied to the int-test app,
+   * so domain exceptions surface as 500 instead of their mapped status.
+   */
+  configureApp?: (app: INestApplication) => void;
+
+  /**
    * Tables to TRUNCATE between tests, in foreign-key-aware order.
    *
    * Caller-owned. apps/api lists its 12 canonical tables; plugin authors

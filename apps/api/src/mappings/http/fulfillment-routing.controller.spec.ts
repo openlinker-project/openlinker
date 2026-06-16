@@ -1,11 +1,12 @@
 /**
  * Fulfillment Routing Controller unit tests (#836).
  *
- * Mocks IFulfillmentRoutingService. Covers delegation + DTO mapping and the
- * full domain-exception → HTTP mapping (404 / 400) at the boundary.
+ * Mocks IFulfillmentRoutingService. Covers delegation + DTO mapping, the
+ * local routing-error → 400 mapping, and that connection-lifecycle exceptions
+ * propagate untouched to the global `ConnectionExceptionFilter` (#1087).
  */
 
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import {
   type IFulfillmentRoutingService,
   FulfillmentRoutingRule,
@@ -73,10 +74,10 @@ describe('FulfillmentRoutingController', () => {
       ]);
     });
 
-    it('should map ConnectionNotFoundException to 404', async () => {
+    it('should propagate ConnectionNotFoundException to the global filter (→ 404)', async () => {
       routing.getRules.mockRejectedValue(new ConnectionNotFoundException(SOURCE));
 
-      await expect(controller.getRules(SOURCE)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.getRules(SOURCE)).rejects.toBeInstanceOf(ConnectionNotFoundException);
     });
   });
 
@@ -91,10 +92,10 @@ describe('FulfillmentRoutingController', () => {
       expect(result).toEqual([{ processorKind: 'omp_fulfilled', processorConnectionId: 'conn-ps' }]);
     });
 
-    it('should map ConnectionNotFoundException to 404', async () => {
+    it('should propagate ConnectionNotFoundException to the global filter (→ 404)', async () => {
       routing.getCandidateProcessors.mockRejectedValue(new ConnectionNotFoundException(SOURCE));
 
-      await expect(controller.getCandidates(SOURCE)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.getCandidates(SOURCE)).rejects.toBeInstanceOf(ConnectionNotFoundException);
     });
   });
 
@@ -122,16 +123,16 @@ describe('FulfillmentRoutingController', () => {
       await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should map ConnectionDisabledException to 400', async () => {
+    it('should propagate ConnectionDisabledException to the global filter (→ 409)', async () => {
       routing.replaceRules.mockRejectedValue(new ConnectionDisabledException('conn-inpost'));
 
-      await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(ConnectionDisabledException);
     });
 
-    it('should map ConnectionNotFoundException to 404', async () => {
+    it('should propagate ConnectionNotFoundException to the global filter (→ 404)', async () => {
       routing.replaceRules.mockRejectedValue(new ConnectionNotFoundException(SOURCE));
 
-      await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.replaceRules(SOURCE, dto())).rejects.toBeInstanceOf(ConnectionNotFoundException);
     });
   });
 });

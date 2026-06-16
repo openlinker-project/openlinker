@@ -21,7 +21,6 @@ import {
   HttpStatus,
   Inject,
   BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -31,10 +30,6 @@ import {
   IncompatibleProcessorException,
   DuplicateRoutingRuleException,
 } from '@openlinker/core/mappings';
-import {
-  ConnectionNotFoundException,
-  ConnectionDisabledException,
-} from '@openlinker/core/identifier-mapping';
 import { UpsertRoutingRulesDto } from './dto/upsert-routing-rules.dto';
 import { RoutingRuleResponseDto } from './dto/routing-rule-response.dto';
 import { CandidateProcessorResponseDto } from './dto/candidate-processor-response.dto';
@@ -87,8 +82,9 @@ export class FulfillmentRoutingController {
   @ApiOperation({ summary: 'Replace all fulfillment-routing rules for a source connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [RoutingRuleResponseDto] })
-  @ApiResponse({ status: 400, description: 'Incompatible processor, duplicate method, or disabled connection' })
+  @ApiResponse({ status: 400, description: 'Incompatible processor or duplicate method' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async replaceRules(
     @Param('connectionId') connectionId: string,
@@ -103,17 +99,15 @@ export class FulfillmentRoutingController {
   }
 
   /**
-   * Map the full set of routing domain exceptions to HTTP. `replaceRules` /
-   * `getCandidateProcessors` resolve adapter metadata, so connection errors
-   * surface here alongside the compatibility/duplicate errors — none may fall
-   * through to a 500 on ordinary bad input.
+   * Map the routing-specific domain exceptions to HTTP. Connection-lifecycle
+   * exceptions (`ConnectionNotFoundException` → 404, `ConnectionDisabledException`
+   * → 409) are intentionally NOT mapped here — they propagate to the global
+   * `ConnectionExceptionFilter` (#1087) so the connection-status contract stays
+   * consistent across every endpoint. Only the genuinely-local routing errors
+   * map to 400; anything else falls through to Nest's default handling.
    */
   private toHttpException(error: unknown): Error {
-    if (error instanceof ConnectionNotFoundException) {
-      return new NotFoundException(error.message);
-    }
     if (
-      error instanceof ConnectionDisabledException ||
       error instanceof IncompatibleProcessorException ||
       error instanceof DuplicateRoutingRuleException
     ) {
