@@ -22,7 +22,7 @@
  * over one connection's API key).
  *
  * @module libs/integrations/erli/src/infrastructure/http
- * @see {@link IErliHttpClient} for the port the adapters code against
+ * @see {@link IErliHttpClient} for the transport interface the adapters code against
  */
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@openlinker/shared/logging';
@@ -130,17 +130,21 @@ export class ErliHttpClient implements IErliHttpClient {
     const requestId = randomUUID();
     // GET/PATCH are idempotent by HTTP semantics; POST only when opted in (D3).
     const idempotent = method !== 'POST' || options?.idempotent === true;
+    // Resolve (and host-escape-guard) the URL once: `path`/`queryParams` are
+    // fixed across attempts, so a path that escapes the host fails fast here —
+    // before the first fetch — and every attempt reuses the same string.
+    const url = this.buildUrl(path, options?.queryParams);
     let delay = this.retryConfig.initialDelayMs;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeOnce<T>(method, path, body, idempotent, options);
+        return await this.executeOnce<T>(method, path, url, body, idempotent, options);
       } catch (error) {
         if (!(error instanceof RetryableHttpError)) {
           throw error;
         }
         if (attempt === this.retryConfig.maxRetries) {
-          throw this.toExhaustedException(error, this.buildUrl(path, options?.queryParams));
+          throw this.toExhaustedException(error, url);
         }
         // Honor server `Retry-After`, but clamp to `maxDelayMs` so a hostile or
         // buggy upstream can't stall a worker on an absurd backoff.
@@ -163,11 +167,11 @@ export class ErliHttpClient implements IErliHttpClient {
   private async executeOnce<T>(
     method: ErliHttpMethod,
     path: string,
+    url: string,
     body: unknown,
     idempotent: boolean,
     options?: ErliRequestOptions,
   ): Promise<ErliHttpResponse<T>> {
-    const url = this.buildUrl(path, options?.queryParams);
     const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -203,7 +207,7 @@ export class ErliHttpClient implements IErliHttpClient {
       clearTimeout(timeout);
     }
 
-    await this.throwIfNotOk(response, method, path, idempotent, options?.queryParams);
+    await this.throwIfNotOk(response, method, path, url, idempotent);
 
     if (response.status === 204) {
       return { status: response.status, data: undefined as T };
@@ -229,14 +233,13 @@ export class ErliHttpClient implements IErliHttpClient {
     response: Response,
     method: ErliHttpMethod,
     path: string,
+    url: string,
     idempotent: boolean,
-    queryParams?: ErliRequestOptions['queryParams'],
   ): Promise<void> {
     if (response.ok) {
       return;
     }
 
-    const url = this.buildUrl(path, queryParams);
     const responseBody = await this.safeReadBody(response);
     const message = `Erli ${method} ${path} failed (${response.status})`;
 
