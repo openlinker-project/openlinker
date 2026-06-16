@@ -36,10 +36,12 @@
  *
  * Implements the `OrderDispatchNotifier` sub-capability: mark the Erli order
  * dispatched and, when OL holds a real waybill, attach it. Mirrors
- * `AllegroOrderSourceAdapter.notifyDispatched`. The adapter method ships tested,
- * but its live trigger (`ShipmentDispatchNotificationService`) is itself awaiting
- * a call-site under #837/#769 — end-to-end dispatch writeback goes live once that
- * wiring lands. #997 only supplies the adapter method the trigger will call.
+ * `AllegroOrderSourceAdapter.notifyDispatched`. This path IS live: the core
+ * `ShipmentDispatchNotificationService` resolves the connection's `OrderSource`,
+ * narrows via `isOrderDispatchNotifier`, and calls this method from the shipment
+ * notify-dispatched endpoint. The endpoint/verb/status token are #992-PROVISIONAL
+ * (`erli-fulfillment.types.ts`) — confirming them against the sandbox is a release
+ * gate before relying on Erli dispatch writeback in production.
  *
  * Tracking inversion (omit-on-absence, §5.4): attach `trackingNumber` ⇔ it is
  * present (a non-Erli carrier with a real waybill); OMIT it when absent (an
@@ -78,11 +80,11 @@ import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
-  ERLI_FULFILLMENT_STATUS_DISPATCHED,
-  erliFulfillmentPath,
-  erliFulfillmentShipmentsPath,
-  type ErliFulfillmentStatusBody,
-  type ErliFulfillmentTrackingBody,
+  ERLI_EXTERNAL_SHIPPING_PATH,
+  ERLI_ORDER_STATUS_SENT,
+  erliOrderStatusPath,
+  type ErliExternalShipmentBody,
+  type ErliOrderStatusBody,
 } from './erli-fulfillment.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import { mapErliOrderToIncomingOrder } from './erli-order.mapper';
@@ -257,10 +259,10 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
    * `externalOrderId` at info/warn (waybill = PII); error wrapping is
    * message-only.
    *
-   * NOTE — live trigger: the orchestration that calls this
-   * (`ShipmentDispatchNotificationService`) is itself awaiting a call-site under
-   * #837/#769, so end-to-end dispatch writeback is not live until that wiring
-   * lands; this method is the tested seam it will invoke.
+   * NOTE — this path is LIVE: `ShipmentDispatchNotificationService` reaches it from
+   * the shipment notify-dispatched endpoint (via `isOrderDispatchNotifier`). The
+   * endpoint/verb/status token are #992-PROVISIONAL, so confirm them against the
+   * sandbox before relying on Erli dispatch writeback in production.
    */
   async notifyDispatched(input: {
     externalOrderId: string;
@@ -284,28 +286,43 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
     }
 
     // 2. Register the external shipment ONLY when a waybill is present
-    //    (omit-on-absence, §5.4) via POST /shipping/external. Absent is the
-    //    natural Erli-managed case — nothing to register.
-    if (input.trackingNumber) {
-      const shipmentBody: ErliExternalShipmentBody = {
-        orderId: input.externalOrderId,
-        trackingNumber: input.trackingNumber,
-        ...(input.carrier?.platformType ? { vendor: input.carrier.platformType } : {}),
-      };
+    //    (omit-on-absence, §5.4) via POST /shipping/external. Erli requires a
+    //    `vendor` per entry, so we register only when the carrier hint also
+    //    carries a platformType (a real non-Erli shipment always does). Absent
+    //    tracking is the natural Erli-managed case — nothing to register.
+    const vendor = input.carrier?.platformType;
+    if (input.trackingNumber && vendor) {
+      // Body is an ARRAY of shipment entries (#992).
+      const shipmentBody: ErliExternalShipmentBody[] = [
+        { vendor, orderId: input.externalOrderId, trackingNumber: input.trackingNumber },
+      ];
       try {
         await this.httpClient.post(ERLI_EXTERNAL_SHIPPING_PATH, shipmentBody, { idempotent: true });
       } catch (error) {
-        throw this.toDispatchRejected(error, 'register external shipment on Erli order');
+        // A 409 here means the shipment is already registered — e.g. a retry after
+        // a partial success where the status PATCH landed but this POST's response
+        // was lost. Treat it as success so the job converges instead of failing
+        // permanently while the shipment is in fact registered (PR1082-TECH-03).
+        if (this.isAlreadyDispatchedOrStale(error)) {
+          this.logger.debug(
+            `Erli external shipment already registered / stale revision — treating as success (connection: ${this.connectionId})`,
+          );
+        } else {
+          throw this.toDispatchRejected(error, 'register external shipment on Erli order');
+        }
       }
     }
   }
 
-  /** Treat a 409 (already sent / stale optimistic-lock revision) as success. */
+  /**
+   * Treat a 409 as an idempotent success — the guarded step already happened
+   * (order already sent, or external shipment already registered) or hit a stale
+   * optimistic-lock revision. Keyed STRICTLY on the 409 status: an `/already/i`
+   * message match would also swallow genuine non-409 validation failures whose
+   * message happens to contain "already" (PR1082-TECH-02).
+   */
   private isAlreadyDispatchedOrStale(error: unknown): boolean {
-    return (
-      error instanceof ErliApiException &&
-      (error.statusCode === 409 || /already/i.test(error.message))
-    );
+    return error instanceof ErliApiException && error.statusCode === 409;
   }
 
   /**
