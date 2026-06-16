@@ -69,6 +69,9 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     try {
       // POST is non-idempotent by default in the client; the deterministic
       // seller-keyed id makes this an upsert, so opt into retry-safety (D3).
+      // `cmd.idempotencyKey` is intentionally not forwarded — the resource id
+      // (a POST to /products/{id} upserts) IS the dedup key, so a separate key
+      // would add nothing on this transport.
       await this.httpClient.post(this.productPath(externalOfferId), body, { idempotent: true });
     } catch (error) {
       if (error instanceof ErliApiException) {
@@ -187,7 +190,13 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
 }
 
 function toErliPrice(amount: number | string, currency: string): ErliMoney {
-  return { amount: typeof amount === 'string' ? Number(amount) : amount, currency };
+  const numeric = typeof amount === 'string' ? Number(amount) : amount;
+  // Fail closed rather than serialize NaN into the price body: a non-numeric
+  // string amount is a caller/config error, not a value Erli should ever see.
+  if (!Number.isFinite(numeric)) {
+    throw new ErliConfigException(`Erli price amount is not a finite number: ${String(amount)}`);
+  }
+  return { amount: numeric, currency };
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {
