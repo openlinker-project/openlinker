@@ -34,8 +34,14 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 export interface ErliRequestOptions {
-  /** Query params; `undefined` values are dropped. */
-  queryParams?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Query params; `undefined` values are dropped. An array value emits one
+   * repeated param per element (list filters); a scalar emits a single value.
+   */
+  queryParams?: Record<
+    string,
+    string | number | boolean | undefined | ReadonlyArray<string | number | boolean>
+  >;
   /** Extra request headers, merged over the client's defaults. */
   headers?: Record<string, string>;
   /** Per-request timeout override (ms); defaults to the client's 30 s. */

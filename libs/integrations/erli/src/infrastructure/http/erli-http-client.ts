@@ -300,7 +300,18 @@ export class ErliHttpClient implements IErliHttpClient {
     }
     if (queryParams) {
       for (const [key, value] of Object.entries(queryParams)) {
-        if (value !== undefined) {
+        if (value === undefined) {
+          continue;
+        }
+        // Arrays append one repeated param per element (e.g. the `status[]`-style
+        // list filters the #993 orders feed needs); scalars set a single value.
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item !== undefined) {
+              url.searchParams.append(key, String(item));
+            }
+          }
+        } else {
           url.searchParams.set(key, String(value));
         }
       }
