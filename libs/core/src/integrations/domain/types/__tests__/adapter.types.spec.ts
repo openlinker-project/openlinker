@@ -27,6 +27,8 @@ describe('adapter.types', () => {
         // Shop-listing (#1041, ADR-024)
         'ProductPublisher',
         'CategoryProvisioner',
+        // Invoicing (#751, ADR-026)
+        'Invoicing',
       ]);
     });
   });

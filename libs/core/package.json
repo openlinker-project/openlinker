@@ -143,6 +143,16 @@
       "types": "./dist/shipping/index.d.ts",
       "require": "./dist/shipping/index.js",
       "default": "./dist/shipping/index.js"
+    },
+    "./invoicing": {
+      "types": "./dist/invoicing/index.d.ts",
+      "require": "./dist/invoicing/index.js",
+      "default": "./dist/invoicing/index.js"
+    },
+    "./invoicing/orm-entities": {
+      "types": "./dist/invoicing/orm-entities.d.ts",
+      "require": "./dist/invoicing/orm-entities.js",
+      "default": "./dist/invoicing/orm-entities.js"
     }
   },
   "files": [
