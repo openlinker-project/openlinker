@@ -6,10 +6,14 @@
  * a `(bulkBatchId, offerCreationRecordId)` row already exists, in one
  * round-trip, without a transaction.
  *
- * `result.identifiers.length` is the boundary signal: if the insert landed,
- * TypeORM returns the inserted PK; if it was a no-op (row existed),
- * `identifiers` is empty. Both paths return successfully — no exception
- * leaks for the contention case.
+ * The **RETURNING rows** (`result.raw`) are the boundary signal: Postgres
+ * `INSERT … ON CONFLICT DO NOTHING RETURNING …` yields the inserted row on a
+ * fresh insert and **0 rows on conflict**, so `result.raw.length > 0` ⇔ the row
+ * was newly created. (`result.identifiers` is NOT usable here — TypeORM echoes
+ * the *input* PK for a non-generated composite `@PrimaryColumn`, so it is always
+ * non-empty regardless of the conflict outcome; #1084.) Mirrors the proven
+ * `webhook-delivery.repository.ts:insertIfNew` gate (#711). Both paths return
+ * successfully — no exception leaks for the contention case.
  *
  * @module libs/core/src/listings/infrastructure/persistence/repositories
  * @implements {BulkBatchAdvancementRepositoryPort}
@@ -38,7 +42,11 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
       .values({ bulkBatchId, offerCreationRecordId })
       .orIgnore()
       .execute();
-    return { created: result.identifiers.length > 0 };
+    // RETURNING rows, not `identifiers` (#1084): empty ⇒ ON CONFLICT skipped the
+    // insert (row already existed) ⇒ not newly created. `Array.isArray` guards
+    // the (here-unreachable) empty-valueSet path where TypeORM leaves `raw`
+    // undefined, matching the webhook-delivery gate's defensiveness.
+    return { created: Array.isArray(result.raw) && result.raw.length > 0 };
   }
 
   async deleteForRecord(
