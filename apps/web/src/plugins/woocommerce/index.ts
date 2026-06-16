@@ -7,6 +7,7 @@
  *
  * @module plugins/woocommerce
  */
+import { WoocommercePublishWizard } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { WoocommerceCredentialsPanel } from './components/woocommerce-credentials-panel';
@@ -18,6 +19,13 @@ export const woocommercePlugin: OpenLinkerPlugin = definePlugin({
   platformType: 'woocommerce',
   build: {
     routes: [woocommerceSetupRoute],
+    // Capability-shaped shop publishing (#1044): the listings page resolves
+    // this contribution via `useShopPublishWizard('woocommerce')` and renders
+    // the wizard inside the launcher's Dialog.
+    shopProductPublishWizard: {
+      platformType: 'woocommerce',
+      component: WoocommercePublishWizard,
+    },
   },
   platform: {
     displayName: 'WooCommerce',

@@ -10,25 +10,15 @@ export const OFFER_MAPPING_SYNC_SERVICE_TOKEN = Symbol('OfferMappingSyncService'
 export const OFFER_MAPPINGS_SERVICE_TOKEN = Symbol('IOfferMappingsService');
 export const OFFER_MAPPING_REPOSITORY_TOKEN = Symbol('OfferMappingRepositoryPort');
 export const OFFER_CREATION_RECORD_REPOSITORY_TOKEN = Symbol('OfferCreationRecordRepositoryPort');
-export const BULK_LISTING_BATCH_REPOSITORY_TOKEN = Symbol(
-  'BulkListingBatchRepositoryPort',
-);
-export const BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN = Symbol(
-  'BulkBatchAdvancementRepositoryPort',
-);
-export const BULK_LISTING_PROGRESS_SERVICE_TOKEN = Symbol(
-  'IBulkListingProgressService',
-);
+export const BULK_LISTING_BATCH_REPOSITORY_TOKEN = Symbol('BulkListingBatchRepositoryPort');
+export const BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN = Symbol('BulkBatchAdvancementRepositoryPort');
+export const BULK_LISTING_PROGRESS_SERVICE_TOKEN = Symbol('IBulkListingProgressService');
 export const CATEGORY_RESOLUTION_SERVICE_TOKEN = Symbol('ICategoryResolutionService');
 export const OFFER_BUILDER_SERVICE_TOKEN = Symbol('IOfferBuilderService');
 export const OFFER_CREATION_EXECUTION_SERVICE_TOKEN = Symbol('IOfferCreationExecutionService');
 export const OFFER_CREATION_ENQUEUE_SERVICE_TOKEN = Symbol('IOfferCreationEnqueueService');
-export const BULK_LISTING_SUBMIT_SERVICE_TOKEN = Symbol(
-  'IBulkListingSubmitService',
-);
-export const BULK_LISTING_RETRY_SERVICE_TOKEN = Symbol(
-  'IBulkListingRetryService',
-);
+export const BULK_LISTING_SUBMIT_SERVICE_TOKEN = Symbol('IBulkListingSubmitService');
+export const BULK_LISTING_RETRY_SERVICE_TOKEN = Symbol('IBulkListingRetryService');
 export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService');
 export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
@@ -36,7 +26,11 @@ export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
 // Shop publish (#1042, ADR-024)
 export const LISTING_CREATION_RECORD_REPOSITORY_TOKEN = Symbol(
-  'ListingCreationRecordRepositoryPort'
+  'ListingCreationRecordRepositoryPort',
 );
 export const PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN = Symbol('IProductPublishBuilderService');
 export const PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN = Symbol('IProductPublishExecutionService');
+// Shop publish API + bulk surfaces (#1044)
+export const PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN = Symbol('IProductPublishEnqueueService');
+export const LISTING_CREATION_QUERY_SERVICE_TOKEN = Symbol('IListingCreationQueryService');
+export const BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN = Symbol('IBulkShopPublishSubmitService');

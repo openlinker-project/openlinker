@@ -20,6 +20,8 @@ export type {
   NavContribution,
   OfferCreationWizardContribution,
   OfferCreationWizardProps,
+  ShopProductPublishWizardContribution,
+  ShopProductPublishWizardProps,
   PluginApiNamespacesFactory,
 } from './plugin.types';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';

@@ -78,9 +78,7 @@ export interface NavContribution {
  * }
  * ```
  */
-export type PluginApiNamespacesFactory = (
-  request: ApiRequest,
-) => Partial<PluginApiNamespaces>;
+export type PluginApiNamespacesFactory = (request: ApiRequest) => Partial<PluginApiNamespaces>;
 
 /**
  * Props every per-platform offer-creation wizard receives. The launcher
@@ -117,6 +115,43 @@ export interface OfferCreationWizardContribution {
 }
 
 /**
+ * Props every per-platform shop-publish wizard receives (#1044). Mirrors
+ * `OfferCreationWizardProps` — the launcher
+ * (`features/listings/components/ShopPublishLauncher.tsx`) resolves the shop
+ * connection up front and owns the surrounding Dialog chrome, so each
+ * contributed wizard is **content-only**, knows its platform via
+ * `connection.platformType`, and never renders its own Dialog or connection
+ * picker.
+ *
+ * `defaultVariantId` carries the single-publish target; `defaultVariantIds`
+ * (>1) drives bulk mode. `onSubmitted` reports either a single
+ * `recordId` (single submit) or a `batchId` (bulk submit) so the launcher
+ * can swap to the matching tracker.
+ */
+export interface ShopProductPublishWizardProps {
+  connection: Connection;
+  defaultVariantId?: string;
+  defaultVariantIds?: string[];
+  /** Fired by the wizard's Cancel/Close affordance — the launcher uses
+   *  this to close the surrounding Dialog. */
+  onCancel: () => void;
+  onSubmitted: (result: { recordId?: string; batchId?: string }, connectionId: string) => void;
+}
+
+/**
+ * Plugin contribution for capability-shaped shop publishing (#1044).
+ *
+ * `component` is a pre-bound React component, not a render fn — same shape
+ * as `OfferCreationWizardContribution`, keeping the contribution a pure
+ * value at module load.
+ */
+export interface ShopProductPublishWizardContribution {
+  /** Connection `platformType` this wizard handles, e.g. 'woocommerce'. */
+  platformType: string;
+  component: ComponentType<ShopProductPublishWizardProps>;
+}
+
+/**
  * Setup-card metadata rendered on the connection-type picker
  * (`PlatformPicker`). Omit on plugins that don't expose a guided wizard
  * (advanced-mode-only platforms).
@@ -139,11 +174,7 @@ export interface StructuredConfigSectionProps {
   connection: Connection;
   form: UseFormReturn<EditConnectionFormValues>;
   configIsParseable: boolean;
-  syncStructuredToJson: (
-    field: string,
-    value: string,
-    options?: { markDirty?: boolean },
-  ) => void;
+  syncStructuredToJson: (field: string, value: string, options?: { markDirty?: boolean }) => void;
 }
 
 /**
@@ -172,6 +203,9 @@ export interface BuildContribution {
   /** Per-platform offer-creation wizard registered against the
    *  `OfferCreationLauncher` dispatch site (#608). */
   offerCreationWizard?: OfferCreationWizardContribution;
+  /** Per-platform shop-publish wizard registered against the
+   *  `ShopPublishLauncher` dispatch site (#1044). */
+  shopProductPublishWizard?: ShopProductPublishWizardContribution;
 }
 
 /**

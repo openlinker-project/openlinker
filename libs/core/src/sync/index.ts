@@ -14,7 +14,11 @@ export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
 export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
 export { RetryClassifierPort } from './domain/ports/retry-classifier.port';
 export { AuthFailureClassifierPort } from './domain/ports/auth-failure-classifier.port';
-export { SyncJobQueuePort, EnqueueJobRequest, EnqueueJobOptions } from './application/ports/sync-job-queue.port';
+export {
+  SyncJobQueuePort,
+  EnqueueJobRequest,
+  EnqueueJobOptions,
+} from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 
 // Domain Entities
@@ -80,7 +84,11 @@ export {
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
 } from './domain/types/master-job-payloads.types';
-export { ShopProductPublishPayloadV1 } from './domain/types/shop-job-payloads.types';
+export {
+  ShopProductPublishPayloadV1,
+  ShopProductPublishPayloadV2,
+  ShopProductPublishPayload,
+} from './domain/types/shop-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
@@ -117,6 +125,3 @@ export * from './sync.tokens';
 // sub-path (#594). Plugins must not import them from here.
 // `ConnectionCursorOrmEntity` has no external consumer and is intentionally not
 // promoted to the sub-barrel — add it if/when a test fixture needs it.
-
-
-

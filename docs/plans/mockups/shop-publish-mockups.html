@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1044 — Publish to shop · FE mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   OpenLinker cockpit tokens (light) — copied from index.css :root
+   per docs/frontend-ui-style-guide.md. Mockup only — the app
+   self-hosts IBM Plex + owns these tokens.
+   ============================================================ */
+:root {
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-neutral-soft: oklch(95% 0.005 80);
+  --status-neutral-border: oklch(85% 0.008 80);
+  --status-neutral-fg: oklch(38% 0.010 80);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+  --shadow-sm: 0 1px 2px oklch(20% 0.01 80 / 0.06);
+  --shadow-md: 0 4px 14px oklch(20% 0.01 80 / 0.08);
+  --shadow-lg: 0 12px 40px oklch(20% 0.01 80 / 0.14);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---- mockup scaffold (not part of the app) ---- */
+.sheet { max-width: 1180px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); }
+.sheet__title { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 var(--space-1); }
+.sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-6); max-width: 70ch; }
+.spec-eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted);
+  margin: var(--space-7) 0 var(--space-3); display: flex; align-items: center; gap: var(--space-3);
+}
+.spec-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.note { font-size: 12px; color: var(--text-muted); margin: var(--space-2) 0 0; }
+.stage {
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  display: flex; gap: var(--space-5); flex-wrap: wrap; align-items: flex-start;
+}
+.stage--center { justify-content: center; }
+
+/* ============================================================
+   Primitives (mirror apps/web/src/index.css names)
+   ============================================================ */
+.button {
+  font: inherit; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-md); border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  height: 32px; padding: 0 var(--space-3); white-space: nowrap;
+}
+.button--sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.button--primary { background: var(--accent-primary); color: var(--text-on-primary); font-weight: 600; }
+.button--primary:hover { background: var(--accent-primary-hover); }
+.button--secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-default); }
+.button--secondary:hover { background: var(--bg-surface-muted); }
+.button--ghost { background: transparent; color: var(--text-secondary); }
+.button--ghost:hover { background: var(--bg-surface-muted); }
+.button:disabled { opacity: .5; cursor: not-allowed; }
+.button__icon { width: 14px; height: 14px; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid transparent;
+}
+.status-badge__dot { width: 6px; height: 6px; border-radius: var(--radius-pill); background: currentColor; }
+.status-badge--success { background: var(--status-success-soft); color: var(--status-success-fg); border-color: var(--status-success-border); }
+.status-badge--error   { background: var(--status-error-soft);   color: var(--status-error-fg);   border-color: var(--status-error-border); }
+.status-badge--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); border-color: var(--status-warning-border); }
+.status-badge--info    { background: var(--status-info-soft);    color: var(--status-info-fg);    border-color: var(--status-info-border); }
+.status-badge--neutral { background: var(--status-neutral-soft); color: var(--status-neutral-fg); border-color: var(--status-neutral-border); }
+.status-badge--pulse .status-badge__dot { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+/* page header (listings) */
+.pageheader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); width: 100%; }
+.pageheader__eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted); }
+.pageheader__title { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 2px 0 3px; }
+.pageheader__desc { font-size: 13px; color: var(--text-secondary); margin: 0; }
+.pageheader__actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
+
+/* dialog */
+.dialog { width: 460px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); overflow: hidden; }
+.dialog--wide { width: 520px; }
+.dialog__header { padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.dialog__title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.dialog__subtitle { font-size: 12.5px; color: var(--text-secondary); margin: 3px 0 0; }
+.dialog__body { padding: var(--space-5); }
+.dialog__footer { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); }
+.dialog__footer-spacer { flex: 1; }
+
+/* connection picker rows */
+.conn-pick { display: flex; flex-direction: column; gap: var(--space-2); }
+.conn-pick__row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px var(--space-3); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); cursor: pointer; background: var(--bg-surface);
+}
+.conn-pick__row:hover { background: var(--bg-surface-muted); }
+.conn-pick__row--active { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); box-shadow: 0 0 0 3px var(--accent-ring); }
+.conn-pick__logo { width: 28px; height: 28px; border-radius: var(--radius-md); background: oklch(64% 0.13 300 / .14); color: oklch(46% 0.16 300); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.conn-pick__name { font-weight: 500; font-size: 13.5px; }
+.conn-pick__meta { font-size: 11px; color: var(--text-muted); }
+.conn-pick__check { margin-left: auto; color: var(--accent-primary); font-weight: 700; }
+
+/* empty / unsupported state */
+.empty-state { text-align: center; padding: var(--space-6) var(--space-4); }
+.empty-state__glyph { width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--bg-surface-muted); display: inline-grid; place-items: center; margin-bottom: var(--space-3); color: var(--text-muted); }
+.empty-state__title { font-weight: 600; font-size: 14px; margin: 0 0 var(--space-1); }
+.empty-state__body { color: var(--text-secondary); font-size: 12.5px; margin: 0 auto var(--space-4); max-width: 38ch; }
+
+/* alert */
+.alert { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: 1px solid; font-size: 12.5px; border-left-width: 3px; }
+.alert--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.alert--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.alert--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.alert__title { font-weight: 600; margin: 0 0 2px; }
+
+/* wizard card (content-only; dialog owns chrome) */
+.wizard-card { display: flex; flex-direction: column; gap: var(--space-4); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field__label { font-size: 12px; font-weight: 500; color: var(--text-secondary); display: flex; justify-content: space-between; }
+.field__hint { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+.input { height: 32px; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 10px; font: inherit; font-size: 13px; background: var(--bg-surface); color: var(--text-primary); width: 100%; }
+.input:focus-visible { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-ring); }
+.input--mono { font-family: 'IBM Plex Mono', monospace; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.input-affix { display: flex; align-items: center; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-surface); }
+.input-affix__pre { padding: 0 10px; color: var(--text-muted); font-size: 12px; background: var(--bg-surface-muted); align-self: stretch; display: flex; align-items: center; border-right: 1px solid var(--border-subtle); }
+.input-affix .input { border: 0; box-shadow: none; }
+
+/* segmented status toggle */
+.segmented { display: inline-flex; padding: 3px; gap: 3px; background: var(--bg-surface-muted); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.segmented__opt { border: 0; background: transparent; font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.segmented__opt--active { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); font-weight: 600; }
+.dot { width: 7px; height: 7px; border-radius: var(--radius-pill); display: inline-block; }
+.dot--draft { background: var(--text-muted); } .dot--pub { background: var(--status-success); }
+
+/* variant pick / chips */
+.variant-line { display: flex; align-items: center; gap: var(--space-3); padding: 8px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface-muted); }
+.thumb { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--bg-surface-hover); display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; color: var(--text-muted); font-weight: 600; flex-shrink: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-pill); background: var(--bg-surface); font-size: 12px; }
+.chip__x { width: 15px; height: 15px; border-radius: 50%; background: var(--bg-surface-muted); display: grid; place-items: center; color: var(--text-muted); font-size: 11px; cursor: pointer; }
+.chip__x:hover { background: var(--status-error-soft); color: var(--status-error-fg); }
+
+/* review summary key-value */
+.kv { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+.kv__row { display: grid; grid-template-columns: 120px 1fr; gap: var(--space-3); padding: 8px var(--space-3); border-bottom: 1px solid var(--border-subtle); font-size: 12.5px; }
+.kv__row:last-child { border-bottom: 0; }
+.kv__k { color: var(--text-muted); }
+.kv__v { color: var(--text-primary); }
+
+/* stepper (single tracker) */
+.stepper__list { display: flex; flex-direction: column; gap: 0; }
+.stepper__step { display: grid; grid-template-columns: 22px 1fr; gap: var(--space-3); position: relative; }
+.stepper__dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--bg-surface); margin: 3px auto 0; z-index: 1; }
+.stepper__connector { position: absolute; left: 10px; top: 18px; bottom: -10px; width: 2px; background: var(--border-subtle); }
+.stepper__step:last-child .stepper__connector { display: none; }
+.stepper__step--done .stepper__dot { background: var(--accent-primary); border-color: var(--accent-primary); }
+.stepper__step--done .stepper__connector { background: var(--accent-primary); }
+.stepper__step--current .stepper__dot { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-ring); }
+.stepper__step--failed .stepper__dot { background: var(--status-error); border-color: var(--status-error); }
+.stepper__body { padding-bottom: var(--space-4); }
+.stepper__label { font-weight: 600; font-size: 13px; }
+.stepper__time { font-size: 11px; color: var(--text-muted); }
+
+/* bulk batch progress */
+.batch { display: flex; flex-direction: column; gap: var(--space-4); }
+.batch__top { display: flex; align-items: center; justify-content: space-between; }
+.batch__count { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-family: 'IBM Plex Mono', monospace; }
+.progress { height: 8px; border-radius: var(--radius-pill); background: var(--bg-surface-muted); overflow: hidden; display: flex; }
+.progress__ok { background: var(--status-success); }
+.progress__fail { background: var(--status-error); }
+.batch__legend { display: flex; gap: var(--space-4); font-size: 12px; }
+.batch__legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.batch__rows { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+.batch__row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-3); padding: 7px var(--space-3); border-bottom: 1px solid var(--border-subtle); font-size: 12.5px; }
+.batch__row:last-child { border-bottom: 0; }
+.batch__row .mono { color: var(--text-secondary); font-size: 12px; }
+
+.callout { font-size: 12px; color: var(--text-muted); background: var(--bg-surface-muted); border: 1px dashed var(--border-default); border-radius: var(--radius-md); padding: var(--space-3); }
+.label-cap { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <p class="label-cap">Issue #1044 · ADR-024 · OpenLinker cockpit</p>
+  <h1 class="sheet__title">Publish to shop — FE mockups</h1>
+  <p class="sheet__sub">Static mockups using OpenLinker's real OKLCH tokens, IBM Plex pairing, and primitive class names (<span class="mono">wizard-card</span>, <span class="mono">stepper__*</span>, <span class="mono">tracker--*</span>, <span class="mono">status-badge--*</span>). Restrained cockpit per the style guide — not a new aesthetic. Categories &amp; parameters are server-resolved by the #1042 builder, so the wizard is deliberately light.</p>
+
+  <!-- 1. CTA on listings page -->
+  <p class="spec-eyebrow">1 · "Publish to shop" CTA — listings page header</p>
+  <div class="stage">
+    <div class="pageheader">
+      <div>
+        <div class="pageheader__eyebrow">Listings</div>
+        <div class="pageheader__title">Listings</div>
+        <p class="pageheader__desc">Marketplace offers and shop products across your connections.</p>
+      </div>
+      <div class="pageheader__actions">
+        <button class="button button--secondary">Create offer</button>
+        <button class="button button--primary">
+          <svg class="button__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8M8 2 5 5M8 2l3 3M3 11v2a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2"/></svg>
+          Publish to shop
+        </button>
+      </div>
+    </div>
+  </div>
+  <p class="note">The primary signal-orange CTA renders <em>only</em> when ≥1 connection has <span class="mono">enabledCapabilities.includes('ProductPublisher')</span>. With no eligible connection the button is omitted entirely (no disabled stub) — "Create offer" stays as the marketplace path.</p>
+
+  <!-- 2. Launcher -->
+  <p class="spec-eyebrow">2 · ShopPublishLauncher — connection picker + empty / unsupported states</p>
+  <div class="stage">
+    <!-- picker -->
+    <div class="dialog">
+      <div class="dialog__header">
+        <h2 class="dialog__title">Publish to shop</h2>
+        <p class="dialog__subtitle">Choose the shop connection to publish onto.</p>
+      </div>
+      <div class="dialog__body">
+        <div class="conn-pick">
+          <div class="conn-pick__row conn-pick__row--active">
+            <span class="conn-pick__logo">W</span>
+            <div>
+              <div class="conn-pick__name">Main WooCommerce store</div>
+              <div class="conn-pick__meta mono">woocommerce.restapi.v3 · ProductPublisher · CategoryProvisioner</div>
+            </div>
+            <span class="conn-pick__check">✓</span>
+          </div>
+          <div class="conn-pick__row">
+            <span class="conn-pick__logo">W</span>
+            <div>
+              <div class="conn-pick__name">EU outlet (WooCommerce)</div>
+              <div class="conn-pick__meta mono">woocommerce.restapi.v3 · ProductPublisher</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="button button--ghost">Cancel</button>
+        <div class="dialog__footer-spacer"></div>
+        <button class="button button--primary">Continue</button>
+      </div>
+    </div>
+
+    <!-- empty + unsupported stacked -->
+    <div style="display:flex;flex-direction:column;gap:var(--space-5);">
+      <div class="dialog">
+        <div class="dialog__header"><h2 class="dialog__title">Publish to shop</h2></div>
+        <div class="dialog__body">
+          <div class="empty-state">
+            <span class="empty-state__glyph">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="4" width="11" height="9" rx="1.5"/><path d="M2.5 6.5h11"/></svg>
+            </span>
+            <p class="empty-state__title">No shop connection yet</p>
+            <p class="empty-state__body">Connect a WooCommerce store and enable the <span class="mono">ProductPublisher</span> capability to publish products from OpenLinker.</p>
+            <button class="button button--secondary button--sm">Go to Integrations →</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog">
+        <div class="dialog__header"><h2 class="dialog__title">Publish to shop</h2></div>
+        <div class="dialog__body">
+          <div class="alert alert--warning">
+            <div>
+              <p class="alert__title">No publish wizard for this platform</p>
+              The selected connection's platform doesn't ship a publish wizard yet. Shop publishing is available for WooCommerce today.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Launcher owns the Dialog chrome + connection resolution (same split as <span class="mono">OfferCreationLauncher</span>). The wizard component it renders is resolved by platform via <span class="mono">useShopPublishWizard(platformType)</span>; an unresolved platform shows the warning state.</p>
+
+  <!-- 3. Wizard single -->
+  <p class="spec-eyebrow">3a · WoocommercePublishWizard — single mode</p>
+  <div class="stage">
+    <div class="dialog dialog--wide">
+      <div class="dialog__header">
+        <h2 class="dialog__title">Publish to Main WooCommerce store</h2>
+        <p class="dialog__subtitle mono">woocommerce.restapi.v3</p>
+      </div>
+      <div class="dialog__body">
+        <div class="wizard-card">
+          <div class="field">
+            <span class="field__label">Variant</span>
+            <div class="variant-line">
+              <span class="thumb">AC</span>
+              <div>
+                <div style="font-weight:500;">Acme Runner — Red / 42</div>
+                <div class="mono" style="font-size:11px;color:var(--text-muted);">ol_variant_e4b98e91340a44edb4892905db8810b1 · EAN 5901234123457</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="field__label">Visibility</span>
+            <div class="segmented">
+              <button class="segmented__opt"><span class="dot dot--draft"></span>Draft</button>
+              <button class="segmented__opt segmented__opt--active"><span class="dot dot--pub"></span>Published</button>
+            </div>
+            <span class="field__hint">Draft creates the product hidden; Published lists it live on the storefront.</span>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <span class="field__label">Stock</span>
+              <input class="input input--mono" value="7" />
+            </div>
+            <div class="field">
+              <span class="field__label">Price override <span class="field__hint">optional</span></span>
+              <div class="input-affix">
+                <span class="input-affix__pre mono">PLN</span>
+                <input class="input input--mono" placeholder="from master (199.00)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            Category placement, attributes &amp; images are resolved from the master product at publish time — nothing to pick here. Provisioned to the mirrored WooCommerce category tree.
+          </div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="button button--ghost">Cancel</button>
+        <div class="dialog__footer-spacer"></div>
+        <button class="button button--secondary">Review</button>
+        <button class="button button--primary">Publish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 review -->
+  <p class="spec-eyebrow">3b · Single mode — review / confirm affordance</p>
+  <div class="stage">
+    <div class="dialog dialog--wide">
+      <div class="dialog__header">
+        <button class="button button--ghost button--sm wizard-card__back" style="padding-left:0;">← Back</button>
+        <h2 class="dialog__title" style="margin-top:4px;">Review &amp; publish</h2>
+      </div>
+      <div class="dialog__body">
+        <div class="kv">
+          <div class="kv__row"><span class="kv__k">Shop</span><span class="kv__v">Main WooCommerce store</span></div>
+          <div class="kv__row"><span class="kv__k">Variant</span><span class="kv__v mono">ol_variant_e4b98e91…810b1</span></div>
+          <div class="kv__row"><span class="kv__k">Visibility</span><span class="kv__v"><span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Published</span></span></div>
+          <div class="kv__row"><span class="kv__k">Stock</span><span class="kv__v mono">7</span></div>
+          <div class="kv__row"><span class="kv__k">Price</span><span class="kv__v mono">199.00 PLN <span style="color:var(--text-muted);">(from master)</span></span></div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="button button--ghost">Cancel</button>
+        <div class="dialog__footer-spacer"></div>
+        <button class="button button--primary">Confirm &amp; publish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 bulk -->
+  <p class="spec-eyebrow">3c · WoocommercePublishWizard — bulk mode</p>
+  <div class="stage">
+    <div class="dialog dialog--wide">
+      <div class="dialog__header">
+        <h2 class="dialog__title">Publish 4 products to Main WooCommerce store</h2>
+        <p class="dialog__subtitle">Shared settings apply to every selected variant.</p>
+      </div>
+      <div class="dialog__body">
+        <div class="wizard-card">
+          <div class="field">
+            <span class="field__label">Variants <span class="field__hint">4 selected</span></span>
+            <div class="chips">
+              <span class="chip">Acme Runner — Red / 42 <span class="chip__x">×</span></span>
+              <span class="chip">Acme Runner — Red / 43 <span class="chip__x">×</span></span>
+              <span class="chip">Acme Runner — Blue / 42 <span class="chip__x">×</span></span>
+              <span class="chip">Trail Pro — Black / 41 <span class="chip__x">×</span></span>
+              <span class="chip" style="border-style:dashed;color:var(--text-link);cursor:pointer;">+ Add variant</span>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field__label">Visibility <span class="field__hint">applies to all</span></span>
+            <div class="segmented">
+              <button class="segmented__opt segmented__opt--active"><span class="dot dot--draft"></span>Draft</button>
+              <button class="segmented__opt"><span class="dot dot--pub"></span>Published</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <span class="field__label">Stock <span class="field__hint">per master if blank</span></span>
+              <input class="input input--mono" placeholder="from master" />
+            </div>
+            <div class="field">
+              <span class="field__label">Price override <span class="field__hint">optional</span></span>
+              <div class="input-affix"><span class="input-affix__pre mono">PLN</span><input class="input input--mono" placeholder="from master" /></div>
+            </div>
+          </div>
+          <div class="alert alert--info">
+            <div>Each variant publishes as its own simple WooCommerce product. Out-of-stock variants list with their master stock (0 is honored).</div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="button button--ghost">Cancel</button>
+        <div class="dialog__footer-spacer"></div>
+        <button class="button button--primary">Publish 4 products</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 trackers -->
+  <p class="spec-eyebrow">4a · ShopPublishTracker — single (in-progress, success, failed)</p>
+  <div class="stage">
+    <!-- in progress -->
+    <div class="dialog" style="width:340px;">
+      <div class="dialog__header" style="display:flex;align-items:center;justify-content:space-between;">
+        <h2 class="dialog__title">Publishing…</h2>
+        <span class="status-badge status-badge--info status-badge--pulse"><span class="status-badge__dot"></span>Publishing</span>
+      </div>
+      <div class="dialog__body">
+        <div class="stepper__list">
+          <div class="stepper__step stepper__step--done"><span class="stepper__connector"></span><span class="stepper__dot"></span><div class="stepper__body"><div class="stepper__label">Queued</div><div class="stepper__time mono">11:47:20</div></div></div>
+          <div class="stepper__step stepper__step--current"><span class="stepper__connector"></span><span class="stepper__dot"></span><div class="stepper__body"><div class="stepper__label">Publishing to WooCommerce</div><div class="stepper__time mono">11:47:22 · job ol_job_4c1d…</div></div></div>
+          <div class="stepper__step"><span class="stepper__dot"></span><div class="stepper__body"><div class="stepper__label" style="color:var(--text-muted);">Live on storefront</div></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- success -->
+    <div class="dialog" style="width:340px;">
+      <div class="dialog__header" style="display:flex;align-items:center;justify-content:space-between;">
+        <h2 class="dialog__title">Published</h2>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Published</span>
+      </div>
+      <div class="dialog__body">
+        <div class="kv">
+          <div class="kv__row"><span class="kv__k">Product</span><span class="kv__v mono">wc-100 ↗</span></div>
+          <div class="kv__row"><span class="kv__k">Status</span><span class="kv__v">Live on storefront</span></div>
+        </div>
+        <div style="display:flex;gap:var(--space-2);margin-top:var(--space-4);">
+          <button class="button button--secondary button--sm">View on shop ↗</button>
+          <button class="button button--ghost button--sm">Done</button>
+        </div>
+      </div>
+    </div>
+    <!-- failed -->
+    <div class="dialog" style="width:360px;">
+      <div class="dialog__header" style="display:flex;align-items:center;justify-content:space-between;">
+        <h2 class="dialog__title">Publish failed</h2>
+        <span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Failed</span>
+      </div>
+      <div class="dialog__body">
+        <div class="alert alert--error">
+          <div>
+            <p class="alert__title mono" style="font-size:11px;">product_invalid_price</p>
+            Regular price must be a positive number. No product was created on the shop.
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--space-2);margin-top:var(--space-4);">
+          <button class="button button--primary button--sm">Edit &amp; retry</button>
+          <button class="button button--ghost button--sm">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="spec-eyebrow">4b · ShopPublishTracker — bulk batch (partially-failed)</p>
+  <div class="stage">
+    <div class="dialog dialog--wide">
+      <div class="dialog__header" style="display:flex;align-items:center;justify-content:space-between;">
+        <div><h2 class="dialog__title">Bulk publish</h2><p class="dialog__subtitle mono">batch ol_batch_77a2…e0 · Main WooCommerce store</p></div>
+        <span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Partially failed</span>
+      </div>
+      <div class="dialog__body">
+        <div class="batch">
+          <div class="batch__top">
+            <div class="batch__count">23 / 24</div>
+            <div class="batch__legend">
+              <span><span class="dot" style="background:var(--status-success)"></span>21 published</span>
+              <span><span class="dot" style="background:var(--status-error)"></span>2 failed</span>
+              <span><span class="dot" style="background:var(--text-disabled)"></span>1 running</span>
+            </div>
+          </div>
+          <div class="progress">
+            <div class="progress__ok" style="width:87.5%"></div>
+            <div class="progress__fail" style="width:8.3%"></div>
+          </div>
+          <div class="batch__rows">
+            <div class="batch__row"><span>Acme Runner — Red / 42 <span class="mono">→ wc-100</span></span><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Published</span></div>
+            <div class="batch__row"><span>Acme Runner — Blue / 42 <span class="mono">→ wc-118</span></span><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Published</span></div>
+            <div class="batch__row"><span>Trail Pro — Black / 41 <span class="mono">price_invalid</span></span><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot"></span>Failed</span></div>
+            <div class="batch__row"><span>Trail Pro — Black / 42 <span class="mono">publishing…</span></span><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot"></span>Running</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="button button--ghost">Close</button>
+        <div class="dialog__footer-spacer"></div>
+        <span class="note" style="margin:0;">Batch retry of failed children is a follow-up (#1042 record carries no request snapshot).</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:var(--space-6);">All eight surfaces reuse existing primitives (<span class="mono">Dialog</span>, <span class="mono">Button</span>, <span class="mono">StatusBadge</span>, <span class="mono">FormField</span>, <span class="mono">EmptyState</span>, <span class="mono">Alert</span>, stepper, tracker) + tokens only — no new visual system. Implementation maps the wizard form to RHF + Zod and the trackers to the existing record/batch polling queries.</p>
+</div>
+</body>
+</html>

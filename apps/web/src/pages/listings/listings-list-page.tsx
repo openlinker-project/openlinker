@@ -12,6 +12,11 @@ import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferCreationLauncher } from '../../features/listings/components/OfferCreationLauncher';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
+import {
+  ShopPublishLauncher,
+  selectShopPublishConnections,
+} from '../../features/listings/components/ShopPublishLauncher';
+import { useConnectionsQuery } from '../../features/connections';
 import type {
   CreateOfferRequest,
   ListingsFilters,
@@ -26,7 +31,11 @@ const COLUMNS: DataTableColumn<OfferMapping>[] = [
   {
     id: 'externalId',
     header: 'External ID',
-    cell: (m): ReactNode => <span className="mono-text" title={m.externalId}>{m.externalId}</span>,
+    cell: (m): ReactNode => (
+      <span className="mono-text" title={m.externalId}>
+        {m.externalId}
+      </span>
+    ),
   },
   {
     id: 'internalId',
@@ -139,7 +148,12 @@ export function ListingsListPage(): ReactElement {
   const trackedConnectionId = searchParams.get('trackedConnectionId') ?? '';
   const hasTracker = Boolean(trackedRecordId && trackedConnectionId);
 
+  const connectionsQuery = useConnectionsQuery();
+  const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
+  const canPublishToShop = shopPublishConnections.length > 0;
+
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
   // Retry-path hints passed to the wizard when the operator clicks Retry
   // on a failed OfferCreationTracker. These mirror the record's snapshot
   // so the wizard can pre-fill on open and land directly on Step 2.
@@ -189,7 +203,16 @@ export function ListingsListPage(): ReactElement {
       eyebrow="Operations"
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
-      actions={<Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>}
+      actions={
+        <>
+          <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
+          {canPublishToShop ? (
+            <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
+              Publish to shop
+            </Button>
+          ) : null}
+        </>
+      }
     >
       {hasTracker ? (
         <OfferCreationTracker
@@ -205,19 +228,25 @@ export function ListingsListPage(): ReactElement {
           aria-label="Search by external ID"
           placeholder="External ID…"
           value={searchInput}
-          onChange={(e) => { handleFilterChange('search', e.target.value); }}
+          onChange={(e) => {
+            handleFilterChange('search', e.target.value);
+          }}
         />
         <Input
           aria-label="Filter by connection ID"
           placeholder="Connection ID…"
           value={connectionIdInput}
-          onChange={(e) => { handleFilterChange('connectionId', e.target.value); }}
+          onChange={(e) => {
+            handleFilterChange('connectionId', e.target.value);
+          }}
         />
         <Input
           aria-label="Filter by platform type"
           placeholder="Platform type…"
           value={platformTypeInput}
-          onChange={(e) => { handleFilterChange('platformType', e.target.value); }}
+          onChange={(e) => {
+            handleFilterChange('platformType', e.target.value);
+          }}
         />
       </div>
 
@@ -228,7 +257,13 @@ export function ListingsListPage(): ReactElement {
           title="Unable to load listings"
           message={query.error.message}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              Retry
+            </Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
@@ -272,10 +307,20 @@ export function ListingsListPage(): ReactElement {
               Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
             <div className="pagination__actions">
-              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
+              <Button
+                disabled={!hasPrev}
+                onClick={() => {
+                  setOffset(offset - PAGE_SIZE);
+                }}
+              >
                 Previous
               </Button>
-              <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
+              <Button
+                disabled={!hasNext}
+                onClick={() => {
+                  setOffset(offset + PAGE_SIZE);
+                }}
+              >
                 Next
               </Button>
             </div>
@@ -290,6 +335,8 @@ export function ListingsListPage(): ReactElement {
         initialValues={retryInitialValues}
         onSubmitted={handleOfferSubmitted}
       />
+
+      <ShopPublishLauncher open={isShopPublishOpen} onOpenChange={setIsShopPublishOpen} />
     </PageLayout>
   );
 }

@@ -24,6 +24,12 @@ import type {
   ResolveCategoryRequest,
   ResolveCategoryResponse,
   SellerPoliciesResponse,
+  ShopPublishRequest,
+  ShopPublishResponse,
+  ShopPublishStatusResponse,
+  BulkShopPublishRequest,
+  BulkShopPublishResponse,
+  BulkShopPublishBatchResponse,
   UpdateOfferFieldsPayload,
   UpdateOfferFieldsResult,
 } from './listings.types';
@@ -43,7 +49,10 @@ export interface CreateOfferOptions {
 }
 
 export interface ListingsApi {
-  list: (filters?: ListingsFilters, pagination?: ListingsPagination) => Promise<PaginatedOfferMappings>;
+  list: (
+    filters?: ListingsFilters,
+    pagination?: ListingsPagination,
+  ) => Promise<PaginatedOfferMappings>;
   getById: (id: string) => Promise<OfferMapping>;
   /**
    * Fetches the live marketplace-side offer (#464). Returns 404 if the
@@ -52,7 +61,11 @@ export interface ListingsApi {
    * "live data unavailable" fallback.
    */
   getMarketplaceOffer: (mappingId: string) => Promise<MarketplaceOfferResponse>;
-  updateOfferFields: (connectionId: string, offerId: string, fields: UpdateOfferFieldsPayload) => Promise<UpdateOfferFieldsResult>;
+  updateOfferFields: (
+    connectionId: string,
+    offerId: string,
+    fields: UpdateOfferFieldsPayload,
+  ) => Promise<UpdateOfferFieldsResult>;
   createOffer: (
     connectionId: string,
     request: CreateOfferRequest,
@@ -62,6 +75,26 @@ export interface ListingsApi {
     connectionId: string,
     offerCreationRecordId: string,
   ) => Promise<OfferCreationStatusResponse>;
+  /**
+   * Publish a single OL variant onto a `ProductPublisher` shop connection
+   * (#1044). Returns the enqueued `jobId` and pre-created
+   * `listingCreationRecordId` for immediate status polling. Forwards
+   * `x-idempotency-key` like `createOffer`.
+   */
+  shopPublish: (
+    connectionId: string,
+    body: ShopPublishRequest,
+    options?: CreateOfferOptions,
+  ) => Promise<ShopPublishResponse>;
+  getShopPublishStatus: (
+    connectionId: string,
+    recordId: string,
+  ) => Promise<ShopPublishStatusResponse>;
+  /** Submit a bulk shop-publish batch (#1044). Returns the persisted
+   *  `batchId` and per-variant job + record ids. */
+  shopPublishBulk: (body: BulkShopPublishRequest) => Promise<BulkShopPublishResponse>;
+  /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
+  getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
   getCategoryParameters: (
     connectionId: string,
@@ -154,13 +187,46 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
         body: JSON.stringify(body),
       });
     },
-    getOfferCreationStatus(connectionId, offerCreationRecordId): Promise<OfferCreationStatusResponse> {
+    getOfferCreationStatus(
+      connectionId,
+      offerCreationRecordId,
+    ): Promise<OfferCreationStatusResponse> {
       return request<OfferCreationStatusResponse>(
         `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
       );
     },
+    shopPublish(connectionId, body, options): Promise<ShopPublishResponse> {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (options?.idempotencyKey) {
+        headers['x-idempotency-key'] = options.idempotencyKey;
+      }
+      return request<ShopPublishResponse>(`/listings/connections/${connectionId}/shop-publish`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    },
+    getShopPublishStatus(connectionId, recordId): Promise<ShopPublishStatusResponse> {
+      return request<ShopPublishStatusResponse>(
+        `/listings/connections/${connectionId}/shop-publish/${encodeURIComponent(recordId)}`,
+      );
+    },
+    shopPublishBulk(body): Promise<BulkShopPublishResponse> {
+      return request<BulkShopPublishResponse>('/listings/bulk-shop-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    },
+    getBulkShopPublishBatch(batchId): Promise<BulkShopPublishBatchResponse> {
+      return request<BulkShopPublishBatchResponse>(
+        `/listings/bulk-shop-publish/${encodeURIComponent(batchId)}`,
+      );
+    },
     getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
-      return request<SellerPoliciesResponse>(`/listings/connections/${connectionId}/seller-policies`);
+      return request<SellerPoliciesResponse>(
+        `/listings/connections/${connectionId}/seller-policies`,
+      );
     },
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
       return request<CategoryParametersListResponse>(
@@ -214,9 +280,7 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
       });
     },
     getBulkBatch(batchId): Promise<BulkBatchSummary> {
-      return request<BulkBatchSummary>(
-        `/listings/bulk-create/${encodeURIComponent(batchId)}`,
-      );
+      return request<BulkBatchSummary>(`/listings/bulk-create/${encodeURIComponent(batchId)}`);
     },
     retryBulkFailed(batchId): Promise<BulkListingRetryResponse> {
       return request<BulkListingRetryResponse>(

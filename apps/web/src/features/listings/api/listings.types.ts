@@ -231,6 +231,116 @@ export interface OfferCreationStatusResponse {
   request?: CreateOfferRequest | null;
 }
 
+/** ----- Shop publish (#1044) ---------------------------------------------
+ *
+ * Transport types for the shop-publish endpoints. A shop product is published
+ * from an OL canonical variant onto a `ProductPublisher`-capable connection
+ * (today: WooCommerce). Mirrors the BE controller contract — see the issue
+ * body. Single and bulk share the same per-record status shape.
+ * --------------------------------------------------------------------- */
+
+/**
+ * Per-record publish lifecycle status. Terminal values are `'draft'`,
+ * `'published'`, and `'failed'` — the tracker stops polling on those.
+ */
+export const ShopPublishStatusValues = ['pending', 'draft', 'published', 'failed'] as const;
+export type ShopPublishStatus = (typeof ShopPublishStatusValues)[number];
+
+export const TERMINAL_SHOP_PUBLISH_STATUSES: readonly ShopPublishStatus[] = [
+  'draft',
+  'published',
+  'failed',
+];
+
+export interface ShopPublishError {
+  field?: string;
+  code: string;
+  message: string;
+}
+
+export interface ShopPublishPrice {
+  amount: number;
+  currency: string;
+}
+
+export interface ShopPublishContent {
+  title?: string;
+  description?: string;
+  imageUrls?: string[];
+}
+
+export interface ShopPublishRequest {
+  internalVariantId: string;
+  status: 'draft' | 'published';
+  stock: number;
+  price?: ShopPublishPrice;
+  content?: ShopPublishContent;
+}
+
+export interface ShopPublishResponse {
+  jobId: string;
+  listingCreationRecordId: string;
+}
+
+export interface ShopPublishStatusResponse {
+  id: string;
+  internalVariantId: string;
+  connectionId: string;
+  status: ShopPublishStatus;
+  externalProductId: string | null;
+  bulkBatchId: string | null;
+  errors: ShopPublishError[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkShopPublishRequest {
+  connectionId: string;
+  internalVariantIds: string[];
+  status: 'draft' | 'published';
+  stock: number;
+  price?: ShopPublishPrice;
+  content?: ShopPublishContent;
+}
+
+export interface BulkShopPublishItem {
+  internalVariantId: string;
+  jobId: string;
+  listingCreationRecordId: string;
+}
+
+export interface BulkShopPublishResponse {
+  batchId: string;
+  items: BulkShopPublishItem[];
+}
+
+export const BulkShopPublishBatchStatusValues = [
+  'pending',
+  'running',
+  'completed',
+  'partially-failed',
+  'failed',
+] as const;
+export type BulkShopPublishBatchStatus = (typeof BulkShopPublishBatchStatusValues)[number];
+
+export const TERMINAL_BULK_SHOP_PUBLISH_STATUSES: readonly BulkShopPublishBatchStatus[] = [
+  'completed',
+  'partially-failed',
+  'failed',
+];
+
+export interface BulkShopPublishBatchResponse {
+  id: string;
+  connectionId: string;
+  status: BulkShopPublishBatchStatus;
+  totalCount: number;
+  succeededCount: number;
+  failedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  records: ShopPublishStatusResponse[];
+}
+
 export interface SellerPolicy {
   id: string;
   name: string;
@@ -258,12 +368,7 @@ export interface SellerPoliciesResponse {
  * per-entry list to filter dictionary options once the parent has a value.
  * --------------------------------------------------------------------- */
 
-export const CategoryParameterTypeValues = [
-  'dictionary',
-  'string',
-  'integer',
-  'float',
-] as const;
+export const CategoryParameterTypeValues = ['dictionary', 'string', 'integer', 'float'] as const;
 export type CategoryParameterType = (typeof CategoryParameterTypeValues)[number];
 
 /**
@@ -433,12 +538,7 @@ export interface ResolveCategoryResponse {
  * above). The richer envelope (vs single-resolve's flat shape) carries the
  * `multi-match` candidate list the bulk-wizard edit modal surfaces (#740 / #792).
  */
-export const EanMatchResultKindValues = [
-  'matched',
-  'multi-match',
-  'no-ean',
-  'no-match',
-] as const;
+export const EanMatchResultKindValues = ['matched', 'multi-match', 'no-ean', 'no-match'] as const;
 export type EanMatchResultKind = (typeof EanMatchResultKindValues)[number];
 
 export interface EanMatchCandidate {

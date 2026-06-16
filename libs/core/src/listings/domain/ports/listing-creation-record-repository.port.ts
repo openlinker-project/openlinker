@@ -28,13 +28,20 @@ export interface ListingCreationRecordRepositoryPort {
   findById(id: string): Promise<ListingCreationRecord | null>;
 
   /**
+   * Return every child record belonging to a bulk-publish batch (#1044),
+   * ordered `createdAt ASC`. Empty array when none exist. Backs the bulk-batch
+   * summary read.
+   */
+  findByBulkBatchId(bulkBatchId: string): Promise<ListingCreationRecord[]>;
+
+  /**
    * Return the most-recently-created record for a (internalVariantId,
    * connectionId) pair, ordered `createdAt DESC`. Null when none exists.
    * Multiple records per pair are expected (retry attempts after failures).
    */
   findLatestByVariantAndConnection(
     variantId: string,
-    connectionId: string
+    connectionId: string,
   ): Promise<ListingCreationRecord | null>;
 
   /**
@@ -44,7 +51,7 @@ export interface ListingCreationRecordRepositoryPort {
    */
   findByExternalProductIdAndConnectionId(
     externalProductId: string,
-    connectionId: string
+    connectionId: string,
   ): Promise<ListingCreationRecord | null>;
 
   /**
@@ -55,7 +62,7 @@ export interface ListingCreationRecordRepositoryPort {
   updateStatus(
     id: string,
     status: ListingCreationStatus,
-    errors?: ListingCreationError[] | null
+    errors?: ListingCreationError[] | null,
   ): Promise<ListingCreationRecord>;
 
   /**
@@ -69,6 +76,6 @@ export interface ListingCreationRecordRepositoryPort {
     id: string,
     externalProductId: string,
     status: ListingCreationStatus,
-    errors?: ListingCreationError[] | null
+    errors?: ListingCreationError[] | null,
   ): Promise<ListingCreationRecord>;
 }

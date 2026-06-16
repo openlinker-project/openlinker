@@ -27,6 +27,12 @@ export class ListingCreationRecord {
     public readonly status: ListingCreationStatus,
     public readonly errors: ListingCreationError[] | null,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date
+    public readonly updatedAt: Date,
+    /**
+     * Parent bulk-batch id when this publish is part of a bulk submission
+     * (#1044). Null for single publishes. Appended last so single-publish
+     * construction sites stay unchanged.
+     */
+    public readonly bulkBatchId: string | null = null,
   ) {}
 }
