@@ -65,4 +65,32 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
       errors: [{ path: 'baseUrl', message: expect.any(String) }],
     });
   });
+
+  it('should resolve for a valid defaultDispatchTime', async () => {
+    await expect(
+      validator.validate({ defaultDispatchTime: { period: 2, unit: 'day' } }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should resolve for a defaultDispatchTime without a unit (unit defaults server-side)', async () => {
+    await expect(
+      validator.validate({ defaultDispatchTime: { period: 0 } }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should reject a defaultDispatchTime with a non-integer / negative period', async () => {
+    await expect(
+      validator.validate({ defaultDispatchTime: { period: -1 } }),
+    ).rejects.toMatchObject({
+      errors: [{ path: 'defaultDispatchTime.period', message: expect.any(String) }],
+    });
+  });
+
+  it('should reject a defaultDispatchTime with an unknown unit', async () => {
+    await expect(
+      validator.validate({ defaultDispatchTime: { period: 1, unit: 'week' } }),
+    ).rejects.toMatchObject({
+      errors: [{ path: 'defaultDispatchTime.unit', message: expect.any(String) }],
+    });
+  });
 });

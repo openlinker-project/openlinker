@@ -44,7 +44,10 @@ describe('ErliOfferManagerAdapter', () => {
       post: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       patch: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
     };
-    adapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient);
+    adapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient, {
+      period: 2,
+      unit: 'day',
+    });
   });
 
   describe('createOffer', () => {
@@ -68,13 +71,34 @@ describe('ErliOfferManagerAdapter', () => {
 
       const body = httpClient.post.mock.calls[0][1];
       expect(body).toEqual({
-        price: { amount: 49.99, currency: 'PLN' },
+        price: 4999,
         stock: 10,
+        images: [{ url: 'https://cdn.example.com/a.jpg' }],
+        dispatchTime: { period: 2, unit: 'day' },
         name: 'Widget',
         description: 'A nice widget',
-        images: ['https://cdn.example.com/a.jpg'],
-        barcode: '5901234123457',
+        ean: '5901234123457',
       });
+    });
+
+    it('should serialise price as integer minor units (grosze)', async () => {
+      await adapter.createOffer(createCmd({ price: { amount: 19.99, currency: 'PLN' } }));
+      const body = httpClient.post.mock.calls[0][1] as { price?: number };
+      expect(body.price).toBe(1999);
+    });
+
+    it('should let a per-offer platformParams.dispatchTime override the connection default', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { dispatchTime: { period: 5, unit: 'hour' } } } }),
+      );
+      const body = httpClient.post.mock.calls[0][1] as { dispatchTime?: unknown };
+      expect(body.dispatchTime).toEqual({ period: 5, unit: 'hour' });
+    });
+
+    it('should fail closed when no per-offer nor connection-default dispatch time is present', async () => {
+      const noDefault = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient);
+      await expect(noDefault.createOffer(createCmd())).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.post).not.toHaveBeenCalled();
     });
 
     it('should drop non-https / internal image URLs', async () => {
@@ -85,8 +109,8 @@ describe('ErliOfferManagerAdapter', () => {
           },
         }),
       );
-      const body = httpClient.post.mock.calls[0][1] as { images?: string[] };
-      expect(body.images).toEqual(['https://cdn.example.com/ok.jpg']);
+      const body = httpClient.post.mock.calls[0][1] as { images?: { url: string }[] };
+      expect(body.images).toEqual([{ url: 'https://cdn.example.com/ok.jpg' }]);
     });
 
     it('should map a 4xx ErliApiException to OfferCreateRejectedException without leaking responseBody', async () => {
@@ -137,7 +161,7 @@ describe('ErliOfferManagerAdapter', () => {
         },
       });
       expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
-        price: { amount: 79, currency: 'PLN' },
+        price: 7900,
         description: 'Line 1',
       });
     });

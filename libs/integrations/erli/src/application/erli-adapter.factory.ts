@@ -48,8 +48,14 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
   ): Promise<ErliAdapters> {
     const httpClient = await this.createHttpClient(connection, credentialsResolver);
+    const config = (connection.config ?? {}) as ErliConnectionConfig;
     return {
-      offerManager: new ErliOfferManagerAdapter(connection.id, ERLI_ADAPTER_KEY, httpClient),
+      offerManager: new ErliOfferManagerAdapter(
+        connection.id,
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        config.defaultDispatchTime,
+      ),
     };
   }
 

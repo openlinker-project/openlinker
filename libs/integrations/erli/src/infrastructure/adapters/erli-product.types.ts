@@ -1,35 +1,44 @@
 /**
  * Erli Product Resource Wire Types
  *
- * Provisional request shapes for Erli's seller-keyed product resource
+ * Request shapes for Erli's seller-keyed product resource
  * (`POST`/`PATCH /products/{externalId}`). Erli represents an offer AS a
- * product; #984 maps only the basic fields the neutral offer commands carry.
+ * product; #984 maps the basic fields the neutral offer commands carry.
  *
- * PROVISIONAL (#992): the exact Erli field names + price/description shapes are
- * not confirmed until the sandbox spike. This file is the SINGLE reconciliation
- * point — the adapter imports wire shapes only from here, so #992 updates one
- * place. Category/parameters (#985) and variant grouping (#986) are
- * deliberately absent (their own issues).
+ * Verified against the live Erli Shop API (#992 spike): money is an INTEGER in
+ * minor units (grosze, PLN-only — no currency field), `images` is an array of
+ * image objects, the barcode key is `ean`, and `dispatchTime` is a required
+ * create field. This file is the SINGLE wire-shape reconciliation point — the
+ * adapter imports wire shapes only from here. Category/parameters (#985) and
+ * variant grouping (#986) are layered in by their own issues.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
+import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 
-/** Provisional Erli money shape (#992). */
-export interface ErliMoney {
-  amount: number;
-  currency: string;
+/** Erli product image. `url` is required; the flags default false server-side. */
+export interface ErliProductImage {
+  url: string;
+  isVariantImage?: boolean;
+  isLifestyleImage?: boolean;
 }
 
-/** Provisional create-product body — `POST /products/{externalId}` (#992). */
+/**
+ * Create-product body — `POST /products/{externalId}`. Erli requires
+ * `name, images, price, stock, dispatchTime` on create; the optional keys are
+ * supplied when the neutral command carries them.
+ */
 export interface ErliProductCreateBody {
-  /** Offer title (Erli wire key provisional — may be `title`; #992). */
   name?: string;
-  price?: ErliMoney;
+  /** Price in INTEGER minor units (grosze). PLN-only — no currency field. */
+  price?: number;
   stock?: number;
   description?: string;
-  images?: string[];
-  /** EAN/GTIN (top-level vs parameter-nested unconfirmed; #992 / #985). */
-  barcode?: string;
+  images?: ErliProductImage[];
+  /** EAN/GTIN barcode. */
+  ean?: string;
+  sku?: string;
+  dispatchTime?: ErliDispatchTime;
 }
 
 /**

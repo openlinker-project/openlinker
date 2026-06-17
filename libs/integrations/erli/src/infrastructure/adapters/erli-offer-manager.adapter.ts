@@ -37,10 +37,11 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
+import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
-  ErliMoney,
   ErliProductCreateBody,
+  ErliProductImage,
   ErliProductPatchBody,
 } from './erli-product.types';
 
@@ -61,6 +62,12 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     private readonly connectionId: string,
     private readonly adapterKey: string,
     private readonly httpClient: IErliHttpClient,
+    /**
+     * Shop-wide default dispatch time from `connection.config`. Used on offer
+     * create when the per-offer override (`overrides.platformParams.dispatchTime`)
+     * is absent; create fails closed if neither is present (Erli requires it).
+     */
+    private readonly defaultDispatchTime?: ErliDispatchTime,
   ) {}
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
@@ -123,9 +130,12 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   }
 
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {
+    // Erli requires name, images, price, stock, dispatchTime on create.
     const body: ErliProductCreateBody = {
-      price: toErliPrice(cmd.price.amount, cmd.price.currency),
+      price: toErliMinorUnits(cmd.price.amount),
       stock: cmd.stock,
+      images: this.sanitizeImageUrls(cmd.overrides?.imageUrls).map(toErliImage),
+      dispatchTime: this.resolveDispatchTime(cmd.overrides?.platformParams),
     };
     if (cmd.overrides?.title !== undefined) {
       body.name = cmd.overrides.title;
@@ -133,12 +143,8 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     if (cmd.overrides?.description != null) {
       body.description = flattenDescription(cmd.overrides.description);
     }
-    const images = this.sanitizeImageUrls(cmd.overrides?.imageUrls);
-    if (images.length > 0) {
-      body.images = images;
-    }
     if (cmd.variantBarcode != null) {
-      body.barcode = cmd.variantBarcode;
+      body.ean = cmd.variantBarcode;
     }
     // #985: category/parameter payload (source:"allegro") is assembled here.
     // #986: externalVariantGroup is assembled here.
@@ -148,7 +154,7 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   private buildPatchFromFields(fields: OfferFieldUpdate): ErliProductPatchBody {
     const body: ErliProductPatchBody = {};
     if (fields.price !== undefined) {
-      body.price = toErliPrice(fields.price.amount, fields.price.currency);
+      body.price = toErliMinorUnits(fields.price.amount);
     }
     if (fields.title !== undefined) {
       body.name = fields.title;
@@ -180,6 +186,26 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     return new OfferCreateRejectedException(this.adapterKey, error.statusCode ?? 0, errors);
   }
 
+  /**
+   * Resolve the offer's dispatch time: per-offer override
+   * (`overrides.platformParams.dispatchTime`) wins over the connection-level
+   * default. Fail closed if neither is present — Erli requires `dispatchTime`
+   * on create, so we never send an invalid body.
+   */
+  private resolveDispatchTime(
+    platformParams: Record<string, unknown> | undefined,
+  ): ErliDispatchTime {
+    const resolved = readDispatchTimeParam(platformParams) ?? this.defaultDispatchTime;
+    if (!resolved) {
+      throw new ErliConfigException(
+        'Erli offer create requires a dispatch time: set defaultDispatchTime on the ' +
+          'connection config or pass overrides.platformParams.dispatchTime.',
+        this.connectionId,
+      );
+    }
+    return resolved;
+  }
+
   /** Best-effort hygiene: forward only https absolute URLs to non-internal hosts. */
   private sanitizeImageUrls(urls: string[] | null | undefined): string[] {
     if (!urls) {
@@ -195,14 +221,56 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   }
 }
 
-function toErliPrice(amount: number | string, currency: string): ErliMoney {
+function toErliMinorUnits(amount: number | string): number {
   const numeric = typeof amount === 'string' ? Number(amount) : amount;
   // Fail closed rather than serialize NaN into the price body: a non-numeric
   // string amount is a caller/config error, not a value Erli should ever see.
   if (!Number.isFinite(numeric)) {
     throw new ErliConfigException(`Erli price amount is not a finite number: ${String(amount)}`);
   }
-  return { amount: numeric, currency };
+  // Erli prices are integer minor units (grosze); PLN-only, no currency field.
+  return Math.round(numeric * 100);
+}
+
+/** Map a sanitized image URL to Erli's image-object wire shape. */
+function toErliImage(url: string): ErliProductImage {
+  return { url };
+}
+
+const ERLI_DISPATCH_TIME_UNITS = new Set<ErliDispatchTime['unit']>(['hour', 'day', 'month']);
+
+/**
+ * Read + validate a per-offer `dispatchTime` override off the un-modeled
+ * `overrides.platformParams`. Returns `undefined` when no override key is
+ * present (caller falls back to the connection default). Throws if an override
+ * IS present but malformed — an explicit operator value must not be silently
+ * dropped (fail closed).
+ */
+function readDispatchTimeParam(
+  platformParams: Record<string, unknown> | undefined,
+): ErliDispatchTime | undefined {
+  const raw = platformParams?.dispatchTime;
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== 'object') {
+    throw new ErliConfigException('overrides.platformParams.dispatchTime must be an object');
+  }
+  const candidate = raw as { period?: unknown; unit?: unknown };
+  const period = candidate.period;
+  if (typeof period !== 'number' || !Number.isInteger(period) || period < 0) {
+    throw new ErliConfigException(
+      'overrides.platformParams.dispatchTime.period must be a non-negative integer',
+    );
+  }
+  if (candidate.unit !== undefined && !ERLI_DISPATCH_TIME_UNITS.has(candidate.unit as never)) {
+    throw new ErliConfigException(
+      "overrides.platformParams.dispatchTime.unit must be 'hour', 'day', or 'month'",
+    );
+  }
+  return candidate.unit === undefined
+    ? { period }
+    : { period, unit: candidate.unit as ErliDispatchTime['unit'] };
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

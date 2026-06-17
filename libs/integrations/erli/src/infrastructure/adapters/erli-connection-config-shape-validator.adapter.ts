@@ -47,6 +47,8 @@ export class ErliConnectionConfigShapeValidatorAdapter
       }
     }
 
+    this.validateDispatchTime(config.defaultDispatchTime, issues);
+
     if (issues.length > 0) {
       return Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues));
     }
@@ -59,6 +61,34 @@ export class ErliConnectionConfigShapeValidatorAdapter
       return url.protocol === 'https:' ? url : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * `defaultDispatchTime`, when present, must be `{ period: non-negative int,
+   * unit?: 'hour' | 'day' | 'month' }` — the shape Erli's product create
+   * requires. Absent is valid (per-offer override can supply it instead).
+   */
+  private validateDispatchTime(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'object' || value === null) {
+      issues.push({ path: 'defaultDispatchTime', message: 'must be an object when provided' });
+      return;
+    }
+    const dt = value as { period?: unknown; unit?: unknown };
+    if (typeof dt.period !== 'number' || !Number.isInteger(dt.period) || dt.period < 0) {
+      issues.push({
+        path: 'defaultDispatchTime.period',
+        message: 'must be a non-negative integer',
+      });
+    }
+    if (dt.unit !== undefined && !['hour', 'day', 'month'].includes(dt.unit as string)) {
+      issues.push({
+        path: 'defaultDispatchTime.unit',
+        message: "must be 'hour', 'day', or 'month'",
+      });
     }
   }
 }
