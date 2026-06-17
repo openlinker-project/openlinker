@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 
 import {
   DuplicateIdentifierMappingError,
+  MappingAlreadyExistsError,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
@@ -297,6 +298,28 @@ describe('OfferCreationExecutionService', () => {
       null
     );
     expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('swallows MappingAlreadyExistsError when it points to the same variant (idempotent)', async () => {
+    // createMapping resolves the winning row and raises this once the offer
+    // already exists (e.g. the adapter create 409'd as already-exists, #1096).
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new MappingAlreadyExistsError('Offer', EXTERNAL_OFFER_ID, CONNECTION_ID, VARIANT_ID)
+    );
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('rethrows MappingAlreadyExistsError pointing to a different internal id (genuine conflict)', async () => {
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new MappingAlreadyExistsError('Offer', EXTERNAL_OFFER_ID, CONNECTION_ID, 'ol_variant_other')
+    );
+
+    await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
+      MappingAlreadyExistsError
+    );
   });
 
   it('uses the pre-existing record when offerCreationRecordId is provided', async () => {
