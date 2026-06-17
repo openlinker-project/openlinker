@@ -27,4 +27,7 @@ export const allegroOfferValidation: OfferValidationContribution = {
     input.needsProductParameters && !input.willLinkProductCard
       ? [ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER]
       : [],
+  // Allegro's validator reads `needsProductParameters`, so the host must fetch
+  // the per-category required-param schema for this batch (#810 / #1096).
+  needsCategoryParameterSchema: true,
 };

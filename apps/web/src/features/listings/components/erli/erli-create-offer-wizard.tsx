@@ -194,7 +194,12 @@ export function ErliCreateOfferWizard({
   const dispatch: ErliDispatchTimeParam = { period: values.dispatchPeriod, unit: values.dispatchUnit };
 
   const onSubmit = form.handleSubmit(async (submitted) => {
-    if (imageUrls.length === 0) return; // belt-and-suspenders; Erli requires ≥1 image
+    // Single source for the "Erli requires ≥1 image" rule: the shared
+    // `offerValidation` validator (#1096), reused here rather than re-inlining
+    // `imageUrls.length === 0`. `imageBlockers` is computed from `imageUrls`
+    // (not gated on `pickedProduct`), so the doomed-submit guard still fires on
+    // the `defaultVariantId` path where no product was interactively picked.
+    if (imageBlockers.length > 0) return;
 
     const request: CreateOfferRequest = {
       internalVariantId: submitted.internalVariantId,

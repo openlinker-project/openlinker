@@ -287,6 +287,15 @@ export interface OfferValidationContribution {
   blockers: readonly OfferBlockerDescriptor[];
   /** Returns the active platform-specific blocker ids for a row. Pure. */
   validateRow: (input: OfferRowValidationInput) => string[];
+  /**
+   * Whether this platform's `validateRow` reads `needsProductParameters` (#1096).
+   * The host's per-category required-product-parameter schema fetch
+   * (`useBulkRequiredProductParams`, an Allegro #810 concern) is wasted work for
+   * platforms whose validator ignores that input (e.g. Erli reads only
+   * `imageCount`). Opt-in keeps the host neutral — it gates the fetch on this
+   * flag rather than on a `platformType` string. Absent ⇒ treated as `false`.
+   */
+  needsCategoryParameterSchema?: boolean;
 }
 
 /**

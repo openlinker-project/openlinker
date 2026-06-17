@@ -55,6 +55,9 @@ const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
   { id: 'confirm', label: 'Confirm' },
 ];
 
+/** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
+const EMPTY_CATEGORY_IDS: readonly string[] = [];
+
 export function BulkWizard({
   products,
   resolveConnectionName,
@@ -101,11 +104,6 @@ export function BulkWizard({
     return Array.from(set);
   }, [rows]);
 
-  const { requiredByCategory, isResolving: paramsResolving } = useBulkRequiredProductParams(
-    config?.connectionId,
-    noCardCategoryIds,
-  );
-
   // Resolve the batch connection's platform (single connection per batch) so we
   // can render platform-declared blocker chips and run its row validator (#1096).
   const batchConnection = useMemo(
@@ -116,6 +114,20 @@ export function BulkWizard({
     () => platforms.find((p) => p.platformType === batchConnection?.platformType) ?? null,
     [platforms, batchConnection],
   );
+
+  // Only fetch the per-category required-product-param schema (an Allegro #810
+  // concern) when the resolved platform's validator actually reads it (#1096).
+  // Erli's validator ignores `needsProductParameters`, so it opts out and the
+  // host issues zero category-param queries for an Erli batch. The gate is a
+  // declared flag, not a `platformType` check — the host stays neutral.
+  const categoryIdsForParamSchema = batchPlatform?.offerValidation?.needsCategoryParameterSchema
+    ? noCardCategoryIds
+    : EMPTY_CATEGORY_IDS;
+  const { requiredByCategory, isResolving: paramsResolving } = useBulkRequiredProductParams(
+    config?.connectionId,
+    categoryIdsForParamSchema,
+  );
+
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
