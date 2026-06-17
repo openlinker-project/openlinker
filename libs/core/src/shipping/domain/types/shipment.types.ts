@@ -64,12 +64,22 @@ export interface CreateShipmentInput {
 
 /**
  * Partial-update patch. Every field is optional — only the fields present
- * on the patch are written. Pass an explicit `null` for `errorMessage` to
- * clear a previously-recorded error (e.g. on a successful retry from
- * `failed` back to `draft`).
+ * on the patch are written. Pass an explicit `null` for `errorMessage` /
+ * `failedAt` to clear a previously-recorded failure (e.g. when a failed
+ * branch-1 attempt is reset back to `draft` for re-dispatch, #<retry-reuse>).
+ *
+ * The dispatch-shape fields (`shippingMethod` / `deliveryIntent` /
+ * `paczkomatId` / `sourceDeliveryMethodId`) are writable so a re-dispatch can
+ * reuse the existing branch-1 row instead of inserting a duplicate (which the
+ * partial-unique `UQ_shipments_branch_one_per_order_conn` index forbids) while
+ * still reflecting the current attempt's parameters.
  */
 export interface UpdateShipmentInput {
   status?: ShipmentStatus;
+  shippingMethod?: ShippingMethod;
+  deliveryIntent?: DeliveryIntent | null;
+  paczkomatId?: string | null;
+  sourceDeliveryMethodId?: string | null;
   providerShipmentId?: string;
   trackingNumber?: string;
   /**
@@ -84,6 +94,6 @@ export interface UpdateShipmentInput {
   dispatchedAt?: Date;
   deliveredAt?: Date;
   cancelledAt?: Date;
-  failedAt?: Date;
+  failedAt?: Date | null;
   errorMessage?: string | null;
 }

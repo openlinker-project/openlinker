@@ -62,6 +62,7 @@ import {
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderAuthException,
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
   OrderNotDispatchablePaymentStatusException,
@@ -399,6 +400,15 @@ export class ShipmentController {
       error instanceof DispatchProtocolNotSupportedException
     ) {
       return new UnprocessableEntityException(error.message);
+    }
+    if (error instanceof ShippingProviderAuthException) {
+      // The carrier rejected OUR stored credentials (401/403) — an upstream
+      // configuration problem, not an OL fault. Map to 502 (same family as a
+      // provider rejection) and explicitly NOT the "Unclassified" 500 path, so
+      // operators see "carrier rejected us" rather than "OpenLinker crashed".
+      // Flipping the connection to `needs_reauth` via the #819 auth-failure
+      // classifier registry is a tracked follow-up.
+      return new BadGatewayException(error.message);
     }
     if (error instanceof ShippingProviderRejectionException) {
       return new BadGatewayException(error.message);

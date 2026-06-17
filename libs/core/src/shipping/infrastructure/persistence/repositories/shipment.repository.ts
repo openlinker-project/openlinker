@@ -187,6 +187,12 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
   private buildUpdatePayload(patch: UpdateShipmentInput): Partial<ShipmentOrmEntity> {
     const payload: Partial<ShipmentOrmEntity> = {};
     if (patch.status !== undefined) payload.status = patch.status;
+    if (patch.shippingMethod !== undefined) payload.shippingMethod = patch.shippingMethod;
+    if (patch.deliveryIntent !== undefined) payload.deliveryIntent = patch.deliveryIntent;
+    if (patch.paczkomatId !== undefined) payload.paczkomatId = patch.paczkomatId;
+    if (patch.sourceDeliveryMethodId !== undefined) {
+      payload.sourceDeliveryMethodId = patch.sourceDeliveryMethodId;
+    }
     if (patch.providerShipmentId !== undefined) {
       payload.providerShipmentId = patch.providerShipmentId;
     }

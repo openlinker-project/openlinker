@@ -21,11 +21,13 @@ import { DpdShippingAdapter } from '../infrastructure/adapters/dpd-shipping.adap
 import { DpdHttpClient } from '../infrastructure/http/dpd-http-client';
 import { DpdInfoSoapClient } from '../infrastructure/http/dpd-info-soap-client';
 
-// OQ-3 (#962): test is credentials-gated, not host-gated — both environments
-// resolve to the same DPDServices host today. Split here if a sandbox host
-// surfaces; nothing else changes.
+// OQ-3 (#962) RESOLVED: the DPDServices test environment is host-gated, not
+// credentials-gated. The demo account (login `test`, FID 1495) authenticates
+// only against the `…demo…` host — confirmed from the DPD-supplied DEMO Postman
+// environment (`DPD_SERVICES_REST_WSDL = https://dpdservicesdemo.dpd.com.pl/public`)
+// and a live auth probe. Sending demo creds to the production host returns 401.
 const BASE_URLS: Readonly<Record<DpdEnvironment, string>> = {
-  sandbox: 'https://dpdservices.dpd.com.pl',
+  sandbox: 'https://dpdservicesdemo.dpd.com.pl',
   production: 'https://dpdservices.dpd.com.pl',
 };
 
