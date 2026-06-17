@@ -192,14 +192,24 @@ export class ErliOfferManagerAdapter
     const externalOfferId = this.resolveErliProductId(cmd);
     const body = this.buildCreateBody(cmd);
     try {
-      // POST is non-idempotent by default in the client; the deterministic
-      // seller-keyed id makes this an upsert, so opt into retry-safety (D3).
-      // `cmd.idempotencyKey` is intentionally not forwarded — the resource id
-      // (a POST to /products/{id} upserts) IS the dedup key, so a separate key
-      // would add nothing on this transport.
+      // `POST /products/{id}` is create-only and seller-keyed by the resource id
+      // (the OL variant id). It is NOT a silent upsert — a duplicate id 409s
+      // ("unique key duplication", verified against the Shop API). The id IS the
+      // dedup key, so `cmd.idempotencyKey` is intentionally not forwarded; opt
+      // into client retry-safety, and treat the 409 below as idempotent success.
       await this.httpClient.post(this.productPath(externalOfferId), body, { idempotent: true });
     } catch (error) {
       if (error instanceof ErliApiException) {
+        // 409 = the seller-keyed product already exists (a retry, a client
+        // transport-retry after a server-side success, or a re-submitted batch).
+        // The offer IS created, so this is an idempotent success, not a failure.
+        if (error.statusCode === 409) {
+          this.logger.debug(
+            `Erli offer already exists (409); treating as idempotent success ` +
+              `[connectionId=${this.connectionId}, externalOfferId=${externalOfferId}]`,
+          );
+          return { externalOfferId, status: 'draft' };
+        }
         throw this.toCreateRejected(error);
       }
       // Auth / network / rate-limit propagate to the runner + classifiers.

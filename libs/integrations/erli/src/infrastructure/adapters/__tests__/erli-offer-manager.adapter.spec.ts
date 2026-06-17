@@ -219,6 +219,19 @@ describe('ErliOfferManagerAdapter', () => {
       expect(messages).not.toContain('SECRET submitted payload echo');
     });
 
+    it('should treat a 409 (already-exists) as an idempotent success, not a rejection', async () => {
+      // POST /products/{id} is create-only and seller-keyed; a duplicate id 409s.
+      // A retry / re-submit of an already-created offer must succeed idempotently.
+      httpClient.post.mockRejectedValue(
+        new ErliApiException('unique key duplication', 409, undefined, 'https://erli.pl/x'),
+      );
+
+      const result = await adapter.createOffer(createCmd());
+
+      expect(result.status).toBe('draft');
+      expect(result.externalOfferId).toBe(VALID_ID);
+    });
+
     it('should propagate an authentication error (not wrap it)', async () => {
       httpClient.post.mockRejectedValueOnce(new ErliAuthenticationException('unauthorized', 401));
       await expect(adapter.createOffer(createCmd())).rejects.toBeInstanceOf(ErliAuthenticationException);
