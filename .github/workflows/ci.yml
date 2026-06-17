@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Cancel superseded runs on the same ref so a dead, replaced run doesn't keep
+# holding scarce self-hosted slots and block the queue. Pushes to main rarely
+# overlap; if a never-cancel-on-main policy is later wanted, gate with
+# `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
@@ -80,8 +88,9 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build libs (workspace glob — auto-discovers new packages)
-        run: pnpm -r --filter "./libs/**" build
+      # No explicit libs build: `pnpm test:ci` already runs
+      # `pnpm -r --filter "./libs/**" build` before the tests, so a separate
+      # step here builds libs twice in this one job.
       - name: Run tests
         run: pnpm test:ci
 
