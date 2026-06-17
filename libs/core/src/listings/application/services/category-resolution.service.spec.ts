@@ -4,16 +4,15 @@
  * Covers the provenance-aware single-resolve chain (provision → barcode →
  * mapping → manual), provenance derivation from destination capabilities, and
  * the #795 batch path (`resolveCategoriesBatch`): delegation to the
- * `EanCategoryMatcher` sub-capability when supported, and the
- * `AdapterCapabilityNotSupportedException` branch when the resolved adapter
- * cannot batch-resolve EANs.
+ * `EanCategoryMatcher` sub-capability when supported, and graceful degradation
+ * to `no-match` when the resolved adapter cannot batch-resolve EANs (a
+ * `borrows`-taxonomy destination, e.g. Erli per ADR-025 §3).
  *
  * @module libs/core/src/listings/application/services
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import {
-  AdapterCapabilityNotSupportedException,
   type BatchCategoryByEanInput,
   type EanMatchResult,
 } from '@openlinker/core/listings';
@@ -177,15 +176,20 @@ describe('CategoryResolutionService', () => {
       expect(result).toBe(adapterResult);
     });
 
-    it('should throw AdapterCapabilityNotSupportedException when the adapter cannot batch-resolve', async () => {
+    it('should degrade to no-match for every variant when the adapter cannot batch-resolve', async () => {
+      // An adapter that `borrows` its taxonomy (no EanCategoryMatcher, e.g. Erli
+      // per ADR-025 §3) must not abort the batch — every variant degrades to
+      // `no-match` so the operator can supply the category per row in Review.
       integrationsService.getCapabilityAdapter.mockResolvedValue({
         updateOfferQuantity: jest.fn(),
         // no resolveCategoriesForBatchByEan → not an EanCategoryMatcher
       });
 
-      await expect(service.resolveCategoriesBatch(CONNECTION_ID, input)).rejects.toBeInstanceOf(
-        AdapterCapabilityNotSupportedException
-      );
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, input);
+
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+      expect(result.get('v2')).toEqual({ kind: 'no-match' });
+      expect(result.size).toBe(2);
     });
 
     it('should propagate connection-resolution errors from getCapabilityAdapter', async () => {

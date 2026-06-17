@@ -534,9 +534,10 @@ export class ListingsController {
       return { results: Object.fromEntries(results) };
     } catch (error) {
       if (error instanceof AdapterCapabilityNotSupportedException) {
-        // Connection is a marketplace but its adapter can't batch-resolve EANs
-        // (e.g. a future Shopify/WooCommerce adapter). Single-product flows can
-        // still use the per-row /categories/resolve route.
+        // The connection isn't an OfferManager marketplace at all (the up-front
+        // `getCapabilityAdapter('OfferManager')` gate). An adapter that simply
+        // can't batch-match EANs no longer reaches here — the service degrades
+        // it to per-variant `no-match` for manual category selection (ADR-025 §3).
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
