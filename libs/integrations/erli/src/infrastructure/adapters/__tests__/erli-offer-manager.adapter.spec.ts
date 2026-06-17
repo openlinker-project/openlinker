@@ -230,6 +230,8 @@ describe('ErliOfferManagerAdapter', () => {
 
       expect(result.status).toBe('draft');
       expect(result.externalOfferId).toBe(VALID_ID);
+      // Flagged so the execution service records it as `reused`, not a fresh create.
+      expect(result.alreadyExisted).toBe(true);
     });
 
     it('should propagate an authentication error (not wrap it)', async () => {

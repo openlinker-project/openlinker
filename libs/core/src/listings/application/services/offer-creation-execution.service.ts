@@ -162,10 +162,13 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     const persistedErrors = this.mapResultValidationErrors(result.validationErrors);
+    // An idempotent already-exists create is a success, recorded as `reused`
+    // (not `draft`) so a re-run doesn't read as a fresh offer (#1096).
+    const recordStatus = result.alreadyExisted ? OFFER_CREATION_STATUS.Reused : result.status;
     const finalRecord = await this.offerCreationRecords.updateExternalIdAndStatus(
       record.id,
       result.externalOfferId,
-      result.status,
+      recordStatus,
       persistedErrors
     );
 
@@ -243,6 +246,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       case OFFER_CREATION_STATUS.Active:
       case OFFER_CREATION_STATUS.Draft:
       case OFFER_CREATION_STATUS.Validating:
+      case OFFER_CREATION_STATUS.Reused:
         return 'ok';
       case OFFER_CREATION_STATUS.Pending:
         throw new OfferCreationInvariantException(record.id, record.status);

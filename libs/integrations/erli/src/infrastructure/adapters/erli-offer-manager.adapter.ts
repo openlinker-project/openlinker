@@ -208,7 +208,7 @@ export class ErliOfferManagerAdapter
             `Erli offer already exists (409); treating as idempotent success ` +
               `[connectionId=${this.connectionId}, externalOfferId=${externalOfferId}]`,
           );
-          return { externalOfferId, status: 'draft' };
+          return { externalOfferId, status: 'draft', alreadyExisted: true };
         }
         throw this.toCreateRejected(error);
       }

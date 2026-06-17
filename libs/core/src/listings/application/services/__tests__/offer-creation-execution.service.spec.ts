@@ -192,6 +192,25 @@ describe('OfferCreationExecutionService', () => {
     expect(offerCreationRecord.status).toBe('active');
   });
 
+  it('persists status=reused (success) when the adapter resolved an already-existing offer', async () => {
+    adapter.createOffer.mockResolvedValueOnce({
+      externalOfferId: EXTERNAL_OFFER_ID,
+      status: 'draft',
+      alreadyExisted: true,
+    });
+
+    const { offerCreationRecord, outcome } = await service.executeCreation(baseInput);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'reused',
+      null
+    );
+    expect(offerCreationRecord.status).toBe('reused');
+    expect(outcome).toBe('ok'); // an already-exists create is a success, not a failure
+  });
+
   // The pre-existing "logs a warning when the result is validating" test was
   // removed in #447: the TODO warn was replaced by `scheduleFirstPoll`, which
   // is covered by the "validating outcome → schedules poll" describe below.

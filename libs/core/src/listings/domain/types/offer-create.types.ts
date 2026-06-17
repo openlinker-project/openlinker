@@ -237,4 +237,11 @@ export interface CreateOfferResult {
    * with validation issues). Omitted when empty.
    */
   validationErrors?: CreateOfferValidationError[];
+  /**
+   * True when the adapter resolved the create idempotently because the offer
+   * already existed on the platform (#1096) — e.g. Erli's seller-keyed 409. The
+   * execution service records this as `reused` (a success) rather than `draft`,
+   * so the UI distinguishes a re-run from a fresh create. Omitted ⇒ fresh create.
+   */
+  alreadyExisted?: boolean;
 }
