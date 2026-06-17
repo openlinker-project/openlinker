@@ -38,10 +38,13 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type {
   CreateOfferCommand,
   CreateOfferOverrides,
+  OfferManagerPort,
   OfferParameter,
   OfferVariantAttribute,
   OfferVariantGroup,
+  SourceCategoryRef,
 } from '@openlinker/core/listings';
+import { isCategoryBrowser, isEanCategoryMatcher } from '@openlinker/core/listings';
 import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
@@ -103,12 +106,23 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
     const product = await productMaster.getProduct(variant.productId);
 
+    // A destination that browses/owns its taxonomy (Allegro — `CategoryBrowser`
+    // / `EanCategoryMatcher`) needs a resolved marketplace category before the
+    // offer can be built. A `borrows` destination (Erli, #1096 / ADR-025 §3)
+    // falls back to source-shop categories (or none), so it must NOT block here.
+    const destination = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      input.connectionId,
+      'OfferManager'
+    );
+    const requiresResolvedCategory =
+      isCategoryBrowser(destination) || isEanCategoryMatcher(destination);
+
     const categoryId = await this.resolveCategory(
       input,
       variant.ean ?? variant.gtin ?? null,
       product.categories
     );
-    if (!categoryId) {
+    if (!categoryId && requiresResolvedCategory) {
       issues.push({
         field: 'overrides.categoryId',
         code: 'REQUIRED',
@@ -126,14 +140,18 @@ export class OfferBuilderService implements IOfferBuilderService {
       throw new OfferBuilderValidationException(issues);
     }
 
-    // `categoryId` is guaranteed non-null here — Gate 1 pushed a `REQUIRED`
-    // issue and threw otherwise.
-    const parameters = await this.buildOfferParameters(
-      input,
-      masterConnectionId,
-      categoryId as string,
-      variant.attributes ?? {}
-    );
+    // Category params only exist relative to a resolved marketplace category. A
+    // `borrows` destination with no resolved category (Erli source-shop fallback)
+    // carries no projected params (#1096) — skip the projection rather than query
+    // it for a null category.
+    const parameters = categoryId
+      ? await this.buildOfferParameters(
+          input,
+          masterConnectionId,
+          categoryId,
+          variant.attributes ?? {}
+        )
+      : [];
 
     // #1065 — a multi-variant product (>1 sibling) becomes one grouped listing.
     // The sibling count is the populate decision; the actual fan-out (after the
@@ -166,6 +184,11 @@ export class OfferBuilderService implements IOfferBuilderService {
       cleanedOverrides.platformParams = overrides.platformParams;
     }
 
+    // #1096 — thread the master product's source-shop categories so a borrows
+    // destination (Erli) can emit `source:"shop"` taxonomy when no marketplace
+    // category was resolved. Neutral data; owns-taxonomy adapters ignore it.
+    const sourceCategories: SourceCategoryRef[] = (product.categories ?? []).map((id) => ({ id }));
+
     const command: CreateOfferCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -175,6 +198,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      ...(sourceCategories.length > 0 ? { sourceCategories } : {}),
       // Neutral parameters (#1039/#1071): projected attributes merged with
       // operator-picked `overrides.parameters` (operator wins by id). The
       // destination adapter is the sole shaper (splits by `section`). Omitted

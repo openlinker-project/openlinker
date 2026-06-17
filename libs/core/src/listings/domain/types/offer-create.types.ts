@@ -13,6 +13,19 @@
 import type { OfferParameter } from './offer-parameter.types';
 
 /**
+ * A source-shop category reference carried through from the master catalog
+ * (#1096). Platform-neutral: a destination that accepts shop-native taxonomy
+ * (Erli `source:"shop"`, ADR-025 §3) maps these to its wire shape when no
+ * marketplace category was resolved; destinations that require a resolved
+ * marketplace category (Allegro) ignore them. `name` is best-effort (the master
+ * may expose only ids).
+ */
+export interface SourceCategoryRef {
+  id: string;
+  name?: string;
+}
+
+/**
  * Overrides for fields that can optionally be customized per-offer.
  * Any field omitted here falls back to a value derived by the core builder
  * service from the OL variant (e.g. variant.name, variant.description).
@@ -164,6 +177,15 @@ export interface CreateOfferCommand {
    * pre-resolution alongside `variantBarcode` / `productCardId`.
    */
   variantGroup?: OfferVariantGroup;
+  /**
+   * Source-shop category references (master-derived), platform-neutral (#1096).
+   * Threaded by `OfferBuilderService` from the master product's categories. A
+   * destination that accepts shop-native taxonomy (Erli `source:"shop"`) uses
+   * these as a fallback when no marketplace category was resolved; adapters that
+   * require a resolved marketplace category (Allegro) ignore them. Absent/empty ⇒
+   * the product carried no source categories.
+   */
+  sourceCategories?: SourceCategoryRef[];
 }
 
 /**

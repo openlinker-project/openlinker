@@ -509,27 +509,13 @@ export class ErliOfferManagerAdapter
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
-    // #985: reuse OL's already-resolved Allegro ids (source:"allegro").
+    // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
+    // shop's own categories (`source:"shop"`), else omit — Erli's API makes
+    // category optional, so an uncategorised offer is valid rather than a hard
+    // rejection (ADR-025 §3 relaxed; the offer can be categorised later in Erli).
     const externalCategories = buildExternalCategories(cmd);
     if (externalCategories.length > 0) {
       body.externalCategories = externalCategories;
-    } else {
-      // ADR-025 §3: OL builds no Erli-native taxonomy in v1 — a product without
-      // resolved Allegro taxonomy cannot list on Erli. Fail closed with a clear,
-      // terminal rejection (OfferCreationExecutionService derives business_failure
-      // from OfferCreateRejectedException) rather than silently listing it
-      // untaxonomised (spec #978 §6).
-      // statusCode 0 = preflight rejection (no API call made), per the
-      // OfferCreateRejectedException contract — matches the real-API path's
-      // `error.statusCode ?? 0`.
-      throw new OfferCreateRejectedException(this.adapterKey, 0, [
-        {
-          field: 'category',
-          code: 'NO_ALLEGRO_TAXONOMY',
-          message:
-            'No Allegro category resolved for this product; Erli v1 requires Allegro-ID taxonomy reuse (ADR-025 §3).',
-        },
-      ]);
     }
     const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
     if (droppedParamIds.length > 0) {
@@ -736,13 +722,25 @@ function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusRea
 }
 
 /**
- * Map the OL-resolved Allegro category id (`overrides.categoryId`) into the
- * single-element `source:"allegro"` category list. Empty when absent (#985).
+ * Build Erli's `externalCategories` from the command's taxonomy, preferring the
+ * OL-resolved Allegro id (#985) and falling back to the master shop's own
+ * categories (#1096 / ADR-025 §3 — Erli accepts `source:"shop"`, so a product
+ * with no Allegro taxonomy still lists, categorised by the shop's tree). Empty
+ * when neither is present, in which case the offer lists uncategorised.
  */
 function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[] {
-  const categoryId = cmd.overrides?.categoryId;
-  if (typeof categoryId === 'string' && categoryId.length > 0) {
-    return [{ source: 'allegro', id: categoryId }];
+  const allegroId = cmd.overrides?.categoryId;
+  if (typeof allegroId === 'string' && allegroId.length > 0) {
+    return [{ source: 'allegro', breadcrumb: [{ id: allegroId }] }];
+  }
+  const shop = (cmd.sourceCategories ?? []).filter((c) => c.id.length > 0);
+  if (shop.length > 0) {
+    return [
+      {
+        source: 'shop',
+        breadcrumb: shop.map((c) => (c.name ? { id: c.id, name: c.name } : { id: c.id })),
+      },
+    ];
   }
   return [];
 }

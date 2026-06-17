@@ -32,7 +32,7 @@ describe('OfferBuilderService', () => {
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
   let attributeProjection: jest.Mocked<IAttributeProjectionService>;
-  let productMaster: { getProduct: jest.Mock };
+  let productMaster: { getProduct: jest.Mock; resolveCategoriesForBatchByEan: jest.Mock };
 
   const emptyProjection: AttributeProjectionResult = {
     parameters: [],
@@ -78,6 +78,11 @@ describe('OfferBuilderService', () => {
         currency: 'PLN',
         images: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
       }),
+      // Present so the resolved destination reads as an `EanCategoryMatcher`
+      // (owns taxonomy) — the builder then requires a resolved category, which
+      // is the precondition these tests assert (#1096). A borrows destination
+      // omits this and the category becomes optional.
+      resolveCategoriesForBatchByEan: jest.fn(),
     };
     integrationsService = {
       getCapabilityAdapter: jest
@@ -220,6 +225,42 @@ describe('OfferBuilderService', () => {
           stock: 1,
         })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
+    });
+
+    it('does NOT require a category for a borrows destination and threads source-shop categories (#1096)', async () => {
+      // Destination resolves as a borrows taxonomy: no EanCategoryMatcher /
+      // CategoryBrowser → category optional, resolved server-side at submit.
+      integrationsService.getCapabilityAdapter.mockImplementation((_connId: string, capability: string) =>
+        Promise.resolve(
+          capability === 'OfferManager'
+            ? ({ updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort)
+            : (productMaster as unknown as OfferManagerPort)
+        )
+      );
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['12', '34'],
+      });
+      categoryResolution.resolveCategory.mockResolvedValue({
+        destinationCategoryId: null,
+        provenance: 'borrows',
+        method: 'manual',
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(command.overrides?.categoryId).toBeUndefined();
+      expect(command.sourceCategories).toEqual([{ id: '12' }, { id: '34' }]);
     });
   });
 

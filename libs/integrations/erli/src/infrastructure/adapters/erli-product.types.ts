@@ -36,13 +36,22 @@ export interface ErliProductImage {
  */
 export type ErliExternalAttributeType = 'dictionary' | 'string' | 'number';
 
+/** One node of an Erli `externalCategories` breadcrumb path (`name` optional). */
+export interface ErliCategoryBreadcrumbNode {
+  id: string;
+  name?: string;
+}
+
 /**
- * Category reuse tagged `source:"allegro"` (#985). Erli processes only the `id`
- * (the OL-resolved Allegro category id); names are ignored (ADR-025 §3).
+ * Category taxonomy reference. Erli's wire shape is `{ source, breadcrumb }`
+ * (verified against the Shop API — `breadcrumb` is required, `additionalProperties:
+ * false`, so a flat `{source, id}` is rejected). `source:"allegro"` reuses OL's
+ * resolved Allegro id (#985); `source:"shop"` carries the master shop's own
+ * category ids when no Allegro taxonomy was resolved (#1096 / ADR-025 §3).
  */
 export interface ErliExternalCategory {
-  source: 'allegro';
-  id: string;
+  source: 'allegro' | 'shop' | 'marketplace';
+  breadcrumb: ErliCategoryBreadcrumbNode[];
 }
 
 /**

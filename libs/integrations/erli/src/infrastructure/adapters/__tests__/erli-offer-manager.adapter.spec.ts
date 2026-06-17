@@ -48,8 +48,8 @@ function createCmd(overrides: Partial<CreateOfferCommand> = {}): CreateOfferComm
     stock: 10,
     publishImmediately: true,
     ...rest,
-    // Default to a resolvable Allegro category: ADR-025 §3 makes a missing one a
-    // terminal rejection, so the happy-path/unrelated tests must carry one.
+    // Default to a resolved Allegro category so unrelated tests exercise the
+    // common path; a missing one now falls back to shop categories / none (#1096).
     overrides: {
       title: 'Default Widget',
       imageUrls: ['https://cdn.example.com/default.jpg'],
@@ -232,13 +232,15 @@ describe('ErliOfferManagerAdapter', () => {
     });
 
     describe('category & parameter reuse (#985)', () => {
-      it('should map overrides.categoryId into a source:"allegro" externalCategories entry', async () => {
+      it('should map overrides.categoryId into a source:"allegro" breadcrumb entry', async () => {
         await adapter.createOffer(createCmd({ overrides: { categoryId: '18654' } }));
 
         const body = httpClient.post.mock.calls[0][1] as {
           externalCategories?: unknown;
         };
-        expect(body.externalCategories).toEqual([{ source: 'allegro', id: '18654' }]);
+        expect(body.externalCategories).toEqual([
+          { source: 'allegro', breadcrumb: [{ id: '18654' }] },
+        ]);
       });
 
       it('should map a dictionary parameter (valuesIds → type:dictionary)', async () => {
@@ -284,12 +286,27 @@ describe('ErliOfferManagerAdapter', () => {
         ]);
       });
 
-      it('should throw OfferCreateRejectedException and NOT POST when no Allegro taxonomy resolves (ADR-025 §3)', async () => {
-        // Explicitly clear the helper's default categoryId so no Allegro taxonomy resolves.
-        await expect(
-          adapter.createOffer(createCmd({ overrides: { categoryId: undefined } })),
-        ).rejects.toBeInstanceOf(OfferCreateRejectedException);
-        expect(httpClient.post).not.toHaveBeenCalled();
+      it('should fall back to source:"shop" categories when no Allegro id is resolved (#1096)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: { categoryId: undefined },
+            sourceCategories: [{ id: '12', name: 'Widgets' }, { id: '34' }],
+          }),
+        );
+
+        expect(httpClient.post).toHaveBeenCalledTimes(1);
+        const body = httpClient.post.mock.calls[0][1] as { externalCategories?: unknown };
+        expect(body.externalCategories).toEqual([
+          { source: 'shop', breadcrumb: [{ id: '12', name: 'Widgets' }, { id: '34' }] },
+        ]);
+      });
+
+      it('should omit externalCategories and still POST when neither Allegro nor shop taxonomy is present (ADR-025 §3 relaxed)', async () => {
+        await adapter.createOffer(createCmd({ overrides: { categoryId: undefined }, sourceCategories: [] }));
+
+        expect(httpClient.post).toHaveBeenCalledTimes(1);
+        const body = httpClient.post.mock.calls[0][1] as { externalCategories?: unknown };
+        expect(body.externalCategories).toBeUndefined();
       });
 
       it('should omit externalAttributes when the category is present but no params map', async () => {
