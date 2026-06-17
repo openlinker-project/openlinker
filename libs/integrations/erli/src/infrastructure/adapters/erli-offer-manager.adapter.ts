@@ -556,7 +556,16 @@ export class ErliOfferManagerAdapter
         }))
       : [];
 
-    const externalAttributes = [...paramAttributes, ...groupAttributes];
+    // #1096 F2: master-shop product features → shop-source `externalAttributes`.
+    // MERGE ORDER (critical): features are APPENDED after the variant-group axes,
+    // so the group's index refs (which point at the axes that come before) stay
+    // valid. Each feature's `index` = its absolute position in the final array.
+    const featureAttributes: ErliExternalAttribute[] = buildShopAttributes(
+      cmd,
+      paramAttributes.length + groupAttributes.length
+    );
+
+    const externalAttributes = [...paramAttributes, ...groupAttributes, ...featureAttributes];
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
@@ -564,6 +573,8 @@ export class ErliOfferManagerAdapter
       body.externalVariantGroup = {
         id: g.groupId,
         source: 'integration',
+        // Group references ONLY the variant-group axes (NOT the appended
+        // features) — their indexes are unchanged by appending features.
         attributes: groupAttributes.map((a) => a.index as number),
       };
     }
@@ -804,6 +815,45 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
+}
+
+/**
+ * Build shop-source `externalAttributes` from the command's master-derived
+ * product features (#1096 F2 / ADR-025 §3). Each feature becomes a
+ * `{ source:'shop', id, name, type:'string', values:[value], index }` entry.
+ * `id` falls back to the feature `name` when the core slug is absent (an entry
+ * with neither name nor value is skipped). `index` is the entry's ABSOLUTE
+ * position in the final `externalAttributes` array — the caller passes
+ * `startIndex` (the count of all entries that precede the feature block) so the
+ * variant-group index refs that point at the earlier blocks stay valid. The
+ * value is coerced to a single-element `string[]` per the verified wire shape.
+ */
+function buildShopAttributes(
+  cmd: CreateOfferCommand,
+  startIndex: number
+): ErliExternalAttribute[] {
+  const attributes: ErliExternalAttribute[] = [];
+  let i = 0;
+  for (const feature of cmd.sourceAttributes ?? []) {
+    if (feature.name.length === 0 || feature.value.length === 0) {
+      continue;
+    }
+    const id = feature.id && feature.id.length > 0 ? feature.id : feature.name;
+    const entry: ErliExternalAttribute = {
+      source: 'shop',
+      id,
+      name: feature.name,
+      type: 'string',
+      values: [feature.value],
+      index: startIndex + i,
+    };
+    if (feature.unit !== undefined && feature.unit.length > 0) {
+      entry.unit = feature.unit;
+    }
+    attributes.push(entry);
+    i += 1;
+  }
+  return attributes;
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

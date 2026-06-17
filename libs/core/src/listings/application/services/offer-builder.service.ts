@@ -42,6 +42,7 @@ import type {
   OfferParameter,
   OfferVariantAttribute,
   OfferVariantGroup,
+  SourceAttribute,
   SourceCategoryRef,
 } from '@openlinker/core/listings';
 import { isCategoryBrowser, isEanCategoryMatcher } from '@openlinker/core/listings';
@@ -187,7 +188,22 @@ export class OfferBuilderService implements IOfferBuilderService {
     // #1096 — thread the master product's source-shop categories so a borrows
     // destination (Erli) can emit `source:"shop"` taxonomy when no marketplace
     // category was resolved. Neutral data; owns-taxonomy adapters ignore it.
-    const sourceCategories: SourceCategoryRef[] = (product.categories ?? []).map((id) => ({ id }));
+    // F3: prefer the master's full category path (root→leaf, {id,name}) when
+    // present so the breadcrumb carries names; otherwise fall back to the bare
+    // ids the master always supplies.
+    const sourceCategories: SourceCategoryRef[] =
+      product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0
+        ? product.categoryBreadcrumb.map((c) => ({ id: c.id, name: c.name }))
+        : (product.categories ?? []).map((id) => ({ id }));
+
+    // #1096 F2 — thread the master product's features as neutral source-shop
+    // attributes. A borrows destination (Erli) emits `source:"shop"`
+    // `externalAttributes`; owns-taxonomy adapters ignore them. Each feature's
+    // `id` is a stable slug of its name so the same feature is byte-stable across
+    // runs (idempotency-friendly).
+    const sourceAttributes: SourceAttribute[] = (product.features ?? [])
+      .filter((f) => f.name.length > 0 && f.value.length > 0)
+      .map((f) => ({ id: slugifyFeatureName(f.name), name: f.name, value: f.value }));
 
     const command: CreateOfferCommand = {
       internalVariantId: input.internalVariantId,
@@ -199,6 +215,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
       ...(sourceCategories.length > 0 ? { sourceCategories } : {}),
+      ...(sourceAttributes.length > 0 ? { sourceAttributes } : {}),
       // Neutral parameters (#1039/#1071): projected attributes merged with
       // operator-picked `overrides.parameters` (operator wins by id). The
       // destination adapter is the sole shaper (splits by `section`). Omitted
@@ -443,6 +460,21 @@ export class OfferBuilderService implements IOfferBuilderService {
  * body-only destination contains the blast radius; Erli validates size
  * server-side).
  */
+/**
+ * Slugify a product-feature name into a stable id (#1096 F2): lowercase, collapse
+ * runs of non-alphanumerics to a single `-`, and trim leading/trailing `-`. Pure.
+ * The slug feeds a body-only `externalAttributes[].id` — never a path/query/SQL
+ * surface — so no length/charset bound beyond this normalisation is applied. A
+ * name that slugs to empty (all-punctuation) yields `''`; the adapter still emits
+ * the entry keyed by its `name`.
+ */
+function slugifyFeatureName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function flattenAttributes(
   attributes: Record<string, string> | null
 ): OfferVariantAttribute[] {

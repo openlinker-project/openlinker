@@ -13,6 +13,7 @@ import type {
   IPrestashopProductMapper,
   PrestashopProduct,
   PrestashopCombination,
+  PrestashopFeatureRef,
 } from './prestashop.mapper.interface';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopProductMapperOptions } from './prestashop-product.mapper.types';
@@ -440,6 +441,48 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
    */
   private splitImageId(id: string): string {
     return id.split('').join('/');
+  }
+
+  /**
+   * Extract a product's raw feature references (#1096 F2). Handles both
+   * association shapes via `unwrapAssociationEntries`:
+   *   - XML: `associations.product_features = { product_feature: [...] | {...} }`
+   *   - JSON: `associations.product_features = [...]`
+   * Each entry carries `id` (the feature group) + `id_feature_value` (the value);
+   * entries missing either are skipped. Resolving the ids to names is the
+   * resolver's job (this stays I/O-free).
+   */
+  extractFeatureRefs(product: PrestashopProduct): PrestashopFeatureRef[] {
+    if (!product.associations || typeof product.associations !== 'object') {
+      return [];
+    }
+    const associations = product.associations as Record<string, unknown>;
+    const entries = this.unwrapAssociationEntries(
+      associations.product_features,
+      'product_feature'
+    );
+    const refs: PrestashopFeatureRef[] = [];
+    for (const entry of entries) {
+      if (entry === null || typeof entry !== 'object') {
+        continue;
+      }
+      const node = entry as Record<string, unknown>;
+      const featureId = this.readAssociationId(entry);
+      const featureValueId = this.readScalarId(node.id_feature_value);
+      if (featureId !== null && featureValueId !== null) {
+        refs.push({ featureId, featureValueId });
+      }
+    }
+    return refs;
+  }
+
+  /** Read a scalar id (string|number) into a trimmed string, or null. */
+  private readScalarId(value: unknown): string | null {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const asString = String(value).trim();
+      return asString.length > 0 ? asString : null;
+    }
+    return null;
   }
 
   /**

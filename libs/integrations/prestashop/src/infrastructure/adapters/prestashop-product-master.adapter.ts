@@ -33,6 +33,8 @@ import {
 } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 import type { PrestashopAttributeResolver } from '../provisioners/prestashop-attribute.resolver';
+import type { PrestashopFeatureResolver } from '../provisioners/prestashop-feature.resolver';
+import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -51,7 +53,16 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Optional so existing constructions (tests) stay valid; the factory always
     // supplies a process-singleton instance so its option-value cache persists
     // across per-product adapter instances (#1050).
-    private readonly attributeResolver?: PrestashopAttributeResolver
+    private readonly attributeResolver?: PrestashopAttributeResolver,
+    // Optional, process-singleton (mirrors attributeResolver). Resolves product
+    // features → `{name,value}[]` (#1096 F2). A resolver failure never breaks
+    // product sync — the product simply carries no features.
+    private readonly featureResolver?: PrestashopFeatureResolver,
+    // Optional, process-singleton. Resolves the product's full category PATH
+    // (root→leaf, {id,name}) (#1096 F3). A resolver failure never breaks product
+    // sync — `categoryBreadcrumb` is left unset and the bare-id `categories`
+    // fallback applies.
+    private readonly categoryPathResolver?: PrestashopCategoryPathResolver
   ) {}
 
   async getProduct(productId: string): Promise<Product> {
@@ -85,11 +96,103 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
+    // #1096 F2/F3 — enrich with shop-native features and a full category path so
+    // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
+    // best-effort: a resolver failure leaves the field empty/unset and never
+    // breaks product sync.
+    const features = await this.resolveFeatures(prestashopProduct, langIdValue);
+    const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
+      prestashopProduct,
+      langIdValue
+    );
+
     // Return with internal ID
     return {
       ...mapped,
       id: productId,
+      ...(features.length > 0 ? { features } : {}),
+      ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
     };
+  }
+
+  /**
+   * Resolve the product's features into neutral `{ name, value }[]` (#1096 F2).
+   * Parses the raw refs in the mapper (I/O-free), then resolves ids → names via
+   * the feature resolver. A resolver failure (or no resolver wired) yields `[]`
+   * — features are best-effort enrichment, never a sync blocker (mirrors
+   * `buildOptionValueResolver`).
+   */
+  private async resolveFeatures(
+    prestashopProduct: PrestashopProduct,
+    langId: number
+  ): Promise<{ name: string; value: string }[]> {
+    if (!this.featureResolver) {
+      return [];
+    }
+    const refs = this.productMapper.extractFeatureRefs(prestashopProduct);
+    if (refs.length === 0) {
+      return [];
+    }
+    try {
+      const lookups = await this.featureResolver.getFeatureLookups(
+        this.connection.id,
+        this.httpClient,
+        (field, fieldLangId) => this.productMapper.localizeField(field, fieldLangId),
+        langId
+      );
+      const features: { name: string; value: string }[] = [];
+      for (const ref of refs) {
+        const name = lookups.nameById.get(ref.featureId);
+        const value = lookups.valueById.get(ref.featureValueId);
+        if (name && value) {
+          features.push({ name, value });
+        }
+      }
+      return features;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve PrestaShop product features (connection: ${this.connection.id}); ` +
+          `omitting features: ${(error as Error).message}`
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Resolve the product's full category path (root→leaf, `{ id, name }`) (#1096
+   * F3) by walking the parent chain from `id_category_default`. Returns `[]` when
+   * no resolver is wired, the product has no default leaf, or the walk fails — the
+   * caller then falls back to the bare-id `categories` (mirrors
+   * `buildOptionValueResolver`).
+   */
+  private async resolveCategoryBreadcrumb(
+    prestashopProduct: PrestashopProduct,
+    langId: number
+  ): Promise<{ id: string; name: string }[]> {
+    if (!this.categoryPathResolver) {
+      return [];
+    }
+    const leafRaw = prestashopProduct.id_category_default;
+    const leafId =
+      leafRaw === null || leafRaw === undefined ? '' : String(leafRaw).trim();
+    if (leafId.length === 0) {
+      return [];
+    }
+    try {
+      return await this.categoryPathResolver.resolvePath(
+        this.connection.id,
+        leafId,
+        this.httpClient,
+        (field, fieldLangId) => this.productMapper.localizeField(field, fieldLangId),
+        langId
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve PrestaShop category path (connection: ${this.connection.id}); ` +
+          `falling back to bare category ids: ${(error as Error).message}`
+      );
+      return [];
+    }
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {

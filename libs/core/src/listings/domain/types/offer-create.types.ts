@@ -26,6 +26,23 @@ export interface SourceCategoryRef {
 }
 
 /**
+ * A source-shop product attribute (product *feature*) carried through from the
+ * master catalog (#1096, F2). Platform-neutral: a destination that accepts
+ * shop-native attributes (Erli `externalAttributes` `source:"shop"`, ADR-025 §3)
+ * maps these to its wire shape; destinations that require a resolved marketplace
+ * parameter (Allegro) ignore them. Distinct from `OfferParameter` (resolved,
+ * marketplace-scoped parameters) and from `OfferVariantAttribute` (a variant's
+ * distinguishing grouping axis). `id` is a stable slug of the feature name; `name`
+ * is the human label; `unit` is best-effort (the master may expose only name/value).
+ */
+export interface SourceAttribute {
+  id?: string;
+  name: string;
+  value: string;
+  unit?: string;
+}
+
+/**
  * Overrides for fields that can optionally be customized per-offer.
  * Any field omitted here falls back to a value derived by the core builder
  * service from the OL variant (e.g. variant.name, variant.description).
@@ -186,6 +203,15 @@ export interface CreateOfferCommand {
    * the product carried no source categories.
    */
   sourceCategories?: SourceCategoryRef[];
+  /**
+   * Source-shop product attributes (master-derived product features),
+   * platform-neutral (#1096, F2). Threaded by `OfferBuilderService` from the
+   * master product's features. A destination that accepts shop-native attributes
+   * (Erli `externalAttributes` `source:"shop"`) emits these; adapters that require
+   * a resolved marketplace parameter (Allegro) ignore them. Absent/empty ⇒ the
+   * product carried no features.
+   */
+  sourceAttributes?: SourceAttribute[];
 }
 
 /**

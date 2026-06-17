@@ -493,6 +493,142 @@ describe('ErliOfferManagerAdapter', () => {
         }
       });
     });
+
+    describe('shop product features → externalAttributes (#1096 F2)', () => {
+      const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
+
+      it('should emit each feature as a shop-source string externalAttribute with a positional index', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {}, // no Allegro category/params, so no param attributes precede
+            sourceAttributes: [
+              { id: 'material', name: 'Material', value: 'Ceramic' },
+              { id: 'color', name: 'Color', value: 'Blue', unit: undefined },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 0 },
+          { source: 'shop', id: 'color', name: 'Color', type: 'string', values: ['Blue'], index: 1 },
+        ]);
+      });
+
+      it('should carry the unit when a feature supplies one', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [{ id: 'weight', name: 'Weight', value: '500', unit: 'g' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes?.[0]).toEqual({
+          source: 'shop',
+          id: 'weight',
+          name: 'Weight',
+          type: 'string',
+          values: ['500'],
+          index: 0,
+          unit: 'g',
+        });
+      });
+
+      it('should fall back to the feature name as id when the slug id is absent', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [{ name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes?.[0]).toMatchObject({ id: 'Material', name: 'Material' });
+      });
+
+      it('should drop features with an empty name or value', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [
+              { id: 'a', name: '', value: 'x' },
+              { id: 'b', name: 'Material', value: '' },
+              { id: 'c', name: 'Color', value: 'Red' },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'c', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+        ]);
+      });
+
+      it('should append features AFTER Allegro param attributes (param indexes precede feature indexes)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: { categoryId: '18654' },
+            parameters: [{ id: '11323', section: 'product', values: ['Acme'] }],
+            sourceAttributes: [{ id: 'material', name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        // Param attribute first (no index on the #985 path), feature appended with
+        // its absolute index = 1 (one preceding param attribute).
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'string', values: ['Acme'] },
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 1 },
+        ]);
+      });
+
+      it('should keep variant-group index refs valid when features are appended after the group axes', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Red' }] },
+            sourceAttributes: [{ id: 'material', name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Axis at index 0 (group references it), feature appended at index 1.
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 1 },
+        ]);
+        // Group must reference ONLY the axis index (0), never the feature index (1).
+        expect(body.externalVariantGroup?.attributes).toEqual([0]);
+      });
+
+      it('should omit externalAttributes entirely when there are no params, axes, or features', async () => {
+        await adapter.createOffer(createCmd({ overrides: {} }));
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body).not.toHaveProperty('externalAttributes');
+      });
+
+      it('should never emit feature attributes on a field-update PATCH (create-only)', async () => {
+        await adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
+
+        for (const call of httpClient.patch.mock.calls) {
+          const body = call[1] as Record<string, unknown>;
+          expect(body).not.toHaveProperty('externalAttributes');
+        }
+      });
+    });
   });
 
   describe('updateOfferFields', () => {

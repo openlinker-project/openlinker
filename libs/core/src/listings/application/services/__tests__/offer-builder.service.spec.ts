@@ -264,6 +264,123 @@ describe('OfferBuilderService', () => {
     });
   });
 
+  describe('source-shop features & category path (#1096 F2/F3)', () => {
+    it('threads product features as sourceAttributes with slugged ids (F2)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        features: [
+          { name: 'Material', value: 'Ceramic' },
+          { name: 'Country of Origin', value: 'PL' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toEqual([
+        { id: 'material', name: 'Material', value: 'Ceramic' },
+        { id: 'country-of-origin', name: 'Country of Origin', value: 'PL' },
+      ]);
+    });
+
+    it('drops features with empty name or value and omits sourceAttributes when none survive (F2)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        features: [
+          { name: '', value: 'x' },
+          { name: 'Material', value: '' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toBeUndefined();
+    });
+
+    it('omits sourceAttributes when the product carries no features (F2)', async () => {
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toBeUndefined();
+    });
+
+    it('prefers the full category breadcrumb over bare ids for sourceCategories (F3)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['34'],
+        categoryBreadcrumb: [
+          { id: '12', name: 'Home & Garden' },
+          { id: '34', name: 'Mugs' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceCategories).toEqual([
+        { id: '12', name: 'Home & Garden' },
+        { id: '34', name: 'Mugs' },
+      ]);
+    });
+
+    it('falls back to bare category ids when no breadcrumb is present (F3)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['12', '34'],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceCategories).toEqual([{ id: '12' }, { id: '34' }]);
+    });
+  });
+
   describe('variant and connection lookup', () => {
     it('throws OfferBuilderValidationException when variant is missing', async () => {
       productsService.getVariant.mockResolvedValue(null);

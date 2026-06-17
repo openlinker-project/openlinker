@@ -48,3 +48,24 @@ export type OptionValueResolver = (optionValueId: string) => ResolvedOptionValue
  * so it reuses the one parser rather than re-implementing PS's field shapes.
  */
 export type LocalizeFn = (field: unknown, langId?: number) => string | undefined;
+
+/** `GET /product_features` row — a feature group (e.g. "Material") (#1096 F2). */
+export interface PrestashopProductFeature {
+  id: string | number;
+  name?: unknown;
+}
+
+/** `GET /product_feature_values` row — a value (e.g. "Ceramic") + its owning feature. */
+export interface PrestashopProductFeatureValue {
+  id: string | number;
+  value?: unknown;
+  id_feature?: string | number;
+}
+
+/** A `{ featureId, featureValueId }` pair resolved to its `{ name, value }` (#1096 F2). */
+export interface ResolvedFeature {
+  /** Feature group name (e.g. "Material"). */
+  name: string;
+  /** Value within the group (e.g. "Ceramic"). */
+  value: string;
+}
