@@ -33,10 +33,12 @@ import { ErliNetworkException } from '../../domain/exceptions/erli-network.excep
 import { ErliRateLimitException } from '../../domain/exceptions/erli-rate-limit.exception';
 
 /**
- * PLACEHOLDER probe path — replaced by #992 with a confirmed cheap
- * authenticated Erli endpoint. Must require auth so a bad key returns 401/403.
+ * Probe path — verified against the live Erli Shop API (#992 spike). `GET /me`
+ * is the cheap authenticated identity endpoint: it requires auth (a bad key
+ * returns 401), takes no parameters, and has no side effects. The previously
+ * assumed `/offers?limit=1` does not exist on the real API.
  */
-const ERLI_CONNECTION_PROBE_PATH = '/offers?limit=1';
+const ERLI_CONNECTION_PROBE_PATH = '/me';
 
 /** No-retry budget: a connection probe should fail fast, not back off. */
 const NO_RETRY = { maxRetries: 0, initialDelayMs: 0, maxDelayMs: 0, backoffMultiplier: 1 } as const;
@@ -58,10 +60,9 @@ export class ErliConnectionTesterAdapter implements ConnectionTesterPort {
       return {
         success: true,
         status: response.status,
-        // The probe endpoint is provisional until the #992 sandbox spike confirms
-        // it actually requires auth. Until then a 2xx proves reachability but not
-        // a verified credential, so the message stays conservative (#982/#992).
-        message: 'Connection reachable (probe endpoint provisional until #992)',
+        // `GET /me` requires auth, so a 2xx confirms both reachability and a
+        // valid credential (endpoint verified against the sandbox, #992).
+        message: 'Connection reachable and credentials accepted',
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
