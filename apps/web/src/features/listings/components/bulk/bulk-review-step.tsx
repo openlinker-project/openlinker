@@ -55,6 +55,13 @@ interface BulkReviewStepProps {
    * marketplace's blockers generically — no host enum of platform blockers.
    */
   platformBlockerChips: readonly OfferBlockerDescriptor[];
+  /**
+   * True when the destination exposes a browsable category tree (`CategoryBrowser`,
+   * #1096). Drives the edit modal's category control: tree picker + parameter
+   * step when true (Allegro); a manual Allegro-id input (taxonomy reuse, ADR-025
+   * §3) when false (a `borrows` destination like Erli).
+   */
+  canBrowseCategories: boolean;
   onUpdateRow: (
     variantId: string,
     override: BulkPerProductOverride,
@@ -86,6 +93,7 @@ export function BulkReviewStep({
   publishImmediately,
   paramsResolving,
   platformBlockerChips,
+  canBrowseCategories,
   onUpdateRow,
   onApproveAll,
   onBack,
@@ -294,6 +302,7 @@ export function BulkReviewStep({
           }}
           row={editingRow}
           connectionId={connectionId}
+          canBrowseCategories={canBrowseCategories}
           defaults={{
             stock: editingStock.value ?? 0,
             publishImmediately,

@@ -187,6 +187,33 @@ describe('computeBlockers', () => {
     ).toEqual(['multi-match']);
   });
 
+  it('suppresses the category blocker for a destination that resolves it at submit (#1096)', () => {
+    // A `borrows` destination (Erli) resolves the category server-side at submit
+    // (override → barcode → mapping), so a pre-flight non-match must not block.
+    for (const categoryResult of [
+      { kind: 'no-match' } as const,
+      { kind: 'no-ean' } as const,
+      { kind: 'multi-match', candidates: [] } as const,
+    ]) {
+      expect(
+        computeBlockers(base({ categoryResult, destinationResolvesCategoryAtSubmit: true })),
+      ).toEqual([]);
+    }
+  });
+
+  it('still blocks price/stock when category resolves at submit', () => {
+    // The submit-time category resolution doesn't excuse genuine price/stock gaps.
+    expect(
+      computeBlockers(
+        base({
+          categoryResult: { kind: 'no-match' },
+          destinationResolvesCategoryAtSubmit: true,
+          masterPrice: null,
+        }),
+      ),
+    ).toEqual(['no-master-price']);
+  });
+
   it('co-occurs no-ean + no-master-price', () => {
     const result = computeBlockers(
       base({ categoryResult: { kind: 'no-ean' }, masterPrice: null }),

@@ -85,6 +85,7 @@ describe('BulkEditModal', () => {
           ],
         })}
         connectionId="conn_1"
+        canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
       />,
@@ -101,6 +102,7 @@ describe('BulkEditModal', () => {
         onOpenChange={() => undefined}
         row={makeRow()}
         connectionId="conn_1"
+        canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
       />,
@@ -115,6 +117,7 @@ describe('BulkEditModal', () => {
         onOpenChange={() => undefined}
         row={makeRow({ name: 'Widget' })}
         connectionId="conn_1"
+        canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
       />,
@@ -130,6 +133,7 @@ describe('BulkEditModal', () => {
         onOpenChange={() => undefined}
         row={makeRow({ name: 'Changed name' })}
         connectionId="conn_1"
+        canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
       />,
@@ -149,6 +153,7 @@ describe('BulkEditModal', () => {
           candidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B', name: 'Books' }],
         })}
         connectionId="conn_1"
+        canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={onSave}
       />,
@@ -168,5 +173,50 @@ describe('BulkEditModal', () => {
     };
     expect(override.overrides?.categoryId).toBe('cat-B');
     expect(override.overrides?.productCardId).toBe('card-B');
+  });
+
+  // #1096 — a `borrows` destination (Erli) can't browse a category tree; the
+  // operator enters the reused Allegro id manually (or leaves it blank to
+  // resolve at submit).
+  it('renders a manual category-id input instead of the tree picker when the destination cannot browse', () => {
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connectionId="conn_1"
+        canBrowseCategories={false}
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+    expect(screen.queryByTestId('category-picker')).not.toBeInTheDocument();
+  });
+
+  it('omits a blank category from the saved override so the backend resolves it at submit (#1096)', async () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connectionId="conn_1"
+        canBrowseCategories={false}
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    // Leave the category blank; fill only the required description.
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'A fine description' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+
+    await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+    const override = onSave.mock.calls[0][1] as { overrides?: { categoryId?: string } };
+    expect(override.overrides?.categoryId).toBeUndefined();
   });
 });

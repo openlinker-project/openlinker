@@ -133,6 +133,17 @@ export function BulkWizard({
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
 
+  // Category-resolution provenance from declared capabilities (never platformType):
+  // a destination that can't pre-flight EAN-match `borrows` its taxonomy and
+  // resolves the category server-side at submit (#1096 / ADR-025 §3), so a
+  // pre-flight non-match must not block it; one without a browsable category tree
+  // needs manual Allegro-id entry in the edit modal rather than the tree picker.
+  const destinationResolvesCategoryAtSubmit = batchConnection
+    ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
+    : false;
+  const destinationBrowsesCategories =
+    batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false;
+
   // Reconcile the `needs-product-parameters` blocker whenever a category's
   // schema resolves (it loads after the operator picks the category, so it
   // can't be decided at resolve time). Gated to the Review step: only there do
@@ -146,14 +157,20 @@ export function BulkWizard({
       let changed = false;
       const next = prev.map((row) => {
         if (!row.primaryVariant) return row;
-        const blockers = recomputeRowBlockers(row, config, requiredByCategory, platformValidate);
+        const blockers = recomputeRowBlockers(
+          row,
+          config,
+          requiredByCategory,
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+        );
         if (sameBlockers(blockers, row.blockers)) return row;
         changed = true;
         return { ...row, blockers };
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory, platformValidate]);
+  }, [config, step, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
 
   const handleConfigProceed = useCallback((next: BulkWizardConfig) => {
     setConfig(next);
@@ -184,12 +201,18 @@ export function BulkWizard({
           const updated: BulkWizardRow = { ...row, override, editFormValues };
           return {
             ...updated,
-            blockers: recomputeRowBlockers(updated, config, requiredByCategory, platformValidate),
+            blockers: recomputeRowBlockers(
+              updated,
+              config,
+              requiredByCategory,
+              platformValidate,
+              destinationResolvesCategoryAtSubmit,
+            ),
           };
         }),
       );
     },
-    [config, requiredByCategory, platformValidate],
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
 
   const handleSubmit = useCallback(
@@ -329,6 +352,7 @@ export function BulkWizard({
               stockPolicy={config.stockPolicy}
               currency={config.currency}
               platformValidate={platformValidate}
+              destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
               onComplete={handleResolveComplete}
             />
           )}
@@ -342,6 +366,7 @@ export function BulkWizard({
               publishImmediately={config.publishImmediately}
               paramsResolving={paramsResolving}
               platformBlockerChips={platformBlockerChips}
+              canBrowseCategories={destinationBrowsesCategories}
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}

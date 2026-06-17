@@ -50,6 +50,12 @@ interface BulkResolveStepProps {
   currency: string;
   /** Resolved platform row validator (#1096) — emits platform-specific blockers. */
   platformValidate?: (input: OfferRowValidationInput) => string[];
+  /**
+   * True when the destination resolves the category server-side at submit
+   * (`borrows` taxonomy, no `EanCategoryMatcher` — #1096). Suppresses the
+   * pre-flight category blocker so such rows aren't falsely blocked.
+   */
+  destinationResolvesCategoryAtSubmit?: boolean;
   /** Called once with the resolved outcomes for every row, on settle. */
   onComplete: (outcomes: BulkResolveOutcome[]) => void;
 }
@@ -66,6 +72,7 @@ export function BulkResolveStep({
   stockPolicy,
   currency,
   platformValidate,
+  destinationResolvesCategoryAtSubmit,
   onComplete,
 }: BulkResolveStepProps): ReactElement {
   const apiClient = useApiClient();
@@ -134,6 +141,7 @@ export function BulkResolveStep({
         override: row.override,
         imageCount: imageCountForRow(row),
         platformValidate,
+        destinationResolvesCategoryAtSubmit,
       });
 
       return {
@@ -159,6 +167,7 @@ export function BulkResolveStep({
     stockPolicy,
     currency,
     platformValidate,
+    destinationResolvesCategoryAtSubmit,
   ]);
 
   // Fire onComplete exactly once, when both batch queries have settled.

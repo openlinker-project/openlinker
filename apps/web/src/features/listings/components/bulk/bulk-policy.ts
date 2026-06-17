@@ -152,6 +152,16 @@ export interface ComputeBlockersInput {
    * concatenated onto the neutral set. Absent ⇒ only neutral blockers apply.
    */
   platformValidate?: (input: OfferRowValidationInput) => string[];
+  /**
+   * True for a destination that resolves the category server-side at submit
+   * rather than via the client-side pre-flight EAN match (#1096). Such a
+   * destination `borrows` its taxonomy (no `EanCategoryMatcher`, e.g. Erli —
+   * `OfferBuilderService` resolves it from override → barcode → category mapping
+   * at create time, ADR-025 §3). For these, a pre-flight `no-match`/`no-ean`/
+   * `multi-match` is NOT a blocker — the operator may still pin a category via
+   * the row override. Omitted ⇒ false (the Allegro pre-flight-match path).
+   */
+  destinationResolvesCategoryAtSubmit?: boolean;
 }
 
 /**
@@ -177,8 +187,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   const blockers: BulkRowBlocker[] = [];
 
   // Category — an operator-picked category override clears the category blocker.
+  // A `borrows`-taxonomy destination resolves the category server-side at submit
+  // (override → barcode → mapping), so a pre-flight non-match never blocks it.
   const hasCategoryOverride = Boolean(input.override.overrides?.categoryId);
-  if (!hasCategoryOverride) {
+  if (!hasCategoryOverride && !input.destinationResolvesCategoryAtSubmit) {
     const cat = input.categoryResult;
     if (!cat || cat.kind === 'no-match') {
       blockers.push('no-match');
@@ -312,6 +324,7 @@ export function recomputeRowBlockers(
   config: BulkWizardConfig,
   requiredByCategory: Map<string, readonly string[]>,
   platformValidate?: (input: OfferRowValidationInput) => string[],
+  destinationResolvesCategoryAtSubmit = false,
 ): BulkRowBlocker[] {
   if (!row.primaryVariant) return ['no-variant'];
   const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
@@ -331,6 +344,7 @@ export function recomputeRowBlockers(
       : undefined,
     imageCount: imageCountForRow(row),
     platformValidate,
+    destinationResolvesCategoryAtSubmit,
   });
 }
 

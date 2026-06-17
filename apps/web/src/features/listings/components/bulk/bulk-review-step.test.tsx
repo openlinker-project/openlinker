@@ -97,6 +97,7 @@ function renderReview(
       publishImmediately
       paramsResolving={paramsResolving}
       platformBlockerChips={ALLEGRO_CHIPS}
+      canBrowseCategories={true}
       onUpdateRow={() => undefined}
       onApproveAll={() => undefined}
       onBack={() => undefined}
@@ -153,6 +154,7 @@ describe('BulkReviewStep', () => {
         publishImmediately
         paramsResolving={false}
         platformBlockerChips={ALLEGRO_CHIPS}
+        canBrowseCategories={true}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}
@@ -199,6 +201,7 @@ describe('BulkReviewStep', () => {
         publishImmediately
         paramsResolving={false}
         platformBlockerChips={ALLEGRO_CHIPS}
+        canBrowseCategories={true}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}
