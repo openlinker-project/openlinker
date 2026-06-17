@@ -29,9 +29,12 @@ describe('erliPlugin', () => {
       const paths = (erliPlugin.build?.routes ?? []).map((route) => route.path);
       expect(paths).toContain('connections/new/erli');
     });
-    it('does NOT contribute API namespaces or an offer-creation wizard', () => {
+    it('does NOT contribute API namespaces', () => {
       expect(erliPlugin.build?.apiNamespaces).toBeUndefined();
-      expect(erliPlugin.build?.offerCreationWizard).toBeUndefined();
+    });
+    it('contributes a single-offer wizard for the erli platform (#1096)', () => {
+      expect(erliPlugin.build?.offerCreationWizard?.platformType).toBe('erli');
+      expect(erliPlugin.build?.offerCreationWizard?.component).toBeDefined();
     });
   });
 
@@ -46,9 +49,14 @@ describe('erliPlugin', () => {
     it('contributes a credentials panel', () => {
       expect(erliPlugin.platform?.CredentialsPanel).toBeDefined();
     });
-    it('does NOT contribute structured-config edit or marketplace slots', () => {
+    it('does NOT contribute structured-config edit or connection-action slots', () => {
       expect(erliPlugin.platform?.StructuredConfigSection).toBeUndefined();
       expect(erliPlugin.platform?.ConnectionActions).toBeUndefined();
+    });
+    it('contributes the bulk-offer config section + offer validation (#1096)', () => {
+      expect(erliPlugin.platform?.bulkOfferConfigSection?.component).toBeDefined();
+      expect(erliPlugin.platform?.bulkOfferConfigSection?.isComplete).toBeInstanceOf(Function);
+      expect(erliPlugin.platform?.offerValidation?.blockers.length).toBeGreaterThan(0);
     });
   });
 

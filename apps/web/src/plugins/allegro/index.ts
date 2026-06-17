@@ -8,14 +8,30 @@
  *
  * @module plugins/allegro
  */
+import { lazy } from 'react';
+
 import { createAllegroApi, type AllegroApi } from '../../features/allegro';
-import { AllegroCreateOfferWizard } from '../../features/listings';
+import { AllegroCreateOfferWizard, allegroOfferValidation } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { allegroCallbackRoute } from './allegro-callback.route';
 import { allegroSetupRoute } from './allegro-setup.route';
 import { AllegroExtraSection } from './components/allegro-extra-section';
 import { extractAllegroContentPublishErrors } from './extract-content-publish-errors';
+
+// Lazy-loaded bulk config section (#1096) — migrates the delivery-policy +
+// currency fields off the host hardcode into Allegro's own contribution.
+const AllegroBulkConfigSectionLazy = lazy(() =>
+  import('../../features/listings').then((m) => ({ default: m.AllegroBulkConfigSection })),
+);
+
+/** Pure completeness predicate — must NOT pull the lazy chunk (runs in `canProceed`). */
+function allegroBulkConfigIsComplete(values: {
+  platformParams: Record<string, unknown>;
+}): boolean {
+  const id = values.platformParams.deliveryPolicyId;
+  return typeof id === 'string' && id !== '';
+}
 
 declare module '../../app/api/api-client' {
   interface PluginApiNamespaces {
@@ -53,5 +69,14 @@ export const allegroPlugin: OpenLinkerPlugin = definePlugin({
     // arrives before the pickup-point payload (#839 AC-3, #893).
     pickupPointResolvesAsync: true,
     extractContentPublishErrors: extractAllegroContentPublishErrors,
+    // Bulk offer creation (#1096): delivery policy + currency, migrated off
+    // the host hardcode into Allegro's own contribution.
+    bulkOfferConfigSection: {
+      component: AllegroBulkConfigSectionLazy,
+      isComplete: allegroBulkConfigIsComplete,
+    },
+    // Migrated #810 blocker: a no-card row under a category with required
+    // product params it hasn't supplied (declared once, single+bulk).
+    offerValidation: allegroOfferValidation,
   },
 });

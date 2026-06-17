@@ -13,6 +13,7 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult } from '../../api/listings.types';
 import type {
@@ -140,6 +141,29 @@ export interface ComputeBlockersInput {
    * schema not loaded yet → do not block (avoids flicker). (#810)
    */
   requiredProductParamIds?: readonly string[];
+  /**
+   * Resolved master image count for the row (#1096). Fed to the platform
+   * validator (Erli requires ≥1 image). 0 / undefined ⇒ no images.
+   */
+  imageCount?: number;
+  /**
+   * Per-platform row validator (#1096) — the resolved connection's
+   * `offerValidation.validateRow`. When present, its returned blocker ids are
+   * concatenated onto the neutral set. Absent ⇒ only neutral blockers apply.
+   */
+  platformValidate?: (input: OfferRowValidationInput) => string[];
+}
+
+/**
+ * Whether the row would 422 on missing required product params (#810). The
+ * host owns this computation (it has the category schema); the *blocker
+ * emission + chip* is the platform's via `platformValidate` (#1096). Card-linked
+ * rows are exempt (they inherit the params).
+ */
+export function computeNeedsProductParameters(input: ComputeBlockersInput): boolean {
+  if (input.willLinkProductCard || !input.requiredProductParamIds?.length) return false;
+  const supplied = suppliedProductParamIds(input.override);
+  return input.requiredProductParamIds.some((id) => !supplied.has(id));
 }
 
 /**
@@ -166,16 +190,20 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     // 'matched' → no category blocker
   }
 
-  // Product parameters (#810) — a row that creates a product inline (no card to
-  // inherit from) under a category with required product-section params it
-  // hasn't supplied would 422 at submit. Card-linked rows (#808) inherit the
-  // params, so they're exempt. Coverage-based so the blocker clears once the
-  // operator fills the params in the edit modal.
-  if (!input.willLinkProductCard && input.requiredProductParamIds?.length) {
-    const supplied = suppliedProductParamIds(input.override);
-    if (input.requiredProductParamIds.some((id) => !supplied.has(id))) {
-      blockers.push('needs-product-parameters');
-    }
+  // Platform-specific blockers (#1096) — declared once per marketplace via its
+  // `offerValidation` contribution and emitted as open-world namespaced ids
+  // (e.g. `allegro:needs-product-parameters` (#810), `erli:missing-image`). The
+  // host computes the neutral *inputs* (whether required product params are
+  // unsupplied / card-linked / image count) and the plugin decides + names the
+  // blocker — so a new marketplace adds NO host enum entry.
+  if (input.platformValidate) {
+    blockers.push(
+      ...input.platformValidate({
+        imageCount: input.imageCount ?? 0,
+        needsProductParameters: computeNeedsProductParameters(input),
+        willLinkProductCard: input.willLinkProductCard ?? false,
+      }),
+    );
   }
 
   // Price / stock — override-aware via the resolvers above.
@@ -283,6 +311,7 @@ export function recomputeRowBlockers(
   row: BulkWizardRow,
   config: BulkWizardConfig,
   requiredByCategory: Map<string, readonly string[]>,
+  platformValidate?: (input: OfferRowValidationInput) => string[],
 ): BulkRowBlocker[] {
   if (!row.primaryVariant) return ['no-variant'];
   const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
@@ -300,5 +329,12 @@ export function recomputeRowBlockers(
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
+    imageCount: imageCountForRow(row),
+    platformValidate,
   });
+}
+
+/** Resolved master image count for a row (#1096) — Erli image gate input. */
+export function imageCountForRow(row: BulkWizardRow): number {
+  return row.product?.images?.filter((u) => typeof u === 'string' && u.trim() !== '').length ?? 0;
 }

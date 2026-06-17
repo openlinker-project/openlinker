@@ -7,6 +7,11 @@
  */
 export type { CreateOfferRequest } from './api/listings.types';
 export { AllegroCreateOfferWizard } from './components/AllegroCreateOfferWizard';
+export { ErliCreateOfferWizard } from './components/erli/erli-create-offer-wizard';
+export { ErliBulkConfigSection } from './components/erli/erli-bulk-config-section';
+export { erliOfferValidation } from './components/erli/erli-offer-validation';
+export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-config-section';
+export { allegroOfferValidation } from './components/allegro/allegro-offer-validation';
 export { WoocommercePublishWizard } from './components/WoocommercePublishWizard';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It
 // imports the app-tier `useShopPublishWizard` binding, which imports the

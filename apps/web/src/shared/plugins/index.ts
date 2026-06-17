@@ -23,6 +23,13 @@ export type {
   ShopProductPublishWizardContribution,
   ShopProductPublishWizardProps,
   PluginApiNamespacesFactory,
+  BulkConfigFormValues,
+  BulkOfferConfigSectionProps,
+  BulkOfferConfigSectionContribution,
+  OfferBlockerTone,
+  OfferBlockerDescriptor,
+  OfferRowValidationInput,
+  OfferValidationContribution,
 } from './plugin.types';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';
 export { usePlatforms } from './use-platforms';

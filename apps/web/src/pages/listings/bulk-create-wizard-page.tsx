@@ -109,6 +109,7 @@ export function BulkCreateWizardPage(): ReactElement {
   return (
     <BulkWizard
       products={products}
+      preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??
         connectionId

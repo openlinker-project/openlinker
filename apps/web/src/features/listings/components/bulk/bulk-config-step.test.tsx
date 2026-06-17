@@ -63,7 +63,9 @@ describe('BulkConfigStep', () => {
     expect(onProceed).toHaveBeenCalledTimes(1);
     expect(onProceed.mock.calls[0][0]).toEqual({
       connectionId: 'conn-1',
-      deliveryPolicyId: 'dp1',
+      // #1096 — delivery policy now lives under the generic platformParams slot,
+      // written by Allegro's contributed bulk-config section.
+      platformParams: { deliveryPolicyId: 'dp1' },
       currency: 'PLN',
       pricingPolicy: { mode: 'use-master' },
       stockPolicy: { mode: 'use-master' },

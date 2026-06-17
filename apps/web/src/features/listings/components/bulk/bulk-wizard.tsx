@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
+import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
+import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
 import type {
@@ -42,6 +44,8 @@ interface BulkWizardProps {
   products: Product[];
   /** Connection name displayed in the confirm modal once config is known. */
   resolveConnectionName: (connectionId: string) => string;
+  /** Connection preselected from the entry-point picker / URL (#1096). */
+  preselectedConnectionId?: string;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -54,10 +58,13 @@ const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
 export function BulkWizard({
   products,
   resolveConnectionName,
+  preselectedConnectionId,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const mutation = useBulkSubmitMutation();
+  const platforms = usePlatforms();
+  const connectionsQuery = useConnectionsQuery();
 
   // Mint a stable idempotency key once per wizard mount. Retries from the
   // confirm step submit reuse it; remount mints a fresh one.
@@ -99,6 +106,21 @@ export function BulkWizard({
     noCardCategoryIds,
   );
 
+  // Resolve the batch connection's platform (single connection per batch) so we
+  // can render platform-declared blocker chips and run its row validator (#1096).
+  const batchConnection = useMemo(
+    () => (connectionsQuery.data ?? []).find((c) => c.id === config?.connectionId) ?? null,
+    [connectionsQuery.data, config?.connectionId],
+  );
+  const batchPlatform = useMemo(
+    () => platforms.find((p) => p.platformType === batchConnection?.platformType) ?? null,
+    [platforms, batchConnection],
+  );
+  const platformValidate = useMemo<
+    ((input: OfferRowValidationInput) => string[]) | undefined
+  >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
+  const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
+
   // Reconcile the `needs-product-parameters` blocker whenever a category's
   // schema resolves (it loads after the operator picks the category, so it
   // can't be decided at resolve time). Gated to the Review step: only there do
@@ -112,14 +134,14 @@ export function BulkWizard({
       let changed = false;
       const next = prev.map((row) => {
         if (!row.primaryVariant) return row;
-        const blockers = recomputeRowBlockers(row, config, requiredByCategory);
+        const blockers = recomputeRowBlockers(row, config, requiredByCategory, platformValidate);
         if (sameBlockers(blockers, row.blockers)) return row;
         changed = true;
         return { ...row, blockers };
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory]);
+  }, [config, step, requiredByCategory, platformValidate]);
 
   const handleConfigProceed = useCallback((next: BulkWizardConfig) => {
     setConfig(next);
@@ -150,12 +172,12 @@ export function BulkWizard({
           const updated: BulkWizardRow = { ...row, override, editFormValues };
           return {
             ...updated,
-            blockers: recomputeRowBlockers(updated, config, requiredByCategory),
+            blockers: recomputeRowBlockers(updated, config, requiredByCategory, platformValidate),
           };
         }),
       );
     },
-    [config, requiredByCategory],
+    [config, requiredByCategory, platformValidate],
   );
 
   const handleSubmit = useCallback(
@@ -223,7 +245,9 @@ export function BulkWizard({
           publishImmediately,
           generateDescription: config.generateDescription,
           overrides: {
-            platformParams: { deliveryPolicyId: config.deliveryPolicyId },
+            // Generic per-platform knobs (Allegro deliveryPolicyId, Erli
+            // dispatchTime, …) — the config section populated these (#1096).
+            platformParams: config.platformParams,
           },
         },
         perProductOverrides,
@@ -252,10 +276,12 @@ export function BulkWizard({
     (r) => r.primaryVariant !== null && r.blockers.length === 0,
   ).length;
 
+  const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
+
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title="Bulk Allegro offer creation"
+      title="Bulk marketplace offer creation"
       description={`Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'}.`}
     >
       <div className="bulk-wizard">
@@ -278,6 +304,7 @@ export function BulkWizard({
           {step === 'config' && (
             <BulkConfigStep
               initial={config ?? {}}
+              preselectedConnectionId={preselectedConnectionId}
               onProceed={handleConfigProceed}
               onCancel={() => { void navigate(-1); }}
             />
@@ -289,6 +316,7 @@ export function BulkWizard({
               pricingPolicy={config.pricingPolicy}
               stockPolicy={config.stockPolicy}
               currency={config.currency}
+              platformValidate={platformValidate}
               onComplete={handleResolveComplete}
             />
           )}
@@ -301,6 +329,7 @@ export function BulkWizard({
               currency={config.currency}
               publishImmediately={config.publishImmediately}
               paramsResolving={paramsResolving}
+              platformBlockerChips={platformBlockerChips}
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}
@@ -314,6 +343,7 @@ export function BulkWizard({
             onOpenChange={setConfirmOpen}
             rowCount={readyCount}
             connectionName={resolveConnectionName(config.connectionId)}
+            marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             errorMessage={mutation.error ? mutation.error.message : null}

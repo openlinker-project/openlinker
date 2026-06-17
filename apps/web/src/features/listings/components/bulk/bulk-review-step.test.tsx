@@ -75,6 +75,12 @@ function makeRow(
   };
 }
 
+// Allegro's migrated platform blocker chip (#1096) — supplied so the
+// add-product-params tests render the chip generically through the contribution.
+const ALLEGRO_CHIPS = [
+  { id: 'allegro:needs-product-parameters', tone: 'warning' as const, label: 'add product params' },
+];
+
 function renderReview(
   rows: BulkWizardRow[],
   pricingPolicy: PricingPolicy = { mode: 'use-master' },
@@ -90,6 +96,7 @@ function renderReview(
       currency="PLN"
       publishImmediately
       paramsResolving={paramsResolving}
+      platformBlockerChips={ALLEGRO_CHIPS}
       onUpdateRow={() => undefined}
       onApproveAll={() => undefined}
       onBack={() => undefined}
@@ -145,6 +152,7 @@ describe('BulkReviewStep', () => {
         currency="PLN"
         publishImmediately
         paramsResolving={false}
+        platformBlockerChips={ALLEGRO_CHIPS}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}
@@ -162,25 +170,27 @@ describe('BulkReviewStep', () => {
     expect(screen.getByRole('button', { name: /Approve all/ })).toBeEnabled();
   });
 
-  // #810 — needs-product-parameters blocker surfacing
+  // #810/#1096 — Allegro's migrated platform blocker rendered via the contribution.
   it('renders the add-product-params chip and a remediation hint', () => {
-    renderReview([makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 })]);
+    renderReview([
+      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+    ]);
     expect(screen.getByText('add product params')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/Edit/);
-    expect(screen.getByRole('status')).toHaveTextContent(/product parameters/);
+    expect(screen.getByRole('status')).toHaveTextContent(/attention/);
   });
 
   it('singularises the hint for one affected row and pluralises for many', () => {
     const { rerender } = renderReview([
-      makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
     ]);
     expect(screen.getByRole('status')).toHaveTextContent(/1\s+row needs/);
 
     rerender(
       <BulkReviewStep
         rows={[
-          makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-          makeRow('b', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+          makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+          makeRow('b', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
         ]}
         connectionId="conn_1"
         pricingPolicy={{ mode: 'use-master' }}
@@ -188,6 +198,7 @@ describe('BulkReviewStep', () => {
         currency="PLN"
         publishImmediately
         paramsResolving={false}
+        platformBlockerChips={ALLEGRO_CHIPS}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}

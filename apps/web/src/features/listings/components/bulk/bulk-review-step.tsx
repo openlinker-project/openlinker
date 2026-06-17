@@ -18,6 +18,7 @@ import {
   StatusBadge,
 } from '../../../../shared/ui';
 import type { DataTableColumn, StatusBadgeTone } from '../../../../shared/ui';
+import type { OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import {
   computeResolvedPrice,
@@ -44,10 +45,16 @@ interface BulkReviewStepProps {
   publishImmediately: boolean;
   /**
    * True while category parameter schemas are still loading (#810). Gates
-   * "Approve all" so the operator can't submit before the
-   * `needs-product-parameters` blocker has had a chance to appear.
+   * "Approve all" so the operator can't submit before a platform-specific
+   * blocker (e.g. Allegro's add-product-params) has had a chance to appear.
    */
   paramsResolving: boolean;
+  /**
+   * Platform-declared blocker chip descriptors (#1096) for the batch's
+   * connection. Merged with the host-neutral chips so Review renders any
+   * marketplace's blockers generically — no host enum of platform blockers.
+   */
+  platformBlockerChips: readonly OfferBlockerDescriptor[];
   onUpdateRow: (
     variantId: string,
     override: BulkPerProductOverride,
@@ -57,16 +64,18 @@ interface BulkReviewStepProps {
   onBack: () => void;
 }
 
-const BLOCKER_CHIPS: Record<BulkRowBlocker, { tone: StatusBadgeTone; label: string }> = {
+/** Host-neutral blocker chips — generic across every marketplace. */
+const NEUTRAL_BLOCKER_CHIPS: Record<string, { tone: StatusBadgeTone; label: string }> = {
   'no-variant': { tone: 'neutral', label: 'no variant' },
   'no-ean': { tone: 'error', label: 'no EAN' },
   'no-match': { tone: 'error', label: 'manual category' },
   'multi-match': { tone: 'warning', label: 'choose category' },
-  'needs-product-parameters': { tone: 'warning', label: 'add product params' },
   'no-master-price': { tone: 'error', label: 'no master price' },
   'no-master-stock': { tone: 'error', label: 'no master stock' },
   'currency-mismatch': { tone: 'warning', label: 'currency mismatch' },
 };
+
+const FALLBACK_CHIP = { tone: 'warning' as StatusBadgeTone, label: 'needs attention' };
 
 export function BulkReviewStep({
   rows,
@@ -76,10 +85,21 @@ export function BulkReviewStep({
   currency,
   publishImmediately,
   paramsResolving,
+  platformBlockerChips,
   onUpdateRow,
   onApproveAll,
   onBack,
 }: BulkReviewStepProps): ReactElement {
+  // Merge host-neutral chips with the platform-declared ones (#1096).
+  const blockerChips = useMemo<Record<string, { tone: StatusBadgeTone; label: string }>>(() => {
+    const merged: Record<string, { tone: StatusBadgeTone; label: string }> = {
+      ...NEUTRAL_BLOCKER_CHIPS,
+    };
+    for (const chip of platformBlockerChips) {
+      merged[chip.id] = { tone: chip.tone as StatusBadgeTone, label: chip.label };
+    }
+    return merged;
+  }, [platformBlockerChips]);
   const [filter, setFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -96,14 +116,9 @@ export function BulkReviewStep({
   const counts = useMemo(() => countByReadiness(rows), [rows]);
   // No-variant rows are skipped on submit, not blocking. Approval is gated on
   // every *listable* row being clear, with at least one ready row to submit —
-  // and on category-parameter schemas having settled, so a row that's about to
-  // gain the `needs-product-parameters` blocker can't sneak through (#810).
+  // and on platform schemas (e.g. Allegro category params) having settled, so a
+  // row that's about to gain a platform blocker can't sneak through (#810/#1096).
   const canApprove = counts.ready > 0 && counts.needsAttention === 0 && !paramsResolving;
-
-  const needsProductParamsCount = useMemo(
-    () => rows.filter((r) => r.blockers.includes('needs-product-parameters')).length,
-    [rows],
-  );
 
   const editingRow = useMemo(
     () => (editingId ? rows.find((r) => r.productId === editingId) ?? null : null),
@@ -129,7 +144,7 @@ export function BulkReviewStep({
       {
         id: 'status',
         header: 'Status',
-        cell: (row) => <RowStatusCell blockers={row.blockers} />,
+        cell: (row) => <RowStatusCell blockers={row.blockers} chips={blockerChips} />,
       },
       {
         id: 'category',
@@ -198,7 +213,7 @@ export function BulkReviewStep({
           ),
       },
     ],
-    [pricingPolicy, stockPolicy, currency],
+    [pricingPolicy, stockPolicy, currency, blockerChips],
   );
 
   const editingPrice: ResolvedPrice | null = editingRow
@@ -251,12 +266,11 @@ export function BulkReviewStep({
         ) : null}
       </div>
 
-      {needsProductParamsCount > 0 ? (
+      {counts.needsAttention > 0 ? (
         <p className="bulk-wizard__review-hint" role="status">
-          <strong>{needsProductParamsCount}</strong>{' '}
-          {needsProductParamsCount === 1 ? 'row needs' : 'rows need'} required product
-          parameters. There's no matched product card to inherit them, so{' '}
-          <strong>Edit</strong> each row to add them before submitting.
+          <strong>{counts.needsAttention}</strong>{' '}
+          {counts.needsAttention === 1 ? 'row needs' : 'rows need'} attention. Each flagged row
+          shows why; <strong>Edit</strong> it to resolve the blocker before submitting.
         </p>
       ) : null}
 
@@ -293,17 +307,26 @@ export function BulkReviewStep({
   );
 }
 
-function RowStatusCell({ blockers }: { blockers: readonly BulkRowBlocker[] }): ReactElement {
+function RowStatusCell({
+  blockers,
+  chips,
+}: {
+  blockers: readonly BulkRowBlocker[];
+  chips: Record<string, { tone: StatusBadgeTone; label: string }>;
+}): ReactElement {
   if (blockers.length === 0) {
     return <StatusBadge tone="success" withDot>ready</StatusBadge>;
   }
   return (
     <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
-      {blockers.map((b) => (
-        <StatusBadge key={b} tone={BLOCKER_CHIPS[b].tone} withDot compact>
-          {BLOCKER_CHIPS[b].label}
-        </StatusBadge>
-      ))}
+      {blockers.map((b) => {
+        const chip = chips[b] ?? FALLBACK_CHIP;
+        return (
+          <StatusBadge key={b} tone={chip.tone} withDot compact>
+            {chip.label}
+          </StatusBadge>
+        );
+      })}
     </span>
   );
 }

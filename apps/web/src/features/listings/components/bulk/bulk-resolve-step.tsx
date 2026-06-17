@@ -18,9 +18,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
+import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { listingsQueryKeys } from '../../api/listings.query-keys';
 import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
-import { computeBlockers } from './bulk-policy';
+import { computeBlockers, imageCountForRow } from './bulk-policy';
 import type {
   BulkRowBlocker,
   BulkWizardRow,
@@ -47,6 +48,8 @@ interface BulkResolveStepProps {
   stockPolicy: StockPolicy;
   /** Batch-wide currency (D7) — drives the currency-mismatch blocker. */
   currency: string;
+  /** Resolved platform row validator (#1096) — emits platform-specific blockers. */
+  platformValidate?: (input: OfferRowValidationInput) => string[];
   /** Called once with the resolved outcomes for every row, on settle. */
   onComplete: (outcomes: BulkResolveOutcome[]) => void;
 }
@@ -62,6 +65,7 @@ export function BulkResolveStep({
   pricingPolicy,
   stockPolicy,
   currency,
+  platformValidate,
   onComplete,
 }: BulkResolveStepProps): ReactElement {
   const apiClient = useApiClient();
@@ -128,6 +132,8 @@ export function BulkResolveStep({
         masterCurrency,
         batchCurrency: currency,
         override: row.override,
+        imageCount: imageCountForRow(row),
+        platformValidate,
       });
 
       return {
@@ -152,6 +158,7 @@ export function BulkResolveStep({
     pricingPolicy,
     stockPolicy,
     currency,
+    platformValidate,
   ]);
 
   // Fire onComplete exactly once, when both batch queries have settled.
