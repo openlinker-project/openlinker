@@ -342,6 +342,32 @@ describe('PrestashopProductMasterAdapter', () => {
       );
     });
 
+    it('resolves a combination price as base + impact (impact 0 when unset) (#1096)', async () => {
+      const productId = 'internal-product-123';
+      // Base product price is 19.99 (fixture). PrestaShop combination `price` is
+      // an IMPACT, so absolute = 19.99 + impact; an unset impact yields the base.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const combinations: PrestashopCombination[] = [
+        { id: '101', id_product: '42', reference: 'IMP-5', price: '5.00', quantity: '10' },
+        { id: '102', id_product: '42', reference: 'NO-IMP', quantity: '20' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(
+        new Map([
+          ['101:test-connection-id', 'internal-variant-1'],
+          ['102:test-connection-id', 'internal-variant-2'],
+        ])
+      );
+
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result[0].price).toBe(24.99); // 19.99 + 5.00
+      expect(result[1].price).toBe(19.99); // 19.99 + 0 (impact unset)
+    });
+
     it('does not fallback to product barcode when multiple combinations exist', async () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';

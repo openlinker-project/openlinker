@@ -265,6 +265,14 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // positional shape via a null resolver.
     const resolveOptionValue = await this.buildOptionValueResolver();
 
+    // PrestaShop stores a combination's `price` as a price IMPACT (a delta on the
+    // product base), not an absolute price — most sellers leave it 0/unset, which
+    // previously surfaced `mapped.price = null/0` and a spurious `no-master-price`
+    // blocker for every multi-variant product. Resolve the absolute master price
+    // = base + impact (impact 0 when unset), mirroring the synthetic-variant
+    // inheritance for simple products (#792 / #1096).
+    const basePrice = this.parseProductPrice(prestashopProduct.price);
+
     // Map variants with internal IDs
     return combinations
       .map((combination) => {
@@ -286,9 +294,18 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
             mapped.gtin = productGtin;
           }
         }
+        // `mapped.price` carries the parsed combination impact. Fold it onto the
+        // base; fall back to the raw impact only when the product has no base.
+        const absolutePrice =
+          basePrice !== undefined
+            ? Math.round((basePrice + (mapped.price ?? 0)) * 100) / 100
+            : mapped.price;
         return {
           ...mapped,
           id: internalId,
+          // Conditional so an absent price stays absent (`price?: number` under
+          // exactOptionalPropertyTypes rejects an explicit `undefined`).
+          ...(absolutePrice !== undefined ? { price: absolutePrice } : {}),
         };
       })
       .filter((v): v is ProductVariant => v !== null);
