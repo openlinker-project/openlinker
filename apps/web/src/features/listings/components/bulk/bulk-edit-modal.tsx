@@ -11,7 +11,14 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, useRef, type ReactElement } from 'react';
+import {
+  Suspense,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactElement,
+} from 'react';
 import {
   Controller,
   FormProvider,
@@ -19,6 +26,8 @@ import {
   useFormContext,
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { usePlatform, type BulkOfferRowSectionProps } from '../../../../shared/plugins';
+import type { Connection } from '../../../connections';
 import {
   Alert,
   Button,
@@ -56,7 +65,11 @@ interface BulkEditModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: BulkWizardRow;
-  connectionId: string;
+  /**
+   * The batch's marketplace connection. Drives both the CategoryPicker
+   * (by id) and the per-row platform section resolved via its `platformType`.
+   */
+  connection: Connection;
   /**
    * Whether the destination exposes a browsable category tree (`CategoryBrowser`,
    * #1096). True → the Allegro tree picker + category-parameter step. False → a
@@ -92,7 +105,7 @@ export function BulkEditModal({
   open,
   onOpenChange,
   row,
-  connectionId,
+  connection,
   canBrowseCategories,
   defaults,
   onSave,
@@ -104,7 +117,7 @@ export function BulkEditModal({
       <DialogContent>
         <BulkEditModalForm
           row={row}
-          connectionId={connectionId}
+          connection={connection}
           canBrowseCategories={canBrowseCategories}
           defaults={defaults}
           onSave={onSave}
@@ -117,7 +130,7 @@ export function BulkEditModal({
 
 interface BulkEditModalFormProps {
   row: BulkWizardRow;
-  connectionId: string;
+  connection: Connection;
   canBrowseCategories: boolean;
   defaults: BulkEditModalProps['defaults'];
   onSave: BulkEditModalProps['onSave'];
@@ -126,13 +139,23 @@ interface BulkEditModalFormProps {
 
 function BulkEditModalForm({
   row,
-  connectionId,
+  connection,
   canBrowseCategories,
   defaults,
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
+  const connectionId = connection.id;
   const variantId = row.primaryVariant?.id ?? '';
+
+  // Per-platform per-row knobs (#1096) — e.g. Erli dispatch time. Seeded from
+  // any existing per-row override (NOT the batch default): an absent key means
+  // the row inherits the batch-wide value at submit, so the platform section's
+  // toggle starts off. The resolved section reads/writes this verbatim.
+  const platformSection = usePlatform(connection.platformType)?.bulkOfferRowSection;
+  const [platformParams, setPlatformParams] = useState<Record<string, unknown>>(
+    () => ({ ...(row.override.overrides?.platformParams ?? {}) }),
+  );
 
   // Snapshot the row's resolved values at modal-open time. `BulkEditModalForm`
   // mounts fresh on open (Radix Dialog portals its content), so a one-time ref
@@ -228,6 +251,9 @@ function BulkEditModalForm({
         ...(values.categoryId ? { categoryId: values.categoryId } : {}),
         ...(values.productCardId ? { productCardId: values.productCardId } : {}),
         ...(parameters.length > 0 ? { parameters } : {}),
+        // Per-row platform overrides (#1096) — e.g. Erli dispatch time. Empty
+        // ⇒ omitted so the row inherits the batch-wide `platformParams`.
+        ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
       },
     };
 
@@ -414,6 +440,18 @@ function BulkEditModalForm({
               categoryParameters={categoryParameters}
             />
           ) : null}
+
+          {/* Per-platform per-row override (#1096) — e.g. Erli dispatch time. */}
+          {platformSection ? (
+            <Suspense fallback={<p className="muted-text">Loading…</p>}>
+              <PlatformRowSection
+                section={platformSection}
+                connection={connection}
+                platformParams={platformParams}
+                onChange={setPlatformParams}
+              />
+            </Suspense>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -427,6 +465,25 @@ function BulkEditModalForm({
       </form>
     </FormProvider>
   );
+}
+
+/**
+ * Renders the plugin-resolved per-row platform section (#1096). A thin wrapper
+ * so the dynamically-resolved `ComponentType` is invoked as a capitalized JSX
+ * element with the controlled `platformParams` contract.
+ */
+function PlatformRowSection({
+  section: Section,
+  connection,
+  platformParams,
+  onChange,
+}: {
+  section: ComponentType<BulkOfferRowSectionProps>;
+  connection: Connection;
+  platformParams: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}): ReactElement {
+  return <Section connection={connection} platformParams={platformParams} onChange={onChange} />;
 }
 
 function DescriptionField({ productId }: { productId: string }): ReactElement {

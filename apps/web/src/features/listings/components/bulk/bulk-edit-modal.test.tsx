@@ -16,6 +16,7 @@ import { BulkEditModal } from './bulk-edit-modal';
 import type { BulkWizardRow } from './bulk-wizard.types';
 import type { EanMatchCandidate } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
+import type { Connection } from '../../../connections';
 
 vi.mock('../CategoryPicker', () => ({
   CategoryPicker: ({ value }: { value: string | null }) => (
@@ -29,6 +30,21 @@ vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
 vi.mock('../category-parameters-step', () => ({ CategoryParametersStep: () => null }));
 
 const DEFAULTS = { stock: 5, publishImmediately: true, priceAmount: '12.00', priceCurrency: 'PLN' };
+
+// Allegro connection — no per-row platform section, so the modal renders only
+// host-generic fields (these tests predate the per-row platform slot, #1096).
+const connection: Connection = {
+  id: 'conn_1',
+  name: 'My Allegro',
+  platformType: 'allegro',
+  status: 'active',
+  config: {},
+  credentialsBacked: true,
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
 
 function makeRow(opts: {
   name?: string;
@@ -84,7 +100,7 @@ describe('BulkEditModal', () => {
             { allegroCategoryId: 'cat-C', productCardId: 'card-C' },
           ],
         })}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
@@ -101,7 +117,7 @@ describe('BulkEditModal', () => {
         open
         onOpenChange={() => undefined}
         row={makeRow()}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
@@ -116,7 +132,7 @@ describe('BulkEditModal', () => {
         open
         onOpenChange={() => undefined}
         row={makeRow({ name: 'Widget' })}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
@@ -132,7 +148,7 @@ describe('BulkEditModal', () => {
         open
         onOpenChange={() => undefined}
         row={makeRow({ name: 'Changed name' })}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={() => undefined}
@@ -152,7 +168,7 @@ describe('BulkEditModal', () => {
         row={makeRow({
           candidates: [{ allegroCategoryId: 'cat-B', productCardId: 'card-B', name: 'Books' }],
         })}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={true}
         defaults={DEFAULTS}
         onSave={onSave}
@@ -184,7 +200,7 @@ describe('BulkEditModal', () => {
         open
         onOpenChange={() => undefined}
         row={makeRow()}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={false}
         defaults={DEFAULTS}
         onSave={() => undefined}
@@ -202,7 +218,7 @@ describe('BulkEditModal', () => {
         open
         onOpenChange={() => undefined}
         row={makeRow()}
-        connectionId="conn_1"
+        connection={connection}
         canBrowseCategories={false}
         defaults={DEFAULTS}
         onSave={onSave}

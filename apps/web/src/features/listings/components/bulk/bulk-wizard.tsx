@@ -359,7 +359,7 @@ export function BulkWizard({
           {step === 'review' && config && (
             <BulkReviewStep
               rows={rows}
-              connectionId={config.connectionId}
+              connection={batchConnection}
               pricingPolicy={config.pricingPolicy}
               stockPolicy={config.stockPolicy}
               currency={config.currency}

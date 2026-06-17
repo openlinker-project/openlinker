@@ -26,6 +26,7 @@ export type {
   BulkConfigFormValues,
   BulkOfferConfigSectionProps,
   BulkOfferConfigSectionContribution,
+  BulkOfferRowSectionProps,
   OfferBlockerTone,
   OfferBlockerDescriptor,
   OfferRowValidationInput,

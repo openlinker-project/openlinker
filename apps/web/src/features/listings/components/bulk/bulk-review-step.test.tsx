@@ -10,6 +10,21 @@ import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkReviewStep } from './bulk-review-step';
 import type { BulkRowBlocker, BulkWizardRow, PricingPolicy, StockPolicy } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
+import type { Connection } from '../../../connections';
+
+// Allegro connection — no per-row platform section (these tests predate #1096).
+const connection: Connection = {
+  id: 'conn_1',
+  name: 'My Allegro',
+  platformType: 'allegro',
+  status: 'active',
+  config: {},
+  credentialsBacked: true,
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
 
 // jsdom has no matchMedia; force desktop (table, not card view) for the DataTable.
 beforeAll(() => {
@@ -90,7 +105,7 @@ function renderReview(
   return renderWithProviders(
     <BulkReviewStep
       rows={rows}
-      connectionId="conn_1"
+      connection={connection}
       pricingPolicy={pricingPolicy}
       stockPolicy={stockPolicy}
       currency="PLN"
@@ -147,7 +162,7 @@ describe('BulkReviewStep', () => {
     rerender(
       <BulkReviewStep
         rows={[makeRow('a', [], { masterPrice: 12, masterStock: 5 })]}
-        connectionId="conn_1"
+        connection={connection}
         pricingPolicy={{ mode: 'use-master' }}
         stockPolicy={{ mode: 'use-master' }}
         currency="PLN"
@@ -194,7 +209,7 @@ describe('BulkReviewStep', () => {
           makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
           makeRow('b', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
         ]}
-        connectionId="conn_1"
+        connection={connection}
         pricingPolicy={{ mode: 'use-master' }}
         stockPolicy={{ mode: 'use-master' }}
         currency="PLN"

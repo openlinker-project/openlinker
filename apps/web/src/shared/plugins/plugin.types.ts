@@ -236,6 +236,23 @@ export interface BulkOfferConfigSectionContribution {
 }
 
 /**
+ * Per-platform per-ROW config section for the bulk Review's edit modal (#1096),
+ * letting an operator override a platform field for a single product (e.g. Erli
+ * dispatch time) instead of only batch-wide. Controlled: the host owns the row's
+ * `platformParams` (seeded from any existing per-row override) and the section
+ * reads `platformParams` + emits the next value via `onChange`. A platform
+ * typically gates its field behind a toggle so an untouched row inherits the
+ * batch default (the submit deep-merges shared `platformParams` under per-row).
+ * Resolved via `usePlatform(connection.platformType)`. Absent ⇒ no per-row
+ * platform fields (price/stock are host-generic and already per-row editable).
+ */
+export interface BulkOfferRowSectionProps {
+  connection: Connection;
+  platformParams: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}
+
+/**
  * Chip tone for a per-platform offer blocker (#1096). Structurally matches
  * `StatusBadgeTone` from `shared/ui` — duplicated here so the plugin contract
  * doesn't depend on `shared/ui`. The chip render site (which already imports
@@ -389,6 +406,14 @@ export interface PlatformContribution {
    * step renders a "marketplace not supported for bulk" fallback.
    */
   bulkOfferConfigSection?: BulkOfferConfigSectionContribution;
+  /**
+   * Bulk offer creation: render a platform-specific section in the Review
+   * edit modal so an operator can override a platform field PER PRODUCT (e.g.
+   * Erli dispatch time), not only batch-wide (#1096). Resolved via
+   * `usePlatform(platformType)`. Absent ⇒ the edit modal shows only the
+   * host-generic per-row fields (title, category, price, stock, description).
+   */
+  bulkOfferRowSection?: ComponentType<BulkOfferRowSectionProps>;
   /**
    * Offer creation: declare the platform's blocker chips + row validator once
    * (#1096), consumed by BOTH the bulk Review step and the single-offer wizard.

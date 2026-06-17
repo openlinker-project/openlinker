@@ -19,6 +19,7 @@ import {
 } from '../../../../shared/ui';
 import type { DataTableColumn, StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBlockerDescriptor } from '../../../../shared/plugins';
+import type { Connection } from '../../../connections';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import {
   computeResolvedPrice,
@@ -37,7 +38,9 @@ import { BulkEditModal } from './bulk-edit-modal';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
-  connectionId: string;
+  /** The batch's marketplace connection — drives the edit modal's category +
+   * per-row platform sections. Null only before resolution (modal not shown). */
+  connection: Connection | null;
   pricingPolicy: PricingPolicy;
   stockPolicy: StockPolicy;
   /** Batch-wide currency (D7). */
@@ -86,7 +89,7 @@ const FALLBACK_CHIP = { tone: 'warning' as StatusBadgeTone, label: 'needs attent
 
 export function BulkReviewStep({
   rows,
-  connectionId,
+  connection,
   pricingPolicy,
   stockPolicy,
   currency,
@@ -294,14 +297,14 @@ export function BulkReviewStep({
         <div className="bulk-wizard__footer-spacer" />
       </footer>
 
-      {editingRow && editingRow.primaryVariant && editingPrice && editingStock ? (
+      {editingRow && editingRow.primaryVariant && editingPrice && editingStock && connection ? (
         <BulkEditModal
           open={editingId !== null}
           onOpenChange={(open) => {
             if (!open) setEditingId(null);
           }}
           row={editingRow}
-          connectionId={connectionId}
+          connection={connection}
           canBrowseCategories={canBrowseCategories}
           defaults={{
             stock: editingStock.value ?? 0,

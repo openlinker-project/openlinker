@@ -32,6 +32,9 @@ const ErliCreateOfferWizardLazy = lazy(() =>
 const ErliBulkConfigSectionLazy = lazy(() =>
   import('../../features/listings').then((m) => ({ default: m.ErliBulkConfigSection })),
 );
+const ErliBulkRowSectionLazy = lazy(() =>
+  import('../../features/listings').then((m) => ({ default: m.ErliBulkRowSection })),
+);
 
 /** Pure completeness predicate — must NOT pull the lazy chunk (runs in `canProceed`). */
 function erliBulkConfigIsComplete(values: { platformParams: Record<string, unknown> }): boolean {
@@ -67,6 +70,8 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
       component: ErliBulkConfigSectionLazy,
       isComplete: erliBulkConfigIsComplete,
     },
+    // Per-product dispatch-time override in the Review edit modal (#1096).
+    bulkOfferRowSection: ErliBulkRowSectionLazy,
     // Shared single+bulk blocker: Erli requires ≥1 image (declared once).
     offerValidation: erliOfferValidation,
   },
