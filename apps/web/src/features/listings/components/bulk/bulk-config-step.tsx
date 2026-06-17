@@ -174,9 +174,9 @@ export function BulkConfigStep({
           Configure batch
         </h2>
         <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-          Batch-wide settings applied to all selected products. Per-row price and stock are
-          pulled from each product's master data via the policies below; override individual
-          rows in the next step.
+          Batch-wide defaults applied to all selected products. You can fine-tune any of
+          them — price, stock, and platform fields like dispatch time — per product in the
+          next Review step (use <strong>Edit</strong> on a row).
         </p>
       </header>
 
