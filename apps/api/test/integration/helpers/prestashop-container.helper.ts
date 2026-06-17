@@ -753,6 +753,20 @@ async function installOpenLinkerModuleIntoContainer(
   await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'uninstall', 'openlinker'], { workingDir: '/var/www/html' });
   await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'], { workingDir: '/var/www/html' });
 
+  // On Linux (OverlayFS), the Symfony compiled DI container survives the
+  // install cycle and causes HTTP 500 on the next /api/carriers probe (#716).
+  // Clearing and re-warming forces the module's services into the container.
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'cache:clear', '--no-warmup', '--env=prod'],
+    { workingDir: '/var/www/html' },
+  );
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'cache:warmup', '--env=prod'],
+    { workingDir: '/var/www/html' },
+  );
+
   // 4. Seed the HMAC secret. setDefaultConfiguration() set it to '' on install.
   const conn = await createConnection({
     host: mysqlAddress.host,

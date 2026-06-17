@@ -186,28 +186,14 @@ const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
  * (below). The old WS `POST /orders` path that let S-1/S-2 run module-free is
  * gone.
  *
- * Local default: `true` — full coverage, ~5-10s install overhead on the
+ * Default: `true` — full coverage, ~5-10s install overhead on the
  * already-paid PS container boot.
  *
- * CI override (`CI=true`): `false` — the self-hosted Linux runner currently
- * fails the post-install `verifyApacheUp` probe with HTTP 500 from
- * /api/carriers (works on macOS Docker-Desktop). Root cause TBD; tracked by the
- * #716 module-install-in-CI follow-up. In this mode **the whole suite is
- * reported as skipped** rather than failed (carrier-mapping has no module-free
- * scenario left); CI PS-order coverage returns once #716 lands.
- *
- * Explicit overrides:
- *   - `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (used by
- *     local devs reproducing the CI behavior).
- *   - `OL_FORCE_PS_MODULE_INSTALL=true` — force-enable the install even in
- *     CI. Used for diagnostic CI runs that intentionally exercise the
- *     failing install path to capture root-cause data via the in-container
- *     log dumps in `prestashop-container.helper.ts`. S-3 will still likely
- *     fail under this flag — the goal is to capture data, not to pass.
+ * Set `OL_SKIP_PS_MODULE_INSTALL=true` to force-skip the install (local
+ * debugging of the CI install path, or when the PS container is pre-seeded
+ * without the module).
  */
-const INSTALL_OL_MODULE =
-  process.env.OL_FORCE_PS_MODULE_INSTALL === 'true' ||
-  (process.env.CI !== 'true' && process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true');
+const INSTALL_OL_MODULE = process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true';
 
 /** Conditional `it` — runs the test when the OL module is installed, skips otherwise. */
 const itWhenOlModuleInstalled = INSTALL_OL_MODULE ? it : it.skip;
