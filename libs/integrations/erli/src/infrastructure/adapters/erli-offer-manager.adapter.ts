@@ -517,30 +517,45 @@ export class ErliOfferManagerAdapter
     if (externalCategories.length > 0) {
       body.externalCategories = externalCategories;
     }
-    const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
+    // Parameter reuse (#985) — Allegro-id params, source:"allegro". Returns the
+    // attribute array plus the ids dropped in v1 (range-only/empty) for logging.
+    const { attributes: paramAttributes, droppedParamIds } = buildExternalAttributes(cmd);
     if (droppedParamIds.length > 0) {
       this.logger.debug(
         `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
       );
     }
+
+    // #986/#1065: explicit multi-variant grouping. A sibling's distinguishing
+    // axes become shop-source `externalAttributes` entries, and the group
+    // references them by **index** — Erli's verified wire shape. There is NO
+    // top-level `attributes` field (the API rejects one) and the group's own
+    // `attributes` (required, minItems 1) must be index integers, not name/value
+    // pairs. `groupId` is BODY-ONLY (it is the parent product id, never
+    // path-validated). A sibling with no distinguishing axes lists ungrouped.
+    const g = cmd.variantGroup;
+    const grouped = g !== undefined && g.groupId.length > 0 && g.attributes.length > 0;
+    const groupAttributes: ErliExternalAttribute[] = grouped
+      ? g.attributes.map((axis, j) => ({
+          source: 'shop' as const,
+          id: axis.name,
+          name: axis.name,
+          type: 'string' as const,
+          values: [axis.value],
+          index: paramAttributes.length + j,
+        }))
+      : [];
+
+    const externalAttributes = [...paramAttributes, ...groupAttributes];
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
-    // #986/#1065: explicit multi-variant grouping. Present only when core
-    // populated the neutral `cmd.variantGroup` (OfferBuilderService); single/
-    // simple products omit it and list ungrouped. `groupId` is BODY-ONLY —
-    // never path-validated (it is the parent product id, not a variant id).
-    const g = cmd.variantGroup;
-    if (g && g.groupId.length > 0) {
-      body.externalVariantGroup = { id: g.groupId };
-      if (g.attributes.length > 0) {
-        // Neutral OfferVariantAttribute and wire ErliVariantAttribute are
-        // structurally identical (`{ name, value }`). Copy into a fresh array so
-        // the outbound body never aliases the core command's array — a future
-        // body-mutation step can't reach back and mutate cmd.variantGroup
-        // (PR1068-HEX-01).
-        body.attributes = [...g.attributes];
-      }
+    if (grouped) {
+      body.externalVariantGroup = {
+        id: g.groupId,
+        source: 'integration',
+        attributes: groupAttributes.map((a) => a.index as number),
+      };
     }
     return body;
   }

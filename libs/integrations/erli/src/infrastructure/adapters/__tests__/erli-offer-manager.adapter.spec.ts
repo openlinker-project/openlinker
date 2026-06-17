@@ -355,7 +355,7 @@ describe('ErliOfferManagerAdapter', () => {
     describe('variant grouping (#986/#1065)', () => {
       const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
 
-      it('should map the neutral variantGroup to externalVariantGroup + attributes for a multi-variant product', async () => {
+      it('should map a distinguishing axis to an indexed shop externalAttribute + an externalVariantGroup referencing it (#986)', async () => {
         await adapter.createOffer(
           createCmd({
             variantGroup: {
@@ -367,10 +367,21 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           externalVariantGroup?: unknown;
+          externalAttributes?: unknown;
           attributes?: unknown;
         };
-        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
-        expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+        // The axis becomes a shop-source externalAttribute carrying an explicit
+        // index; the group references that index (Erli's verified wire shape).
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+        ]);
+        expect(body.externalVariantGroup).toEqual({
+          id: GROUP_ID,
+          source: 'integration',
+          attributes: [0],
+        });
+        // The API rejects a top-level `attributes` field — it must not be sent.
+        expect(body).not.toHaveProperty('attributes');
       });
 
       it('should list ungrouped (no externalVariantGroup/attributes) when no variantGroup is present', async () => {
@@ -392,28 +403,43 @@ describe('ErliOfferManagerAdapter', () => {
       it('should give sibling variants the same group id while each posts to its own path', async () => {
         const variantA = `ol_variant_${'a'.repeat(32)}`;
         const variantB = `ol_variant_${'c'.repeat(32)}`;
-        const variantGroup = { groupId: GROUP_ID, attributes: [] };
 
-        await adapter.createOffer(createCmd({ internalVariantId: variantA, variantGroup }));
-        await adapter.createOffer(createCmd({ internalVariantId: variantB, variantGroup }));
+        await adapter.createOffer(
+          createCmd({
+            internalVariantId: variantA,
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+        await adapter.createOffer(
+          createCmd({
+            internalVariantId: variantB,
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Blue' }] },
+          }),
+        );
 
-        const [pathA, bodyA] = httpClient.post.mock.calls[0] as [string, { externalVariantGroup?: unknown }];
-        const [pathB, bodyB] = httpClient.post.mock.calls[1] as [string, { externalVariantGroup?: unknown }];
+        const [pathA, bodyA] = httpClient.post.mock.calls[0] as [
+          string,
+          { externalVariantGroup?: { id?: string } },
+        ];
+        const [pathB, bodyB] = httpClient.post.mock.calls[1] as [
+          string,
+          { externalVariantGroup?: { id?: string } },
+        ];
         expect(pathA).toBe(`products/${variantA}`);
         expect(pathB).toBe(`products/${variantB}`);
-        expect(bodyA.externalVariantGroup).toEqual({ id: GROUP_ID });
-        expect(bodyB.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(bodyA.externalVariantGroup?.id).toBe(GROUP_ID);
+        expect(bodyB.externalVariantGroup?.id).toBe(GROUP_ID);
       });
 
-      it('should emit externalVariantGroup with no attributes key when attributes are empty', async () => {
+      it('should NOT emit a group when the variant has no distinguishing axes (Erli requires ≥1)', async () => {
         await adapter.createOffer(createCmd({ variantGroup: { groupId: GROUP_ID, attributes: [] } }));
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(body).not.toHaveProperty('externalVariantGroup');
         expect(body).not.toHaveProperty('attributes');
       });
 
-      it('should copy the neutral attributes through field-for-field without transformation', async () => {
+      it('should index multiple distinguishing axes and reference them all in the group', async () => {
         await adapter.createOffer(
           createCmd({
             variantGroup: {
@@ -426,11 +452,19 @@ describe('ErliOfferManagerAdapter', () => {
           }),
         );
 
-        const body = httpClient.post.mock.calls[0][1] as { attributes?: unknown };
-        expect(body.attributes).toEqual([
-          { name: 'Color', value: 'Red' },
-          { name: 'Size', value: 'M' },
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: unknown;
+          externalVariantGroup?: unknown;
+        };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+          { source: 'shop', id: 'Size', name: 'Size', type: 'string', values: ['M'], index: 1 },
         ]);
+        expect(body.externalVariantGroup).toEqual({
+          id: GROUP_ID,
+          source: 'integration',
+          attributes: [0, 1],
+        });
       });
 
       it('should never emit grouping on a field-update or quantity PATCH (create-only)', async () => {
