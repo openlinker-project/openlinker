@@ -190,11 +190,12 @@ describe('computeBlockers', () => {
   it('suppresses the category blocker for a destination that resolves it at submit (#1096)', () => {
     // A `borrows` destination (Erli) resolves the category server-side at submit
     // (override → barcode → mapping), so a pre-flight non-match must not block.
-    for (const categoryResult of [
-      { kind: 'no-match' } as const,
-      { kind: 'no-ean' } as const,
-      { kind: 'multi-match', candidates: [] } as const,
-    ]) {
+    const cases: ComputeBlockersInput['categoryResult'][] = [
+      { kind: 'no-match' },
+      { kind: 'no-ean' },
+      { kind: 'multi-match', candidates: [] },
+    ];
+    for (const categoryResult of cases) {
       expect(
         computeBlockers(base({ categoryResult, destinationResolvesCategoryAtSubmit: true })),
       ).toEqual([]);
