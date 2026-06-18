@@ -42,8 +42,14 @@ export interface ErliProductCreateBody {
 }
 
 /**
- * Provisional sparse patch body — `PATCH /products/{externalId}` (#992). Every
- * field is optional; the adapter emits only supplied keys so Erli touches only
- * those fields (the precondition #988 frozen-field exclusion builds on).
+ * Sparse patch body — `PATCH /products/{externalId}`. Narrowed to only the
+ * fields the adapter currently mutates (`name` / `price` / `stock` /
+ * `description`) so a create-only key (`images`, `ean`, `sku`, `dispatchTime`)
+ * cannot be hand-built into a patch. Every field is optional; the adapter emits
+ * only supplied keys so Erli touches only those fields (the precondition #988
+ * frozen-field exclusion builds on — widen this `Pick` when #988 patches more).
  */
-export type ErliProductPatchBody = ErliProductCreateBody;
+export type ErliProductPatchBody = Pick<
+  ErliProductCreateBody,
+  'name' | 'price' | 'stock' | 'description'
+>;

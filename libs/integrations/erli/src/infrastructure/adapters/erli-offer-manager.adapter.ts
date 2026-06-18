@@ -130,16 +130,20 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
   }
 
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {
-    // Erli requires name, images, price, stock, dispatchTime on create.
+    // Erli requires name, images, price, stock, dispatchTime on create. Fail
+    // CLOSED locally on every required field (same posture as dispatchTime) so a
+    // command missing one is rejected up front instead of burning a round-trip on
+    // a guaranteed Erli 4xx — and `ErliProductCreateBody` never serialises an
+    // invalid (partial) create body (PR1058-TECH-04).
+    const name = this.resolveName(cmd.overrides?.title);
+    const images = this.resolveImages(cmd.overrides?.imageUrls);
     const body: ErliProductCreateBody = {
+      name,
       price: toErliMinorUnits(cmd.price.amount),
       stock: cmd.stock,
-      images: this.sanitizeImageUrls(cmd.overrides?.imageUrls).map(toErliImage),
+      images,
       dispatchTime: this.resolveDispatchTime(cmd.overrides?.platformParams),
     };
-    if (cmd.overrides?.title !== undefined) {
-      body.name = cmd.overrides.title;
-    }
     if (cmd.overrides?.description != null) {
       body.description = flattenDescription(cmd.overrides.description);
     }
@@ -149,6 +153,33 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     // #985: category/parameter payload (source:"allegro") is assembled here.
     // #986: externalVariantGroup is assembled here.
     return body;
+  }
+
+  /** Required offer name (Erli product name). Fail closed on absent/blank. */
+  private resolveName(title: string | undefined): string {
+    if (title === undefined || title.trim().length === 0) {
+      throw new ErliConfigException(
+        'Erli offer create requires a non-empty title (maps to the product name).',
+        this.connectionId,
+      );
+    }
+    return title;
+  }
+
+  /**
+   * Required offer images. Fail closed when no safe https image survives — Erli
+   * rejects an imageless product, and #992 confirmed `images` is mandatory on
+   * create, so an empty array must not reach the wire.
+   */
+  private resolveImages(urls: string[] | null | undefined): ErliProductImage[] {
+    const images = this.sanitizeImageUrls(urls).map(toErliImage);
+    if (images.length === 0) {
+      throw new ErliConfigException(
+        'Erli offer create requires at least one valid public https image URL.',
+        this.connectionId,
+      );
+    }
+    return images;
   }
 
   private buildPatchFromFields(fields: OfferFieldUpdate): ErliProductPatchBody {

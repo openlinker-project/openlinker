@@ -23,14 +23,24 @@ import { ErliOfferManagerAdapter } from '../erli-offer-manager.adapter';
 
 const VALID_ID = `ol_variant_${'a'.repeat(32)}`;
 
+// Erli create requires name + images (#984 fail-closed): every command needs a
+// title + one image by default. `overrides` is DEEP-merged so a per-test
+// `overrides` extends the defaults instead of replacing them — pass an explicit
+// `title: undefined` / `imageUrls: []` to exercise the fail-closed guards.
 function createCmd(overrides: Partial<CreateOfferCommand> = {}): CreateOfferCommand {
+  const { overrides: ov, ...rest } = overrides;
   return {
     internalVariantId: VALID_ID,
     connectionId: 'conn-1',
     price: { amount: 49.99, currency: 'PLN' },
     stock: 10,
     publishImmediately: true,
-    ...overrides,
+    ...rest,
+    overrides: {
+      title: 'Default Widget',
+      imageUrls: ['https://cdn.example.com/default.jpg'],
+      ...ov,
+    },
   };
 }
 
@@ -98,6 +108,34 @@ describe('ErliOfferManagerAdapter', () => {
     it('should fail closed when no per-offer nor connection-default dispatch time is present', async () => {
       const noDefault = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient);
       await expect(noDefault.createOffer(createCmd())).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed (no HTTP call) when the title (name) is absent or blank', async () => {
+      await expect(
+        adapter.createOffer(createCmd({ overrides: { title: undefined } })),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+      await expect(
+        adapter.createOffer(createCmd({ overrides: { title: '   ' } })),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed (no HTTP call) when no valid public image survives sanitisation', async () => {
+      await expect(
+        adapter.createOffer(createCmd({ overrides: { imageUrls: [] } })),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+      // An only-unsafe set sanitises to empty → same fail-closed path.
+      await expect(
+        adapter.createOffer(createCmd({ overrides: { imageUrls: ['http://x/insecure.jpg'] } })),
+      ).rejects.toBeInstanceOf(ErliConfigException);
+      expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed (no HTTP call) on a non-finite price amount', async () => {
+      await expect(
+        adapter.createOffer(createCmd({ price: { amount: Number.NaN, currency: 'PLN' } })),
+      ).rejects.toBeInstanceOf(ErliConfigException);
       expect(httpClient.post).not.toHaveBeenCalled();
     });
 
