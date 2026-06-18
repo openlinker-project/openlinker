@@ -13,7 +13,7 @@
  * @module libs/integrations/erli/src/application
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
@@ -21,12 +21,44 @@ import {
   type ErliConnectionConfig,
   type ErliCredentials,
 } from '../domain/types/erli-connection.types';
+import { ERLI_ADAPTER_KEY } from '../erli.constants';
+import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-manager.adapter';
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
 import type { IErliHttpClient } from '../infrastructure/http/erli-http-client.interface';
 import type { RetryConfig } from '../infrastructure/http/erli-http-client.types';
-import type { IErliAdapterFactory } from './interfaces/erli-adapter.factory.interface';
+import type {
+  ErliAdapters,
+  IErliAdapterFactory,
+} from './interfaces/erli-adapter.factory.interface';
+
+export type { ErliAdapters };
 
 export class ErliAdapterFactory implements IErliAdapterFactory {
+  /**
+   * Build the per-connection capability adapters. Mirrors Allegro's
+   * `createAdapters(connection, identifierMapping, credentialsResolver)`
+   * signature — `identifierMapping` is unused by the seller-keyed-id offer
+   * adapter today but kept so #985/#986/#988 extend behaviour without churning
+   * this signature or the plugin's dispatch call site (Allegro pays the same
+   * unused-dep cost deliberately).
+   */
+  async createAdapters(
+    connection: Connection,
+    _identifierMapping: IdentifierMappingPort,
+    credentialsResolver: CredentialsResolverPort,
+  ): Promise<ErliAdapters> {
+    const httpClient = await this.createHttpClient(connection, credentialsResolver);
+    const config = (connection.config ?? {}) as ErliConnectionConfig;
+    return {
+      offerManager: new ErliOfferManagerAdapter(
+        connection.id,
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        config.defaultDispatchTime,
+      ),
+    };
+  }
+
   /**
    * Build a per-connection Erli HTTP client. Pass `retryConfig` to override the
    * default retry budget — the connection tester passes a no-retry config so a

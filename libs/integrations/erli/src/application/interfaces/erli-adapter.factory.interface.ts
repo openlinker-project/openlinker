@@ -11,13 +11,31 @@
  * @module libs/integrations/erli/src/application/interfaces
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { OfferCreator, OfferFieldUpdater, OfferManagerPort } from '@openlinker/core/listings';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { IErliHttpClient } from '../../infrastructure/http/erli-http-client.interface';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { RetryConfig } from '../../infrastructure/http/erli-http-client.types';
 
+/** Per-connection Erli capability adapters resolved by `createAdapters` (#984). */
+export interface ErliAdapters {
+  offerManager: OfferManagerPort & OfferCreator & OfferFieldUpdater;
+}
+
 export interface IErliAdapterFactory {
+  /**
+   * Build the per-connection capability adapters. `identifierMapping` is unused
+   * by the seller-keyed-id offer adapter today but kept so later issues extend
+   * behaviour without churning this signature or the plugin's dispatch call site
+   * (mirrors the Allegro precedent).
+   */
+  createAdapters(
+    connection: Connection,
+    identifierMapping: IdentifierMappingPort,
+    credentialsResolver: CredentialsResolverPort,
+  ): Promise<ErliAdapters>;
+
   /**
    * Build a per-connection Erli HTTP client. Pass `retryConfig` to override the
    * default retry budget — the connection tester passes a no-retry config so a
