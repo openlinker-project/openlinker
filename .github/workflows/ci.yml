@@ -19,14 +19,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Cancel superseded runs on the same ref so a dead, replaced run doesn't keep
-# holding scarce self-hosted slots and block the queue. Pushes to main rarely
-# overlap; if a never-cancel-on-main policy is later wanted, gate with
-# `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   # Cheap path gate. Runs on GitHub-hosted runners so it never consumes a
   # self-hosted slot. The four non-required heavy jobs (lint/test/integration/
