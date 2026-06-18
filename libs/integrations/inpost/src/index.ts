@@ -27,6 +27,10 @@ export type {
 } from './domain/types/inpost-config.types';
 export type { InpostCredentials } from './domain/types/inpost-credentials.types';
 
+// Auth-failure classifier (#819 / #1103) — exported for host-side discovery;
+// the plugin self-registers it against `host.authFailureClassifierRegistry`.
+export { InpostAuthFailureClassifierAdapter } from './infrastructure/adapters/inpost-auth-failure-classifier.adapter';
+
 // Plugin descriptor + host wiring
 export { inpostAdapterManifest, createInpostPlugin } from './inpost-plugin';
 export { InpostIntegrationModule } from './inpost-integration.module';
