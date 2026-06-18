@@ -51,10 +51,28 @@ export class OfferMappingSyncService implements IOfferMappingSyncService {
       connectionId,
       'OfferManager'
     );
+
+    const feedType = options.feedType ?? 'offers';
+    // A reconciliation-first adapter (e.g. Erli, ADR-025) exposes neither
+    // listOffers nor listOfferEvents — its offer mappings are created at
+    // offer-creation time, not by scanning a marketplace feed. Skip as a no-op
+    // rather than failing a scheduled/triggered job that can never progress (#1096).
+    const canList =
+      feedType === 'events'
+        ? isOfferEventReader(marketplace) || isOfferLister(marketplace)
+        : isOfferLister(marketplace);
+    if (!canList) {
+      this.logger.debug(
+        `Connection ${connectionId} supports no offer feed (${feedType}); skipping offers-sync ` +
+          `(offer mappings for this marketplace are created at offer-creation time).`
+      );
+      return { scanned: 0, linked: 0, skipped: 0, nextCursor: null };
+    }
+
     const feed = await this.loadOfferFeed(marketplace, {
       cursor: options.cursor ?? null,
       limit: options.limit,
-      feedType: options.feedType ?? 'offers',
+      feedType,
     });
 
     const items = feed.items ?? [];
