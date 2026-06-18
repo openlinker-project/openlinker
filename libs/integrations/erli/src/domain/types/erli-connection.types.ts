@@ -34,6 +34,7 @@ export interface ErliConnectionConfig {
  * The base carries a path prefix (`/svc/shop-api`). The #981 client normalizes
  * the base to a trailing slash and strips leading slashes from request paths,
  * so the prefix survives the `new URL(path, base)` join and an absolute path
- * cannot escape the configured origin.
+ * cannot escape the configured origin. The host itself is constrained to the
+ * Erli allowlist — see `domain/policies/erli-base-url.policy.ts`.
  */
 export const ERLI_DEFAULT_BASE_URL = 'https://erli.pl/svc/shop-api';

@@ -15,6 +15,7 @@
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
+import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
   ERLI_DEFAULT_BASE_URL,
   type ErliConnectionConfig,
@@ -67,24 +68,17 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     if (!override || override.length === 0) {
       return ERLI_DEFAULT_BASE_URL;
     }
-    // Defense-in-depth: the config-shape validator gates https at create/update,
-    // but a pre-existing or externally-written connection row could carry a
-    // plain-http baseUrl — which would send the bearer key over cleartext. Re-check
-    // here so the property doesn't rest solely on create-time validation (PR1057-TECH-03).
-    if (!this.isHttpsUrl(override)) {
+    // Defense-in-depth: the config-shape validator enforces the https + Erli-host
+    // allowlist at create/update, but a pre-existing or externally-written row
+    // could carry a plain-http or off-host baseUrl — which would send the bearer
+    // key over cleartext or to an attacker-controlled host (SSRF). Re-check here
+    // so the property doesn't rest solely on create-time validation (PR1057-TECH-03).
+    if (!isAllowedErliBaseUrl(override)) {
       throw new ErliConfigException(
-        `Erli connection ${connection.id} has a non-https baseUrl`,
+        `Erli connection ${connection.id} has a disallowed baseUrl (must be https and an Erli-owned host)`,
         connection.id,
       );
     }
     return override;
-  }
-
-  private isHttpsUrl(value: string): boolean {
-    try {
-      return new URL(value).protocol === 'https:';
-    } catch {
-      return false;
-    }
   }
 }
