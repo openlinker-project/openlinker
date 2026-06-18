@@ -9,6 +9,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliConnectionTesterAdapter } from '../erli-connection-tester.adapter';
 
 function connection(overrides: Partial<Connection> = {}): Connection {
@@ -125,6 +126,30 @@ describe('ErliConnectionTesterAdapter', () => {
     expect(result.status).toBeUndefined();
     expect(result.message).toBe('Erli probe failed');
     expect(result.message).not.toContain('internal.host');
+  });
+
+  it('should never surface ErliApiException.responseBody in the result message', async () => {
+    // The tester surfaces `ErliApiException.message` verbatim because it is
+    // bounded and bearer-safe. `responseBody` is a SEPARATE field that "may echo
+    // back submitted data" (see the exception docblock) and must never leak to
+    // OL Admin. This locks that property so a future #981 change can't fold the
+    // body into `.message` unnoticed (PR1057-SUG-04).
+    const responseBody = 'apiKey=super-secret-echoed-back';
+    const apiError = new ErliApiException('Erli GET /me failed (422)', 422, responseBody);
+    const throwingFactory = {
+      createHttpClient: jest.fn().mockResolvedValue({
+        get: jest.fn().mockRejectedValue(apiError),
+      }),
+    } as unknown as ConstructorParameters<typeof ErliConnectionTesterAdapter>[0];
+    const throwingTester = new ErliConnectionTesterAdapter(throwingFactory);
+
+    const result = await throwingTester.test(connection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(422);
+    expect(result.message).toBe('Erli GET /me failed (422)');
+    expect(result.message).not.toContain(responseBody);
+    expect(result.message).not.toContain('super-secret');
   });
 
   it('should return a failure (not throw) when credential resolution fails', async () => {

@@ -21,7 +21,7 @@ Realises **User story 1 (Connect)** from the spec.
 - No capability adapters (offers #984 / orders #993) — `supportedCapabilities` stays `[]`.
 - No FE work (#990).
 - No migration — reuses the encrypted `integration_credentials` table.
-- No live-endpoint verification — that is the #992 sandbox spike (see Open Question O1).
+- No capability adapters — the live endpoint set for offers/orders is confirmed against the #992 sandbox spike in #984/#993. The tester's probe (`GET /me`) was itself confirmed by #992 (see Open Question O1, resolved).
 
 ---
 
@@ -34,7 +34,7 @@ All three side-registrations are wired through `createErliPlugin().register(host
 ### Connection shape
 
 - **Credentials** (`integration_credentials`, resolved via `host.credentialsResolver.get`): `{ apiKey: string }`.
-- **Config** (`connection.config`): `{ baseUrl?: string }` — optional override; defaults to the prod constant `https://erli.pl/svc/shop-api` (already the base URL the #981 client test uses). The sandbox URL (`sandbox.erli.dev`, unconfirmed pending #992) drops in via this field with no code change.
+- **Config** (`connection.config`): `{ baseUrl?: string }` — optional override; defaults to the prod constant `https://erli.pl/svc/shop-api` (already the base URL the #981 client test uses). The sandbox URL (`https://sandbox.erli.dev/svc/shop-api`, confirmed by the #992 spike) drops in via this field with no code change.
 
 ### Per-connection client seam — `ErliAdapterFactory`
 
@@ -92,5 +92,5 @@ class ErliAdapterFactory {
 
 ## 5. Open questions for the user
 
-- **O1 — probe endpoint.** The tester needs one cheap authenticated GET. The live Erli endpoint set isn't confirmed until the #992 sandbox spike. Plan: a single named constant `ERLI_CONNECTION_PROBE_PATH` (best-guess, e.g. `/offers?limit=1` per the documented offers resource) with a comment tying confirmation to #992. Unit tests mock `fetch`, so they're endpoint-agnostic; only the live test depends on the real path. **Acceptable, or hold the tester's real path until #992?**
+- **O1 — probe endpoint (RESOLVED by #992).** The tester needs one cheap authenticated GET. The #992 sandbox spike confirmed `GET /me` ("get my shop") — auth-gated (bad key → 401), no parameters, no side effects — and that the originally-assumed `/offers?limit=1` does not exist (it 404s) on the real API. `ERLI_CONNECTION_PROBE_PATH = '/me'` is the single named constant; unit tests mock `fetch`, so they're endpoint-agnostic.
 - **O2 — factory scope.** Build the lean `ErliAdapterFactory` now (honours the #981 docblocks, gives #984/#993 the seam) vs. defer it to #984 and have the tester build its client inline. Plan recommends building it now.

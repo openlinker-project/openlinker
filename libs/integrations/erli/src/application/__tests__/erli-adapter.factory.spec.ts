@@ -104,4 +104,17 @@ describe('ErliAdapterFactory', () => {
       factory.createHttpClient(connection(), resolverFor({ apiKey: '  ' })),
     ).rejects.toBeInstanceOf(ErliConfigException);
   });
+
+  it('should throw ErliConfigException when a config.baseUrl override is not https', async () => {
+    // Defense-in-depth: the config-shape validator gates https at create/update,
+    // but a pre-existing/externally-written row could carry plain http — the
+    // factory must refuse it rather than send the bearer key over cleartext.
+    await expect(
+      factory.createHttpClient(
+        connection({ config: { baseUrl: 'http://sandbox.erli.dev/svc/shop-api' } }),
+        resolverFor({ apiKey: 'k-123' }),
+      ),
+    ).rejects.toBeInstanceOf(ErliConfigException);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
