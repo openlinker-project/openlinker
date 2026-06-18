@@ -8,12 +8,11 @@
  * `ConnectionTestResult`. Registered against `ConnectionTesterRegistryService`
  * at `erli.shopapi.v1`.
  *
- * NOTE (#992): the probe PATH below is a PLACEHOLDER. The live Erli Shop API
- * endpoint set is not confirmed until the #992 sandbox verification spike, so
- * this is not yet a live-verified probe. The tester's auth/result logic is
- * endpoint-agnostic and the unit tests mock `fetch`; `ERLI_CONNECTION_PROBE_PATH`
- * is the single line #992 updates once a confirmed cheap authenticated
- * endpoint is known.
+ * The probe path ({@link ERLI_CONNECTION_PROBE_PATH}) is `GET /me`, confirmed
+ * against the live Erli Shop API during the #992 sandbox spike. The tester's
+ * auth/result logic is endpoint-agnostic and the unit tests mock `fetch`, so
+ * `ERLI_CONNECTION_PROBE_PATH` is the single line to change should the probe
+ * endpoint ever move.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link ConnectionTesterPort}

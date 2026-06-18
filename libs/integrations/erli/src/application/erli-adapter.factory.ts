@@ -64,6 +64,27 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
   private resolveBaseUrl(connection: Connection): string {
     const config = (connection.config ?? {}) as ErliConnectionConfig;
     const override = config.baseUrl?.trim();
-    return override && override.length > 0 ? override : ERLI_DEFAULT_BASE_URL;
+    if (!override || override.length === 0) {
+      return ERLI_DEFAULT_BASE_URL;
+    }
+    // Defense-in-depth: the config-shape validator gates https at create/update,
+    // but a pre-existing or externally-written connection row could carry a
+    // plain-http baseUrl — which would send the bearer key over cleartext. Re-check
+    // here so the property doesn't rest solely on create-time validation (PR1057-TECH-03).
+    if (!this.isHttpsUrl(override)) {
+      throw new ErliConfigException(
+        `Erli connection ${connection.id} has a non-https baseUrl`,
+        connection.id,
+      );
+    }
+    return override;
+  }
+
+  private isHttpsUrl(value: string): boolean {
+    try {
+      return new URL(value).protocol === 'https:';
+    } catch {
+      return false;
+    }
   }
 }
