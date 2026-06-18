@@ -311,6 +311,18 @@ function toPickupPointAddress(point: DpdPoint): PickupPointAddress {
   };
 }
 
+/**
+ * DPD Polska's `postalCode` field expects bare digits (`NNNNN`), not the Polish
+ * `NN-NNN` display form OpenLinker carries — sending the hyphenated form is
+ * rejected as `INCORRECT_SENDER_POSTAL_CODE` / `INCORRECT_RECEIVER_POSTAL_CODE`
+ * (surfaced opaquely as a top-level `NOT_PROCESSED` status). Strip every
+ * non-digit; an already-bare code passes through unchanged. Confirmed against
+ * the DPDServices demo (`01-612` rejected, `01612` accepted).
+ */
+function toDpdPostalCode(postalCode: string): string {
+  return postalCode.replace(/\D/g, '');
+}
+
 function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
   return {
     company: sender.company,
@@ -318,7 +330,7 @@ function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
     address: sender.address,
     city: sender.city,
     countryCode: sender.countryCode,
-    postalCode: sender.postalCode,
+    postalCode: toDpdPostalCode(sender.postalCode),
     phone: sender.phone,
     email: sender.email,
   };
@@ -337,7 +349,7 @@ function toReceiverPeer(recipient: ShipmentRecipient, address: ShipmentAddress):
     address: `${address.street} ${address.buildingNumber}`.trim(),
     city: address.city,
     countryCode: address.countryCode,
-    postalCode: address.postCode,
+    postalCode: toDpdPostalCode(address.postCode),
     phone: recipient.phone,
     email: recipient.email,
   };

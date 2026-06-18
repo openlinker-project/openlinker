@@ -113,6 +113,7 @@ export { ShipmentNotCancellableException } from './domain/exceptions/shipment-no
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
 export { ShippingProviderRejectionException } from './domain/exceptions/shipping-provider-rejection.exception';
+export { ShippingProviderAuthException } from './domain/exceptions/shipping-provider-auth.exception';
 export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
 export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
