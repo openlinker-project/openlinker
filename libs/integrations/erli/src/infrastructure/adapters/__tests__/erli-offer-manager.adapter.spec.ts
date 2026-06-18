@@ -151,6 +151,26 @@ describe('ErliOfferManagerAdapter', () => {
       expect(body.images).toEqual([{ url: 'https://cdn.example.com/ok.jpg' }]);
     });
 
+    it('should drop IPv6 loopback/ULA/link-local and 0.0.0.0 image URLs', async () => {
+      await adapter.createOffer(
+        createCmd({
+          overrides: {
+            imageUrls: [
+              'https://cdn.example.com/ok.jpg',
+              'https://[::1]/meta', // IPv6 loopback
+              'https://[::]/meta', // IPv6 unspecified
+              'https://[fc00::1]/meta', // IPv6 ULA (fc00::/7)
+              'https://[fd12:3456::1]/meta', // IPv6 ULA (fd prefix)
+              'https://[fe80::1]/meta', // IPv6 link-local (fe80::/10)
+              'https://0.0.0.0/meta', // IPv4 unspecified
+            ],
+          },
+        }),
+      );
+      const body = httpClient.post.mock.calls[0][1] as { images?: { url: string }[] };
+      expect(body.images).toEqual([{ url: 'https://cdn.example.com/ok.jpg' }]);
+    });
+
     it('should map a 4xx ErliApiException to OfferCreateRejectedException without leaking responseBody', async () => {
       httpClient.post.mockRejectedValue(
         new ErliApiException('rejected', 422, 'SECRET submitted payload echo', 'https://erli.pl/x'),

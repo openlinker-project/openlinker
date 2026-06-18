@@ -317,7 +317,9 @@ function flattenDescription(input: string | OfferDescriptionUpdate): string {
 /**
  * Best-effort SSRF-conduit hygiene (NOT full egress control — the actual
  * fetcher is Erli, and DNS-rebinding / public-resolves-internal are out of
- * scope; that's network-layer). Reject non-https + obviously-internal hosts.
+ * scope; that's network-layer). Reject non-https + obviously-internal hosts,
+ * across both IPv4 (loopback/RFC1918/unspecified/cloud-metadata) and IPv6
+ * (loopback/unspecified, ULA fc00::/7, link-local fe80::/10) literals.
  */
 function isSafePublicHttpsUrl(value: string): boolean {
   let url: URL;
@@ -333,7 +335,16 @@ function isSafePublicHttpsUrl(value: string): boolean {
   if (host === 'localhost' || host.endsWith('.internal') || host === '169.254.169.254') {
     return false;
   }
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) {
+  // IPv6 literals retain their surrounding brackets in URL.hostname.
+  if (host === '[::1]' || host === '[::]' || /^\[f[cd]/.test(host) || /^\[fe[89ab]/.test(host)) {
+    return false;
+  }
+  if (
+    host === '0.0.0.0' ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host)
+  ) {
     return false;
   }
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
