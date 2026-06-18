@@ -4,7 +4,8 @@
  * Validates the non-secret config for an Erli connection. Erli needs no
  * required config (the API key lives in credentials), so an empty config is
  * valid; the only constraint is that the optional `baseUrl` override, when
- * present, is a non-empty https URL. Registered against
+ * present, is a non-empty https URL targeting an Erli-owned host (SSRF guard —
+ * the base URL carries the bearer key on every request). Registered against
  * `ConnectionConfigShapeValidatorRegistryService` at `erli.shopapi.v1`;
  * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
@@ -19,6 +20,7 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
+import { ERLI_ALLOWED_BASE_URL_HOSTS, isAllowedErliHost } from '../../domain/policies/erli-base-url.policy';
 
 export class ErliConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -32,8 +34,16 @@ export class ErliConnectionConfigShapeValidatorAdapter
     if (baseUrl !== undefined) {
       if (typeof baseUrl !== 'string' || baseUrl.trim().length === 0) {
         issues.push({ path: 'baseUrl', message: 'must be a non-empty string when provided' });
-      } else if (!this.isHttpsUrl(baseUrl)) {
-        issues.push({ path: 'baseUrl', message: 'must be a valid https URL' });
+      } else {
+        const parsed = this.parseHttpsUrl(baseUrl);
+        if (!parsed) {
+          issues.push({ path: 'baseUrl', message: 'must be a valid https URL' });
+        } else if (!isAllowedErliHost(parsed.hostname)) {
+          issues.push({
+            path: 'baseUrl',
+            message: `host must be ${ERLI_ALLOWED_BASE_URL_HOSTS.join(' or ')} (or a subdomain)`,
+          });
+        }
       }
     }
 
@@ -43,11 +53,12 @@ export class ErliConnectionConfigShapeValidatorAdapter
     return Promise.resolve();
   }
 
-  private isHttpsUrl(value: string): boolean {
+  private parseHttpsUrl(value: string): URL | null {
     try {
-      return new URL(value).protocol === 'https:';
+      const url = new URL(value);
+      return url.protocol === 'https:' ? url : null;
     } catch {
-      return false;
+      return null;
     }
   }
 }

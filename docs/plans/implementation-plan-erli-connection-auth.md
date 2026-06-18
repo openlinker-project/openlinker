@@ -49,7 +49,7 @@ class ErliAdapterFactory {
 ```
 
 - `resolveCredentials` — guards `connection.credentialsRef` present, calls `credentialsResolver.get<ErliCredentials>(ref)`, guards non-empty `apiKey`; on any miss throws `ErliApiException` (the existing exception the client already uses for pre-flight config errors — no new exception type).
-- `resolveBaseUrl` — `config.baseUrl` (if a non-empty string) else `ERLI_DEFAULT_BASE_URL`.
+- `resolveBaseUrl` — `config.baseUrl` (if a non-empty string) else `ERLI_DEFAULT_BASE_URL`; an override is re-validated against the https + Erli-host allowlist (`isAllowedErliBaseUrl`) and a disallowed value throws `ErliConfigException` (defense-in-depth vs. the create-time validator).
 - The tester passes a **no-retry** override (`maxRetries: 0`) so a probe fails fast, matching `AllegroConnectionTesterAdapter`.
 
 > The factory is **not** yet wired into `createCapabilityAdapter` (dispatch table stays empty until #984/#993). It is only the client/credential builder seam this PR's tester needs and the docblocks already promise.
@@ -60,7 +60,7 @@ class ErliAdapterFactory {
 |---|---|---|
 | F1 | `infrastructure/adapters/erli-connection.types.ts` | `ErliCredentials`, `ErliConnectionConfig` interfaces + `ERLI_DEFAULT_BASE_URL` const. |
 | F2 | `infrastructure/adapters/erli-connection-credentials-shape-validator.adapter.ts` | `implements ConnectionCredentialsShapeValidatorPort` — require non-empty `apiKey`; throw `InvalidCredentialsShapeException`. |
-| F3 | `infrastructure/adapters/erli-connection-config-shape-validator.adapter.ts` | `implements ConnectionConfigShapeValidatorPort` — permissive; if `baseUrl` present it must be a non-empty https URL; throw `InvalidConnectionConfigException(pluginName, FlatValidationIssue[])`. |
+| F3 | `infrastructure/adapters/erli-connection-config-shape-validator.adapter.ts` | `implements ConnectionConfigShapeValidatorPort` — permissive; if `baseUrl` present it must be a non-empty https URL targeting an Erli-owned host (SSRF allowlist, `domain/policies/erli-base-url.policy.ts`); throw `InvalidConnectionConfigException(pluginName, FlatValidationIssue[])`. |
 | F4 | `application/erli-adapter.factory.ts` | `ErliAdapterFactory` (above). |
 | F5 | `infrastructure/adapters/erli-connection-tester.adapter.ts` | `implements ConnectionTesterPort` — build client via factory (no-retry), cheap authenticated `GET ERLI_CONNECTION_PROBE_PATH`, map result to `ConnectionTestResult`. |
 | F6 | `erli-plugin.ts` (edit) | add `register(host)` registering the two validators + tester at `erliAdapterManifest.adapterKey`. |
@@ -83,7 +83,7 @@ class ErliAdapterFactory {
 ## 4. Tests (unit; `pnpm --filter @openlinker/integrations-erli test`)
 
 - **T1** `erli-connection-credentials-shape-validator.adapter.spec.ts` — resolves for `{apiKey:'k'}`; rejects with `InvalidCredentialsShapeException` for missing / empty / non-string `apiKey`.
-- **T2** `erli-connection-config-shape-validator.adapter.spec.ts` — resolves for `{}` and `{baseUrl:'https://x'}`; rejects (`InvalidConnectionConfigException`, issues carry `path`/`message`) for non-string / http / malformed `baseUrl`.
+- **T2** `erli-connection-config-shape-validator.adapter.spec.ts` — resolves for `{}` and an https Erli host; rejects (`InvalidConnectionConfigException`, issues carry `path`/`message`) for non-string / http / malformed / off-host / look-alike-host `baseUrl`. Plus **T2b** `erli-base-url.policy.spec.ts` covering the allowlist helper directly.
 - **T3** `erli-adapter.factory.spec.ts` — `createHttpClient` resolves creds + default/override baseUrl, builds a client; throws `ErliApiException` on missing `credentialsRef` / empty `apiKey`. Uses `InMemoryCredentialsResolverAdapter` from `@openlinker/core/integrations/testing`.
 - **T4** `erli-connection-tester.adapter.spec.ts` — mock global `fetch`: 2xx → `{success:true, status, latencyMs}`; 401 → `{success:false}` with auth message; network throw → `{success:false}`. Seeds creds via `InMemoryCredentialsResolverAdapter`.
 - **T5** `erli-plugin.spec.ts` (edit) — replace the "register is undefined" assertion (lines 64-67) + the bare `host` stub (lines 29-31) with a `makeHostStub()` (jest.fn registries); assert `register(host)` calls all three registries with `erli.shopapi.v1` and an object exposing the right method (`validate` / `test`).

@@ -29,6 +29,24 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
     );
   });
 
+  it('should resolve when baseUrl is the apex prod host', async () => {
+    await expect(validator.validate({ baseUrl: 'https://erli.pl/svc/shop-api' })).resolves.toBeUndefined();
+  });
+
+  it('should reject an https URL whose host is not Erli-owned (SSRF guard)', async () => {
+    await expect(validator.validate({ baseUrl: 'https://evil.example.com/svc' })).rejects.toMatchObject({
+      errors: [{ path: 'baseUrl', message: expect.stringContaining('host must be') }],
+    });
+  });
+
+  it('should reject a look-alike host that merely ends with the apex string', async () => {
+    // `noterli.pl` is NOT a subdomain of `erli.pl` — the leading-dot suffix
+    // check must reject it rather than match on a bare endsWith.
+    await expect(validator.validate({ baseUrl: 'https://noterli.pl/svc' })).rejects.toBeInstanceOf(
+      InvalidConnectionConfigException,
+    );
+  });
+
   it('should reject when baseUrl is not a valid URL', async () => {
     await expect(validator.validate({ baseUrl: 'not-a-url' })).rejects.toBeInstanceOf(
       InvalidConnectionConfigException,

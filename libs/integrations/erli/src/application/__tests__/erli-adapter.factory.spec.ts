@@ -106,12 +106,25 @@ describe('ErliAdapterFactory', () => {
   });
 
   it('should throw ErliConfigException when a config.baseUrl override is not https', async () => {
-    // Defense-in-depth: the config-shape validator gates https at create/update,
-    // but a pre-existing/externally-written row could carry plain http — the
-    // factory must refuse it rather than send the bearer key over cleartext.
+    // Defense-in-depth: the config-shape validator gates the https + host
+    // allowlist at create/update, but a pre-existing/externally-written row could
+    // carry plain http — the factory must refuse it rather than send the bearer
+    // key over cleartext.
     await expect(
       factory.createHttpClient(
         connection({ config: { baseUrl: 'http://sandbox.erli.dev/svc/shop-api' } }),
+        resolverFor({ apiKey: 'k-123' }),
+      ),
+    ).rejects.toBeInstanceOf(ErliConfigException);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should throw ErliConfigException when a config.baseUrl override targets a non-Erli host (SSRF)', async () => {
+    // An https URL is not enough — the host must be Erli-owned, else a
+    // misconfigured row would ship the bearer key to an attacker-controlled host.
+    await expect(
+      factory.createHttpClient(
+        connection({ config: { baseUrl: 'https://evil.example.com/svc/shop-api' } }),
         resolverFor({ apiKey: 'k-123' }),
       ),
     ).rejects.toBeInstanceOf(ErliConfigException);
