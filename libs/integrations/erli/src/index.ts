@@ -17,6 +17,10 @@ export { erliAdapterManifest, createErliPlugin } from './erli-plugin';
 // Host wiring
 export { ErliIntegrationModule } from './erli-integration.module';
 
+// Per-connection construction-seam contract (#982) — mirrors
+// IAllegroAdapterFactory / IPrestashopAdapterFactory.
+export type { IErliAdapterFactory } from './application/interfaces/erli-adapter.factory.interface';
+
 // HTTP-client domain exceptions (#981). The client + interface stay
 // package-private (siblings keep theirs private too); these typed exceptions
 // are the public surface — they feed the host RetryClassifier /
