@@ -222,12 +222,15 @@ OpenLinker is moving fast and publicly. See [recent activity](https://github.com
 git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
 pnpm install
-cp apps/api/.env.example apps/api/.env
+cp apps/api/.env.example apps/api/.env.local
+cp apps/worker/.env.example apps/worker/.env.local
+# apps/web/.env.example ships safe defaults; copy only if you need to override VITE_API_BASE_URL
 
-pnpm dev:stack:up        # PostgreSQL · Redis · MySQL · PrestaShop · WooCommerce in Docker
-pnpm start:dev:api       # NestJS API on :3000
-pnpm start:dev:worker    # Background job worker
-pnpm start:dev:web       # React admin UI on :5173
+pnpm dev:stack:up                                    # PostgreSQL · Redis · MySQL · PrestaShop · WooCommerce in Docker
+pnpm --filter @openlinker/api migration:run          # Create database tables
+pnpm start:dev:api                                   # NestJS API on :3000
+pnpm start:dev:worker                                # Background job worker
+pnpm start:dev:web                                   # React admin UI on :4173
 ```
 
 Then follow [`docs/getting-started.md`](./docs/getting-started.md) — a walkthrough from a clean machine to a working PrestaShop + Allegro setup with categories mapped.

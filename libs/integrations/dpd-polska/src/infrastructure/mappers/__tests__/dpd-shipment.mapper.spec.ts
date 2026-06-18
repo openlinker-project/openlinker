@@ -103,9 +103,20 @@ describe('buildCreatePackagesRequest', () => {
       name: 'Jan Kowalski', // firstName + lastName
       address: 'Krakowska 12', // street + buildingNumber
       city: 'Poznań',
-      postalCode: '60-001',
+      postalCode: '60001', // NN-NNN → bare digits (DPD rejects the hyphenated form)
       countryCode: 'PL',
     });
+  });
+
+  it('should strip the hyphen from sender + receiver postal codes (DPD wants bare NNNNN)', () => {
+    // DPD returns INCORRECT_*_POSTAL_CODE (opaque NOT_PROCESSED) for the Polish
+    // NN-NNN display form; confirmed against the demo (`01-612` rejected,
+    // `01612` accepted).
+    const req = buildCreatePackagesRequest(makeCmd(), makeConfig());
+    const pkg = req.packages[0];
+
+    expect(pkg.sender.postalCode).toBe('00001'); // config '00-001'
+    expect(pkg.receiver?.postalCode).toBe('60001'); // order '60-001'
   });
 
   it('should prefer recipient.name over first/last when present', () => {

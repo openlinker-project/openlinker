@@ -249,11 +249,7 @@ To use PrestaShop adapters (future work), you need to enable and configure the W
    - Copy the generated API key
 
 4. **Store API Key**
-   - Add to `apps/api/.env`:
-     ```env
-     PRESTASHOP_API_KEY=your-generated-api-key-here
-     ```
-   - Or store in `Connection` entity (for connection-specific config)
+   - Enter the generated key in the Connections UI when creating or editing the PrestaShop connection.
 
 ### Verifying Demo Data
 
@@ -309,7 +305,7 @@ After PrestaShop installation, verify demo data is present:
 **Solution**:
 1. Verify services are running: `docker compose ps`
 2. Check health: `pnpm dev:health`
-3. Verify environment variables in `apps/api/.env`
+3. Verify environment variables in `apps/api/.env.local`
 4. Check network connectivity: `docker compose exec api ping postgres`
 
 ### PrestaShop Installation Problems
@@ -368,18 +364,9 @@ pnpm dev:stack:up
 
 ## Environment Variables
 
-### API Configuration
-
-Update `apps/api/.env` with PrestaShop settings:
-
-```env
-# PrestaShop Configuration
-PRESTASHOP_BASE_URL=http://localhost:8080
-PRESTASHOP_API_KEY=your-prestashop-webservice-api-key
-PRESTASHOP_WEBHOOK_SECRET=your-webhook-secret-optional
-```
-
-> **Note**: These settings are placeholders for development. Future adapters will use the `Connection` entity to store connection-specific configuration.
+> **Note**: PrestaShop credentials (shop URL, webservice API key, webhook secret) are
+> configured through the Connections UI, not environment variables.
+> See [Getting Started](./getting-started.md) for the full setup walkthrough.
 
 ## Troubleshooting
 
