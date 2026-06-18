@@ -12,9 +12,11 @@ import {
   deriveFulfillment,
   deriveHealthLevel,
   deriveOrderHealth,
+  fulfillmentBadge,
   fulfillmentLabel,
   healthLabel,
   rollupSyncStatus,
+  slaBadge,
   syncCellLabel,
   totalUnits,
 } from './order-health';
@@ -201,5 +203,31 @@ describe('totalUnits', () => {
   it('sums item quantities', () => {
     expect(totalUnits([{ quantity: 2 }, { quantity: 3 }])).toBe(5);
     expect(totalUnits([])).toBe(0);
+  });
+});
+
+describe('slaBadge (#1108)', () => {
+  it('returns null when there is nothing to show (none / absent)', () => {
+    expect(slaBadge('none')).toBeNull();
+    expect(slaBadge(undefined)).toBeNull();
+  });
+
+  it('maps each actionable bucket to its label + tone', () => {
+    expect(slaBadge('overdue')).toEqual({ label: 'Overdue', tone: 'error' });
+    expect(slaBadge('at_risk')).toEqual({ label: 'At risk', tone: 'warning' });
+    expect(slaBadge('on_track')).toEqual({ label: 'On track', tone: 'success' });
+  });
+});
+
+describe('fulfillmentBadge (#1108)', () => {
+  it('treats absent (NULL) as not-shipped', () => {
+    expect(fulfillmentBadge(undefined)).toEqual({ label: 'Not shipped', tone: 'neutral' });
+  });
+
+  it('maps each rollup value to its label + tone', () => {
+    expect(fulfillmentBadge('not-shipped')).toEqual({ label: 'Not shipped', tone: 'neutral' });
+    expect(fulfillmentBadge('dispatched')).toEqual({ label: 'Dispatched', tone: 'info' });
+    expect(fulfillmentBadge('delivered')).toEqual({ label: 'Delivered', tone: 'success' });
+    expect(fulfillmentBadge('failed')).toEqual({ label: 'Dispatch failed', tone: 'error' });
   });
 });

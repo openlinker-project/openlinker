@@ -14,7 +14,13 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { OrderRecord, OrderHealthValue, OrderSyncStatus } from '../api/orders.types';
+import type {
+  OrderRecord,
+  OrderHealthValue,
+  OrderSyncStatus,
+  SlaStateValue,
+  FulfillmentRollupStateValue,
+} from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 // ── List-row health classification (#929) ──────────────────────────────────
@@ -135,6 +141,12 @@ export type FulfillmentState = (typeof FulfillmentStateValues)[number];
  * empty means no shipment exists yet. When no connection declares the
  * ShippingProviderManager capability the order can't be dispatched at all, so
  * the state collapses to `unavailable` (the panel + cell hide the affordance).
+ *
+ * **Twin (#1108):** the BE `deriveFulfillmentRollup`
+ * (`libs/core/src/shipping/domain/fulfillment-rollup.ts`) encodes the same
+ * precedence to populate `order.fulfillmentState` (which the list reads
+ * directly). Keep both in lockstep if the precedence changes; `unavailable`
+ * is a FE-only render state that the BE rollup never produces.
  */
 export function deriveFulfillment(
   shipmentStatuses: readonly string[] | null,
@@ -168,4 +180,50 @@ export function fulfillmentLabel(state: FulfillmentState): string {
 /** Sum of item quantities — the "M unit" half of the header summary line. */
 export function totalUnits(items: readonly { quantity: number }[]): number {
   return items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+// ── Ship-by SLA + fulfillment-rollup badges (#1108) ─────────────────────────
+// The BE owns `slaState` + `fulfillmentState` (single source of truth); these
+// maps only choose label + tone. Colour is never the only signal — paired with
+// the badge label (StatusBadge enforces dot + text).
+
+/** Label + tone per ship-by SLA bucket. `none` renders nothing (no affordance). */
+export const ORDER_SLA_META: Record<
+  Exclude<SlaStateValue, 'none'>,
+  { label: string; tone: StatusBadgeTone }
+> = {
+  overdue: { label: 'Overdue', tone: 'error' },
+  at_risk: { label: 'At risk', tone: 'warning' },
+  on_track: { label: 'On track', tone: 'success' },
+};
+
+/**
+ * Resolve the SLA badge for an order, or `null` when there's nothing to show
+ * (`none` — no deadline or already shipped). Reads the BE-owned `slaState`; the
+ * FE never re-derives the bucket.
+ */
+export function slaBadge(
+  slaState: SlaStateValue | undefined,
+): { label: string; tone: StatusBadgeTone } | null {
+  if (!slaState || slaState === 'none') return null;
+  return ORDER_SLA_META[slaState];
+}
+
+/** Label + tone per fulfillment-rollup value, for the list/detail row badge. */
+export const ORDER_FULFILLMENT_META: Record<
+  FulfillmentRollupStateValue,
+  { label: string; tone: StatusBadgeTone }
+> = {
+  'not-shipped': { label: 'Not shipped', tone: 'neutral' },
+  dispatched: { label: 'Dispatched', tone: 'info' },
+  delivered: { label: 'Delivered', tone: 'success' },
+  failed: { label: 'Dispatch failed', tone: 'error' },
+};
+
+/** Fulfillment badge for an order row. NULL/absent ≡ `not-shipped`. */
+export function fulfillmentBadge(state: FulfillmentRollupStateValue | undefined): {
+  label: string;
+  tone: StatusBadgeTone;
+} {
+  return ORDER_FULFILLMENT_META[state ?? 'not-shipped'];
 }

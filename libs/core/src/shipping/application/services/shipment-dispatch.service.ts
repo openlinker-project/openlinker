@@ -36,6 +36,7 @@ import {
 } from '@openlinker/core/orders';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
+import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import type {
   ShipmentDispatchInput,
   ShipmentDispatchResult,
@@ -51,7 +52,10 @@ import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.p
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
-import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+import {
+  ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
+  SHIPMENT_REPOSITORY_TOKEN,
+} from '../../shipping.tokens';
 
 /** Capability the resolved processor connection must declare to issue a label. */
 const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
@@ -72,6 +76,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly integrations: IIntegrationsService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
+    private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
   ) {}
 
   async dispatch(input: ShipmentDispatchInput): Promise<ShipmentDispatchResult> {
@@ -253,13 +259,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         cod: input.cod,
       });
 
-      return await this.shipments.update(shipment.id, {
+      const generated = await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Generated,
         providerShipmentId: result.providerShipmentId,
         // Some providers issue tracking asynchronously; leave null when absent.
         trackingNumber: result.trackingNumber ?? undefined,
         labelPdfRef: result.labelPdfRef,
       });
+      // Project the order's fulfillment rollup (#1108) — best-effort, never throws.
+      await this.fulfillmentProjection.recompute(input.orderId);
+      return generated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
@@ -272,6 +281,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         failedAt: new Date(),
         errorMessage: message,
       });
+      // Reflect the failed shipment in the order rollup (#1108) before surfacing.
+      await this.fulfillmentProjection.recompute(input.orderId);
       throw error;
     }
   }

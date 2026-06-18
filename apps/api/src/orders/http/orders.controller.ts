@@ -31,11 +31,13 @@ import {
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
+  deriveSlaState,
 } from '@openlinker/core/orders';
 import type { OrderRecord, OrderSyncStatus, SyncAttempt } from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
+import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
@@ -79,6 +81,8 @@ export class OrdersController {
       sort,
       dir,
       dueBefore,
+      slaState,
+      fulfillmentState,
       limit = 20,
       offset = 0,
     } = query;
@@ -95,6 +99,8 @@ export class OrdersController {
         sort,
         dir,
         dueBefore: dueBefore ? new Date(dueBefore) : undefined,
+        slaState,
+        fulfillmentState,
       },
       { limit, offset }
     );
@@ -125,6 +131,31 @@ export class OrdersController {
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
     return this.orderRecordRepository.countByHealth({
+      sourceConnectionId,
+      customerId,
+      createdFrom: createdFrom ? new Date(createdFrom) : undefined,
+      createdTo: createdTo ? new Date(createdTo) : undefined,
+    });
+  }
+
+  @Get('sla-summary')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Order ship-by SLA summary counts',
+    description:
+      'Returns the count of order records per ship-by SLA bucket (none | on_track | at_risk | overdue) for the given source/customer/date scope. The buckets partition the set, so `total` equals their sum — backs the list-page SLA KPI cells (#1108).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-SLA-bucket counts',
+    type: OrderSlaSummaryResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async slaSummary(
+    @Query() query: OrderHealthSummaryQueryDto
+  ): Promise<OrderSlaSummaryResponseDto> {
+    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    return this.orderRecordRepository.countBySla({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
@@ -196,6 +227,7 @@ export class OrdersController {
   }
 
   private toDto(order: OrderRecord): OrderRecordResponseDto {
+    const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
       internalOrderId: order.internalOrderId,
       customerId: order.customerId,
@@ -208,6 +240,10 @@ export class OrdersController {
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
+      fulfillmentState,
+      // BE-owned SLA bucket (#1108): single source of truth so the list filter +
+      // badge agree. The FE renders only the live countdown off dispatchByAt.
+      slaState: deriveSlaState(order.dispatchByAt, order.fulfillmentState, new Date()),
     };
   }
 

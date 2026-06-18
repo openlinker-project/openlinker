@@ -30,6 +30,9 @@ import type {
   OrderRecordSort,
   OrderRecordSortDirection,
 } from '../../../domain/types/order-record.types';
+import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
+import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
+import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -122,6 +125,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     if (filters.health) {
       this.applyHealthFilter(qb, filters.health);
+    }
+
+    if (filters.fulfillmentState) {
+      this.applyFulfillmentFilter(qb, filters.fulfillmentState);
+    }
+
+    if (filters.slaState) {
+      this.applySlaFilter(qb, filters.slaState);
     }
 
     this.applySort(qb, filters.sort, filters.dir);
@@ -281,6 +292,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           'DESC'
         );
         return;
+      case 'fulfillment':
+        qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC')).addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
       case 'createdAt':
       default:
         // No-sort default stays createdAt DESC (unchanged for non-list callers).
@@ -317,6 +334,152 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         );
         break;
     }
+  }
+
+  /**
+   * "Not shipped" guard (#1108): an order carries SLA pressure only while it
+   * hasn't shipped. NULL `fulfillmentState` ≡ `not-shipped`, so it counts as not
+   * shipped. Shared by the SLA filter + the SLA summary so the badge, filter,
+   * and KPI all agree.
+   */
+  private static readonly NOT_SHIPPED =
+    `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
+
+  /**
+   * Fulfillment-rollup sort ordinal (#1108) — most-actionable first when
+   * ascending: failed(0) < not-shipped(1) < dispatched(2) < delivered(3).
+   * NULL ≡ not-shipped(1).
+   */
+  private static readonly FULFILLMENT_ORDINAL =
+    `CASE rec."fulfillmentState" WHEN 'failed' THEN 0 WHEN 'dispatched' THEN 2 ` +
+    `WHEN 'delivered' THEN 3 ELSE 1 END`;
+
+  /**
+   * Narrow a `findMany` query to a single fulfillment-rollup value (#1108).
+   * `not-shipped` also matches NULL (the documented NULL≡not-shipped rule).
+   */
+  private applyFulfillmentFilter(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    state: FulfillmentRollupState
+  ): void {
+    if (state === 'not-shipped') {
+      qb.andWhere(`(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')`);
+      return;
+    }
+    qb.andWhere(`rec."fulfillmentState" = :fulfillmentState`, { fulfillmentState: state });
+  }
+
+  /**
+   * Narrow a `findMany` query to a single SLA bucket (#1108). Encodes the
+   * {@link SlaState} precedence against the repository's server `now`, incl. the
+   * "cleared once shipped" guard — the SQL twin of `deriveSlaState`; keep both
+   * in lockstep. NULL deadlines / shipped orders are `none`.
+   */
+  private applySlaFilter(qb: SelectQueryBuilder<OrderRecordOrmEntity>, slaState: SlaState): void {
+    const now = new Date();
+    const riskCutoff = new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS);
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    switch (slaState) {
+      case 'none':
+        qb.andWhere(`(NOT ${notShipped}) OR rec."dispatchByAt" IS NULL`);
+        break;
+      case 'overdue':
+        qb.andWhere(`${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`, {
+          slaNow: now,
+        });
+        break;
+      case 'at_risk':
+        qb.andWhere(
+          `${notShipped} AND rec."dispatchByAt" > :slaNow AND rec."dispatchByAt" <= :slaCutoff`,
+          { slaNow: now, slaCutoff: riskCutoff }
+        );
+        break;
+      case 'on_track':
+        qb.andWhere(`${notShipped} AND rec."dispatchByAt" > :slaCutoff`, { slaCutoff: riskCutoff });
+        break;
+    }
+  }
+
+  /**
+   * SLA-bucket count summary (#1108) for the list KPI strip — the SLA twin of
+   * `countByHealth`. One aggregate query partitioning every in-scope record into
+   * exactly one bucket via `COUNT(*) FILTER (...)`, encoding the same precedence
+   * as `applySlaFilter` / `deriveSlaState`. `now` is the server clock.
+   */
+  async countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary> {
+    // Per-query server clock. The list-row `slaState` (controller `toDto`) and
+    // the `applySlaFilter` predicate each take their own `new Date()`, so a row
+    // exactly on the at-risk boundary could bucket differently by milliseconds —
+    // immaterial at the 24h window, and the same eventual-consistency posture as
+    // the health summary. Thread a single `now` if exactness is ever required.
+    const now = new Date();
+    const riskCutoff = new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS);
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow)`,
+        'overdue'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${notShipped} AND rec."dispatchByAt" > :slaNow AND rec."dispatchByAt" <= :slaCutoff)`,
+        'at_risk'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${notShipped} AND rec."dispatchByAt" > :slaCutoff)`,
+        'on_track'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE (NOT ${notShipped}) OR rec."dispatchByAt" IS NULL)`,
+        'none'
+      )
+      .setParameters({ slaNow: now, slaCutoff: riskCutoff });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const raw = await qb.getRawOne<{
+      total: string;
+      on_track: string;
+      at_risk: string;
+      overdue: string;
+      none: string;
+    }>();
+
+    return {
+      total: Number(raw?.total ?? 0),
+      onTrack: Number(raw?.on_track ?? 0),
+      atRisk: Number(raw?.at_risk ?? 0),
+      overdue: Number(raw?.overdue ?? 0),
+      none: Number(raw?.none ?? 0),
+    };
+  }
+
+  /**
+   * Push a fulfillment-rollup value onto the order (#1108). Called from the
+   * shipping context after any shipment-status mutation (best-effort projection).
+   * Idempotent — sets the absolute value. No-op (no throw) when the order row
+   * doesn't exist, so a shipment that references an order OL hasn't recorded
+   * never fails the shipment op.
+   */
+  async updateFulfillmentState(
+    internalOrderId: string,
+    fulfillmentState: FulfillmentRollupState
+  ): Promise<void> {
+    await this.repository.update({ internalOrderId }, { fulfillmentState });
   }
 
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
@@ -447,7 +610,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.createdAt,
       entity.updatedAt,
       syncAttempts,
-      entity.dispatchByAt
+      entity.dispatchByAt,
+      (entity.fulfillmentState as FulfillmentRollupState | null) ?? null
     );
   }
 
@@ -479,6 +643,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     }));
     entity.recordStatus = orderRecord.recordStatus;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    entity.fulfillmentState = orderRecord.fulfillmentState;
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

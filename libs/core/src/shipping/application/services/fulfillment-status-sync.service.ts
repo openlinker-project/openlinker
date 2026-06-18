@@ -59,6 +59,7 @@ import {
 } from '@openlinker/core/orders';
 
 import type { IFulfillmentStatusSyncService } from '../interfaces/fulfillment-status-sync.service.interface';
+import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import type {
   FulfillmentStatusSyncOptions,
   FulfillmentStatusSyncResult,
@@ -72,7 +73,10 @@ import {
 import { SHIPPING_METHOD } from '../../domain/types/shipping-method.types';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import type { UpdateShipmentInput } from '../../domain/types/shipment.types';
-import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+import {
+  ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
+  SHIPMENT_REPOSITORY_TOKEN,
+} from '../../shipping.tokens';
 
 /**
  * Project the OMP's neutral `FulfillmentStatus` onto the shipping
@@ -118,6 +122,8 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
     private readonly routing: IFulfillmentRoutingService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
+    private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
   ) {}
 
   async sync(
@@ -249,11 +255,17 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             snapshot,
           );
           created += 1;
+          // Project the order rollup (#1108); also the reconciliation backstop
+          // that heals any best-effort projection dropped on the write-path.
+          await this.fulfillmentProjection.recompute(record.internalOrderId);
         } else {
           const patch = this.diffPatch(existing, snapshot);
           if (Object.keys(patch).length > 0) {
             await this.shipments.update(existing.id, patch);
             updated += 1;
+            if (patch.status) {
+              await this.fulfillmentProjection.recompute(record.internalOrderId);
+            }
           }
         }
       } catch (error) {

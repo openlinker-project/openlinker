@@ -15,6 +15,8 @@ import type {
   OrderHealthSummary,
   OrderHealthSummaryFilters,
 } from '../types/order-record.types';
+import type { OrderSlaSummary } from '../types/order-sla.types';
+import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 
 export interface OrderRecordRepositoryPort {
@@ -63,4 +65,23 @@ export interface OrderRecordRepositoryPort {
    * date subset only — `health` itself is intentionally not a valid input.
    */
   countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary>;
+
+  /**
+   * Count order records per ship-by SLA bucket (#1108) for the list KPI strip.
+   * Same scope subset + partition semantics as {@link countByHealth}; encodes
+   * the {@link SlaState} precedence (incl. cleared-once-shipped) against the
+   * server clock.
+   */
+  countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary>;
+
+  /**
+   * Push a per-order fulfillment rollup (#1108) onto the order record. Called
+   * from the shipping context after a shipment-status change (best-effort
+   * projection). Idempotent absolute-set; a missing order row is a no-op (never
+   * throws) so it can't fail the shipment operation.
+   */
+  updateFulfillmentState(
+    internalOrderId: string,
+    fulfillmentState: FulfillmentRollupState
+  ): Promise<void>;
 }

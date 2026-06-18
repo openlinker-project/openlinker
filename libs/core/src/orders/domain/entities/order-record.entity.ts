@@ -11,6 +11,7 @@ import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
+import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -47,6 +48,14 @@ export class OrderRecord {
      * re-pulled order with a changed window stays fresh.
      */
     public readonly dispatchByAt: Date | null = null,
+    /**
+     * Per-order fulfillment rollup (#1108) — a denormalized projection of the
+     * order's shipment lifecycle, pushed from the shipping context via
+     * `updateFulfillmentState`. `null` ≡ `not-shipped` (no backfill needed).
+     * Lets the orders list show/filter "has this shipped?" without reaching
+     * into the shipping context.
+     */
+    public readonly fulfillmentState: FulfillmentRollupState | null = null,
   ) {}
 
   /**

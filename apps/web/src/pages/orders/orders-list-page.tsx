@@ -43,9 +43,10 @@ import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
+import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
-import { deriveOrderHealth } from '../../features/orders/lib/order-health';
+import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import type {
   OrderRecord,
   OrderFilters,
@@ -53,11 +54,15 @@ import type {
   OrderHealthSummary,
   OrderSortValue,
   OrderSortDirection,
+  SlaStateValue,
+  FulfillmentRollupStateValue,
 } from '../../features/orders/api/orders.types';
 import {
   OrderHealthValues,
   OrderSortValues,
   OrderSortDirectionValues,
+  SlaStateValues,
+  FulfillmentRollupStateValues,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 
@@ -122,6 +127,7 @@ const SORT_KEY_TO_COLUMN: Record<OrderSortValue, string> = {
   items: 'items',
   status: 'status',
   total: 'total',
+  fulfillment: 'fulfillment',
 };
 const COLUMN_TO_SORT_KEY: Record<string, OrderSortValue> = {
   shipBy: 'dispatchBy',
@@ -130,6 +136,7 @@ const COLUMN_TO_SORT_KEY: Record<string, OrderSortValue> = {
   items: 'items',
   status: 'status',
   total: 'total',
+  fulfillment: 'fulfillment',
 };
 
 /**
@@ -144,7 +151,33 @@ const DEFAULT_DIR: Record<OrderSortValue, OrderSortDirection> = {
   items: 'desc',
   status: 'asc',
   total: 'desc',
+  fulfillment: 'asc',
 };
+
+/** Type-guard for the `slaState` URL filter (#1108). */
+function isSlaState(value: string | null): value is SlaStateValue {
+  return value !== null && (SlaStateValues as readonly string[]).includes(value);
+}
+
+/** Type-guard for the `fulfillmentState` URL filter (#1108). */
+function isFulfillmentState(value: string | null): value is FulfillmentRollupStateValue {
+  return value !== null && (FulfillmentRollupStateValues as readonly string[]).includes(value);
+}
+
+/** SLA filter dropdown options (#1108) — `none` is omitted (not a triage state). */
+const SLA_FILTER_OPTIONS: readonly { value: SlaStateValue; label: string }[] = [
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'at_risk', label: 'At risk' },
+  { value: 'on_track', label: 'On track' },
+];
+
+/** Fulfillment filter dropdown options (#1108). */
+const FULFILLMENT_FILTER_OPTIONS: readonly { value: FulfillmentRollupStateValue; label: string }[] = [
+  { value: 'not-shipped', label: 'Not shipped' },
+  { value: 'dispatched', label: 'Dispatched' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'failed', label: 'Dispatch failed' },
+];
 
 /**
  * Order-column primary label (#939). The source marketplace often has no
@@ -235,6 +268,10 @@ export function OrdersListPage(): ReactElement {
   const createdFromIso = createdFrom ? `${createdFrom}T00:00:00.000Z` : undefined;
   const createdToIso = createdTo ? `${createdTo}T23:59:59.999Z` : undefined;
   const breaching = searchParams.get('due') === 'breaching';
+  const rawSla = searchParams.get('slaState');
+  const slaState = isSlaState(rawSla) ? rawSla : undefined;
+  const rawFulfillment = searchParams.get('fulfillmentState');
+  const fulfillmentState = isFulfillmentState(rawFulfillment) ? rawFulfillment : undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -254,6 +291,8 @@ export function OrdersListPage(): ReactElement {
     createdFrom: createdFromIso,
     createdTo: createdToIso,
     dueBefore,
+    slaState,
+    fulfillmentState,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -273,6 +312,9 @@ export function OrdersListPage(): ReactElement {
   );
   const summaryQuery = useOrderStatusSummaryQuery(summaryScope);
   const summary = summaryQuery.data;
+  // SLA KPI counts (#1108) — same scope as the health summary.
+  const slaSummaryQuery = useOrderSlaSummaryQuery(summaryScope);
+  const slaSummary = slaSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
 
@@ -391,18 +433,39 @@ export function OrdersListPage(): ReactElement {
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
           if (!due || !view) return <span className="text-muted">—</span>;
+          // BE-owned SLA bucket drives the badge (#1108) — single source of truth
+          // the filter agrees with; the live countdown stays client-side. Falls
+          // back to the client-derived urgency for older payloads without slaState.
+          const sla = slaBadge(order.slaState);
+          const tone = sla ? sla.tone : SHIP_BY_TONE[view.level];
+          const label = sla ? sla.label : view.remaining;
           return (
             <span className="orders-cell-stack">
-              <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
-                {view.remaining}
+              <StatusBadge tone={tone} withDot compact>
+                {label}
               </StatusBadge>
-              <span className="text-muted orders-cell-sub">
+              <span className="text-muted orders-cell-sub mono tabular">
+                {sla ? `${view.remaining} · ` : ''}
                 <TimeDisplay iso={due} format="date" />
               </span>
             </span>
           );
         },
         hideBelow: 768,
+      },
+      {
+        id: 'fulfillment',
+        header: 'Fulfillment',
+        sortable: true,
+        cell: (order) => {
+          const f = fulfillmentBadge(order.fulfillmentState);
+          return (
+            <StatusBadge tone={f.tone} withDot compact>
+              {f.label}
+            </StatusBadge>
+          );
+        },
+        hideBelow: 1024,
       },
       {
         id: 'createdAt',
@@ -549,6 +612,7 @@ export function OrdersListPage(): ReactElement {
   function refreshAll(): void {
     void query.refetch();
     void summaryQuery.refetch();
+    void slaSummaryQuery.refetch();
   }
 
   // `R` keyboard shortcut — operator-cockpit "refresh everything visible".
@@ -654,13 +718,48 @@ export function OrdersListPage(): ReactElement {
               onChange={(e) => { setFilterParam('createdTo', e.target.value); }}
             />
           </label>
+          <Select
+            aria-label="Filter by ship-by SLA"
+            value={slaState ?? ''}
+            onChange={(e) => { setFilterParam('slaState', e.target.value); }}
+          >
+            <option value="">Any SLA</option>
+            {SLA_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label="Filter by fulfillment"
+            value={fulfillmentState ?? ''}
+            onChange={(e) => { setFilterParam('fulfillmentState', e.target.value); }}
+          >
+            <option value="">Any fulfillment</option>
+            {FULFILLMENT_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
         </div>
       </div>
 
-      <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
         <Chip tone="warning" active={breaching} onClick={toggleBreaching}>
           Ship-by ≤ 24h / overdue
         </Chip>
+        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
+        {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) && (
+          <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+            <StatusBadge tone="error" withDot compact>
+              {slaSummary.overdue} overdue
+            </StatusBadge>
+            <StatusBadge tone="warning" withDot compact>
+              {slaSummary.atRisk} at risk
+            </StatusBadge>
+          </span>
+        )}
         {query.data && (
           <span
             className="text-muted mono tabular"
@@ -752,6 +851,8 @@ export function OrdersListPage(): ReactElement {
                 const h = deriveOrderHealth(order);
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
                 const shipBy = formatShipBy(order.dispatchByAt ?? null);
+                const sla = slaBadge(order.slaState);
+                const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 const failed = order.syncStatus.find((s) => s.status === 'failed');
                 const isRetrying =
                   retryMutation.isPending &&
@@ -769,11 +870,18 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
-                    {shipBy && (
+                    <StatusBadge tone={fulfillment.tone} withDot compact>
+                      {fulfillment.label}
+                    </StatusBadge>
+                    {sla ? (
+                      <StatusBadge tone={sla.tone} withDot compact>
+                        {sla.label}
+                      </StatusBadge>
+                    ) : shipBy ? (
                       <StatusBadge tone={SHIP_BY_TONE[shipBy.level]} withDot compact>
                         {shipBy.remaining}
                       </StatusBadge>
-                    )}
+                    ) : null}
                     {failed && order.recordStatus !== 'awaiting_mapping' ? (
                       <Button
                         tone="ghost"
