@@ -379,6 +379,58 @@ describe('ShipmentDispatchService', () => {
       expect(adapter.generateLabel).not.toHaveBeenCalled();
     });
 
+    it('should reuse a failed branch-one shipment on retry instead of inserting a duplicate', async () => {
+      // Regression: a prior dispatch that failed before minting a waybill leaves
+      // a terminal `(order, connection)` row with providerShipmentId = NULL. The
+      // partial-unique index forbids a second such row, so the retry must reset
+      // and reuse it rather than `create()` a duplicate (which threw
+      // UQ_shipments_branch_one_per_order_conn and wedged every retry).
+      routing.resolve.mockResolvedValue(
+        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      const failed = makeShipment({
+        id: 'ol_shipment_prior',
+        status: 'failed',
+        failedAt: new Date(),
+        errorMessage: 'previous 401',
+      });
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(failed);
+      const reset = makeShipment({ id: 'ol_shipment_prior', status: 'draft' });
+      const generated = makeShipment({
+        id: 'ol_shipment_prior',
+        status: 'generated',
+        providerShipmentId: 'dpd-1',
+      });
+      repository.update.mockResolvedValueOnce(reset).mockResolvedValueOnce(generated);
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'dpd-1',
+        trackingNumber: 'dpd-1',
+        labelPdfRef: 'dpd:label:1',
+      });
+
+      const result = await service.dispatch(makeInput({ deliveryIntent: 'address' }));
+
+      // No duplicate INSERT — the prior row is recycled.
+      expect(repository.create).not.toHaveBeenCalled();
+      // First update resets the failed row back to a clean draft for this attempt.
+      expect(repository.update).toHaveBeenNthCalledWith(
+        1,
+        'ol_shipment_prior',
+        expect.objectContaining({
+          status: 'draft',
+          shippingMethod: 'kurier',
+          failedAt: null,
+          errorMessage: null,
+        }),
+      );
+      // The label is generated against the reused shipment id.
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ shipmentId: 'ol_shipment_prior' }),
+      );
+      expect(result).toEqual({ kind: 'dispatched', shipment: generated });
+    });
+
     it('should persist failed and rethrow when generateLabel rejects', async () => {
       routing.resolve.mockResolvedValue(resolution());
       repository.findActiveByOrderId.mockResolvedValue(null);

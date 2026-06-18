@@ -146,16 +146,24 @@ export function assertCreateSucceededAndExtractWaybill(
 ): string {
   const pkg = res.packages?.[0];
   const parcel = pkg?.parcels?.[0];
-  const info = firstValidation(parcel?.validationInfo) ?? firstValidation(pkg?.validationInfo);
+  // Collect every validation entry across both levels (parcel-first so the
+  // primary discriminator/message keeps the existing precedence). DPD often
+  // returns the real field-level reason at the PACKAGE level with an empty
+  // parcel array (e.g. INCORRECT_*_POSTAL_CODE behind a top-level NOT_PROCESSED),
+  // so both are surfaced into `providerDetails.validationInfo` (#1104).
+  const allInfos: DpdValidationInfo[] = [
+    ...(parcel?.validationInfo ?? []),
+    ...(pkg?.validationInfo ?? []),
+  ];
 
   if (res.status !== DPD_STATUS_OK) {
-    throw reject(info, `DPD create rejected (batch status: ${res.status})`);
+    throw reject(allInfos, `DPD create rejected (batch status: ${res.status})`);
   }
   if (!pkg || pkg.status !== DPD_STATUS_OK) {
-    throw reject(info, `DPD create rejected (package status: ${pkg?.status ?? 'missing'})`);
+    throw reject(allInfos, `DPD create rejected (package status: ${pkg?.status ?? 'missing'})`);
   }
   if (!parcel || parcel.status !== DPD_STATUS_OK) {
-    throw reject(info, `DPD create rejected (parcel status: ${parcel?.status ?? 'missing'})`);
+    throw reject(allInfos, `DPD create rejected (parcel status: ${parcel?.status ?? 'missing'})`);
   }
   if (!parcel.waybill) {
     throw new ShippingProviderRejectionException(
@@ -311,6 +319,18 @@ function toPickupPointAddress(point: DpdPoint): PickupPointAddress {
   };
 }
 
+/**
+ * DPD Polska's `postalCode` field expects bare digits (`NNNNN`), not the Polish
+ * `NN-NNN` display form OpenLinker carries — sending the hyphenated form is
+ * rejected as `INCORRECT_SENDER_POSTAL_CODE` / `INCORRECT_RECEIVER_POSTAL_CODE`
+ * (surfaced opaquely as a top-level `NOT_PROCESSED` status). Strip every
+ * non-digit; an already-bare code passes through unchanged. Confirmed against
+ * the DPDServices demo (`01-612` rejected, `01612` accepted).
+ */
+function toDpdPostalCode(postalCode: string): string {
+  return postalCode.replace(/\D/g, '');
+}
+
 function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
   return {
     company: sender.company,
@@ -318,7 +338,7 @@ function toSenderPeer(sender: DpdSenderContact): DpdSenderOrReceiver {
     address: sender.address,
     city: sender.city,
     countryCode: sender.countryCode,
-    postalCode: sender.postalCode,
+    postalCode: toDpdPostalCode(sender.postalCode),
     phone: sender.phone,
     email: sender.email,
   };
@@ -337,7 +357,7 @@ function toReceiverPeer(recipient: ShipmentRecipient, address: ShipmentAddress):
     address: `${address.street} ${address.buildingNumber}`.trim(),
     city: address.city,
     countryCode: address.countryCode,
-    postalCode: address.postCode,
+    postalCode: toDpdPostalCode(address.postCode),
     phone: recipient.phone,
     email: recipient.email,
   };
@@ -351,15 +371,21 @@ function resolveRecipientName(recipient: ShipmentRecipient): string | undefined 
   return composed.length > 0 ? composed : undefined;
 }
 
-function firstValidation(infos?: DpdValidationInfo[]): DpdValidationInfo | undefined {
-  return infos && infos.length > 0 ? infos[0] : undefined;
-}
-
-function reject(info: DpdValidationInfo | undefined, fallback: string): ShippingProviderRejectionException {
+/**
+ * Build the rejection from every collected validation entry. The first entry
+ * (parcel-first precedence) drives the `providerCode` discriminator + message;
+ * the full set is carried on `providerDetails.validationInfo` so a future
+ * `NOT_PROCESSED` surfaces the field-level reason in structured logs / the API
+ * response without a debug probe (#1104).
+ */
+function reject(allInfos: DpdValidationInfo[], fallback: string): ShippingProviderRejectionException {
+  const first = allInfos[0];
   return new ShippingProviderRejectionException(
     DPD_BRAND,
-    info?.errorCode ?? null,
-    info?.info ?? fallback,
-    info ? { errorCode: info.errorCode, info: info.info } : undefined,
+    first?.errorCode ?? null,
+    first?.info ?? fallback,
+    allInfos.length > 0
+      ? { errorCode: first.errorCode, info: first.info, validationInfo: allInfos }
+      : undefined,
   );
 }

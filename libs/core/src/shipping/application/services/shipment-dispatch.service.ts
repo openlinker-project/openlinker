@@ -201,14 +201,37 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       );
     }
 
-    const shipment = await this.shipments.create({
-      orderId: input.orderId,
-      connectionId: processorConnectionId,
-      shippingMethod,
-      deliveryIntent: intent,
-      paczkomatId: input.paczkomatId,
-      sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
-    });
+    // A prior dispatch that failed BEFORE a waybill was minted leaves a
+    // terminal `(orderId, connectionId)` row with `providerShipmentId = NULL`.
+    // The partial-unique `UQ_shipments_branch_one_per_order_conn` index forbids
+    // inserting a second waybill-less row, so a plain `create()` would throw a
+    // duplicate-key error and wedge every retry (the `findActiveByOrderId` guard
+    // above is status-based and waves terminal `failed` rows through). Reset and
+    // reuse that row instead — the active guard already returned for any
+    // still-in-flight attempt, so anything found here is terminal and safe to
+    // recycle for this fresh attempt.
+    const priorBranchOne = await this.shipments.findBranchOneByOrderAndConnection(
+      input.orderId,
+      processorConnectionId,
+    );
+    const shipment = priorBranchOne
+      ? await this.shipments.update(priorBranchOne.id, {
+          status: SHIPMENT_STATUS.Draft,
+          shippingMethod,
+          deliveryIntent: intent,
+          paczkomatId: input.paczkomatId ?? null,
+          sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? null,
+          failedAt: null,
+          errorMessage: null,
+        })
+      : await this.shipments.create({
+          orderId: input.orderId,
+          connectionId: processorConnectionId,
+          shippingMethod,
+          deliveryIntent: intent,
+          paczkomatId: input.paczkomatId,
+          sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
+        });
 
     // NOTE: if generateLabel commits provider-side but its response fails, the
     // shipment is marked `failed` (catch below) and a later re-dispatch starts a

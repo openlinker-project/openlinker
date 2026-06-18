@@ -11,7 +11,8 @@ The fastest path from a fresh clone to a green test run:
 git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
 pnpm install
-cp apps/api/.env.example apps/api/.env
+cp apps/api/.env.example apps/api/.env.local
+cp apps/worker/.env.example apps/worker/.env.local
 pnpm dev:stack:up
 pnpm --filter @openlinker/api migration:run
 pnpm test
@@ -46,8 +47,9 @@ but undocumented; the supported path is Docker.
 
 3. **Set up environment variables**
    ```bash
-   cp apps/api/.env.example apps/api/.env
-   # Edit .env with your configuration
+   cp apps/api/.env.example apps/api/.env.local
+   cp apps/worker/.env.example apps/worker/.env.local
+   # Edit .env.local files with your configuration
    ```
 
 4. **Start the development stack**
@@ -69,7 +71,7 @@ but undocumented; the supported path is Docker.
    ```bash
    pnpm start:dev:api      # NestJS API on :3000
    pnpm start:dev:worker   # Background job worker
-   pnpm start:dev:web      # React frontend on :5173
+   pnpm start:dev:web      # React frontend on :4173
    ```
 
 ## Git Hooks

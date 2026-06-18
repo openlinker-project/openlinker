@@ -103,9 +103,20 @@ describe('buildCreatePackagesRequest', () => {
       name: 'Jan Kowalski', // firstName + lastName
       address: 'Krakowska 12', // street + buildingNumber
       city: 'Poznań',
-      postalCode: '60-001',
+      postalCode: '60001', // NN-NNN → bare digits (DPD rejects the hyphenated form)
       countryCode: 'PL',
     });
+  });
+
+  it('should strip the hyphen from sender + receiver postal codes (DPD wants bare NNNNN)', () => {
+    // DPD returns INCORRECT_*_POSTAL_CODE (opaque NOT_PROCESSED) for the Polish
+    // NN-NNN display form; confirmed against the demo (`01-612` rejected,
+    // `01612` accepted).
+    const req = buildCreatePackagesRequest(makeCmd(), makeConfig());
+    const pkg = req.packages[0];
+
+    expect(pkg.sender.postalCode).toBe('00001'); // config '00-001'
+    expect(pkg.receiver?.postalCode).toBe('60001'); // order '60-001'
   });
 
   it('should prefer recipient.name over first/last when present', () => {
@@ -339,6 +350,36 @@ describe('assertCreateSucceededAndExtractWaybill', () => {
     };
     const error = run(() => assertCreateSucceededAndExtractWaybill(res));
     expect(error).toMatchObject({ providerCode: 'command.success-without-shipment-id' });
+  });
+
+  it('should surface PACKAGE-level validationInfo (hidden behind NOT_PROCESSED) in providerDetails (#1104)', () => {
+    // The real demo shape: a top-level NOT_PROCESSED whose field-level reason
+    // lives at the PACKAGE level, with an empty parcel validationInfo array.
+    const res: DpdGeneratePackagesNumbersResponse = {
+      status: 'NOT_PROCESSED',
+      packages: [
+        {
+          status: 'INCORRECT_DATA',
+          validationInfo: [
+            { errorCode: 'INCORRECT_RECEIVER_POSTAL_CODE', info: 'Incorrect receiver postal code: (60-001)' },
+            { errorCode: 'INCORRECT_SENDER_POSTAL_CODE', info: 'Incorrect sender postal code: (01-612)' },
+          ],
+          parcels: [{ status: 'NOT_PROCESSED', validationInfo: [] }],
+        },
+      ],
+    };
+
+    const error = run(() => assertCreateSucceededAndExtractWaybill(res));
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    // First package entry drives the discriminator (parcel validationInfo empty).
+    expect(error).toMatchObject({ providerCode: 'INCORRECT_RECEIVER_POSTAL_CODE' });
+    // The full set is carried for structured logs / the API response.
+    expect(
+      (error as ShippingProviderRejectionException).providerDetails?.validationInfo,
+    ).toEqual([
+      { errorCode: 'INCORRECT_RECEIVER_POSTAL_CODE', info: 'Incorrect receiver postal code: (60-001)' },
+      { errorCode: 'INCORRECT_SENDER_POSTAL_CODE', info: 'Incorrect sender postal code: (01-612)' },
+    ]);
   });
 });
 

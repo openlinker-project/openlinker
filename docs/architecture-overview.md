@@ -1658,7 +1658,7 @@ Future: Worker processes jobs
 ### Key Libraries
 
 - **HTTP Client**: 
-  - **Adapter HTTP clients**: Axios (`@nestjs/axios`) - used for integration adapters requiring retries, rate limiting, and structured logging
+  - **Adapter HTTP clients**: native `fetch()` (Node 18+, undici) wrapped in a per-plugin client (e.g. `AllegroHttpClient`, `InpostHttpClient`, `ErliHttpClient`) that hand-rolls retries, rate-limit backoff, and structured logging. This is the current in-tree standard — undici's default keep-alive pooling removes the original reason to reach for Axios (`@nestjs/axios`), which is no longer required for a new adapter client.
   - **Simple HTTP calls**: Native `fetch()` API (Node.js 18+) - acceptable for one-off calls like OAuth token exchange
 - **Scheduling**: `@nestjs/schedule` (Cron jobs)
 - **Events**: `@nestjs/event-emitter` (in-memory), Redis Streams (distributed)

@@ -31,6 +31,7 @@ import {
   ShipmentCancellationNotSupportedException,
   ShipmentNotCancellableException,
   ShipmentNotFoundException,
+  ShippingProviderAuthException,
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
   OrderNotDispatchablePaymentStatusException,
@@ -297,6 +298,19 @@ describe('ShipmentController', () => {
     it('should map ShippingProviderRejectionException to 502', async () => {
       dispatch.dispatch.mockRejectedValue(
         new ShippingProviderRejectionException('inpost', 'PARCEL_TOO_LARGE', 'parcel exceeds size'),
+      );
+      await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+    });
+
+    it('should map a ShippingProviderAuthException (carrier 401/403) to 502, not the 500 "Unclassified" path', async () => {
+      // Regression: a carrier rejecting OUR credentials previously fell through
+      // to 500 + an "Unclassified shipping-command error" log (it was a
+      // plugin-private exception the controller couldn't see). It now maps to a
+      // deliberate 502.
+      dispatch.dispatch.mockRejectedValue(
+        new ShippingProviderAuthException('dpd', 'DPDServices … failed (401)'),
       );
       await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
         BadGatewayException,

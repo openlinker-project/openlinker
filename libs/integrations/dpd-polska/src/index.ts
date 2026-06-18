@@ -27,6 +27,10 @@ export type {
 } from './domain/types/dpd-config.types';
 export type { DpdCredentials } from './domain/types/dpd-credentials.types';
 
+// Auth-failure classifier (#819 / #1103) — exported for host-side discovery;
+// the plugin self-registers it against `host.authFailureClassifierRegistry`.
+export { DpdAuthFailureClassifierAdapter } from './infrastructure/adapters/dpd-auth-failure-classifier.adapter';
+
 // Plugin descriptor + host wiring
 export { dpdAdapterManifest, createDpdPlugin } from './dpd-plugin';
 export { DpdIntegrationModule } from './dpd-integration.module';
