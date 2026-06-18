@@ -187,13 +187,13 @@ const WEBHOOK_SECRET_ENV_KEY = 'OPENLINKER_WEBHOOK_SECRET__PRESTASHOP';
  * destination order creation goes through the module's `importorder` →
  * `validateOrder` endpoint, so even this fulfillment spec — whose subject
  * (`updateFulfillment`) is itself module-free — needs the module + webhook
- * secret just to **seed** the order it transitions. Gated off in CI (the #716
- * module-install-on-Linux flake), same as the carrier-mapping spec; the single
- * test is skipped there and the `beforeAll` order-seed is guarded accordingly.
+ * secret just to **seed** the order it transitions.
+ *
+ * The CI gate was removed in #716 (OverlayFS DI-cache fix — cache:clear +
+ * cache:warmup after the install cycle). Set `OL_SKIP_PS_MODULE_INSTALL=true`
+ * to skip the install locally (e.g. when iterating on unrelated assertions).
  */
-const INSTALL_OL_MODULE =
-  process.env.OL_FORCE_PS_MODULE_INSTALL === 'true' ||
-  (process.env.CI !== 'true' && process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true');
+const INSTALL_OL_MODULE = process.env.OL_SKIP_PS_MODULE_INSTALL !== 'true';
 
 /** Conditional `it` — runs when the OL module is installed, skips otherwise. */
 const itWhenOlModuleInstalled = INSTALL_OL_MODULE ? it : it.skip;
