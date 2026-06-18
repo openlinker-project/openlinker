@@ -1,0 +1,213 @@
+/**
+ * PrestaShop Product Publisher Adapter (#1107)
+ *
+ * Implements `ShopProductManagerPort` (capability `'ProductPublisher'`) plus the
+ * `CategoryProvisioner` sub-capability against the PrestaShop WebService XML API.
+ * Pure transport: the core `ProductPublishExecutionService` owns identifier mapping
+ * and record lifecycle — this adapter shapes the neutral `PublishProductCommand`
+ * onto PrestaShop's `products` / `categories` / `stock_availables` resources and
+ * maps failures back to the neutral `ProductPublishRejectedException`.
+ *
+ * Publish model (ADR-024 §1/§3): each OL variant publishes as its own simple
+ * product (create on first publish, upsert via `externalProductId` thereafter).
+ * Stock is set via the auto-created `stock_availables` row after create/upsert —
+ * PS WS does not accept `quantity` inline on the product body.
+ *
+ * @module libs/integrations/prestashop/src/infrastructure/adapters/product-publisher
+ */
+import { Logger } from '@openlinker/shared/logging';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import {
+  ProductPublishRejectedException,
+  type CategoryProvisioner,
+  type ProvisionCategoryCommand,
+  type ProvisionCategoryResult,
+  type PublishProductCommand,
+  type PublishProductResult,
+  type ShopProductManagerPort,
+} from '@openlinker/core/listings';
+import { PrestashopApiException } from '@openlinker/integrations-prestashop';
+
+import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import {
+  langField,
+  type PrestashopCategoryListItem,
+  type PrestashopCategoryResponse,
+  type PrestashopLangField,
+  type PrestashopProductResponse,
+  type PrestashopProductWriteBody,
+  type PrestashopStockAvailableItem,
+} from './prestashop-product-publish.types';
+
+const DEFAULT_ADAPTER_KEY = 'prestashop.webservice.v1';
+
+export class PrestashopProductPublisherAdapter
+  implements ShopProductManagerPort, CategoryProvisioner
+{
+  private readonly logger = new Logger(PrestashopProductPublisherAdapter.name);
+
+  constructor(
+    private readonly client: IPrestashopWebserviceClient,
+    private readonly connection: Connection,
+  ) {}
+
+  async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
+    const languageId = String(
+      cmd.platformParams?.languageId ?? (this.connection.config?.langId as number | undefined) ?? 1,
+    );
+
+    const body = this.buildProductBody(cmd, languageId);
+    const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
+
+    this.logger.debug(
+      `Publishing variant=${cmd.internalVariantId} connection=${this.connection.id} ` +
+        `mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`,
+    );
+
+    let response: PrestashopProductResponse;
+    try {
+      if (isUpsert) {
+        response = await this.client.updateResource<PrestashopProductResponse>(
+          'products',
+          String(cmd.externalProductId),
+          { id: String(cmd.externalProductId), ...body },
+        );
+      } else {
+        response = await this.client.createResource<PrestashopProductResponse>('products', body);
+      }
+    } catch (err) {
+      this.toPublishError(err);
+    }
+
+    const productId = String(response!.id);
+    await this.updateStock(productId, cmd.stock);
+
+    return { externalProductId: productId, status: cmd.status };
+  }
+
+  async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
+    const languageId = String(
+      (this.connection.config?.langId as number | undefined) ?? 1,
+    );
+    let parentId = '0';
+    const createdPath: string[] = [];
+
+    for (const node of cmd.path) {
+      const rows = await this.client.listResources<PrestashopCategoryListItem>('categories', {
+        custom: { 'filter[name]': node.name, 'filter[id_parent]': parentId },
+      });
+
+      const match = rows.find(
+        (row) => this.extractLangText(row.name) === node.name,
+      );
+
+      if (match) {
+        parentId = String(match.id);
+        continue;
+      }
+
+      const created = await this.client.createResource<PrestashopCategoryResponse>('categories', {
+        name: langField(node.name, languageId),
+        id_parent: parentId,
+        link_rewrite: langField(this.slugify(node.name), languageId),
+        active: '1',
+      });
+
+      parentId = String(created.id);
+      createdPath.push(parentId);
+    }
+
+    return {
+      destinationCategoryId: parentId,
+      ...(createdPath.length > 0 ? { createdPath } : {}),
+    };
+  }
+
+  private buildProductBody(
+    cmd: PublishProductCommand,
+    languageId: string,
+  ): PrestashopProductWriteBody {
+    const title = cmd.content?.title ?? '';
+    const slug = (cmd.content?.seo?.slug ?? this.slugify(title)) || 'product';
+
+    const body: PrestashopProductWriteBody = {
+      ...(cmd.platformParams ?? {}),
+      name: langField(title, languageId),
+      link_rewrite: langField(slug, languageId),
+      price: cmd.price.amount.toFixed(2),
+      active: cmd.status === 'published' ? '1' : '0',
+      id_category_default: cmd.destinationCategoryIds[0] ?? '0',
+    };
+
+    if (cmd.content?.description != null) {
+      body.description = langField(cmd.content.description, languageId);
+    }
+
+    if (cmd.destinationCategoryIds.length > 0) {
+      body.associations = {
+        categories: {
+          category: cmd.destinationCategoryIds.map((id) => ({ id: String(id) })),
+        },
+      };
+    }
+
+    if (cmd.content?.seo?.title != null) {
+      body.meta_title = langField(cmd.content.seo.title, languageId);
+    }
+    if (cmd.content?.seo?.description != null) {
+      body.meta_description = langField(cmd.content.seo.description, languageId);
+    }
+
+    return body;
+  }
+
+  private async updateStock(productId: string, quantity: number): Promise<void> {
+    const rows = await this.client.listResources<PrestashopStockAvailableItem>('stock_availables', {
+      custom: { 'filter[id_product]': productId },
+    });
+
+    const row = rows[0];
+    if (!row) {
+      this.logger.warn(
+        `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`,
+      );
+      return;
+    }
+
+    const saId = String(row.id);
+    await this.client.updateResource('stock_availables', saId, {
+      id: saId,
+      id_product: productId,
+      quantity: String(quantity),
+    });
+  }
+
+  private toPublishError(error: unknown): never {
+    if (
+      error instanceof PrestashopApiException &&
+      error.statusCode != null &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      const adapterKey = this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY;
+      throw new ProductPublishRejectedException(adapterKey, error.statusCode, [
+        { code: String(error.statusCode), message: error.message },
+      ]);
+    }
+    throw error;
+  }
+
+  private slugify(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  private extractLangText(value: string | PrestashopLangField): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+    return value.language[0]?.['#text'] ?? '';
+  }
+}

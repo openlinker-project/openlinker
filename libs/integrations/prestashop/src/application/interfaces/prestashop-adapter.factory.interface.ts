@@ -17,6 +17,8 @@ import type { PrestashopInventoryMasterAdapter } from '../../infrastructure/adap
 import type { PrestashopOrderSourceAdapter } from '../../infrastructure/adapters/prestashop-order-source.adapter';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+// eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
+import type { PrestashopProductPublisherAdapter } from '../../infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter';
 
 /**
  * PrestaShop adapter instances
@@ -30,6 +32,7 @@ export interface PrestashopAdapters {
   inventoryMaster: PrestashopInventoryMasterAdapter;
   orderSource: PrestashopOrderSourceAdapter;
   orderProcessorManager?: PrestashopOrderProcessorManagerAdapter;
+  productPublisher?: PrestashopProductPublisherAdapter;
 }
 
 /**
