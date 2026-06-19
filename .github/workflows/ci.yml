@@ -5,6 +5,11 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    # `ready_for_review` so the heavy jobs (gated on `draft == false`) fire the
+    # moment a draft is marked ready — without it a dev would need an empty push
+    # to trigger full CI on un-drafting. Re-stating the default trio is required:
+    # naming `types` replaces the implicit [opened, synchronize, reopened].
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Cancel superseded runs on the same ref so a dead, replaced run doesn't keep
 # holding scarce self-hosted slots and block the queue. Pushes to main rarely
@@ -15,11 +20,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cheap path gate. Runs on GitHub-hosted runners so it never consumes a
+  # self-hosted slot. The four non-required heavy jobs (lint/test/integration/
+  # build) gate on `code == 'true'`; `Type Check` (the only required check) is
+  # intentionally NOT gated so it always reports — a docs-only or draft PR then
+  # spends 1 self-hosted slot instead of 5.
+  #
+  # `code` matches any changed file EXCEPT pure docs / markdown / the dev-stack
+  # compose file (none of which any CI job consumes — integration tests use
+  # Testcontainers, not docker-compose.yml). Dockerfile is deliberately NOT
+  # ignored: it feeds the future image build once CD is enabled.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!docker-compose.yml'
+
   lint:
     name: Lint
     timeout-minutes: 30
     # runs-on: ubuntu-latest
     runs-on: self-hosted
+    needs: changes
+    # Skip while draft, and skip when only docs/compose changed. Always run on
+    # push (post-merge to main/develop) where there's no PR draft context.
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
       # actions/checkout@v4 shallow-fetches only the triggering ref, so
@@ -77,6 +113,8 @@ jobs:
     timeout-minutes: 30
     # runs-on: ubuntu-latest
     runs-on: self-hosted
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -100,15 +138,15 @@ jobs:
     timeout-minutes: 45
     # runs-on: ubuntu-latest
     runs-on: self-hosted
-    # Run on push to main (after merge) and on PRs to catch issues early
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    # No `needs:` — this job re-installs deps + rebuilds libs itself, so it has
-    # no artifact dependency on `test`. Gating on `test` previously serialized
-    # the two longest jobs (unit ~6min, then integration ~10min), so integration
-    # only started after unit finished. Running them in parallel cuts the
-    # critical path by ~6min. Trade-off: integration spends compute even when
-    # unit tests fail on a PR — acceptable for the wall-clock win; both still
-    # gate the merge via branch protection.
+    # `needs: changes` only for the cheap path-gate output — NOT an artifact
+    # dependency on `test`. This job re-installs deps + rebuilds libs itself;
+    # gating on `test` previously serialized the two longest jobs (unit ~6min,
+    # then integration ~10min). Running them in parallel cuts the critical path
+    # by ~6min. Trade-off: integration spends compute even when unit tests fail
+    # on a PR — acceptable for the wall-clock win.
+    needs: changes
+    # Skip while draft / docs-only; always run on push (post-merge).
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     env:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
     steps:
@@ -174,6 +212,8 @@ jobs:
     timeout-minutes: 30
 #    runs-on: ubuntu-latest
     runs-on: self-hosted
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

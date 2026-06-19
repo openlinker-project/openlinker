@@ -1,12 +1,13 @@
 /**
  * @openlinker/integrations-erli — Public Barrel
  *
- * Erli Shop API v1 adapter plugin (skeleton — #980). The runtime entry the
- * host composes is `ErliIntegrationModule`; this barrel also exports the
- * static `erliAdapterManifest` (#575 pattern) and the plugin factory.
- * Capability adapters, HTTP client, and connection validators land in the
- * follow-up Erli issues (#981–#998); see ADR-025 for the architecture
- * decisions they build on.
+ * Erli Shop API v1 adapter plugin. The runtime entry the host composes is
+ * `ErliIntegrationModule`; this barrel also exports the static
+ * `erliAdapterManifest` (#575 pattern) and the plugin factory. Shipped so far:
+ * the HTTP client (#981), connection config/credentials validators + tester
+ * (#982), and the `OfferManager` capability (#984). The remaining capability
+ * adapters land in the follow-up Erli issues (#985–#998); see ADR-025 for the
+ * architecture decisions they build on.
  *
  * @module libs/integrations/erli/src
  */
@@ -16,6 +17,10 @@ export { erliAdapterManifest, createErliPlugin } from './erli-plugin';
 
 // Host wiring
 export { ErliIntegrationModule } from './erli-integration.module';
+
+// Per-connection construction-seam contract (#982) — mirrors
+// IAllegroAdapterFactory / IPrestashopAdapterFactory.
+export type { IErliAdapterFactory } from './application/interfaces/erli-adapter.factory.interface';
 
 // HTTP-client domain exceptions (#981). The client + interface stay
 // package-private (siblings keep theirs private too); these typed exceptions
