@@ -143,8 +143,16 @@ describe('ShipmentDispatchService', () => {
       updateSyncStatus: jest.fn(),
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
+      updateFulfillmentState: jest.fn(),
     };
-    service = new ShipmentDispatchService(repository, routing, integrations, orders);
+    const fulfillmentProjection = { recompute: jest.fn() };
+    service = new ShipmentDispatchService(
+      repository,
+      routing,
+      integrations,
+      orders,
+      fulfillmentProjection,
+    );
   });
 
   describe('payment-status dispatch gate (#938)', () => {

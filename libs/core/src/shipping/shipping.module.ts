@@ -42,9 +42,11 @@ import { ShipmentDispatchNotificationService } from './application/services/ship
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
+import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
 import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+  ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
   PICKUP_POINT_SEARCH_CACHE_TOKEN,
@@ -152,6 +154,13 @@ import {
     {
       provide: SHIPMENT_LABEL_SERVICE_TOKEN,
       useExisting: ShipmentLabelService,
+    },
+    // #1108 fulfillment-rollup projection: pushes a per-order rollup onto the
+    // orders context after any shipment-status mutation (best-effort).
+    OrderFulfillmentProjectionService,
+    {
+      provide: ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
+      useExisting: OrderFulfillmentProjectionService,
     },
   ],
   exports: [

@@ -199,6 +199,7 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: development-secret-key-change-in-production
       JWT_EXPIRES_IN: 1d
+      OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
     ports:
       - '3000:3000'
     depends_on:

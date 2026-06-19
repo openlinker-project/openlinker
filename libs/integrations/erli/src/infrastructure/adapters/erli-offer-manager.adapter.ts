@@ -14,9 +14,16 @@
  * `OfferStatusReader` yet and would flip the record to `business_failure`.
  * #989 introduces `OfferStatusReader` and flips this to `'validating'`.
  *
- * Out of scope (own issues, marked seams): category/parameters #985, variant
- * grouping #986, stock/price master sourcing + frozen-field exclusion #988,
- * offer-status reconciliation #989.
+ * Category/parameter reuse (#985): the create body carries `externalCategories`
+ * + `externalAttributes` tagged `source:"allegro"`, built from the already-
+ * resolved Allegro ids riding on the command (`overrides.categoryId` + the
+ * neutral section-tagged `cmd.parameters`, #1071). Erli processes only the ids
+ * (ADR-025 §3); no Erli-native taxonomy authoring. Applies to the create path
+ * only — `buildPatchFromFields` is untouched.
+ *
+ * Out of scope (own issues, marked seams): variant grouping #986, stock/price
+ * master sourcing + frozen-field exclusion #988, offer-status reconciliation
+ * #989.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link OfferManagerPort}
@@ -40,6 +47,8 @@ import { ErliConfigException } from '../../domain/exceptions/erli-config.excepti
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
+  ErliExternalAttribute,
+  ErliExternalCategory,
   ErliProductCreateBody,
   ErliProductImage,
   ErliProductPatchBody,
@@ -150,7 +159,37 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
-    // #985: category/parameter payload (source:"allegro") is assembled here.
+    // #985: reuse OL's already-resolved Allegro ids (source:"allegro").
+    const externalCategories = buildExternalCategories(cmd);
+    if (externalCategories.length > 0) {
+      body.externalCategories = externalCategories;
+    } else {
+      // ADR-025 §3: OL builds no Erli-native taxonomy in v1 — a product without
+      // resolved Allegro taxonomy cannot list on Erli. Fail closed with a clear,
+      // terminal rejection (OfferCreationExecutionService derives business_failure
+      // from OfferCreateRejectedException) rather than silently listing it
+      // untaxonomised (spec #978 §6).
+      // statusCode 0 = preflight rejection (no API call made), per the
+      // OfferCreateRejectedException contract — matches the real-API path's
+      // `error.statusCode ?? 0`.
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'category',
+          code: 'NO_ALLEGRO_TAXONOMY',
+          message:
+            'No Allegro category resolved for this product; Erli v1 requires Allegro-ID taxonomy reuse (ADR-025 §3).',
+        },
+      ]);
+    }
+    const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
+    if (droppedParamIds.length > 0) {
+      this.logger.debug(
+        `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
+      );
+    }
+    if (externalAttributes.length > 0) {
+      body.externalAttributes = externalAttributes;
+    }
     // #986: externalVariantGroup is assembled here.
     return body;
   }
@@ -302,6 +341,54 @@ function readDispatchTimeParam(
   return candidate.unit === undefined
     ? { period }
     : { period, unit: candidate.unit as ErliDispatchTime['unit'] };
+}
+
+/**
+ * Map the OL-resolved Allegro category id (`overrides.categoryId`) into the
+ * single-element `source:"allegro"` category list. Empty when absent (#985).
+ */
+function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[] {
+  const categoryId = cmd.overrides?.categoryId;
+  if (typeof categoryId === 'string' && categoryId.length > 0) {
+    return [{ source: 'allegro', id: categoryId }];
+  }
+  return [];
+}
+
+/**
+ * Flatten the neutral, section-tagged `cmd.parameters` (#1071) into one
+ * `source:"allegro"` attribute array — Erli has a single flat list, so the
+ * Allegro offer/product section split collapses away. Dictionary value-ids win
+ * over free-text scalars; range-only and empty entries are dropped in v1
+ * (#985 risk R3).
+ *
+ * Reads `cmd.parameters` — where `OfferBuilderService` puts the resolved
+ * parameters — NOT `overrides.platformParams`, which no longer carries category
+ * parameters post-#1071 (reading it produced an empty list and silently shipped
+ * offers without their Allegro attribute reuse).
+ */
+function buildExternalAttributes(cmd: CreateOfferCommand): {
+  attributes: ErliExternalAttribute[];
+  droppedParamIds: string[];
+} {
+  const attributes: ErliExternalAttribute[] = [];
+  const droppedParamIds: string[] = [];
+  for (const param of cmd.parameters ?? []) {
+    if (param.id.length === 0) {
+      continue;
+    }
+    if (param.valuesIds !== undefined && param.valuesIds.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
+    } else if (param.values !== undefined && param.values.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
+    } else {
+      // range-only / empty → dropped in v1 (#985 risk R3). Recorded so the
+      // caller can debug-log it (an operator-supplied parameter that never
+      // reaches Erli is otherwise undiagnosable).
+      droppedParamIds.push(param.id);
+    }
+  }
+  return { attributes, droppedParamIds };
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

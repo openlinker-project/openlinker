@@ -1,10 +1,11 @@
 /**
- * Erli Offer Manager Adapter — unit tests (#984)
+ * Erli Offer Manager Adapter — unit tests (#984, #985)
  *
  * Mocks `IErliHttpClient` to verify: seller-keyed path build (validate+encode),
  * 202→'draft' create mapping, sparse PATCH for field/quantity updates, the
  * safe 4xx→OfferCreateRejectedException mapping (no responseBody leak), auth
- * propagation, hostile-id rejection, and imageUrl hygiene.
+ * propagation, hostile-id rejection, imageUrl hygiene, and the #985 Allegro
+ * category/parameter reuse (source:"allegro" externalCategories/Attributes).
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
@@ -14,6 +15,7 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
@@ -36,9 +38,12 @@ function createCmd(overrides: Partial<CreateOfferCommand> = {}): CreateOfferComm
     stock: 10,
     publishImmediately: true,
     ...rest,
+    // Default to a resolvable Allegro category: ADR-025 §3 makes a missing one a
+    // terminal rejection, so the happy-path/unrelated tests must carry one.
     overrides: {
       title: 'Default Widget',
       imageUrls: ['https://cdn.example.com/default.jpg'],
+      categoryId: '18654',
       ...ov,
     },
   };
@@ -74,13 +79,20 @@ describe('ErliOfferManagerAdapter', () => {
     it('should map the basic command fields into the create body', async () => {
       await adapter.createOffer(
         createCmd({
-          overrides: { title: 'Widget', description: 'A nice widget', imageUrls: ['https://cdn.example.com/a.jpg'] },
+          overrides: {
+            categoryId: '18654',
+            title: 'Widget',
+            description: 'A nice widget',
+            imageUrls: ['https://cdn.example.com/a.jpg'],
+          },
           variantBarcode: '5901234123457',
         }),
       );
 
       const body = httpClient.post.mock.calls[0][1];
-      expect(body).toEqual({
+      // toMatchObject: this test covers basic-field mapping, not taxonomy
+      // (externalCategories is asserted by the #985 reuse tests).
+      expect(body).toMatchObject({
         price: 4999,
         stock: 10,
         images: [{ url: 'https://cdn.example.com/a.jpg' }],
@@ -99,7 +111,12 @@ describe('ErliOfferManagerAdapter', () => {
 
     it('should let a per-offer platformParams.dispatchTime override the connection default', async () => {
       await adapter.createOffer(
-        createCmd({ overrides: { platformParams: { dispatchTime: { period: 5, unit: 'hour' } } } }),
+        createCmd({
+          overrides: {
+            categoryId: '18654',
+            platformParams: { dispatchTime: { period: 5, unit: 'hour' } },
+          },
+        }),
       );
       const body = httpClient.post.mock.calls[0][1] as { dispatchTime?: unknown };
       expect(body.dispatchTime).toEqual({ period: 5, unit: 'hour' });
@@ -143,6 +160,7 @@ describe('ErliOfferManagerAdapter', () => {
       await adapter.createOffer(
         createCmd({
           overrides: {
+            categoryId: '18654',
             imageUrls: ['https://cdn.example.com/ok.jpg', 'http://x/insecure.jpg', 'https://169.254.169.254/meta'],
           },
         }),
@@ -196,6 +214,110 @@ describe('ErliOfferManagerAdapter', () => {
         adapter.createOffer(createCmd({ internalVariantId: 'ol_variant_../admin' })),
       ).rejects.toBeInstanceOf(ErliConfigException);
       expect(httpClient.post).not.toHaveBeenCalled();
+    });
+
+    describe('category & parameter reuse (#985)', () => {
+      it('should map overrides.categoryId into a source:"allegro" externalCategories entry', async () => {
+        await adapter.createOffer(createCmd({ overrides: { categoryId: '18654' } }));
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalCategories?: unknown;
+        };
+        expect(body.externalCategories).toEqual([{ source: 'allegro', id: '18654' }]);
+      });
+
+      it('should map a dictionary parameter (valuesIds → type:dictionary)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            parameters: [{ id: '11323', valuesIds: ['11323_1'], section: 'offer' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+        ]);
+      });
+
+      it('should map a free-text parameter (values → type:string)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            parameters: [{ id: '224017', values: ['Acme'], section: 'product' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '224017', type: 'string', values: ['Acme'] },
+        ]);
+      });
+
+      it('should merge offer-section and product-section params into one flat list', async () => {
+        await adapter.createOffer(
+          createCmd({
+            parameters: [
+              { id: '11323', valuesIds: ['11323_1'], section: 'offer' },
+              { id: '224017', values: ['Acme'], section: 'product' },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '224017', type: 'string', values: ['Acme'] },
+        ]);
+      });
+
+      it('should throw OfferCreateRejectedException and NOT POST when no Allegro taxonomy resolves (ADR-025 §3)', async () => {
+        // Explicitly clear the helper's default categoryId so no Allegro taxonomy resolves.
+        await expect(
+          adapter.createOffer(createCmd({ overrides: { categoryId: undefined } })),
+        ).rejects.toBeInstanceOf(OfferCreateRejectedException);
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('should omit externalAttributes when the category is present but no params map', async () => {
+        await adapter.createOffer(createCmd({ overrides: { categoryId: '18654' } }));
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body).toHaveProperty('externalCategories');
+        expect(body).not.toHaveProperty('externalAttributes');
+      });
+
+      it('should drop empty-id parameter entries', async () => {
+        await adapter.createOffer(
+          createCmd({
+            parameters: [
+              { id: '', values: ['x'], section: 'offer' },
+              { id: '11323', valuesIds: ['11323_1'], section: 'offer' },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+        ]);
+      });
+
+      it('should drop a rangeValue-only parameter (no values/valuesIds) in v1 and debug-log it', async () => {
+        const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+        try {
+          await adapter.createOffer(
+            createCmd({
+              parameters: [{ id: '12345', rangeValue: { from: '1', to: '10' }, section: 'offer' }],
+            }),
+          );
+
+          const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+          expect(body).not.toHaveProperty('externalAttributes');
+          // The dropped param id is surfaced so it isn't silently lost (#985 R3).
+          expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('12345'));
+        } finally {
+          debugSpy.mockRestore();
+        }
+      });
     });
   });
 

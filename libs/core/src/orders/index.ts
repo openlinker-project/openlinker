@@ -89,6 +89,19 @@ export {
   OrderRecordSortDirection,
   OrderRecordSortDirectionValues,
 } from './domain/types/order-record.types';
+// Ship-by SLA axis + fulfillment rollup (#1108)
+export {
+  SlaState,
+  SlaStateValues,
+  SLA_AT_RISK_WINDOW_MS,
+  OrderSlaSummary,
+} from './domain/types/order-sla.types';
+export {
+  FulfillmentRollupState,
+  FulfillmentRollupStateValues,
+  FulfillmentRollupStateOrNull,
+} from './domain/types/order-fulfillment.types';
+export { deriveSlaState } from './domain/order-sla';
 
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';

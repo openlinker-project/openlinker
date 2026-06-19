@@ -157,6 +157,105 @@ describe('Orders Read API Integration', () => {
     });
   });
 
+  // Ship-by SLA + fulfillment rollup (#1108) — exercises the new derived
+  // `slaState` (BE-owned, single source of truth) + the denormalized
+  // `fulfillmentState` column end-to-end through the migration + real DB.
+  describe('GET /orders — ship-by SLA + fulfillment (#1108)', () => {
+    it('should derive slaState=overdue and fulfillmentState=not-shipped for an overdue, unshipped order', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      await createTestOrderRecord(dataSource, { dispatchByAt: new Date(Date.now() - 60_000) });
+
+      const response = await http
+        .get('/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // NULL fulfillment column surfaces as `not-shipped`; a past deadline + not
+      // shipped derives `overdue`.
+      expect(response.body.items[0].fulfillmentState).toBe('not-shipped');
+      expect(response.body.items[0].slaState).toBe('overdue');
+    });
+
+    it('should clear slaState to none once the order has shipped', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      // Past deadline, but already dispatched → SLA pressure cleared.
+      await createTestOrderRecord(dataSource, {
+        dispatchByAt: new Date(Date.now() - 60_000),
+        fulfillmentState: 'dispatched',
+      });
+
+      const response = await http
+        .get('/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.items[0].fulfillmentState).toBe('dispatched');
+      expect(response.body.items[0].slaState).toBe('none');
+    });
+
+    it('should filter by slaState and fulfillmentState', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      await createTestOrderRecord(dataSource, { dispatchByAt: new Date(Date.now() - 60_000) });
+      await createTestOrderRecord(dataSource, { fulfillmentState: 'dispatched' });
+
+      const overdue = await http
+        .get('/orders?slaState=overdue')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(overdue.body.total).toBe(1);
+      expect(overdue.body.items[0].slaState).toBe('overdue');
+
+      const dispatched = await http
+        .get('/orders?fulfillmentState=dispatched')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(dispatched.body.total).toBe(1);
+      expect(dispatched.body.items[0].fulfillmentState).toBe('dispatched');
+
+      // not-shipped also matches NULL-column rows.
+      const notShipped = await http
+        .get('/orders?fulfillmentState=not-shipped')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(notShipped.body.total).toBe(1);
+    });
+
+    it('should partition the set in GET /orders/sla-summary', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      await createTestOrderRecord(dataSource, { dispatchByAt: new Date(Date.now() - 60_000) });
+      await createTestOrderRecord(dataSource, { fulfillmentState: 'delivered' });
+      await createTestOrderRecord(dataSource, {});
+
+      const response = await http
+        .get('/orders/sla-summary')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.total).toBe(3);
+      expect(response.body.overdue).toBe(1);
+      // delivered (shipped) + no-deadline → none.
+      expect(response.body.none).toBe(2);
+      expect(
+        response.body.onTrack +
+          response.body.atRisk +
+          response.body.overdue +
+          response.body.none,
+      ).toBe(response.body.total);
+    });
+  });
+
   describe('GET /orders/:internalOrderId', () => {
     it('should return order detail by internal order id', async () => {
       const http = harness.getHttp();

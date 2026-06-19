@@ -23,6 +23,8 @@ import {
   OrderHealthValues,
   OrderRecordSortValues,
   OrderRecordSortDirectionValues,
+  SlaStateValues,
+  FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import {
   OrderSyncStatusFilter,
@@ -30,6 +32,8 @@ import {
   OrderHealth,
   OrderRecordSort,
   OrderRecordSortDirection,
+  SlaState,
+  FulfillmentRollupState,
 } from '@openlinker/core/orders';
 
 export class ListOrdersQueryDto {
@@ -112,6 +116,24 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsDateString()
   dueBefore?: string;
+
+  @ApiPropertyOptional({
+    enum: SlaStateValues,
+    description:
+      'Ship-by SLA bucket filter (#1108): none | on_track | at_risk | overdue. Server-derived from the ship-by deadline + fulfillment (cleared once shipped); matches the badge the list renders.',
+  })
+  @IsOptional()
+  @IsEnum(SlaStateValues)
+  slaState?: SlaState;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentRollupStateValues,
+    description:
+      'Fulfillment-rollup filter (#1108): not-shipped | dispatched | delivered | failed (not-shipped also matches orders with no shipments).',
+  })
+  @IsOptional()
+  @IsEnum(FulfillmentRollupStateValues)
+  fulfillmentState?: FulfillmentRollupState;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
