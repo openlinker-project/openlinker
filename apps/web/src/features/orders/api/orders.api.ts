@@ -14,11 +14,13 @@ import type {
   RetryOrderDestinationResult,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderSlaSummary,
 } from './orders.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
   statusSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderHealthSummary>;
+  slaSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderSlaSummary>;
   getById: (internalOrderId: string) => Promise<OrderRecord>;
   retryDestination: (
     internalOrderId: string,
@@ -42,6 +44,8 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.sort) params.set('sort', filters.sort);
   if (filters?.dir) params.set('dir', filters.dir);
   if (filters?.dueBefore) params.set('dueBefore', filters.dueBefore);
+  if (filters?.slaState) params.set('slaState', filters.slaState);
+  if (filters?.fulfillmentState) params.set('fulfillmentState', filters.fulfillmentState);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
@@ -65,6 +69,9 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
     },
     statusSummary(filters): Promise<OrderHealthSummary> {
       return request<OrderHealthSummary>(`/orders/status-summary${buildSummaryQuery(filters)}`);
+    },
+    slaSummary(filters): Promise<OrderSlaSummary> {
+      return request<OrderSlaSummary>(`/orders/sla-summary${buildSummaryQuery(filters)}`);
     },
     getById(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${internalOrderId}`);

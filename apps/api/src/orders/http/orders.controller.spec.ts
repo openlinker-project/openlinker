@@ -53,6 +53,8 @@ describe('OrdersController', () => {
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),
       countByHealth: jest.fn(),
+      countBySla: jest.fn(),
+      updateFulfillmentState: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {

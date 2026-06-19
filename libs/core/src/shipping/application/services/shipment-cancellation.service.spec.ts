@@ -77,7 +77,9 @@ describe('ShipmentCancellationService', () => {
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
     };
-    service = new ShipmentCancellationService(repository, integrations);
+    service = new ShipmentCancellationService(repository, integrations, {
+      recompute: jest.fn(),
+    });
   });
 
   it('should void the provider shipment and persist cancelled for a generated shipment', async () => {

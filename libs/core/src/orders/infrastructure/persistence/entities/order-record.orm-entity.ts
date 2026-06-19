@@ -87,6 +87,17 @@ export class OrderRecordOrmEntity {
   @Index()
   dispatchByAt!: Date | null;
 
+  /**
+   * Per-order fulfillment rollup (#1108) — denormalized projection of the
+   * order's shipment lifecycle (`not-shipped | dispatched | delivered |
+   * failed`), pushed from the shipping context. Indexed so the orders list can
+   * filter/sort on it. NULL ≡ `not-shipped` (column ships nullable; no
+   * backfill — orders converge on the next shipment mutation / reconcile poll).
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  fulfillmentState!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

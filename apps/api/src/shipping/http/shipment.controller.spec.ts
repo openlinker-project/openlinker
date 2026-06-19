@@ -108,6 +108,7 @@ describe('ShipmentController', () => {
       // Default: order/customer unknown → customerId resolves to null.
       getOrderRecord: jest.fn().mockResolvedValue(null),
       findMany: jest.fn(),
+      updateFulfillmentState: jest.fn(),
     };
     controller = new ShipmentController(
       query,

@@ -20,6 +20,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
 import type { IShipmentCancellationService } from '../interfaces/shipment-cancellation.service.interface';
+import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import { ShipmentCancellationNotSupportedException } from '../../domain/exceptions/shipment-cancellation-not-supported.exception';
 import { ShipmentNotCancellableException } from '../../domain/exceptions/shipment-not-cancellable.exception';
@@ -28,7 +29,10 @@ import { isShipmentCanceller } from '../../domain/ports/capabilities/shipment-ca
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import { SHIPMENT_STATUS, type ShipmentStatus } from '../../domain/types/shipment-status.types';
-import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+import {
+  ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
+  SHIPMENT_REPOSITORY_TOKEN,
+} from '../../shipping.tokens';
 
 /** Capability the shipment's connection must declare to resolve a provider adapter. */
 const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
@@ -48,6 +52,8 @@ export class ShipmentCancellationService implements IShipmentCancellationService
     private readonly shipments: ShipmentRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
+    private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
   ) {}
 
   async cancel(shipmentId: string): Promise<Shipment> {
@@ -93,9 +99,12 @@ export class ShipmentCancellationService implements IShipmentCancellationService
       }
     }
 
-    return this.shipments.update(shipmentId, {
+    const cancelled = await this.shipments.update(shipmentId, {
       status: SHIPMENT_STATUS.Cancelled,
       cancelledAt: new Date(),
     });
+    // Reflect the cancellation in the order's fulfillment rollup (#1108).
+    await this.fulfillmentProjection.recompute(shipment.orderId);
+    return cancelled;
   }
 }
