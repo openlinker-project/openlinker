@@ -15,6 +15,7 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
@@ -300,15 +301,22 @@ describe('ErliOfferManagerAdapter', () => {
         ]);
       });
 
-      it('should drop a rangeValue-only parameter (no values/valuesIds) in v1', async () => {
-        await adapter.createOffer(
-          createCmd({
-            parameters: [{ id: '12345', rangeValue: { from: '1', to: '10' }, section: 'offer' }],
-          }),
-        );
+      it('should drop a rangeValue-only parameter (no values/valuesIds) in v1 and debug-log it', async () => {
+        const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+        try {
+          await adapter.createOffer(
+            createCmd({
+              parameters: [{ id: '12345', rangeValue: { from: '1', to: '10' }, section: 'offer' }],
+            }),
+          );
 
-        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body).not.toHaveProperty('externalAttributes');
+          const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+          expect(body).not.toHaveProperty('externalAttributes');
+          // The dropped param id is surfaced so it isn't silently lost (#985 R3).
+          expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('12345'));
+        } finally {
+          debugSpy.mockRestore();
+        }
       });
     });
   });

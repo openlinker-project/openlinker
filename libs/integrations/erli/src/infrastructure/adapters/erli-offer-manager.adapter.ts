@@ -169,7 +169,10 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
       // terminal rejection (OfferCreationExecutionService derives business_failure
       // from OfferCreateRejectedException) rather than silently listing it
       // untaxonomised (spec #978 §6).
-      throw new OfferCreateRejectedException(this.adapterKey, 422, [
+      // statusCode 0 = preflight rejection (no API call made), per the
+      // OfferCreateRejectedException contract — matches the real-API path's
+      // `error.statusCode ?? 0`.
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
         {
           field: 'category',
           code: 'NO_ALLEGRO_TAXONOMY',
@@ -178,7 +181,12 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
         },
       ]);
     }
-    const externalAttributes = buildExternalAttributes(cmd);
+    const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
+    if (droppedParamIds.length > 0) {
+      this.logger.debug(
+        `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
+      );
+    }
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
@@ -359,8 +367,12 @@ function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[
  * parameters post-#1071 (reading it produced an empty list and silently shipped
  * offers without their Allegro attribute reuse).
  */
-function buildExternalAttributes(cmd: CreateOfferCommand): ErliExternalAttribute[] {
+function buildExternalAttributes(cmd: CreateOfferCommand): {
+  attributes: ErliExternalAttribute[];
+  droppedParamIds: string[];
+} {
   const attributes: ErliExternalAttribute[] = [];
+  const droppedParamIds: string[] = [];
   for (const param of cmd.parameters ?? []) {
     if (param.id.length === 0) {
       continue;
@@ -369,10 +381,14 @@ function buildExternalAttributes(cmd: CreateOfferCommand): ErliExternalAttribute
       attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
     } else if (param.values !== undefined && param.values.length > 0) {
       attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
+    } else {
+      // range-only / empty → dropped in v1 (#985 risk R3). Recorded so the
+      // caller can debug-log it (an operator-supplied parameter that never
+      // reaches Erli is otherwise undiagnosable).
+      droppedParamIds.push(param.id);
     }
-    // range-only / empty → dropped in v1 (#985 risk R3).
   }
-  return attributes;
+  return { attributes, droppedParamIds };
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {
