@@ -134,12 +134,14 @@ export interface StartPrestashopContainerOptions {
    * container between `waitForPrestashopInstall` and `applyPrestashopFixture`.
    * Required for specs that exercise the OL Dynamic carrier round-trip (#692).
    *
-   * Default `false` — keeps boot fast for specs that don't need it AND avoids
-   * a known CI-environment failure mode where the install transition leaves
-   * the PS WS returning HTTP 500 on the subsequent `verifyApacheUp` probe
-   * (works locally on macOS Docker-Desktop, fails on the self-hosted Linux
-   * runner — root cause TBD). Specs that opt in should expect this risk and
-   * handle CI flakes accordingly.
+   * Default `false` — keeps boot fast for specs that don't need it.
+   *
+   * The Linux/OverlayFS HTTP 500 that previously made this flag risky in CI
+   * is fixed in #716: after the install cycle, `cache:clear --no-warmup` +
+   * `cache:warmup` rebuilds the Symfony DI container with the module's
+   * services included, and `chown -R www-data:www-data /var/www/html/var/`
+   * fixes ownership so PHP (www-data) can write to the cache on subsequent
+   * requests. Specs that set this flag should be stable on Linux runners.
    */
   installOlModule?: boolean;
 }
