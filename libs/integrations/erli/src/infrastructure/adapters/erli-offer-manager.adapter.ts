@@ -152,7 +152,7 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
       // (frozen state unknown, and a just-created offer has no manual freezes yet)
       // rather than blocking the update. Re-throw anything that isn't a 404 (#1061).
       if (error instanceof ErliApiException && error.statusCode === 404) {
-        current = {} as ErliProductResource;
+        current = {};
       } else {
         throw error;
       }
@@ -177,7 +177,7 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     // The client returns `data: undefined` for a 204 / empty-body 2xx. Treat a
     // bodyless read as "no frozen info known" (empty resource) so the PATCH still
     // proceeds rather than throwing on `current.frozenFields` (review #1061).
-    return res.data ?? ({} as ErliProductResource);
+    return res.data ?? {};
   }
 
   /**
