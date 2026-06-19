@@ -4301,6 +4301,118 @@ a.kpi-card:focus-visible {
   z-index: 50;
 }
 
+/* ── Command Palette (#333) ──────────────────────────────────────────
+ * Overlay mounted via Radix Dialog; cmdk handles keyboard navigation.
+ * The .dialog__content card is overridden to top-centre positioning so
+ * the palette drops from the topbar rather than appearing mid-screen.
+ */
+.command-palette.dialog__content {
+  top: 72px;
+  bottom: auto;
+  transform: none;
+  left: 50%;
+  translate: -50% 0;
+  width: min(640px, calc(100vw - var(--space-8)));
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+}
+
+.command-palette__command {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border-radius: var(--radius-xl);
+}
+
+.command-palette__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.command-palette__search-icon {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.command-palette__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  padding: 0;
+}
+
+.command-palette__input::placeholder {
+  color: var(--text-muted);
+}
+
+.command-palette__list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+
+.command-palette__state {
+  padding: var(--space-4) var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Group heading */
+[cmdk-group-heading] {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.command-palette__item[aria-selected='true'],
+.command-palette__item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.command-palette__item-label {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette__item-description {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
 /* Category Parameters Step (#410) ---------------------------------- */
 
 .category-parameters-step {

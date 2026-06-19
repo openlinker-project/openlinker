@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Command Palette — UI States (#333)</title>
+<style>
+  /* ── Design tokens (from apps/web/src/index.css + tokens.ts) ── */
+  :root {
+    --bg-canvas:          oklch(99% 0.003 80);
+    --bg-surface:         #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80);
+    --bg-surface-hover:   oklch(93% 0.006 80);
+    --text-primary:       oklch(20% 0.012 80);
+    --text-muted:         oklch(52% 0.008 80);
+    --accent-primary:     oklch(68% 0.18 50);
+    --border-subtle:      oklch(93.5% 0.006 80);
+    --shadow-overlay:     0 8px 32px oklch(20% 0.012 80 / 0.14),
+                          0 2px 8px  oklch(20% 0.012 80 / 0.08);
+    --radius-xl:          12px;
+    --radius-sm:          6px;
+    --font-sans:          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono:          ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --tracking-caps:      0.06em;
+    --duration-fast:      120ms;
+    --ease-out:           cubic-bezier(0.16, 1, 0.3, 1);
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  }
+
+  /* ── Page ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: oklch(14% 0.01 80);
+    color: var(--text-primary);
+    padding: 48px 32px 64px;
+    min-height: 100vh;
+  }
+
+  /* ── Page header ── */
+  .page-header {
+    margin-bottom: 48px;
+  }
+  .page-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-size: 1.375rem;
+    font-weight: 600;
+    color: oklch(93% 0.006 80);
+    letter-spacing: -0.01em;
+  }
+  .page-subtitle {
+    font-size: 0.8125rem;
+    color: oklch(55% 0.008 80);
+    margin-top: 6px;
+  }
+
+  /* ── Grid ── */
+  .states-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 40px;
+    max-width: 1360px;
+    margin: 0 auto;
+  }
+
+  /* ── State card (app shell fragment) ── */
+  .state-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .state-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: oklch(55% 0.008 80);
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .state-label::before {
+    content: '';
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: oklch(45% 0.008 80);
+  }
+  .state-label.active::before { background: var(--accent-primary); }
+  .state-label.loading::before {
+    background: oklch(68% 0.14 230);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .state-label.empty::before { background: oklch(55% 0.008 80); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── App shell fragment ── */
+  .app-fragment {
+    background: var(--bg-canvas);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid oklch(88% 0.006 80);
+    position: relative;
+    min-height: 400px;
+  }
+
+  /* Topbar */
+  .shell-topbar {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+    position: relative;
+    z-index: 10;
+  }
+  .topbar-hamburger {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+    font-size: 1rem;
+  }
+  .topbar-crumb {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    flex: 1;
+  }
+  .topbar-crumb strong { color: var(--text-primary); font-weight: 500; }
+  .topbar-search-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-canvas);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    min-width: 160px;
+  }
+  .topbar-search-btn .kbd {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    background: var(--bg-surface-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border-subtle);
+  }
+  .topbar-search-btn.open {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px oklch(68% 0.18 50 / 0.15);
+  }
+  .topbar-user {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  /* App body behind overlay */
+  .app-body {
+    display: flex;
+  }
+  .app-sidebar {
+    width: 200px;
+    background: var(--bg-canvas);
+    border-right: 1px solid var(--border-subtle);
+    padding: var(--space-4);
+    flex-shrink: 0;
+  }
+  .nav-group-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: var(--space-3) 0 var(--space-1);
+  }
+  .nav-item {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    padding: 6px var(--space-2);
+    border-radius: var(--radius-sm);
+    margin-bottom: 2px;
+  }
+  .nav-item.active {
+    color: var(--accent-primary);
+    background: oklch(68% 0.18 50 / 0.08);
+    font-weight: 500;
+  }
+  .app-main {
+    flex: 1;
+    padding: var(--space-6);
+    opacity: 0.35;
+  }
+  .skeleton-row {
+    height: 12px;
+    background: var(--border-subtle);
+    border-radius: 3px;
+    margin-bottom: 10px;
+  }
+  .skeleton-row.short { width: 55%; }
+  .skeleton-row.medium { width: 75%; }
+
+  /* Overlay backdrop */
+  .overlay-backdrop {
+    position: absolute;
+    inset: 52px 0 0 0;
+    background: oklch(20% 0.012 80 / 0.32);
+    z-index: 20;
+  }
+
+  /* ── Command Palette (faithful to CSS in index.css) ── */
+  .command-palette {
+    position: absolute;
+    top: 72px; /* 52px topbar + 20px gap */
+    left: 50%;
+    translate: -50% 0;
+    width: min(560px, calc(100% - 32px));
+    z-index: 30;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-overlay);
+    border: 1px solid var(--border-subtle);
+  }
+  .command-inner {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface-elevated);
+  }
+
+  /* Input row */
+  .cmd-input-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .cmd-search-icon {
+    font-size: 1rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .cmd-input {
+    flex: 1;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    caret-color: var(--accent-primary);
+  }
+  .cmd-input::placeholder { color: var(--text-muted); }
+  .cmd-input-query { color: var(--text-primary); }
+  .cmd-esc-hint {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    background: var(--bg-surface-hover);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  /* List */
+  .cmd-list {
+    overflow-y: auto;
+    max-height: 320px;
+  }
+  .cmd-group { margin-bottom: 2px; }
+  .cmd-group-heading {
+    padding: var(--space-2) var(--space-4) var(--space-1);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .cmd-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .cmd-item:hover, .cmd-item.selected {
+    background: var(--bg-surface-hover);
+  }
+  .cmd-item-label {
+    flex: 1;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmd-item-description {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmd-item-arrow {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    opacity: 0;
+  }
+  .cmd-item.selected .cmd-item-arrow { opacity: 1; }
+
+  /* Empty / loading */
+  .cmd-empty {
+    padding: 36px var(--space-4);
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+  }
+  .cmd-loading {
+    padding: 36px var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+  }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border-subtle);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Match highlight */
+  .match {
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  /* Footer hint */
+  .cmd-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-canvas);
+  }
+  .cmd-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .cmd-hint kbd {
+    background: var(--bg-surface-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+  }
+
+  /* Recent badge */
+  .recent-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    background: var(--bg-surface-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <p class="page-eyebrow">docs/plans/analysis · #333</p>
+  <h1 class="page-title">Command Palette — UI States</h1>
+  <p class="page-subtitle">Faithful recreation of the implemented palette (cmdk + Radix Dialog) across four interaction states.</p>
+</div>
+
+<div class="states-grid">
+
+  <!-- STATE 1: Idle / Recents -->
+  <div class="state-card">
+    <p class="state-label active">1 — Idle (no query, recents visible)</p>
+    <div class="app-fragment">
+      <div class="shell-topbar">
+        <div class="topbar-hamburger">☰</div>
+        <div class="topbar-crumb"><span>Operations</span> / <strong>Orders</strong></div>
+        <button class="topbar-search-btn open" type="button">
+          <span>🔍</span>
+          <span>Search…</span>
+          <span class="kbd">⌘K</span>
+        </button>
+        <div class="topbar-user">JR</div>
+      </div>
+      <div class="app-body">
+        <div class="app-sidebar">
+          <div class="nav-group-label">Operations</div>
+          <div class="nav-item active">Orders</div>
+          <div class="nav-item">Products</div>
+          <div class="nav-item">Inventory</div>
+          <div class="nav-group-label">Platform</div>
+          <div class="nav-item">Connections</div>
+        </div>
+        <div class="app-main">
+          <div class="skeleton-row medium"></div>
+          <div class="skeleton-row short"></div>
+          <div class="skeleton-row medium"></div>
+        </div>
+      </div>
+      <div class="overlay-backdrop"></div>
+      <div class="command-palette">
+        <div class="command-inner">
+          <div class="cmd-input-row">
+            <span class="cmd-search-icon">🔍</span>
+            <input class="cmd-input" placeholder="Search pages, orders, products…" readonly />
+            <span class="cmd-esc-hint">esc</span>
+          </div>
+          <div class="cmd-list">
+            <div class="cmd-group">
+              <div class="cmd-group-heading">Recent</div>
+              <div class="cmd-item selected">
+                <span class="cmd-item-label">ORD-20240619-001</span>
+                <span class="cmd-item-description">ready_to_ship</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">Allegro PL – main</span>
+                <span class="cmd-item-description">allegro</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">Sneakers Nike Air Max 270</span>
+                <span class="cmd-item-description">SKU-9841-BLK</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-group-heading">Navigation</div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">Dashboard</span>
+                <span class="cmd-item-description">/</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">Orders</span>
+                <span class="cmd-item-description">/orders</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+            </div>
+          </div>
+          <div class="cmd-footer">
+            <span class="cmd-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+            <span class="cmd-hint"><kbd>↵</kbd> open</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATE 2: Active search — "orde" -->
+  <div class="state-card">
+    <p class="state-label active">2 — Search query: "orde"</p>
+    <div class="app-fragment">
+      <div class="shell-topbar">
+        <div class="topbar-hamburger">☰</div>
+        <div class="topbar-crumb"><span>Operations</span> / <strong>Dashboard</strong></div>
+        <button class="topbar-search-btn open" type="button">
+          <span>🔍</span>
+          <span>orde</span>
+          <span class="kbd">⌘K</span>
+        </button>
+        <div class="topbar-user">JR</div>
+      </div>
+      <div class="app-body">
+        <div class="app-sidebar">
+          <div class="nav-group-label">Operations</div>
+          <div class="nav-item">Orders</div>
+          <div class="nav-item">Products</div>
+          <div class="nav-item">Inventory</div>
+          <div class="nav-group-label">Platform</div>
+          <div class="nav-item">Connections</div>
+        </div>
+        <div class="app-main">
+          <div class="skeleton-row medium"></div>
+          <div class="skeleton-row short"></div>
+        </div>
+      </div>
+      <div class="overlay-backdrop"></div>
+      <div class="command-palette">
+        <div class="command-inner">
+          <div class="cmd-input-row">
+            <span class="cmd-search-icon">🔍</span>
+            <input class="cmd-input" value="orde" readonly style="color: var(--text-primary);" />
+            <span class="cmd-esc-hint">esc</span>
+          </div>
+          <div class="cmd-list">
+            <div class="cmd-group">
+              <div class="cmd-group-heading">Navigation</div>
+              <div class="cmd-item selected">
+                <span class="cmd-item-label"><span class="match">Orde</span>rs</span>
+                <span class="cmd-item-description">/orders</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-group-heading">Orders</div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">ORD-20240619-001</span>
+                <span class="cmd-item-description">ready_to_ship</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">ORD-20240618-042</span>
+                <span class="cmd-item-description">delivered</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+              <div class="cmd-item">
+                <span class="cmd-item-label">ORD-20240617-007</span>
+                <span class="cmd-item-description">pending</span>
+                <span class="cmd-item-arrow">→</span>
+              </div>
+            </div>
+          </div>
+          <div class="cmd-footer">
+            <span class="cmd-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+            <span class="cmd-hint"><kbd>↵</kbd> open</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATE 3: Loading -->
+  <div class="state-card">
+    <p class="state-label loading">3 — Loading (first open, queries in flight)</p>
+    <div class="app-fragment">
+      <div class="shell-topbar">
+        <div class="topbar-hamburger">☰</div>
+        <div class="topbar-crumb"><span>Platform</span> / <strong>Connections</strong></div>
+        <button class="topbar-search-btn open" type="button">
+          <span>🔍</span>
+          <span>Search…</span>
+          <span class="kbd">⌘K</span>
+        </button>
+        <div class="topbar-user">JR</div>
+      </div>
+      <div class="app-body">
+        <div class="app-sidebar">
+          <div class="nav-group-label">Operations</div>
+          <div class="nav-item">Orders</div>
+          <div class="nav-item">Products</div>
+          <div class="nav-group-label">Platform</div>
+          <div class="nav-item active">Connections</div>
+        </div>
+        <div class="app-main">
+          <div class="skeleton-row short"></div>
+          <div class="skeleton-row medium"></div>
+        </div>
+      </div>
+      <div class="overlay-backdrop"></div>
+      <div class="command-palette">
+        <div class="command-inner">
+          <div class="cmd-input-row">
+            <span class="cmd-search-icon">🔍</span>
+            <input class="cmd-input" placeholder="Search pages, orders, products…" readonly />
+            <span class="cmd-esc-hint">esc</span>
+          </div>
+          <div class="cmd-loading">
+            <div class="spinner"></div>
+            <span>Loading…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATE 4: No results -->
+  <div class="state-card">
+    <p class="state-label empty">4 — No results (query: "xyz123qr")</p>
+    <div class="app-fragment">
+      <div class="shell-topbar">
+        <div class="topbar-hamburger">☰</div>
+        <div class="topbar-crumb"><span>Operations</span> / <strong>Products</strong></div>
+        <button class="topbar-search-btn open" type="button">
+          <span>🔍</span>
+          <span>xyz123qr</span>
+          <span class="kbd">⌘K</span>
+        </button>
+        <div class="topbar-user">JR</div>
+      </div>
+      <div class="app-body">
+        <div class="app-sidebar">
+          <div class="nav-group-label">Operations</div>
+          <div class="nav-item">Orders</div>
+          <div class="nav-item active">Products</div>
+          <div class="nav-group-label">Platform</div>
+          <div class="nav-item">Connections</div>
+        </div>
+        <div class="app-main">
+          <div class="skeleton-row medium"></div>
+          <div class="skeleton-row short"></div>
+        </div>
+      </div>
+      <div class="overlay-backdrop"></div>
+      <div class="command-palette">
+        <div class="command-inner">
+          <div class="cmd-input-row">
+            <span class="cmd-search-icon">🔍</span>
+            <input class="cmd-input" value="xyz123qr" readonly style="color: var(--text-primary);" />
+            <span class="cmd-esc-hint">esc</span>
+          </div>
+          <div class="cmd-empty">
+            No results for <strong>"xyz123qr"</strong>
+          </div>
+          <div class="cmd-footer">
+            <span class="cmd-hint"><kbd>esc</kbd> close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

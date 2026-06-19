@@ -182,9 +182,9 @@ module.exports = {
                 message: 'Feature modules must not import page or plugin modules.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
                 message:
-                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable) instead of the library directly.',
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable, CommandPalette) instead of the library directly.',
               },
               {
                 // Cross-feature imports must target the feature's public barrel
@@ -291,9 +291,9 @@ module.exports = {
                 message: 'Page modules must not import app or plugin modules.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
                 message:
-                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable) instead of the library directly.',
+                  'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable, CommandPalette) instead of the library directly.',
               },
             ],
           },
@@ -316,7 +316,7 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
               },
@@ -369,7 +369,7 @@ module.exports = {
                   'Plugin modules must not import host internals (router, routes, layouts, hooks, providers, the API client provider hook). The public surface plugins may consume is app/api/api-client (types) and app/app-shell (NavGroup types) — anything else couples plugins to host implementation.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
               },
