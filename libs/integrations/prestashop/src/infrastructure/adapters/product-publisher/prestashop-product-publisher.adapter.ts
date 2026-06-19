@@ -29,17 +29,20 @@ import {
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
-import {
-  langField,
-  type PrestashopCategoryListItem,
-  type PrestashopCategoryResponse,
-  type PrestashopLangField,
-  type PrestashopProductResponse,
-  type PrestashopProductWriteBody,
-  type PrestashopStockAvailableItem,
+import type {
+  PrestashopCategoryListItem,
+  PrestashopCategoryResponse,
+  PrestashopLangField,
+  PrestashopProductResponse,
+  PrestashopProductWriteBody,
+  PrestashopStockAvailableItem,
 } from './prestashop-product-publish.types';
 
 const DEFAULT_ADAPTER_KEY = 'prestashop.webservice.v1';
+
+function langField(value: string, languageId = '1'): PrestashopLangField {
+  return { language: [{ '@_id': languageId, '#text': value }] };
+}
 
 export class PrestashopProductPublisherAdapter
   implements ShopProductManagerPort, CategoryProvisioner
@@ -76,10 +79,10 @@ export class PrestashopProductPublisherAdapter
         response = await this.client.createResource<PrestashopProductResponse>('products', body);
       }
     } catch (err) {
-      this.toPublishError(err);
+      throw this.toPublishError(err);
     }
 
-    const productId = String(response!.id);
+    const productId = String(response.id);
     await this.updateStock(productId, cmd.stock);
 
     return { externalProductId: productId, status: cmd.status };
@@ -89,7 +92,7 @@ export class PrestashopProductPublisherAdapter
     const languageId = String(
       (this.connection.config?.langId as number | undefined) ?? 1,
     );
-    let parentId = '0';
+    let parentId = '0'; // PS WS root sentinel
     const createdPath: string[] = [];
 
     for (const node of cmd.path) {
@@ -97,9 +100,7 @@ export class PrestashopProductPublisherAdapter
         custom: { 'filter[name]': node.name, 'filter[id_parent]': parentId },
       });
 
-      const match = rows.find(
-        (row) => this.extractLangText(row.name) === node.name,
-      );
+      const match = rows.find((row) => this.extractLangText(row.name, languageId) === node.name);
 
       if (match) {
         parentId = String(match.id);
@@ -204,10 +205,12 @@ export class PrestashopProductPublisherAdapter
       .replace(/^-+|-+$/g, '');
   }
 
-  private extractLangText(value: string | PrestashopLangField): string {
-    if (typeof value === 'string') {
-      return value;
-    }
-    return value.language[0]?.['#text'] ?? '';
+  private extractLangText(value: string | PrestashopLangField, languageId: string): string {
+    if (typeof value === 'string') return value;
+    return (
+      value.language.find((l) => l['@_id'] === languageId)?.['#text'] ??
+      value.language[0]?.['#text'] ??
+      ''
+    );
   }
 }

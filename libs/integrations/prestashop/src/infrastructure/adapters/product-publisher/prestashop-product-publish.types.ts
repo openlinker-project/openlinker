@@ -15,14 +15,6 @@ export interface PrestashopLangField {
 }
 
 /**
- * Build a single-language text value for PS WS multilingual fields.
- * Defaults to language ID `'1'` (primary language).
- */
-export function langField(value: string, languageId = '1'): PrestashopLangField {
-  return { language: [{ '@_id': languageId, '#text': value }] };
-}
-
-/**
  * Minimal request body for POST/PUT /api/products.
  *
  * A permissive index signature lets `platformParams` merge un-modeled fields

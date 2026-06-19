@@ -32,7 +32,7 @@ export interface PrestashopAdapters {
   inventoryMaster: PrestashopInventoryMasterAdapter;
   orderSource: PrestashopOrderSourceAdapter;
   orderProcessorManager?: PrestashopOrderProcessorManagerAdapter;
-  productPublisher?: PrestashopProductPublisherAdapter;
+  productPublisher: PrestashopProductPublisherAdapter;
 }
 
 /**
