@@ -208,6 +208,8 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
   /** Snapshot of the env-var value (if any) at suite start — restored in afterAll. */
   let priorWebhookSecretEnv: string | undefined;
 
+  // PS container boot + OL module install/uninstall/install + cache warmup can
+  // exceed the global testTimeout (120 s) on Linux/WSL2 with OverlayFS (#716).
   beforeAll(async () => {
     harness = await getTestHarness();
     // installOlModule is required for S-3 (exercises the real
@@ -315,7 +317,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         prestashopCarrierId: String(ps.olDynamicCarrierId),
       },
     ]);
-  }, 15 * 60_000);
+  }, 20 * 60_000);
 
   afterAll(async () => {
     if (ps) {
@@ -335,219 +337,238 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
     }
   });
 
-  itWhenOlModuleInstalled('S-1: mapped carrier lands on order + cart with positive id_carrier', async () => {
-    const incoming = createIncomingOrderForCarrierMapping({
-      externalOrderId: 'ALG-S1',
-      // Paid Allegro order (payment.finishedAt set → 'processing') → PS state 2
-      // "Payment accepted" → validateOrder records the payment.
-      status: 'processing',
-      methodId: 'paczkomat-s1',
-      externalOfferId: 'ALG-OFFER-S1',
-      sku: 'SEEDED-SKU-S1',
-    });
-    stub.setNextIncomingOrder(incoming);
+  describe('base carrier routing', () => {
+    itWhenOlModuleInstalled(
+      'S-1: mapped carrier lands on order + cart with positive id_carrier',
+      async () => {
+        const incoming = createIncomingOrderForCarrierMapping({
+          externalOrderId: 'ALG-S1',
+          // Paid Allegro order (payment.finishedAt set → 'processing') → PS state 2
+          // "Payment accepted" → validateOrder records the payment.
+          status: 'processing',
+          methodId: 'paczkomat-s1',
+          externalOfferId: 'ALG-OFFER-S1',
+          sku: 'SEEDED-SKU-S1',
+        });
+        stub.setNextIncomingOrder(incoming);
 
-    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
-    const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S1');
+        const ingestion = harness
+          .getApp()
+          .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+        const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S1');
 
-    expect(results).toHaveLength(1);
-    if (results[0].status !== 'success') {
-      dumpPrestashopErrorLogs();
-      throw new Error(
-        `S-1 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
-      );
-    }
-    expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
+        expect(results).toHaveLength(1);
+        if (results[0].status !== 'success') {
+          dumpPrestashopErrorLogs();
+          throw new Error(
+            `S-1 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+          );
+        }
+        expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
 
-    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
-    const psOrder = await fetchPsOrder(ps, psOrderId);
+        const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
+        const psOrder = await fetchPsOrder(ps, psOrderId);
 
-    expect(Number(psOrder.id_carrier)).toBe(defaultCarriers.myCarrier.idCarrier);
-    expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
-    expect(Number(psOrder.current_state)).not.toBe(8);
-    expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
+        expect(Number(psOrder.id_carrier)).toBe(defaultCarriers.myCarrier.idCarrier);
+        expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+        expect(Number(psOrder.current_state)).not.toBe(8);
+        expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
 
-    const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
-    expect(Number(psCart.id_carrier)).toBeGreaterThan(0);
-  });
-
-  itWhenOlModuleInstalled('S-2: defaultCarrierId fallback lands on order with config carrier', async () => {
-    const incoming = createIncomingOrderForCarrierMapping({
-      externalOrderId: 'ALG-S2',
-      status: 'processing',
-      methodId: 'paczkomat-s2',
-      externalOfferId: 'ALG-OFFER-S2',
-      sku: 'SEEDED-SKU-S2',
-    });
-    stub.setNextIncomingOrder(incoming);
-
-    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
-    const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S2');
-
-    expect(results).toHaveLength(1);
-    if (results[0].status !== 'success') {
-      dumpPrestashopErrorLogs();
-      throw new Error(
-        `S-2 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
-      );
-    }
-
-    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
-    const psOrder = await fetchPsOrder(ps, psOrderId);
-
-    // OL's `defaultCarrierId` fallback writes the chosen `id_carrier` onto the
-    // cart during cart-create; under ADR-016 `validateOrder` then assigns the
-    // order's carrier from the cart's `delivery_option`, so the order carrier
-    // matches the cart. We assert the cart strictly (the OL adapter signal) and
-    // keep the order assertion as a lenient #503 guard (cart `id_carrier=0`
-    // would zero shipping) — strictness on the order value would couple the
-    // test to PS's tie-break details among equal-price carriers.
-    const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
-    expect(Number(psCart.id_carrier)).toBe(defaultCarriers.myCheapCarrier.idCarrier);
-    expect(Number(psOrder.id_carrier)).toBeGreaterThan(0); // #503 guard — any positive carrier
-    expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
-    expect(Number(psOrder.current_state)).not.toBe(8);
-
-    // Intentionally NOT asserted: sidecar `writeCartShipping` was not invoked.
-    // The OL Dynamic carrier id differs from `myCheapCarrier.idCarrier`, so the
-    // positive id_carrier check above already discriminates resolution chain
-    // step 2 (this branch) from step 3 (would have written olDynamicCarrierId).
-    // Observing the negative HTTP call would require spy infrastructure on the
-    // PS WS client — deferred until the OL Dynamic e2e path is added.
-  });
-
-  itWhenOlModuleInstalled('S-3: OL Dynamic carrier path writes sidecar + lands authoritative shipping', async () => {
-    const incoming = createIncomingOrderForCarrierMapping({
-      externalOrderId: 'ALG-S3',
-      status: 'processing',
-      methodId: 'paczkomat-s3',
-      externalOfferId: 'ALG-OFFER-S3',
-      sku: 'SEEDED-SKU-S3',
-    });
-    stub.setNextIncomingOrder(incoming);
-
-    const ingestion = harness.getApp().get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
-    const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S3');
-
-    expect(results).toHaveLength(1);
-    if (results[0].status !== 'success') {
-      dumpPrestashopErrorLogs();
-      throw new Error(
-        `S-3 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
-      );
-    }
-    expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
-
-    const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
-    const psOrder = await fetchPsOrder(ps, psOrderId);
-
-    const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
-
-    // (1) Cart routed to the OL Dynamic carrier. This is the load-bearing
-    // adapter-side signal: `OrderProcessorManagerAdapter` resolved the
-    // mapping table, found `paczkomat-s3` → `olDynamicCarrierId`, and wrote
-    // that id onto the cart at POST /carts time. If the adapter had picked
-    // a different carrier (mapping miss, defaultCarrierId fallback, or the
-    // discoverDynamicCarrierId WS query returning a stale id), this would
-    // be a different number.
-    expect(Number(psCart.id_carrier)).toBe(ps.olDynamicCarrierId);
-
-    // (2) Sidecar row is populated AND carries the buyer-paid amount.
-    // Unique signal that the full round-trip happened: adapter →
-    // `writeCartShipping` POST → HMAC verify in `cartshipping.php` →
-    // `CartShippingRepository::upsert`. The previous reconcile path
-    // (#516, now removed) couldn't produce a sidecar row — only the OL
-    // Dynamic branch does. If `externalCarrierId !== olDynamicCarrierId`
-    // in the adapter, no row exists for this cart.
-    const sidecar = await readCartShipping(ps.mysqlAddress, Number(psOrder.id_cart));
-    expect(sidecar).not.toBeNull();
-    expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
-
-    // (3) The order's `total_shipping` reads the buyer-paid (sidecar) amount.
-    // Under ADR-016 `validateOrder` assigns the carrier from the cart's
-    // `delivery_option`, so the order keeps the OL Dynamic carrier and its
-    // module-priced shipping — no recompute from PS price tables.
-    expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
-
-    // (4) totals reconcile — `total_paid` matches `total_paid_real`. The order
-    // is paid (`status:'processing'` → PS state 2 "Payment accepted"), so
-    // `validateOrder` records the payment and the two amounts agree. This is
-    // what PS uses to compute `current_state`.
-    expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
-
-    // (5) No payment-error state. `validateOrder` reads the authoritative
-    // shipping from `getOrderShippingCostExternal` and prices the order in one
-    // pass (no post-create reconcile PUT), so totals match and `current_state=8`
-    // is never stamped.
-    expect(Number(psOrder.current_state)).not.toBe(8);
-
-    // (6) Order keeps the OL Dynamic carrier. Under ADR-016 `validateOrder`
-    // assigns the carrier from the cart's `delivery_option`, so the order — not
-    // just the cart — lands on `olDynamicCarrierId` (S-4 confirms this holds even
-    // against a cheaper free carrier). Asserting the exact id (vs the old
-    // lenient `> 0`) is the stronger #503 guard now that the WS re-resolution is
-    // gone.
-    expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
-  });
-
-  itWhenOlModuleInstalled(
-    'S-4: free carrier present — OL Dynamic carrier still wins via validateOrder (#898 regression)',
-    async () => {
-      // Reproduce the exact #898 topology: a free "Click and collect" carrier
-      // available to the order's group + zone. On the pre-ADR-016 raw-WS
-      // `POST /orders` path PS re-resolved to the cheapest available option, so
-      // this free carrier ALWAYS won — every order landed on it with
-      // `total_shipping=0` and a Payment-error state. ADR-016 creates the order
-      // through `validateOrder`, which honors the cart's `delivery_option`, so
-      // the free carrier must NO LONGER win.
-      const freeCarrier = await enableFreePickupCarrier(ps.mysqlAddress);
-
-      const incoming = createIncomingOrderForCarrierMapping({
-        externalOrderId: 'ALG-S4',
-        status: 'processing',
-        methodId: 'paczkomat-s4',
-        externalOfferId: 'ALG-OFFER-S4',
-        sku: 'SEEDED-SKU-S4',
-      });
-      stub.setNextIncomingOrder(incoming);
-
-      const ingestion = harness
-        .getApp()
-        .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
-      const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S4');
-
-      expect(results).toHaveLength(1);
-      if (results[0].status !== 'success') {
-        dumpPrestashopErrorLogs();
-        throw new Error(
-          `S-4 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
-        );
+        const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+        expect(Number(psCart.id_carrier)).toBeGreaterThan(0);
       }
+    );
 
-      const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
-      const psOrder = await fetchPsOrder(ps, psOrderId);
-      const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+    itWhenOlModuleInstalled(
+      'S-2: defaultCarrierId fallback lands on order with config carrier',
+      async () => {
+        const incoming = createIncomingOrderForCarrierMapping({
+          externalOrderId: 'ALG-S2',
+          status: 'processing',
+          methodId: 'paczkomat-s2',
+          externalOfferId: 'ALG-OFFER-S2',
+          sku: 'SEEDED-SKU-S2',
+        });
+        stub.setNextIncomingOrder(incoming);
 
-      // (1) The cart is routed to the OL Dynamic carrier (adapter signal).
-      expect(Number(psCart.id_carrier)).toBe(ps.olDynamicCarrierId);
+        const ingestion = harness
+          .getApp()
+          .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+        const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S2');
 
-      // (2) #898 core guard: the free carrier did NOT win. Under validateOrder
-      // the order keeps the cart's carrier rather than being rewritten to the
-      // cheapest (free) option — the exact substitution #898 reported.
-      expect(Number(psOrder.id_carrier)).not.toBe(freeCarrier.idCarrier);
-      expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
+        expect(results).toHaveLength(1);
+        if (results[0].status !== 'success') {
+          dumpPrestashopErrorLogs();
+          throw new Error(
+            `S-2 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+          );
+        }
 
-      // (3) Shipping is the sidecar amount, not the free carrier's 0.
-      const sidecar = await readCartShipping(ps.mysqlAddress, Number(psOrder.id_cart));
-      expect(sidecar).not.toBeNull();
-      expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
-      expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+        const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
+        const psOrder = await fetchPsOrder(ps, psOrderId);
 
-      // (4) Totals reconcile and no Payment-error state — the #898 banner.
-      expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
-      expect(Number(psOrder.current_state)).not.toBe(8);
-    }
-  );
+        // OL's `defaultCarrierId` fallback writes the chosen `id_carrier` onto the
+        // cart during cart-create; under ADR-016 `validateOrder` then assigns the
+        // order's carrier from the cart's `delivery_option`, so the order carrier
+        // matches the cart. We assert the cart strictly (the OL adapter signal) and
+        // keep the order assertion as a lenient #503 guard (cart `id_carrier=0`
+        // would zero shipping) — strictness on the order value would couple the
+        // test to PS's tie-break details among equal-price carriers.
+        const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+        expect(Number(psCart.id_carrier)).toBe(defaultCarriers.myCheapCarrier.idCarrier);
+        expect(Number(psOrder.id_carrier)).toBeGreaterThan(0); // #503 guard — any positive carrier
+        expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+        expect(Number(psOrder.current_state)).not.toBe(8);
+
+        // Intentionally NOT asserted: sidecar `writeCartShipping` was not invoked.
+        // The OL Dynamic carrier id differs from `myCheapCarrier.idCarrier`, so the
+        // positive id_carrier check above already discriminates resolution chain
+        // step 2 (this branch) from step 3 (would have written olDynamicCarrierId).
+        // Observing the negative HTTP call would require spy infrastructure on the
+        // PS WS client — deferred until the OL Dynamic e2e path is added.
+      }
+    );
+  }); // describe('base carrier routing')
+
+  describe('OL Dynamic carrier', () => {
+    itWhenOlModuleInstalled(
+      'S-3: OL Dynamic carrier path writes sidecar + lands authoritative shipping',
+      async () => {
+        const incoming = createIncomingOrderForCarrierMapping({
+          externalOrderId: 'ALG-S3',
+          status: 'processing',
+          methodId: 'paczkomat-s3',
+          externalOfferId: 'ALG-OFFER-S3',
+          sku: 'SEEDED-SKU-S3',
+        });
+        stub.setNextIncomingOrder(incoming);
+
+        const ingestion = harness
+          .getApp()
+          .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+        const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S3');
+
+        expect(results).toHaveLength(1);
+        if (results[0].status !== 'success') {
+          dumpPrestashopErrorLogs();
+          throw new Error(
+            `S-3 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+          );
+        }
+        expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
+
+        const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
+        const psOrder = await fetchPsOrder(ps, psOrderId);
+
+        const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+
+        // (1) Cart routed to the OL Dynamic carrier. This is the load-bearing
+        // adapter-side signal: `OrderProcessorManagerAdapter` resolved the
+        // mapping table, found `paczkomat-s3` → `olDynamicCarrierId`, and wrote
+        // that id onto the cart at POST /carts time. If the adapter had picked
+        // a different carrier (mapping miss, defaultCarrierId fallback, or the
+        // discoverDynamicCarrierId WS query returning a stale id), this would
+        // be a different number.
+        expect(Number(psCart.id_carrier)).toBe(ps.olDynamicCarrierId);
+
+        // (2) Sidecar row is populated AND carries the buyer-paid amount.
+        // Unique signal that the full round-trip happened: adapter →
+        // `writeCartShipping` POST → HMAC verify in `cartshipping.php` →
+        // `CartShippingRepository::upsert`. The previous reconcile path
+        // (#516, now removed) couldn't produce a sidecar row — only the OL
+        // Dynamic branch does. If `externalCarrierId !== olDynamicCarrierId`
+        // in the adapter, no row exists for this cart.
+        const sidecar = await readCartShipping(ps.mysqlAddress, Number(psOrder.id_cart));
+        expect(sidecar).not.toBeNull();
+        expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
+
+        // (3) The order's `total_shipping` reads the buyer-paid (sidecar) amount.
+        // Under ADR-016 `validateOrder` assigns the carrier from the cart's
+        // `delivery_option`, so the order keeps the OL Dynamic carrier and its
+        // module-priced shipping — no recompute from PS price tables.
+        expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+
+        // (4) totals reconcile — `total_paid` matches `total_paid_real`. The order
+        // is paid (`status:'processing'` → PS state 2 "Payment accepted"), so
+        // `validateOrder` records the payment and the two amounts agree. This is
+        // what PS uses to compute `current_state`.
+        expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
+
+        // (5) No payment-error state. `validateOrder` reads the authoritative
+        // shipping from `getOrderShippingCostExternal` and prices the order in one
+        // pass (no post-create reconcile PUT), so totals match and `current_state=8`
+        // is never stamped.
+        expect(Number(psOrder.current_state)).not.toBe(8);
+
+        // (6) Order keeps the OL Dynamic carrier. Under ADR-016 `validateOrder`
+        // assigns the carrier from the cart's `delivery_option`, so the order — not
+        // just the cart — lands on `olDynamicCarrierId` (S-4 confirms this holds even
+        // against a cheaper free carrier). Asserting the exact id (vs the old
+        // lenient `> 0`) is the stronger #503 guard now that the WS re-resolution is
+        // gone.
+        expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
+      }
+    );
+
+    itWhenOlModuleInstalled(
+      'S-4: free carrier present — OL Dynamic carrier still wins via validateOrder (#898 regression)',
+      async () => {
+        // Reproduce the exact #898 topology: a free "Click and collect" carrier
+        // available to the order's group + zone. On the pre-ADR-016 raw-WS
+        // `POST /orders` path PS re-resolved to the cheapest available option, so
+        // this free carrier ALWAYS won — every order landed on it with
+        // `total_shipping=0` and a Payment-error state. ADR-016 creates the order
+        // through `validateOrder`, which honors the cart's `delivery_option`, so
+        // the free carrier must NO LONGER win.
+        const freeCarrier = await enableFreePickupCarrier(ps.mysqlAddress);
+
+        const incoming = createIncomingOrderForCarrierMapping({
+          externalOrderId: 'ALG-S4',
+          status: 'processing',
+          methodId: 'paczkomat-s4',
+          externalOfferId: 'ALG-OFFER-S4',
+          sku: 'SEEDED-SKU-S4',
+        });
+        stub.setNextIncomingOrder(incoming);
+
+        const ingestion = harness
+          .getApp()
+          .get<IOrderIngestionService>(ORDER_INGESTION_SERVICE_TOKEN);
+        const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-S4');
+
+        expect(results).toHaveLength(1);
+        if (results[0].status !== 'success') {
+          dumpPrestashopErrorLogs();
+          throw new Error(
+            `S-4 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+          );
+        }
+
+        const psOrderId = destinationOrderIdFromRef(results[0].orderRef);
+        const psOrder = await fetchPsOrder(ps, psOrderId);
+        const psCart = await fetchPsCart(ps, Number(psOrder.id_cart));
+
+        // (1) The cart is routed to the OL Dynamic carrier (adapter signal).
+        expect(Number(psCart.id_carrier)).toBe(ps.olDynamicCarrierId);
+
+        // (2) #898 core guard: the free carrier did NOT win. Under validateOrder
+        // the order keeps the cart's carrier rather than being rewritten to the
+        // cheapest (free) option — the exact substitution #898 reported.
+        expect(Number(psOrder.id_carrier)).not.toBe(freeCarrier.idCarrier);
+        expect(Number(psOrder.id_carrier)).toBe(ps.olDynamicCarrierId);
+
+        // (3) Shipping is the sidecar amount, not the free carrier's 0.
+        const sidecar = await readCartShipping(ps.mysqlAddress, Number(psOrder.id_cart));
+        expect(sidecar).not.toBeNull();
+        expect(sidecar!.amountTaxIncl).toBeCloseTo(12.5, 2);
+        expect(Number(psOrder.total_shipping)).toBeCloseTo(12.5, 2);
+
+        // (4) Totals reconcile and no Payment-error state — the #898 banner.
+        expect(Number(psOrder.total_paid)).toBeCloseTo(Number(psOrder.total_paid_real), 2);
+        expect(Number(psOrder.current_state)).not.toBe(8);
+      }
+    );
+  }); // describe('OL Dynamic carrier')
 });
 
 interface SeedScenarioOpts {

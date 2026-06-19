@@ -107,8 +107,7 @@ async function fetchPsListByOrder<T>(
   resource: 'order_histories' | 'order_carriers',
   idOrder: number
 ): Promise<T[]> {
-  const url =
-    `${ps.baseUrl}/api/${resource}?output_format=JSON&display=full&filter[id_order]=${idOrder}`;
+  const url = `${ps.baseUrl}/api/${resource}?output_format=JSON&display=full&filter[id_order]=${idOrder}`;
   const response = await fetch(url, {
     headers: { Authorization: basicAuthHeader(ps.webserviceApiKey) },
   });
@@ -213,7 +212,7 @@ describe('PrestaShop order fulfillment update (#858)', () => {
     harness = await getTestHarness();
     // Order creation now goes through the module's importorder → validateOrder
     // endpoint (ADR-016), so seeding the order to transition requires the module
-    // installed + the webhook secret wired. Gated off in CI (#716).
+    // installed + the webhook secret wired. #716 keeps this path enabled in CI.
     ps = await startPrestashopContainer({ installOlModule: INSTALL_OL_MODULE });
     if (INSTALL_OL_MODULE) {
       priorWebhookSecretEnv = process.env[WEBHOOK_SECRET_ENV_KEY];
@@ -269,7 +268,7 @@ describe('PrestaShop order fulfillment update (#858)', () => {
       // orderRef.orderId is the destination-native PrestaShop order id (#909).
       psOrderId = destinationOrderIdFromRef(results[0].orderRef);
     }
-  }, 15 * 60_000);
+  }, 20 * 60_000);
 
   afterAll(async () => {
     if (ps) {
@@ -285,66 +284,67 @@ describe('PrestaShop order fulfillment update (#858)', () => {
     }
   });
 
-  itWhenOlModuleInstalled('should transition state via order_histories + write tracking, idempotently', async () => {
-    const integrations = harness
-      .getApp()
-      .get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN);
-    const adapter = await integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
-      prestashopConnectionId,
-      'OrderProcessorManager'
-    );
-    if (!isOrderFulfillmentUpdater(adapter)) {
-      throw new Error('PrestaShop adapter does not implement OrderFulfillmentUpdater');
+  itWhenOlModuleInstalled(
+    'should transition state via order_histories + write tracking, idempotently',
+    async () => {
+      const integrations = harness.getApp().get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN);
+      const adapter = await integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
+        prestashopConnectionId,
+        'OrderProcessorManager'
+      );
+      if (!isOrderFulfillmentUpdater(adapter)) {
+        throw new Error('PrestaShop adapter does not implement OrderFulfillmentUpdater');
+      }
+
+      // Sanity: the seeded order is not already shipped.
+      const before = await fetchPsOrder(ps, psOrderId);
+      expect(Number(before.current_state)).not.toBe(SHIPPED_STATE_ID);
+
+      // First update — transition + tracking.
+      await adapter.updateFulfillment({
+        externalOrderId: String(psOrderId),
+        status: 'shipped',
+        trackingNumber: TRACKING_NUMBER,
+      });
+
+      const after = await fetchPsOrder(ps, psOrderId);
+      expect(Number(after.current_state)).toBe(SHIPPED_STATE_ID);
+
+      const historiesAfterFirst = await fetchPsListByOrder<PsOrderHistoryRow>(
+        ps,
+        'order_histories',
+        psOrderId
+      );
+      const shippedHistories = historiesAfterFirst.filter(
+        (h) => Number(h.id_order_state) === SHIPPED_STATE_ID
+      );
+      expect(shippedHistories.length).toBe(1); // proves the transition went via order_histories
+
+      const carriers = await fetchPsListByOrder<PsOrderCarrierRow>(ps, 'order_carriers', psOrderId);
+      expect(carriers.length).toBeGreaterThan(0);
+      expect(carriers[0].tracking_number).toBe(TRACKING_NUMBER);
+
+      // Second update — idempotent: no new shipped history row, tracking unchanged.
+      await adapter.updateFulfillment({
+        externalOrderId: String(psOrderId),
+        status: 'shipped',
+        trackingNumber: TRACKING_NUMBER,
+      });
+
+      const historiesAfterSecond = await fetchPsListByOrder<PsOrderHistoryRow>(
+        ps,
+        'order_histories',
+        psOrderId
+      );
+      expect(
+        historiesAfterSecond.filter((h) => Number(h.id_order_state) === SHIPPED_STATE_ID).length
+      ).toBe(1);
+      const carriersAfter = await fetchPsListByOrder<PsOrderCarrierRow>(
+        ps,
+        'order_carriers',
+        psOrderId
+      );
+      expect(carriersAfter[0].tracking_number).toBe(TRACKING_NUMBER);
     }
-
-    // Sanity: the seeded order is not already shipped.
-    const before = await fetchPsOrder(ps, psOrderId);
-    expect(Number(before.current_state)).not.toBe(SHIPPED_STATE_ID);
-
-    // First update — transition + tracking.
-    await adapter.updateFulfillment({
-      externalOrderId: String(psOrderId),
-      status: 'shipped',
-      trackingNumber: TRACKING_NUMBER,
-    });
-
-    const after = await fetchPsOrder(ps, psOrderId);
-    expect(Number(after.current_state)).toBe(SHIPPED_STATE_ID);
-
-    const historiesAfterFirst = await fetchPsListByOrder<PsOrderHistoryRow>(
-      ps,
-      'order_histories',
-      psOrderId
-    );
-    const shippedHistories = historiesAfterFirst.filter(
-      (h) => Number(h.id_order_state) === SHIPPED_STATE_ID
-    );
-    expect(shippedHistories.length).toBe(1); // proves the transition went via order_histories
-
-    const carriers = await fetchPsListByOrder<PsOrderCarrierRow>(ps, 'order_carriers', psOrderId);
-    expect(carriers.length).toBeGreaterThan(0);
-    expect(carriers[0].tracking_number).toBe(TRACKING_NUMBER);
-
-    // Second update — idempotent: no new shipped history row, tracking unchanged.
-    await adapter.updateFulfillment({
-      externalOrderId: String(psOrderId),
-      status: 'shipped',
-      trackingNumber: TRACKING_NUMBER,
-    });
-
-    const historiesAfterSecond = await fetchPsListByOrder<PsOrderHistoryRow>(
-      ps,
-      'order_histories',
-      psOrderId
-    );
-    expect(
-      historiesAfterSecond.filter((h) => Number(h.id_order_state) === SHIPPED_STATE_ID).length
-    ).toBe(1);
-    const carriersAfter = await fetchPsListByOrder<PsOrderCarrierRow>(
-      ps,
-      'order_carriers',
-      psOrderId
-    );
-    expect(carriersAfter[0].tracking_number).toBe(TRACKING_NUMBER);
-  });
+  );
 });
