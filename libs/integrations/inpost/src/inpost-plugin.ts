@@ -16,6 +16,7 @@ import { dispatchCapability, type AdapterPlugin, type HostServices } from '@open
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createInpostShippingAdapter } from './application/inpost-adapter.factory';
+import { InpostAuthFailureClassifierAdapter } from './infrastructure/adapters/inpost-auth-failure-classifier.adapter';
 import { InpostConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/inpost-connection-config-shape-validator.adapter';
 import { InpostInboundWebhookDecoderAdapter } from './infrastructure/adapters/inpost-inbound-webhook-decoder.adapter';
 import { InpostWebhookEventTranslatorAdapter } from './infrastructure/adapters/inpost-webhook-event-translator.adapter';
@@ -50,6 +51,14 @@ export function createInpostPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ apiToken }` shape is enforced
       // at adapter construction time by the factory (deeper than this boundary).
+
+      // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from the
+      // ShipX client flips the connection to `needs_reauth` on the SyncJobRunner
+      // path (e.g. the shipment-status poll below).
+      host.authFailureClassifierRegistry.register(
+        inpostAdapterManifest.adapterKey,
+        new InpostAuthFailureClassifierAdapter(),
+      );
 
       // #768 / ADR-021 — third-party-native webhook ingress. The decoder
       // (provider-keyed) authenticates + decodes InPost's `Shipment.Tracking`

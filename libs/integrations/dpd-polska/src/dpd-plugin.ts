@@ -17,6 +17,7 @@ import { dispatchCapability, type AdapterPlugin, type HostServices } from '@open
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createDpdShippingAdapter } from './application/dpd-adapter.factory';
+import { DpdAuthFailureClassifierAdapter } from './infrastructure/adapters/dpd-auth-failure-classifier.adapter';
 import { DpdConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/dpd-connection-config-shape-validator.adapter';
 import { buildDpdSchedulerTasks } from './infrastructure/scheduler/dpd-scheduler-tasks';
 
@@ -49,6 +50,14 @@ export function createDpdPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ login, password }` shape is
       // enforced at adapter construction time by the factory.
+
+      // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from
+      // either DPD client flips the connection to `needs_reauth` on the
+      // SyncJobRunner path (e.g. the shipment-status poll below).
+      host.authFailureClassifierRegistry.register(
+        dpdAdapterManifest.adapterKey,
+        new DpdAuthFailureClassifierAdapter(),
+      );
 
       // Shipment-status poll (#965, ADR-022) — the only DPD tracking path
       // (no DPD webhook). Env-gated; takes effect worker-side via the scheduler.
