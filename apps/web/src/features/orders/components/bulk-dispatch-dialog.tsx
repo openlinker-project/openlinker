@@ -16,6 +16,7 @@
  * @module apps/web/src/features/orders/components
  */
 import { useMemo, useReducer, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -67,7 +68,8 @@ const EMPTY_PARCEL: ParcelFields = { length: '', width: '', height: '', weightGr
 type OverrideState = Record<string, ParcelFields>;
 type OverrideAction =
   | { type: 'set'; orderId: string; field: keyof ParcelFields; value: string }
-  | { type: 'applyAll'; ids: string[]; parcel: ParcelFields };
+  | { type: 'applyAll'; ids: string[]; parcel: ParcelFields }
+  | { type: 'reset' };
 
 function overrideReducer(state: OverrideState, action: OverrideAction): OverrideState {
   switch (action.type) {
@@ -81,6 +83,8 @@ function overrideReducer(state: OverrideState, action: OverrideAction): Override
       for (const id of action.ids) next[id] = { ...action.parcel };
       return next;
     }
+    case 'reset':
+      return {};
   }
 }
 
@@ -128,6 +132,11 @@ export function BulkDispatchDialog({
     setPhase('compose');
     setResults([]);
     setRowErrors({});
+    // Clear the operator-entered parcel state too, so a later open with a
+    // different selection starts clean rather than showing the prior batch's
+    // dims + stale per-order overrides.
+    setProfile(EMPTY_PARCEL);
+    dispatchOverride({ type: 'reset' });
     onOpenChange(false);
   }
 
@@ -401,9 +410,9 @@ function IneligibleRow({
       </StatusBadge>
       <span className="bulk-dispatch__row-hint">
         {reason ? DISPATCH_INELIGIBILITY_HINT[reason] : ''}{' '}
-        <a className="bulk-dispatch__link" href={`/orders/${ref}`}>
+        <Link className="bulk-dispatch__link" to={`/orders/${ref}`}>
           dispatch individually ›
-        </a>
+        </Link>
       </span>
     </div>
   );
@@ -431,26 +440,29 @@ function ResultView({
   onDownloadProtocol: (shipmentIds: string[], carrierLabel: string) => void;
   onClose: () => void;
 }): ReactElement {
-  const dispatched = results.filter((r): r is Extract<PerOrderDispatchResult, { kind: 'dispatched' }> => r.kind === 'dispatched');
+  const dispatchedCount = results.filter((r) => r.kind === 'dispatched').length;
   const failed = results.filter((r) => r.kind === 'failed').length;
   const omp = results.filter((r) => r.kind === 'omp_fulfilled').length;
 
   // Group dispatched shipments by carrier connection — the protocol endpoint
   // rejects mixed-carrier batches, so one download per carrier connection.
+  // Derive `dispatched` inside the memo so the dep is the stable `results` ref.
   const carrierGroups = useMemo(() => {
-    const dr: DispatchedResult[] = dispatched.map((r) => ({ orderId: r.orderId, shipment: r.shipment }));
+    const dr: DispatchedResult[] = results
+      .filter((r): r is Extract<PerOrderDispatchResult, { kind: 'dispatched' }> => r.kind === 'dispatched')
+      .map((r) => ({ orderId: r.orderId, shipment: r.shipment }));
     return Array.from(groupBy(dr, (d) => d.shipment.connectionId).entries()).map(([connectionId, group]) => ({
       connectionId,
       carrierLabel: getCarrierDisplayName(group[0]?.shipment.carrier ?? null) ?? 'Carrier',
       shipmentIds: group.map((g) => g.shipment.id),
     }));
-  }, [dispatched]);
+  }, [results]);
 
   return (
     <>
       <DialogTitle>Batch complete</DialogTitle>
       <DialogDescription id="bulk-dispatch-desc">
-        <strong>{dispatched.length} dispatched</strong>
+        <strong>{dispatchedCount} dispatched</strong>
         {omp > 0 ? ` · ${omp} fulfilled by store` : ''}
         {failed > 0 ? ` · ${failed} failed` : ''}
       </DialogDescription>
