@@ -55,6 +55,12 @@ import {
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
 } from './generate-label-form.schema';
+import {
+  buildDispatchItem,
+  classifyDeliveryMethod,
+  detectMissingFields,
+  resolveShippingMethod,
+} from '../lib/dispatch-input';
 
 interface GenerateLabelFormProps {
   /** The full order record — supplies recipient pre-fill + routing keys. */
@@ -84,28 +90,6 @@ function isWithinPickupPointRetryWindow(createdAtIso: string): boolean {
   return Date.now() - createdAt < PICKUP_POINT_RETRY_WINDOW_MS;
 }
 
-/**
- * Locker-method keyword tokens (#954). A delivery method whose name/id matches
- * resolves to a pickup point (paczkomat / parcel locker), not a courier
- * doorstep delivery. Heuristic until the snapshot carries the method
- * authoritatively (#952 populates `shipping.methodId`/`methodName`); a
- * platform-provided locker flag is the longer-term replacement.
- */
-const LOCKER_METHOD_RE = /paczkomat|locker|automat|punkt|pickup|one\s*box|one\s*punkt/i;
-
-/**
- * Classify the buyer's source delivery method as a locker (pickup-point) or
- * courier shipment. Returns `'unknown'` when the snapshot doesn't carry the
- * method yet (pre-#952) — callers fall back to other signals.
- */
-function classifyDeliveryMethod(
-  shipping: ParsedOrderSnapshot['shipping'],
-): 'locker' | 'courier' | 'unknown' {
-  if (!shipping) return 'unknown';
-  const haystack = `${shipping.methodName ?? ''} ${shipping.methodId}`;
-  return LOCKER_METHOD_RE.test(haystack) ? 'locker' : 'courier';
-}
-
 export function GenerateLabelForm({
   order,
   onSuccess,
@@ -118,8 +102,7 @@ export function GenerateLabelForm({
   // `pickupPoint` presence alone (which was circular). A resolved pickup point
   // or a locker-classified method ⇒ paczkomat flow.
   const methodClass = classifyDeliveryMethod(snapshot.shipping);
-  const shippingMethod: 'paczkomat' | 'kurier' =
-    hasPickupPoint || methodClass === 'locker' ? 'paczkomat' : 'kurier';
+  const shippingMethod = resolveShippingMethod(snapshot);
   // Clear courier signal: the method is known-courier, or — until the snapshot
   // carries the method (#952) — the order has a full street address but no
   // pickup point. Suppresses the locker retry hint on courier orders that will
@@ -231,7 +214,25 @@ export function GenerateLabelForm({
   }, [mutation.isPending]);
 
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
-    const input = buildGenerateLabelInput({ order, snapshot, values, shippingMethod });
+    const input: GenerateLabelInput = {
+      sourceConnectionId: order.sourceConnectionId,
+      ...buildDispatchItem({
+        order,
+        snapshot,
+        shippingMethod,
+        parcel: {
+          length: values.length,
+          width: values.width,
+          height: values.height,
+          weightGrams: values.weightGrams,
+        },
+        paczkomatId: values.paczkomatId,
+        cod:
+          values.codAmount && values.codAmount.length > 0
+            ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
+            : undefined,
+      }),
+    };
     try {
       const result = await mutation.mutateAsync(input);
       if (result.kind === 'dispatched') {
@@ -484,57 +485,6 @@ export function GenerateLabelForm({
   );
 }
 
-interface MissingField {
-  id: string;
-  message: string;
-}
-
-/**
- * Detect snapshot fields the BE `GenerateLabelDto` requires that the order
- * snapshot didn't supply. For paczkomat shipments the address block is
- * optional (parcel goes to the locker, not the buyer's home), so address-side
- * misses don't count.
- *
- * The BE rules this mirrors (`apps/api/src/shipping/http/dto/generate-label.dto.ts`):
- * - `recipient.email` — `@IsEmail()` (always required)
- * - `recipient.phone` — `@IsNotEmpty()` (always required)
- * - `recipient.address.{street,buildingNumber,city,postCode,countryCode}` —
- *   all `@IsNotEmpty()` when the address block is sent. Country code must be
- *   a valid ISO 3166-1 alpha-2 code (the BE just checks `IsString IsNotEmpty`,
- *   but downstream carriers reject anything else).
- */
-function detectMissingFields(
-  snapshot: ParsedOrderSnapshot,
-  shippingMethod: 'paczkomat' | 'kurier',
-): MissingField[] {
-  const missing: MissingField[] = [];
-  if (!snapshot.customerEmail) {
-    missing.push({ id: 'email', message: 'Buyer email is missing from the order snapshot.' });
-  }
-  const phone = snapshot.shippingAddress?.phone;
-  if (!phone || phone.trim().length === 0) {
-    missing.push({ id: 'phone', message: 'Buyer phone is missing from the shipping address.' });
-  }
-  // For courier shipments the full address is required by the carrier.
-  if (shippingMethod === 'kurier') {
-    const a = snapshot.shippingAddress;
-    if (!a?.address1) missing.push({ id: 'street', message: 'Shipping street is missing.' });
-    if (!a?.city) missing.push({ id: 'city', message: 'Shipping city is missing.' });
-    if (!a?.postalCode) missing.push({ id: 'postCode', message: 'Shipping postal code is missing.' });
-    if (!a?.country || !isIsoAlpha2(a.country)) {
-      missing.push({
-        id: 'country',
-        message: 'Shipping country must be a 2-letter ISO code (e.g. PL).',
-      });
-    }
-  }
-  return missing;
-}
-
-function isIsoAlpha2(code: string): boolean {
-  return /^[A-Za-z]{2}$/.test(code);
-}
-
 function buildRecipientPreview(snapshot: ParsedOrderSnapshot): KeyValueItem[] {
   const items: KeyValueItem[] = [];
   const a = snapshot.shippingAddress;
@@ -564,73 +514,6 @@ function buildRecipientPreview(snapshot: ParsedOrderSnapshot): KeyValueItem[] {
   }
 
   return items;
-}
-
-function buildGenerateLabelInput(args: {
-  order: OrderRecord;
-  snapshot: ParsedOrderSnapshot;
-  values: GenerateLabelFormSubmission;
-  shippingMethod: 'paczkomat' | 'kurier';
-}): GenerateLabelInput {
-  const { order, snapshot, values, shippingMethod } = args;
-  const a = snapshot.shippingAddress;
-
-  // Paczkomat shipments don't need a delivery address — the parcel goes to
-  // the locker. Skip the block entirely (tech-review BLOCKING fix — avoids
-  // sending the `'—'` building-number placeholder we used to send).
-  //
-  // For courier shipments, the pre-flight gate in `detectMissingFields`
-  // guarantees a, address1, city, postalCode, and an ISO-alpha-2 country are
-  // present by the time we reach here — submit is disabled otherwise. Still
-  // guard with `if` so a bug in the gate doesn't crash the form.
-  const address =
-    shippingMethod === 'kurier' && a && a.address1 && a.city && a.postalCode && a.country
-      ? {
-          // BE requires both `street` AND `buildingNumber` to be non-empty.
-          // OL's address1 typically carries street + number combined; pass
-          // the same string to both so the BE validator accepts the call
-          // and the carrier system sees the full address in either slot.
-          street: a.address1,
-          buildingNumber: a.address1,
-          city: a.city,
-          postCode: a.postalCode,
-          countryCode: a.country.toUpperCase(),
-        }
-      : undefined;
-
-  return {
-    sourceConnectionId: order.sourceConnectionId,
-    sourceDeliveryMethodId: snapshot.shipping?.methodId ?? null,
-    orderId: order.internalOrderId,
-    // Send the carrier-neutral intent (#979, ADR-020); the BE resolves the
-    // carrier-specific method. The form's internal point-vs-courier
-    // classification (paczkomat ⇒ pickup point, kurier ⇒ address) maps 1:1.
-    deliveryIntent: shippingMethod === 'paczkomat' ? 'pickup_point' : 'address',
-    paczkomatId: values.paczkomatId && values.paczkomatId.length > 0 ? values.paczkomatId : undefined,
-    recipient: {
-      // Address optionals are `string | null | undefined` (#939 — snapshot
-      // serialises absent fields as null); coalesce null → undefined for the
-      // recipient contract.
-      firstName: a?.firstName ?? undefined,
-      lastName: a?.lastName ?? undefined,
-      // `detectMissingFields` blocks submit when customerEmail is absent, so the
-      // `??` only fires defensively (e.g. snapshots predating #948, or hash-only
-      // PII mode where the email isn't persisted).
-      email: snapshot.customerEmail ?? '',
-      phone: a?.phone ?? '',
-      address,
-    },
-    parcel: {
-      dimensions: { length: values.length, width: values.width, height: values.height },
-      weightGrams: values.weightGrams,
-    },
-    // COD (#966) — only when the operator entered an amount. Normalise a
-    // comma decimal separator to a dot for the wire shape.
-    cod:
-      values.codAmount && values.codAmount.length > 0
-        ? { amount: values.codAmount.replace(',', '.'), currency: values.codCurrency ?? 'PLN' }
-        : undefined,
-  };
 }
 
 function collectValidationMessages(

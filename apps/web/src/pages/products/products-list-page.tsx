@@ -9,7 +9,7 @@
  *
  * @module apps/web/src/pages/products
  */
-import { useCallback, useMemo, useState, type ChangeEvent, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -21,6 +21,7 @@ import { Input } from '../../shared/ui/input';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
+import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import type { Product, ProductFilters } from '../../features/products/api/products.types';
@@ -385,40 +386,5 @@ export function ProductsListPage(): ReactElement {
         </>
       )}
     </PageLayout>
-  );
-}
-
-interface CheckboxCellProps {
-  state: 'all' | 'some' | 'none';
-  onToggle: () => void;
-  disabled?: boolean;
-  ariaLabel: string;
-  tooltip?: string;
-}
-
-function CheckboxCell({
-  state,
-  onToggle,
-  disabled = false,
-  ariaLabel,
-  tooltip,
-}: CheckboxCellProps): ReactElement {
-  return (
-    <input
-      type="checkbox"
-      checked={state === 'all'}
-      ref={(el) => {
-        if (el) el.indeterminate = state === 'some';
-      }}
-      disabled={disabled}
-      onChange={(e: ChangeEvent<HTMLInputElement>) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      // Stop click from bubbling to a row-click handler if a parent sets one.
-      onClick={(e) => { e.stopPropagation(); }}
-      aria-label={ariaLabel}
-      title={tooltip}
-    />
   );
 }
