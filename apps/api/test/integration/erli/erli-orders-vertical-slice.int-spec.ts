@@ -186,6 +186,9 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
 
   afterEach(async () => {
     erli.fake.reset();
+    // S6a/S6b opt into the dispatch-writeback gate (#1086, default-OFF); clear it
+    // so it never leaks into another test's expectations.
+    delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
     await resetTestHarness();
   });
 
@@ -449,6 +452,7 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
 
   // ── S6: status writeback (DIRECT invocation of notifyDispatched) ───────────
   it('S6a: notifyDispatched marks dispatched and OMITS tracking for an Erli-managed shipment', async () => {
+    process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
     const adapter = await getOrderSourceAdapter();
 
     await adapter.notifyDispatched({ externalOrderId: ORDER_DISPATCH_NO_TRACKING });
@@ -462,6 +466,7 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
   });
 
   it('S6b: notifyDispatched ATTACHES the waybill when a real trackingNumber + carrier is present', async () => {
+    process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
     const adapter = await getOrderSourceAdapter();
 
     const carrier: DispatchCarrierHint = { platformType: 'inpost' };
