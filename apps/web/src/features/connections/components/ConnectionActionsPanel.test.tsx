@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import { renderWithProviders, sampleConnection, createAuthenticatedSessionAdapter } from '../../../test/test-utils';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
@@ -13,11 +13,13 @@ beforeAll(() => {
   });
 });
 
+const adminSession = { sessionAdapter: createAuthenticatedSessionAdapter() };
+
 describe('ConnectionActionsPanel', () => {
   afterEach(cleanup);
 
   it('renders edit, trigger sync, and disable actions for an active connection', () => {
-    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
@@ -26,7 +28,7 @@ describe('ConnectionActionsPanel', () => {
 
   it('hides trigger sync and disable when connection is already disabled', () => {
     const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
-    renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, adminSession);
 
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
@@ -34,7 +36,7 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('links edit action to the correct URL', () => {
-    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 
     const editLink = screen.getByRole('link', { name: 'Edit' });
     expect(editLink).toHaveAttribute('href', `/connections/${sampleConnection.id}/edit`);
@@ -42,25 +44,25 @@ describe('ConnectionActionsPanel', () => {
 
   it('shows trigger sync button for non-prestashop connections too', () => {
     const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
-    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />, adminSession);
 
     expect(screen.getByRole('button', { name: /trigger sync/i })).toBeInTheDocument();
   });
 
   it('renders the PrestaShop plugin\'s "Configure webhooks" action for prestashop connections', () => {
-    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
     expect(screen.getByRole('button', { name: /configure webhooks/i })).toBeInTheDocument();
   });
 
   it('does not render the "Configure webhooks" action for non-prestashop connections', () => {
     const allegroConnection = { ...sampleConnection, platformType: 'allegro' };
-    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={allegroConnection} />, adminSession);
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
   });
 
   it('renders no plugin-specific actions for an unregistered platformType', () => {
     const unknownConnection = { ...sampleConnection, platformType: 'shopify' };
-    renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />, adminSession);
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
     // Core actions are still present.
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
@@ -68,7 +70,7 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('opens the TriggerSyncDialog when "Trigger sync…" is clicked', () => {
-    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />);
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 
     fireEvent.click(screen.getByRole('button', { name: /trigger sync/i }));
 

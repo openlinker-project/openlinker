@@ -2,7 +2,7 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { SyncJobDetailPage } from './sync-job-detail-page';
 import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 
@@ -29,7 +29,11 @@ function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>): vo
     <Routes>
       <Route path="/sync-jobs/:id" element={<SyncJobDetailPage />} />
     </Routes>,
-    { apiClient, route: '/sync-jobs/job_abc12345-1111-2222-3333-444444444444' },
+    {
+      apiClient,
+      route: '/sync-jobs/job_abc12345-1111-2222-3333-444444444444',
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    },
   );
 }
 
