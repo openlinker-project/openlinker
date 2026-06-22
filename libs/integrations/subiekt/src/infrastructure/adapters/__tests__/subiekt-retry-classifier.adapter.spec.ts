@@ -1,0 +1,59 @@
+/**
+ * Subiekt Retry Classifier Adapter — unit tests (#753)
+ *
+ * Pins the fiscal-safety pivot: an 'indeterminate' transport failure is
+ * non-retryable, a proven-'safe' one is retryable.
+ *
+ * @module libs/integrations/subiekt/src/infrastructure/adapters/__tests__
+ */
+import { SubiektRetryClassifierAdapter } from '../subiekt-retry-classifier.adapter';
+import { SubiektBridgeTransportError } from '../../../domain/exceptions/subiekt-bridge-transport.exception';
+import { SubiektInvoiceRejectedError } from '../../../domain/exceptions/subiekt-invoice-rejected.exception';
+import { SubiektUnsupportedDocumentTypeError } from '../../../domain/exceptions/subiekt-unsupported-document-type.exception';
+import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
+import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
+
+describe('SubiektRetryClassifierAdapter', () => {
+  const classifier = new SubiektRetryClassifierAdapter();
+
+  it('treats a terminal invoice rejection as non-retryable', () => {
+    expect(classifier.isNonRetryable(new SubiektInvoiceRejectedError('bad NIP'))).toBe(true);
+  });
+
+  it('treats an unsupported document type as non-retryable', () => {
+    expect(classifier.isNonRetryable(new SubiektUnsupportedDocumentTypeError('proforma'))).toBe(
+      true,
+    );
+  });
+
+  it('treats a config / SSRF-guard failure as non-retryable', () => {
+    expect(classifier.isNonRetryable(new SubiektConfigException('bad url', 'bridgeBaseUrl', 'x'))).toBe(
+      true,
+    );
+  });
+
+  it("treats an 'indeterminate' transport failure as non-retryable (fiscal safety)", () => {
+    expect(
+      classifier.isNonRetryable(new SubiektBridgeTransportError('timeout', 'indeterminate')),
+    ).toBe(true);
+  });
+
+  it("treats a proven-'safe' transport failure as retryable", () => {
+    expect(
+      classifier.isNonRetryable(new SubiektBridgeTransportError('ECONNREFUSED', 'safe')),
+    ).toBe(false);
+  });
+
+  it('treats a bridge auth failure (401/403) as non-retryable', () => {
+    expect(classifier.isNonRetryable(new SubiektBridgeAuthError(401))).toBe(true);
+    expect(classifier.isNonRetryable(new SubiektBridgeAuthError(403))).toBe(true);
+  });
+
+  it('treats an arbitrary unknown Error as NON-retryable (fiscal-safe default)', () => {
+    // For a fiscal issuance path we cannot prove an unknown throwable never
+    // reached Subiekt, so the safe default is non-retryable.
+    expect(classifier.isNonRetryable(new Error('boom'))).toBe(true);
+    expect(classifier.isNonRetryable(undefined)).toBe(true);
+    expect(classifier.isNonRetryable({ weird: true })).toBe(true);
+  });
+});
