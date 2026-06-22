@@ -296,5 +296,44 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(incoming.pickupPoint).toEqual({ id: 'POZ08A' });
     });
+
+    it('should populate pickupPoint for a three-digit paczkomat code (WAW124)', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValueOnce(baseOrder)
+        .mockResolvedValueOnce({ id: '5', address2: 'WAW124' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toEqual({ id: 'WAW124' });
+    });
+
+    it('should leave pickupPoint undefined when id_address_delivery is absent', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      const orderWithoutAddress: PrestashopOrder = { ...baseOrder, id_address_delivery: undefined };
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(orderWithoutAddress);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toBeUndefined();
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+    });
   });
 });

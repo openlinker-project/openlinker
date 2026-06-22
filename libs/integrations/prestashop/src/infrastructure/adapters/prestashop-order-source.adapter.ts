@@ -196,10 +196,10 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
-   * Paczkomat code format: three uppercase letters + two digits + optional trailing letter
-   * (e.g. POZ08A, WAW12B, KRK05). Case-insensitive match; result is uppercased.
+   * Paczkomat code format: three uppercase letters + two to four digits + optional trailing letter
+   * (e.g. POZ08A, WAW124, KRK05). Case-insensitive match; result is uppercased.
    */
-  private static readonly PACZKOMAT_CODE_RE = /^[A-Z]{3}\d{2}[A-Z]?$/i;
+  private static readonly PACZKOMAT_CODE_RE = /^[A-Z]{3}\d{2,4}[A-Z]?$/i;
 
   /**
    * Returns pickupPoint when the connection declares official_inpost module and
