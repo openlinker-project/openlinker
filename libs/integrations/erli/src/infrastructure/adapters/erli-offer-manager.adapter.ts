@@ -42,6 +42,14 @@
  * reconciliation-first / eventual-consistency posture of ADR-025 §1 (window
  * bounded by the cron cadence, not the cache TTL).
  *
+ * CAVEAT — inert in the default config (#1063 review): the PRIMARY cache writer,
+ * the `erli-offer-status-sync` reconciliation, is opt-in / default-OFF until #992
+ * (`OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=true`). Until it's enabled the only
+ * active writer is `updateOfferFields` (content-publish), so most offers never get
+ * a cached flag and `updateOfferQuantity` fails open (pushes) — i.e. frozen-stock
+ * is NOT effectively honored in the out-of-the-box config. Accepted as a pre-#992
+ * limitation; full honoring activates together with the reconciliation task.
+ *
  * Stock-restore-on-cancel (#988 / ADR-025 §4a) is DEFERRED to the orders half:
  * it needs an Erli order-cancel signal (OrderSource / inbox poll, #993) that
  * does not exist yet — no trigger is wired here (YAGNI). The restore mechanism

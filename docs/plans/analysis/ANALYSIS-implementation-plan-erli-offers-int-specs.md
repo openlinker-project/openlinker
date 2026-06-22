@@ -23,7 +23,7 @@ Test-only change — no production code, ports, DTOs, schema, or barrel exports 
 | Seam | Asserted shape | Confirmed at |
 |---|---|---|
 | `IErliHttpClient` | `get`/`post`/`patch` | `libs/integrations/erli/src/infrastructure/http/erli-http-client.interface.ts` |
-| `ErliOfferManagerAdapter` ctor | `(connectionId, adapterKey, httpClient, cache?)` | `erli-offer-manager.adapter.ts:155-165` (`identifierMapping` NOT a ctor arg) |
+| `ErliOfferManagerAdapter` ctor | `(connectionId, adapterKey, httpClient, defaultDispatchTime?, cache?)` | `erli-offer-manager.adapter.ts:156-172` (`identifierMapping` NOT a ctor arg; `cache` is the 5th arg) |
 | `CACHE_PORT_TOKEN` | exported Symbol | `libs/shared/src/cache/cache.types.ts:9` |
 | `ADAPTER_REGISTRY_TOKEN` | exported Symbol | `libs/core/src/integrations/integrations.tokens.ts:12` |
 | `ADAPTER_FACTORY_RESOLVER_TOKEN` | exported Symbol | `integrations.tokens.ts:15` |
