@@ -315,6 +315,6 @@ If a class does touch PS globals, it belongs in the real-PS integration test sui
 
 ## Related Documentation
 
-- [PrestaShop Webhook Integration](../../docs/webhooks/prestashop.md) - OpenLinker webhook integration guide
-- [PrestaShop Module Testing Guide](../../docs/prestashop-module-testing-guide.md) - Testing and troubleshooting
-- [Architecture Overview](../../docs/architecture-overview.md) - System architecture
+- [PrestaShop Webhook Integration](../../../docs/webhooks/prestashop.md) - OpenLinker webhook integration guide
+- [PrestaShop Module Testing Guide](../../../docs/prestashop-module-testing-guide.md) - Testing and troubleshooting
+- [Architecture Overview](../../../docs/architecture-overview.md) - System architecture

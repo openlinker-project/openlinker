@@ -67,18 +67,28 @@ class OpenLinkerPingModuleFrontController extends ModuleFrontController
 
         // Build a synthetic test_ping event. Fields mirror what an actionProductSave
         // event looks like so the OL intake's normal validation passes.
+        $connectionId = (string) Configuration::get('OPENLINKER_CONNECTION_ID');
+        $occurredAt = date('Y-m-d H:i:s');
+
         $event = new OutboxEvent();
-        $event->event_id = EventIdGenerator::generate();
+        $event->event_id = EventIdGenerator::generateEventId(
+            'prestashop',
+            $connectionId,
+            'test.ping',
+            'connection',
+            $connectionId,
+            $occurredAt
+        );
         $event->schema_version = 1;
         $event->provider = 'prestashop';
-        $event->connection_id = (string) Configuration::get('OPENLINKER_CONNECTION_ID');
+        $event->connection_id = $connectionId;
         // `test.` prefix is recognized by OL's webhook intake (`WebhookToJobHandler`)
         // as a verification event — skips job enqueue while still recording the
         // delivery, so the FE can show "last test ping at <ts>".
         $event->event_type = 'test.ping';
         $event->object_type = 'connection';
-        $event->external_id = $event->connection_id;
-        $event->occurred_at = date('Y-m-d H:i:s');
+        $event->external_id = $connectionId;
+        $event->occurred_at = $occurredAt;
         $event->payload_json = json_encode(['source' => 'install-verification']);
 
         try {

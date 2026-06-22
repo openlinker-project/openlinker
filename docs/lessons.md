@@ -79,6 +79,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: `libs/integrations/allegro/src/infrastructure/adapters/allegro-delivery-shipping.adapter.ts` and the Allegro HTTP client interface.
 **Source**: Allegro shipping adapter implementation.
 
+## PS module PHP fatal errors surface as opaque `testPingTriggered=false` — debug via Apache logs, not OL logs
+
+**Context**: Configuring webhooks on a PrestaShop connection via "Re-configure webhooks" in the OL UI.
+**Problem**: `ping.php` called `EventIdGenerator::generate()`, a method that does not exist — only `EventIdGenerator::generateEventId(provider, connectionId, eventType, objectType, externalId, occurredAt)` exists. PHP threw a fatal `Error` (not `Exception`), bypassed all `catch (Exception $e)` blocks, and Apache returned HTTP 500. OL's `firePing()` saw `res.ok = false` and set `testPingTriggered: false`. There is no OL-side log of the failing request — the error is entirely inside the PS module PHP process.
+**Rule**: When debugging `testPingTriggered=false` after webhook install, **first check Apache error logs** inside the PS container (`docker compose exec prestashop tail -50 /var/log/apache2/error.log`) before investigating the OL side. A PHP `Fatal error: Call to undefined method` (or any other fatal) shows up there, not in NestJS logs. When writing PS module front controllers, prefer `catch (\Throwable $e)` over `catch (Exception $e)` to also catch PHP `Error` subclasses and return a structured 5xx rather than letting Apache serve a blank 500.
+**Applies to**: `apps/prestashop-module/openlinker/controllers/front/`, `apps/prestashop-module/openlinker/classes/EventIdGenerator.php`.
+**Source**: Discovered during local webhook setup; fixed in `apps/prestashop-module/openlinker/controllers/front/ping.php`.
+
 ## Allegro buyer-placed time is `lineItems[].boughtAt`, not a top-level checkout-form field
 
 **Context**: Capturing the buyer-placed timestamp from an Allegro order.
