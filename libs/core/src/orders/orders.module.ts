@@ -13,6 +13,7 @@ import { OrderIngestionService } from './application/services/order-ingestion.se
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
+import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import {
@@ -22,6 +23,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -50,6 +52,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderItemRefResolverService,
     OrderRecordService,
     OrderDestinationRetryService,
+    OrderLifecycleRelayService,
     OrderRecordRepository,
     // Then provide token bindings using useExisting
     {
@@ -76,6 +79,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
       useExisting: OrderItemRefResolverService,
     },
+    {
+      provide: ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+      useExisting: OrderLifecycleRelayService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -84,6 +91,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_RECORD_REPOSITORY_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+    ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
