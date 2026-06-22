@@ -80,6 +80,7 @@ function baseCreateCommand(
   internalVariantId: string,
   overrides: Partial<CreateOfferCommand> = {},
 ): CreateOfferCommand {
+  const { overrides: ov, ...rest } = overrides;
   return {
     internalVariantId,
     connectionId,
@@ -87,8 +88,17 @@ function baseCreateCommand(
     stock: 7,
     publishImmediately: true,
     variantBarcode: '5901234123457',
-    overrides: { title: 'Test offer', categoryId: ALLEGRO_CATEGORY_ID },
-    ...overrides,
+    ...rest,
+    // Erli create fails closed without >=1 valid public-https image (#984); supply
+    // one so every create case clears the image gate. `overrides` is DEEP-merged
+    // so a per-test override EXTENDS these defaults (e.g. it keeps imageUrls) —
+    // pass an explicit `categoryId: undefined` to exercise the no-Allegro-category path.
+    overrides: {
+      title: 'Test offer',
+      categoryId: ALLEGRO_CATEGORY_ID,
+      imageUrls: ['https://cdn.example.com/p.jpg'],
+      ...ov,
+    },
   };
 }
 
@@ -143,9 +153,11 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
     expect(posts[0].path).toBe(pathFor(VARIANT_A));
     const body = posts[0].body as Record<string, unknown>;
     expect(body.name).toBe('Test offer');
-    expect(body.price).toEqual({ amount: 49.99, currency: 'PLN' });
+    // Price is serialised as an INTEGER in minor units (grosze) — 49.99 PLN → 4999.
+    expect(body.price).toBe(4999);
     expect(body.stock).toBe(7);
-    expect(body.barcode).toBe('5901234123457');
+    // Barcode rides the `ean` wire key (EAN/GTIN), not `barcode`.
+    expect(body.ean).toBe('5901234123457');
     expect(body.externalCategories).toEqual([{ source: 'allegro', id: ALLEGRO_CATEGORY_ID }]);
     // No grouping for a single/simple product.
     expect(body.externalVariantGroup).toBeUndefined();
@@ -299,7 +311,11 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
 
     await expect(
       adapter.createOffer(
-        baseCreateCommand(connectionId, VARIANT_A, { overrides: { title: 'No category' } }),
+        // Clear the helper's default categoryId so no Allegro taxonomy resolves
+        // (deep-merge keeps imageUrls, so the failure is the missing category, not images).
+        baseCreateCommand(connectionId, VARIANT_A, {
+          overrides: { title: 'No category', categoryId: undefined },
+        }),
       ),
     ).rejects.toBeInstanceOf(OfferCreateRejectedException);
   });
