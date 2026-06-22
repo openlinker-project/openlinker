@@ -239,6 +239,56 @@ describe('PrestashopProductPublisherAdapter', () => {
         ProductPublishRejectedException,
       );
     });
+
+    it('should emit a warning when imageUrls are provided (v1 deferral)', async () => {
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(
+        baseCommand({
+          content: { title: 'Widget', description: 'A widget', imageUrls: ['https://example.com/img.jpg'] },
+        }),
+      );
+
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('imageUrls')]),
+      );
+      expect(result.externalProductId).toBe('1');
+    });
+
+    it('should emit a warning when parameters are provided (v1 deferral)', async () => {
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+      );
+
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('parameters')]),
+      );
+    });
+
+    it('should derive result status from response.active, not cmd.status', async () => {
+      // PS echoes back the persisted state; the contract requires observing it.
+      client.createResource.mockResolvedValue({ id: '1', active: '0' }); // PS persisted draft
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(baseCommand({ status: 'published' }));
+
+      expect(result.status).toBe('draft');
+    });
+
+    it('should use rootCategoryId sentinel (2) when destinationCategoryIds is empty', async () => {
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(baseCommand({ destinationCategoryIds: [] }));
+
+      const body = client.createResource.mock.calls[0][1];
+      // '0' is not a valid PS parent; Home (id 2) is the first visible level
+      expect(body.id_category_default).toBe('2');
+    });
   });
 
   describe('provisionCategory', () => {

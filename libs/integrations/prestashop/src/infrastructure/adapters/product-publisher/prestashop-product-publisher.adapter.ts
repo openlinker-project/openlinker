@@ -24,6 +24,7 @@ import {
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  type PublishProductStatus,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
@@ -59,6 +60,31 @@ export class PrestashopProductPublisherAdapter
       cmd.platformParams?.languageId ?? (this.connection.config?.langId as number | undefined) ?? 1,
     );
 
+    // Collect v1 deferral warnings before the API call so the caller knows what was skipped.
+    const warnings: string[] = [];
+
+    // v1 deferral: PS WS images require binary multipart upload to
+    // /images/products/{id} — unlike WooCommerce's URL reference model, each
+    // image needs a separate POST with raw bytes. Not yet implemented; the
+    // operator is warned so products are not silently image-less.
+    if (cmd.content?.imageUrls != null && cmd.content.imageUrls.length > 0) {
+      warnings.push(
+        'imageUrls: image upload is not yet supported for PrestaShop in this adapter version — ' +
+          'images skipped. PrestaShop WebService images require binary multipart upload to /images/products/{id}.',
+      );
+    }
+
+    // v1 deferral: PrestaShop parameters would map to product Features + FeatureValues
+    // (separate PS WS resources requiring multi-step provisioning). Not yet
+    // implemented; the operator is warned so attributes are not silently dropped.
+    if (cmd.parameters != null && cmd.parameters.length > 0) {
+      warnings.push(
+        'parameters: category/attribute parameters are not yet supported for PrestaShop in this ' +
+          'adapter version — parameters skipped. PrestaShop features require separate ' +
+          'feature + feature_value resources.',
+      );
+    }
+
     const body = this.buildProductBody(cmd, languageId);
     const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
 
@@ -85,7 +111,15 @@ export class PrestashopProductPublisherAdapter
     const productId = String(response.id);
     await this.updateStock(productId, cmd.stock);
 
-    return { externalProductId: productId, status: cmd.status };
+    // Derive the observed status from response.active (the contract says
+    // PublishProductResult.status is the state observed after the call, not the
+    // requested state — PS always echoes back what it persisted).
+    const status: PublishProductStatus = String(response.active) === '1' ? 'published' : 'draft';
+    return {
+      externalProductId: productId,
+      status,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
@@ -143,7 +177,12 @@ export class PrestashopProductPublisherAdapter
       link_rewrite: langField(slug, languageId),
       price: cmd.price.amount.toFixed(2),
       active: cmd.status === 'published' ? '1' : '0',
-      id_category_default: cmd.destinationCategoryIds[0] ?? '0',
+      // Fall back to PS Home category (id 2) when no category is provided — '0' is
+      // not a valid PS parent and may be rejected. Home is the first visible level
+      // in the PS category tree; operators can override via connection.config.rootCategoryId.
+      id_category_default:
+        cmd.destinationCategoryIds[0] ??
+        String((this.connection.config?.rootCategoryId as number | string | undefined) ?? 2),
     };
 
     if (cmd.content?.description != null) {
@@ -200,7 +239,7 @@ export class PrestashopProductPublisherAdapter
     }
   }
 
-  private toPublishError(error: unknown): never {
+  private toPublishError(error: unknown): unknown {
     if (
       error instanceof PrestashopApiException &&
       error.statusCode != null &&
@@ -208,11 +247,11 @@ export class PrestashopProductPublisherAdapter
       error.statusCode < 500
     ) {
       const adapterKey = this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY;
-      throw new ProductPublishRejectedException(adapterKey, error.statusCode, [
+      return new ProductPublishRejectedException(adapterKey, error.statusCode, [
         { code: String(error.statusCode), message: error.message },
       ]);
     }
-    throw error;
+    return error;
   }
 
   private slugify(text: string): string {

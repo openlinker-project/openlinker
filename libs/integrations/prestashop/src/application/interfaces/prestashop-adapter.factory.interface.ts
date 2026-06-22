@@ -45,7 +45,7 @@ export interface IPrestashopAdapterFactory {
    * Create all PrestaShop adapters for a connection
    *
    * Validates connection configuration and credentials, then creates
-   * all capability adapters (ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager).
+   * all capability adapters (ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher).
    *
    * @param connection - Connection entity
    * @param identifierMapping - Identifier mapping service
