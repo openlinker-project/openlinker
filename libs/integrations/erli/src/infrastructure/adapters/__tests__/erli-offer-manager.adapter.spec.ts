@@ -1,11 +1,13 @@
 /**
- * Erli Offer Manager Adapter — unit tests (#984, #985)
+ * Erli Offer Manager Adapter — unit tests (#984, #985, #988)
  *
  * Mocks `IErliHttpClient` to verify: seller-keyed path build (validate+encode),
  * 202→'draft' create mapping, sparse PATCH for field/quantity updates, the
  * safe 4xx→OfferCreateRejectedException mapping (no responseBody leak), auth
- * propagation, hostile-id rejection, imageUrl hygiene, and the #985 Allegro
- * category/parameter reuse (source:"allegro" externalCategories/Attributes).
+ * propagation, hostile-id rejection, imageUrl hygiene, the #985 Allegro
+ * category/parameter reuse (source:"allegro" externalCategories/Attributes),
+ * and the #988 frozen-field exclusion (read-before-PATCH drops frozen fields;
+ * all-frozen → no-op; hot quantity path stays single-call).
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
@@ -19,6 +21,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
+import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { ERLI_ADAPTER_KEY } from '../../../erli.constants';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import { ErliOfferManagerAdapter } from '../erli-offer-manager.adapter';
@@ -55,7 +58,8 @@ describe('ErliOfferManagerAdapter', () => {
 
   beforeEach(() => {
     httpClient = {
-      get: jest.fn(),
+      // Default read: no frozen fields, so field-updates PATCH everything supplied.
+      get: jest.fn().mockResolvedValue({ status: 200, data: { frozenFields: [] } }),
       post: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       patch: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
     };
@@ -368,6 +372,108 @@ describe('ErliOfferManagerAdapter', () => {
         adapter.updateOfferFields({ externalOfferId: 'evil/../x', fields: { title: 'x' } }),
       ).rejects.toBeInstanceOf(ErliConfigException);
     });
+
+    describe('frozen-field exclusion (#988)', () => {
+      it('should read the live product via GET before patching', async () => {
+        await adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'New' } });
+
+        expect(httpClient.get).toHaveBeenCalledWith(`products/${VALID_ID}`);
+      });
+
+      it('should drop a supplied field that is frozen and patch the rest', async () => {
+        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: ['price'] } });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'Keep me', price: { amount: '79.00', currency: 'PLN' } },
+        });
+
+        // price frozen → dropped; name survives.
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { name: 'Keep me' });
+      });
+
+      it('should patch the full body when the GET returns an empty body (no frozen info)', async () => {
+        // The client yields `data: undefined` for a 204 / empty-body 2xx; the read
+        // must degrade to "nothing frozen" rather than throwing on current.frozenFields (#1061).
+        httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
+          name: 'T',
+          price: 500,
+        });
+      });
+
+      it('should patch every supplied field when none are frozen', async () => {
+        httpClient.get.mockResolvedValue({ status: 200, data: { frozenFields: [] } });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
+          name: 'T',
+          price: 500,
+        });
+      });
+
+      it('should issue NO patch when every supplied field is frozen', async () => {
+        httpClient.get.mockResolvedValue({
+          status: 200,
+          data: { frozenFields: ['name', 'price'] },
+        });
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).not.toHaveBeenCalled();
+      });
+
+      it('should fail open and PATCH the full body when the GET 404s in the cache-lag window', async () => {
+        // ADR-025: a just-created offer GET-404s during Erli's ~20-min cache lag (#1061).
+        httpClient.get.mockRejectedValue(new ErliApiException('not found', 404));
+
+        await adapter.updateOfferFields({
+          externalOfferId: VALID_ID,
+          fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+        });
+
+        expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, {
+          name: 'T',
+          price: 500,
+        });
+      });
+
+      it('should re-throw a transient network/5xx GET error rather than failing open', async () => {
+        // The client surfaces a transient 5xx / connection failure as
+        // ErliNetworkException (NOT ErliApiException — only deterministic 4xx
+        // become ErliApiException). Only a 404 fails open; everything else,
+        // including this realistic transient error, must re-throw so the
+        // runner's retry classifier decides (#1061).
+        httpClient.get.mockRejectedValue(new ErliNetworkException('connection reset'));
+
+        await expect(
+          adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } }),
+        ).rejects.toBeInstanceOf(ErliNetworkException);
+        expect(httpClient.patch).not.toHaveBeenCalled();
+      });
+
+      it('should re-throw a non-404 ErliApiException (e.g. 403) rather than failing open', async () => {
+        httpClient.get.mockRejectedValue(new ErliApiException('forbidden', 403));
+
+        await expect(
+          adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } }),
+        ).rejects.toBeInstanceOf(ErliApiException);
+        expect(httpClient.patch).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('updateOfferQuantity', () => {
@@ -376,6 +482,13 @@ describe('ErliOfferManagerAdapter', () => {
       await adapter.updateOfferQuantity(cmd);
 
       expect(httpClient.patch).toHaveBeenCalledWith(`products/${VALID_ID}`, { stock: 7 });
+    });
+
+    it('should NOT pre-fetch the product (hot inventory path stays single-call, #988 §3d)', async () => {
+      await adapter.updateOfferQuantity({ offerId: VALID_ID, quantity: 7 });
+
+      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.patch).toHaveBeenCalledTimes(1);
     });
 
     it('should reject a hostile offerId', async () => {
