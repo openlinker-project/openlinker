@@ -177,6 +177,42 @@ export interface DispatchResult {
   shipment?: Shipment;
 }
 
+/**
+ * Max items per `POST /shipments/bulk/generate-labels` request (BE
+ * `BULK_DISPATCH_MAX_ITEMS` / `@ArrayMaxSize`). The bulk-dispatch UI (#1109)
+ * batches one request per source connection, so this cap is enforced
+ * **per source group** at selection time.
+ */
+export const BULK_DISPATCH_MAX_ITEMS = 25;
+
+/** One order's full dispatch payload inside a bulk request — the single-order
+ * `GenerateLabelInput` minus the batch-level `sourceConnectionId`. */
+export type BulkDispatchItem = Omit<GenerateLabelInput, 'sourceConnectionId'>;
+
+/** `POST /shipments/bulk/generate-labels` request body — mirrors the BE
+ * `BulkGenerateLabelsDto`. One source connection per request; `items` ≤ 25. */
+export interface BulkGenerateLabelsInput {
+  sourceConnectionId: string;
+  items: BulkDispatchItem[];
+}
+
+/**
+ * Per-order outcome in a bulk response — mirrors the BE
+ * `PerOrderDispatchResultDto` discriminated union. `dispatched` carries the
+ * created `shipment`; `failed` carries the operator-readable `error`;
+ * `omp_fulfilled` means the destination store ships it (no OL label).
+ */
+export type PerOrderDispatchResult =
+  | { kind: 'dispatched'; orderId: string; shipment: Shipment }
+  | { kind: 'omp_fulfilled'; orderId: string }
+  | { kind: 'failed'; orderId: string; error: string };
+
+/** `POST /shipments/bulk/generate-labels` response — mirrors
+ * `BulkDispatchResultResponseDto`. Returns 200 even on partial failure. */
+export interface BulkDispatchResult {
+  results: PerOrderDispatchResult[];
+}
+
 /** `POST /shipments/:id/notify-dispatched` response (#769). */
 export interface NotifyDispatchedResult {
   shipmentId: string;

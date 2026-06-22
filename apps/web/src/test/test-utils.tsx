@@ -371,6 +371,8 @@ export function createMockApiClient(
         destinations: [],
       }),
       downloadLabel: vi.fn().mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])])),
+      bulkGenerateLabels: vi.fn().mockResolvedValue({ results: [] }),
+      downloadProtocol: vi.fn().mockResolvedValue(new Blob([new Uint8Array([0x25, 0x50])])),
       ...overrides.shipments,
     } as ApiClient['shipments'],
     syncJobs: {

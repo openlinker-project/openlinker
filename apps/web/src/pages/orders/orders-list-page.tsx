@@ -24,13 +24,15 @@
  *
  * @module pages/orders
  */
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
+import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { Chip } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -47,6 +49,9 @@ import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-s
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
+import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
+import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
+import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
   OrderRecord,
   OrderFilters,
@@ -331,8 +336,130 @@ export function OrdersListPage(): ReactElement {
   const channelLabel = (platform: string | undefined): string | undefined =>
     platform ? (CHANNEL_LABELS[platform] ?? platform) : undefined;
 
+  // Resolve a connectionId to a human channel label (never undefined) for the
+  // bulk-dispatch per-row source pill.
+  const channelLabelForBulk = (connectionId: string): string =>
+    channelLabel(platformByConnection.get(connectionId)) ?? 'Source';
+
+  // ── Bulk dispatch selection (#1109) ───────────────────────────────────────
+  // Local Set (not URL state — the URL would balloon on every checkbox toggle).
+  // The 25-cap is enforced PER SOURCE connection, since the bulk endpoint takes
+  // one source per request and the dialog fans out one call per source group.
+  const items = query.data?.items ?? [];
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  // Already-shipped orders can't be dispatched — their checkbox is disabled.
+  const isSelectable = (order: OrderRecord): boolean =>
+    order.fulfillmentState !== 'dispatched' && order.fulfillmentState !== 'delivered';
+
+  const selectableItems = useMemo(() => items.filter(isSelectable), [items]);
+  const selectedOrders = useMemo(
+    () => items.filter((o) => selectedIds.has(o.internalOrderId)),
+    [items, selectedIds],
+  );
+  // Source groups that have hit the per-source cap — their unselected rows
+  // disable (but already-selected rows stay toggleable so you can deselect).
+  const atCapSources = useMemo(
+    () => sourcesAtCap(selectedOrders, BULK_DISPATCH_MAX_ITEMS),
+    [selectedOrders],
+  );
+  // The header "select all" caps each source independently, so its target count
+  // is the capped selectable set — header reads `all` only once that's reached.
+  const cappedSelectableCount = useMemo(
+    () => capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).length,
+    [selectableItems],
+  );
+  const selectedVisibleCount = useMemo(
+    () => selectableItems.reduce((n, o) => n + (selectedIds.has(o.internalOrderId) ? 1 : 0), 0),
+    [selectableItems, selectedIds],
+  );
+  const headerCheckboxState: 'all' | 'some' | 'none' =
+    selectedVisibleCount === 0
+      ? 'none'
+      : selectedVisibleCount >= cappedSelectableCount
+        ? 'all'
+        : 'some';
+  const distinctSelectedSources = useMemo(
+    () => new Set(selectedOrders.map((o) => o.sourceConnectionId)).size,
+    [selectedOrders],
+  );
+
+  function toggleSelectRow(order: OrderRecord): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const id = order.internalOrderId;
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      // Enforce the per-source cap on add (count from current page's selection).
+      const sourceCount = items.reduce(
+        (n, o) =>
+          o.sourceConnectionId === order.sourceConnectionId && prev.has(o.internalOrderId) ? n + 1 : n,
+        0,
+      );
+      if (sourceCount >= BULK_DISPATCH_MAX_ITEMS) return prev;
+      next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectHeader(): void {
+    setSelectedIds((prev) => {
+      const allSelected =
+        selectableItems.length > 0 && selectableItems.every((o) => prev.has(o.internalOrderId));
+      if (allSelected) return new Set();
+      return new Set(
+        capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).map((o) => o.internalOrderId),
+      );
+    });
+  }
+
+  function clearSelection(): void {
+    setSelectedIds(new Set());
+  }
+
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
     () => [
+      {
+        id: 'select',
+        // Header rendered manually for the indeterminate (tri-state) checkbox.
+        header: (
+          <CheckboxCell
+            state={headerCheckboxState}
+            onToggle={toggleSelectHeader}
+            ariaLabel={
+              headerCheckboxState === 'all' ? 'Unselect all visible orders' : 'Select all visible orders'
+            }
+          />
+        ),
+        cell: (order) => {
+          if (!isSelectable(order)) {
+            return (
+              <CheckboxCell
+                state="none"
+                disabled
+                onToggle={() => {}}
+                ariaLabel={`${order.internalOrderId} is already shipped`}
+                tooltip="Already shipped"
+              />
+            );
+          }
+          const checked = selectedIds.has(order.internalOrderId);
+          const disabled = !checked && atCapSources.has(order.sourceConnectionId);
+          return (
+            <CheckboxCell
+              state={checked ? 'all' : 'none'}
+              disabled={disabled}
+              onToggle={() => { toggleSelectRow(order); }}
+              ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
+              tooltip={disabled ? `Max ${BULK_DISPATCH_MAX_ITEMS} per source` : undefined}
+            />
+          );
+        },
+        align: 'left',
+      },
       {
         id: 'order',
         header: 'Order',
@@ -521,7 +648,16 @@ export function OrdersListPage(): ReactElement {
     // mutation's pending/variables change — the last two so the inline Retry
     // reflects its in-flight state. `handleRetry` closes over the stable
     // `mutate` handle, so it doesn't need to be a dep.
-    [locale, platformByConnection, retryMutation.isPending, retryMutation.variables],
+    [
+      locale,
+      platformByConnection,
+      retryMutation.isPending,
+      retryMutation.variables,
+      // Selection state — the select column re-renders as checkboxes toggle (#1109).
+      selectedIds,
+      atCapSources,
+      headerCheckboxState,
+    ],
   );
 
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
@@ -911,8 +1047,39 @@ export function OrdersListPage(): ReactElement {
               </Button>
             </div>
           </div>
+
+          {/* Bulk dispatch (#1109) — multi-select → batch generate-labels. The
+              cap is per source; a selection may span sources (dispatched in
+              per-source groups). */}
+          <BulkActionBar
+            count={selectedOrders.length}
+            itemNoun="order"
+            hint={
+              distinctSelectedSources > 1
+                ? `${distinctSelectedSources} sources · max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                : `Max ${BULK_DISPATCH_MAX_ITEMS} per source`
+            }
+            actions={
+              <>
+                <Button tone="ghost" onClick={clearSelection}>
+                  Clear
+                </Button>
+                <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
+                  Dispatch {selectedOrders.length}
+                </Button>
+              </>
+            }
+          />
         </>
       )}
+
+      <BulkDispatchDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        orders={selectedOrders}
+        channelLabelFor={channelLabelForBulk}
+        onComplete={clearSelection}
+      />
     </PageLayout>
   );
 }

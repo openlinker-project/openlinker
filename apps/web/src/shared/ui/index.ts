@@ -69,6 +69,8 @@ export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';
 export type { Density } from './density-toggle';
 
-// ── Bulk-selection (#739) ──────────────────────────────────────────
+// ── Bulk-selection (#739, #1109) ────────────────────────────────────
 export { BulkActionBar } from './bulk-action-bar';
 export type { BulkActionBarProps } from './bulk-action-bar';
+export { CheckboxCell } from './checkbox-cell';
+export type { CheckboxCellProps } from './checkbox-cell';
