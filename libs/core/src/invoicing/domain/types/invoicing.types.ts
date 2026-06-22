@@ -104,6 +104,17 @@ export interface IssueInvoiceCommand {
 /** Query for an issued document by either internal order id or provider id. */
 export type GetInvoiceQuery = { orderId: string } | { providerInvoiceId: string };
 
+/**
+ * Connection-scoped query for OL's OWN `InvoiceRecord` projection (distinct from
+ * the provider-facing {@link GetInvoiceQuery}). The projection is keyed
+ * `(orderId, connectionId)` — the shape `InvoiceRecordRepositoryPort.findByOrderId`
+ * reads — so `IInvoiceService.getInvoice` answers from OL's store, never the adapter.
+ */
+export interface GetInvoiceByOrderQuery {
+  orderId: string;
+  connectionId: string;
+}
+
 /** Command to create-or-update the buyer as a customer in the provider. */
 export interface UpsertCustomerCommand {
   connectionId: string;
@@ -136,6 +147,21 @@ export interface CreateInvoiceRecordInput {
 /** Patch applied to an existing record after an issue / transmission attempt. */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
+  /**
+   * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
+   * The pending row is created with `providerType: ''` (the connection's
+   * declared provider is not yet known to the SVC); on a successful issue the
+   * service backfills this from the adapter result so the projection no longer
+   * misreports provider identity.
+   */
+  providerType?: string;
+  /**
+   * Authoritative document type. The pending row echoes the caller-supplied
+   * `documentType` (or `''` when the caller omits it for the adapter to derive);
+   * on a successful issue the service backfills the adapter-derived value so a
+   * keyless / no-documentType call's projection reflects the real document type.
+   */
+  documentType?: string;
   providerInvoiceId?: string | null;
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;

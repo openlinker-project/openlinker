@@ -144,6 +144,25 @@ describe('InvoiceRecordRepository', () => {
       expect(result.providerInvoiceId).toBe('FV/2026/01');
     });
 
+    it('backfills providerType and documentType from the patch onto the persisted row', async () => {
+      // The pending row was created with providerType '' and documentType '';
+      // a success patch carries the adapter's authoritative values.
+      ormRepo.findOne.mockResolvedValue(ormRow({ providerType: '', documentType: '' }));
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      const result = await repository.updateOutcome('ol_invoice_1', {
+        status: 'issued',
+        providerType: 'subiekt',
+        documentType: 'invoice',
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.providerType).toBe('subiekt');
+      expect(saved.documentType).toBe('invoice');
+      expect(result.providerType).toBe('subiekt');
+      expect(result.documentType).toBe('invoice');
+    });
+
     it('throws InvoiceRecordNotFoundException when the row is absent', async () => {
       ormRepo.findOne.mockResolvedValue(null);
       await expect(
