@@ -17,7 +17,10 @@ import type {
   IncomingOrder,
   IncomingOrderItem,
   IncomingOrderAddress,
+  OrderPickupPoint,
 } from '@openlinker/core/orders';
+import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { PrestashopAddress } from '../provisioners/prestashop-provisioner.types';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
@@ -136,6 +139,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
     const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+    const config = this.connection.config as unknown as PrestashopConnectionConfig;
+    const pickupPoint = await this.resolvePickupPoint(prestashopOrder, config);
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
       const row = orderRows[index];
@@ -186,7 +191,50 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       placedAt: placedAtIso,
       createdAt: createdAtIso,
       updatedAt: updatedAtIso,
+      pickupPoint,
     };
+  }
+
+  /**
+   * Paczkomat code format: three uppercase letters + two digits + optional trailing letter
+   * (e.g. POZ08A, WAW12B, KRK05). Case-insensitive match; result is uppercased.
+   */
+  private static readonly PACZKOMAT_CODE_RE = /^[A-Z]{3}\d{2}[A-Z]?$/i;
+
+  /**
+   * Returns pickupPoint when the connection declares official_inpost module and
+   * the delivery address carries a recognisable paczkomat code in address2.
+   * Returns undefined in all other cases (wrong config, no address, no address2,
+   * address2 not a locker code, fetch error).
+   */
+  private async resolvePickupPoint(
+    order: PrestashopOrder,
+    config: PrestashopConnectionConfig
+  ): Promise<OrderPickupPoint | undefined> {
+    if (config.inpostPsModuleType !== 'official_inpost') {
+      return undefined;
+    }
+    const addressId = order.id_address_delivery;
+    if (!addressId) {
+      return undefined;
+    }
+    let address: PrestashopAddress;
+    try {
+      address = await this.httpClient.getResource<PrestashopAddress>(
+        'addresses',
+        String(addressId)
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch delivery address ${String(addressId)} for paczkomat read on order ${String(order.id)}: ${(err as Error).message}`
+      );
+      return undefined;
+    }
+    const raw = address.address2;
+    if (!raw || !PrestashopOrderSourceAdapter.PACZKOMAT_CODE_RE.test(raw)) {
+      return undefined;
+    }
+    return { id: raw.toUpperCase() };
   }
 
   private async fetchOrderRows(orderId: string | number): Promise<PrestashopOrderRow[]> {
