@@ -13,7 +13,8 @@
  *
  * The #985 taxonomy fields (`externalCategories` / `externalAttributes`, tagged
  * `source:"allegro"`, reusing OL's already-resolved Allegro ids — ADR-025 §3)
- * are layered in here. Variant grouping (#986) is added by its own issue.
+ * and the #986 variant-grouping shapes (`externalVariantGroup` + per-variant
+ * `attributes`) are layered in here as the same single reconciliation point.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
@@ -57,6 +58,29 @@ export interface ErliExternalAttribute {
 }
 
 /**
+ * Multi-variant grouping reference (#986). `id` is the parent/base OL product id
+ * shared by every sibling variant; Erli uses it to render the N sibling products
+ * as ONE buyer-facing listing. Unlike Allegro (Product-Catalog auto-grouping off
+ * GTIN), Erli grouping is explicit via this id. Single/simple products omit it.
+ * PROVISIONAL (#992): the wire key + whether the group id is the parent product
+ * id or a dedicated group key is unconfirmed until the sandbox spike.
+ */
+export interface ErliVariantGroupRef {
+  id: string;
+}
+
+/**
+ * A variant's distinguishing axis (#986), e.g. `{ name: 'Color', value: 'Red' }`.
+ * Declared per-variant so Erli can present selectable options within the grouped
+ * listing. Flattened from OL `ProductVariant.attributes` (`Record<string,string>`)
+ * by the (deferred) core populator before it reaches the command.
+ */
+export interface ErliVariantAttribute {
+  name: string;
+  value: string;
+}
+
+/**
  * Create-product body — `POST /products/{externalId}`. Erli requires
  * `name, images, price, stock, dispatchTime` on create; the optional keys are
  * supplied when the neutral command carries them.
@@ -76,6 +100,13 @@ export interface ErliProductCreateBody {
   externalCategories?: ErliExternalCategory[];
   /** Allegro parameter reuse (#985); omitted when empty. */
   externalAttributes?: ErliExternalAttribute[];
+  /**
+   * Multi-variant grouping (#986); omitted for single/simple products so they
+   * list ungrouped. Present ⇒ this product is one sibling of a grouped listing.
+   */
+  externalVariantGroup?: ErliVariantGroupRef;
+  /** Distinguishing axes within a grouped listing (#986); omitted when empty. */
+  attributes?: ErliVariantAttribute[];
 }
 
 /**
