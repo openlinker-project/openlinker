@@ -252,8 +252,12 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
        VALUES ($1, $2, $3::jsonb, now(), now())`,
       [internalVariantId, internalProductId, JSON.stringify({})],
     );
+    // #1099: the Erli order mapper emits `productRef: { type: 'offer' }` — core's
+    // OrderItemRefResolver resolves an `offer` ref via an `Offer` identifier
+    // mapping (`Offer: <externalId> → variant`), then loads that variant. Seed the
+    // Offer mapping (not ProductVariant) so resolution lands on the seeded variant.
     await identifierMapping().createMapping(
-      CORE_ENTITY_TYPE.ProductVariant,
+      CORE_ENTITY_TYPE.Offer,
       externalProductId,
       connectionId,
       internalVariantId,
