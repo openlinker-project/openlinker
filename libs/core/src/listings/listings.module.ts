@@ -12,6 +12,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
+import { OrdersModule } from '@openlinker/core/orders';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';
 import { OfferLinkingService } from './application/services/offer-linking.service';
@@ -44,6 +45,7 @@ import { BulkListingSubmitService } from './application/services/bulk-listing-su
 import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
+import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
 import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
 import {
@@ -67,6 +69,7 @@ import {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
+  OFFER_STOCK_RESTORE_SERVICE_TOKEN,
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
   PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
   PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
@@ -97,6 +100,7 @@ export {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   SELLER_POLICIES_CACHE_TOKEN,
+  OFFER_STOCK_RESTORE_SERVICE_TOKEN,
   LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
   PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
   PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
@@ -124,6 +128,10 @@ export {
     // ListingsModule, and the documented `inventory → listings` edge is a
     // type/token-only import. App-boot integration tests verify the resolved graph.
     InventoryModule,
+    // Order-cancellation stock-restore (#1146) reads the order record via
+    // IOrderRecordService. Token/interface-only cross-context edge; OrdersModule
+    // does not import ListingsModule, so no DI cycle at the module-graph layer.
+    OrdersModule,
     MappingsModule,
     SyncModule,
   ],
@@ -154,6 +162,7 @@ export {
     OfferStatusSnapshotRepository,
     SellerPoliciesCacheRepository,
     SellerPoliciesService,
+    OfferStockRestoreService,
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -258,6 +267,10 @@ export {
       provide: SELLER_POLICIES_SERVICE_TOKEN,
       useExisting: SellerPoliciesService,
     },
+    {
+      provide: OFFER_STOCK_RESTORE_SERVICE_TOKEN,
+      useExisting: OfferStockRestoreService,
+    },
   ],
   exports: [
     OFFER_LINKING_SERVICE_TOKEN,
@@ -278,6 +291,7 @@ export {
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
+    OFFER_STOCK_RESTORE_SERVICE_TOKEN,
     LISTING_CREATION_RECORD_REPOSITORY_TOKEN,
     PRODUCT_PUBLISH_BUILDER_SERVICE_TOKEN,
     PRODUCT_PUBLISH_EXECUTION_SERVICE_TOKEN,
