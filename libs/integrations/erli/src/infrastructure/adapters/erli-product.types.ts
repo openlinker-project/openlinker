@@ -136,7 +136,18 @@ export type ErliProductPatchBody = Pick<
  * {@link ErliOfferManagerAdapter.fetchErliProduct}'s consumers are the single
  * change point. #989 reuses this same read path for offer-status reconciliation.
  */
+/**
+ * Erli-side publication status of a product/offer (read side, #989).
+ * PROVISIONAL (#992): exact value set unconfirmed; the adapter maps it to the
+ * neutral closed `OfferPublicationStatus` union.
+ */
+export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
+
 export interface ErliProductResource {
-  /** Erli field names the seller has frozen via manual panel edits. */
+  /** Erli field names the seller has frozen via manual panel edits (#988). */
   frozenFields?: string[];
+  /** Current Erli-side publication status (#989). */
+  status?: ErliProductStatus;
+  /** Rejection / inactivation detail Erli supplies, when present (#989). */
+  statusReason?: string;
 }

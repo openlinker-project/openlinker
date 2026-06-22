@@ -31,6 +31,7 @@ import { ErliConnectionConfigShapeValidatorAdapter } from './infrastructure/adap
 import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-credentials-shape-validator.adapter';
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
+import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
 
 /** Human-readable plugin identifier surfaced in dispatch errors (#573). */
 const ERLI_BRAND = 'Erli';
@@ -76,6 +77,13 @@ export function createErliPlugin(): AdapterPlugin {
         ERLI_ADAPTER_KEY,
         new ErliAuthFailureClassifierAdapter(),
       );
+      // Offer-status reconciliation scheduler task (#989). Registered
+      // unconditionally; the OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED env gate
+      // is re-checked by the scheduler at each tick (no ConfigService dependency —
+      // Erli is wired via createNestAdapterModule).
+      for (const task of buildErliSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     async createCapabilityAdapter<T>(
