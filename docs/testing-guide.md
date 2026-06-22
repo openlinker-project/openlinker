@@ -299,28 +299,14 @@ round-trip exercise-able from S-3.
 
 **When NOT to opt in**: specs that don't exercise the OL Dynamic carrier
 round-trip should leave `installOlModule` at its `false` default — keeps boot
-fast AND avoids the install path's known CI failure mode (works on macOS
-Docker-Desktop, currently flakes on the self-hosted Linux runner — root cause
-TBD). Today only `allegro-prestashop-carrier-mapping.int-spec.ts` opts in;
+fast. Today only `allegro-prestashop-carrier-mapping.int-spec.ts` opts in;
 `prestashop-harness-smoke.int-spec.ts` and `prestashop-webhook-provisioning.int-spec.ts`
 do not.
 
-**CI gate**: specs that need the OL module today gate on `process.env.CI !== 'true'`
-(see `INSTALL_OL_MODULE` in `allegro-prestashop-carrier-mapping.int-spec.ts`).
-In CI mode the test that exercises the module path (S-3 today) is reported
-as `it.skip` instead of failing. Other scenarios in the same spec (S-1, S-2)
-still run because they don't need the module. Three overrides:
+The install runs by default in all environments (local and CI). One override:
 
-- `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (developers
-  reproducing the CI behavior locally).
-- `OL_FORCE_PS_MODULE_INSTALL=true` — force-enable the install even in
-  CI. Used for **diagnostic CI runs** that intentionally exercise the
-  failing install path to root-cause it. S-3 will still likely fail under
-  this flag — the goal is to capture data via the in-container log dumps,
-  not to pass.
-
-When the install-in-CI root cause is fixed, drop the gate and re-enable
-S-3 in CI.
+- `OL_SKIP_PS_MODULE_INSTALL=true` — force-skip the install (local debugging
+  or when the PS container is pre-seeded without the module).
 
 **Diagnostic dumps on PS startup failure** (`prestashop-container.helper.ts`):
 when `verifyApacheUp` fails, the catch block emits the following via

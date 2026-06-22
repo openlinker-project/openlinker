@@ -39,7 +39,7 @@ const harness = createIntegrationTestHarness({
         verify: (req: express.Request & { rawBody?: Buffer }, _res, buf: Buffer) => {
           req.rawBody = buf;
         },
-      }),
+      })
     );
 
     // 2) Everything else: plain JSON parser, no raw capture needed.
@@ -109,6 +109,12 @@ const harness = createIntegrationTestHarness({
     OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
     OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_PRESTASHOP_POLL_SCHEDULER_ENABLED: 'false',
+    OL_PRESTASHOP_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED: 'false',
+    OL_INPOST_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    OL_DPD_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
 

@@ -9,8 +9,11 @@
  * minor units (grosze, PLN-only — no currency field), `images` is an array of
  * image objects, the barcode key is `ean`, and `dispatchTime` is a required
  * create field. This file is the SINGLE wire-shape reconciliation point — the
- * adapter imports wire shapes only from here. Category/parameters (#985) and
- * variant grouping (#986) are layered in by their own issues.
+ * adapter imports wire shapes only from here.
+ *
+ * The #985 taxonomy fields (`externalCategories` / `externalAttributes`, tagged
+ * `source:"allegro"`, reusing OL's already-resolved Allegro ids — ADR-025 §3)
+ * are layered in here. Variant grouping (#986) is added by its own issue.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
@@ -21,6 +24,36 @@ export interface ErliProductImage {
   url: string;
   isVariantImage?: boolean;
   isLifestyleImage?: boolean;
+}
+
+/**
+ * Value-kind discriminator for an `externalAttribute` (#985). v1 maps Allegro
+ * `valuesIds` → `dictionary` and free-text `values` → `string`; `number` is
+ * reserved (single change point if #992 confirms Erli wants `integer`/`float`).
+ */
+export type ErliExternalAttributeType = 'dictionary' | 'string' | 'number';
+
+/**
+ * Category reuse tagged `source:"allegro"` (#985). Erli processes only the `id`
+ * (the OL-resolved Allegro category id); names are ignored (ADR-025 §3).
+ */
+export interface ErliExternalCategory {
+  source: 'allegro';
+  id: string;
+}
+
+/**
+ * Parameter reuse tagged `source:"allegro"` (#985). `id` is the OL-resolved
+ * Allegro parameter id; `values` carries dictionary value-ids or free-text
+ * scalars depending on `type`. `unit` is type-present but unwired in v1 — the
+ * neutral command parameter entries don't carry unit metadata.
+ */
+export interface ErliExternalAttribute {
+  source: 'allegro';
+  id: string;
+  type: ErliExternalAttributeType;
+  values: string[];
+  unit?: string;
 }
 
 /**
@@ -39,6 +72,10 @@ export interface ErliProductCreateBody {
   ean?: string;
   sku?: string;
   dispatchTime?: ErliDispatchTime;
+  /** Allegro category reuse (#985); omitted when empty. */
+  externalCategories?: ErliExternalCategory[];
+  /** Allegro parameter reuse (#985); omitted when empty. */
+  externalAttributes?: ErliExternalAttribute[];
 }
 
 /**
@@ -53,3 +90,22 @@ export type ErliProductPatchBody = Pick<
   ErliProductCreateBody,
   'name' | 'price' | 'stock' | 'description'
 >;
+
+/**
+ * Provisional read-side product resource — `GET /products/{externalId}` (#988 /
+ * #992). The single field #988 needs is {@link ErliProductResource.frozenFields}:
+ * Erli marks seller-panel manual edits `frozen` (ADR-025 §4b, per-nested-field
+ * granularity), and OL must NOT overwrite a frozen field on a subsequent PATCH.
+ *
+ * PROVISIONAL: the exact wire shape of the frozen marker is unconfirmed until
+ * the #992 sandbox spike. Modelled here as a flat list of frozen Erli field
+ * names (e.g. `["price","name","description","stock"]`) — the most plausible
+ * shape and the simplest to evaluate per-field. If #992 reveals a different
+ * shape (e.g. a per-field `{ value, frozen }` object), this type and
+ * {@link ErliOfferManagerAdapter.fetchErliProduct}'s consumers are the single
+ * change point. #989 reuses this same read path for offer-status reconciliation.
+ */
+export interface ErliProductResource {
+  /** Erli field names the seller has frozen via manual panel edits. */
+  frozenFields?: string[];
+}

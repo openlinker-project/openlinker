@@ -8,6 +8,8 @@
  * @module apps/web/src/features/shipments/api
  */
 import type {
+  BulkDispatchResult,
+  BulkGenerateLabelsInput,
   DispatchResult,
   GenerateLabelInput,
   NotifyDispatchedResult,
@@ -44,6 +46,17 @@ export interface ShipmentsApi {
    *  Blob. Content type is provider-dependent (PDF / ZPL / PNG); the browser
    *  filename comes from the server's `Content-Disposition` header. */
   downloadLabel: (id: string) => Promise<Blob>;
+
+  /** `POST /shipments/bulk/generate-labels` (#1109) — batch-dispatch up to 25
+   *  orders for ONE source connection. Returns 200 with a per-order result for
+   *  every item even on partial failure (`kind: dispatched | omp_fulfilled |
+   *  failed`). The UI fans out one call per source group. */
+  bulkGenerateLabels: (input: BulkGenerateLabelsInput) => Promise<BulkDispatchResult>;
+
+  /** `POST /shipments/bulk/protocol` (#1109) — carrier handover protocol for a
+   *  set of dispatched shipments as a Blob. The BE rejects mixed-carrier batches,
+   *  so the caller passes shipment ids grouped by a single carrier connection. */
+  downloadProtocol: (shipmentIds: string[]) => Promise<Blob>;
 }
 
 interface ApiRequest {
@@ -105,6 +118,20 @@ export function createShipmentsApi(
     },
     downloadLabel(id): Promise<Blob> {
       return requestBlob(`/shipments/${encodeURIComponent(id)}/label`);
+    },
+    bulkGenerateLabels(input): Promise<BulkDispatchResult> {
+      return request<BulkDispatchResult>('/shipments/bulk/generate-labels', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
+    downloadProtocol(shipmentIds): Promise<Blob> {
+      return requestBlob('/shipments/bulk/protocol', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ shipmentIds }),
+      });
     },
   };
 }

@@ -420,6 +420,7 @@ No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Desig
 | `@radix-ui/react-tooltip` | hover + focus tooltip with delay group | `shared/ui/tooltip.tsx` |
 | `@radix-ui/react-popover` | popover positioning + dismissal | `shared/ui/popover.tsx` |
 | `@radix-ui/react-toast` | toast queue + swipe-to-dismiss | `shared/ui/toast-provider.tsx` |
+| `cmdk` | headless command-menu (keyboard nav, filtering, composable groups) | `shared/ui/command-palette.tsx` |
 
 Rules:
 

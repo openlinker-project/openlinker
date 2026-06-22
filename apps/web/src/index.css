@@ -4301,6 +4301,118 @@ a.kpi-card:focus-visible {
   z-index: 50;
 }
 
+/* ── Command Palette (#333) ──────────────────────────────────────────
+ * Overlay mounted via Radix Dialog; cmdk handles keyboard navigation.
+ * The .dialog__content card is overridden to top-centre positioning so
+ * the palette drops from the topbar rather than appearing mid-screen.
+ */
+.command-palette.dialog__content {
+  top: 72px;
+  bottom: auto;
+  transform: none;
+  left: 50%;
+  translate: -50% 0;
+  width: min(640px, calc(100vw - var(--space-8)));
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+}
+
+.command-palette__command {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border-radius: var(--radius-xl);
+}
+
+.command-palette__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.command-palette__search-icon {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.command-palette__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  padding: 0;
+}
+
+.command-palette__input::placeholder {
+  color: var(--text-muted);
+}
+
+.command-palette__list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+
+.command-palette__state {
+  padding: var(--space-4) var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Group heading */
+[cmdk-group-heading] {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.command-palette__item[aria-selected='true'],
+.command-palette__item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.command-palette__item-label {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette__item-description {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
 /* Category Parameters Step (#410) ---------------------------------- */
 
 .category-parameters-step {
@@ -7820,6 +7932,219 @@ html[data-density='compact'] .status-badge {
 /* Selected-row highlight for products list (#739) */
 .products-list__row--selected td {
   background: var(--accent-primary-soft);
+}
+
+/* ── Bulk dispatch dialog (#1109) ─────────────────────────────────────
+ * Batch generate-labels surface: shared parcel profile + per-order override
+ * rows + result view. Composes the Dialog primitive; widened for the row table.
+ */
+.bulk-dispatch {
+  width: min(880px, calc(100vw - var(--space-6)));
+  max-width: min(880px, calc(100vw - var(--space-6)));
+}
+
+.bulk-dispatch__body {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.bulk-dispatch__profile {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.bulk-dispatch__profile-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.bulk-dispatch__field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.bulk-dispatch__dims {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.bulk-dispatch__times {
+  color: var(--text-disabled);
+}
+
+.bulk-dispatch__num {
+  width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-dispatch__num--wide {
+  width: 68px;
+}
+
+.bulk-dispatch__apply {
+  margin-left: auto;
+}
+
+.bulk-dispatch__summary {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.bulk-dispatch__note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: var(--space-3) 0 0;
+}
+
+.bulk-dispatch__rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.bulk-dispatch__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bulk-dispatch__row:last-child {
+  border-bottom: 0;
+}
+
+.bulk-dispatch__row--ineligible {
+  background: var(--bg-canvas);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.bulk-dispatch__row-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bulk-dispatch__src {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-1);
+  align-self: flex-start;
+}
+
+.bulk-dispatch__ordid {
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bulk-dispatch__buyer {
+  font-size: 0.75rem;
+}
+
+.bulk-dispatch__row-error {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--status-error-fg);
+}
+
+.bulk-dispatch__row-spacer {
+  display: block;
+}
+
+.bulk-dispatch__row-hint {
+  font-size: 0.75rem;
+  color: var(--status-warning-fg);
+  grid-column: 1 / -1;
+}
+
+.bulk-dispatch__link {
+  color: var(--text-link);
+}
+
+.bulk-dispatch__results {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.bulk-dispatch__result-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bulk-dispatch__result-row:last-child {
+  border-bottom: 0;
+}
+
+.bulk-dispatch__result-detail {
+  font-size: 0.8125rem;
+}
+
+.bulk-dispatch__result-footer {
+  justify-content: space-between;
+}
+
+.bulk-dispatch__protocols {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.bulk-dispatch__protocols-label {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  /* Stack each row's controls so dims/weight don't overflow on a phone. */
+  .bulk-dispatch__row,
+  .bulk-dispatch__row--ineligible {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+  .bulk-dispatch__profile-fields {
+    gap: var(--space-3);
+  }
+  .bulk-dispatch__apply {
+    margin-left: 0;
+  }
 }
 
 /* ── Bulk listing wizard (#740) ─────────────────────────────────────

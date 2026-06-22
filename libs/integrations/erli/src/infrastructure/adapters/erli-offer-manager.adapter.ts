@@ -14,9 +14,30 @@
  * `OfferStatusReader` yet and would flip the record to `business_failure`.
  * #989 introduces `OfferStatusReader` and flips this to `'validating'`.
  *
- * Out of scope (own issues, marked seams): category/parameters #985, variant
- * grouping #986, stock/price master sourcing + frozen-field exclusion #988,
- * offer-status reconciliation #989.
+ * Category/parameter reuse (#985): the create body carries `externalCategories`
+ * + `externalAttributes` tagged `source:"allegro"`, built from the already-
+ * resolved Allegro ids riding on the command (`overrides.categoryId` + the
+ * neutral section-tagged `cmd.parameters`, #1071). Erli processes only the ids
+ * (ADR-025 §3); no Erli-native taxonomy authoring. Applies to the create path
+ * only — `buildPatchFromFields` is untouched.
+ *
+ * Frozen-field ownership (#988, ADR-025 §4b): Erli marks seller-panel manual
+ * edits `frozen`; OL must not overwrite them. `updateOfferFields` reads the
+ * current product (`fetchErliProduct`) and DROPS any supplied field whose Erli
+ * frozen-name is in `frozenFields` before issuing the PATCH (per-nested-field
+ * granularity); an all-frozen update issues no PATCH. The hot `updateOfferQuantity`
+ * inventory path deliberately does NOT pre-fetch — that would double every
+ * inventory tick's API calls; stock drift is guarded by reconciliation (#989),
+ * not a per-PATCH GET (decision recorded in the #988 plan).
+ *
+ * Stock-restore-on-cancel (#988 / ADR-025 §4a) is DEFERRED to the orders half:
+ * it needs an Erli order-cancel signal (OrderSource / inbox poll, #993) that
+ * does not exist yet — no trigger is wired here (YAGNI). The restore mechanism
+ * already exists (`updateOfferQuantity`); #993 only needs to observe the
+ * `cancelled` event and call it.
+ *
+ * Out of scope (own issues, marked seams): variant grouping #986, master-price
+ * → offer propagation (no core trigger today), offer-status reconciliation #989.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link OfferManagerPort}
@@ -40,9 +61,12 @@ import { ErliConfigException } from '../../domain/exceptions/erli-config.excepti
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
+  ErliExternalAttribute,
+  ErliExternalCategory,
   ErliProductCreateBody,
   ErliProductImage,
   ErliProductPatchBody,
+  ErliProductResource,
 } from './erli-product.types';
 
 /**
@@ -54,6 +78,25 @@ import type {
  * must change in lockstep (a mismatch fails closed: updates throw, never send).
  */
 const ERLI_PRODUCT_ID_PATTERN = /^ol_variant_[a-f0-9]{32}$/;
+
+/**
+ * Maps OL patch-body keys to the Erli field name carried in
+ * {@link ErliProductResource.frozenFields} (#988, ADR-025 §4b). Only the keys a
+ * field-update can supply are listed; an unmapped key is never treated as frozen.
+ * PROVISIONAL alongside the wire shape in `erli-product.types.ts` (#992): if the
+ * confirmed frozen-name set differs, this is the single change point.
+ */
+// OL patch-key → Erli frozen-marker wire name. Provisional #992 wire vocabulary,
+// coupled to `ErliProductResource.frozenFields` (erli-product.types.ts) — reconcile
+// both against the sandbox together. `stock` is intentionally absent: the hot
+// quantity path (`updateOfferQuantity`) does not read frozen state in v1, so a
+// `stock` entry here would be dead code asserting a guarantee no path delivers.
+// Honoring frozen-stock is deferred to #1066 (ADR-025 §4b).
+const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, string>> = {
+  price: 'price',
+  name: 'name',
+  description: 'description',
+};
 
 export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, OfferFieldUpdater {
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
@@ -98,10 +141,79 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
     const body = this.buildPatchFromFields(cmd.fields);
-    await this.httpClient.patch(this.productPath(cmd.externalOfferId), body);
+    // #988 / ADR-025 §4b: never overwrite a field the seller froze in the panel.
+    // Read the live product, drop frozen keys per-field; an empty body is a no-op.
+    let current: ErliProductResource;
+    try {
+      current = await this.fetchErliProduct(cmd.externalOfferId);
+    } catch (error) {
+      // ADR-025 is reconciliation-first: within Erli's ~20-min read-after-write
+      // cache lag a just-created offer GET-404s. Fail open — PATCH the full body
+      // (frozen state unknown, and a just-created offer has no manual freezes yet)
+      // rather than blocking the update. Re-throw anything that isn't a 404 (#1061).
+      if (error instanceof ErliApiException && error.statusCode === 404) {
+        current = {};
+      } else {
+        throw error;
+      }
+    }
+    const filtered = this.dropFrozenFields(body, current.frozenFields);
+    if (Object.keys(filtered).length === 0) {
+      this.logger.debug(
+        `Erli field-update is a no-op — all supplied fields are frozen [connectionId=${this.connectionId}]`,
+      );
+      return;
+    }
+    await this.httpClient.patch(this.productPath(cmd.externalOfferId), filtered);
+  }
+
+  /**
+   * Read the current Erli product (#988). Reuses {@link productPath}
+   * (validate+encode) so a hostile id fails closed exactly as the write paths
+   * do. #989 reuses this read path for offer-status reconciliation.
+   */
+  private async fetchErliProduct(externalId: string): Promise<ErliProductResource> {
+    const res = await this.httpClient.get<ErliProductResource>(this.productPath(externalId));
+    // The client returns `data: undefined` for a 204 / empty-body 2xx. Treat a
+    // bodyless read as "no frozen info known" (empty resource) so the PATCH still
+    // proceeds rather than throwing on `current.frozenFields` (review #1061).
+    return res.data ?? {};
+  }
+
+  /**
+   * Return a copy of the patch body with every key the seller has frozen removed
+   * (per-nested-field granularity, ADR-025 §4b). Each OL patch key maps to its
+   * Erli frozen-name via {@link PATCH_KEY_TO_ERLI_FROZEN_NAME}; a key with no
+   * mapping is never considered frozen. Dropped keys are debug-logged (no PII).
+   */
+  private dropFrozenFields(
+    body: ErliProductPatchBody,
+    frozenFields: string[] | undefined,
+  ): ErliProductPatchBody {
+    if (!frozenFields || frozenFields.length === 0) {
+      return body;
+    }
+    const frozen = new Set(frozenFields);
+    // Shallow-copy then delete frozen keys — avoids a per-key index-write cast
+    // while preserving each value's own type.
+    const result: ErliProductPatchBody = { ...body };
+    for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
+      const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
+      if (erliName !== undefined && frozen.has(erliName)) {
+        this.logger.debug(
+          `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
+        );
+        delete result[key];
+      }
+    }
+    return result;
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
+    // Frozen-stock is intentionally NOT honored here in v1: this runs on every
+    // inventory tick and skips the read-before-write GET for performance, so a
+    // seller-frozen `stock` is not detectable on this path. Deferred to #1066
+    // (ADR-025 §4b) — to be done without a per-tick GET via a cached frozen flag.
     const body: ErliProductPatchBody = { stock: cmd.quantity };
     await this.httpClient.patch(this.productPath(cmd.offerId), body);
   }
@@ -150,7 +262,37 @@ export class ErliOfferManagerAdapter implements OfferManagerPort, OfferCreator, 
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
-    // #985: category/parameter payload (source:"allegro") is assembled here.
+    // #985: reuse OL's already-resolved Allegro ids (source:"allegro").
+    const externalCategories = buildExternalCategories(cmd);
+    if (externalCategories.length > 0) {
+      body.externalCategories = externalCategories;
+    } else {
+      // ADR-025 §3: OL builds no Erli-native taxonomy in v1 — a product without
+      // resolved Allegro taxonomy cannot list on Erli. Fail closed with a clear,
+      // terminal rejection (OfferCreationExecutionService derives business_failure
+      // from OfferCreateRejectedException) rather than silently listing it
+      // untaxonomised (spec #978 §6).
+      // statusCode 0 = preflight rejection (no API call made), per the
+      // OfferCreateRejectedException contract — matches the real-API path's
+      // `error.statusCode ?? 0`.
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'category',
+          code: 'NO_ALLEGRO_TAXONOMY',
+          message:
+            'No Allegro category resolved for this product; Erli v1 requires Allegro-ID taxonomy reuse (ADR-025 §3).',
+        },
+      ]);
+    }
+    const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
+    if (droppedParamIds.length > 0) {
+      this.logger.debug(
+        `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
+      );
+    }
+    if (externalAttributes.length > 0) {
+      body.externalAttributes = externalAttributes;
+    }
     // #986: externalVariantGroup is assembled here.
     return body;
   }
@@ -302,6 +444,54 @@ function readDispatchTimeParam(
   return candidate.unit === undefined
     ? { period }
     : { period, unit: candidate.unit as ErliDispatchTime['unit'] };
+}
+
+/**
+ * Map the OL-resolved Allegro category id (`overrides.categoryId`) into the
+ * single-element `source:"allegro"` category list. Empty when absent (#985).
+ */
+function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[] {
+  const categoryId = cmd.overrides?.categoryId;
+  if (typeof categoryId === 'string' && categoryId.length > 0) {
+    return [{ source: 'allegro', id: categoryId }];
+  }
+  return [];
+}
+
+/**
+ * Flatten the neutral, section-tagged `cmd.parameters` (#1071) into one
+ * `source:"allegro"` attribute array — Erli has a single flat list, so the
+ * Allegro offer/product section split collapses away. Dictionary value-ids win
+ * over free-text scalars; range-only and empty entries are dropped in v1
+ * (#985 risk R3).
+ *
+ * Reads `cmd.parameters` — where `OfferBuilderService` puts the resolved
+ * parameters — NOT `overrides.platformParams`, which no longer carries category
+ * parameters post-#1071 (reading it produced an empty list and silently shipped
+ * offers without their Allegro attribute reuse).
+ */
+function buildExternalAttributes(cmd: CreateOfferCommand): {
+  attributes: ErliExternalAttribute[];
+  droppedParamIds: string[];
+} {
+  const attributes: ErliExternalAttribute[] = [];
+  const droppedParamIds: string[] = [];
+  for (const param of cmd.parameters ?? []) {
+    if (param.id.length === 0) {
+      continue;
+    }
+    if (param.valuesIds !== undefined && param.valuesIds.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
+    } else if (param.values !== undefined && param.values.length > 0) {
+      attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
+    } else {
+      // range-only / empty → dropped in v1 (#985 risk R3). Recorded so the
+      // caller can debug-log it (an operator-supplied parameter that never
+      // reaches Erli is otherwise undiagnosable).
+      droppedParamIds.push(param.id);
+    }
+  }
+  return { attributes, droppedParamIds };
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

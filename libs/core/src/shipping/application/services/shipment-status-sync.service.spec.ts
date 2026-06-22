@@ -112,7 +112,9 @@ describe('ShipmentStatusSyncService', () => {
       },
     );
 
-    service = new ShipmentStatusSyncService(shipments, integrations, orderRecords);
+    service = new ShipmentStatusSyncService(shipments, integrations, orderRecords, {
+      recompute: jest.fn(),
+    });
   });
 
   describe('page mechanics', () => {

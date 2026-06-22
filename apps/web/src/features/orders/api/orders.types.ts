@@ -48,6 +48,24 @@ export const SYNC_ATTEMPTS_PER_DESTINATION_CAP = 20;
 export const OrderRecordStatusValues = ['ready', 'awaiting_mapping'] as const;
 export type OrderRecordStatusValue = (typeof OrderRecordStatusValues)[number];
 
+// Per-order fulfillment rollup (#1108). Hand-mirrored from
+// `FulfillmentRollupStateValues` in `@openlinker/core/orders`. Shares spelling
+// with the FE `FulfillmentState` (lib/order-health.ts) minus the FE-only
+// `unavailable` render state (capability absent), which the BE never sends.
+export const FulfillmentRollupStateValues = [
+  'not-shipped',
+  'dispatched',
+  'delivered',
+  'failed',
+] as const;
+export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[number];
+
+// Ship-by SLA bucket (#1108). Hand-mirrored from `SlaStateValues` in
+// `@openlinker/core/orders`. BE-owned (single source of truth): the FE consumes
+// `slaState` and only renders the live countdown from `dispatchByAt`.
+export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
+export type SlaStateValue = (typeof SlaStateValues)[number];
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -67,6 +85,17 @@ export interface OrderRecord {
    * `@ApiPropertyOptional`) so older/absent payloads degrade gracefully.
    */
   dispatchByAt?: string | null;
+  /**
+   * Per-order fulfillment rollup (#1108). Optional on the FE contract so
+   * older/absent payloads degrade gracefully (treated as `not-shipped`).
+   */
+  fulfillmentState?: FulfillmentRollupStateValue;
+  /**
+   * BE-owned ship-by SLA bucket (#1108). The list badge + filter both read this
+   * (single source of truth); the FE only computes the live countdown from
+   * `dispatchByAt`. Optional for graceful degradation.
+   */
+  slaState?: SlaStateValue;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -80,6 +109,7 @@ export const OrderSortValues = [
   'items',
   'status',
   'total',
+  'fulfillment',
 ] as const;
 export type OrderSortValue = (typeof OrderSortValues)[number];
 
@@ -127,6 +157,22 @@ export interface OrderFilters {
   dir?: OrderSortDirection;
   /** SLA "breaching / overdue" filter (#927): ISO instant; keeps orders with a ship-by deadline ≤ this. */
   dueBefore?: string;
+  /** Ship-by SLA bucket filter (#1108). */
+  slaState?: SlaStateValue;
+  /** Fulfillment-rollup filter (#1108). */
+  fulfillmentState?: FulfillmentRollupStateValue;
+}
+
+/**
+ * Per-SLA-bucket counts from `GET /orders/sla-summary` (#1108). Mirrors
+ * `OrderSlaSummaryResponseDto` (BE). `total` equals the sum of the buckets.
+ */
+export interface OrderSlaSummary {
+  total: number;
+  onTrack: number;
+  atRisk: number;
+  overdue: number;
+  none: number;
 }
 
 /**

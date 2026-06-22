@@ -20,6 +20,7 @@ import type {
   OrderRecordPagination,
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
+import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
@@ -263,6 +264,13 @@ export class OrderRecordService implements IOrderRecordService {
     pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords> {
     return this.repository.findMany(filters, pagination);
+  }
+
+  async updateFulfillmentState(
+    internalOrderId: string,
+    fulfillmentState: FulfillmentRollupState
+  ): Promise<void> {
+    await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
   }
 
   /**

@@ -46,6 +46,7 @@ import {
 } from '@openlinker/core/orders';
 
 import type { IShipmentStatusSyncService } from '../interfaces/shipment-status-sync.service.interface';
+import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import type {
   ShipmentStatusSyncOptions,
   ShipmentStatusSyncResult,
@@ -61,7 +62,10 @@ import {
   TerminalShipmentStatusValues,
 } from '../../domain/types/shipment-status.types';
 import type { UpdateShipmentInput } from '../../domain/types/shipment.types';
-import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+import {
+  ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
+  SHIPMENT_REPOSITORY_TOKEN,
+} from '../../shipping.tokens';
 
 const SHIPPING_PROVIDER_MANAGER_CAPABILITY = 'ShippingProviderManager';
 const ORDER_PROCESSOR_MANAGER_CAPABILITY = 'OrderProcessorManager';
@@ -99,6 +103,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     private readonly integrations: IIntegrationsService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
+    private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
   ) {}
 
   async sync(
@@ -141,6 +147,10 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
         if (Object.keys(patch).length > 0) {
           await this.shipments.update(shipment.id, patch);
           updated += 1;
+          // A terminal-status change moves the order rollup (#1108) — reproject.
+          if (patch.status) {
+            await this.fulfillmentProjection.recompute(shipment.orderId);
+          }
         }
         if (didPush) {
           propagated += 1;
@@ -197,6 +207,9 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const { patch } = await this.buildPatchAndMaybePush(shipment, snapshot);
     if (Object.keys(patch).length > 0) {
       await this.shipments.update(shipment.id, patch);
+      if (patch.status) {
+        await this.fulfillmentProjection.recompute(shipment.orderId);
+      }
     }
   }
 

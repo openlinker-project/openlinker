@@ -7,6 +7,8 @@
  * @module libs/core/src/orders/domain/types
  */
 import type { OrderRecord } from '../entities/order-record.entity';
+import type { SlaState } from './order-sla.types';
+import type { FulfillmentRollupState } from './order-fulfillment.types';
 
 /**
  * Sync status filter values for order queries
@@ -128,10 +130,23 @@ export interface OrderRecordFilters {
    */
   dueBefore?: Date;
   /**
-   * Result ordering (#927/#944). Maps to a SQL `ORDER BY` by
+   * Ship-by SLA bucket filter (#1108). Encodes the {@link SlaState} rule in SQL
+   * (incl. the "cleared once shipped" guard via `fulfillmentState`), evaluated
+   * against the repository's server `now`. Matches the badge the FE renders from
+   * the response `slaState` (single source of truth).
+   */
+  slaState?: SlaState;
+  /**
+   * Fulfillment-rollup filter (#1108). NULL column ≡ `not-shipped`, so the
+   * `not-shipped` filter also matches rows with no stored value.
+   */
+  fulfillmentState?: FulfillmentRollupState;
+  /**
+   * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
    * last) is the list's triage default; the JSONB-derived keys (`customer`,
-   * `items`, `status`, `total`) back the clickable sortable columns (#944).
+   * `items`, `status`, `total`) back the clickable sortable columns (#944);
+   * `fulfillment` orders by the rollup ordinal (#1108).
    */
   sort?: OrderRecordSort;
   /**
@@ -155,6 +170,7 @@ export const OrderRecordSortValues = [
   'items',
   'status',
   'total',
+  'fulfillment',
 ] as const;
 export type OrderRecordSort = (typeof OrderRecordSortValues)[number];
 

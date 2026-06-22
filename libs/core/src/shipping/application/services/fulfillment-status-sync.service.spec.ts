@@ -92,6 +92,7 @@ describe('FulfillmentStatusSyncService', () => {
       persistIncomingSnapshot: jest.fn(),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
+      updateFulfillmentState: jest.fn(),
     };
 
     routing = {
@@ -118,6 +119,7 @@ describe('FulfillmentStatusSyncService', () => {
       orderRecords,
       routing,
       integrations,
+      { recompute: jest.fn() },
     );
   });
 

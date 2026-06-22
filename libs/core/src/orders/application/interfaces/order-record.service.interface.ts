@@ -15,6 +15,7 @@ import type {
   OrderRecordPagination,
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
+import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 
 export interface IOrderRecordService {
   /**
@@ -91,4 +92,15 @@ export interface IOrderRecordService {
     filters: OrderRecordFilters,
     pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords>;
+
+  /**
+   * Push a per-order fulfillment rollup (#1108) onto the order record. The
+   * cross-context surface the shipping context calls after a shipment-status
+   * change (`shipping → orders`, via this service — never the repository port).
+   * Best-effort/idempotent; a missing order row is a no-op.
+   */
+  updateFulfillmentState(
+    internalOrderId: string,
+    fulfillmentState: FulfillmentRollupState
+  ): Promise<void>;
 }
