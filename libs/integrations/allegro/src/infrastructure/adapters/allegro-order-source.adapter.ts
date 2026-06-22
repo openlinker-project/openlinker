@@ -113,10 +113,7 @@ export class AllegroOrderSourceAdapter
       }
 
       // event.type === 'cancelled'
-      await this.httpClient.put(
-        `/order/checkout-forms/${event.externalOrderId}/fulfillment`,
-        { status: ALLEGRO_FULFILLMENT_STATUS_CANCELLED },
-      );
+      await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
       return { outcome: 'applied' };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -144,10 +141,7 @@ export class AllegroOrderSourceAdapter
     // 1. Mark sent. Treat a 409 (stale optimistic-lock revision / already-sent)
     //    as success for idempotency. `needs-sandbox-probe`: exact 409 semantics.
     try {
-      await this.httpClient.put(
-        `/order/checkout-forms/${externalOrderId}/fulfillment`,
-        { status: ALLEGRO_FULFILLMENT_STATUS_SENT },
-      );
+      await this.putFulfillment(externalOrderId, ALLEGRO_FULFILLMENT_STATUS_SENT);
     } catch (error) {
       if (this.isAlreadySentOrStale(error)) {
         this.logger.debug(
@@ -170,6 +164,16 @@ export class AllegroOrderSourceAdapter
         throw this.toRejected(error, `attach waybill to Allegro order ${externalOrderId}`);
       }
     }
+  }
+
+  /**
+   * Set the Allegro order's fulfillment status. The single wire shape behind
+   * both the `dispatched` mark-sent step and the `cancelled` writeback — callers
+   * own their own success/failure semantics (idempotent-409 for SENT, surface for
+   * CANCELLED), so this helper stays a thin one-liner with no error handling.
+   */
+  private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
+    await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
   }
 
   /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */
