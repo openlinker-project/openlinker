@@ -9,24 +9,31 @@
  * surfaced; one participant's failure never blocks the others, and a failure is
  * never silently dropped.
  *
- * This slice (#1158) wires the **inbound cancel → destination** direction:
- * targets are the order's destination (`OrderProcessorManager`) connections.
- * Generalising target resolution to source participants (for dispatch / shop→
- * shop) lands with the bidirectional slices (#1160/#1161).
+ * Targets are resolved **role-agnostically** (#1159): each participant's order
+ * capability (`OrderProcessorManager` for shops, `OrderSource` for marketplaces)
+ * is tried in turn and narrowed via the guard — so the relay reaches both
+ * destinations and source marketplaces (e.g. Allegro) with no platform-type
+ * branching.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderLifecycleRelayService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  CapabilityNotSupportedException,
+} from '@openlinker/core/integrations';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
-import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
-import { isOrderStatusWriteback } from '../../domain/ports/capabilities/order-status-writeback.capability';
+import {
+  isOrderStatusWriteback,
+  type OrderStatusWriteback,
+} from '../../domain/ports/capabilities/order-status-writeback.capability';
 import type { OrderLifecycleEvent } from '../../domain/types/order-lifecycle-event.types';
 import type {
   IOrderLifecycleRelayService,
@@ -35,7 +42,9 @@ import type {
   OrderLifecycleRelayTargetResult,
 } from '../interfaces/order-lifecycle-relay.service.interface';
 
-const ORDER_PROCESSOR_MANAGER_CAPABILITY = 'OrderProcessorManager';
+// Order-participant capabilities the relay can write back to, in resolution
+// preference order: a destination shop first, then a source marketplace.
+const ORDER_PARTICIPANT_CAPABILITIES = ['OrderProcessorManager', 'OrderSource'] as const;
 
 @Injectable()
 export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
@@ -75,27 +84,27 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
     connectionId: string,
     externalOrderId: string
   ): Promise<OrderLifecycleRelayTargetResult> {
-    let adapter: OrderProcessorManagerPort;
+    let resolved: { adapter: OrderStatusWriteback; capability: string } | null;
     try {
-      adapter = await this.integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
-        connectionId,
-        ORDER_PROCESSOR_MANAGER_CAPABILITY
-      );
+      resolved = await this.resolveWriteback(connectionId);
     } catch (error) {
+      // Connection-level failure (disabled / not-found / construction) — distinct
+      // from a plain capability mismatch; surface it rather than masking it.
       this.logger.warn(
-        `Lifecycle relay: could not resolve OrderProcessorManager adapter for connection ` +
+        `Lifecycle relay: could not resolve an order adapter for connection ` +
           `${connectionId} (order ${input.internalOrderId}): ${this.message(error)}`
       );
       return { connectionId, outcome: 'unsupported', detail: 'adapter unresolved' };
     }
 
-    if (!isOrderStatusWriteback(adapter)) {
+    if (!resolved) {
       this.logger.warn(
-        `Lifecycle relay: connection ${connectionId} does not implement OrderStatusWriteback — ` +
+        `Lifecycle relay: connection ${connectionId} exposes no order-writeback capability — ` +
           `skipping '${input.event.type}' for order ${input.internalOrderId}`
       );
-      return { connectionId, outcome: 'unsupported', detail: 'OrderStatusWriteback not implemented' };
+      return { connectionId, outcome: 'unsupported', detail: 'no order-writeback capability' };
     }
+    const { adapter, capability } = resolved;
 
     const event: OrderLifecycleEvent =
       input.event.type === 'dispatched'
@@ -111,11 +120,11 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
       const result = await adapter.write(event);
       if (result.outcome === 'applied') {
         this.logger.log(
-          `Lifecycle relay: '${input.event.type}' applied to ${connectionId} for order ${input.internalOrderId}`
+          `Lifecycle relay: '${input.event.type}' applied to ${connectionId} (${capability}) for order ${input.internalOrderId}`
         );
       } else {
         this.logger.warn(
-          `Lifecycle relay: '${input.event.type}' ${result.outcome} on ${connectionId} for order ` +
+          `Lifecycle relay: '${input.event.type}' ${result.outcome} on ${connectionId} (${capability}) for order ` +
             `${input.internalOrderId}${result.detail ? ` — ${result.detail}` : ''}`
         );
       }
@@ -123,12 +132,44 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
     } catch (error) {
       const detail = this.message(error);
       this.logger.warn(
-        `Lifecycle relay: '${input.event.type}' failed on ${connectionId} for order ` +
+        `Lifecycle relay: '${input.event.type}' failed on ${connectionId} (${capability}) for order ` +
           `${input.internalOrderId}: ${detail}`,
         error instanceof Error ? error.stack : undefined
       );
       return { connectionId, outcome: 'rejected', detail };
     }
+  }
+
+  /**
+   * Resolve the participant's order-writeback adapter, role-agnostically (#1159).
+   * Tries each order-participant capability (destination first, then source); a
+   * capability mismatch on this connection falls through to the next candidate,
+   * while a connection-level failure (disabled / not-found) propagates so the
+   * caller surfaces it. Returns null when no order capability on the connection
+   * implements `OrderStatusWriteback`.
+   */
+  private async resolveWriteback(
+    connectionId: string
+  ): Promise<{ adapter: OrderStatusWriteback; capability: string } | null> {
+    for (const capability of ORDER_PARTICIPANT_CAPABILITIES) {
+      try {
+        const adapter = await this.integrations.getCapabilityAdapter<object>(
+          connectionId,
+          capability
+        );
+        if (isOrderStatusWriteback(adapter)) {
+          return { adapter, capability };
+        }
+      } catch (error) {
+        // CapabilityNotEnabledException extends CapabilityNotSupportedException,
+        // so this catches both: the connection just isn't this role — try next.
+        if (error instanceof CapabilityNotSupportedException) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    return null;
   }
 
   private message(error: unknown): string {
