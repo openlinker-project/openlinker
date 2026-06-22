@@ -171,7 +171,7 @@ jobs:
             || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
-        timeout-minutes: 15 # Integration tests can take longer due to container startup
+        timeout-minutes: 25 # PS container boot + module install + cache:warmup adds ~20-30s on Linux (#716)
         # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
       - name: Run worker integration tests
         # Runs even if the API suite failed (!cancelled) so a worker-specific

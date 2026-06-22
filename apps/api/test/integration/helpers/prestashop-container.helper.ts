@@ -134,12 +134,14 @@ export interface StartPrestashopContainerOptions {
    * container between `waitForPrestashopInstall` and `applyPrestashopFixture`.
    * Required for specs that exercise the OL Dynamic carrier round-trip (#692).
    *
-   * Default `false` — keeps boot fast for specs that don't need it AND avoids
-   * a known CI-environment failure mode where the install transition leaves
-   * the PS WS returning HTTP 500 on the subsequent `verifyApacheUp` probe
-   * (works locally on macOS Docker-Desktop, fails on the self-hosted Linux
-   * runner — root cause TBD). Specs that opt in should expect this risk and
-   * handle CI flakes accordingly.
+   * Default `false` — keeps boot fast for specs that don't need it.
+   *
+   * The Linux/OverlayFS HTTP 500 that previously made this flag risky in CI
+   * is fixed in #716: after the install cycle, `cache:clear --no-warmup` +
+   * `cache:warmup` rebuilds the Symfony DI container with the module's
+   * services included, and `chown -R www-data:www-data /var/www/html/var/`
+   * fixes ownership so PHP (www-data) can write to the cache on subsequent
+   * requests. Specs that set this flag should be stable on Linux runners.
    */
   installOlModule?: boolean;
 }
@@ -159,7 +161,7 @@ export interface StartPrestashopContainerOptions {
  *   7. Return container details + cleanup.
  */
 export async function startPrestashopContainer(
-  options: StartPrestashopContainerOptions = {},
+  options: StartPrestashopContainerOptions = {}
 ): Promise<PrestashopTestContainer> {
   // Track started resources so we can tear them down on a partial-start
   // failure. `beforeAll` swallows post-throw teardown (Jest skips `afterAll`
@@ -371,7 +373,7 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
       if (response.status >= 300 && response.status < 400) {
         lastRedirectLocation = response.headers.get('location');
         lastError = new Error(
-          `PS WS probe HTTP ${response.status} → Location: ${lastRedirectLocation ?? '<none>'}`,
+          `PS WS probe HTTP ${response.status} → Location: ${lastRedirectLocation ?? '<none>'}`
         );
       } else {
         // Slurp body for 4xx/5xx. Cap to 8KB — a Symfony stack trace fits
@@ -392,7 +394,7 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
   if (lastErrorBody) {
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(
-      `[prestashop-container] last failed probe response body (${lastErrorBody.length} bytes):\n${lastErrorBody}`,
+      `[prestashop-container] last failed probe response body (${lastErrorBody.length} bytes):\n${lastErrorBody}`
     );
   }
 
@@ -400,7 +402,7 @@ async function verifyApacheUp(baseUrl: string, apiKey: string): Promise<void> {
     `PrestaShop Apache did not respond OK to authenticated WS probe within 60s. ` +
       `Last error: ${formatError(lastError)}` +
       (lastRedirectLocation ? ` (redirect target: ${lastRedirectLocation})` : '') +
-      `. Container log buffers will be dumped by the caller for diagnosis.`,
+      `. Container log buffers will be dumped by the caller for diagnosis.`
   );
 }
 
@@ -460,7 +462,7 @@ function dumpLogBuffer(label: string, buf: LogBuffer): void {
   if (!buf.attached) {
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(
-      `${tag} log buffer never attached${buf.attachError ? ` (${formatError(buf.attachError)})` : ''}`,
+      `${tag} log buffer never attached${buf.attachError ? ` (${formatError(buf.attachError)})` : ''}`
     );
     return;
   }
@@ -484,7 +486,7 @@ function dumpLogBuffer(label: string, buf: LogBuffer): void {
  */
 function dockerLogsFallback(
   label: string,
-  container: StartedTestContainer | StartedMySqlContainer,
+  container: StartedTestContainer | StartedMySqlContainer
 ): void {
   const tag = `[${label}-container fallback]`;
   let id: string;
@@ -504,9 +506,12 @@ function dockerLogsFallback(
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker logs --tail 200 ${id}:\n${out.toString('utf8')}`);
   } catch (err) {
-    const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
+    const stderr =
+      err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
-    console.error(`${tag} docker logs failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
+    console.error(
+      `${tag} docker logs failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`
+    );
   }
 }
 
@@ -516,7 +521,7 @@ function dockerLogsFallback(
  */
 function dockerInspectFallback(
   label: string,
-  container: StartedTestContainer | StartedMySqlContainer,
+  container: StartedTestContainer | StartedMySqlContainer
 ): void {
   const tag = `[${label}-container fallback]`;
   let id: string;
@@ -539,14 +544,17 @@ function dockerInspectFallback(
       {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 5_000,
-      },
+      }
     );
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(`${tag} docker inspect ${id}: ${out.toString('utf8').trim()}`);
   } catch (err) {
-    const stderr = err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
+    const stderr =
+      err instanceof Error && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : '';
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
-    console.error(`${tag} docker inspect failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`);
+    console.error(
+      `${tag} docker inspect failed: ${formatError(err)}${stderr ? `\nstderr: ${stderr}` : ''}`
+    );
   }
 }
 
@@ -585,18 +593,29 @@ async function dumpPrestashopAppLogs(prestashop: StartedTestContainer): Promise<
     'echo "--- php -v ---"',
     'php -v 2>&1 || true',
   ].join('; ');
+  // OverlayFS on WSL2 can block reads on the container filesystem while a
+  // concurrent cache:warmup write is in flight, causing exec to hang
+  // indefinitely. Cap the dump at 30 s so beforeAll fails fast with a
+  // diagnostic rather than timing out the whole suite.
+  let timeoutHandle: NodeJS.Timeout | undefined;
   try {
-    const result = await prestashop.exec(['sh', '-c', script]);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error(`${tag} timed out after 30 s — OverlayFS busy?`)),
+        30_000
+      );
+    });
+    const result = await Promise.race([prestashop.exec(['sh', '-c', script]), timeoutPromise]);
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
     console.error(
       `${tag} exit=${result.exitCode}\nstdout:\n${result.stdout}` +
-        (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
+        (result.stderr ? `\nstderr:\n${result.stderr}` : '')
     );
   } catch (err) {
     // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
-    console.error(
-      `${tag} exec failed (container may have already exited): ${formatError(err)}`,
-    );
+    console.error(`${tag} exec failed (container may have already exited): ${formatError(err)}`);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
 
@@ -607,7 +626,7 @@ function formatError(err: unknown): string {
 
 async function startMysql(
   network: StartedNetwork,
-  logBuffer: LogBuffer,
+  logBuffer: LogBuffer
 ): Promise<StartedMySqlContainer> {
   return await new MySqlContainer(MYSQL_IMAGE)
     .withDatabase(MYSQL_DATABASE)
@@ -626,7 +645,7 @@ async function startMysql(
 async function startPrestashop(
   network: StartedNetwork,
   logBuffer: LogBuffer,
-  dataDir: string,
+  dataDir: string
 ): Promise<StartedTestContainer> {
   return await new GenericContainer(PRESTASHOP_IMAGE)
     .withNetwork(network)
@@ -732,7 +751,7 @@ interface InstallOpenLinkerModuleOptions {
  * mode reaches the CI log without an interactive debugger.
  */
 async function installOpenLinkerModuleIntoContainer(
-  options: InstallOpenLinkerModuleOptions,
+  options: InstallOpenLinkerModuleOptions
 ): Promise<void> {
   const { prestashop, mysqlAddress, sharedSecret, modulePath } = options;
 
@@ -744,14 +763,49 @@ async function installOpenLinkerModuleIntoContainer(
   // 2. Apache (www-data) needs RW on the module dir for the install-time
   //    logo copy (`@copy(.../carrier.jpg, _PS_SHIP_IMG_DIR_)`). Files arrive
   //    owned by root via the docker-cp shape testcontainers uses.
-  await runExecOrThrow(prestashop, ['chown', '-R', 'www-data:www-data', '/var/www/html/modules/openlinker']);
+  await runExecOrThrow(prestashop, [
+    'chown',
+    '-R',
+    'www-data:www-data',
+    '/var/www/html/modules/openlinker',
+  ]);
 
   // 3. Install cycle. First `install` registers the module; the
   //    `uninstall + install` follow-up forces the legacy `install()` hook
   //    to run (PS 9.0.2 Symfony installer flake — see docblock).
-  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'], { workingDir: '/var/www/html' });
-  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'uninstall', 'openlinker'], { workingDir: '/var/www/html' });
-  await runExecOrThrow(prestashop, ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'], { workingDir: '/var/www/html' });
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'],
+    { workingDir: '/var/www/html' }
+  );
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'prestashop:module', 'uninstall', 'openlinker'],
+    { workingDir: '/var/www/html' }
+  );
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'prestashop:module', 'install', 'openlinker'],
+    { workingDir: '/var/www/html' }
+  );
+
+  // On Linux (OverlayFS), the Symfony compiled DI container survives the
+  // install cycle and causes HTTP 500 on the next /api/carriers probe (#716).
+  // Clearing and re-warming forces the module's services into the container.
+  await runExecOrThrow(
+    prestashop,
+    ['php', 'bin/console', 'cache:clear', '--no-warmup', '--env=prod'],
+    { workingDir: '/var/www/html' }
+  );
+  await runExecOrThrow(prestashop, ['php', 'bin/console', 'cache:warmup', '--env=prod'], {
+    workingDir: '/var/www/html',
+  });
+  // cache:warmup runs as root (docker exec default), so var/cache/prod/ is
+  // owned root:root 755. PHP (www-data) cannot write there — the lazy compile
+  // of WebserviceContainer.php fails with EPERM on the first /api/* request,
+  // producing HTTP 500. Fix ownership of the whole var/ tree so www-data can
+  // write to any sub-directory that cache:warmup created.
+  await runExecOrThrow(prestashop, ['chown', '-R', 'www-data:www-data', '/var/www/html/var/']);
 
   // 4. Seed the HMAC secret. setDefaultConfiguration() set it to '' on install.
   const conn = await createConnection({
@@ -773,24 +827,24 @@ async function installOpenLinkerModuleIntoContainer(
     // below would still see the empty original.
     const [updateResult] = await conn.execute<ResultSetHeader>(
       `UPDATE ps_configuration SET value = ?, date_upd = NOW() WHERE name = 'OPENLINKER_WEBHOOK_SECRET'`,
-      [sharedSecret],
+      [sharedSecret]
     );
     if (updateResult.affectedRows === 0) {
       throw new Error(
         `OL module install: no OPENLINKER_WEBHOOK_SECRET row in ps_configuration after install. ` +
-          `Expected setDefaultConfiguration() to have created it. Check the install-cycle output above.`,
+          `Expected setDefaultConfiguration() to have created it. Check the install-cycle output above.`
       );
     }
 
     // 5. Pre-flight: verify the seed actually landed. Cheap belt-and-braces.
     const [secretRows] = await conn.execute<(RowDataPacket & { value: string })[]>(
-      `SELECT value FROM ps_configuration WHERE name = 'OPENLINKER_WEBHOOK_SECRET' LIMIT 1`,
+      `SELECT value FROM ps_configuration WHERE name = 'OPENLINKER_WEBHOOK_SECRET' LIMIT 1`
     );
     if (secretRows.length === 0 || secretRows[0].value !== sharedSecret) {
       throw new Error(
         `OL module install: OPENLINKER_WEBHOOK_SECRET seed verification failed. ` +
           `Expected ${sharedSecret.length}-char secret, got ${secretRows[0]?.value?.length ?? 0} chars. ` +
-          `Configuration::updateValue() semantics may have drifted in this PS version.`,
+          `Configuration::updateValue() semantics may have drifted in this PS version.`
       );
     }
 
@@ -798,23 +852,23 @@ async function installOpenLinkerModuleIntoContainer(
     // produced. If either is missing, the install-cycle hack didn't take and
     // S-3 would 401 / 500 cryptically downstream.
     const [carrierRows] = await conn.execute<(RowDataPacket & { id_carrier: number })[]>(
-      `SELECT id_carrier FROM ps_carrier WHERE external_module_name = 'openlinker' AND active = 1 AND deleted = 0 LIMIT 1`,
+      `SELECT id_carrier FROM ps_carrier WHERE external_module_name = 'openlinker' AND active = 1 AND deleted = 0 LIMIT 1`
     );
     if (carrierRows.length === 0) {
       throw new Error(
         `OL module install: no ps_carrier row with external_module_name='openlinker' after install. ` +
           `The legacy install() hook didn't run — Symfony installer flake (see docblock); ` +
-          `try increasing the uninstall+install cycle to two iterations.`,
+          `try increasing the uninstall+install cycle to two iterations.`
       );
     }
     const [tableRows] = await conn.execute<(RowDataPacket & { TABLE_NAME: string })[]>(
       `SELECT TABLE_NAME FROM information_schema.TABLES
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_openlinker_cart_shipping' LIMIT 1`,
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ps_openlinker_cart_shipping' LIMIT 1`
     );
     if (tableRows.length === 0) {
       throw new Error(
         `OL module install: ps_openlinker_cart_shipping table missing after install. ` +
-          `Same root cause as the carrier-row check above — the legacy install() hook did not run.`,
+          `Same root cause as the carrier-row check above — the legacy install() hook did not run.`
       );
     }
   } finally {
@@ -838,7 +892,7 @@ async function installOpenLinkerModuleIntoContainer(
 async function runExecOrThrow(
   prestashop: StartedTestContainer,
   command: string[],
-  opts?: { workingDir?: string; timeoutMs?: number },
+  opts?: { workingDir?: string; timeoutMs?: number }
 ): Promise<void> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
   let timeoutHandle: NodeJS.Timeout | undefined;
@@ -848,8 +902,8 @@ async function runExecOrThrow(
         new Error(
           `Command timed out after ${timeoutMs}ms in PS container: ${command.join(' ')}\n` +
             `Underlying exec may still be running inside the container; check docker logs ` +
-            `for the PS PHP error log if this is a hang on install.`,
-        ),
+            `for the PS PHP error log if this is a hang on install.`
+        )
       );
     }, timeoutMs);
   });
@@ -861,7 +915,7 @@ async function runExecOrThrow(
     if (result.exitCode !== 0) {
       throw new Error(
         `Command failed in PS container (exit=${result.exitCode}): ${command.join(' ')}\n` +
-          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`
       );
     }
     // In CI, dump the success-path output too. The install/uninstall/install
@@ -874,7 +928,7 @@ async function runExecOrThrow(
       // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
       console.error(
         `[prestashop-container exec] ${command.join(' ')} → exit=0\nstdout:\n${result.stdout}` +
-          (result.stderr ? `\nstderr:\n${result.stderr}` : ''),
+          (result.stderr ? `\nstderr:\n${result.stderr}` : '')
       );
     }
   } finally {
