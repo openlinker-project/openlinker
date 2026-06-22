@@ -40,7 +40,8 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
       await this.orderIngestion.syncOrderFromSource(
         job.connectionId,
         payload.externalOrderId,
-        payload.sourceEventId
+        payload.sourceEventId,
+        payload.eventType
       );
 
       return { outcome: 'ok' };
