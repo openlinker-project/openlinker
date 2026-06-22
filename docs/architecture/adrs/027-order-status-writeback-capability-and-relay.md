@@ -1,6 +1,6 @@
 # ADR-027: Order status writeback capability & lifecycle relay
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-06-22
 - **Authors**: @piotrswierzy
 
