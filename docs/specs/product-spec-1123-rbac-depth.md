@@ -217,3 +217,4 @@ Product-direction risks only (engineering risks → implementation plans):
   - #1127 — Demo posture: `OL_DEMO_MODE` flag, sandbox seed script, demo UX (blocked by #1124, #1125)
 
   Parent #1123 closed as `completed` (refinement process done; impl tracked on children). Per-issue next step: `/plan` (non-trivial: #1124 redaction enforcement point, #1125 user-status migration) or `/work` (trivial: #1126).
+- **2026-06-22 (post-Phase E)** — UI-bearing children that introduce **new screens** (#1125 registration / approval-queue / user-management; #1127 demo banner + demo entry) carry a **design-first gate**: low-fidelity UI mockups must be created, shared, and approved **before** implementation, stored under `docs/plans/mockups/` and linked on the issue (produced at `/plan` time; per `docs/frontend-ui-style-guide.md`). #1124 / #1126 are exempt — they gate affordances on *existing* screens, not new design.
