@@ -352,7 +352,14 @@ supportedCapabilities: [
 ProductPublisher: () => adapters.productPublisher,
 ```
 
-Note: `CategoryProvisioner` does not need its own dispatch entry — it is a sub-capability of `ProductPublisher`, narrowed by `isCategoryProvisioner(adapter)` at call sites. The manifest declares it so that `IntegrationsService.getCapabilityAdapter` resolves it, but the adapter is retrieved via `ProductPublisher` and the type guard narrows it. This is identical to how `OfferCreator` relates to `OfferManagerPort` in the Allegro adapter.
+Note: `CategoryProvisioner` **does** need its own dispatch entry alongside `ProductPublisher`. `IntegrationsService.getCapabilityAdapter` resolves adapters by capability string directly — without a `CategoryProvisioner` entry in the dispatch table, `dispatchCapability` throws "adapter does not support capability: CategoryProvisioner" even though the adapter implements `provisionCategory`. The dispatch table therefore maps both strings to the same adapter instance:
+
+```typescript
+ProductPublisher: () => adapters.productPublisher,
+CategoryProvisioner: () => adapters.productPublisher,
+```
+
+This differs from Allegro's `OfferCreator` pattern (which shares the `OfferManager` dispatch entry and is narrowed by type guard at call sites) — here `CategoryProvisioner` is resolved as a first-class capability string, so it must have its own entry.
 
 **Acceptance criteria**:
 - `prestashopAdapterManifest.supportedCapabilities` includes `'ProductPublisher'` and `'CategoryProvisioner'`.
@@ -390,7 +397,7 @@ PS WS image upload is a multipart `POST /api/images/products/{id}` — structura
 A PS product with attribute combinations generates multiple `stock_available` rows (one per combination). This adapter targets simple products (the bulk-flow maps one variant → one product). `updateStock` takes the first row with `id_product_attribute = '0'` if multiple rows are present, which corresponds to the simple/master stock. This assumption is documented inline.
 
 **Q4 — `CategoryProvisioner` in manifest vs dispatch.**
-Confirmed by cross-referencing `AllegroOfferManagerAdapter`: sub-capabilities (`OfferCreator`, `CategoryBrowser`, etc.) appear in `supportedCapabilities` but share the parent adapter's dispatch entry (`OfferManager`). Same pattern applies here: `CategoryProvisioner` is in the manifest, resolved via `ProductPublisher` dispatch + `isCategoryProvisioner` guard.
+Unlike Allegro's sub-capabilities (`OfferCreator`, `CategoryBrowser`, etc.) which share the `OfferManager` dispatch entry and are narrowed by type guard at call sites, `CategoryProvisioner` here **requires its own dispatch entry**. `IntegrationsService.getCapabilityAdapter('CategoryProvisioner', ...)` resolves by capability string; without a matching entry in the dispatch table, `dispatchCapability` throws at runtime. The shipped `prestashop-plugin.ts` therefore maps both `ProductPublisher` and `CategoryProvisioner` to the same `adapters.productPublisher` instance.
 
 ---
 

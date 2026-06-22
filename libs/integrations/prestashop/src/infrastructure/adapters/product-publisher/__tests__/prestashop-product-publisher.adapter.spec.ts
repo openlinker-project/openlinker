@@ -192,6 +192,20 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(client.updateResource).not.toHaveBeenCalled();
     });
 
+    it('should resolve successfully when stock_availables WS call throws (best-effort stock)', async () => {
+      // If updateStock throws, publishProduct must still return the result so that the
+      // core service can persist the identifier mapping. A raw throw would prevent mapping
+      // persistence and cause the next retry to call createResource again, producing a
+      // duplicate orphaned PS product.
+      client.createResource.mockResolvedValue({ id: '77', active: '1' });
+      client.listResources.mockRejectedValue(new PrestashopApiException('WS error', 503));
+
+      const result = await adapter.publishProduct(baseCommand({ stock: 5 }));
+
+      expect(result).toEqual({ externalProductId: '77', status: 'published' });
+      expect(client.updateResource).not.toHaveBeenCalled();
+    });
+
     it('should throw ProductPublishRejectedException on 4xx PrestashopApiException', async () => {
       client.createResource.mockRejectedValue(
         new PrestashopApiException('Invalid product data', 400),
@@ -273,7 +287,8 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(client.createResource).toHaveBeenNthCalledWith(
         1,
         'categories',
-        expect.objectContaining({ id_parent: '0' }),
+        // root sentinel is PS Home (id 2), not 0 — see provisionCategory comment
+        expect.objectContaining({ id_parent: '2' }),
       );
       expect(client.createResource).toHaveBeenNthCalledWith(
         2,

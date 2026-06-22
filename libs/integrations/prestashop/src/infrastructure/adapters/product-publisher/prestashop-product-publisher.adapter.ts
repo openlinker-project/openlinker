@@ -92,7 +92,13 @@ export class PrestashopProductPublisherAdapter
     const languageId = String(
       (this.connection.config?.langId as number | undefined) ?? 1,
     );
-    let parentId = '0'; // PS WS root sentinel
+    // PS category tree: id 1 = Root (hidden), id 2 = Home (first visible level).
+    // Creating under id_parent='0' is not a valid PS parent and may be rejected or
+    // land outside the visible tree. Default to Home (2); operators with a custom
+    // root can set connection.config.rootCategoryId to override.
+    let parentId = String(
+      (this.connection.config?.rootCategoryId as number | string | undefined) ?? 2,
+    );
     const createdPath: string[] = [];
 
     for (const node of cmd.path) {
@@ -163,24 +169,35 @@ export class PrestashopProductPublisherAdapter
   }
 
   private async updateStock(productId: string, quantity: number): Promise<void> {
-    const rows = await this.client.listResources<PrestashopStockAvailableItem>('stock_availables', {
-      custom: { 'filter[id_product]': productId },
-    });
+    // Fully best-effort: PS creates the product before returning, so if any step here
+    // throws the core service won't persist the identifier mapping and the retry will
+    // call createResource again — producing a duplicate orphaned PS product. An unset
+    // stock heals on the next inventory sync; a duplicate product has no auto-recovery.
+    try {
+      const rows = await this.client.listResources<PrestashopStockAvailableItem>('stock_availables', {
+        custom: { 'filter[id_product]': productId },
+      });
 
-    const row = rows[0];
-    if (!row) {
+      const row = rows[0];
+      if (!row) {
+        this.logger.warn(
+          `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`,
+        );
+        return;
+      }
+
+      const saId = String(row.id);
+      await this.client.updateResource('stock_availables', saId, {
+        id: saId,
+        id_product: productId,
+        quantity: String(quantity),
+      });
+    } catch (err) {
       this.logger.warn(
-        `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`,
+        `Stock update failed for product ${productId} on connection ${this.connection.id} — left unset. Will self-heal on next inventory sync.`,
+        (err as Error).stack,
       );
-      return;
     }
-
-    const saId = String(row.id);
-    await this.client.updateResource('stock_availables', saId, {
-      id: saId,
-      id_product: productId,
-      quantity: String(quantity),
-    });
   }
 
   private toPublishError(error: unknown): never {
