@@ -16,7 +16,7 @@
  */
 import { lazy } from 'react';
 
-import { erliOfferValidation } from '../../features/listings';
+import { erliBulkConfigIsComplete, erliOfferValidation } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { ErliCredentialsPanel } from './components/erli-credentials-panel';
@@ -35,14 +35,6 @@ const ErliBulkConfigSectionLazy = lazy(() =>
 const ErliBulkRowSectionLazy = lazy(() =>
   import('../../features/listings').then((m) => ({ default: m.ErliBulkRowSection })),
 );
-
-/** Pure completeness predicate — must NOT pull the lazy chunk (runs in `canProceed`). */
-function erliBulkConfigIsComplete(values: { platformParams: Record<string, unknown> }): boolean {
-  const dispatch = values.platformParams.dispatchTime;
-  if (typeof dispatch !== 'object' || dispatch === null) return false;
-  const period = (dispatch as { period?: unknown }).period;
-  return typeof period === 'number' && Number.isInteger(period) && period >= 0;
-}
 
 export const erliPlugin: OpenLinkerPlugin = definePlugin({
   id: 'erli',

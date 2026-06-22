@@ -472,6 +472,15 @@ function assertErliOrder(body: unknown): ErliOrder {
     throw new ErliApiException(`Erli order ${o.id}: totalPrice not a number`);
   }
 
+  // Timestamps are optional but, when present, the mapper passes them through to
+  // the neutral ISO-string date fields; reject a present-but-non-string value
+  // here rather than leaking a malformed type downstream.
+  for (const field of ['purchasedAt', 'created', 'updated'] as const) {
+    if (o[field] !== undefined && typeof o[field] !== 'string') {
+      throw new ErliApiException(`Erli order ${o.id}: ${field} present but not a string`);
+    }
+  }
+
   return body as ErliOrder;
 }
 

@@ -17,7 +17,6 @@ import { useEffect, useMemo, type ReactElement } from 'react';
 import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import {
-  ERLI_DEFAULT_DISPATCH,
   isValidDispatch,
   parseErliConnectionDispatchDefault,
   type ErliDispatchTimeParam,
@@ -73,11 +72,4 @@ export function ErliBulkConfigSection({
       </p>
     </div>
   );
-}
-
-/** Pure completeness predicate the host ANDs into its `canProceed` gate. */
-export function erliBulkConfigIsComplete(values: {
-  platformParams: Record<string, unknown>;
-}): boolean {
-  return isValidDispatch(values.platformParams.dispatchTime ?? ERLI_DEFAULT_DISPATCH);
 }

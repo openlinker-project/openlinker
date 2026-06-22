@@ -90,9 +90,13 @@ const erliConfigSchema = z
     defaultDispatchTime: z
       .object({
         period: z.number().int().min(0),
-        unit: z.enum(ErliDispatchUnitValues).optional(),
+        // `.nullish()` (not `.optional()`) per lesson #941: a FE schema over
+        // backend-sourced data must accept an explicit `null` so one null
+        // sub-field can't fail the whole parse. `parseErliConnectionDispatchDefault`
+        // already coerces a null/absent unit via `?? 'day'`.
+        unit: z.enum(ErliDispatchUnitValues).nullish(),
       })
-      .optional(),
+      .nullish(),
   })
   .passthrough();
 
@@ -114,6 +118,18 @@ export function parseErliConnectionDispatchDefault(
 /** Map collected form values to the BE wire param. */
 export function toDispatchTimeParam(values: ErliOfferFieldsValues): ErliDispatchTimeParam {
   return { period: values.dispatchPeriod, unit: values.dispatchUnit };
+}
+
+/**
+ * Pure completeness predicate the bulk host ANDs into its `canProceed` gate.
+ * Lives here (the lightweight schema module, no React component) so both the
+ * bulk-config section and the plugin's `isComplete` hook share ONE definition
+ * without the plugin statically pulling the lazy-loaded section component.
+ */
+export function erliBulkConfigIsComplete(values: {
+  platformParams: Record<string, unknown>;
+}): boolean {
+  return isValidDispatch(values.platformParams.dispatchTime ?? ERLI_DEFAULT_DISPATCH);
 }
 
 /** Human-readable summary used in review/aside copy ("2 working days"). */
