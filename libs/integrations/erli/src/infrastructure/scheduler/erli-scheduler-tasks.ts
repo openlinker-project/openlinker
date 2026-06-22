@@ -48,7 +48,12 @@ const ERLI_OFFER_STATUS_SYNC_PAGE_LIMIT = 50;
 
 /** Every 5 minutes (matches the Allegro orders-poll cadence). */
 const ERLI_ORDERS_POLL_CRON = '*/5 * * * *';
-/** Inbox messages read per poll (≤500 Erli unread cap). */
+/**
+ * Advisory only (#1081 review): carried in the poll payload for observability, but
+ * `ErliOrderSourceAdapter.listOrderFeed` does NOT honour it — the `GET /inbox` page
+ * size is server-fixed (≤500 unread). Kept as documentation of intended page size;
+ * wire it through only if Erli ever exposes a client-controlled limit.
+ */
 const ERLI_ORDERS_POLL_LIMIT = 200;
 
 export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {

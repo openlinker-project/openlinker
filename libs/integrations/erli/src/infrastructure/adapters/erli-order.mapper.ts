@@ -66,7 +66,7 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     // (#995, email_fallback). The email rides the typed field, never metadata.
     customerEmail: order.user.email,
     items,
-    totals: mapTotals(order, items),
+    totals: mapTotals(order),
     shippingAddress: mapAddress(order.user.deliveryAddress),
     billingAddress: mapAddress(order.user.invoiceAddress),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
@@ -146,7 +146,7 @@ function mapItem(item: ErliOrderItem): IncomingOrderItem {
  * reconcile exactly against the source-authoritative `total` (the destination's
  * total-reconciliation gate compares `subtotal + tax + shipping`).
  */
-function mapTotals(order: ErliOrder, _items: IncomingOrderItem[]): IncomingOrderTotals {
+function mapTotals(order: ErliOrder): IncomingOrderTotals {
   const total = toMajorUnits(order.totalPrice);
   const shipping = toMajorUnits(order.delivery.price);
   const subtotal = round2(Math.max(0, total - shipping));
