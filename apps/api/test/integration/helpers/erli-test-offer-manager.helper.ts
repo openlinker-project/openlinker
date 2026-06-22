@@ -69,13 +69,19 @@ export function installErliOffersHarness(harness: IntegrationTestHarness): ErliO
 
   factoryResolver.registerFactory(ERLI_TEST_ADAPTER_KEY, {
     createCapabilityAdapter: <T>(connection: Connection): Promise<T> => {
-      // REAL adapter — ctor is (connectionId, adapterKey, httpClient, cache?).
+      // REAL adapter — ctor is
+      // (connectionId, adapterKey, httpClient, defaultDispatchTime?, cache?).
       // `identifierMapping` is intentionally NOT a ctor arg. `connection.id`
-      // tenant-scopes the frozen-stock cache key.
+      // tenant-scopes the frozen-stock cache key. A real default dispatch time
+      // is required (creates fail closed without one); `cachePort` MUST be the
+      // 5th arg so the frozen-stock flag round-trips — passing it 4th would land
+      // it in `defaultDispatchTime` and leave the cache `undefined` (every
+      // consult fails open), silently nullifying the #1066 coverage.
       const adapter = new ErliOfferManagerAdapter(
         connection.id,
         ERLI_TEST_ADAPTER_KEY,
         fake,
+        { period: 2, unit: 'day' },
         cachePort,
       );
       return Promise.resolve(adapter as unknown as T);
