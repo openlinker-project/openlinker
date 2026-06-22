@@ -42,7 +42,7 @@ OL propagates order-lifecycle facts (**dispatched** + tracking, **cancelled**) b
 
 Two architectural decisions carry the design (full rationale in **ADR-027**):
 
-1. **One platform-neutral, role-agnostic writeback capability, event-as-data.** `OrderStatusWriteback.write(event)` where `event` is a discriminated union (`dispatched{tracking,carrier} | cancelled{reason} | …`), implemented by **every** participant adapter (shop *and* marketplace), each mapping the intent onto its own API. This mirrors the existing inbound `OrderFeedEventType` discriminator and collapses today's `OrderDispatchNotifier` (marketplace, event-specific) / `OrderFulfillmentUpdater` (shop, generic setter) split. The relay calls **one method per participant** — no platform branching, no capability-per-event proliferation. Unsupported transitions are reported via the **result**, not the type system.
+1. **One platform-neutral, role-agnostic writeback capability, event-as-data.** `OrderStatusWriteback.write(event)` where `event` is a discriminated union (`dispatched{trackingNumber?, carrier?} | cancelled{reason?} | …`), implemented by **every** participant adapter (shop *and* marketplace), each mapping the intent onto its own API. This mirrors the existing inbound `OrderFeedEventType` discriminator and collapses today's `OrderDispatchNotifier` (marketplace, event-specific) / `OrderFulfillmentUpdater` (shop, generic setter) split. The relay calls **one method per participant** — no platform branching, no capability-per-event proliferation. Unsupported transitions are reported via the **result**, not the type system.
 
 2. **A core lifecycle-relay application service** owns all cross-system propagation, dispatching to each participant via the `isOrderStatusWriteback` guard regardless of source/destination role or platform type — so all three topologies (incl. shop→shop) are served by construction.
 
@@ -91,11 +91,11 @@ These are exactly the primitives #1032 would reuse — built here scoped to the 
 
 Spawned as children of #1157 (links below). Each goes through `/plan` (Tier 2).
 
-- **Slice 1** — `OrderStatusWriteback` capability (event-as-data) + lifecycle-relay service + guardrails + inbound cancel → destination. **Closes #1132.** Authors ADR-027.
+- **Slice 1** — `OrderStatusWriteback` capability (event-as-data) + lifecycle-relay service + guardrails + inbound cancel → destination. **Closes #1132.** Implements ADR-027 (authored in this refinement PR).
 - **Slice 2** — Shop-fulfilled (branch-1) → source writeback, via the relay (covers shop→shop fulfilment by construction).
 - **Slice 3** — Allegro implements `OrderStatusWriteback` (dispatched + cancelled) + cancel → marketplace origin.
 - **Slice 4** — Shop-as-source cancellation detection in the `OrderSource` feed (PrestaShop source adapter emits `cancelled`) — required for shop→shop / shop-origin cancel.
 
 ## Decision log
 
-- **2026-06-22** — Carved out of the #1032 recheck. #1032 heavy bet held at DEFER (fires no un-defer trigger); this narrow Posture-A relay validated for the confirmed shop-primary base. Capability model decided: single event-as-data `OrderStatusWriteback` (no method/capability-per-event), platform-neutral, all participants implement it — mirrors the inbound `OrderFeedEventType` discriminator and collapses the `OrderDispatchNotifier`/`OrderFulfillmentUpdater` split. Relay dispatches by capability guard, topology-agnostic (incl. shop→shop). Gate D = YES for this slice. ADR-027 to record the architecture.
+- **2026-06-22** — Carved out of the #1032 recheck. #1032 heavy bet held at DEFER (fires no un-defer trigger); this narrow Posture-A relay validated for the confirmed shop-primary base. Capability model decided: single event-as-data `OrderStatusWriteback` (no method/capability-per-event), platform-neutral, all participants implement it — mirrors the inbound `OrderFeedEventType` discriminator and collapses the `OrderDispatchNotifier`/`OrderFulfillmentUpdater` split. Relay dispatches by capability guard, topology-agnostic (incl. shop→shop). Gate D = YES for this slice. ADR-027 (authored in this refinement PR) records the architecture.

@@ -42,7 +42,7 @@ The **inbound** side already models this correctly: a single `OrderSource` feed 
 - Cross-system writes carry echo/loop risk — hence the non-optional guardrails.
 
 **Migration path:**
-- Introduce `OrderStatusWriteback`; have Allegro and PrestaShop implement it; route the relay through it. Retain `OrderFulfillmentUpdater` for order **provisioning** (OL driving an order it created), out of the relay path. Fold `OrderDispatchNotifier` into the new capability.
+- Introduce `OrderStatusWriteback`; have Allegro and PrestaShop implement it; route the relay through it. The relay **subsumes the cross-system writes** currently performed by `shipping/application/services/shipment-dispatch-notification.service.ts` (today it calls both `notifyDispatched` on the source *and* `updateFulfillment` on the destination): that dispatched-state propagation moves behind the relay so there is exactly **one writer per participant**, closing the double-acting/echo surface the guardrails exist to prevent. Retain `OrderFulfillmentUpdater` for order **provisioning** (OL driving an order it created), out of the relay path. Fold `OrderDispatchNotifier` into the new capability.
 
 ## References
 
