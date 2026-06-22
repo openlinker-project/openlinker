@@ -26,6 +26,12 @@ export interface PrestashopProductWriteBody {
   name: PrestashopLangField;
   description?: PrestashopLangField;
   link_rewrite: PrestashopLangField;
+  /**
+   * Stable, server-side idempotency key (= OL `internalVariantId`). Stamped on
+   * every create so a retry can look the product up by `reference` and adopt the
+   * orphan instead of creating a duplicate (#1107 create-idempotency guard).
+   */
+  reference?: string;
   /** Tax-excluded price; PS WS convention uses a decimal string. */
   price: string;
   active: '0' | '1';
@@ -42,6 +48,12 @@ export interface PrestashopProductWriteBody {
 export interface PrestashopProductResponse {
   id: string | number;
   active: string | number;
+}
+
+/** Item from GET /api/products (list response, used for the reference lookup). */
+export interface PrestashopProductListItem {
+  id: string | number;
+  reference?: string;
 }
 
 /** Category item from GET /api/categories (list response). */

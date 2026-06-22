@@ -34,6 +34,7 @@ import type {
   PrestashopCategoryListItem,
   PrestashopCategoryResponse,
   PrestashopLangField,
+  PrestashopProductListItem,
   PrestashopProductResponse,
   PrestashopProductWriteBody,
   PrestashopStockAvailableItem,
@@ -102,7 +103,21 @@ export class PrestashopProductPublisherAdapter
           { id: String(cmd.externalProductId), ...body },
         );
       } else {
-        response = await this.client.createResource<PrestashopProductResponse>('products', body);
+        // Create-idempotency guard (#1107, Piotr review): a prior attempt may have
+        // created the product but died before core persisted the identifier
+        // mapping, leaving an orphan. Because `body.reference` = internalVariantId
+        // is a stable server-side key, look it up first and ADOPT the orphan
+        // (update it) instead of creating a duplicate. A lookup miss → first
+        // publish → create. A lookup error propagates (mapped below) rather than
+        // falling through to create, so a flaky GET can never spawn a duplicate.
+        const orphanId = await this.findExistingByReference(cmd.internalVariantId);
+        response =
+          orphanId != null
+            ? await this.client.updateResource<PrestashopProductResponse>('products', orphanId, {
+                id: orphanId,
+                ...body,
+              })
+            : await this.client.createResource<PrestashopProductResponse>('products', body);
       }
     } catch (err) {
       throw this.toPublishError(err);
@@ -175,6 +190,9 @@ export class PrestashopProductPublisherAdapter
       ...(cmd.platformParams ?? {}),
       name: langField(title, languageId),
       link_rewrite: langField(slug, languageId),
+      // Stable idempotency key — see findExistingByReference (#1107). Explicit so
+      // it always wins over any un-modeled platformParams.reference.
+      reference: cmd.internalVariantId,
       price: cmd.price.amount.toFixed(2),
       active: cmd.status === 'published' ? '1' : '0',
       // Fall back to PS Home category (id 2) when no category is provided — '0' is
@@ -207,11 +225,26 @@ export class PrestashopProductPublisherAdapter
     return body;
   }
 
+  /**
+   * Look up an existing product by its stable `reference` (= internalVariantId).
+   * Returns the PS product id of a prior orphaned create, or null on a genuine
+   * miss (first publish). Throws on a transport/API failure — the caller must NOT
+   * treat an ambiguous lookup as "no match" and create, or the duplicate-product
+   * hazard this guard closes would reopen (#1107).
+   */
+  private async findExistingByReference(reference: string): Promise<string | null> {
+    const rows = await this.client.listResources<PrestashopProductListItem>('products', {
+      custom: { 'filter[reference]': reference },
+    });
+    const match = rows.find((row) => String(row.reference ?? '') === reference) ?? rows[0];
+    return match ? String(match.id) : null;
+  }
+
   private async updateStock(productId: string, quantity: number): Promise<void> {
-    // Fully best-effort: PS creates the product before returning, so if any step here
-    // throws the core service won't persist the identifier mapping and the retry will
-    // call createResource again — producing a duplicate orphaned PS product. An unset
-    // stock heals on the next inventory sync; a duplicate product has no auto-recovery.
+    // Fully best-effort: PS creates the product before returning, so if any step
+    // here throws the core service won't persist the identifier mapping. The retry
+    // no longer duplicates — findExistingByReference adopts the orphan by its
+    // stable `reference` (#1107). An unset stock heals on the next inventory sync.
     try {
       const rows = await this.client.listResources<PrestashopStockAvailableItem>('stock_availables', {
         custom: { 'filter[id_product]': productId },
