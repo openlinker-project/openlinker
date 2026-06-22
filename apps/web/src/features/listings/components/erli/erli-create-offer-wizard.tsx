@@ -45,7 +45,7 @@ import { useToast } from '../../../../shared/ui/toast-provider';
 import { useTranslation } from '../../../../shared/i18n';
 import { usePlatform, type OfferCreationWizardProps } from '../../../../shared/plugins';
 import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
-import { useProductQuery, useProductsQuery } from '../../../products';
+import { useProductQuery, useProductsQuery, useVariantQuery } from '../../../products';
 import type { Product, ProductVariant } from '../../../products';
 import { useCreateOfferMutation } from '../../hooks/use-create-offer-mutation';
 import { useResolveCategoryQuery } from '../../hooks/use-resolve-category-query';
@@ -57,6 +57,7 @@ import {
   parseErliConnectionDispatchDefault,
   type ErliDispatchTimeParam,
 } from './erli-offer-fields.schema';
+import { readErliOfferRequestPrefill } from './create-erli-offer-request-to-form-values';
 
 const ERLI_STEP_LABELS = ['Variant', 'Offer details', 'Review'] as const;
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
@@ -77,6 +78,7 @@ function masterImageUrls(product: Product | undefined): string[] {
 export function ErliCreateOfferWizard({
   connection,
   defaultVariantId,
+  initialValues,
   onCancel,
   onSubmitted,
 }: OfferCreationWizardProps): ReactElement {
@@ -91,11 +93,21 @@ export function ErliCreateOfferWizard({
     [connection.config],
   );
 
+  // Retry path (#1099): a persisted `request` snapshot pre-fills every field and
+  // opens at the Offer-details step. `null` when no snapshot (fresh create) or
+  // when the snapshot's schema version is unreadable (→ blank wizard). The
+  // variant CONTEXT (picked product for images, EAN for category) is
+  // reconstructed below from the variant id, which is all the snapshot carries.
+  const prefill = useMemo<ErliCreateOfferValues | null>(
+    () => readErliOfferRequestPrefill(initialValues, dispatchDefault),
+    [initialValues, dispatchDefault],
+  );
+
   // Shared, declared-once Erli validator (image gate). Resolved via usePlatform.
   const erliValidation = usePlatform(connection.platformType)?.offerValidation;
 
   const form = useForm<ErliCreateOfferValues>({
-    defaultValues: {
+    defaultValues: prefill ?? {
       internalVariantId: defaultVariantId ?? '',
       variantLabel: '',
       title: '',
@@ -111,8 +123,10 @@ export function ErliCreateOfferWizard({
     mode: 'onBlur',
   });
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+  const [stepIndex, setStepIndex] = useState(prefill ? 1 : 0);
+  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(
+    prefill ? new Set([0, 1]) : new Set(),
+  );
   const [productSearchInput, setProductSearchInput] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [pickedProduct, setPickedProduct] = useState<Product | null>(null);
@@ -125,6 +139,27 @@ export function ErliCreateOfferWizard({
     { limit: VARIANT_PICKER_PAGE_SIZE, offset: 0 },
   );
   const productDetailQuery = useProductQuery(selectedProductId ?? '');
+
+  // Retry path (#1099): rebuild the variant context the snapshot doesn't carry.
+  // Resolve the variant summary (productId + EAN), then load that product so its
+  // master images feed the SAME state an interactive variant-pick would set —
+  // otherwise the Erli image gate would block a retry submit. Each setter is a
+  // no-op once the operator has interactively picked (guarded with `?? cur`).
+  const prefillVariantQuery = useVariantQuery(prefill?.internalVariantId);
+  useEffect(() => {
+    const summary = prefillVariantQuery.data;
+    if (!summary) return;
+    setSelectedProductId((cur) => cur ?? summary.productId);
+    setPickedVariantEan((cur) => cur ?? summary.ean ?? null);
+    if (summary.name && !form.getValues('variantLabel')) {
+      form.setValue('variantLabel', summary.name);
+    }
+  }, [prefillVariantQuery.data, form]);
+  useEffect(() => {
+    if (!prefill) return;
+    const product = productDetailQuery.data;
+    if (product) setPickedProduct((cur) => cur ?? product);
+  }, [prefill, productDetailQuery.data]);
 
   // Category resolution by barcode (#985 — Erli reuses the resolved Allegro id).
   const categoryQuery = useResolveCategoryQuery(connection.id, pickedVariantEan);

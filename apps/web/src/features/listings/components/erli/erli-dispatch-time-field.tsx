@@ -14,7 +14,7 @@
  *
  * @module features/listings/components/erli
  */
-import { useId, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
@@ -53,6 +53,17 @@ export function ErliDispatchTimeField({
 }: ErliDispatchTimeFieldProps): ReactElement {
   const { t } = useTranslation();
   const periodInputId = useId();
+  // Transient draft so clearing the input doesn't snap to 0 (`Number('') === 0`).
+  // While the draft holds a partial/empty entry the committed `value.period` is
+  // unchanged; on blur an empty/invalid draft reverts to the committed value.
+  const [periodDraft, setPeriodDraft] = useState<string | null>(null);
+  const periodDisplay = periodDraft ?? String(value.period);
+
+  function commitPeriod(period: number): void {
+    setPeriodDraft(null);
+    onChange({ ...value, period });
+  }
+
   const isFromDefault =
     value.period === connectionDefault.period && value.unit === connectionDefault.unit;
 
@@ -99,7 +110,7 @@ export function ErliDispatchTimeField({
               type="button"
               className="erli-dispatch__seg-btn"
               aria-pressed={value.period === preset}
-              onClick={() => onChange({ ...value, period: preset })}
+              onClick={() => commitPeriod(preset)}
             >
               {preset}
             </button>
@@ -111,13 +122,20 @@ export function ErliDispatchTimeField({
           type="number"
           min={0}
           className="erli-dispatch__period-input"
-          value={String(value.period)}
+          value={periodDisplay}
           aria-label={t('listings.erli.dispatch.periodLabel', 'Dispatch period')}
           aria-invalid={Boolean(error)}
           onChange={(e) => {
-            const next = Number(e.target.value);
-            onChange({ ...value, period: Number.isFinite(next) ? next : 0 });
+            const raw = e.target.value;
+            setPeriodDraft(raw);
+            // Commit only a valid non-negative integer; an empty/partial entry
+            // keeps the last committed period so the field doesn't snap to 0.
+            const next = Number(raw);
+            if (raw.trim() !== '' && Number.isInteger(next) && next >= 0) {
+              onChange({ ...value, period: next });
+            }
           }}
+          onBlur={() => setPeriodDraft(null)}
         />
 
         <Select

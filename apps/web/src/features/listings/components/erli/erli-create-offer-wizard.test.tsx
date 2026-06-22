@@ -55,12 +55,22 @@ function productWith(images: string[] | null): Product {
   };
 }
 
-function mocks(product: Product, overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+function mocks(
+  product: Product,
+  overrides: Parameters<typeof createMockApiClient>[0] = {},
+): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
     connections: { list: vi.fn().mockResolvedValue([erliConnection]) },
     products: {
       list: vi.fn().mockResolvedValue({ items: [product], total: 1, limit: 20, offset: 0 }),
       getById: vi.fn().mockResolvedValue(product),
+      getVariant: vi.fn().mockResolvedValue({
+        id: 'ol_variant_aaaaaaaa',
+        productId: product.id,
+        sku: 'TS-1-M',
+        ean: '5901234567890',
+        name: `${product.name} — M`,
+      }),
     },
     listings: {
       createOffer: vi
@@ -130,6 +140,69 @@ describe('ErliCreateOfferWizard', () => {
     expect(request.overrides?.imageUrls).toEqual(['https://cdn.example.com/a.jpg']);
     expect(request.overrides?.platformParams).toMatchObject({
       dispatchTime: { period: 2, unit: 'day' },
+    });
+  });
+
+  it('keeps the dispatch-period input clearable without snapping to 0', async () => {
+    renderWithProviders(
+      <ErliCreateOfferWizard connection={erliConnection} onCancel={vi.fn()} onSubmitted={vi.fn()} />,
+      { apiClient: mocks(productWith(['https://cdn.example.com/a.jpg'])) },
+    );
+    await pickVariantAndAdvance();
+
+    const periodInput = await screen.findByLabelText<HTMLInputElement>(/dispatch period/i);
+    fireEvent.change(periodInput, { target: { value: '' } });
+    // Field shows empty while editing — does NOT snap to "0".
+    expect(periodInput.value).toBe('');
+    // On blur an empty entry reverts to the last committed value (the default 2).
+    fireEvent.blur(periodInput);
+    expect(periodInput.value).toBe('2');
+  });
+
+  it('prefills from a retry snapshot, opens at offer-details, and reconstructs images on submit', async () => {
+    const snapshot: CreateOfferRequest = {
+      internalVariantId: 'ol_variant_aaaaaaaa',
+      stock: 7,
+      publishImmediately: false,
+      price: { amount: 123.45, currency: 'PLN' },
+      overrides: {
+        title: 'Retried Title',
+        description: 'a retried description',
+        platformParams: { dispatchTime: { period: 5, unit: 'hour' } },
+      },
+    };
+    const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']));
+    renderWithProviders(
+      <ErliCreateOfferWizard
+        connection={erliConnection}
+        initialValues={snapshot}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient: mockApi },
+    );
+
+    // Opens directly on the offer-details step (no variant pick) with the
+    // snapshot's title + dispatch already populated.
+    expect(await screen.findByText(/Dispatch time/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Retried Title')).toBeInTheDocument();
+    expect(screen.getByText(/5 hours/)).toBeInTheDocument();
+
+    // The variant context (master images) is reconstructed from the variant id;
+    // advance to Review and wait for the reconstructed master image count to
+    // appear before submitting, so the image gate has cleared.
+    fireEvent.click(await screen.findByRole('button', { name: /next/i }));
+    expect(await screen.findByText(/1 from master product/i)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+
+    const createOffer = vi.mocked(mockApi.listings.createOffer);
+    await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
+    const [, request] = createOffer.mock.calls[0] as [string, CreateOfferRequest];
+    expect(request.internalVariantId).toBe('ol_variant_aaaaaaaa');
+    expect(request.stock).toBe(7);
+    expect(request.overrides?.imageUrls).toEqual(['https://cdn.example.com/a.jpg']);
+    expect(request.overrides?.platformParams).toMatchObject({
+      dispatchTime: { period: 5, unit: 'hour' },
     });
   });
 });
