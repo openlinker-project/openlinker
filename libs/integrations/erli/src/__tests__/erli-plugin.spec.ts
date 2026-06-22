@@ -146,18 +146,43 @@ describe('createErliPlugin', () => {
       );
     });
 
-    it('should register the erli-offer-status-sync scheduler task (#989)', () => {
-      const { host, schedulerTaskRegistry } = makeRegisterHost();
-      createErliPlugin().register?.(host);
+    it('should register the erli-offer-status-sync scheduler task when opt-in env is set (#989, #1063)', () => {
+      const prev = process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+      process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = 'true';
+      try {
+        const { host, schedulerTaskRegistry } = makeRegisterHost();
+        createErliPlugin().register?.(host);
 
-      expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
-        expect.objectContaining({
-          taskId: 'erli-offer-status-sync',
-          platformType: 'erli',
-          jobType: 'marketplace.offer.statusSync',
-          enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
-        }),
-      );
+        expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: 'erli-offer-status-sync',
+            platformType: 'erli',
+            jobType: 'marketplace.offer.statusSync',
+            enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+          }),
+        );
+      } finally {
+        if (prev === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+        else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
+      }
+    });
+
+    it('should NOT register the offer-status-sync task by default — opt-in, #992-provisional status field (#1063)', () => {
+      const prev = process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+      delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+      try {
+        const { host, schedulerTaskRegistry } = makeRegisterHost();
+        createErliPlugin().register?.(host);
+
+        // Specific to the offer-status task: other Erli scheduler tasks (e.g. the
+        // orders-poll backstop, #993) register unconditionally and must be unaffected.
+        expect(schedulerTaskRegistry.register).not.toHaveBeenCalledWith(
+          expect.objectContaining({ taskId: 'erli-offer-status-sync' }),
+        );
+      } finally {
+        if (prev === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+        else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
+      }
     });
   });
 

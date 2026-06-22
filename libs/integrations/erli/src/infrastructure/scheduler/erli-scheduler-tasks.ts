@@ -15,25 +15,39 @@
  *
  * Unlike the Allegro tasks (which read cron/page-size overrides off a NestJS
  * `ConfigService`), Erli is wired via `createNestAdapterModule` and has no
- * plugin-scoped `ConfigService`, so this builder takes no config: the task is
- * registered unconditionally with sensible defaults and the
- * `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` env gate is re-checked by the
- * scheduler at each cron tick (set it to `"false"` to disable without a config
- * dependency at registration time).
+ * plugin-scoped `ConfigService`, so this builder takes no config.
+ *
+ * **Opt-in, default OFF until #992 (review #1063).** The Erli `status` wire field
+ * is still unconfirmed; if the real GET response doesn't carry it with the
+ * expected values, `mapErliStatusToReadResult` falls to `inactive` and the
+ * reconciliation would write `inactive` snapshots for every mapped offer —
+ * surfacing live offers as inactive in the Listings UI. So this builder returns
+ * the task ONLY when `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED === 'true'`
+ * (inverting Allegro's default-on). Once enabled, the scheduler's per-tick env
+ * gate still toggles it at runtime. Flip the default back to opt-out when #992
+ * confirms the field.
  *
  * @module libs/integrations/erli/src/infrastructure/scheduler
  * @see {@link SchedulerTaskConfig} in `@openlinker/core/sync`.
  */
 import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 
-/** Hourly (6-field cron: sec min hour day month dow). */
-const ERLI_OFFER_STATUS_SYNC_CRON = '0 0 * * * *';
+/** Hourly (5-field cron: min hour day month dow — aligned with the Allegro tasks). */
+const ERLI_OFFER_STATUS_SYNC_CRON = '0 * * * *';
 /** Mapped offers refreshed per run (rolling scan-offset). */
 const ERLI_OFFER_STATUS_SYNC_PAGE_LIMIT = 50;
 
 export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
-  return [
-    {
+  const tasks: SchedulerTaskConfig[] = [];
+
+  // offer-status-sync — OPT-IN, default OFF (review #1063): don't reconcile
+  // against the still-#992-provisional Erli `status` field until it's confirmed
+  // (a wrong/absent field would write `inactive` for every mapped offer). The
+  // scheduler's per-tick gate still toggles it at runtime once enabled. This
+  // gates ONLY this task — any other Erli task (e.g. the orders-poll backstop) is
+  // pushed unconditionally below.
+  if (process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED === 'true') {
+    tasks.push({
       taskId: 'erli-offer-status-sync',
       platformType: 'erli',
       jobType: 'marketplace.offer.statusSync',
@@ -46,6 +60,8 @@ export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
-    },
-  ];
+    });
+  }
+
+  return tasks;
 }
