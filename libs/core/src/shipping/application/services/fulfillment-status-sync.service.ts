@@ -30,8 +30,13 @@
  * returns scan stats; the caller (worker handler) advances the persisted
  * `connection_cursors` offset.
  *
+ * On the **first** transition into dispatched/delivered it also relays the
+ * shop's "shipped" fact back to the order's source via the lifecycle relay
+ * (#1160 / ADR-027) — best-effort, transition-gated for at-most-once.
+ *
  * @module libs/core/src/shipping/application/services
  * @implements {IFulfillmentStatusSyncService}
+ * @see {@link IOrderLifecycleRelayService} for the source writeback path
  */
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -50,11 +55,13 @@ import {
 import {
   type FulfillmentStatus,
   type FulfillmentStatusSnapshot,
+  type IOrderLifecycleRelayService,
   type IOrderRecordService,
   type OrderProcessorManagerPort,
   type OrderRecord,
   FULFILLMENT_STATUS,
   isFulfillmentStatusReader,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
@@ -105,6 +112,29 @@ function projectStatus(status: FulfillmentStatus): ShipmentStatus {
 const ORDER_PROCESSOR_MANAGER_CAPABILITY = 'OrderProcessorManager';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * A freshly-projected branch-1 row is the destination shop's first "shipped"
+ * signal when it is born at `dispatched` or (shop jumped straight there)
+ * `delivered` — delivered implies it was sent, so the source still needs the
+ * mark-sent. `cancelled` is out of #1160's dispatch scope.
+ */
+function isInitialDispatch(status: FulfillmentStatus | null): boolean {
+  return status === FULFILLMENT_STATUS.Dispatched || status === FULFILLMENT_STATUS.Delivered;
+}
+
+/**
+ * On an UPDATE, fire the dispatch relay only on the FIRST entry into
+ * dispatched-or-delivered: a `dispatched` transition, or a direct→`delivered`
+ * transition on a row that was never dispatched. A `delivered` transition on an
+ * already-dispatched row must NOT re-fire (the source was told at dispatch).
+ */
+function isFirstDispatchTransition(existing: Shipment, patch: UpdateShipmentInput): boolean {
+  return (
+    patch.status === SHIPMENT_STATUS.Dispatched ||
+    (patch.status === SHIPMENT_STATUS.Delivered && !existing.dispatchedAt)
+  );
+}
+
 @Injectable()
 export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncService {
   private readonly logger = new Logger(FulfillmentStatusSyncService.name);
@@ -124,6 +154,10 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
     private readonly integrations: IIntegrationsService,
     @Inject(ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN)
     private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
+    // #1160: relay a shop-observed dispatch back to the order's source
+    // participant. Cross-context I*Service + Symbol token via the orders barrel.
+    @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService,
   ) {}
 
   async sync(
@@ -258,6 +292,11 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           // Project the order rollup (#1108); also the reconciliation backstop
           // that heals any best-effort projection dropped on the write-path.
           await this.fulfillmentProjection.recompute(record.internalOrderId);
+          // #1160: a branch-1 row born dispatched/delivered is the shop's first
+          // shipped signal — relay mark-sent + tracking to the order's source.
+          if (isInitialDispatch(snapshot.status)) {
+            await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
+          }
         } else {
           const patch = this.diffPatch(existing, snapshot);
           if (Object.keys(patch).length > 0) {
@@ -265,6 +304,12 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             updated += 1;
             if (patch.status) {
               await this.fulfillmentProjection.recompute(record.internalOrderId);
+            }
+            // #1160: relay only on the FIRST transition into dispatched/delivered;
+            // the transition-gate (diffPatch returns empty on unchanged status)
+            // makes this at-most-once across re-polls — no separate ledger.
+            if (isFirstDispatchTransition(existing, patch)) {
+              await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
             }
           }
         }
@@ -380,6 +425,35 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
       patch.trackingNumber = snapshot.trackingNumber;
     }
     return patch;
+  }
+
+  /**
+   * Relay a shop-observed dispatch back to the order's source participant
+   * (#1160). The destination shop is the event origin and is excluded by the
+   * relay; the source marketplace (or, shop→shop, the origin shop) receives
+   * `OrderStatusWriteback({dispatched})`. No carrier hint — the branch-1
+   * snapshot doesn't carry one; the source adapter falls back (Allegro → OTHER
+   * + name). Best-effort: per-target failures are surfaced by the relay, and an
+   * identifier-mapping-level throw is caught here so one order never breaks the
+   * sync loop. Durable retry / per-destination notify-state is deferred (#861).
+   */
+  private async relayDispatchedToSource(
+    internalOrderId: string,
+    originConnectionId: string,
+    snapshot: FulfillmentStatusSnapshot,
+  ): Promise<void> {
+    try {
+      await this.orderLifecycleRelay.relay({
+        internalOrderId,
+        originConnectionId,
+        event: { type: 'dispatched', trackingNumber: snapshot.trackingNumber ?? undefined },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Branch-1 dispatch relay failed for order ${internalOrderId} ` +
+          `(origin ${originConnectionId}): ${this.message(error)}`,
+      );
+    }
   }
 
   private zeroResult(
