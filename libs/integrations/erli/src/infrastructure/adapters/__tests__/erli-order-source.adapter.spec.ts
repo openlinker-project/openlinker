@@ -333,6 +333,15 @@ describe('ErliOrderSourceAdapter', () => {
       );
     });
 
+    it('should reject when a timestamp is present but not a string', async () => {
+      const malformed = buildErliOrder({ purchasedAt: 123 as unknown as string });
+      client.get.mockResolvedValue(ok(malformed));
+
+      await expect(adapter.getOrder({ externalOrderId: 'erli-order-1' })).rejects.toThrow(
+        /purchasedAt present but not a string/,
+      );
+    });
+
     it('should accept the returned status (added #992) and map it to refunded', async () => {
       client.get.mockResolvedValue(ok(buildErliOrder({ status: 'returned' })));
 
