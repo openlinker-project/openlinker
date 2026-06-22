@@ -361,8 +361,33 @@ describe('ErliOrderSourceAdapter', () => {
   describe('notifyDispatched (#997 Half A — OrderDispatchNotifier)', () => {
     const ORDER_ID = 'erli-order-xyz';
 
+    // #992 release gate (#1086 review): dispatch writeback is opt-in / default OFF.
+    // Enable it for the writeback assertions below; restore the env after each.
+    let prevGate: string | undefined;
+    beforeEach(() => {
+      prevGate = process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
+    });
+    afterEach(() => {
+      if (prevGate === undefined) delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      else process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = prevGate;
+    });
+
     it('is narrowed by isOrderDispatchNotifier', () => {
       expect(isOrderDispatchNotifier(adapter)).toBe(true);
+    });
+
+    it('no-ops (no PATCH, no POST) when the #992 writeback gate is OFF by default (#1086)', async () => {
+      delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+
+      await adapter.notifyDispatched({
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(client.patch).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalled();
     });
 
     it('attaches the waybill when trackingNumber is present (non-Erli carrier)', async () => {

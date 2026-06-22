@@ -36,12 +36,16 @@
  *
  * Implements the `OrderDispatchNotifier` sub-capability: mark the Erli order
  * dispatched and, when OL holds a real waybill, attach it. Mirrors
- * `AllegroOrderSourceAdapter.notifyDispatched`. This path IS live: the core
+ * `AllegroOrderSourceAdapter.notifyDispatched`. The core
  * `ShipmentDispatchNotificationService` resolves the connection's `OrderSource`,
  * narrows via `isOrderDispatchNotifier`, and calls this method from the shipment
- * notify-dispatched endpoint. The endpoint/verb/status token are #992-PROVISIONAL
- * (`erli-fulfillment.types.ts`) — confirming them against the sandbox is a release
- * gate before relying on Erli dispatch writeback in production.
+ * notify-dispatched endpoint.
+ *
+ * #992 RELEASE GATE (#1086 review): the endpoint/verb/status token are
+ * #992-PROVISIONAL (`erli-fulfillment.types.ts`). To avoid writing to an
+ * unconfirmed endpoint on a live order, this method is **opt-in / default OFF** —
+ * it no-ops unless `OL_ERLI_DISPATCH_WRITEBACK_ENABLED=true`. Enable only once the
+ * sandbox confirms the wire shapes (same posture as offer-status-sync, #1063).
  *
  * Tracking inversion (omit-on-absence, §5.4): attach `trackingNumber` ⇔ it is
  * present (a non-Erli carrier with a real waybill); OMIT it when absent (an
@@ -269,6 +273,20 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
     trackingNumber?: string;
     carrier?: DispatchCarrierHint;
   }): Promise<void> {
+    // #992 release gate (#1086 review): the writeback wire shapes below
+    // (PATCH /orders/{id}/status {status:'sent'} + POST /shipping/external) are
+    // PROVISIONAL until the #992 sandbox confirms them. Default OFF so OL never
+    // writes to an unconfirmed endpoint on a LIVE order; opt in only once #992
+    // lands (mirrors the offer-status-sync opt-in posture, #1063). Skipping is
+    // safe — Erli already shows the order; dispatch state reconciles on enable.
+    if (process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED !== 'true') {
+      this.logger.debug(
+        `Erli dispatch writeback skipped — gated OFF until #992 ` +
+          `(set OL_ERLI_DISPATCH_WRITEBACK_ENABLED=true to enable) [connectionId=${this.connectionId}]`,
+      );
+      return;
+    }
+
     // 1. Mark dispatched via the order status enum: PATCH /orders/{id}/status
     //    { status: 'sent' }. A 409 (stale revision / already sent) is treated as
     //    success for idempotency.
