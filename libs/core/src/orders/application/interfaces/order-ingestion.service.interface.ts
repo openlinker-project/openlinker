@@ -32,10 +32,14 @@ export interface IOrderIngestionService {
 
   /**
    * Hydrate a marketplace order and route it to destination processor(s).
+   *
+   * `eventType === 'cancelled'` routes through the lifecycle relay (propagate the
+   * cancel to destinations) instead of the create/update path (#1158 / #1132).
    */
   syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
-    sourceEventId?: string
+    sourceEventId?: string,
+    eventType?: OrderFeedEventType
   ): Promise<OrderSyncResult[]>;
 }
