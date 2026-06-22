@@ -196,9 +196,10 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
   });
 
-  it('should not render a global search input in the topbar until search is wired', () => {
+  it('should not render a native searchbox role — cmdk uses a text input (#333)', () => {
     // Regression for #220: the topbar previously rendered an <Input type="search">
-    // with no handler. Global search isn't implemented yet — no dead UI until it is.
+    // with no handler. The command palette (#333) uses cmdk's <input type="text">,
+    // which does not carry the implicit "searchbox" ARIA role, so this guard stays valid.
     renderShell({ pathname: '/' });
     expect(screen.queryByRole('searchbox')).toBeNull();
   });
@@ -208,9 +209,9 @@ describe('AppShell', () => {
     expect(screen.getByTestId('page-content')).toHaveTextContent('Page content');
   });
 
-  it('shows the ⌘K search placeholder in the topbar (visual only — no input)', () => {
+  it('shows the ⌘K command palette trigger in the topbar', () => {
     renderShell({ pathname: '/' });
-    const search = screen.getByRole('button', { name: /Global search/i });
+    const search = screen.getByRole('button', { name: /open command palette/i });
     expect(search).toBeInTheDocument();
     expect(search.textContent).toMatch(/⌘K/);
   });

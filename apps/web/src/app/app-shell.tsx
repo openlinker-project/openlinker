@@ -6,9 +6,9 @@
  * authenticated route renders inside this shell.
  *
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
- * existing list queries). The topbar hosts breadcrumbs, a visual-only
- * ⌘K search placeholder (full palette tracked separately in #333), an
- * alerts trigger, and a user chip dropdown with the theme toggle.
+ * existing list queries). The topbar hosts breadcrumbs, a live ⌘K command
+ * palette trigger (CommandPaletteTrigger → CommandPaletteProvider, #333),
+ * an alerts trigger, and a user chip dropdown with the theme toggle.
  *
  * @module shared/ui
  */
@@ -40,6 +40,8 @@ import {
 import { ThemeToggle } from '../shared/ui/theme-toggle';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
+import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
+import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 
 interface SidebarNavProps {
   ariaLabel: string;
@@ -145,27 +147,9 @@ function WorkspaceFooter({ onLogout, username }: WorkspaceFooterProps): ReactEle
   );
 }
 
-function TopbarSearchPlaceholder(): ReactElement {
-  return (
-    <button
-      type="button"
-      className="shell-topbar__search"
-      title="Global search — coming soon"
-      aria-label="Global search — coming soon"
-      aria-disabled="true"
-      onClick={(event) => event.preventDefault()}
-    >
-      <span className="shell-topbar__search-icon" aria-hidden="true">
-        ⌕
-      </span>
-      <span className="shell-topbar__search-placeholder">
-        Search orders, products, connections…
-      </span>
-      <kbd className="shell-topbar__search-kbd" aria-hidden="true">
-        ⌘K
-      </kbd>
-    </button>
-  );
+function TopbarSearchTrigger(): ReactElement {
+  const { open } = useCommandPalette();
+  return <CommandPaletteTrigger onClick={open} />;
 }
 
 function initialsFrom(username: string): string {
@@ -253,6 +237,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const crumbs = resolveCrumbFromMatches(matches);
 
   return (
+    <CommandPaletteProvider>
     <div className="shell">
       <div className="shell-sidebar">
         <SidebarBrand />
@@ -312,7 +297,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
             ) : null}
           </nav>
 
-          <TopbarSearchPlaceholder />
+          <TopbarSearchTrigger />
 
           <div className="shell-topbar__spacer" />
 
@@ -331,5 +316,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
         <main key={location.pathname} className="shell-content">{children}</main>
       </div>
     </div>
+    </CommandPaletteProvider>
   );
 }

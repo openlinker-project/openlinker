@@ -47,6 +47,8 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
 export { SetupStepper } from './setup-stepper';
 
 // ── Overlays / popovers (Radix-wrapped) ────────────────────────────
+export { CommandPalette, CommandPaletteTrigger } from './command-palette';
+export type { CommandPaletteProps, PaletteItem, PaletteGroup } from './command-palette';
 export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
 export { DropdownMenu } from './dropdown-menu';
