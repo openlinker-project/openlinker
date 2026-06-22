@@ -114,6 +114,53 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(result).toEqual({ externalProductId: '100', status: 'draft' });
     });
 
+    it('should stamp reference = internalVariantId on create (idempotency key, #1107)', async () => {
+      client.createResource.mockResolvedValue({ id: '100', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(baseCommand({ internalVariantId: 'ol_variant_xyz' }));
+
+      const body = client.createResource.mock.calls[0][1] as { reference?: string };
+      expect(body.reference).toBe('ol_variant_xyz');
+    });
+
+    it('should adopt an orphaned product by reference instead of creating a duplicate (#1107)', async () => {
+      // A prior create succeeded but core never persisted the mapping (orphan).
+      client.listResources.mockImplementation((resource) => {
+        if (resource === 'products') {
+          return Promise.resolve([{ id: '900', reference: 'ol_variant_aaaa' }]);
+        }
+        return Promise.resolve([{ id: '1', id_product: '900', quantity: '0' }]); // stock_availables
+      });
+      client.updateResource
+        .mockResolvedValueOnce({ id: '900', active: '1' }) // adopted product update
+        .mockResolvedValueOnce({ id: '1' }); // stock update
+
+      const result = await adapter.publishProduct(baseCommand()); // no externalProductId → create path
+
+      expect(client.createResource).not.toHaveBeenCalled();
+      expect(client.listResources).toHaveBeenCalledWith('products', {
+        custom: { 'filter[reference]': 'ol_variant_aaaa' },
+      });
+      expect(client.updateResource).toHaveBeenNthCalledWith(
+        1,
+        'products',
+        '900',
+        expect.objectContaining({ id: '900', reference: 'ol_variant_aaaa' }),
+      );
+      expect(result.externalProductId).toBe('900');
+    });
+
+    it('should propagate a reference-lookup failure rather than risk a duplicate (#1107)', async () => {
+      // An ambiguous lookup (transport error) must NOT fall through to create.
+      client.listResources.mockRejectedValue(new PrestashopApiException('WS down', 503));
+
+      await expect(adapter.publishProduct(baseCommand())).rejects.toBeInstanceOf(
+        PrestashopApiException,
+      );
+      expect(client.createResource).not.toHaveBeenCalled();
+    });
+
     it('should map status "published" → active "1"', async () => {
       client.createResource.mockResolvedValue({ id: '1', active: '1' });
       withDefaultStockMock(client);
@@ -166,7 +213,11 @@ describe('PrestashopProductPublisherAdapter', () => {
 
     it('should update stock after product creation', async () => {
       client.createResource.mockResolvedValue({ id: '42', active: '1' });
-      client.listResources.mockResolvedValue([{ id: '7', id_product: '42', quantity: '0' }]);
+      client.listResources.mockImplementation((resource) =>
+        resource === 'products'
+          ? Promise.resolve([]) // no orphan → create path
+          : Promise.resolve([{ id: '7', id_product: '42', quantity: '0' }]),
+      );
       client.updateResource.mockResolvedValue({ id: '7' });
 
       await adapter.publishProduct(baseCommand({ stock: 10 }));
@@ -198,7 +249,13 @@ describe('PrestashopProductPublisherAdapter', () => {
       // persistence and cause the next retry to call createResource again, producing a
       // duplicate orphaned PS product.
       client.createResource.mockResolvedValue({ id: '77', active: '1' });
-      client.listResources.mockRejectedValue(new PrestashopApiException('WS error', 503));
+      // The reference lookup ('products') must succeed (miss → create); only the
+      // stock_availables read throws, exercising the best-effort stock path.
+      client.listResources.mockImplementation((resource) =>
+        resource === 'products'
+          ? Promise.resolve([])
+          : Promise.reject(new PrestashopApiException('WS error', 503)),
+      );
 
       const result = await adapter.publishProduct(baseCommand({ stock: 5 }));
 
@@ -210,6 +267,7 @@ describe('PrestashopProductPublisherAdapter', () => {
       client.createResource.mockRejectedValue(
         new PrestashopApiException('Invalid product data', 400),
       );
+      client.listResources.mockResolvedValue([]); // create path: no orphan → reaches createResource
 
       await expect(adapter.publishProduct(baseCommand())).rejects.toMatchObject({
         name: 'ProductPublishRejectedException',
@@ -223,6 +281,7 @@ describe('PrestashopProductPublisherAdapter', () => {
     it('should propagate PrestashopAuthenticationException (401) unchanged', async () => {
       const err = new PrestashopAuthenticationException('Unauthorized', CONNECTION_ID);
       client.createResource.mockRejectedValue(err);
+      client.listResources.mockResolvedValue([]);
 
       await expect(adapter.publishProduct(baseCommand())).rejects.toBe(err);
       await expect(adapter.publishProduct(baseCommand())).rejects.not.toBeInstanceOf(
@@ -233,6 +292,7 @@ describe('PrestashopProductPublisherAdapter', () => {
     it('should propagate 5xx PrestashopApiException unchanged', async () => {
       const err = new PrestashopApiException('Gateway timeout', 503);
       client.createResource.mockRejectedValue(err);
+      client.listResources.mockResolvedValue([]);
 
       await expect(adapter.publishProduct(baseCommand())).rejects.toBe(err);
       await expect(adapter.publishProduct(baseCommand())).rejects.not.toBeInstanceOf(

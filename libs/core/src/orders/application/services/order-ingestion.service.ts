@@ -41,11 +41,14 @@ import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
+import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
+import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { Logger } from '@openlinker/shared/logging';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
@@ -76,7 +79,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
-    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService
+    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
+    @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService
   ) {}
 
   async ingestOrders(
@@ -178,8 +183,18 @@ export class OrderIngestionService implements IOrderIngestionService {
   async syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
-    sourceEventId?: string
+    sourceEventId?: string,
+    eventType?: OrderFeedEventType
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
+    // Inbound cancellation (#1158): a source `cancelled` event must NOT re-run the
+    // create/update path (which would re-create the order — the #1132 bug). Route
+    // it through the lifecycle relay, which propagates the cancel to the order's
+    // destination(s) via OrderStatusWriteback. OL owns no canonical status here —
+    // it forwards the source's fact to the participants it already synced to.
+    if (eventType === 'cancelled') {
+      return this.handleSourceCancellation(connectionId, externalOrderId);
+    }
+
     const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
       connectionId,
       'OrderSource'
@@ -332,6 +347,68 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return results;
+  }
+
+  /**
+   * Inbound source cancellation → destination(s) via the lifecycle relay (#1158).
+   * Resolves the existing internal order; if unknown (never ingested) there is
+   * nothing to cancel. Applies the same destination-echo guard as ingestion
+   * (ADR-017) so a re-read of an order OL itself created elsewhere doesn't
+   * propagate a spurious cancel. Returns an empty result set — a cancel is not
+   * an order-create, so there are no OrderSyncResults to report.
+   */
+  private async handleSourceCancellation(
+    connectionId: string,
+    externalOrderId: string
+  ): Promise<never[]> {
+    const internalOrderId = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.Order,
+      externalOrderId,
+      connectionId
+    );
+    if (!internalOrderId) {
+      this.logger.warn(
+        `Cancellation for unknown order: external ${externalOrderId} on connection ${connectionId} ` +
+          `has no internal mapping — nothing to cancel`
+      );
+      return [];
+    }
+
+    const existing = await this.orderRecordService.getOrderRecord(internalOrderId);
+    if (existing && existing.sourceConnectionId !== connectionId) {
+      // Destination-echo guard (ADR-017): a cancel re-read from a connection OL
+      // pushed the order INTO is not the authoritative source's cancel — skip.
+      this.logger.debug(
+        `Skipping destination-echo cancellation of order ${internalOrderId}: external id ` +
+          `${externalOrderId} on connection ${connectionId} maps to an order originating from ` +
+          `${existing.sourceConnectionId}`
+      );
+      return [];
+    }
+
+    const result = await this.orderLifecycleRelay.relay({
+      internalOrderId,
+      originConnectionId: connectionId,
+      event: { type: 'cancelled' },
+    });
+
+    const summary =
+      result.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets';
+    const message = `Cancellation relayed for order ${internalOrderId}: ${summary}`;
+    // Surface any non-`applied` target (e.g. a destination that already shipped,
+    // so the cancel was rejected) at warn — the cancel is never silently dropped.
+    //
+    // Known residual (#1160): a cancel that arrives *before* the order's
+    // create/sync job has run finds no targets here, and the later create then
+    // provisions the order as active. Fully closing that out-of-order race needs
+    // the deferred monotonic / relay-log machinery (ADR-027 guardrails) tracked
+    // with the bidirectional slices — out of scope for this unidirectional slice.
+    if (result.targets.some((t) => t.outcome !== 'applied')) {
+      this.logger.warn(message);
+    } else {
+      this.logger.log(message);
+    }
+    return [];
   }
 
   private async resolveCustomerId(
