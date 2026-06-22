@@ -96,6 +96,9 @@ export function createErliPlugin(): AdapterPlugin {
         connection,
         host.identifierMapping,
         host.credentialsResolver,
+        // #1066: distributed frozen-stock flag. Optional on HostServices — when
+        // absent the offer adapter fails open (pushes stock = pre-#1066 behaviour).
+        host.cache,
       );
       return dispatchCapability<T>(
         capability,

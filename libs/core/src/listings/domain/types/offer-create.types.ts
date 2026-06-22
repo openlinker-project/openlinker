@@ -73,6 +73,38 @@ export interface CreateOfferOverrides {
 }
 
 /**
+ * One distinguishing axis of a grouped variant, e.g. `{ name: 'Color', value: 'Red' }`.
+ * Flattened from `ProductVariant.attributes` (`Record<string, string>`) by the
+ * core builder. Platform-neutral: an adapter that groups explicitly (Erli) maps
+ * it field-for-field to its own wire shape; auto-grouping adapters ignore it.
+ */
+export interface OfferVariantAttribute {
+  name: string;
+  value: string;
+}
+
+/**
+ * Cross-marketplace variant-grouping hint. Present only when the offer is one
+ * sibling of a multi-variant product the platform should render as a single
+ * grouped listing. Platform-neutral: each adapter maps it to its own grouping
+ * mechanism (Erli `externalVariantGroup`; auto-grouping platforms like Allegro
+ * ignore it). Absent ⇒ list standalone (single-variant / simple products).
+ */
+export interface OfferVariantGroup {
+  /**
+   * Opaque, stable grouping token shared by every sibling of the same product
+   * (today the parent OL product id, `variant.productId`). Adapters MUST treat
+   * it as an opaque grouping key and forward it to their own grouping mechanism
+   * — never parse it, attribute meaning to it, or assume a particular id shape
+   * (it is NOT necessarily the same shape as a variant id). The "= parent
+   * product id" is a core-private convention, not part of the contract.
+   */
+  groupId: string;
+  /** This variant's distinguishing axes, flattened from ProductVariant.attributes. */
+  attributes: OfferVariantAttribute[];
+}
+
+/**
  * Command to create a new marketplace offer.
  *
  * Marketplace-neutral contract. Allegro, eBay, WooCommerce, Shopify adapters
@@ -123,6 +155,15 @@ export interface CreateOfferCommand {
    * required product parameters. `null`/absent means "resolve from barcode".
    */
   productCardId?: string | null;
+  /**
+   * Platform-neutral variant-grouping hint (#1065), populated by
+   * `OfferBuilderService` for a sibling of a multi-variant product. Adapters
+   * that group explicitly (Erli) map it to their wire shape; auto-grouping
+   * adapters (Allegro) ignore it. Absent ⇒ standalone listing (single-variant /
+   * simple products). Kept off `overrides` so adapters see it as a top-level
+   * pre-resolution alongside `variantBarcode` / `productCardId`.
+   */
+  variantGroup?: OfferVariantGroup;
 }
 
 /**

@@ -360,6 +360,14 @@ const ALLOW_LIST = new Map([
     new Set(['OfferStatusSnapshotRepositoryPort']),
   ],
 
+  // apps → listings.OfferStatusSnapshotRepositoryPort (#991) — Erli offers vertical-slice
+  // int-spec asserts the offer-status reconciliation snapshot round-trip; same sanctioned
+  // pattern as #816 above. Rewire via a read service if one lands (#722).
+  [
+    'apps/api/test/integration/erli/erli-offers-vertical-slice.int-spec.ts',
+    new Set(['OfferStatusSnapshotRepositoryPort']),
+  ],
+
   // apps → listings.{OfferMappingRepositoryPort, OfferCreationRecordRepositoryPort} +
   //        products.ProductVariantRepositoryPort — rewire via IListingsService + IProductsService
   [
