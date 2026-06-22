@@ -45,7 +45,7 @@ function buildStatefulFetch(): jest.Mock {
     const method = init?.method ?? 'GET';
     const path = url.slice(BASE.length);
 
-    if (method === 'POST' && path === '/invoices') {
+    if (method === 'POST' && path === '/api/invoices') {
       counter += 1;
       const minted: MintedInvoice = {
         providerInvoiceId: `SUB-${counter}`,
@@ -58,12 +58,12 @@ function buildStatefulFetch(): jest.Mock {
       return jsonResponse(201, minted);
     }
 
-    if (method === 'POST' && path === '/customers') {
+    if (method === 'POST' && path === '/api/customers/upsert') {
       return jsonResponse(200, { providerCustomerId: 'KH-1' });
     }
 
-    if (method === 'GET' && path.startsWith('/invoices/') && path.endsWith('/status')) {
-      const id = decodeURIComponent(path.slice('/invoices/'.length, -'/status'.length));
+    if (method === 'GET' && path.startsWith('/api/invoices/') && path.endsWith('/status')) {
+      const id = decodeURIComponent(path.slice('/api/invoices/'.length, -'/status'.length));
       const known = issued.get(id);
       if (!known) {
         return jsonResponse(404, { reason: 'unknown invoice id' });

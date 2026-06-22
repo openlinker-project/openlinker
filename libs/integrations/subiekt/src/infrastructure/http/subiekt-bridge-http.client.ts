@@ -79,17 +79,17 @@ function classifyRetryability(code: string | undefined): SubiektTransportRetryab
  * Provisional bridge REST surface. The authoritative contract is owned by #752;
  * these are the adapter's reading of it and reconcilable when #752 lands.
  *
- * TODO(#752): confirm these paths against the real bridge. The Mac/Linux
- * stateful contract mock is authored against the SAME guessed paths and so
- * CANNOT catch a wrong guess — `getInvoiceStatus`'s real-bridge fidelity is
- * proven only on the Windows #752 CI job.
+ * Paths match the bridge's REST contract (#752): invoicing routes live under
+ * the `/api/*` prefix (which the bridge guards with `X-Api-Key`); `/health` is
+ * anonymous and stays outside the prefix. The configured bridge base URL must
+ * NOT include `/api` — these paths carry it.
  */
 export const SUBIEKT_BRIDGE_ENDPOINTS = {
-  issueInvoice: '/invoices',
-  upsertCustomer: '/customers',
+  issueInvoice: '/api/invoices',
+  upsertCustomer: '/api/customers/upsert',
   /** Templated by `providerInvoiceId`. */
   invoiceStatus: (providerInvoiceId: string): string =>
-    `/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
+    `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
   health: '/health',
 } as const;
 

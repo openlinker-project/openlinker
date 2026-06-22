@@ -252,12 +252,12 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('getInvoiceStatus', () => {
-    it('issues a GET to the templated /invoices/{id}/status path', async () => {
+    it('issues a GET to the templated /api/invoices/{id}/status path', async () => {
       fetchMock.mockResolvedValue(okResponse({ state: 'issued', regulatoryStatus: 'sent' }));
       const client = new SubiektBridgeHttpClient(BASE);
       await client.getInvoiceStatus({ providerInvoiceId: 'SUB-1' });
       const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
-      expect(url).toBe(`${BASE}/invoices/SUB-1/status`);
+      expect(url).toBe(`${BASE}/api/invoices/SUB-1/status`);
       expect(init.method).toBe('GET');
     });
   });
