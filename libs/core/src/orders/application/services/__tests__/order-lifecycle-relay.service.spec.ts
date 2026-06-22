@@ -4,7 +4,7 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 import { OrderLifecycleRelayService } from '../order-lifecycle-relay.service';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { CapabilityNotSupportedException, type IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 
 const origin = 'allegro-conn';
@@ -167,5 +167,53 @@ describe('OrderLifecycleRelayService', () => {
     });
 
     expect(result.targets).toEqual([]);
+  });
+
+  it('resolves a source-role participant (OrderSource) when it is not an OrderProcessorManager (#1159)', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([mapping('allegro-dest', 'cf-9')]);
+    const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+    integrations.getCapabilityAdapter.mockImplementation((_conn: string, capability: string) =>
+      capability === 'OrderSource'
+        ? Promise.resolve(adapter)
+        : Promise.reject(new CapabilityNotSupportedException('allegro.publicapi.v1', capability))
+    );
+
+    const result = await service.relay({
+      internalOrderId: 'ol_order_1',
+      originConnectionId: origin,
+      event: { type: 'cancelled', reason: 'buyer-cancel' },
+    });
+
+    // Destination tried first, then the source role — guard-dispatched, no platform branching.
+    expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('allegro-dest', 'OrderProcessorManager');
+    expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('allegro-dest', 'OrderSource');
+    expect(adapter.write).toHaveBeenCalledWith({
+      type: 'cancelled',
+      externalOrderId: 'cf-9',
+      reason: 'buyer-cancel',
+    });
+    expect(result.targets).toEqual([
+      { connectionId: 'allegro-dest', outcome: 'applied', detail: undefined },
+    ]);
+  });
+
+  it('surfaces a connection-level resolution failure as "adapter unresolved" without trying further roles (#1159)', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+    // A non-capability error (e.g. connection disabled) must not be swallowed as a
+    // capability mismatch — it short-circuits the role loop and surfaces.
+    integrations.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
+
+    const result = await service.relay({
+      internalOrderId: 'ol_order_1',
+      originConnectionId: origin,
+      event: { type: 'cancelled' },
+    });
+
+    expect(integrations.getCapabilityAdapter).toHaveBeenCalledTimes(1);
+    expect(result.targets[0]).toEqual({
+      connectionId: 'ps-conn',
+      outcome: 'unsupported',
+      detail: 'adapter unresolved',
+    });
   });
 });
