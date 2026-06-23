@@ -28,9 +28,30 @@ export type KsefEnvironment = (typeof KsefEnvironmentValues)[number];
 export const KsefAuthTypeValues = ['ksef-token', 'qualified-seal'] as const;
 export type KsefAuthType = (typeof KsefAuthTypeValues)[number];
 
+/**
+ * Seller identity persisted on the connection row (Podmiot1 — system config,
+ * NOT a credential and never per-invoice input). Required for issuance (C5):
+ * every FA(3) carries the seller NIP + name + postal address. `countryIso2` is
+ * ISO 3166-1 alpha-2; the field names mirror the neutral `BuyerAddress` shape so
+ * the adapter can hand it straight to the FA(3) `SellerProfile`.
+ */
+export interface KsefSellerConfig {
+  nip: string;
+  name: string;
+  address: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+}
+
 /** Non-secret config persisted on the connection row. */
 export interface KsefConnectionConfig {
   env: KsefEnvironment;
+  /** Seller identity for issued documents (C5). Optional until a connection issues. */
+  seller?: KsefSellerConfig;
 }
 
 /**
