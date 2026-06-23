@@ -99,7 +99,7 @@ describe('ProductPublishExecutionService', () => {
       CONN,
       VARIANT
     );
-    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith('rec-1', EXT, 'published', null);
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith('rec-1', EXT, 'published', null, null);
     expect(result.outcome).toBe('ok');
     expect(result.listingCreationRecord.status).toBe('published');
   });
@@ -167,5 +167,27 @@ describe('ProductPublishExecutionService', () => {
 
     await expect(service.executePublish(input)).rejects.toThrow('network down');
     expect(records.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('should log a warn and persist warnings when the adapter returns a non-empty warnings array', async () => {
+    const warnings = ['imageUrls deferred', 'parameters deferred'];
+    adapter.publishProduct.mockResolvedValue({ externalProductId: EXT, status: 'published', warnings });
+    const loggerWarnSpy = jest.spyOn(service['logger'], 'warn');
+
+    const result = await service.executePublish(input);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith('rec-1', EXT, 'published', null, warnings);
+    expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('non-fatal adapter warnings'));
+    expect(result.outcome).toBe('ok');
+  });
+
+  it('should persist null warnings and not emit a warnings warn log when the adapter returns no warnings', async () => {
+    const loggerWarnSpy = jest.spyOn(service['logger'], 'warn');
+
+    const result = await service.executePublish(input);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith('rec-1', EXT, 'published', null, null);
+    expect(loggerWarnSpy).not.toHaveBeenCalledWith(expect.stringContaining('non-fatal adapter warnings'));
+    expect(result.outcome).toBe('ok');
   });
 });

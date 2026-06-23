@@ -66,16 +66,18 @@ export interface ListingCreationRecordRepositoryPort {
   ): Promise<ListingCreationRecord>;
 
   /**
-   * Atomically set externalProductId, status, and errors in a single write
-   * (avoids the `externalProductId set but status still 'pending'` intermediate
-   * state two separate updates would leave on a mid-write crash). `errors`
-   * follows the same three-valued semantics as `updateStatus`. Throws
-   * `ListingCreationRecordNotFoundException` if the record does not exist.
+   * Atomically set externalProductId, status, errors, and warnings in a single
+   * write (avoids the `externalProductId set but status still 'pending'`
+   * intermediate state two separate updates would leave on a mid-write crash).
+   * `errors` and `warnings` follow the same three-valued semantics as
+   * `updateStatus`. Throws `ListingCreationRecordNotFoundException` if the
+   * record does not exist.
    */
   updateExternalIdAndStatus(
     id: string,
     externalProductId: string,
     status: ListingCreationStatus,
     errors?: ListingCreationError[] | null,
+    warnings?: string[] | null,
   ): Promise<ListingCreationRecord>;
 }
