@@ -101,7 +101,11 @@ describe('usePermission', () => {
     await waitFor(() => expect(result.current).toBe(false));
   });
 
-  it('should return false for unknown permission even for admin', async () => {
+  it('should return false for an invalid permission string (compile-time guard)', async () => {
+    // @ts-expect-error — intentional: verifies the runtime false-path for an
+    // unrecognised permission string. The Permission type makes this a
+    // compile-time error in production callers; the cast here documents the
+    // runtime behaviour without weakening the hook's signature.
     const { result } = renderHook(() => usePermission('nonexistent:permission'), {
       wrapper: makeWrapper(adminSession),
     });
