@@ -50,11 +50,19 @@
  * is NOT effectively honored in the out-of-the-box config. Accepted as a pre-#992
  * limitation; full honoring activates together with the reconciliation task.
  *
- * Stock-restore-on-cancel (#988 / ADR-025 §4a) is DEFERRED to the orders half:
- * it needs an Erli order-cancel signal (OrderSource / inbox poll, #993) that
- * does not exist yet — no trigger is wired here (YAGNI). The restore mechanism
- * already exists (`updateOfferQuantity`); #993 only needs to observe the
- * `cancelled` event and call it.
+ * Stock-restore-on-cancel (#997 Half B / ADR-025 §4a): the MECHANISM now lands
+ * here as `restoreStockOnCancellation` — Erli auto-decrements stock on purchase
+ * but does NOT restore it on cancellation, so OL must issue the compensating
+ * write. The restore computes an ABSOLUTE target from OL master inventory
+ * (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) and sets it via
+ * the absolute-set `updateOfferQuantity` — it NEVER reads back Erli stock and
+ * increments (Erli's ~20-min cache lag would double-count under retry).
+ *
+ * THIS MECHANISM IS WIRED TO NO LIVE TRIGGER. Core has no order-cancellation-
+ * observe hook (`OrderProcessorManagerPort` has only `createOrder`; OL ingests
+ * `cancelled` and persists it but emits no order-status-change event). Detecting
+ * the cancellation and calling this is the Q-T2 follow-up — do not assume this
+ * path is live.
  *
  * Variant grouping (#986 emit half, #1065 core populator): the create body
  * carries `externalVariantGroup` (the parent/base product id shared by sibling
@@ -91,6 +99,7 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
@@ -324,6 +333,57 @@ export class ErliOfferManagerAdapter
     }
     const body: ErliProductPatchBody = { stock: cmd.quantity };
     await this.httpClient.patch(this.productPath(cmd.offerId), body);
+  }
+
+  /**
+   * Stock-restore-on-cancellation MECHANISM (#997 Half B / ADR-025 §4a).
+   *
+   * Erli auto-decrements stock on purchase but does NOT restore it on cancel, so
+   * OL issues the compensating write. For each cancelled-order variant id this
+   * resolves the ABSOLUTE master-inventory availability
+   * (`IInventoryQueryService.getAvailabilityByVariantIds`, #823 — variant-keyed)
+   * and sets it via the absolute-set {@link updateOfferQuantity}. It NEVER reads
+   * back Erli stock and increments: `updateOfferQuantity` is absolute-set, Erli's
+   * ~20-min cache lag makes a read-back stale, and a stale read repeated across
+   * retries double-counts. Master inventory is the single source of truth; the
+   * absolute-set is naturally re-runnable. A variant with no master row zero-fills
+   * (`getAvailabilityByVariantIds` semantics) and restores to 0 — master is
+   * authoritative, including 0.
+   *
+   * THIS METHOD IS WIRED TO NO LIVE TRIGGER. Core has no order-cancellation-
+   * observe hook (no order-status-change event; `OrderProcessorManagerPort` has
+   * only `createOrder`), so nothing calls this yet — see the class header and the
+   * Q-T2 follow-up. The `inventoryQuery` port is passed in by the (future)
+   * caller rather than held as a constructor field or added to the HostServices
+   * bag, so this dead-until-trigger code widens neither the adapter's
+   * construction contract nor the plugin host surface.
+   *
+   * Frozen-stock interaction: the restore routes through `updateOfferQuantity`,
+   * which consults `isStockFrozenCached` — so if a variant's stock is cached as
+   * frozen, the compensating restore PATCH is SKIPPED (arguably correct: a seller
+   * who froze stock owns it). The future Q-T2 trigger-wiring author should not be
+   * surprised that a frozen offer won't be restored.
+   *
+   * Empty `variantOfferIds` → no-op (an order with no Erli offer mapping yields
+   * no ids to restore). Log hygiene: never logs an order id or waybill.
+   */
+  async restoreStockOnCancellation(
+    variantOfferIds: readonly string[],
+    inventoryQuery: IInventoryQueryService,
+  ): Promise<void> {
+    if (variantOfferIds.length === 0) {
+      return;
+    }
+    const availability = await inventoryQuery.getAvailabilityByVariantIds(variantOfferIds);
+    const targetByVariant = new Map(
+      availability.map((row) => [row.productVariantId, row.totalAvailable]),
+    );
+    for (const offerId of variantOfferIds) {
+      // Master is authoritative including 0; a variant absent from the read
+      // zero-fills via getAvailabilityByVariantIds, so default to 0 defensively.
+      const target = targetByVariant.get(offerId) ?? 0;
+      await this.updateOfferQuantity({ offerId, quantity: target });
+    }
   }
 
   /**
