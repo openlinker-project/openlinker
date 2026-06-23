@@ -58,8 +58,8 @@ import {
   ORDER_INGESTION_SERVICE_TOKEN,
   type DispatchCarrierHint,
   type IOrderIngestionService,
-  type OrderDispatchNotifier,
   type OrderSourcePort,
+  type OrderStatusWriteback,
 } from '@openlinker/core/orders';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
@@ -450,13 +450,17 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     expect(record!.recordStatus).toBe('awaiting_mapping');
   });
 
-  // ── S6: status writeback (DIRECT invocation of notifyDispatched) ───────────
-  it('S6a: notifyDispatched marks dispatched and OMITS tracking for an Erli-managed shipment', async () => {
+  // ── S6: lifecycle writeback (DIRECT invocation of OrderStatusWriteback.write) ─
+  it('S6a: write(dispatched) marks dispatched and OMITS tracking for an Erli-managed shipment', async () => {
     process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
     const adapter = await getOrderSourceAdapter();
 
-    await adapter.notifyDispatched({ externalOrderId: ORDER_DISPATCH_NO_TRACKING });
+    const result = await adapter.write({
+      type: 'dispatched',
+      externalOrderId: ORDER_DISPATCH_NO_TRACKING,
+    });
 
+    expect(result.outcome).toBe('applied');
     const patches = erli.fake.callsOf('PATCH');
     expect(patches).toHaveLength(1);
     expect(patches[0].path).toBe(orderStatusPath(ORDER_DISPATCH_NO_TRACKING));
@@ -465,17 +469,19 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     expect(erli.fake.callsOf('POST')).toHaveLength(0);
   });
 
-  it('S6b: notifyDispatched ATTACHES the waybill when a real trackingNumber + carrier is present', async () => {
+  it('S6b: write(dispatched) ATTACHES the waybill when a real trackingNumber + carrier is present', async () => {
     process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
     const adapter = await getOrderSourceAdapter();
 
     const carrier: DispatchCarrierHint = { platformType: 'inpost' };
-    await adapter.notifyDispatched({
+    const result = await adapter.write({
+      type: 'dispatched',
       externalOrderId: ORDER_DISPATCH_WITH_TRACKING,
       trackingNumber: 'WB-998-XYZ',
       carrier,
     });
 
+    expect(result.outcome).toBe('applied');
     const patches = erli.fake.callsOf('PATCH');
     expect(patches).toHaveLength(1);
     expect(patches[0].path).toBe(orderStatusPath(ORDER_DISPATCH_WITH_TRACKING));
@@ -489,12 +495,12 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     ]);
   });
 
-  /** Resolve the REAL ErliOrderSourceAdapter (an OrderDispatchNotifier) via the seam. */
-  async function getOrderSourceAdapter(): Promise<OrderSourcePort & OrderDispatchNotifier> {
+  /** Resolve the REAL ErliOrderSourceAdapter (an OrderStatusWriteback) via the seam. */
+  async function getOrderSourceAdapter(): Promise<OrderSourcePort & OrderStatusWriteback> {
     const integrations = harness
       .getApp()
       .get<IIntegrationsService>(INTEGRATIONS_SERVICE_TOKEN);
-    return integrations.getCapabilityAdapter<OrderSourcePort & OrderDispatchNotifier>(
+    return integrations.getCapabilityAdapter<OrderSourcePort & OrderStatusWriteback>(
       connectionId,
       'OrderSource',
     );

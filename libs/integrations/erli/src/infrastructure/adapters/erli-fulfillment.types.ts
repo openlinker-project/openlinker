@@ -3,7 +3,7 @@
  *
  * Write shapes for pushing OL's fulfilment lifecycle BACK to Erli — the status
  * writeback + external-shipment registration the `ErliOrderSourceAdapter`'s
- * `OrderDispatchNotifier.notifyDispatched` issues.
+ * `OrderStatusWriteback.write` issues for a `dispatched` lifecycle event.
  *
  * #992-PROVISIONAL — these wire shapes are NOT yet confirmed against the Erli
  * sandbox; they mirror the DOCUMENTED API and are why the writeback path ships
