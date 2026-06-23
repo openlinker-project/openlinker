@@ -5937,7 +5937,8 @@ a.kpi-card:focus-visible {
   background: var(--status-warning-soft);
 }
 
-.offer-creation-tracker--active {
+.offer-creation-tracker--active,
+.offer-creation-tracker--reused {
   border-color: var(--status-success-border);
   background: var(--status-success-soft);
 }

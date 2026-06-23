@@ -12,9 +12,9 @@
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import {
-  type BatchCategoryByEanInput,
-  type EanMatchResult,
+import type {
+  BatchCategoryByEanInput,
+  EanMatchResult,
 } from '@openlinker/core/listings';
 
 import { CategoryResolutionService } from './category-resolution.service';

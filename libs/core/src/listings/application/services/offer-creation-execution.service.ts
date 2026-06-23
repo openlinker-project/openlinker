@@ -145,17 +145,30 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       // Idempotent retry: the mapping was already inserted on a prior attempt
       // (e.g. an adapter create that 409'd as already-exists, or a re-run job).
       // `createMapping` raises `DuplicateIdentifierMappingError` at the DB layer
-      // and `MappingAlreadyExistsError` once it resolves the winning row. Both
-      // are benign **only** when the existing mapping points to the same
-      // internal id we intended — otherwise it's a genuine conflict, rethrow.
-      if (error instanceof DuplicateIdentifierMappingError) {
-        // No winning-row id on this variant; the unique key already covers the
-        // (entityType, externalId, connectionId) we wrote, so this is our row.
-      } else if (
-        error instanceof MappingAlreadyExistsError &&
-        error.existingInternalId === input.internalVariantId
-      ) {
+      // and `MappingAlreadyExistsError` once it resolves the winning row. Either
+      // is benign **only** when the existing mapping points to the same internal
+      // id we intended; a DIFFERENT internal id is a genuine cross-variant
+      // `externalOfferId` collision (one offer id bound to two variants) and must
+      // rethrow — never silently bind it to the wrong variant (PR1099 review).
+      if (error instanceof MappingAlreadyExistsError) {
+        if (error.existingInternalId !== input.internalVariantId) {
+          throw error;
+        }
         // Existing mapping is exactly `externalOfferId → internalVariantId`.
+      } else if (error instanceof DuplicateIdentifierMappingError) {
+        // The DB-layer conflict carries no winning-row id. Resolve it and verify
+        // it's ours — symmetry with the MappingAlreadyExistsError branch above,
+        // so an `OfferCreator` whose `externalOfferId` is NOT unique per variant
+        // can't silently mis-bind. A null re-read (row vanished mid-race) is an
+        // unexpected state → rethrow so the job retries rather than guesses.
+        const winningInternalId = await this.identifierMapping.getInternalId(
+          CORE_ENTITY_TYPE.Offer,
+          result.externalOfferId,
+          input.connectionId
+        );
+        if (winningInternalId !== input.internalVariantId) {
+          throw error;
+        }
       } else {
         throw error;
       }
