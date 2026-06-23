@@ -118,6 +118,22 @@ describe('ErliWebhookProvisioningAdapter', () => {
     await expect(adapter.install(CONNECTION_ID)).rejects.toBeInstanceOf(ErliConfigException);
   });
 
+  it('should flip the persisted webhooksConfigured flag to false when a PUT fails', async () => {
+    httpClient.put.mockRejectedValueOnce(new Error('502 bad gateway'));
+
+    await expect(adapter.install(CONNECTION_ID)).rejects.toBeInstanceOf(ErliConfigException);
+    expect(connectionPort.update).toHaveBeenCalledWith(CONNECTION_ID, {
+      config: expect.objectContaining({ webhooksConfigured: false }),
+    });
+  });
+
+  it('should still throw the original ErliConfigException if the fail-closed flag update also fails', async () => {
+    httpClient.put.mockRejectedValueOnce(new Error('502 bad gateway'));
+    connectionPort.update.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(adapter.install(CONNECTION_ID)).rejects.toBeInstanceOf(ErliConfigException);
+  });
+
   it('should NEVER log the secret across any channel', async () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
