@@ -43,6 +43,9 @@ export {
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
+// Transport + session-crypto exceptions (#1147 / C3).
+export { KsefNetworkException } from './domain/exceptions/ksef-network.exception';
+export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-crypto.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic

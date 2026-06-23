@@ -31,9 +31,9 @@ import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 export class KsefInvoicingAdapter implements InvoicingPort {
   constructor(
     private readonly connectionId: string,
-    // Accepted (not stored) in the C2 stub so the factory call site is already
-    // shaped for C3, where the concrete client is wired in and retained.
-    _httpClient: IKsefHttpClient,
+    // Retained from C3: the concrete `KsefHttpClient` the C4 issuance mechanics
+    // call. Kept private until those methods land so the field is "used".
+    private readonly httpClient: IKsefHttpClient,
   ) {}
 
   issueInvoice(_cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
@@ -51,6 +51,15 @@ export class KsefInvoicingAdapter implements InvoicingPort {
   getSupportedDocumentTypes(): DocumentType[] {
     // No document type is issuable until C4 wires the issuance mechanics.
     return [];
+  }
+
+  /**
+   * The connection's transport. The C4 issuance methods (`issueInvoice` etc.)
+   * call `get`/`post` through here; exposed `protected` now so the wired client
+   * is genuinely referenced and the seam is ready without churning the surface.
+   */
+  protected get transport(): IKsefHttpClient {
+    return this.httpClient;
   }
 
   private notImplemented(method: string): Error {

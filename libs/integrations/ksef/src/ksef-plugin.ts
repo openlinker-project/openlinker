@@ -68,7 +68,7 @@ export function createKsefPlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const factory = new KsefAdapterFactory();
+      const factory = new KsefAdapterFactory(host.cache);
       const adapters = await factory.createAdapters(
         connection,
         host.identifierMapping,
