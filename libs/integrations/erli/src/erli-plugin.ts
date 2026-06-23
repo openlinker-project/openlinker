@@ -31,6 +31,7 @@ import { ErliConnectionConfigShapeValidatorAdapter } from './infrastructure/adap
 import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-credentials-shape-validator.adapter';
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
 import { ErliEmailNormalizerAdapter } from './infrastructure/adapters/erli-email-normalizer.adapter';
+import { ErliInboundWebhookDecoderAdapter } from './infrastructure/adapters/erli-inbound-webhook-decoder.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
 import { ErliWebhookEventTranslator } from './infrastructure/adapters/erli-webhook-event-translator.adapter';
 import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
@@ -93,12 +94,17 @@ export function createErliPlugin(): AdapterPlugin {
       for (const task of buildErliSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }
-      // Inbound webhook scaffolding (#996, ADR-015). The translator decodes
-      // Erli's id-only order webhooks into a neutral CanonicalInboundEvent the
-      // core routing policy maps to marketplace.order.sync. PROVISIONAL (#992):
-      // the host's fail-closed OL-HMAC default rejects 100% of real Erli
-      // webhooks until the native InboundWebhookDecoderPort lands, so this is
-      // fail-safe scaffolding — the #993 inbox poll is the authoritative path.
+      // Inbound webhook path (#996 translator + #1145 native decoder, ADR-021/015).
+      // Decoder (provider-keyed) authenticates Erli's `Authorization: Bearer
+      // {accessToken}` deliveries at ingress and decodes the id+status body into
+      // the neutral envelope; the translator (adapterKey-keyed) then maps the
+      // decoded event onto a CanonicalInboundEvent the core routing policy sends
+      // to marketplace.order.sync. The #993 inbox poll remains the authoritative
+      // ingestion path (ADR-025) — the webhook is a low-latency nudge.
+      host.inboundWebhookDecoderRegistry.register(
+        erliAdapterManifest.platformType,
+        new ErliInboundWebhookDecoderAdapter(),
+      );
       host.webhookEventTranslatorRegistry.register(
         ERLI_ADAPTER_KEY,
         new ErliWebhookEventTranslator(),
