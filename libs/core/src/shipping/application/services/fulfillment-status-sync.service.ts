@@ -32,7 +32,9 @@
  *
  * On the **first** transition into dispatched/delivered it also relays the
  * shop's "shipped" fact back to the order's source via the lifecycle relay
- * (#1160 / ADR-027) — best-effort, transition-gated for at-most-once.
+ * (#1160 / ADR-027) — best-effort, transition-gated for at-most-once. The
+ * **first** transition into `cancelled` relays the shop's cancellation the same
+ * way (#1170); a marketplace refusal is surfaced as a logged `rejected`.
  *
  * @module libs/core/src/shipping/application/services
  * @implements {IFulfillmentStatusSyncService}
@@ -116,7 +118,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * A freshly-projected branch-1 row is the destination shop's first "shipped"
  * signal when it is born at `dispatched` or (shop jumped straight there)
  * `delivered` — delivered implies it was sent, so the source still needs the
- * mark-sent. `cancelled` is out of #1160's dispatch scope.
+ * mark-sent. `cancelled` relays via {@link isInitialCancel}, not here.
  */
 function isInitialDispatch(status: FulfillmentStatus | null): boolean {
   return status === FULFILLMENT_STATUS.Dispatched || status === FULFILLMENT_STATUS.Delivered;
@@ -133,6 +135,26 @@ function isFirstDispatchTransition(existing: Shipment, patch: UpdateShipmentInpu
     patch.status === SHIPMENT_STATUS.Dispatched ||
     (patch.status === SHIPMENT_STATUS.Delivered && !existing.dispatchedAt)
   );
+}
+
+/**
+ * A branch-1 row **born** `cancelled` is the shop's first "cancelled" signal —
+ * the destination shop cancelled an OMP-fulfilled order before OL ever saw a
+ * dispatch — so the order's source marketplace must learn of it (#1170 / ADR-027).
+ */
+function isInitialCancel(status: FulfillmentStatus | null): boolean {
+  return status === FULFILLMENT_STATUS.Cancelled;
+}
+
+/**
+ * On an UPDATE, fire the cancel relay only on the FIRST entry into `cancelled`.
+ * `diffPatch` sets `patch.status` only when the projected status actually
+ * changed, so any `patch.status === Cancelled` is by construction the first
+ * transition into cancelled — at-most-once across re-polls with no separate
+ * ledger (same mechanism as {@link isFirstDispatchTransition}).
+ */
+function isFirstCancelTransition(patch: UpdateShipmentInput): boolean {
+  return patch.status === SHIPMENT_STATUS.Cancelled;
 }
 
 @Injectable()
@@ -297,6 +319,11 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           if (isInitialDispatch(snapshot.status)) {
             await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
           }
+          // #1170: a branch-1 row born cancelled is the shop's first cancel
+          // signal — relay the cancellation to the order's source marketplace.
+          if (isInitialCancel(snapshot.status)) {
+            await this.relayCancelledToSource(record.internalOrderId, connectionId);
+          }
         } else {
           const patch = this.diffPatch(existing, snapshot);
           if (Object.keys(patch).length > 0) {
@@ -310,6 +337,11 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             // makes this at-most-once across re-polls — no separate ledger.
             if (isFirstDispatchTransition(existing, patch)) {
               await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
+            }
+            // #1170: relay only on the FIRST transition into cancelled — same
+            // transition-gate at-most-once guarantee as the dispatch relay.
+            if (isFirstCancelTransition(patch)) {
+              await this.relayCancelledToSource(record.internalOrderId, connectionId);
             }
           }
         }
@@ -451,6 +483,36 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
     } catch (error) {
       this.logger.warn(
         `Branch-1 dispatch relay failed for order ${internalOrderId} ` +
+          `(origin ${originConnectionId}): ${this.message(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Relay a shop-observed cancellation back to the order's source participant
+   * (#1170). The destination shop is the event origin and is excluded by the
+   * relay; the source marketplace (or, shop→shop, the origin shop) receives
+   * `OrderStatusWriteback({cancelled})`. A marketplace that refuses the cancel
+   * (e.g. the order already shipped — Allegro/PS report `rejected`) is surfaced
+   * by the relay's own per-target `warn`, never silently dropped (AC). No
+   * `reason` — the branch-1 snapshot carries none; OL issues no refund (it is
+   * never the money book of record, ADR-027). Best-effort: an identifier-mapping
+   * -level throw is caught here so one order never breaks the sync loop. Durable
+   * retry / per-destination notify-state is deferred (#861).
+   */
+  private async relayCancelledToSource(
+    internalOrderId: string,
+    originConnectionId: string,
+  ): Promise<void> {
+    try {
+      await this.orderLifecycleRelay.relay({
+        internalOrderId,
+        originConnectionId,
+        event: { type: 'cancelled' },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Branch-1 cancel relay failed for order ${internalOrderId} ` +
           `(origin ${originConnectionId}): ${this.message(error)}`,
       );
     }
