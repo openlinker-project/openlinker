@@ -175,6 +175,18 @@ export interface StructuredConfigSectionProps {
   form: UseFormReturn<EditConnectionFormValues>;
   configIsParseable: boolean;
   syncStructuredToJson: (field: string, value: string, options?: { markDirty?: boolean }) => void;
+  /**
+   * #759 — whole-object serializer the host threads in so a section can
+   * re-serialize a structured RHF object field (e.g. `subiektCapabilities`)
+   * into `configText` after it `setValue`s the field itself. Additive and
+   * optional: existing plugins (PS/WC) ignore it. Mirrors the
+   * `syncSellerDefaultsToJson` thread-through on `ExtraConfigSectionProps`,
+   * but generic (takes no field argument — the section owns which form
+   * field it just wrote, the host serializer reads current form state).
+   * Early-returns when raw JSON is unparseable, so sections that depend on
+   * it MUST gate their inputs on `configIsParseable`.
+   */
+  syncObjectToJson?: () => void;
 }
 
 /**
@@ -229,6 +241,16 @@ export interface PlatformContribution {
   getCallbackUrlDefault?: () => string | undefined;
   /** Edit-connection: render the platform-specific structured config inputs. */
   StructuredConfigSection?: ComponentType<StructuredConfigSectionProps>;
+  /**
+   * #759 — adapter-provided capability-toggle descriptors. The generic
+   * `CapabilityTogglesSection` renders one on/off switch per entry and
+   * reads its label/help text from HERE, never from a literal in the
+   * shared component (AC-8 international safety — e.g. the 'Show KSeF
+   * status badge' label is provider-supplied). Keyed by capability id
+   * (e.g. `regulatory-transmission-tracking`). Only Subiekt populates it
+   * today; this is the general capability-toggle pattern.
+   */
+  capabilityDescriptors?: Record<string, { label: string; help?: string }>;
   /** Edit-connection: render extra section below structured/raw. */
   ExtraConfigSection?: ComponentType<ExtraConfigSectionProps>;
   /**
