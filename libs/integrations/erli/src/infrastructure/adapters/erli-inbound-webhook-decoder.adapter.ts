@@ -113,7 +113,12 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
         occurredAt: new Date().toISOString(),
         objectType: 'order',
         externalId,
-        payload: record,
+        // Forward ONLY the advisory status hint — never the raw body. The order
+        // is re-pulled authoritatively downstream (trigger-not-truth), so a
+        // minimal payload avoids carrying any field Erli might add later onto
+        // the published event (mirrors the order mapper's PII-off-metadata
+        // discipline; InPost forwards no payload at all).
+        ...(status ? { payload: { status } } : {}),
       },
     };
   }

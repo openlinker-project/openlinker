@@ -105,7 +105,15 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.envelope.objectType).toBe('order');
       expect(result.envelope.eventId).toMatch(/^erli-[0-9a-f]{32}$/);
       expect(typeof result.envelope.occurredAt).toBe('string');
-      expect(result.envelope.payload).toEqual({ id: 'order-42', status: 'purchased' });
+      // Only the advisory status hint is forwarded — never the raw body.
+      expect(result.envelope.payload).toEqual({ status: 'purchased' });
+    });
+
+    it('should omit payload entirely when the body carries no status', () => {
+      const result = adapter.extractEnvelope(bodyBuf({ id: 'order-7' }), {});
+      expect(result.action).toBe('route');
+      if (result.action !== 'route') return;
+      expect(result.envelope.payload).toBeUndefined();
     });
 
     it('should derive a deterministic eventId from id + status', () => {
