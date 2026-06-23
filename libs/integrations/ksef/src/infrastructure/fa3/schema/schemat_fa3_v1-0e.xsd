@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FA(3) structural schema — VENDORED WORKING COPY (placeholder).
+
+  This is a SKELETON placeholder, NOT the authoritative Ministry of Finance
+  schema. The real FA(3) XSD must be fetched from crd.gov.pl
+  (wzór 2025/06/25/13775, schema version 1-0E) and committed here before the
+  validator's structural rule set is finalised. See SCHEMA_VALIDATION_STATUS.md
+  in this directory for provenance, the deferral flags, and the re-fetch command.
+
+  Namespace: http://crd.gov.pl/wzor/2025/06/25/13775/
+  Root element: Faktura
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://crd.gov.pl/wzor/2025/06/25/13775/"
+           targetNamespace="http://crd.gov.pl/wzor/2025/06/25/13775/"
+           elementFormDefault="qualified">
+  <!-- PLACEHOLDER: replace with the authoritative FA(3) v1-0E XSD (C3+). -->
+  <xs:element name="Faktura">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="skip"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
