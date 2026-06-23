@@ -43,3 +43,5 @@ export {
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
+export { KsefNetworkException } from './domain/exceptions/ksef-network.exception';
+export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-crypto.exception';
