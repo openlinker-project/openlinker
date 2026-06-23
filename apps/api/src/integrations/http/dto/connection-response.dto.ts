@@ -79,9 +79,9 @@ export class ConnectionResponseDto {
     dto.platformType = connection.platformType;
     dto.name = connection.name;
     dto.status = connection.status;
-    // Deny-by-default: config is only projected for admin callers (ADR-027).
+    // Deny-by-default: config is only projected for admin callers.
     // Non-admins receive {} so no raw platform config, OAuth client IDs, or
-    // shop URLs are ever included in a non-admin response.
+    // shop URLs are ever included in a non-admin response (#1124).
     dto.config = role === 'admin' ? connection.config : {};
     dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
     dto.adapterKey = connection.adapterKey;
