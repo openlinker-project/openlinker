@@ -5,7 +5,10 @@
  * writeback + external-shipment registration the `ErliOrderSourceAdapter`'s
  * `OrderDispatchNotifier.notifyDispatched` issues.
  *
- * Verified against the live Erli Shop API (#992 spike):
+ * #992-PROVISIONAL — these wire shapes are NOT yet confirmed against the Erli
+ * sandbox; they mirror the DOCUMENTED API and are why the writeback path ships
+ * default-OFF (`OL_ERLI_DISPATCH_WRITEBACK_ENABLED`). Confirm via the #992 spike
+ * before enabling in production:
  *  - Dispatch is `PATCH /orders/{id}/status { status: 'sent' }` — the order
  *    status enum (`pending | purchased | cancelled | returned`) has no
  *    `dispatched`; `sent` is the dispatch state.
@@ -15,7 +18,7 @@
  *
  * This file is the SINGLE reconciliation point for fulfillment-writeback wire
  * assumptions — the adapter imports the path builder, the status token, and the
- * payload types only from here.
+ * payload types only from here. A #992 revision updates this one file.
  *
  * Path hygiene: `erliOrderStatusPath` interpolates the Erli-issued external
  * order id via `encodeURIComponent` ONLY — the order id is Erli-issued (opaque,

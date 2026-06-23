@@ -85,7 +85,7 @@ import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
   ERLI_EXTERNAL_SHIPPING_PATH,
-  ERLI_ORDER_STATUS_SENT,
+  ERLI_OL_TO_ORDER_STATUS,
   erliOrderStatusPath,
   type ErliExternalShipmentBody,
   type ErliOrderStatusBody,
@@ -303,9 +303,10 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
     }
 
     // 1. Mark dispatched via the order status enum: PATCH /orders/{id}/status
-    //    { status: 'sent' }. A 409 (stale revision / already sent) is treated as
-    //    success for idempotency.
-    const statusBody: ErliOrderStatusBody = { status: ERLI_ORDER_STATUS_SENT };
+    //    { status: 'sent' }. The OL-lifecycle→Erli-status map is the single
+    //    source of the dispatch token. A 409 (stale revision / already sent) is
+    //    treated as success for idempotency.
+    const statusBody: ErliOrderStatusBody = { status: ERLI_OL_TO_ORDER_STATUS.dispatched };
     try {
       await this.httpClient.patch(erliOrderStatusPath(input.externalOrderId), statusBody);
     } catch (error) {
