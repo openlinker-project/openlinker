@@ -48,6 +48,7 @@ function makeRegisterHost(): {
   schedulerTaskRegistry: { register: jest.Mock };
   webhookEventTranslatorRegistry: { register: jest.Mock };
   webhookProvisioningRegistry: { register: jest.Mock };
+  inboundWebhookDecoderRegistry: { register: jest.Mock };
 } {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
@@ -58,6 +59,7 @@ function makeRegisterHost(): {
   const schedulerTaskRegistry = { register: jest.fn() };
   const webhookEventTranslatorRegistry = { register: jest.fn() };
   const webhookProvisioningRegistry = { register: jest.fn() };
+  const inboundWebhookDecoderRegistry = { register: jest.fn() };
   const hostStub = {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
@@ -68,6 +70,7 @@ function makeRegisterHost(): {
     schedulerTaskRegistry,
     webhookEventTranslatorRegistry,
     webhookProvisioningRegistry,
+    inboundWebhookDecoderRegistry,
   } as unknown as HostServices;
   return {
     host: hostStub,
@@ -80,6 +83,7 @@ function makeRegisterHost(): {
     schedulerTaskRegistry,
     webhookEventTranslatorRegistry,
     webhookProvisioningRegistry,
+    inboundWebhookDecoderRegistry,
   };
 }
 
@@ -231,6 +235,21 @@ describe('createErliPlugin', () => {
       expect(webhookEventTranslatorRegistry.register).toHaveBeenCalledWith(
         'erli.shopapi.v1',
         expect.objectContaining({ translate: expect.any(Function) }),
+      );
+    });
+
+    it('should register the native inbound webhook decoder under provider "erli" (#1145)', () => {
+      // Decoder is provider-keyed ('erli'), NOT adapterKey-keyed — the host
+      // resolves it by the /webhooks/:provider path segment (ADR-021).
+      const { host, inboundWebhookDecoderRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(inboundWebhookDecoderRegistry.register).toHaveBeenCalledWith(
+        'erli',
+        expect.objectContaining({
+          verify: expect.any(Function),
+          extractEnvelope: expect.any(Function),
+        }),
       );
     });
 
