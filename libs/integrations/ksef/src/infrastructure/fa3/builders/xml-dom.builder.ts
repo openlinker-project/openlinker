@@ -18,7 +18,7 @@
 import { XMLBuilder } from 'fast-xml-parser';
 
 /** Attribute key prefix the builder uses for element attributes. */
-export const XML_ATTR_PREFIX = '@_' as const;
+export const XML_ATTR_PREFIX = '@_';
 
 /** A serialisable XML node tree (objects, arrays, scalars). */
 export type XmlNode = string | number | boolean | null | XmlNodeObject | XmlNode[];
@@ -39,6 +39,6 @@ export function serializeXml(tree: XmlNodeObject): string {
     format: false,
     suppressEmptyNode: true,
   });
-  const body = builder.build(tree) as string;
+  const body = builder.build(tree);
   return `<?xml version="1.0" encoding="UTF-8"?>${body}`;
 }

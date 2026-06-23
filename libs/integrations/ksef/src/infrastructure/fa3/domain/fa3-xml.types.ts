@@ -19,16 +19,16 @@ import type { BuyerIdentity } from './fa3-buyer-id.mapper';
 import type { Fa3KodWaluty, Fa3P12Value } from './fa3-schema.types';
 
 /** FA(3) XML namespace (Ministry of Finance, wzór 2025/06/25/13775). */
-export const FA3_NAMESPACE = 'http://crd.gov.pl/wzor/2025/06/25/13775/' as const;
+export const FA3_NAMESPACE = 'http://crd.gov.pl/wzor/2025/06/25/13775/';
 
 /** `KodFormularza` element value. */
-export const FA3_FORM_CODE = 'FA' as const;
+export const FA3_FORM_CODE = 'FA';
 
 /** `KodFormularza/@wersjaSchemy` + `WariantFormularza`-pinned schema version. */
-export const FA3_SCHEMA_VERSION = '1-0E' as const;
+export const FA3_SCHEMA_VERSION = '1-0E';
 
 /** Root document element name. */
-export const FA3_ROOT_ELEMENT = 'Faktura' as const;
+export const FA3_ROOT_ELEMENT = 'Faktura';
 
 /**
  * Seller identity + address — injected into the builder by the adapter (resolved
