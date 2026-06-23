@@ -258,7 +258,23 @@ describe('FulfillmentStatusSyncService', () => {
       expect(relay.relay).not.toHaveBeenCalled();
     });
 
-    it('does NOT relay on a cancelled transition (out of #1160 dispatch scope)', async () => {
+    it('keeps the sync loop alive when the relay throws (best-effort, surfaced)', async () => {
+      relay.relay.mockRejectedValue(new Error('relay boom'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Dispatched,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: null,
+      });
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(result).toMatchObject({ created: 1, failed: 0 });
+    });
+  });
+
+  describe('#1170 — cancel relay to source', () => {
+    it('relays cancelled to the source when a branch-1 row is born cancelled', async () => {
       orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
       getFulfillmentStatus.mockResolvedValue({
         status: FULFILLMENT_STATUS.Cancelled,
@@ -269,15 +285,61 @@ describe('FulfillmentStatusSyncService', () => {
       await service.sync(PS, { limit: 100 });
 
       expect(shipments.create).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: PS,
+        event: { type: 'cancelled' },
+      });
+    });
+
+    it('relays cancelled on the FIRST transition into cancelled of an existing row', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalledTimes(1); // status → cancelled
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay.mock.calls[0][0].event).toEqual({ type: 'cancelled' });
+    });
+
+    it('does NOT re-relay cancelled on an unchanged-status re-poll (at-most-once)', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'cancelled',
+          cancelledAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).not.toHaveBeenCalled();
       expect(relay.relay).not.toHaveBeenCalled();
     });
 
-    it('keeps the sync loop alive when the relay throws (best-effort, surfaced)', async () => {
-      relay.relay.mockRejectedValue(new Error('relay boom'));
+    it('keeps the sync loop alive when the cancel relay throws (best-effort)', async () => {
+      relay.relay.mockRejectedValue(new Error('cancel relay boom'));
       orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
       getFulfillmentStatus.mockResolvedValue({
-        status: FULFILLMENT_STATUS.Dispatched,
-        trackingNumber: 'PS-TRK-1',
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
         deliveredAt: null,
       });
 
