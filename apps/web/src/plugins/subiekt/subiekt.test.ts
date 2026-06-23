@@ -1,18 +1,24 @@
 /**
- * subiektPlugin smoke tests (#1199)
+ * subiektPlugin invariant tests (#1199 + #759)
  *
- * Asserts the Subiekt plugin's static surface: identity, the guided setup
- * route, and the platform contributions (display name + setup card). Also
- * confirms the live plugin registry includes Subiekt so the connection-type
- * picker renders it. Behavioural coverage lives in the consumer test
- * (subiekt-setup-form).
+ * Static-surface coverage of the combined Subiekt plugin: identity, the guided
+ * setup route + setup card (#1199), the structured-config section + credentials
+ * panel + capability descriptors (#759), the trigger-model mirror staying in
+ * lockstep with the feature-layer source of truth, and presence in the live
+ * plugin registry (drives the connection-type picker). Behavioural coverage
+ * lives in the consumer-side tests (subiekt-setup-form / subiekt-structured-section).
  *
  * @module plugins/subiekt
  */
 import { describe, expect, it } from 'vitest';
 
 import { plugins } from '../index';
+import { INVOICE_TRIGGER_MODEL_VALUES } from '../../features/connections';
 import { subiektPlugin } from './index';
+import {
+  SUBIEKT_CAPABILITY_DESCRIPTORS,
+  SUBIEKT_TRIGGER_MODELS,
+} from './subiekt-capability-descriptors';
 
 describe('subiektPlugin', () => {
   describe('identity', () => {
@@ -25,7 +31,7 @@ describe('subiektPlugin', () => {
   });
 
   describe('build contributions', () => {
-    it('contributes the guided setup route', () => {
+    it('contributes the guided setup route (#1199)', () => {
       const paths = (subiektPlugin.build?.routes ?? []).map((route) => route.path);
       expect(paths).toContain('connections/new/subiekt');
     });
@@ -41,17 +47,34 @@ describe('subiektPlugin', () => {
     it('declares the display name', () => {
       expect(subiektPlugin.platform?.displayName).toBe('Subiekt nexo');
     });
-    it('contributes the setup card pointing to the guided wizard', () => {
+    it('contributes the setup card pointing to the guided wizard (#1199)', () => {
       expect(subiektPlugin.platform?.setupCard?.to).toBe('/connections/new/subiekt');
       expect(subiektPlugin.platform?.setupCard?.badge).toBe('Sfera bridge');
     });
-    it('does NOT contribute edit-form / credentials / connection-action slots (deferred to #759)', () => {
-      expect(subiektPlugin.platform?.StructuredConfigSection).toBeUndefined();
-      expect(subiektPlugin.platform?.CredentialsPanel).toBeUndefined();
-      expect(subiektPlugin.platform?.ConnectionActions).toBeUndefined();
+    it('contributes StructuredConfigSection + CredentialsPanel + capabilityDescriptors (#759)', () => {
+      expect(subiektPlugin.platform?.StructuredConfigSection).toBeDefined();
+      expect(subiektPlugin.platform?.CredentialsPanel).toBeDefined();
+      expect(subiektPlugin.platform?.capabilityDescriptors).toBe(SUBIEKT_CAPABILITY_DESCRIPTORS);
     });
     it('does NOT mark itself as external-auth-redirect', () => {
       expect(subiektPlugin.platform?.requiresExternalAuthRedirect).toBeUndefined();
+    });
+  });
+
+  describe('capability + trigger models', () => {
+    it('SUBIEKT_TRIGGER_MODELS equals the 4 values [manual, auto-on-paid, auto-on-shipped, batched]', () => {
+      expect([...SUBIEKT_TRIGGER_MODELS]).toEqual([
+        'manual',
+        'auto-on-paid',
+        'auto-on-shipped',
+        'batched',
+      ]);
+      // Stays in lockstep with the feature-layer source of truth (no drift).
+      expect([...SUBIEKT_TRIGGER_MODELS]).toEqual([...INVOICE_TRIGGER_MODEL_VALUES]);
+    });
+    it('capabilityDescriptors contains regulatory-transmission-tracking', () => {
+      expect(SUBIEKT_CAPABILITY_DESCRIPTORS).toHaveProperty('regulatory-transmission-tracking');
+      expect(SUBIEKT_CAPABILITY_DESCRIPTORS['regulatory-transmission-tracking'].label).toBeTruthy();
     });
   });
 
