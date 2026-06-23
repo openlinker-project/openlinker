@@ -85,6 +85,12 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
  *  - `cancelled` → `cancelled`
  *  - `returned`  → `refunded` (closest neutral terminal "goods back" state)
  *  - `pending` / unknown → `pending` (conservative)
+ *
+ * NOTE (#1081 review): `OrderStatus` (libs/core/.../order.types.ts) has no
+ * `returned` member today, so a physical return collapses to `refunded` — which
+ * can mark an order refunded even if no money moved. Acceptable as the nearest
+ * terminal goods-back state; switch the `returned` arm to `'returned'` if/when
+ * `OrderStatusValues` gains it.
  */
 function mapStatus(status: ErliOrderStatus): OrderStatus {
   switch (status) {
@@ -145,6 +151,12 @@ function mapItem(item: ErliOrderItem): IncomingOrderItem {
  * out tax. `subtotal` is derived as `total − shipping` so the components
  * reconcile exactly against the source-authoritative `total` (the destination's
  * total-reconciliation gate compares `subtotal + tax + shipping`).
+ *
+ * `tax: 0` is safe here (#1081 review): no downstream consumer reads
+ * `totals.tax` as an embedded VAT amount — `OrderSyncService` passes it straight
+ * through to the destination `OrderCreate` alongside `taxTreatment: 'inclusive'`
+ * (which already signals VAT is folded into the gross prices), and invoicing
+ * derives VAT from `unitPriceGross` + neutral `taxRate`, never from `totals.tax`.
  */
 function mapTotals(order: ErliOrder): IncomingOrderTotals {
   const total = toMajorUnits(order.totalPrice);
@@ -181,7 +193,9 @@ function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefine
   const composed = [address.street, address.buildingNumber].filter(Boolean).join(' ').trim();
   const address1 = address.address ?? composed;
   // Only surface flatNumber separately when address1 came from the structured
-  // parts (the full formatted line already includes it).
+  // parts (the full formatted line already includes it). The `m.` prefix is the
+  // Polish flat-number abbreviation — a deliberate PL-locale assumption, fine
+  // while Erli is PL-only (#1081 review); revisit if Erli ever ships non-PL.
   const address2 =
     address.address === undefined && address.flatNumber ? `m. ${address.flatNumber}` : undefined;
 
