@@ -28,11 +28,15 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
+import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
+import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import type { SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
   KsefConnectionConfig,
   KsefCredentials,
   KsefEnvironment,
+  KsefSellerConfig,
 } from '../../domain/types/ksef-connection.types';
 import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
@@ -58,14 +62,29 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
     const authMaterial = await this.resolveAuthMaterial(connection, credentials, credentialsResolver);
 
-    const { httpClient } = createKsefHttpClient({
+    const seller = this.resolveSeller(connection);
+
+    const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
       env,
       authMaterial,
       cache: this.cache,
     });
 
-    return { invoicing: new KsefInvoicingAdapter(connection.id, httpClient) };
+    // C5 issuance dependencies: the session-crypto service (shares the same
+    // MF public-key cache as the transport) + the FA(3) build/validate pipeline.
+    const sessionCrypto = new KsefSessionCryptoService(publicKeyCache);
+    const fa3Builder = new Fa3WithValidationBuilder();
+
+    return {
+      invoicing: new KsefInvoicingAdapter(
+        connection.id,
+        httpClient,
+        sessionCrypto,
+        fa3Builder,
+        seller,
+      ),
+    };
   }
 
   private resolveEnvironment(connection: Connection): KsefEnvironment {
@@ -75,6 +94,46 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       throw new KsefConfigException(`KSeF connection has no valid environment`, connection.id);
     }
     return env;
+  }
+
+  /**
+   * Resolve the seller profile (Podmiot1) from the connection config. This is
+   * system configuration — never a per-invoice input, never a credential — so it
+   * lives on the connection row. A connection that lacks a well-formed seller
+   * fails fast here rather than producing an FA(3) the XSD would reject.
+   */
+  private resolveSeller(connection: Connection): SellerProfile {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const seller: KsefSellerConfig | undefined = config?.seller;
+    const address = seller?.address;
+    if (
+      !seller ||
+      typeof seller.nip !== 'string' ||
+      seller.nip.trim().length === 0 ||
+      typeof seller.name !== 'string' ||
+      seller.name.trim().length === 0 ||
+      !address ||
+      typeof address.line1 !== 'string' ||
+      typeof address.city !== 'string' ||
+      typeof address.postalCode !== 'string' ||
+      typeof address.countryIso2 !== 'string'
+    ) {
+      throw new KsefConfigException(
+        'KSeF connection has no valid seller profile (nip/name/address required for issuance)',
+        connection.id,
+      );
+    }
+    return {
+      nip: seller.nip,
+      name: seller.name,
+      address: {
+        line1: address.line1,
+        line2: address.line2 ?? null,
+        city: address.city,
+        postalCode: address.postalCode,
+        countryIso2: address.countryIso2,
+      },
+    };
   }
 
   private async resolveCredentials(

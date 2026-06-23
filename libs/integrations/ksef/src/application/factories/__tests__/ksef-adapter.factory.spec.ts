@@ -10,6 +10,17 @@ import { Connection, type IdentifierMappingPort } from '@openlinker/core/identif
 
 const idMapping = {} as IdentifierMappingPort;
 
+const SELLER_CONFIG = {
+  nip: '1234567890',
+  name: 'Acme Sp. z o.o.',
+  address: {
+    line1: 'ul. Testowa 1',
+    city: 'Warszawa',
+    postalCode: '00-001',
+    countryIso2: 'PL',
+  },
+};
+
 function connection(opts: {
   config?: Record<string, unknown>;
   credentialsRef?: string;
@@ -19,7 +30,7 @@ function connection(opts: {
     'ksef',
     'KSeF',
     'active',
-    opts.config ?? { env: 'test' },
+    opts.config ?? { env: 'test', seller: SELLER_CONFIG },
     opts.credentialsRef ?? 'ref:ksef',
     new Date(),
     new Date(),
@@ -51,6 +62,20 @@ describe('KsefAdapterFactory', () => {
       }),
     );
     expect(adapters.invoicing).toBeDefined();
+  });
+
+  it('should throw when the seller profile is missing', async () => {
+    const factory = new KsefAdapterFactory();
+    await expect(
+      factory.createAdapters(
+        connection({ config: { env: 'test' } }),
+        idMapping,
+        resolver({
+          'ref:ksef': { authType: 'ksef-token', secretRef: 'ref:secret' },
+          'ref:secret': { token: 'TKN', contextNip: '1234567890' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(KsefConfigException);
   });
 
   it('should throw when the environment is missing/invalid', async () => {

@@ -35,6 +35,7 @@ export {
   type KsefConnectionConfig,
   type KsefCredentials,
   type KsefEnvironment,
+  type KsefSellerConfig,
 } from './domain/types/ksef-connection.types';
 
 // Domain exceptions. The HTTP client + interface stay package-private; these
@@ -46,6 +47,9 @@ export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
 // Transport + session-crypto exceptions (#1147 / C3).
 export { KsefNetworkException } from './domain/exceptions/ksef-network.exception';
 export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-crypto.exception';
+// Online-session business-failure (e.g. status 445) — surfaced to the host
+// classifier / core InvoiceService as a terminal failure (#1149 / C5).
+export { KsefSessionException } from './domain/exceptions/ksef-session.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic
