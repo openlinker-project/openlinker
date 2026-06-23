@@ -399,17 +399,33 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
         }
         // `mapped.price` carries the parsed combination impact. Fold it onto the
         // base; fall back to the raw impact only when the product has no base.
-        const absolutePrice =
+        const foldedPrice =
           basePrice !== undefined
             ? Math.round((basePrice + (mapped.price ?? 0)) * 100) / 100
             : mapped.price;
-        return {
-          ...mapped,
-          id: internalId,
-          // Conditional so an absent price stays absent (`price?: number` under
-          // exactOptionalPropertyTypes rejects an explicit `undefined`).
-          ...(absolutePrice !== undefined ? { price: absolutePrice } : {}),
-        };
+        // Floor: a non-positive absolute price (a negative combination impact
+        // exceeding the base) is never a valid master price — treat it as absent
+        // so it surfaces the `no-master-price` blocker downstream instead of
+        // publishing a negative/zero price to the marketplace (PR1099 self-review).
+        let absolutePrice = foldedPrice;
+        if (foldedPrice !== undefined && foldedPrice <= 0) {
+          this.logger.warn(
+            `Combination ${externalId} resolved to a non-positive master price (${foldedPrice}); ` +
+              `treating as no-master-price (connection: ${this.connection.id})`
+          );
+          absolutePrice = undefined;
+        }
+        const variant: ProductVariant = { ...mapped, id: internalId };
+        // The resolved absolute price is authoritative. Overwrite the mapper's
+        // raw-impact `price`; when floored to absent, DELETE it so the raw impact
+        // can't leak through (and an absent price stays absent — `price?: number`
+        // under exactOptionalPropertyTypes rejects an explicit `undefined`).
+        if (absolutePrice !== undefined) {
+          variant.price = absolutePrice;
+        } else {
+          delete variant.price;
+        }
+        return variant;
       })
       .filter((v): v is ProductVariant => v !== null);
   }

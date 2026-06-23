@@ -494,6 +494,29 @@ describe('PrestashopProductMasterAdapter', () => {
       expect(result[1].price).toBe(19.99); // 19.99 + 0 (impact unset)
     });
 
+    it('treats a non-positive absolute combination price as no-master-price (#1099 self-review)', async () => {
+      const productId = 'internal-product-123';
+      // Base 19.99; a negative impact larger than the base would yield a negative
+      // absolute price — invalid, so the variant must surface no price at all
+      // (the `no-master-price` blocker) rather than publishing a negative price.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const combinations: PrestashopCombination[] = [
+        { id: '101', id_product: '42', reference: 'NEG', price: '-25.00', quantity: '10' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+        .fn()
+        .mockResolvedValue(new Map([['101:test-connection-id', 'internal-variant-1']]));
+
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].price).toBeUndefined();
+    });
+
     it('does not fallback to product barcode when multiple combinations exist', async () => {
       const productId = 'internal-product-123';
       const externalProductId = '42';
