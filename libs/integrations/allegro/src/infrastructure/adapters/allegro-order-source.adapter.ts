@@ -13,7 +13,6 @@
 import type {
   OrderSourcePort,
   SourceOptionsReader,
-  OrderDispatchNotifier,
   OrderStatusWriteback,
   OrderLifecycleEvent,
   OrderWritebackResult,
@@ -65,7 +64,7 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * does not need the identifier-mapping port itself.
  */
 export class AllegroOrderSourceAdapter
-  implements OrderSourcePort, SourceOptionsReader, OrderDispatchNotifier, OrderStatusWriteback
+  implements OrderSourcePort, SourceOptionsReader, OrderStatusWriteback
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -75,20 +74,6 @@ export class AllegroOrderSourceAdapter
     _connection: Connection
   ) {
     void _connection;
-  }
-
-  /**
-   * Order-side dispatch (#837): `OrderDispatchNotifier` — mark the Allegro order
-   * sent (+ waybill). Retained for the still-live shipment-dispatch path; #1160
-   * folds it into the relay via `OrderStatusWriteback`. Delegates to the shared
-   * `markSent` helper so `notifyDispatched` and `write({dispatched})` stay in lockstep.
-   */
-  async notifyDispatched(input: {
-    externalOrderId: string;
-    trackingNumber?: string;
-    carrier?: DispatchCarrierHint;
-  }): Promise<void> {
-    await this.markSent(input.externalOrderId, input.trackingNumber, input.carrier);
   }
 
   /**
@@ -129,9 +114,9 @@ export class AllegroOrderSourceAdapter
    * Mark the Allegro order sent, and attach the waybill when one is supplied
    * (own-contract branch). For the source-brokered branch (Allegro Delivery) no
    * `trackingNumber` is passed — Allegro already holds the waybill it issued —
-   * so only the fulfillment status is set. Shared by `notifyDispatched` and the
-   * `OrderStatusWriteback` `dispatched` path. Throws `AllegroOrderDispatchRejectedException`
-   * on a non-idempotent failure (the `notifyDispatched` contract); `write` catches it.
+   * so only the fulfillment status is set. Drives the `OrderStatusWriteback`
+   * `dispatched` path. Throws `AllegroOrderDispatchRejectedException` on a
+   * non-idempotent failure; `write` catches it and reports `rejected`.
    */
   private async markSent(
     externalOrderId: string,

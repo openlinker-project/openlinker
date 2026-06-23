@@ -26,4 +26,7 @@ export interface IErliHttpClient {
 
   /** PATCH — idempotent; `5xx`/network failures are retried. */
   patch<T>(path: string, body?: unknown, options?: ErliRequestOptions): Promise<ErliHttpResponse<T>>;
+
+  /** PUT — idempotent (webhook registration `PUT /hooks/{name}`); `5xx`/network failures are retried. */
+  put<T>(path: string, body?: unknown, options?: ErliRequestOptions): Promise<ErliHttpResponse<T>>;
 }

@@ -144,6 +144,17 @@ describe('ErliAdapterFactory', () => {
       expect(isOfferFieldUpdater(adapters.offerManager)).toBe(true);
     });
 
+    it('should return an orderSource adapter (#993)', async () => {
+      const adapters = await factory.createAdapters(
+        connection(),
+        {} as IdentifierMappingPort,
+        resolverFor({ apiKey: 'k-123' }),
+      );
+
+      expect(typeof adapters.orderSource.listOrderFeed).toBe('function');
+      expect(typeof adapters.orderSource.getOrder).toBe('function');
+    });
+
     it('should propagate credential errors', async () => {
       await expect(
         factory.createAdapters(

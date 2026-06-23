@@ -1,28 +1,26 @@
 /**
- * Shipment Dispatch Notification Integration Test (#837)
+ * Shipment Dispatch Notification Integration Test (#837 / #1168)
  *
- * Exercises the "mark sent on source + OMP" orchestration end-to-end against
- * real Postgres. `ShipmentDispatchNotificationService.notifyDispatched`:
- *   - resolves the order's source + destination(s) from its `OrderRecord`,
- *   - resolves the source external id from the identifier-mapping table,
+ * Exercises the operator-dispatch orchestration end-to-end against real
+ * Postgres. `ShipmentDispatchNotificationService.notifyDispatched`:
  *   - resolves the carrier hint from the shipment's processor connection,
- *   - drives `OrderDispatchNotifier` on the source (A) and
- *     `OrderFulfillmentUpdater` on each destination (B), then
+ *   - relays a `dispatched` `OrderStatusWriteback` event to every order
+ *     participant (source marketplace + destination shop) via the role-agnostic
+ *     lifecycle relay (#1168) — origin = the carrier connection, so it reaches
+ *     both — resolving each participant's external id through real identifier
+ *     mappings, then
  *   - transitions the `Shipment` to `dispatched`.
  *
  * The shipment is seeded through the real #835 dispatch seam (routed to an
  * in-memory carrier stub that returns a synchronous tracking number), never
  * the repository — mirroring `shipments-read.int-spec.ts` and keeping the test
  * off the cross-context-banned `ShipmentRepositoryPort`. The source + dest
- * capability adapters are likewise in-memory stubs, so the full resolution
- * chain is real while the marketplace HTTP calls are not. This verifies the
- * orchestration wiring, NOT the PrestaShop write (capability B's PrestaShop
- * implementation is a focused follow-up; until it lands the destination half
- * degrades to `unsupported`).
+ * capability adapters are likewise in-memory `OrderStatusWriteback` stubs, so
+ * the full resolution chain is real while the marketplace HTTP calls are not.
  *
- * Covers: happy path (A + B invoked with resolved external ids + carrier hint →
- * `dispatched`); status-gate at-most-once (a second notify after `dispatched`
- * is skipped and re-invokes neither A nor B).
+ * Covers: happy path (source + destination receive the `dispatched` event with
+ * resolved external ids + carrier hint → `dispatched`); status-gate at-most-once
+ * (a second notify after `dispatched` is skipped and re-relays nothing).
  *
  * @module apps/api/test/integration
  */
@@ -85,7 +83,8 @@ describe('Shipment Dispatch Notification Integration', () => {
   beforeEach(() => {
     // Stubs are suite-scoped; the recorded calls must be cleared per-test
     // (resetTestHarness only truncates the database).
-    stubs.source.calls.length = 0;
+    stubs.source.writebackCalls.length = 0;
+    stubs.dest.writebackCalls.length = 0;
     stubs.dest.calls.length = 0;
   });
 
@@ -149,10 +148,20 @@ describe('Shipment Dispatch Notification Integration', () => {
       },
     ]);
 
+    // The lifecycle relay resolves every participant target from the Order's
+    // identifier mappings (#1168) — so BOTH the source and the destination need a
+    // mapping. (Pre-#1168 the destination half read `record.syncStatus` instead,
+    // so only the source mapping was seeded.)
     await identifierMapping().createMapping(
       CORE_ENTITY_TYPE.Order,
       SOURCE_EXTERNAL_ID,
       source.id,
+      orderId,
+    );
+    await identifierMapping().createMapping(
+      CORE_ENTITY_TYPE.Order,
+      DEST_EXTERNAL_ID,
+      dest.id,
       orderId,
     );
 
@@ -195,24 +204,26 @@ describe('Shipment Dispatch Notification Integration', () => {
       destinations: [{ connectionId: destId, status: 'ok' }],
     });
 
-    // A — source mark-sent received the resolved external id, the synchronous
-    // tracking number, and the carrier hint resolved from the shipment's
-    // (InPost) processor connection.
-    expect(stubs.source.calls).toEqual([
+    // Source — the relay's `dispatched` writeback reached the source with the
+    // resolved external id, the synchronous tracking number, and the carrier hint
+    // resolved from the shipment's (InPost) processor connection (#1168).
+    expect(stubs.source.writebackCalls).toEqual([
       {
+        type: 'dispatched',
         externalOrderId: SOURCE_EXTERNAL_ID,
         trackingNumber: DISPATCH_CARRIER_TRACKING_NUMBER,
         carrier: { platformType: 'inpost' },
       },
     ]);
 
-    // B — destination fulfillment-update received the dest external id resolved
-    // from OrderRecord.syncStatus, OL status 'shipped', and the tracking number.
-    expect(stubs.dest.calls).toEqual([
+    // Destination — the same `dispatched` event reached the destination shop with
+    // its own external id resolved from the order's identifier mappings (#1168).
+    expect(stubs.dest.writebackCalls).toEqual([
       {
+        type: 'dispatched',
         externalOrderId: DEST_EXTERNAL_ID,
-        status: 'shipped',
         trackingNumber: DISPATCH_CARRIER_TRACKING_NUMBER,
+        carrier: { platformType: 'inpost' },
       },
     ]);
 
@@ -227,8 +238,8 @@ describe('Shipment Dispatch Notification Integration', () => {
 
     const first = await notificationService().notifyDispatched({ shipmentId });
     expect(first.outcome).toBe('notified');
-    expect(stubs.source.calls).toHaveLength(1);
-    expect(stubs.dest.calls).toHaveLength(1);
+    expect(stubs.source.writebackCalls).toHaveLength(1);
+    expect(stubs.dest.writebackCalls).toHaveLength(1);
 
     const second = await notificationService().notifyDispatched({ shipmentId });
 
@@ -240,8 +251,8 @@ describe('Shipment Dispatch Notification Integration', () => {
       source: 'absent',
       destinations: [],
     });
-    expect(stubs.source.calls).toHaveLength(1);
-    expect(stubs.dest.calls).toHaveLength(1);
+    expect(stubs.source.writebackCalls).toHaveLength(1);
+    expect(stubs.dest.writebackCalls).toHaveLength(1);
   });
 
   describe('POST /shipments/:id/notify-dispatched (#769 HTTP endpoint)', () => {
@@ -264,8 +275,8 @@ describe('Shipment Dispatch Notification Integration', () => {
       });
 
       // Same shipped-stubs verification as the service-call test above:
-      expect(stubs.source.calls).toHaveLength(1);
-      expect(stubs.dest.calls).toHaveLength(1);
+      expect(stubs.source.writebackCalls).toHaveLength(1);
+      expect(stubs.dest.writebackCalls).toHaveLength(1);
 
       const persisted = await queryService().getById(shipmentId);
       expect(persisted?.status).toBe('dispatched');
@@ -295,8 +306,8 @@ describe('Shipment Dispatch Notification Integration', () => {
       });
 
       // No additional source/dest invocations from the second call.
-      expect(stubs.source.calls).toHaveLength(1);
-      expect(stubs.dest.calls).toHaveLength(1);
+      expect(stubs.source.writebackCalls).toHaveLength(1);
+      expect(stubs.dest.writebackCalls).toHaveLength(1);
     });
 
     it('should return 404 when the shipment id does not exist', async () => {

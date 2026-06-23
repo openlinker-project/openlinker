@@ -177,17 +177,16 @@ describe('Shipment Status Sync Integration (#838)', () => {
     const shipmentId = dispatched.shipment.id;
 
     if (options.advanceToDispatched) {
-      // Drive the real #837 transition so the push-gate is open. The source
-      // OrderDispatchNotifier isn't registered for this connection — the
-      // dest is — so the source half degrades to 'absent' / 'unsupported',
-      // which doesn't block the `generated → dispatched` Shipment transition.
-      // Hop SOURCE → DEST mapping out of #837's view: we just need the
-      // Shipment row in `dispatched` so #838 fires capability B.
+      // Drive the real #837 transition so the push-gate is open. Since #1168 the
+      // dispatch-notify path relays a `dispatched` event via the lifecycle relay
+      // (NOT the legacy `updateFulfillment` / `dest.calls` the #838 assertions
+      // below use). No Order identifier mappings are seeded here, so the relay
+      // has no targets and the source half degrades to 'absent' — which doesn't
+      // block the `generated → dispatched` Shipment transition.
       await notificationService().notifyDispatched({ shipmentId });
-      // Reset the dest stub's recorded calls — the dispatch-notify wave that
-      // just ran would otherwise count toward our #838 assertions. (The
-      // notifyDispatched call will have invoked dest.updateFulfillment once
-      // because the destination implements capability B.)
+      // Belt-and-suspenders: the dispatch wave drives the relay, not this stub's
+      // `updateFulfillment`, so `dest.calls` is already empty — clear anyway so
+      // a future change can't leak into our #838 assertions.
       stubs.dest.calls.length = 0;
     }
 

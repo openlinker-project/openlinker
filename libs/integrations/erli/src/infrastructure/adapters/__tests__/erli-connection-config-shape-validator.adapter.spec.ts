@@ -93,4 +93,19 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
       errors: [{ path: 'defaultDispatchTime.unit', message: expect.any(String) }],
     });
   });
+
+  it('should resolve for a callbackBaseUrl that is a valid http(s) URL (#996)', async () => {
+    await expect(
+      validator.validate({ callbackBaseUrl: 'http://host.docker.internal:3000' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      validator.validate({ callbackBaseUrl: 'https://ol.example.com' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should reject a callbackBaseUrl that is not a valid URL (#996)', async () => {
+    await expect(validator.validate({ callbackBaseUrl: 'not-a-url' })).rejects.toMatchObject({
+      errors: [{ path: 'callbackBaseUrl', message: expect.any(String) }],
+    });
+  });
 });
