@@ -29,6 +29,7 @@ import {
   IdentifierMappingModule,
 } from '@openlinker/core/identifier-mapping';
 import { ERLI_ADAPTER_KEY } from './erli.constants';
+import { ErliAdapterFactory } from './application/erli-adapter.factory';
 import { ErliWebhookProvisioningAdapter } from './infrastructure/adapters/erli-webhook-provisioning.adapter';
 
 @Module({
@@ -53,6 +54,9 @@ export class ErliWebhookProvisioningModule implements OnModuleInit {
         this.connectionPort,
         this.webhookSecretService,
         this.credentialsResolver,
+        // Factory injected here at the composition root (not defaulted inside the
+        // adapter constructor) so the dependency stays explicit per the DI guidance.
+        new ErliAdapterFactory(),
       ),
     );
   }

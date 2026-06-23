@@ -15,9 +15,11 @@
  *
  * Failure posture: a missing `callbackBaseUrl` fails closed with a clear,
  * operator-actionable message (the operator sets it on the connection-edit page
- * first). A `PUT` failure surfaces a retry-safe message; the secret was already
- * rotated OL-side, so re-running install is safe (PUT is idempotent). The #993
- * inbox poll remains the reconciliation backstop regardless.
+ * first). A `PUT` failure surfaces a retry-safe message AND best-effort flips the
+ * persisted `webhooksConfigured` flag to false (so a prior `true` doesn't go
+ * stale and the connection-actions UI shows webhooks are NOT live) — the secret
+ * was already rotated OL-side, so re-running install is safe (PUT is idempotent).
+ * The #993 inbox poll remains the reconciliation backstop regardless.
  *
  * Security: the rotated secret is sent ONLY in the request body — never logged.
  *
@@ -25,14 +27,13 @@
  * @see {@link WebhookProvisioningPort} for the port interface
  */
 import { Logger } from '@openlinker/shared/logging';
-import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
   IWebhookSecretService,
   WebhookProvisioningPort,
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
-import { ErliAdapterFactory } from '../../application/erli-adapter.factory';
 import type { IErliAdapterFactory } from '../../application/interfaces/erli-adapter.factory.interface';
 import type { ErliConnectionConfig } from '../../domain/types/erli-connection.types';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
@@ -49,8 +50,9 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
     private readonly connectionPort: ConnectionPort,
     private readonly webhookSecretService: IWebhookSecretService,
     private readonly credentialsResolver: CredentialsResolverPort,
-    // Construction seam — defaults to the concrete factory; injectable for tests.
-    private readonly factory: IErliAdapterFactory = new ErliAdapterFactory(),
+    // Injected from the composition root (`ErliWebhookProvisioningModule`); no
+    // in-constructor `new` so the dependency stays explicit (and fakeable in tests).
+    private readonly factory: IErliAdapterFactory,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -91,6 +93,13 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
       this.logger.error(
         `Failed to register Erli webhooks for connection ${connectionId}: ${message}`,
       );
+      // Fail-closed visibility: the secret was already rotated OL-side, but Erli
+      // may still hold the old/no secret, so inbound signature verification stays
+      // broken until install is re-run. Best-effort flip the persisted
+      // `webhooksConfigured` flag to false so the operator SEES webhooks are not
+      // live (the connection-actions UI badge) and re-runs — rather than a prior
+      // `true` going stale. The #993 inbox poll still backstops order loss.
+      await this.markWebhooksUnconfigured(connectionId, connection.config);
       throw new ErliConfigException(
         `Erli webhook registration failed: ${message}. The secret was rotated OL-side; ` +
           're-running install is safe (PUT is idempotent).',
@@ -123,5 +132,27 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
       testPingTriggered: false,
       ...(stateUpdateOk ? {} : { warning: 'state-update-failed' }),
     };
+  }
+
+  /**
+   * Best-effort flip of the persisted `webhooksConfigured` flag to false after a
+   * failed registration. Swallows its own errors so it never masks the original
+   * registration failure — the caller still throws the actionable message.
+   */
+  private async markWebhooksUnconfigured(
+    connectionId: string,
+    config: Connection['config'],
+  ): Promise<void> {
+    try {
+      await this.connectionPort.update(connectionId, {
+        config: { ...config, webhooksConfigured: false },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Could not flag connection ${connectionId} as webhooks-unconfigured after a ` +
+          `registration failure: ${message}. Re-running install is idempotent.`,
+      );
+    }
   }
 }
