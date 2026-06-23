@@ -48,6 +48,26 @@ export const RegulatoryStatusValues = [
 ] as const;
 export type RegulatoryStatus = (typeof RegulatoryStatusValues)[number];
 
+/**
+ * Outcome of a regulatory clearance submit/read (#1143). Returned by both
+ * `RegulatoryTransmitter.submitForClearance` and `RegulatoryStatusReader.
+ * getClearanceStatus`, so it is named `…Result` (not `…Snapshot`, which would
+ * mislead as read-only). Maps 1:1 onto `InvoiceOutcomePatch`
+ * (`regulatoryStatus` + `clearanceReference`) so the future service/job persists
+ * it via `updateOutcome` with no translation. A business verdict (incl.
+ * `rejected`) is carried here as data; a transport/infra failure throws.
+ */
+export interface RegulatoryClearanceResult {
+  /** Neutral CTC clearance lifecycle the adapter mapped the regime's state onto. */
+  regulatoryStatus: RegulatoryStatus;
+  /**
+   * Authority-assigned reference (KSeF number, SDI id, …) when present — typically
+   * knowable only after the authority clears the document, so a read can surface
+   * a reference a prior submit could not. `null`/absent until assigned.
+   */
+  clearanceReference?: string | null;
+}
+
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];

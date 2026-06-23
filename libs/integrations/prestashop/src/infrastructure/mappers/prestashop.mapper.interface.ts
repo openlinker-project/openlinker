@@ -90,6 +90,7 @@ export interface PrestashopOrder {
   id: string | number;
   reference?: string;
   id_customer?: string | number;
+  id_address_delivery?: string | number;
   current_state?: string | number;
   total_paid?: string | number;
   total_paid_tax_incl?: string | number;
