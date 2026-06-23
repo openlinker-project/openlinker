@@ -44,6 +44,14 @@ export interface ErliConnectionConfig {
    * otherwise (never sends an invalid body).
    */
   defaultDispatchTime?: ErliDispatchTime;
+  /**
+   * Public OpenLinker base URL Erli should POST webhooks back to (#996). The
+   * webhook provisioner registers `PUT /hooks/{hookName}` with
+   * `{ url: <callbackBaseUrl>/webhooks/erli/<connectionId> }`. Required to
+   * configure webhooks (the provisioner fails with a clear message when absent);
+   * e.g. `http://host.docker.internal:3000` in dev, the public OL URL in prod.
+   */
+  callbackBaseUrl?: string;
 }
 
 /**

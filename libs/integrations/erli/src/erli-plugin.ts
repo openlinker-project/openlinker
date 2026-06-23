@@ -30,7 +30,9 @@ import { ErliAuthFailureClassifierAdapter } from './infrastructure/adapters/erli
 import { ErliConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-config-shape-validator.adapter';
 import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/erli-connection-credentials-shape-validator.adapter';
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
+import { ErliEmailNormalizerAdapter } from './infrastructure/adapters/erli-email-normalizer.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
+import { ErliWebhookEventTranslator } from './infrastructure/adapters/erli-webhook-event-translator.adapter';
 import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
 
 /** Human-readable plugin identifier surfaced in dispatch errors (#573). */
@@ -49,7 +51,7 @@ export const erliAdapterManifest: AdapterMetadata = {
   platformType: 'erli',
   // Each capability is added by the PR that ships its adapter, in lockstep with
   // a dispatch-table entry below: #984 → 'OfferManager', #993 → 'OrderSource'.
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'OrderSource'],
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,
@@ -69,6 +71,11 @@ export function createErliPlugin(): AdapterPlugin {
         new ErliConnectionCredentialsShapeValidatorAdapter(ERLI_BRAND),
       );
       host.connectionTesterRegistry.register(ERLI_ADAPTER_KEY, new ErliConnectionTesterAdapter());
+      // Buyer-identity email normalizer (#995). PROVISIONAL (#992): baseline-only
+      // (trim + lowercase, NO +suffix strip) — the per-platform seam + regression
+      // anchor; a domain-gated strip mirroring Allegro lands once Erli's relay
+      // domain is confirmed.
+      host.emailNormalizerRegistry.register(ERLI_ADAPTER_KEY, new ErliEmailNormalizerAdapter());
       // Classifiers (#984). The runner dispatches these OR-across-all (it holds
       // the raw error, not an adapterKey), so the key is a bookkeeping label;
       // safe because each classifier only recognises Erli's own exceptions.
@@ -77,13 +84,29 @@ export function createErliPlugin(): AdapterPlugin {
         ERLI_ADAPTER_KEY,
         new ErliAuthFailureClassifierAdapter(),
       );
-      // Offer-status reconciliation scheduler task (#989). Registered
-      // unconditionally; the OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED env gate
+      // Scheduler tasks: offer-status reconciliation (#989) and the
+      // `erli-orders-poll` order-source poll (#993) — `buildErliSchedulerTasks`
+      // now returns both. Registered unconditionally; each task's env gate
+      // (OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED / OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED)
       // is re-checked by the scheduler at each tick (no ConfigService dependency —
       // Erli is wired via createNestAdapterModule).
       for (const task of buildErliSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }
+      // Inbound webhook scaffolding (#996, ADR-015). The translator decodes
+      // Erli's id-only order webhooks into a neutral CanonicalInboundEvent the
+      // core routing policy maps to marketplace.order.sync. PROVISIONAL (#992):
+      // the host's fail-closed OL-HMAC default rejects 100% of real Erli
+      // webhooks until the native InboundWebhookDecoderPort lands, so this is
+      // fail-safe scaffolding — the #993 inbox poll is the authoritative path.
+      host.webhookEventTranslatorRegistry.register(
+        ERLI_ADAPTER_KEY,
+        new ErliWebhookEventTranslator(),
+      );
+      // The webhook PROVISIONER (#996) is registered by `ErliWebhookProvisioningModule`
+      // (composed via `createNestAdapterModule({ imports })`), NOT here: it needs
+      // NestJS-injected `ConnectionPort` + `IWebhookSecretService` that aren't in
+      // the framework-neutral `HostServices` bag.
     },
 
     async createCapabilityAdapter<T>(
@@ -102,7 +125,10 @@ export function createErliPlugin(): AdapterPlugin {
       );
       return dispatchCapability<T>(
         capability,
-        { OfferManager: () => adapters.offerManager },
+        {
+          OfferManager: () => adapters.offerManager,
+          OrderSource: () => adapters.orderSource,
+        },
         ERLI_BRAND,
       );
     },
