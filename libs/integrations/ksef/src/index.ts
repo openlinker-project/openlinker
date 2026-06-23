@@ -43,3 +43,17 @@ export {
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
+
+// FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
+// so the host classifier / persistence layer can pattern-match a deterministic
+// build fault (mark the InvoiceRecord failed) vs a transient transport error.
+export {
+  Fa3BuildException,
+  InvalidBuyerIdentificationException,
+  UnmappedTaxRateException,
+  UnsupportedCurrencyException,
+} from './domain/exceptions/fa3-builder.exception';
+export {
+  Fa3XsdValidationException,
+  type Fa3ValidationIssue,
+} from './domain/exceptions/fa3-validation.exception';

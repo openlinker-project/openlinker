@@ -1,0 +1,70 @@
+/**
+ * FA(3) Structural Validator — Unit Specs
+ *
+ * Specs for the structural / well-formedness gate: a well-formed FA(3) document
+ * passes; a malformed one throws `Fa3XsdValidationException` with diagnostic
+ * issues; the raw XML is never echoed into the exception message (PII safety).
+ *
+ * @module libs/integrations/ksef/src/infrastructure/fa3/validators
+ */
+import { buildFa3Xml } from '../builders/fa3-xml.builder';
+import { Fa3XsdValidationException } from '../../../domain/exceptions/fa3-validation.exception';
+import type { Fa3BuilderInput, RawFa3Xml, SellerProfile } from '../domain/fa3-xml.types';
+import { validateFa3Xml } from './fa3-xsd.validator';
+
+const wellFormed = (`<?xml version="1.0" encoding="UTF-8"?>` +
+  `<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">` +
+  `<Naglowek/></Faktura>`) as RawFa3Xml;
+
+const seller: SellerProfile = {
+  nip: '1234567890',
+  name: 'Acme Sp. z o.o.',
+  address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
+};
+
+function builtDoc(): RawFa3Xml {
+  const input: Fa3BuilderInput = {
+    seller,
+    buyer: { kind: 'nip', nip: '9876543210' },
+    buyerName: 'Buyer GmbH',
+    buyerAddress: { line1: 'Main St 5', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+    currency: 'PLN',
+    issueDate: '2026-06-23',
+    invoiceNumber: 'FV/2026/06/0001',
+    generatedAt: '2026-06-23T10:15:30Z',
+    orderReference: 'ol_order_123',
+    lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
+  };
+  return buildFa3Xml(input);
+}
+
+describe('validateFa3Xml', () => {
+  it('should return normally for a well-formed FA(3) document', () => {
+    expect(() => validateFa3Xml(wellFormed)).not.toThrow();
+  });
+
+  it('should return normally for a document produced by the builder', () => {
+    expect(() => validateFa3Xml(builtDoc())).not.toThrow();
+  });
+
+  it('should throw Fa3XsdValidationException with issues for an invalid document', () => {
+    const bad = '<Faktura><unclosed></Faktura>' as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      expect((error as Fa3XsdValidationException).issues.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('should not embed the raw XML in the exception message', () => {
+    const bad = '<Faktura>SECRET_BUYER_NAME</Faktura>' as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect((error as Fa3XsdValidationException).message).not.toContain('SECRET_BUYER_NAME');
+    }
+  });
+});

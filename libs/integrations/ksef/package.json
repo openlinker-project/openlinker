@@ -32,7 +32,8 @@
   "dependencies": {
     "@openlinker/core": "workspace:*",
     "@openlinker/plugin-sdk": "workspace:*",
-    "@openlinker/shared": "workspace:*"
+    "@openlinker/shared": "workspace:*",
+    "fast-xml-parser": "^5.3.3"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0"
