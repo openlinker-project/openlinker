@@ -35,7 +35,7 @@ import type {
 
 /** One recorded outbound request. */
 export interface RecordedErliCall {
-  method: 'GET' | 'POST' | 'PATCH';
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT';
   path: string;
   body?: unknown;
 }
@@ -116,8 +116,16 @@ export class ErliFakeHttpClient implements IErliHttpClient {
     return Promise.resolve({ status: 202, data: undefined as T });
   }
 
+  put<T>(path: string, body?: unknown, _options?: ErliRequestOptions): Promise<ErliHttpResponse<T>> {
+    this.calls.push({ method: 'PUT', path, body });
+    this.throwIfArmed(path);
+    // Erli accepted-write: 202, no read-after-write body (ADR-025). Used by the
+    // #996 webhook provisioner (PUT /hooks) and any idempotent upsert.
+    return Promise.resolve({ status: 202, data: undefined as T });
+  }
+
   /** Recorded calls of a single method, in order. */
-  callsOf(method: 'GET' | 'POST' | 'PATCH'): RecordedErliCall[] {
+  callsOf(method: 'GET' | 'POST' | 'PATCH' | 'PUT'): RecordedErliCall[] {
     return this.calls.filter((call) => call.method === method);
   }
 

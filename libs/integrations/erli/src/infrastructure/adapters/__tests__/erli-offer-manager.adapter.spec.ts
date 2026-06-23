@@ -68,6 +68,7 @@ describe('ErliOfferManagerAdapter', () => {
       get: jest.fn().mockResolvedValue({ status: 200, data: { frozenFields: [] } }),
       post: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
       patch: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
+      put: jest.fn().mockResolvedValue({ status: 202, data: undefined }),
     };
     adapter = new ErliOfferManagerAdapter('conn-1', ERLI_ADAPTER_KEY, httpClient, {
       period: 2,
