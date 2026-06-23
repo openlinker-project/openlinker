@@ -18,3 +18,12 @@ export const INVOICE_SERVICE_TOKEN = Symbol('IInvoiceService');
  * qualifying transition into per-connection issuance jobs.
  */
 export const AUTO_ISSUE_TRIGGER_SERVICE_TOKEN = Symbol('IAutoIssueTriggerService');
+
+/**
+ * Binding token for the {@link IRegulatoryStatusReconciliationService} (#1121).
+ * Refreshes `InvoiceRecord.regulatoryStatus` / `clearanceReference` for issued,
+ * non-terminal records via the `RegulatoryStatusReader` sub-capability.
+ */
+export const REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN = Symbol(
+  'IRegulatoryStatusReconciliationService',
+);

@@ -20,6 +20,8 @@ export * from './domain/ports/invoicing.port';
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/invoice-record-repository.port';
+export type { RegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
+export { isRegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
@@ -36,5 +38,11 @@ export {
   AutoIssueTriggerService,
   AUTO_ISSUE_RETRY_BUDGET,
 } from './application/services/auto-issue-trigger.service';
+export type {
+  IRegulatoryStatusReconciliationService,
+  RegulatoryStatusReconcileOptions,
+  RegulatoryStatusReconcileResult,
+} from './application/services/regulatory-status-reconciliation.service.interface';
+export { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';

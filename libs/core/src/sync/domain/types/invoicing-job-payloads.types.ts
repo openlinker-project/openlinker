@@ -1,9 +1,9 @@
 /**
  * Invoicing Job Payload Types (Generic)
  *
- * Canonical payload schema for `invoicing.issue` sync jobs (OL #1120). The job
- * carries an ALREADY-COMPOSED, fully-serializable issuance command so the worker
- * handler is a pure delegate.
+ * Canonical payload schemas for `invoicing.*` sync jobs (OL #1120, #1121). The
+ * `invoicing.issue` job carries an ALREADY-COMPOSED, fully-serializable issuance
+ * command so the worker handler is a pure delegate.
  *
  * SERIALIZATION CONTRACT (#12): the `buyer` field is the PLAIN field-set of
  * `BuyerProfile` (no class, no `isCompany` getter) — a `BuyerProfile` class
@@ -66,4 +66,15 @@ export interface InvoicingIssuePayloadV1 {
   sourceEventId?: string;
   /** The trigger model that produced this job. */
   trigger: InvoiceTriggerModel;
+}
+
+/**
+ * Payload for `invoicing.regulatoryStatus.reconcile` (#1121). Carries only the
+ * page size — there is NO cursor: the reconciliation frontier is a shrinking set
+ * walked from offset 0 every run (plan decision #5).
+ */
+export interface RegulatoryStatusReconcilePayloadV1 {
+  schemaVersion: 1;
+  /** Page size: max number of non-terminal records to reconcile this run. */
+  limit: number;
 }

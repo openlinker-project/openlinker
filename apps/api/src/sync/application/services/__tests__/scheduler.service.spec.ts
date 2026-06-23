@@ -97,6 +97,7 @@ describe('SchedulerService', () => {
         'OL_INVENTORY_SYNC_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -172,6 +173,7 @@ describe('SchedulerService', () => {
         'master-inventory-sync',
         'master-product-sync',
         'pickup-point-refresh',
+        'regulatory-status-reconcile',
       ]);
     });
 
@@ -303,6 +305,86 @@ describe('SchedulerService', () => {
       ).resolves.not.toThrow();
 
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('regulatory-status reconcile task (#1121)', () => {
+    const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
+      const cronKeys = [
+        'OL_INVENTORY_SYNC_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+      ];
+      if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
+      return 'true';
+    };
+
+    const getRegisteredTask = (): SchedulerTaskConfig | undefined =>
+      (service as unknown as { tasks: SchedulerTaskConfig[] }).tasks.find(
+        (t) => t.taskId === 'regulatory-status-reconcile'
+      );
+
+    it('registers a regulatory-status-reconcile task on onApplicationBootstrap (like the other three core tasks)', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('regulatory-status-reconcile');
+    });
+
+    it('the task is capability-scoped to Invoicing via listCapabilityAdapters({ capability: "Invoicing" })', async () => {
+      configService.get.mockImplementation(defaultConfigGet);
+      const conn = createConnection('conn-inv-1');
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        { connectionId: 'conn-inv-1', connection: conn, adapter: {} as never, metadata: {} as never },
+      ]);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+      expect(task?.connectionFilter).toBeDefined();
+
+      const connections = await task!.connectionFilter!();
+
+      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
+        capability: 'Invoicing',
+      });
+      expect(connections).toEqual([conn]);
+      expect(task?.platformType).toBeUndefined();
+    });
+
+    it('uses jobType invoicing.regulatoryStatus.reconcile and a payload with schemaVersion + limit', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+
+      expect(task?.jobType).toBe('invoicing.regulatoryStatus.reconcile');
+      const payload = task!.generatePayload(createConnection('conn-inv-1'));
+      expect(payload).toEqual({ schemaVersion: 1, limit: 100 });
+    });
+
+    it('does not register the task when OL_REGULATORY_RECONCILE_ENABLED is "false"', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_REGULATORY_RECONCILE_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('regulatory-status-reconcile');
+    });
+
+    it('generates a minute-rounded per-connection idempotency key', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.onApplicationBootstrap();
+      const task = getRegisteredTask();
+
+      const key = task!.generateIdempotencyKey(createConnection('conn-inv-1'), '2026-06-05-03-30');
+      expect(key).toBe('invoicing:conn-inv-1:regulatoryStatus:reconcile:2026-06-05-03-30');
     });
   });
 });

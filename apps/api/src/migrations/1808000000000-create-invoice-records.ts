@@ -4,10 +4,13 @@
  * Creates the `invoice_records` table — OL's non-authoritative projection of
  * fiscal documents issued through a provider for an order on an invoicing
  * connection (#751, ADR-026). Country-agnostic columns; `regulatoryStatus` /
- * `clearanceReference` are nullable-with-default and unused until a future
- * `RegulatoryTransmitter` adapter (KSeF/SDI/…) populates them. The partial
- * UNIQUE index on `(connectionId, idempotencyKey)` is the durable exactly-once
- * issuance guard.
+ * `clearanceReference` are nullable-with-default and populated by the read-only
+ * `RegulatoryStatusReader` reconciliation sub-capability (reads authoritative
+ * provider/CTC status, KSeF/SDI, #1121); a future `RegulatoryTransmitter` is the
+ * separate submit side. The partial UNIQUE index on
+ * `(connectionId, idempotencyKey)` is the durable exactly-once issuance guard.
+ * The reconciliation scan's supporting partial composite index is added in a
+ * later migration (`...-add-invoice-records-reconcile-index`).
  *
  * Generated: 2026-06-16 (synthetic sequential prefix per docs/migrations.md #1013).
  * @module apps/api/src/migrations

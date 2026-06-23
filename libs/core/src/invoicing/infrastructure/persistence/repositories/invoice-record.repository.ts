@@ -25,6 +25,7 @@ import type {
   InvoiceRecordPagination,
   PaginatedInvoiceRecords,
 } from '../../../domain/types/invoicing.types';
+import { TerminalRegulatoryStatusValues } from '../../../domain/types/invoicing.types';
 import { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 
 @Injectable()
@@ -120,6 +121,31 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
 
     const [entities, total] = await qb.getManyAndCount();
     return { items: entities.map((entity) => this.toDomain(entity)), total };
+  }
+
+  async findIssuedNonTerminal(
+    connectionId: string,
+    opts: { limit: number },
+  ): Promise<{ items: InvoiceRecord[]; total: number }> {
+    // Selection predicate (single source of truth in `TerminalRegulatoryStatusValues`,
+    // mirrored by the `IDX_invoice_records_reconcile` partial index):
+    //   status = 'issued' AND regulatoryStatus NOT IN (TerminalRegulatoryStatusValues)
+    // Connection-scoped, ordered `updatedAt ASC, id ASC` (oldest-reconciled first),
+    // capped at `opts.limit` with NO offset — the non-terminal frontier is a
+    // shrinking set walked from offset 0 every run (#1121 plan decision #5).
+    const [entities, total] = await this.repository
+      .createQueryBuilder('record')
+      .where('record.connectionId = :connectionId', { connectionId })
+      .andWhere('record.status = :status', { status: 'issued' })
+      .andWhere('record.regulatoryStatus NOT IN (:...terminal)', {
+        terminal: [...TerminalRegulatoryStatusValues],
+      })
+      .orderBy('record.updatedAt', 'ASC')
+      .addOrderBy('record.id', 'ASC')
+      .take(opts.limit)
+      .getManyAndCount();
+
+    return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   private buildOrmEntity(input: CreateInvoiceRecordInput): InvoiceRecordOrmEntity {

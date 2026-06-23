@@ -40,6 +40,10 @@ export const JobTypeValues = [
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
 
+  // Invoicing (core-owned; capability-scoped, executed by worker)
+  // KSeF regulatory-status reconciliation sweep (#1121).
+  'invoicing.regulatoryStatus.reconcile',
+
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
 

@@ -18,16 +18,19 @@ import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/in
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
 import { InvoiceService } from './application/services/invoice.service';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
+import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
+  REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 export {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
+  REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 @Module({
@@ -61,14 +64,23 @@ export {
       provide: AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
       useExisting: AutoIssueTriggerService,
     },
+    RegulatoryStatusReconciliationService,
+    {
+      provide: REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+      useExisting: RegulatoryStatusReconciliationService,
+    },
   ],
   // Export BOTH the token and the provider so OrdersModule (which imports this
-  // module) can inject the trigger service by token (F2/F3).
+  // module) can inject the trigger service by token (F2/F3). The reconciliation
+  // token is exported so the worker's SyncWorkerModule can inject the service
+  // into RegulatoryStatusReconcileHandler — providing-without-exporting would
+  // fail the worker's DI at boot (#1121 plan decision #12).
   exports: [
     INVOICE_RECORD_REPOSITORY_TOKEN,
     INVOICE_SERVICE_TOKEN,
     AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
     AutoIssueTriggerService,
+    REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
   ],
 })
 export class InvoicingModule {}
