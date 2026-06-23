@@ -35,6 +35,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -47,4 +48,5 @@ export const workerPlugins: PluginEntry[] = [
   // SOAP DPDInfoServices, ADR-022). Scheduler runs api-side; worker only drains.
   DpdIntegrationModule,
   ErliIntegrationModule,
+  KsefIntegrationModule,
 ];

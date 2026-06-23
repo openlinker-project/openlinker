@@ -124,6 +124,9 @@ importers:
       '@openlinker/integrations-inpost':
         specifier: workspace:*
         version: link:../../libs/integrations/inpost
+      '@openlinker/integrations-ksef':
+        specifier: workspace:*
+        version: link:../../libs/integrations/ksef
       '@openlinker/integrations-prestashop':
         specifier: workspace:*
         version: link:../../libs/integrations/prestashop
@@ -378,6 +381,9 @@ importers:
       '@openlinker/integrations-inpost':
         specifier: workspace:*
         version: link:../../libs/integrations/inpost
+      '@openlinker/integrations-ksef':
+        specifier: workspace:*
+        version: link:../../libs/integrations/ksef
       '@openlinker/integrations-prestashop':
         specifier: workspace:*
         version: link:../../libs/integrations/prestashop
@@ -711,6 +717,46 @@ importers:
       class-validator:
         specifier: 0.14.1
         version: 0.14.1
+    devDependencies:
+      '@types/jest':
+        specifier: 29.5.12
+        version: 29.5.12
+      '@types/node':
+        specifier: 20.11.30
+        version: 20.11.30
+      '@typescript-eslint/eslint-plugin':
+        specifier: 7.3.1
+        version: 7.3.1(@typescript-eslint/parser@7.3.1(eslint@8.57.0)(typescript@5.4.3))(eslint@8.57.0)(typescript@5.4.3)
+      '@typescript-eslint/parser':
+        specifier: 7.3.1
+        version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      eslint:
+        specifier: 8.57.0
+        version: 8.57.0
+      jest:
+        specifier: 29.7.0
+        version: 29.7.0(@types/node@20.11.30)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
+      ts-jest:
+        specifier: 29.1.2
+        version: 29.1.2(@babel/core@7.28.5)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.5))(jest@29.7.0(@types/node@20.11.30)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3)))(typescript@5.4.3)
+      typescript:
+        specifier: 5.4.3
+        version: 5.4.3
+
+  libs/integrations/ksef:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^10.0.0
+        version: 10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1)
+      '@openlinker/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@openlinker/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+      '@openlinker/shared':
+        specifier: workspace:*
+        version: link:../../shared
     devDependencies:
       '@types/jest':
         specifier: 29.5.12
@@ -2485,8 +2531,8 @@ packages:
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
 
-  '@types/semver@7.7.1':
-    resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
+  '@types/semver@7.7.0':
+    resolution: {integrity: sha512-k107IF4+Xr7UHjwDc7Cfd6PRQfbdkiRabXGRjo07b4WyPahFBZCZ1sE+BNxYIJPPg73UkfOsVOLwqVc/6ETrIA==}
 
   '@types/send@1.2.1':
     resolution: {integrity: sha512-arsCikDvlU99zl1g69TcAB3mzZPpxgw0UQnaHeC1Nwb015xp8bknZv5rIfri9xTOcMuaVgvabfIRA7PSZVuZIQ==}
@@ -7767,7 +7813,7 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@types/semver@7.7.1': {}
+  '@types/semver@7.7.0': {}
 
   '@types/send@1.2.1':
     dependencies:
@@ -7894,7 +7940,7 @@ snapshots:
     dependencies:
       '@eslint-community/eslint-utils': 4.9.0(eslint@8.57.0)
       '@types/json-schema': 7.0.15
-      '@types/semver': 7.7.1
+      '@types/semver': 7.7.0
       '@typescript-eslint/scope-manager': 7.3.1
       '@typescript-eslint/types': 7.3.1
       '@typescript-eslint/typescript-estree': 7.3.1(typescript@5.4.3)

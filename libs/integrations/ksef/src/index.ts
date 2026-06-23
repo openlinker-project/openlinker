@@ -1,0 +1,45 @@
+/**
+ * @openlinker/integrations-ksef — Public Barrel
+ *
+ * KSeF Public API v2 invoicing/clearance adapter plugin (#1144 / C2 skeleton).
+ * The runtime entry the host composes is `KsefIntegrationModule`; this barrel
+ * also exports the static `ksefAdapterManifest` (#575 pattern) and the plugin
+ * factory. C2 ships the plugin skeleton + manifest + connection config/
+ * credentials shape validators + the stub `Invoicing` capability adapter. The
+ * HTTP client (C3), issuance mechanics (C4), and `RegulatoryTransmitter`
+ * clearance sub-capability land in the follow-up KSeF issues; see ADR-026 for
+ * the country-agnostic invoicing decisions they build on.
+ *
+ * @module libs/integrations/ksef/src
+ */
+
+// Plugin descriptor + static manifest (#575)
+export { ksefAdapterManifest, createKsefPlugin } from './ksef-plugin';
+
+// Host wiring
+export { KsefIntegrationModule } from './ksef-integration.module';
+
+// Per-connection construction-seam contract — mirrors IErliAdapterFactory.
+export type { IKsefAdapterFactory, KsefAdapters } from './application/interfaces/ksef-adapter.factory.interface';
+
+// Shape validators — exported so host-side tests can register the real
+// validators (mirrors the Allegro/Erli precedent).
+export { KsefConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/ksef-connection-config-shape-validator.adapter';
+export { KsefConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/ksef-connection-credentials-shape-validator.adapter';
+
+// Connection config/credentials shapes (adapter-internal vocab, ADR-026).
+export {
+  KsefAuthTypeValues,
+  KsefEnvironmentValues,
+  type KsefAuthType,
+  type KsefConnectionConfig,
+  type KsefCredentials,
+  type KsefEnvironment,
+} from './domain/types/ksef-connection.types';
+
+// Domain exceptions. The HTTP client + interface stay package-private; these
+// typed exceptions are the public surface — they feed the host RetryClassifier /
+// AuthFailureClassifier the KSeF adapters register in C3 (ADR-008).
+export { KsefApiException } from './domain/exceptions/ksef-api.exception';
+export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
+export { KsefConfigException } from './domain/exceptions/ksef-config.exception';

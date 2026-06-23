@@ -1,0 +1,61 @@
+/**
+ * KSeF Connection Config Shape Validator — unit tests
+ *
+ * Verifies the required `env` enum check (test/demo/prod) and the flat-issue
+ * rejection payload, with neutral error messaging (#1144).
+ *
+ * @module libs/integrations/ksef/src/infrastructure/adapters/__tests__
+ */
+import { InvalidConnectionConfigException } from '@openlinker/core/integrations';
+import { KsefConnectionConfigShapeValidatorAdapter } from '../ksef-connection-config-shape-validator.adapter';
+
+describe('KsefConnectionConfigShapeValidatorAdapter', () => {
+  const validator = new KsefConnectionConfigShapeValidatorAdapter();
+
+  it('should resolve when env is "test"', async () => {
+    await expect(validator.validate({ env: 'test' })).resolves.toBeUndefined();
+  });
+
+  it('should resolve when env is "demo"', async () => {
+    await expect(validator.validate({ env: 'demo' })).resolves.toBeUndefined();
+  });
+
+  it('should resolve when env is "prod"', async () => {
+    await expect(validator.validate({ env: 'prod' })).resolves.toBeUndefined();
+  });
+
+  it('should reject when env is missing', async () => {
+    await expect(validator.validate({})).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+  });
+
+  it('should reject when env is not a known value', async () => {
+    await expect(validator.validate({ env: 'staging' })).rejects.toBeInstanceOf(
+      InvalidConnectionConfigException,
+    );
+  });
+
+  it('should reject when env is an empty string', async () => {
+    await expect(validator.validate({ env: '' })).rejects.toBeInstanceOf(
+      InvalidConnectionConfigException,
+    );
+  });
+
+  it('should reject when env is whitespace-only', async () => {
+    await expect(validator.validate({ env: '   ' })).rejects.toBeInstanceOf(
+      InvalidConnectionConfigException,
+    );
+  });
+
+  it('should reject when env is not a string', async () => {
+    await expect(validator.validate({ env: 1 })).rejects.toBeInstanceOf(
+      InvalidConnectionConfigException,
+    );
+  });
+
+  it('should carry a flat { path, message } issue for env', async () => {
+    await expect(validator.validate({ env: 'staging' })).rejects.toMatchObject({
+      pluginName: 'KSeF',
+      errors: [{ path: 'env', message: expect.stringContaining('must be one of') }],
+    });
+  });
+});
