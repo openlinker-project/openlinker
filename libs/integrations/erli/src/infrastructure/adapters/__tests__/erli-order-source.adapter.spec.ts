@@ -388,6 +388,7 @@ describe('ErliOrderSourceAdapter', () => {
 
     it('no-ops (no PATCH, no POST) when the #992 writeback gate is OFF by default (#1086)', async () => {
       delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
       await adapter.notifyDispatched({
         externalOrderId: ORDER_ID,
@@ -397,6 +398,13 @@ describe('ErliOrderSourceAdapter', () => {
 
       expect(client.patch).not.toHaveBeenCalled();
       expect(client.post).not.toHaveBeenCalled();
+      // The skip is signalled at warn level (not debug) so operators can tell the
+      // dispatch was not propagated upstream (PR1086 review) — and carries no PII.
+      const emitted = warnSpy.mock.calls.flat().join(' ');
+      expect(emitted).toContain('Erli dispatch writeback skipped');
+      expect(emitted).not.toContain(ORDER_ID);
+      expect(emitted).not.toContain('WB-FAKE-123');
+      warnSpy.mockRestore();
     });
 
     it('attaches the waybill when trackingNumber is present (non-Erli carrier)', async () => {

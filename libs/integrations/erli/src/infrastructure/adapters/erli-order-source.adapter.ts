@@ -187,19 +187,14 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
     // Only the order-event literals become feed items to enqueue.
     const orderEvents = newWave.filter((msg) => ERLI_ORDER_EVENT_TYPES.has(msg.type));
 
-    // Dedupe by orderId, keeping the newest message (highest id) — prevents
-    // enqueuing two jobs for one order when orderCreated + orderStatusChanged are
-    // both unread together.
-    const byOrder = new Map<string, ErliInboxMessage>();
-    for (const msg of orderEvents) {
-      const existing = byOrder.get(msg.orderId);
-      if (!existing || msg.id > existing.id) {
-        byOrder.set(msg.orderId, msg);
-      }
-    }
-    const deduped = Array.from(byOrder.values());
-
-    const items: OrderFeedItem[] = deduped
+    // Map to neutral feed items, then apply the optional `eventTypes` filter
+    // BEFORE dedupe (PR1086 review). Filtering after dedupe can silently drop an
+    // order: if both orderCreated + orderStatusChanged are unread for one order,
+    // dedupe keeps the newest (→ `updated`); a caller passing
+    // `eventTypes: ['created']` would then filter that survivor out while
+    // `nextCursor` still advances past it — the order vanishes. Filtering first
+    // lets the wanted-type event survive dedupe.
+    const mapped: OrderFeedItem[] = orderEvents
       .map((msg) => ({
         externalOrderId: msg.orderId,
         eventType: mapErliInboxEventType(msg.type),
@@ -209,6 +204,18 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
         raw: { type: msg.type },
       }))
       .filter((item) => !input.eventTypes || input.eventTypes.includes(item.eventType));
+
+    // Dedupe by orderId, keeping the newest surviving event (highest id) —
+    // prevents enqueuing two jobs for one order when orderCreated +
+    // orderStatusChanged are both unread together.
+    const byOrder = new Map<string, OrderFeedItem>();
+    for (const item of mapped) {
+      const existing = byOrder.get(item.externalOrderId);
+      if (!existing || item.eventKey > existing.eventKey) {
+        byOrder.set(item.externalOrderId, item);
+      }
+    }
+    const items: OrderFeedItem[] = Array.from(byOrder.values());
 
     // nextCursor = newest id across the ENTIRE new wave (any type), so consumed
     // non-order messages advance the cursor. Empty new wave → keep fromCursor
@@ -246,11 +253,14 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
 
   /**
    * Order-side dispatch writeback (#997; mirrors
-   * `AllegroOrderSourceAdapter.notifyDispatched`). Verified against the live Erli
-   * API (#992): marks the order dispatched via `PATCH /orders/{id}/status
-   * { status: 'sent' }` (the enum has no `dispatched`; `sent` is the dispatch
-   * state), then registers an external shipment via `POST /shipping/external`
-   * ONLY when a waybill is present.
+   * `AllegroOrderSourceAdapter.notifyDispatched`). Marks the order dispatched via
+   * `PATCH /orders/{id}/status { status: 'sent' }` (the enum has no `dispatched`;
+   * `sent` is the dispatch state), then registers an external shipment via
+   * `POST /shipping/external` ONLY when a waybill is present.
+   *
+   * #992-PROVISIONAL: these writeback wire shapes are NOT yet confirmed against
+   * the Erli sandbox — that is exactly why the path is default-OFF (see the gate
+   * below). Confirm them via #992 before flipping the gate on in production.
    *
    * Tracking inversion (omit-on-absence, §5.4): a non-Erli carrier with a real
    * waybill → `trackingNumber` present → register; an Erli-managed / `omp_fulfilled`
@@ -263,10 +273,11 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
    * `externalOrderId` at info/warn (waybill = PII); error wrapping is
    * message-only.
    *
-   * NOTE — this path is LIVE: `ShipmentDispatchNotificationService` reaches it from
-   * the shipment notify-dispatched endpoint (via `isOrderDispatchNotifier`). The
-   * endpoint/verb/status token are #992-PROVISIONAL, so confirm them against the
-   * sandbox before relying on Erli dispatch writeback in production.
+   * NOTE — reachable but default-OFF: `ShipmentDispatchNotificationService`
+   * resolves and calls this from the shipment notify-dispatched endpoint (via
+   * `isOrderDispatchNotifier`), but the #992 gate below no-ops the body until the
+   * provisional wire shapes are confirmed — so nothing is written to a live Erli
+   * order until an operator opts in.
    */
   async notifyDispatched(input: {
     externalOrderId: string;
@@ -280,7 +291,11 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderDispatchNot
     // lands (mirrors the offer-status-sync opt-in posture, #1063). Skipping is
     // safe — Erli already shows the order; dispatch state reconciles on enable.
     if (process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED !== 'true') {
-      this.logger.debug(
+      // warn (not debug) so an operator who fulfils an Erli order can SEE the
+      // dispatch was NOT propagated upstream — without it the shipment flow
+      // reports success with nothing written to Erli (PR1086 review). No PII:
+      // connectionId only, never order id / waybill.
+      this.logger.warn(
         `Erli dispatch writeback skipped — gated OFF until #992 ` +
           `(set OL_ERLI_DISPATCH_WRITEBACK_ENABLED=true to enable) [connectionId=${this.connectionId}]`,
       );
