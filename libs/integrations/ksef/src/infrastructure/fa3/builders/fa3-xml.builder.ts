@@ -32,7 +32,7 @@ import {
 import { serializeXml, XML_ATTR_PREFIX, type XmlNode, type XmlNodeObject } from './xml-dom.builder';
 
 /** Number of decimal places FA(3) monetary fields are rendered to. */
-const MONEY_SCALE = 2 as const;
+const MONEY_SCALE = 2;
 
 /**
  * FA(3) VAT bands carrying a net base (`P_13_x`) + VAT amount (`P_14_x`). Only
