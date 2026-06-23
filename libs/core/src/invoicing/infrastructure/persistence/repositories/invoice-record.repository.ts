@@ -21,6 +21,9 @@ import type { InvoiceRecordRepositoryPort } from '../../../domain/ports/invoice-
 import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
+  InvoiceRecordFilters,
+  InvoiceRecordPagination,
+  PaginatedInvoiceRecords,
 } from '../../../domain/types/invoicing.types';
 import { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 
@@ -54,7 +57,14 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   async findByOrderId(orderId: string, connectionId: string): Promise<InvoiceRecord | null> {
-    const entity = await this.repository.findOne({ where: { orderId, connectionId } });
+    // (orderId, connectionId) is a NON-unique index: a keyless re-issue can leave
+    // multiple rows for the same pair. Order newest-first so the single-row reads
+    // (the AC-5 re-issue gate + GET /orders/:orderId/invoice) deterministically
+    // see the LATEST attempt rather than an arbitrary duplicate.
+    const entity = await this.repository.findOne({
+      where: { orderId, connectionId },
+      order: { createdAt: 'DESC' },
+    });
     return entity ? this.toDomain(entity) : null;
   }
 
@@ -74,6 +84,42 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     Object.assign(entity, patch);
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
+  }
+
+  /**
+   * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
+   * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
+   * bounds are inclusive and apply to `inv.issuedAt`. Ordered newest-first by
+   * `createdAt` so the page is stable; `skip`/`take` carry the window.
+   */
+  async findMany(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords> {
+    const qb = this.repository.createQueryBuilder('inv');
+
+    if (filter.status !== undefined) {
+      qb.andWhere('inv.status = :status', { status: filter.status });
+    }
+    if (filter.connectionId !== undefined) {
+      qb.andWhere('inv.connectionId = :connectionId', { connectionId: filter.connectionId });
+    }
+    if (filter.regulatoryStatus !== undefined) {
+      qb.andWhere('inv.regulatoryStatus = :regulatoryStatus', {
+        regulatoryStatus: filter.regulatoryStatus,
+      });
+    }
+    if (filter.issuedFrom !== undefined) {
+      qb.andWhere('inv.issuedAt >= :issuedFrom', { issuedFrom: filter.issuedFrom });
+    }
+    if (filter.issuedTo !== undefined) {
+      qb.andWhere('inv.issuedAt <= :issuedTo', { issuedTo: filter.issuedTo });
+    }
+
+    qb.orderBy('inv.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
+
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map((entity) => this.toDomain(entity)), total };
   }
 
   private buildOrmEntity(input: CreateInvoiceRecordInput): InvoiceRecordOrmEntity {

@@ -12,7 +12,10 @@
  */
 import type {
   GetInvoiceByOrderQuery,
+  InvoiceRecordFilters,
+  InvoiceRecordPagination,
   IssueInvoiceCommand,
+  PaginatedInvoiceRecords,
 } from '../../domain/types/invoicing.types';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 
@@ -76,4 +79,17 @@ export interface IInvoiceService {
    * Returns `null` when no record holds the order on the connection.
    */
   getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null>;
+
+  /**
+   * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
+   * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
+   * the invoice projection through this service interface, NEVER the repository
+   * port (per architecture-overview.md § Cross-context dependencies in core).
+   * Delegates to `InvoiceRecordRepositoryPort.findMany`. NEVER queries the
+   * provider/adapter — this is a projection read.
+   */
+  listInvoices(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords>;
 }
