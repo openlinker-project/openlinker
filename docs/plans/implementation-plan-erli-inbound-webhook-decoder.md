@@ -93,7 +93,7 @@ Confirmed today:
 - **A1 (most likely)**: Erli echoes the `accessToken` (shared secret) on each delivery in a header (candidate names to probe: `x-erli-token`, `authorization`, `x-webhook-token`). `verify` = timing-safe compare of the echoed token against `secret`; **no** timestamp → `timestampMs: undefined` (replay-window skipped, acceptable because `eventId` Postgres dedup is the authoritative idempotency gate and the #993 poll backstops loss).
 - **A2 (fallback)**: If Erli HMAC-signs, copy the InPost HMAC path verbatim (swap header names + base64/hex per the spike).
 - **A3**: Event type rides a body field (`type`) or a per-hook header; if neither exists, default `eventType` to `'orderStatusChanged'` → translator maps to `'updated'` → a safe full re-pull (matches the translator's existing unknown→updated fallback).
-- **A4**: `eventId = sha256(connectionId + ':' + externalId + ':' + eventType)[:N]` (deterministic; collapses retries, distinguishes created vs status-changed). Correctness guarantee is the idempotent downstream re-read, so best-effort dedup suffices.
+- **A4**: `eventId = sha256(connectionId + ':' + externalId + ':' + eventType + ':' + occurredAt)[:N]` — the timestamp component is **load-bearing**, mirroring InPost's `deriveEventId(record, parcelId, occurredAt)`. WITHOUT it, every `orderStatusChanged` delivery for the same order hashes identically and the Postgres `(provider, connectionId, eventId)` dedup gate would **drop all status changes after the first** (`purchased→shipped→cancelled` would ingest only the first transition). Prefer a provider-supplied event id if the spike finds one. **Fallback if Erli sends no per-event timestamp/id (resolve in the spike):** distinct status-changes for one order become indistinguishable by `eventId`; the webhook then degrades to a *single* low-latency nudge per order and the #993 inbox poll carries correctness for subsequent transitions. This degradation MUST be called out in the decoder file header if it ships, not left implicit.
 
 ### Documentation Gaps
 - `erli-webhook.types.ts` is entirely `#992-PROVISIONAL`. The spike confirms/repairs it; this plan's Phase 0 updates those facts in the same PR.
@@ -118,7 +118,7 @@ Confirmed today:
 1. **`erli-inbound-webhook-decoder.adapter.ts`** — `libs/integrations/erli/src/infrastructure/adapters/`.
    - File header per standards (purpose, ADR-021/ADR-025, the trigger-not-source-of-truth note like InPost).
    - `verify({ rawBody, headers, secret })`: implement the confirmed scheme (A1 token-compare or A2 HMAC). Always timing-safe (`crypto.timingSafeEqual`). Return `{ ok:false }` on any missing/mismatch; return `timestampMs` only if Erli sends a signature-covered timestamp.
-   - `extractEnvelope(rawBody, headers)`: parse JSON total-ly; `reject` on non-JSON/non-object/missing order id; build `InboundWebhookEnvelope` with `eventType` (mapped to `'orderCreated'|'orderStatusChanged'` so the translator's switch hits), `objectType:'order'`, `externalId` = the order id (defensive `unknown`→non-empty-string narrowing, same as the translator), `occurredAt`, and a deterministic `eventId` (A4). Use `ignore` (202) for a recognizable setup-ping/unknown-topic so Erli doesn't retry-storm.
+   - `extractEnvelope(rawBody, headers)`: parse JSON total-ly; `reject` on non-JSON/non-object/missing order id; build `InboundWebhookEnvelope` with `eventType` carrying the **raw Erli literal** (`'orderCreated'|'orderStatusChanged'`) because `ErliWebhookEventTranslator.resolveEventType` switches on exactly those strings. NB: the `^[a-z]+\.[a-z_]+$` dotted-format constraint lives only in `DefaultWebhookDecoder`'s `WebhookRequestDto` — it is NOT a host-wide envelope invariant, so emitting `orderStatusChanged` is fine. Set `objectType:'order'` (the translator hardcodes `domain:'order'` and ignores `objectType`, so this is host-event metadata only), `externalId` = the order id (defensive `unknown`→non-empty-string narrowing, same as the translator), `occurredAt`, and a deterministic `eventId` (A4). Use `ignore` (202) for a recognizable setup-ping/unknown-topic so Erli doesn't retry-storm.
    - **Acceptance**: pure + total; no `Logger`/DI/I/O; no secret ever logged.
 2. Reuse/extend `erli-webhook.types.ts` for confirmed header/field-name constants (don't inline literals in the adapter).
    - **Acceptance**: type-check clean; constants single-sourced.
@@ -134,6 +134,7 @@ Confirmed today:
    ```
    Update the adjacent comment (the current one says the path is dead until the decoder lands — flip it to "decoder live").
    - **Acceptance**: provider `'erli'` now resolves a native decoder instead of falling to the OL-HMAC default; `erli-plugin.spec.ts` asserts the registration.
+   - **Cross-check (insurance against a silent dead-letter)**: the decoder is `provider`-keyed (`'erli'`) but the downstream translator is `adapterKey`-keyed (`'erli.shopapi.v1'`) and the job handler resolves it via `metadata.adapterKey` (host-populated from the connection). Confirm the Erli connection's `adapterKey` resolves to `erli.shopapi.v1` so the existing translator is found after decode — the path already works for InPost, but verify it in the int-spec (Phase 4).
 
 ### Phase 3 — Unit tests
 **Steps**:
@@ -143,10 +144,12 @@ Confirmed today:
    - A "never logs the secret" assertion (mirror the provisioner spec).
    - **Acceptance**: full erli suite green; coverage ≥ adapter threshold (70%).
 
-### Phase 4 — Integration vertical slice (OPTIONAL)
+### Phase 4 — Integration vertical slice (RECOMMENDED — do unless time-boxed out)
 **Steps**:
-1. If time allows, an `apps/api` int-spec posting a signed Erli delivery to `POST /webhooks/erli/:connectionId` and asserting it verifies → publishes → routes to `marketplace.order.sync` (and that a tampered sig 401s). Otherwise rely on adapter unit specs + the existing core webhook int-specs (consciously noted, same call #1081 made for orders).
-   - **Acceptance**: green; or an explicit note in the PR that the slice was deferred.
+1. An `apps/api` int-spec posting a signed Erli delivery to `POST /webhooks/erli/:connectionId` and asserting it verifies → publishes → routes to `marketplace.order.sync`, **and that a tampered signature 401s**. This is the highest-value assertion because it proves the decoder is actually *wired* under `provider='erli'` (the registry-key-mismatch class of bug) and that the `adapterKey` translator-lookup resolves — neither is covered by unit tests. Since this is a signature-verification surface, bump it above a nice-to-have.
+   - No new plugin is added to `plugins.ts`, so the `jest-integration.cjs` `moduleNameMapper` guard (#917) should be a no-op — but confirm.
+   - If genuinely time-boxed out, fall back to adapter unit specs + the existing core webhook int-specs and **state the deferral explicitly in the PR** (same conscious call #1081 made for orders).
+   - **Acceptance**: green; or an explicit deferral note in the PR.
 
 ### Configuration / Migrations / Events
 - **Config**: none new (secret already provisioned; `callbackBaseUrl` already on the connection).
@@ -228,6 +231,9 @@ Confirmed today:
 ---
 
 ## Related Documentation
-- ADR-021 (inbound-webhook decoder pattern), ADR-025 (Erli reconciliation-first posture), ADR-015 (translator totality)
+- **ADR-021** — Third-party-native inbound webhook ingestion via a per-provider decoder (the pattern this implements).
+- **ADR-015** — Capability-driven, plugin-translated inbound webhook event routing (the translator's home; the decoder feeds it). Totality (never-throw) is the translator/decoder contract enforced here.
+- **ADR-025** — Erli reconciliation-first posture (poll authoritative, webhook is a nudge).
+- Cite ADR-021 + ADR-015 in the decoder file header. Do NOT copy InPost's ADR-008 reference — that's the auth-failure-classifier/reauth decision and is not relevant to this decoder.
 - `docs/plans/implementation-plan-erli-webhooks.md` (#996 parent), Issue #1145, PR #1081
 - InPost precedent: `libs/integrations/inpost/src/infrastructure/adapters/inpost-inbound-webhook-decoder.adapter.ts`
