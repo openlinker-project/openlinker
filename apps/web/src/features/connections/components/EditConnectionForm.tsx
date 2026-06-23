@@ -22,6 +22,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { usePlatform } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
+import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -36,7 +37,9 @@ type StructuredField =
   | 'masterCatalogConnectionId'
   | 'defaultCarrierId'
   | 'unmanagedStockQuantity'
-  | 'inpostPsModuleType';
+  | 'inpostPsModuleType'
+  | 'subiektBridgeUrl'
+  | 'subiektTriggerModel';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -56,6 +59,44 @@ function readUnmanagedStockQuantity(config: Record<string, unknown>): string {
   return typeof inventory.unmanagedStockQuantity === 'number'
     ? String(inventory.unmanagedStockQuantity)
     : '';
+}
+
+/**
+ * #759 — Read the Subiekt invoice trigger model out of NESTED
+ * `config.invoicing.triggerModel`. Narrows to a known
+ * `INVOICE_TRIGGER_MODEL_VALUES` value; out-of-band / legacy values fall
+ * through to `''` (the operator re-picks), exactly as the BE
+ * `getInvoiceTriggerModel` warns-and-defaults. Clone of `readUnmanagedStockQuantity`.
+ */
+function readTriggerModel(
+  config: Record<string, unknown>,
+): NonNullable<EditConnectionFormValues['subiektTriggerModel']> {
+  const invoicing =
+    typeof config.invoicing === 'object' && config.invoicing !== null
+      ? (config.invoicing as Record<string, unknown>)
+      : {};
+  const raw = invoicing.triggerModel;
+  return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
+    ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
+    : '';
+}
+
+/**
+ * #759 — Read the Subiekt capability toggles out of whole-object
+ * `config.capabilities`. Coerces only boolean-valued entries; a non-object
+ * or non-boolean values fall through to `{}` (clone of the `readSellerDefaults`
+ * shape-guard discipline).
+ */
+function readSubiektCapabilities(config: Record<string, unknown>): Record<string, boolean> {
+  const raw =
+    typeof config.capabilities === 'object' && config.capabilities !== null
+      ? (config.capabilities as Record<string, unknown>)
+      : {};
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'boolean') out[key] = value;
+  }
+  return out;
 }
 
 /**
@@ -179,6 +220,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
       sellerDefaults: readSellerDefaults(connection.config),
+      // #759 — symmetric read-side hydration for the Subiekt fields, or an
+      // existing connection renders empty and an unrelated save blanks the
+      // persisted state (reverting the live getInvoiceTriggerModel consumer to 'manual').
+      subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
+      subiektTriggerModel: readTriggerModel(connection.config),
+      subiektCapabilities: readSubiektCapabilities(connection.config),
     },
     resolver: zodResolver(editConnectionSchema),
   });
@@ -253,6 +300,21 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       sellerDefaults: form.getValues('sellerDefaults'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #759 — re-serialize the whole `subiektCapabilities` record into configText.
+  // Clone of `syncSellerDefaultsToJson`: reads CURRENT form state, takes NO
+  // argument, and KEEPS the `!configIsParseable` early-return (the divergence
+  // gate — toggles are rendered disabled in that state so this can't drop a flip).
+  // ORDERING: the section MUST setValue('subiektCapabilities', …) BEFORE calling
+  // this, or it persists the previous toggle state.
+  function syncSubiektCapabilitiesToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      subiektCapabilities: form.getValues('subiektCapabilities'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -372,6 +434,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           syncStructuredToJson={(field, value, options) =>
             syncStructuredToJson(field as StructuredField, value, options)
           }
+          syncObjectToJson={syncSubiektCapabilitiesToJson}
         />
       ) : null}
 
