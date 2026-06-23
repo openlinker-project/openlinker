@@ -53,7 +53,7 @@
 
 ### Constraints
 
-- **ADR-026 litmus test (hard rule):** zero `nip`/`ksef`/`vat`/`jpk`/`faktura`/`upo` strings in `libs/core`. All PL/FA(3)/NIP/KSeF specifics live in `libs/integrations/ksef`. Enforced by reviewers and by the neutral-vocabulary half of `pnpm check:invariants`.
+- **ADR-026 litmus test (hard rule):** zero `nip`/`ksef`/`vat`/`jpk`/`faktura`/`upo` strings in `libs/core`. All PL/FA(3)/NIP/KSeF specifics live in `libs/integrations/ksef`. This litmus is **enforced by reviewers + a `grep` over `libs/core` today — it is NOT yet automated** (`pnpm check:invariants` carries no neutral-vocabulary check). Automating it as a `scripts/check-neutral-vocabulary.mjs` gate wired into `check:invariants` is a tracked follow-up — a natural future child of this epic.
 - **No core migration:** `InvoiceRecord.regulatoryStatus` + `clearanceReference` columns already shipped (#751). KSeF needs **no** DDL change. If a plugin-private table emerges (e.g. MF public-key cache, buyer cache), it ships as a **plugin-owned migration** (`libs/integrations/ksef/src/migrations/` + the two host edits per `docs/migrations.md §Plugin-Owned Migrations`).
 - **No official Node/TS SDK** for KSeF — hand-roll the HTTP client + crypto (OL adapter standard: Allegro/Erli/InPost hand-roll their clients over `fetch`).
 - **Resource-constrained runner:** scope test runs to the touched package (`pnpm --filter @openlinker/integrations-ksef test`), never full-repo `pnpm -r test` (OOM risk — testing-guide #976).
@@ -170,7 +170,7 @@ PER ISSUE Cn:
 **Hard rules baked into every step** (from the user's mandate + repo conventions):
 
 - **Hardcode values in the orchestration scripts, never via `args`.** REPO root, BRANCH, LABEL, the issue number, and `testFilters` are written literally into each step's prompt — `args` has been observed to arrive `undefined`.
-- **Anchor subagents to absolute repo paths.** Every Read/Edit/Grep/Glob/Bash a subagent runs uses absolute paths under the worktree root `/home/nor/projekty/blocky/openlinker-pnpm-10/.claude/worktrees/<...>` (or the active implementation worktree). Shell cwd may differ — subagents must ignore it.
+- **Anchor subagents to absolute repo paths.** Every Read/Edit/Grep/Glob/Bash a subagent runs uses absolute paths under the worktree root `<worktree-root>/.claude/worktrees/<...>` (or the active implementation worktree). Shell cwd may differ — subagents must ignore it.
 - **Guard null subagent results.** Transient `529 Overloaded` / spend-limit can return a null/empty agent result. Never dereference `result.field` without a `if (!result) { … }` guard; one dead agent must not abort the loop. On transient failure: `git reset --hard <base> && git clean -fd`, then **resume** (plan cache) or wait for the API to recover.
 - **Independent green on STOP.** Verify is a *separate* agent (or the orchestrator) running, scoped to the touched package:
   ```bash
@@ -265,7 +265,7 @@ Each child runs the §6.1 loop. Below: only the issue-specific deltas (panel emp
 ### C1 — #1143 RegulatoryTransmitter port + guard (CORE, S) — Wave 1, branch from `main`
 - **Decision to resolve at PLAN**: the #1121 seam (Q1 §5). This is the only child with a genuine cross-team contract choice — the PLAN agent must read #1121 and decide `extends` vs single-interface; record a one-line ADR-026 amendment iff divergent.
 - **Security panel emphasis**: neutral-vocabulary litmus (no `ksef`/`upo`/`nip`); guard cannot leak provider types.
-- **Verify**: `pnpm --filter @openlinker/core test` scoped to invoicing + `check:invariants` (cross-context + neutral-vocab).
+- **Verify**: `pnpm --filter @openlinker/core test` scoped to invoicing + `check:invariants` (cross-context); the neutral-vocabulary litmus is a separate reviewer/`grep` gate (not part of `check:invariants` today — see §2).
 - May collapse panels to single reviewers (S-effort).
 
 ### C2 — #1144 plugin skeleton + manifest + validators (Integration, M) — Wave 1, branch from `main`
@@ -383,8 +383,8 @@ Each child runs the §6.1 loop. Below: only the issue-specific deltas (panel emp
 ### Program-level Acceptance Criteria
 - [ ] All ten children merged, each as its own signed (DCO + GPG) draft→merged PR with `Closes #N`.
 - [ ] Epic #1142 closes when all children merge.
-- [ ] `pnpm lint` (incl. `check:invariants`: cross-context, service-interface, jest-integration mappers, neutral-vocabulary, migration timestamps) + `type-check` green on each PR.
-- [ ] Zero `nip`/`ksef`/`vat`/`jpk`/`faktura`/`upo` strings in `libs/core` (ADR-026 litmus).
+- [ ] `pnpm lint` (incl. `check:invariants`: cross-context, service-interface, jest-integration mappers, migration timestamps) + `type-check` green on each PR.
+- [ ] Zero `nip`/`ksef`/`vat`/`jpk`/`faktura`/`upo` strings in `libs/core` (ADR-026 litmus) — verified by reviewers + a `grep` over `libs/core` (a reviewer/grep gate, **not** a `check:invariants` sub-check today; automating it is a tracked follow-up per §2).
 - [ ] `pnpm --filter @openlinker/integrations-ksef test` green with no network.
 - [ ] API + worker boot with the KSeF plugin enabled.
 - [ ] A `VAT` invoice issues + clears to `accepted` against the test env (env-gated); a `KOR` references a prior KSeF number; UPO downloads from the FE.
