@@ -23,8 +23,10 @@ import type { Fa3P12Value } from '../domain/fa3-schema.types';
 import {
   FA3_FORM_CODE,
   FA3_NAMESPACE,
+  FA3_RODZAJ_KOREKTA,
   FA3_SCHEMA_VERSION,
   type Fa3BuilderInput,
+  type Fa3CorrectionContext,
   type Fa3Line,
   type RawFa3Xml,
   type SellerProfile,
@@ -88,15 +90,23 @@ function buyerIdentificationNode(buyer: BuyerIdentity): XmlNodeObject {
   }
 }
 
-/** One `FaWiersz` element for a line at 1-based ordinal `ordinal`. */
-function lineNode(line: Fa3Line, ordinal: number): XmlNodeObject {
-  return {
+/**
+ * One `FaWiersz` element for a line at 1-based ordinal `ordinal`. On a KOR the
+ * "before" rows carry `StanPrzed=1` (the FA(3) before/after correction model);
+ * a plain invoice and the KOR "after" rows omit it.
+ */
+function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObject {
+  const node: XmlNodeObject = {
     NrWierszaFa: ordinal,
     P_7: line.name,
     P_8B: quantity(line.quantity),
     P_11: money(line.quantity * line.unitPriceGross),
     P_12: line.p12,
   };
+  if (stanPrzed) {
+    node.StanPrzed = 1;
+  }
+  return node;
 }
 
 /**
@@ -166,20 +176,66 @@ function buyerNode(input: Fa3BuilderInput): XmlNodeObject {
   };
 }
 
+/**
+ * `DaneFaKorygowanej` — identity of the corrected original. The KSeF-number
+ * choice is mutually exclusive: a `NrKSeF` when the original was a KSeF invoice,
+ * else `NrKSeFN=1` (the "original had no KSeF number" flag).
+ */
+function correctedInvoiceNode(correction: Fa3CorrectionContext): XmlNodeObject {
+  const node: XmlNodeObject = {
+    DataWystFaKorygowanej: correction.originalIssueDate,
+    NrFaKorygowanej: correction.originalInvoiceNumber,
+  };
+  if (correction.originalKsefNumber !== null && correction.originalKsefNumber !== '') {
+    node.NrKSeF = correction.originalKsefNumber;
+  } else {
+    node.NrKSeFN = 1;
+  }
+  return node;
+}
+
+/**
+ * The KOR before/after `FaWiersz` rows: every "before" (original) line first,
+ * each flagged `StanPrzed=1`, then every "after" (corrected) line. Ordinals run
+ * continuously across both blocks.
+ */
+function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionContext): XmlNode {
+  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true));
+  const after = correction.correctedLines.map((line, idx) =>
+    lineNode(line, input.lines.length + idx + 1),
+  );
+  return [...before, ...after];
+}
+
 /** The invoice body (`Fa`) — header fields, VAT aggregates, lines, Adnotacje. */
 function faNode(input: Fa3BuilderInput): XmlNodeObject {
-  const { bands, grandTotal } = aggregateTotals(input.lines);
-  const wiersze: XmlNode = input.lines.map((line, idx) => lineNode(line, idx + 1));
+  const { correction } = input;
+  // KOR aggregates reflect the post-correction ("after") state; a plain invoice
+  // aggregates its own lines.
+  const totalsSource = correction !== undefined ? correction.correctedLines : input.lines;
+  const { bands, grandTotal } = aggregateTotals(totalsSource);
+  const wiersze: XmlNode =
+    correction !== undefined
+      ? correctionLineNodes(input, correction)
+      : input.lines.map((line, idx) => lineNode(line, idx + 1));
 
-  return {
+  const node: XmlNodeObject = {
     KodWaluty: input.currency,
     P_1: input.issueDate,
     P_2: input.invoiceNumber,
-    ...bands,
-    P_15: money(grandTotal),
-    Adnotacje: { OznaczenieNumeruZamowienia: input.orderReference },
-    FaWiersz: wiersze,
   };
+  if (correction !== undefined) {
+    // RodzajFaktury + correction metadata precede the monetary aggregates.
+    node.RodzajFaktury = FA3_RODZAJ_KOREKTA;
+    node.PrzyczynaKorekty = correction.reason;
+    node.TypKorekty = correction.typKorekty;
+    node.DaneFaKorygowanej = correctedInvoiceNode(correction);
+  }
+  Object.assign(node, bands);
+  node.P_15 = money(grandTotal);
+  node.Adnotacje = { OznaczenieNumeruZamowienia: input.orderReference };
+  node.FaWiersz = wiersze;
+  return node;
 }
 
 /**
@@ -187,14 +243,20 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
  * synchronous; validation is a separate downstream step.
  */
 export function buildFa3Xml(input: Fa3BuilderInput): RawFa3Xml {
-  const tree: XmlNodeObject = {
-    Faktura: {
-      [`${XML_ATTR_PREFIX}xmlns`]: FA3_NAMESPACE,
-      Naglowek: headerNode(input),
-      Podmiot1: sellerNode(input.seller),
-      Podmiot2: buyerNode(input),
-      Fa: faNode(input),
-    },
+  const faktura: XmlNodeObject = {
+    [`${XML_ATTR_PREFIX}xmlns`]: FA3_NAMESPACE,
+    Naglowek: headerNode(input),
+    Podmiot1: sellerNode(input.seller),
+    Podmiot2: buyerNode(input),
   };
+  if (input.correction !== undefined) {
+    // KOR carries corrected-party snapshots (`Podmiot1K`/`Podmiot2K`). OL does
+    // not track party changes across a correction, so they snapshot the same
+    // seller/buyer identity as the corrected original.
+    faktura.Podmiot1K = sellerNode(input.seller);
+    faktura.Podmiot2K = buyerNode(input);
+  }
+  faktura.Fa = faNode(input);
+  const tree: XmlNodeObject = { Faktura: faktura };
   return serializeXml(tree) as RawFa3Xml;
 }

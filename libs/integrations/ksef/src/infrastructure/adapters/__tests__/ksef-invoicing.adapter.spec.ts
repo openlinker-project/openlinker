@@ -62,6 +62,23 @@ const fakeBuilder: IFa3XmlBuilder = {
   },
 };
 
+/**
+ * A capturing build pipeline — records the last `Fa3BuilderInput` it received so a
+ * test can assert the adapter mapped the neutral correction into a KOR input.
+ */
+function capturingBuilder(): { builder: IFa3XmlBuilder; lastInput: () => Fa3BuilderInput | null } {
+  let captured: Fa3BuilderInput | null = null;
+  return {
+    builder: {
+      build(input: Fa3BuilderInput): RawFa3Xml {
+        captured = input;
+        return '<Faktura>fake</Faktura>' as RawFa3Xml;
+      },
+    },
+    lastInput: () => captured,
+  };
+}
+
 /** Minimal session-crypto double: deterministic context + passthrough encrypt. */
 function fakeCrypto(): KsefSessionCryptoService {
   const context: SessionCryptoContext = {
@@ -105,12 +122,12 @@ function seedHappyPath(http: FakeKsefHttpClient, sessionStatusCode = 200): void 
     });
 }
 
-function adapter(http: FakeKsefHttpClient): KsefInvoicingAdapter {
+function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder): KsefInvoicingAdapter {
   return new KsefInvoicingAdapter(
     'conn-1',
     http,
     fakeCrypto(),
-    fakeBuilder,
+    builder,
     SELLER,
     () => new Date('2026-06-23T10:00:00.000Z'),
   );
@@ -196,6 +213,68 @@ describe('KsefInvoicingAdapter', () => {
       expect(serialized.toLowerCase()).not.toContain('upo');
       expect(serialized.toLowerCase()).not.toContain('faktura');
       expect(serialized.toLowerCase()).not.toContain('nip');
+    });
+
+    it('should route a documentType:corrected command through the send flow and map it to a KOR input', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const record = await adapter(http, builder).issueInvoice(
+        command({
+          documentType: 'corrected',
+          correction: {
+            originalClearanceReference: '1111111111-20260501-ABCDEF-01',
+            originalDocumentNumber: 'FV/2026/05/0042',
+            originalIssueDate: '2026-05-01',
+            reason: 'Customer returned 1 unit',
+            correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+          },
+        }),
+      );
+
+      // Same C5 session-send sequence as a plain invoice.
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      expect(paths).toEqual([
+        'POST /sessions/online',
+        `POST /sessions/online/${SESSION_REF}/invoices`,
+        `POST /sessions/online/${SESSION_REF}/close`,
+        `GET /sessions/online/${SESSION_REF}`,
+      ]);
+
+      // Neutral result keeps the corrected document type + submitted status.
+      expect(record.documentType).toBe('corrected');
+      expect(record.regulatoryStatus).toBe('submitted');
+      expect(record.providerInvoiceId).toBe(INVOICE_REF);
+
+      // The adapter mapped the neutral correction into a fully-mapped KOR input.
+      const built = lastInput();
+      expect(built?.correction).toBeDefined();
+      expect(built?.correction?.typKorekty).toBe('2');
+      expect(built?.correction?.originalKsefNumber).toBe('1111111111-20260501-ABCDEF-01');
+      expect(built?.correction?.originalInvoiceNumber).toBe('FV/2026/05/0042');
+      expect(built?.correction?.correctedLines).toHaveLength(1);
+    });
+
+    it('should map a correction of a non-KSeF original to a null originalKsefNumber (NrKSeFN path)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueInvoice(
+        command({
+          documentType: 'corrected',
+          correction: {
+            originalClearanceReference: null,
+            originalDocumentNumber: 'PAPER/2026/05/9',
+            originalIssueDate: '2026-05-01',
+            reason: 'Refund',
+            correctedLines: [{ name: 'Widget', quantity: 0, unitPriceGross: 123.0, taxRate: '23' }],
+          },
+        }),
+      );
+
+      expect(lastInput()?.correction?.originalKsefNumber).toBeNull();
     });
   });
 

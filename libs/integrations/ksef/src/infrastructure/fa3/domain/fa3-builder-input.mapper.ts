@@ -15,8 +15,13 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
  */
-import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
-import type { Fa3BuilderInput, Fa3Line, SellerProfile } from './fa3-xml.types';
+import type { InvoiceLine, IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import type {
+  Fa3BuilderInput,
+  Fa3CorrectionContext,
+  Fa3Line,
+  SellerProfile,
+} from './fa3-xml.types';
 import { resolveBuyerIdentity } from './fa3-buyer-id.mapper';
 import { resolveKodWaluty } from './fa3-currency.mapper';
 import { resolveP12 } from './fa3-tax-rate.mapper';
@@ -47,13 +52,6 @@ export function mapToFa3BuilderInput(
   cmd: IssueInvoiceCommand,
   context: Fa3MappingContext,
 ): Fa3BuilderInput {
-  const lines: Fa3Line[] = cmd.lines.map((line) => ({
-    name: line.name,
-    quantity: line.quantity,
-    unitPriceGross: line.unitPriceGross,
-    p12: resolveP12(line.taxRate),
-  }));
-
   return {
     seller: context.seller,
     buyer: resolveBuyerIdentity(cmd.buyer.taxId),
@@ -64,6 +62,41 @@ export function mapToFa3BuilderInput(
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
     orderReference: cmd.orderId,
-    lines,
+    lines: cmd.lines.map(mapLine),
+    ...(cmd.correction !== undefined
+      ? { correction: mapCorrection(cmd) }
+      : {}),
+  };
+}
+
+/** Map one neutral line to a fully-mapped FA(3) line (applies the P_12 mapper). */
+function mapLine(line: InvoiceLine): Fa3Line {
+  return {
+    name: line.name,
+    quantity: line.quantity,
+    unitPriceGross: line.unitPriceGross,
+    p12: resolveP12(line.taxRate),
+  };
+}
+
+/**
+ * Map the neutral {@link IssueInvoiceCommand.correction} to a fully-mapped FA(3)
+ * correction context. The neutral `originalClearanceReference` (the opaque
+ * authority reference; `null` if never cleared) becomes the `NrKSeF`/`NrKSeFN`
+ * choice. A return/refund corrects line items, so `TypKorekty` defaults to `2`.
+ */
+function mapCorrection(cmd: IssueInvoiceCommand): Fa3CorrectionContext {
+  // `cmd.correction` is present (the caller checked) — re-read it here for narrowing.
+  const correction = cmd.correction;
+  if (correction === undefined) {
+    throw new Error('mapCorrection called without a correction descriptor');
+  }
+  return {
+    typKorekty: '2',
+    reason: correction.reason,
+    originalIssueDate: correction.originalIssueDate,
+    originalInvoiceNumber: correction.originalDocumentNumber,
+    originalKsefNumber: correction.originalClearanceReference,
+    correctedLines: correction.correctedLines.map(mapLine),
   };
 }
