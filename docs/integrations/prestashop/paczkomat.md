@@ -8,8 +8,8 @@ installed. Set **InPost PS module** to **Official InPost** in the connection set
 
 When `inpostPsModuleType = 'official_inpost'`, `PrestashopOrderSourceAdapter.getOrder()`
 fetches the order's delivery address via the PS webservice `addresses` endpoint and
-reads `address2`. If the value matches the paczkomat code format (`[A-Z]{3}\d{2}[A-Z]?`,
-e.g. `POZ08A`), it is written to `IncomingOrder.pickupPoint.id` so OL can generate
+reads `address2`. If the value matches the paczkomat code format (`[A-Z]{3}\d{2,4}[A-Z]?`,
+e.g. `POZ08A`, `WAW124`), it is written to `IncomingOrder.pickupPoint.id` so OL can generate
 an InPost label for the correct locker.
 
 ## Troubleshooting
