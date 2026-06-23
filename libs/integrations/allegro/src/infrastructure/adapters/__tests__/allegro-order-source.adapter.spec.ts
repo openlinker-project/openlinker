@@ -110,6 +110,59 @@ describe('AllegroOrderSourceAdapter', () => {
     });
   });
 
+  describe('write — OrderStatusWriteback (#1159)', () => {
+    it('dispatched: marks sent + attaches the waybill and returns applied', async () => {
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'inpost' },
+      });
+      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
+        status: 'SENT',
+      });
+      expect(httpClient.post).toHaveBeenCalledWith('/order/checkout-forms/cf-1/shipments', {
+        carrierId: 'INPOST',
+        waybill: '680',
+      });
+      expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it('dispatched: returns rejected (never throws) when the waybill POST fails', async () => {
+      httpClient.post.mockRejectedValueOnce(new AllegroApiException('bad carrier', 400));
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: 'cf-1',
+        trackingNumber: '680',
+        carrier: { platformType: 'inpost' },
+      });
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain('bad carrier');
+    });
+
+    it('cancelled: sets the Allegro fulfillment status to CANCELLED and returns applied', async () => {
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
+        status: 'CANCELLED',
+      });
+      expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it('cancelled: returns rejected on a 4xx (e.g. forbidden transition)', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('not allowed', 422));
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain('not allowed');
+    });
+
+    it('cancelled: a 409 is rejected, NOT swallowed as applied (cancel ≠ mark-sent idempotency)', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('conflict: already sent', 409));
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain('conflict');
+    });
+  });
+
   describe('listOrderFeed', () => {
     it('should deduplicate events by checkoutFormId, map Allegro event types, and surface lastEventId as nextCursor', async () => {
       const mockResponse: AllegroOrderEventsResponse = {

@@ -73,6 +73,7 @@ describe('PrestashopAdapterFactory', () => {
       expect(adapters.productMaster).toBeDefined();
       expect(adapters.inventoryMaster).toBeDefined();
       expect(adapters.orderSource).toBeDefined();
+      expect(adapters.productPublisher).toBeDefined();
     });
 
     it('should resolve credentials', async () => {

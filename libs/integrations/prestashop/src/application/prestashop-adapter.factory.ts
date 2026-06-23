@@ -29,6 +29,7 @@ import { PrestashopProductMasterAdapter } from '../infrastructure/adapters/prest
 import { PrestashopInventoryMasterAdapter } from '../infrastructure/adapters/prestashop-inventory-master.adapter';
 import { PrestashopOrderSourceAdapter } from '../infrastructure/adapters/prestashop-order-source.adapter';
 import { PrestashopOrderProcessorManagerAdapter } from '../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+import { PrestashopProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter';
 import type { PrestashopCustomerProvisioner } from '../infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
@@ -164,6 +165,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       );
     }
 
+    const productPublisher = new PrestashopProductPublisherAdapter(httpClient, connection);
+
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
     return {
@@ -171,6 +174,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       inventoryMaster,
       orderSource,
       orderProcessorManager,
+      productPublisher,
     };
   }
 

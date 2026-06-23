@@ -550,6 +550,33 @@ app's `test/jest-integration.cjs` (the guard prints them for you). Source of
 truth is `plugins.ts`, not the app's `package.json` — in this pnpm monorepo apps
 under-declare their `@openlinker/*` deps.
 
+### Test-only HTTP-seam faking (deep-importing a plugin's private client) (#991)
+
+Most plugin int-specs fake at the **port** level — register a synthetic
+`adapterKey` whose factory returns a hand-rolled stub of `OfferManagerPort` /
+`OrderSourcePort` (see `allegro-test-offer-manager-stub.helper.ts`). That stub
+exercises none of the adapter's own logic, which is the point for orchestration
+tests but useless for a *vertical-slice* test that must verify the adapter's
+request-building, field-suppression, and status-mapping.
+
+For those, fake one layer lower — at the plugin's **HTTP-client interface** — and
+wire the **real** adapter to it (see `erli-fake-http-client.ts` +
+`erli-test-offer-manager.helper.ts`, #991). This requires the int-spec helper to
+deep-import the plugin's package-private client interface and adapter class
+(`@openlinker/integrations-<p>/infrastructure/...`), which are intentionally NOT
+re-exported from the package barrel. This is **sanctioned for `apps/<app>/test/**`
+only**:
+
+- It resolves via the `jest-integration.cjs` `moduleNameMapper`
+  (`@openlinker/integrations-<p>/(.*) → src/$1`), not Node's `exports` gate.
+- No ESLint rule blocks it (the `apps/**` deep-import ban targets `@openlinker/core/*`
+  sub-paths; the integration-package ban targets files *inside* `libs/integrations/**`).
+- Re-exporting the client/adapter from the barrel purely for tests would widen the
+  production contract surface — strictly worse than a test-only deep import.
+
+Never copy this pattern into production code (it would `ERR_PACKAGE_PATH_NOT_EXPORTED`
+at runtime). The trade-off belongs in the helper's file header.
+
 ---
 
 ## Best Practices

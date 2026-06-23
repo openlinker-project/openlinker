@@ -58,6 +58,10 @@ const harness = createIntegrationTestHarness({
     'sync_jobs',
     'inventory_items',
     'order_records',
+    // offer_status_snapshots (#816) — connection-scoped marketplace publication
+    // status. No ORM/migration FK to connections, so nothing cascades; truncate
+    // explicitly so the Erli offers-status reconciliation case (#991) starts clean.
+    'offer_status_snapshots',
     // listing_creation_records (#1042) — variant- + connection-scoped shop
     // publish attempts. No ORM/migration FK, so nothing cascades from
     // connections; truncate explicitly so each shop-publish case starts clean.
@@ -97,6 +101,14 @@ const harness = createIntegrationTestHarness({
     JWT_SECRET: 'test-secret-for-integration-tests',
     JWT_EXPIRES_IN: '1d',
 
+    // PII hash salt is required at boot by getPiiConfig() (it throws when
+    // unset), so the AppModule cannot instantiate CustomerProjectionService —
+    // and thus the whole harness can't boot — without it. CI supplies it via
+    // the runner env; default to an obviously-fake test value so the suite is
+    // self-contained on machines that don't export it. An externally-provided
+    // salt still wins (this only fills the gap).
+    OL_PII_HASH_SALT: process.env.OL_PII_HASH_SALT ?? 'integration-test-pii-salt',
+
     // Disable all background schedulers in integration tests. Cron jobs fire
     // against an empty database and keep the Node.js event loop alive,
     // causing Jest to hang after tests complete. If a future int-spec needs
@@ -115,6 +127,10 @@ const harness = createIntegrationTestHarness({
     OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED: 'false',
     OL_INPOST_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_DPD_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+    // Erli offer-status reconciliation scheduler (#989). Explicitly disabled to
+    // match the file's "disable all background schedulers" intent (#991); the
+    // offers int-spec drives OfferStatusSyncService directly regardless.
+    OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
 

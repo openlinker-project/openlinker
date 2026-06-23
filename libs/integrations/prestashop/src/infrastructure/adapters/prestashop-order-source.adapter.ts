@@ -14,6 +14,7 @@ import type {
   OrderFeedInput,
   OrderFeedOutput,
   OrderFeedItem,
+  OrderFeedEventType,
   IncomingOrder,
   IncomingOrderItem,
   IncomingOrderAddress,
@@ -29,6 +30,7 @@ import type {
   PrestashopOrder,
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
+import { PRESTASHOP_DEFAULT_CANCELLED_STATE_ID } from '../mappers/prestashop-order-state.types';
 import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
@@ -80,7 +82,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       const externalOrderId = String(o.id);
       const occurredAt = typeof o.date_upd === 'string' ? o.date_upd : new Date().toISOString();
       const createdAt = typeof o.date_add === 'string' ? o.date_add : occurredAt;
-      const eventType = createdAt === occurredAt ? 'created' : 'updated';
+      const eventType = this.resolveFeedEventType(o, createdAt, occurredAt);
       return {
         externalOrderId,
         eventType,
@@ -108,6 +110,35 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       items: filtered,
       nextCursor: nextCursor ?? input.fromCursor ?? null,
     };
+  }
+
+  /**
+   * Derive the feed event type for a PrestaShop order row.
+   *
+   * Cancellation is checked **first**, with precedence over created/updated.
+   * This ordering is load-bearing, not cosmetic: an order that stays cancelled
+   * but gets re-touched at the source (admin note, status-history write — any
+   * `date_upd` bump) must keep emitting `cancelled`. If it ever flipped to
+   * `updated`, `OrderIngestionService.syncOrderFromSource` would re-enter the
+   * create/update path and resurrect a cancelled order as active (#1161). A
+   * still-cancelled order therefore re-emits `cancelled` (an idempotent no-op
+   * at the lifecycle relay) on every re-read — never `updated`.
+   *
+   * Keys on the default-install "Canceled" state id; renumbered installs are a
+   * documented v1 limitation (see `prestashop-order-state.types.ts`).
+   */
+  private resolveFeedEventType(
+    order: PrestashopOrder,
+    createdAt: string,
+    occurredAt: string
+  ): OrderFeedEventType {
+    if (
+      order.current_state !== undefined &&
+      Number(order.current_state) === PRESTASHOP_DEFAULT_CANCELLED_STATE_ID
+    ) {
+      return 'cancelled';
+    }
+    return createdAt === occurredAt ? 'created' : 'updated';
   }
 
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {

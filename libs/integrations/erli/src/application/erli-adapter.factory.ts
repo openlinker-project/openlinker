@@ -14,6 +14,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CachePort } from '@openlinker/shared';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
@@ -41,11 +42,19 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
    * adapter today but kept so #985/#986/#988 extend behaviour without churning
    * this signature or the plugin's dispatch call site (Allegro pays the same
    * unused-dep cost deliberately).
+   *
+   * `cache` is the host-provided distributed cache (`host.cache`); the offer
+   * adapter uses it for the #1066 frozen-stock flag. Optional — when absent the
+   * adapter fails open (pushes stock) exactly as before. Threaded through this
+   * method (rather than the constructor as Allegro does) because Erli's factory
+   * is constructed argument-less inside `createCapabilityAdapter` — an Erli-local
+   * choice; the cache still arrives from `host.cache` either way.
    */
   async createAdapters(
     connection: Connection,
     _identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    cache?: CachePort,
   ): Promise<ErliAdapters> {
     const httpClient = await this.createHttpClient(connection, credentialsResolver);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
@@ -55,6 +64,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
         ERLI_ADAPTER_KEY,
         httpClient,
         config.defaultDispatchTime,
+        cache,
       ),
     };
   }

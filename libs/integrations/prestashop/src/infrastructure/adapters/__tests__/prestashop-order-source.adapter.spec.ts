@@ -110,6 +110,142 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(result.items).toHaveLength(0);
       expect(result.nextCursor).toBe('2024-01-02 12:00:00');
     });
+
+    describe('cancellation detection (#1161)', () => {
+      it('should emit a cancelled event for an order in the canceled state (state 6)', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '7',
+            current_state: '6',
+            date_add: '2024-03-01 09:00:00',
+            date_upd: '2024-03-02 14:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.items[0]).toMatchObject({
+          externalOrderId: '7',
+          eventType: 'cancelled',
+          occurredAt: '2024-03-02 14:00:00',
+        });
+        // eventKey carries the event type so a cancel is dedupe-distinct from a
+        // prior created/updated at a different date_upd.
+        expect(result.items[0].eventKey).toBe('7:2024-03-02 14:00:00:cancelled');
+      });
+
+      it('should take cancellation precedence even when date_add === date_upd', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '8',
+            current_state: '6',
+            date_add: '2024-03-03 10:00:00',
+            date_upd: '2024-03-03 10:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.items[0].eventType).toBe('cancelled');
+      });
+
+      it('should keep emitting cancelled for a re-touched order that stays canceled (no flip to updated)', async () => {
+        // Regression guard: a still-cancelled order whose date_upd bumped again
+        // must NOT read as `updated` (which would re-create it as active).
+        const orders: PrestashopOrder[] = [
+          {
+            id: '9',
+            current_state: '6',
+            date_add: '2024-03-04 10:00:00',
+            date_upd: '2024-03-05 11:30:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: '2024-03-05 00:00:00',
+          limit: 10,
+        });
+
+        expect(result.items[0].eventType).toBe('cancelled');
+      });
+
+      it('should not treat a non-canceled updated order as cancelled', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '10',
+            current_state: '2',
+            date_add: '2024-03-06 09:00:00',
+            date_upd: '2024-03-07 09:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.items[0].eventType).toBe('updated');
+      });
+
+      it('should classify an order with no current_state as created/updated (undefined guard)', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '13',
+            date_add: '2024-03-12 09:00:00',
+            date_upd: '2024-03-13 09:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.items[0].eventType).toBe('updated');
+      });
+
+      it('should retain a cancelled order when eventTypes filters for ["cancelled"]', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '11',
+            current_state: '6',
+            date_add: '2024-03-08 09:00:00',
+            date_upd: '2024-03-09 09:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: null,
+          limit: 10,
+          eventTypes: ['cancelled'],
+        });
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].externalOrderId).toBe('11');
+      });
+
+      it('should filter out a cancelled order when eventTypes is ["created","updated"]', async () => {
+        const orders: PrestashopOrder[] = [
+          {
+            id: '12',
+            current_state: '6',
+            date_add: '2024-03-10 09:00:00',
+            date_upd: '2024-03-11 09:00:00',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: null,
+          limit: 10,
+          eventTypes: ['created', 'updated'],
+        });
+
+        expect(result.items).toHaveLength(0);
+        // Cursor still advances past the filtered-out cancelled order.
+        expect(result.nextCursor).toBe('2024-03-11 09:00:00');
+      });
+    });
   });
 
   describe('getOrder', () => {
