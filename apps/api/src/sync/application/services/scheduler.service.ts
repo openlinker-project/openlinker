@@ -29,6 +29,12 @@ import {
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
+/**
+ * Default page size for the regulatory-status reconciliation fan-out payload
+ * (#1121). The worker handler clamps a payload-supplied `limit` to MAX_LIMIT.
+ */
+const REGULATORY_RECONCILE_DEFAULT_LIMIT = 100;
+
 @Injectable()
 export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
@@ -54,6 +60,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     this.registerInventorySyncTask();
     this.registerProductSyncTask();
     this.registerPickupPointRefreshTask();
+    this.registerRegulatoryStatusReconcileTask();
 
     // Drain plugin-contributed tasks. Integration modules have already
     // populated the registry at `onModuleInit`; NestJS guarantees every
@@ -351,6 +358,45 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `shipping:${connection.id}:pickupPoints:refresh:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the periodic KSeF regulatory-status reconciliation task (#1121).
+   *
+   * Enqueues `invoicing.regulatoryStatus.reconcile` for every active connection
+   * that supports the `Invoicing` capability (capability-scoped — the exact
+   * structural twin of `registerPickupPointRefreshTask`). The worker handler
+   * delegates to the core `RegulatoryStatusReconciliationService`, which reads
+   * authoritative status via the `RegulatoryStatusReader` sub-capability and
+   * refreshes the non-terminal frontier; connections whose adapter lacks the
+   * reader no-op cleanly. Every 30 minutes by default.
+   */
+  private registerRegulatoryStatusReconcileTask(): void {
+    const enabled = this.configService.get<string>('OL_REGULATORY_RECONCILE_ENABLED', 'true');
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cron = this.configService.get<string>('OL_REGULATORY_RECONCILE_CRON', '*/30 * * * *');
+
+    this.tasks.push({
+      taskId: 'regulatory-status-reconcile',
+      jobType: 'invoicing.regulatoryStatus.reconcile',
+      cronExpression: cron,
+      enabledEnvVar: 'OL_REGULATORY_RECONCILE_ENABLED',
+      connectionFilter: async () => {
+        const adapters = await this.integrationsService.listCapabilityAdapters({
+          capability: 'Invoicing',
+        });
+        return (adapters ?? []).map((a) => a.connection);
+      },
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: REGULATORY_RECONCILE_DEFAULT_LIMIT,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `invoicing:${connection.id}:regulatoryStatus:reconcile:${timestamp}`,
     });
   }
 }

@@ -11,3 +11,12 @@ export const INVOICE_RECORD_REPOSITORY_TOKEN = Symbol('InvoiceRecordRepositoryPo
 
 /** Binding token for the {@link IInvoiceService} application service (ADR-026 "SVC"). */
 export const INVOICE_SERVICE_TOKEN = Symbol('IInvoiceService');
+
+/**
+ * Binding token for the {@link IRegulatoryStatusReconciliationService} (#1121).
+ * Refreshes `InvoiceRecord.regulatoryStatus` / `clearanceReference` for issued,
+ * non-terminal records via the `RegulatoryStatusReader` sub-capability.
+ */
+export const REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN = Symbol(
+  'IRegulatoryStatusReconciliationService',
+);

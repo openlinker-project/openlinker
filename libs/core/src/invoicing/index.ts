@@ -9,13 +9,22 @@
  * @module libs/core/src/invoicing
  */
 export * from './domain/types/invoicing.types';
+export * from './domain/types/regulatory-status-read.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/ports/invoicing.port';
 export * from './domain/ports/invoice-record-repository.port';
+export type { RegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
+export { isRegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export { IInvoiceService } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
+export type {
+  IRegulatoryStatusReconciliationService,
+  RegulatoryStatusReconcileOptions,
+  RegulatoryStatusReconcileResult,
+} from './application/services/regulatory-status-reconciliation.service.interface';
+export { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';

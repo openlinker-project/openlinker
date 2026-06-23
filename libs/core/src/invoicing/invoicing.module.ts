@@ -15,14 +15,17 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
 import { InvoiceService } from './application/services/invoice.service';
+import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
+  REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 export {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
+  REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 @Module({
@@ -45,7 +48,19 @@ export {
       provide: INVOICE_SERVICE_TOKEN,
       useExisting: InvoiceService,
     },
+    RegulatoryStatusReconciliationService,
+    {
+      provide: REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+      useExisting: RegulatoryStatusReconciliationService,
+    },
   ],
-  exports: [INVOICE_RECORD_REPOSITORY_TOKEN, INVOICE_SERVICE_TOKEN],
+  exports: [
+    INVOICE_RECORD_REPOSITORY_TOKEN,
+    INVOICE_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the reconciliation
+    // service into RegulatoryStatusReconcileHandler — providing-without-exporting
+    // would fail the worker's DI at boot (#1121 plan decision #12).
+    REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  ],
 })
 export class InvoicingModule {}
