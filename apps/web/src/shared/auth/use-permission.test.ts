@@ -58,6 +58,8 @@ const viewerSession: Session = {
     permissions: [
       'connections:read',
       'sync:read',
+      'integrations:read',
+      'adapters:read',
       'orders:read',
       'products:read',
       'inventory:read',

@@ -2,7 +2,6 @@
 
 **Issue:** #1124
 **Parent spec:** `docs/specs/product-spec-1123-rbac-depth.md`
-**ADR:** `docs/architecture/adrs/027-connection-response-secret-redaction.md`
 **Effort estimate:** M (3–7 days)
 **Blocks:** #1126 (operator role), #1127 (demo posture)
 **Dependency:** Independent — builds on existing `admin`/`viewer` + `RolesGuard` seam
@@ -50,7 +49,7 @@ Make the `viewer` role safe to expose to untrusted demo users:
 
 ## 3. Architecture Decision
 
-The redaction enforcement point is a critical security decision. See **ADR-027** (`docs/architecture/adrs/027-connection-response-secret-redaction.md`) for the full rationale. Summary:
+The redaction enforcement point is a critical security decision. Summary:
 
 **Chosen approach: Role-aware static factory on the DTO.**
 

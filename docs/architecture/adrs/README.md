@@ -116,6 +116,6 @@ One pointer per section, identical format every time.
 | [ADR-024](./024-destination-listing-capabilities.md) | Destination listing capabilities — marketplace OfferManager vs shop ProductPublisher | Accepted | 2026-06-13 |
 | [ADR-025](./025-erli-marketplace-adapter.md) | Erli marketplace adapter — reconciliation-first posture, API-key auth, Allegro-ID taxonomy reuse | Accepted | 2026-06-12 |
 | [ADR-026](./026-country-agnostic-invoicing-domain.md) | Country-agnostic invoicing domain with capability decomposition | Accepted | 2026-06-16 |
-| [ADR-027](./027-connection-response-secret-redaction.md) | Connection response secret redaction — role-aware DTO factory | Proposed | 2026-06-22 |
+| [ADR-027](./027-order-status-writeback-capability-and-relay.md) | Order status writeback capability (event-as-data) & lifecycle relay | Accepted | 2026-06-22 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

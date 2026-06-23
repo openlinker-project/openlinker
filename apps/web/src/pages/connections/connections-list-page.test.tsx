@@ -1,7 +1,7 @@
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionsListPage } from './connections-list-page';
 
 describe('ConnectionsListPage', () => {
@@ -40,7 +40,7 @@ describe('ConnectionsListPage', () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([]) },
     });
-    renderWithProviders(<ConnectionsListPage />, { apiClient });
+    renderWithProviders(<ConnectionsListPage />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
     expect(await screen.findByRole('heading', { name: 'No connections found' })).toBeInTheDocument();
     const cta = screen.getByRole('link', { name: 'Add the first connection' });
     expect(cta).toHaveAttribute('href', '/connections/new');
@@ -54,6 +54,7 @@ describe('ConnectionsListPage', () => {
     renderWithProviders(<ConnectionsListPage />, {
       apiClient,
       route: '/connections?platformType=allegro&status=active',
+      sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
     expect(await screen.findByText('No connections match the current filters.')).toBeInTheDocument();

@@ -127,12 +127,53 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
     expect(adapter).toBe(stubOpm);
   });
 
+  it('returns the productPublisher adapter for capability=ProductPublisher', async () => {
+    const stubProductPublisher = { kind: 'productPublisher' };
+    jest.spyOn(PrestashopAdapterFactory.prototype, 'createAdapters').mockResolvedValue({
+      productMaster: {},
+      inventoryMaster: {},
+      orderSource: {},
+      orderProcessorManager: undefined,
+      productPublisher: stubProductPublisher,
+    } as unknown as PrestashopAdapters);
+
+    const plugin = createPrestashopPlugin(makeDeps());
+    const adapter = await plugin.createCapabilityAdapter(
+      makeConnection(),
+      'ProductPublisher',
+      makeHost(),
+    );
+
+    expect(adapter).toBe(stubProductPublisher);
+  });
+
+  it('returns the productPublisher adapter for capability=CategoryProvisioner', async () => {
+    const stubProductPublisher = { kind: 'productPublisher' };
+    jest.spyOn(PrestashopAdapterFactory.prototype, 'createAdapters').mockResolvedValue({
+      productMaster: {},
+      inventoryMaster: {},
+      orderSource: {},
+      orderProcessorManager: undefined,
+      productPublisher: stubProductPublisher,
+    } as unknown as PrestashopAdapters);
+
+    const plugin = createPrestashopPlugin(makeDeps());
+    const adapter = await plugin.createCapabilityAdapter(
+      makeConnection(),
+      'CategoryProvisioner',
+      makeHost(),
+    );
+
+    expect(adapter).toBe(stubProductPublisher);
+  });
+
   it('throws for an unsupported capability via the dispatchCapability helper', async () => {
     jest.spyOn(PrestashopAdapterFactory.prototype, 'createAdapters').mockResolvedValue({
       productMaster: {},
       inventoryMaster: {},
       orderSource: {},
       orderProcessorManager: undefined,
+      productPublisher: {},
     } as unknown as PrestashopAdapters);
 
     const plugin = createPrestashopPlugin(makeDeps());
@@ -141,7 +182,7 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
       plugin.createCapabilityAdapter(makeConnection(), 'OfferManager', makeHost()),
     ).rejects.toThrow(
       'PrestaShop adapter does not support capability: OfferManager. ' +
-        'Supported capabilities: ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager',
+        'Supported capabilities: ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner',
     );
   });
 });

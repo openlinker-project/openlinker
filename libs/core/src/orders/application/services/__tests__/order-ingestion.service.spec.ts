@@ -22,6 +22,7 @@ import type {
 import type { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
+import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -41,6 +42,7 @@ describe('OrderIngestionService', () => {
   let orderItemRefResolver: jest.Mocked<IOrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
+  let orderLifecycleRelay: jest.Mocked<IOrderLifecycleRelayService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -111,6 +113,10 @@ describe('OrderIngestionService', () => {
       updateProjectionsForOrder: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderCustomerProjectionUpdaterService>;
 
+    orderLifecycleRelay = {
+      relay: jest.fn().mockResolvedValue({ targets: [] }),
+    } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
+
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -121,7 +127,8 @@ describe('OrderIngestionService', () => {
       orderSyncService,
       customerIdentityResolver,
       orderRecordService,
-      customerProjectionUpdater
+      customerProjectionUpdater,
+      orderLifecycleRelay
     );
   });
 
@@ -698,6 +705,87 @@ describe('OrderIngestionService', () => {
 
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledTimes(1);
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncOrderFromSource – inbound cancellation (#1158 / #1132)', () => {
+    const externalOrderId = 'checkout-cancel-1';
+
+    it('relays a cancel to the order destinations and does NOT re-run the create path', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({
+        targets: [{ connectionId: 'dest-conn-1', outcome: 'applied' }],
+      });
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_cancel',
+        originConnectionId: connectionId,
+        event: { type: 'cancelled' },
+      });
+      // Must NOT hydrate or re-create the order (the #1132 bug was re-creating it).
+      expect(orderSource.getOrder).not.toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the cancelled order was never ingested (no internal mapping)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('skips the relay for a destination-echo cancel (order originates from another connection)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'allegro-connection',
+      } as unknown as OrderRecord);
+
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
+
+      expect(result).toEqual([]);
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('logs at warn when a destination rejects the cancel (e.g. already shipped)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({
+        targets: [
+          { connectionId: 'dest-conn-1', outcome: 'rejected', detail: 'order already shipped' },
+        ],
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dest-conn-1=rejected'));
     });
   });
 });

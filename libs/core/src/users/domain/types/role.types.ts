@@ -50,6 +50,11 @@ export type Permission = (typeof PermissionValues)[number];
 /**
  * Maps each role to its granted permissions.
  * Permissions are derived at response time, not stored in the database.
+ *
+ * This map drives the `permissions[]` array on GET /me (frontend reads it via
+ * usePermission to control UI visibility). Backend endpoint authorization is
+ * enforced separately via @Roles('admin') guards — adding a permission here
+ * does NOT open a backend endpoint; the controller guard must also be updated.
  */
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   admin: PermissionValues,
