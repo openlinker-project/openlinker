@@ -1,34 +1,42 @@
 /**
  * Shipment Dispatch Notification Service
  *
- * The branch-agnostic "mark sent on source + OMP" orchestration (#837, spec
- * step 5). Given a dispatched `Shipment`, it resolves the order's source and
- * destination connection(s) from its `OrderRecord` and drives two generic
- * capabilities: `OrderDispatchNotifier` on the source (mark sent + attach the
- * waybill when one exists) and `OrderFulfillmentUpdater` on each destination
- * (status + tracking). The branch is irrelevant by construction — an InPost
- * (own-contract) shipment carries a synchronous `trackingNumber` so the source
- * gets a waybill; an Allegro-Delivery (source-brokered) shipment has none yet,
- * so the source is merely marked sent (it already holds the waybill it issued).
+ * The branch-agnostic operator-dispatch orchestration (#837, spec step 5).
+ * Given a dispatched OL-managed `Shipment`, it propagates "shipped + tracking"
+ * to **every** other participant of the order — the source marketplace *and* the
+ * destination shop(s) — through the single, role-agnostic `OrderStatusWriteback`
+ * lifecycle relay (#1168 / ADR-027: "one writer per participant"). The branch is
+ * irrelevant by construction — an InPost (own-contract) shipment carries a
+ * synchronous `trackingNumber` so the source gets a waybill; an Allegro-Delivery
+ * (source-brokered) shipment has none yet, so the source is merely marked sent
+ * (it already holds the waybill it issued).
  *
- * Idempotency / partial-failure (see implementation-plan §3.4):
- * - **Status-gate**: only notifies a `generated` shipment, so the source
- *   waybill-attach (`POST …/shipments`, dedup `needs-sandbox-probe`) runs at
- *   most once per shipment.
- * - **`dispatched` set on A-success OR A-absent** (no source / no capability),
- *   so a non-marketplace-sourced shipment still advances; an A-failure leaves
- *   `generated` (retriable).
- * - **B is best-effort** (per-destination, isolated, logged) — once A succeeds
- *   the status-gate blocks re-notify, so a B failure is not auto-retried in v1
- *   (a per-target notify-state model is the follow-up; branch-3 late tracking
- *   propagation is #838's).
+ * **Origin of an operator dispatch (#1168).** The relay excludes its
+ * `originConnectionId` from the targets; an OL-managed shipment has no
+ * source-feed origin (the operator is the origin). We pass the **carrier**
+ * connection (`shipment.connectionId`) as origin: in practice a carrier is a
+ * `ShippingProviderManager`, never an order participant, so it excludes nothing
+ * and the relay reaches the source + all destinations. (If a future connection
+ * ever multiplexed a carrier role *and* an order-participant role, origin
+ * exclusion would skip it — revisit with an explicit operator-origin sentinel.)
+ *
+ * Idempotency / partial-failure:
+ * - **Status-gate**: only notifies a `generated` shipment, so the relay's
+ *   source waybill-attach (`POST …/shipments`, dedup `needs-sandbox-probe`) runs
+ *   at most once per shipment.
+ * - **`dispatched` set on source-`applied` OR source-`absent`** (no source / no
+ *   writeback capability), so a non-marketplace-sourced shipment still advances;
+ *   a source `rejected` leaves `generated` (retriable). Destinations stay
+ *   best-effort — a destination failure does not block the advance.
+ * - Relay writes are idempotent at the adapter level (Allegro mark-sent treats a
+ *   409 as success; PrestaShop skips an already-applied state), so leaving
+ *   `generated` and re-driving on retry is safe.
  * - The gate is not atomic — the live call-site (#769/#771) must serialise per
  *   order (same caveat as `ShipmentDispatchService`).
  *
- * Unwired in #837 (no trigger), exactly as #835 shipped `dispatch()`.
- *
  * @module libs/core/src/shipping/application/services
  * @implements {IShipmentDispatchNotificationService}
+ * @see {@link IOrderLifecycleRelayService} for the cross-system writeback path
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
@@ -37,36 +45,25 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import {
-  CORE_ENTITY_TYPE,
-  IIdentifierMappingService,
-  IDENTIFIER_MAPPING_SERVICE_TOKEN,
-} from '@openlinker/core/identifier-mapping';
-import {
   type DispatchCarrierHint,
+  type IOrderLifecycleRelayService,
   type IOrderRecordService,
-  type OrderProcessorManagerPort,
+  type OrderLifecycleRelayResult,
   type OrderRecord,
-  type OrderSourcePort,
-  isOrderDispatchNotifier,
-  isOrderFulfillmentUpdater,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
 import type { IShipmentDispatchNotificationService } from '../interfaces/shipment-dispatch-notification.service.interface';
 import type {
+  DispatchNotificationDestinationOutcome,
+  DispatchNotificationSourceOutcome,
   ShipmentDispatchNotificationInput,
   ShipmentDispatchNotificationResult,
 } from '../types/shipment-dispatch-notification.types';
-import type { Shipment } from '../../domain/entities/shipment.entity';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
 import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
-
-const ORDER_SOURCE_CAPABILITY = 'OrderSource';
-const ORDER_PROCESSOR_MANAGER_CAPABILITY = 'OrderProcessorManager';
-
-type SourceOutcome = 'ok' | 'failed' | 'absent';
-type DestinationOutcome = { connectionId: string; status: 'ok' | 'failed' | 'unsupported' };
 
 @Injectable()
 export class ShipmentDispatchNotificationService
@@ -81,8 +78,11 @@ export class ShipmentDispatchNotificationService
     private readonly integrations: IIntegrationsService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
-    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IIdentifierMappingService,
+    // #1168: cross-system "shipped" propagation goes through the single
+    // role-agnostic relay (subsumes the former source `notifyDispatched` +
+    // destination `updateFulfillment`). Identifier mapping is the relay's job now.
+    @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService,
   ) {}
 
   async notifyDispatched(
@@ -100,11 +100,27 @@ export class ShipmentDispatchNotificationService
     const record = await this.orderRecords.getOrderRecord(shipment.orderId);
     const carrier = await this.resolveCarrierHint(shipment.connectionId);
 
-    const source = await this.notifySource(shipment, record, carrier);
-    const destinations = await this.updateDestinations(shipment, record);
+    // Relay "shipped + tracking" to every participant in one call. Origin =
+    // the carrier connection, which is never an order participant, so the relay
+    // reaches the source marketplace AND all destination shops.
+    const relayOutcome = await this.relayDispatched(shipment.orderId, shipment.connectionId, {
+      trackingNumber: shipment.trackingNumber ?? undefined,
+      carrier,
+    });
 
-    // Advance to dispatched when the source was notified or there was nothing to
-    // notify (no marketplace source). An A-failure leaves `generated` → retriable.
+    // Re-label the relay's role-agnostic per-target outcomes back into the
+    // service's {source, destinations} contract, by connection id. A catastrophic
+    // relay failure (e.g. identifier resolution) is a source `failed` — NOT
+    // `absent` — so the shipment stays `generated` and is retriable rather than
+    // silently advancing past the at-most-once gate without notifying anyone.
+    const source = relayOutcome.threw
+      ? 'failed'
+      : this.resolveSourceOutcome(relayOutcome.result, record);
+    const destinations = this.resolveDestinationOutcomes(relayOutcome.result, record);
+
+    // Advance to dispatched when the source was applied or there was nothing to
+    // notify (no marketplace source). A source `failed`/`rejected` leaves
+    // `generated` → retriable. Destinations stay best-effort and never block it.
     if (source === 'ok' || source === 'absent') {
       await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Dispatched,
@@ -131,90 +147,81 @@ export class ShipmentDispatchNotificationService
     }
   }
 
-  /** A — mark sent on the order source (+ attach waybill when present). */
-  private async notifySource(
-    shipment: Shipment,
-    record: OrderRecord | null,
-    carrier: DispatchCarrierHint | undefined,
-  ): Promise<SourceOutcome> {
-    if (!record?.sourceConnectionId) {
-      return 'absent';
-    }
-    const externalIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Order,
-      shipment.orderId,
-    );
-    const sourceExternalId = externalIds.find(
-      (e) => e.connectionId === record.sourceConnectionId,
-    )?.externalId;
-    if (!sourceExternalId) {
-      return 'absent';
-    }
-
-    let adapter: OrderSourcePort;
+  /**
+   * Drive the lifecycle relay for the `dispatched` event. The relay never throws
+   * on a single participant's failure (it reports per-target outcomes), but a
+   * catastrophic failure (e.g. identifier resolution) can throw — caught here and
+   * flagged via `threw` so the caller treats it as a source failure (no advance)
+   * rather than a legitimate "no source participant" (advance).
+   */
+  private async relayDispatched(
+    internalOrderId: string,
+    originConnectionId: string,
+    payload: { trackingNumber?: string; carrier?: DispatchCarrierHint },
+  ): Promise<{ result: OrderLifecycleRelayResult; threw: boolean }> {
     try {
-      adapter = await this.integrations.getCapabilityAdapter<OrderSourcePort>(
-        record.sourceConnectionId,
-        ORDER_SOURCE_CAPABILITY,
-      );
-    } catch {
-      return 'absent';
-    }
-    if (!isOrderDispatchNotifier(adapter)) {
-      return 'absent';
-    }
-
-    try {
-      await adapter.notifyDispatched({
-        externalOrderId: sourceExternalId,
-        trackingNumber: shipment.trackingNumber ?? undefined,
-        carrier,
+      const result = await this.orderLifecycleRelay.relay({
+        internalOrderId,
+        originConnectionId,
+        event: { type: 'dispatched', trackingNumber: payload.trackingNumber, carrier: payload.carrier },
       });
-      return 'ok';
+      return { result, threw: false };
     } catch (error) {
       this.logger.warn(
-        `Source dispatch-notify failed for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
+        `Dispatch relay failed for order ${internalOrderId} (origin ${originConnectionId}): ${this.message(error)}`,
       );
-      return 'failed';
+      return { result: { targets: [] }, threw: true };
     }
   }
 
-  /** B — push status + tracking to each synced destination OMP (best-effort). */
-  private async updateDestinations(
-    shipment: Shipment,
+  /**
+   * The source target is the one whose connection matches the order's
+   * `sourceConnectionId`. `applied`→`ok`, `rejected`→`failed`; a missing target
+   * or `unsupported` (no writeback capability) → `absent`. A null record (no
+   * order record) yields `absent` (mirrors the legacy `!sourceConnectionId` path).
+   */
+  private resolveSourceOutcome(
+    relayResult: OrderLifecycleRelayResult,
     record: OrderRecord | null,
-  ): Promise<DestinationOutcome[]> {
-    // Gate on external-id presence, NOT on sync status: if a destination carries
-    // an externalOrderId the order exists there, so a shipped+tracking update is
-    // valid even if that destination's last sync attempt failed.
-    const withExternalId = (record?.syncStatus ?? []).filter(
-      (s): s is typeof s & { externalOrderId: string } => Boolean(s.externalOrderId),
-    );
+  ): DispatchNotificationSourceOutcome {
+    const sourceConnectionId = record?.sourceConnectionId;
+    if (!sourceConnectionId) {
+      return 'absent';
+    }
+    const target = relayResult.targets.find((t) => t.connectionId === sourceConnectionId);
+    if (!target) {
+      return 'absent';
+    }
+    switch (target.outcome) {
+      case 'applied':
+        return 'ok';
+      case 'rejected':
+        return 'failed';
+      default:
+        return 'absent';
+    }
+  }
 
-    return Promise.all(
-      withExternalId.map(async (entry): Promise<DestinationOutcome> => {
-        try {
-          const adapter = await this.integrations.getCapabilityAdapter<OrderProcessorManagerPort>(
-            entry.destinationConnectionId,
-            ORDER_PROCESSOR_MANAGER_CAPABILITY,
-          );
-          if (!isOrderFulfillmentUpdater(adapter)) {
-            return { connectionId: entry.destinationConnectionId, status: 'unsupported' };
-          }
-          await adapter.updateFulfillment({
-            externalOrderId: entry.externalOrderId,
-            status: 'shipped',
-            trackingNumber: shipment.trackingNumber ?? undefined,
-          });
-          return { connectionId: entry.destinationConnectionId, status: 'ok' };
-        } catch (error) {
-          this.logger.warn(
-            `Destination fulfillment-update failed for shipment ${shipment.id} dest ${entry.destinationConnectionId}: ${this.message(error)}`,
-          );
-          return { connectionId: entry.destinationConnectionId, status: 'failed' };
-        }
-      }),
-    );
+  /**
+   * Every relayed target that is not the source is a destination (best-effort).
+   * Targets come from the relay's identifier-mapping resolution (#1168) — the
+   * canonical participant store written at order provisioning — NOT from
+   * `record.syncStatus`. In practice the two align; a destination present only in
+   * `syncStatus` without an Order identifier mapping is not reached (and would be
+   * the anomaly to fix at the mapping layer, not here).
+   */
+  private resolveDestinationOutcomes(
+    relayResult: OrderLifecycleRelayResult,
+    record: OrderRecord | null,
+  ): DispatchNotificationDestinationOutcome[] {
+    const sourceConnectionId = record?.sourceConnectionId;
+    return relayResult.targets
+      .filter((t) => t.connectionId !== sourceConnectionId)
+      .map((t) => ({
+        connectionId: t.connectionId,
+        status:
+          t.outcome === 'applied' ? 'ok' : t.outcome === 'rejected' ? 'failed' : 'unsupported',
+      }));
   }
 
   private message(error: unknown): string {
