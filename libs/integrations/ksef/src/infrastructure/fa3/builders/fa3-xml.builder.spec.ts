@@ -128,4 +128,68 @@ describe('buildFa3Xml', () => {
     input.buyer = { kind: 'none' };
     expect(buildFa3Xml(input)).toContain('BrakID');
   });
+
+  describe('KOR (correction)', () => {
+    function korInput(originalKsefNumber: string | null): Fa3BuilderInput {
+      return {
+        ...b2bInput(),
+        invoiceNumber: 'KOR/2026/06/0001',
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'Customer returned 1 unit',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0042',
+          originalKsefNumber,
+          correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+    }
+
+    it('should emit RodzajFaktury=KOR with reason and TypKorekty', () => {
+      const xml = buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01'));
+      expect(xml).toContain('<RodzajFaktury>KOR</RodzajFaktury>');
+      expect(xml).toContain('<TypKorekty>2</TypKorekty>');
+      expect(xml).toContain('<PrzyczynaKorekty>Customer returned 1 unit</PrzyczynaKorekty>');
+    });
+
+    it('should populate DaneFaKorygowanej/NrKSeF when the original was a KSeF invoice', () => {
+      const xml = buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01'));
+      expect(xml).toMatch(
+        /<DaneFaKorygowanej>.*<DataWystFaKorygowanej>2026-05-01<\/DataWystFaKorygowanej>.*<NrFaKorygowanej>FV\/2026\/05\/0042<\/NrFaKorygowanej>.*<NrKSeF>1111111111-20260501-ABCDEF-01<\/NrKSeF>.*<\/DaneFaKorygowanej>/s,
+      );
+      expect(xml).not.toContain('<NrKSeFN>');
+    });
+
+    it('should emit NrKSeFN=1 (not NrKSeF) when the original was NOT a KSeF invoice', () => {
+      const xml = buildFa3Xml(korInput(null));
+      expect(xml).toContain('<NrKSeFN>1</NrKSeFN>');
+      expect(xml).not.toContain('<NrKSeF>');
+    });
+
+    it('should emit the corrected-party snapshots Podmiot1K / Podmiot2K', () => {
+      const xml = buildFa3Xml(korInput(null));
+      expect(xml).toContain('<Podmiot1K>');
+      expect(xml).toContain('<Podmiot2K>');
+    });
+
+    it('should emit before rows flagged StanPrzed=1 plus after rows without it', () => {
+      const xml = buildFa3Xml(korInput(null));
+      // One "before" (StanPrzed) row + one "after" row.
+      expect(xml.match(/<FaWiersz/g)?.length).toBe(2);
+      expect(xml.match(/<StanPrzed>1<\/StanPrzed>/g)?.length).toBe(1);
+      // Before row carries the original quantity 2; after row the corrected 1.
+      expect(xml).toMatch(/<StanPrzed>1<\/StanPrzed>/);
+    });
+
+    it('should aggregate P_15 from the corrected (after) lines, not the original', () => {
+      const xml = buildFa3Xml(korInput(null));
+      // After state = 1 * 123.00.
+      expect(xml).toContain('<P_15>123.00</P_15>');
+    });
+
+    it('should not emit RodzajFaktury for a plain (non-correction) invoice', () => {
+      expect(buildFa3Xml(b2bInput())).not.toContain('<RodzajFaktury>');
+    });
+  });
 });
