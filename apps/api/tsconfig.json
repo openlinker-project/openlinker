@@ -28,6 +28,8 @@
       "@openlinker/integrations-dpd-polska/*": ["../../libs/integrations/dpd-polska/src/*"],
       "@openlinker/integrations-erli": ["../../libs/integrations/erli/src/index.ts"],
       "@openlinker/integrations-erli/*": ["../../libs/integrations/erli/src/*"],
+      "@openlinker/integrations-ksef": ["../../libs/integrations/ksef/src/index.ts"],
+      "@openlinker/integrations-ksef/*": ["../../libs/integrations/ksef/src/*"],
       "@openlinker/test-kit": ["../../libs/test-kit/src/index.ts"],
       "@openlinker/test-kit/*": ["../../libs/test-kit/src/*"]
     }

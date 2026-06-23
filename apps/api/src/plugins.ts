@@ -34,6 +34,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -43,4 +44,5 @@ export const apiPlugins: PluginEntry[] = [
   DpdIntegrationModule,
   WooCommerceIntegrationModule,
   ErliIntegrationModule,
+  KsefIntegrationModule,
 ];
