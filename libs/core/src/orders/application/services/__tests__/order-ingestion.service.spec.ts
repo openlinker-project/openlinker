@@ -23,6 +23,7 @@ import type { IOrderSyncService } from '../../interfaces/order-sync.service.inte
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
+import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -43,6 +44,7 @@ describe('OrderIngestionService', () => {
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
   let orderLifecycleRelay: jest.Mocked<IOrderLifecycleRelayService>;
+  let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -116,6 +118,9 @@ describe('OrderIngestionService', () => {
     orderLifecycleRelay = {
       relay: jest.fn().mockResolvedValue({ targets: [] }),
     } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
+    autoIssueTrigger = {
+      onOrderTransition: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IAutoIssueTriggerService>;
 
     service = new OrderIngestionService(
       integrationsService,
@@ -128,8 +133,74 @@ describe('OrderIngestionService', () => {
       customerIdentityResolver,
       orderRecordService,
       customerProjectionUpdater,
-      orderLifecycleRelay
+      orderLifecycleRelay,
+      autoIssueTrigger
     );
+  });
+
+  describe('auto-issue trigger (OL #1120)', () => {
+    const externalOrderId = 'checkout-1';
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
+      orderSource.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+    });
+
+    it('calls onOrderTransition at the terminal path with the in-scope sourceEventId as the 3rd arg', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-42');
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+      const [order, srcConn, evt] = autoIssueTrigger.onOrderTransition.mock.calls[0];
+      expect(order).toEqual(expect.objectContaining({ id: 'ol_order_test' }));
+      expect(srcConn).toBe(connectionId);
+      expect(evt).toBe('evt-42');
+      // Fires only after destination status is settled.
+      expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        autoIssueTrigger.onOrderTransition.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('swallows a thrown onOrderTransition failure — order sync still returns results — with a PII-safe log', async () => {
+      const warnSpy = jest
+        .spyOn((service as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockRejectedValueOnce(
+        new Error('issuance exploded for buyer Jan Kowalski')
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-7');
+
+      expect(results).toEqual([]);
+      const logged = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).not.toContain('Jan Kowalski');
+      expect(logged).not.toContain('correlationId');
+      expect(logged).toContain('evt-7');
+      warnSpy.mockRestore();
+    });
+
+    it('a destination-echo re-read returns [] and does NOT call onOrderTransition', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValueOnce({
+        sourceConnectionId: 'other-connection',
+      } as never);
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
   });
 
   describe('syncFromMarketplace', () => {

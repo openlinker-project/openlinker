@@ -42,6 +42,9 @@ export const JobTypeValues = [
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
+
+  // Invoicing (core-owned policy; executed by worker — OL #1120)
+  'invoicing.issue',
 ] as const;
 
 /**
