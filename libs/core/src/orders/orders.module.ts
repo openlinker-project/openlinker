@@ -29,6 +29,7 @@ import { SyncModule } from '@openlinker/core/sync';
 import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { CustomersModule } from '@openlinker/core/customers';
+import { InvoicingModule } from '@openlinker/core/invoicing';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -42,6 +43,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ProductsModule, // Required for PRODUCT_VARIANT_REPOSITORY_TOKEN
     MappingsModule, // Required for MAPPING_CONFIG_SERVICE_TOKEN
     CustomersModule, // Required for CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN
+    // One-way edge (F3): OrderIngestionService injects AUTO_ISSUE_TRIGGER_SERVICE_TOKEN.
+    // InvoicingModule's mapper imports orders TYPES only (compile-time) → no DI cycle.
+    InvoicingModule,
   ],
   providers: [
     // Provide classes directly first

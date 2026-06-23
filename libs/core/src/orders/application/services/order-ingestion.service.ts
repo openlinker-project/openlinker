@@ -26,6 +26,10 @@ import {
 } from '@openlinker/core/sync';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
+  IAutoIssueTriggerService,
+  AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
+} from '@openlinker/core/invoicing';
+import {
   ICustomerIdentityResolverService,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
   IOrderCustomerProjectionUpdaterService,
@@ -76,7 +80,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
-    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService
+    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
+    // OL #1120: core policy composer that turns this transition into per-connection
+    // issuance jobs. One-way edge (F3) — this service is consumed via the token,
+    // never the reverse.
+    @Inject(AUTO_ISSUE_TRIGGER_SERVICE_TOKEN)
+    private readonly autoIssueTrigger: IAutoIssueTriggerService
   ) {}
 
   async ingestOrders(
@@ -329,6 +338,28 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (settlement.status === 'rejected') {
         this.logger.warn('Failed to update order record sync status', settlement.reason);
       }
+    }
+
+    // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
+    // the end of the authoritative source poll, AFTER per-destination status is
+    // settled. The destination-echo early-return (`return []`) above is the
+    // INTENDED gate: issuance fires only on the real source ingestion, never on a
+    // destination re-read. Threads the in-scope `sourceEventId` as the trace token
+    // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
+    // never blocks order sync; the catch logs a PII-SAFE envelope only (F9/D11):
+    // `error.name` + `connectionId` + `order.id` + `sourceEventId` — never the raw
+    // error/message or any payload/buyer field.
+    try {
+      await this.autoIssueTrigger.onOrderTransition(order, connectionId, sourceEventId);
+    } catch (error) {
+      // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
+      // re-throw — so an enqueue/compose failure can never block the order
+      // pipeline. Log a PII-SAFE envelope only: error.name + connectionId +
+      // order.id + sourceEventId — never the raw error/message or any payload.
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
+      );
     }
 
     return results;

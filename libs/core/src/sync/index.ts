@@ -89,6 +89,10 @@ export {
   ShopProductPublishPayloadV2,
   ShopProductPublishPayload,
 } from './domain/types/shop-job-payloads.types';
+export type {
+  InvoicingIssuePayloadV1,
+  InvoicingIssueBuyerV1,
+} from './domain/types/invoicing-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
