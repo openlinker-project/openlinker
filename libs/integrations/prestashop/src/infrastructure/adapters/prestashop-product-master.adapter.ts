@@ -33,6 +33,8 @@ import {
 } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
 import type { PrestashopAttributeResolver } from '../provisioners/prestashop-attribute.resolver';
+import type { PrestashopFeatureResolver } from '../provisioners/prestashop-feature.resolver';
+import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -51,7 +53,16 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // Optional so existing constructions (tests) stay valid; the factory always
     // supplies a process-singleton instance so its option-value cache persists
     // across per-product adapter instances (#1050).
-    private readonly attributeResolver?: PrestashopAttributeResolver
+    private readonly attributeResolver?: PrestashopAttributeResolver,
+    // Optional, process-singleton (mirrors attributeResolver). Resolves product
+    // features → `{name,value}[]` (#1096 F2). A resolver failure never breaks
+    // product sync — the product simply carries no features.
+    private readonly featureResolver?: PrestashopFeatureResolver,
+    // Optional, process-singleton. Resolves the product's full category PATH
+    // (root→leaf, {id,name}) (#1096 F3). A resolver failure never breaks product
+    // sync — `categoryBreadcrumb` is left unset and the bare-id `categories`
+    // fallback applies.
+    private readonly categoryPathResolver?: PrestashopCategoryPathResolver
   ) {}
 
   async getProduct(productId: string): Promise<Product> {
@@ -85,11 +96,103 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
 
+    // #1096 F2/F3 — enrich with shop-native features and a full category path so
+    // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
+    // best-effort: a resolver failure leaves the field empty/unset and never
+    // breaks product sync.
+    const features = await this.resolveFeatures(prestashopProduct, langIdValue);
+    const categoryBreadcrumb = await this.resolveCategoryBreadcrumb(
+      prestashopProduct,
+      langIdValue
+    );
+
     // Return with internal ID
     return {
       ...mapped,
       id: productId,
+      ...(features.length > 0 ? { features } : {}),
+      ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
     };
+  }
+
+  /**
+   * Resolve the product's features into neutral `{ name, value }[]` (#1096 F2).
+   * Parses the raw refs in the mapper (I/O-free), then resolves ids → names via
+   * the feature resolver. A resolver failure (or no resolver wired) yields `[]`
+   * — features are best-effort enrichment, never a sync blocker (mirrors
+   * `buildOptionValueResolver`).
+   */
+  private async resolveFeatures(
+    prestashopProduct: PrestashopProduct,
+    langId: number
+  ): Promise<{ name: string; value: string }[]> {
+    if (!this.featureResolver) {
+      return [];
+    }
+    const refs = this.productMapper.extractFeatureRefs(prestashopProduct);
+    if (refs.length === 0) {
+      return [];
+    }
+    try {
+      const lookups = await this.featureResolver.getFeatureLookups(
+        this.connection.id,
+        this.httpClient,
+        (field, fieldLangId) => this.productMapper.localizeField(field, fieldLangId),
+        langId
+      );
+      const features: { name: string; value: string }[] = [];
+      for (const ref of refs) {
+        const name = lookups.nameById.get(ref.featureId);
+        const value = lookups.valueById.get(ref.featureValueId);
+        if (name && value) {
+          features.push({ name, value });
+        }
+      }
+      return features;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve PrestaShop product features (connection: ${this.connection.id}); ` +
+          `omitting features: ${(error as Error).message}`
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Resolve the product's full category path (root→leaf, `{ id, name }`) (#1096
+   * F3) by walking the parent chain from `id_category_default`. Returns `[]` when
+   * no resolver is wired, the product has no default leaf, or the walk fails — the
+   * caller then falls back to the bare-id `categories` (mirrors
+   * `buildOptionValueResolver`).
+   */
+  private async resolveCategoryBreadcrumb(
+    prestashopProduct: PrestashopProduct,
+    langId: number
+  ): Promise<{ id: string; name: string }[]> {
+    if (!this.categoryPathResolver) {
+      return [];
+    }
+    const leafRaw = prestashopProduct.id_category_default;
+    const leafId =
+      leafRaw === null || leafRaw === undefined ? '' : String(leafRaw).trim();
+    if (leafId.length === 0) {
+      return [];
+    }
+    try {
+      return await this.categoryPathResolver.resolvePath(
+        this.connection.id,
+        leafId,
+        this.httpClient,
+        (field, fieldLangId) => this.productMapper.localizeField(field, fieldLangId),
+        langId
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve PrestaShop category path (connection: ${this.connection.id}); ` +
+          `falling back to bare category ids: ${(error as Error).message}`
+      );
+      return [];
+    }
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -265,6 +368,14 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // positional shape via a null resolver.
     const resolveOptionValue = await this.buildOptionValueResolver();
 
+    // PrestaShop stores a combination's `price` as a price IMPACT (a delta on the
+    // product base), not an absolute price — most sellers leave it 0/unset, which
+    // previously surfaced `mapped.price = null/0` and a spurious `no-master-price`
+    // blocker for every multi-variant product. Resolve the absolute master price
+    // = base + impact (impact 0 when unset), mirroring the synthetic-variant
+    // inheritance for simple products (#792 / #1096).
+    const basePrice = this.parseProductPrice(prestashopProduct.price);
+
     // Map variants with internal IDs
     return combinations
       .map((combination) => {
@@ -286,10 +397,35 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
             mapped.gtin = productGtin;
           }
         }
-        return {
-          ...mapped,
-          id: internalId,
-        };
+        // `mapped.price` carries the parsed combination impact. Fold it onto the
+        // base; fall back to the raw impact only when the product has no base.
+        const foldedPrice =
+          basePrice !== undefined
+            ? Math.round((basePrice + (mapped.price ?? 0)) * 100) / 100
+            : mapped.price;
+        // Floor: a non-positive absolute price (a negative combination impact
+        // exceeding the base) is never a valid master price — treat it as absent
+        // so it surfaces the `no-master-price` blocker downstream instead of
+        // publishing a negative/zero price to the marketplace (PR1099 self-review).
+        let absolutePrice = foldedPrice;
+        if (foldedPrice !== undefined && foldedPrice <= 0) {
+          this.logger.warn(
+            `Combination ${externalId} resolved to a non-positive master price (${foldedPrice}); ` +
+              `treating as no-master-price (connection: ${this.connection.id})`
+          );
+          absolutePrice = undefined;
+        }
+        const variant: ProductVariant = { ...mapped, id: internalId };
+        // The resolved absolute price is authoritative. Overwrite the mapper's
+        // raw-impact `price`; when floored to absent, DELETE it so the raw impact
+        // can't leak through (and an absent price stays absent — `price?: number`
+        // under exactOptionalPropertyTypes rejects an explicit `undefined`).
+        if (absolutePrice !== undefined) {
+          variant.price = absolutePrice;
+        } else {
+          delete variant.price;
+        }
+        return variant;
       })
       .filter((v): v is ProductVariant => v !== null);
   }

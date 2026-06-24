@@ -36,51 +36,56 @@ export interface ErliProductImage {
  */
 export type ErliExternalAttributeType = 'dictionary' | 'string' | 'number';
 
-/**
- * Category reuse tagged `source:"allegro"` (#985). Erli processes only the `id`
- * (the OL-resolved Allegro category id); names are ignored (ADR-025 §3).
- */
-export interface ErliExternalCategory {
-  source: 'allegro';
+/** One node of an Erli `externalCategories` breadcrumb path (`name` optional). */
+export interface ErliCategoryBreadcrumbNode {
   id: string;
+  name?: string;
 }
 
 /**
- * Parameter reuse tagged `source:"allegro"` (#985). `id` is the OL-resolved
- * Allegro parameter id; `values` carries dictionary value-ids or free-text
- * scalars depending on `type`. `unit` is type-present but unwired in v1 — the
- * neutral command parameter entries don't carry unit metadata.
+ * Category taxonomy reference. Erli's wire shape is `{ source, breadcrumb }`
+ * (verified against the Shop API — `breadcrumb` is required, `additionalProperties:
+ * false`, so a flat `{source, id}` is rejected). `source:"allegro"` reuses OL's
+ * resolved Allegro id (#985); `source:"shop"` carries the master shop's own
+ * category ids when no Allegro taxonomy was resolved (#1096 / ADR-025 §3).
+ */
+export interface ErliExternalCategory {
+  source: 'allegro' | 'shop' | 'marketplace';
+  breadcrumb: ErliCategoryBreadcrumbNode[];
+}
+
+/**
+ * Attribute entry in `externalAttributes`. `source:"allegro"` reuses an
+ * OL-resolved Allegro parameter id (#985); `source:"shop"` carries a shop-native
+ * attribute — used to express a variant's distinguishing axes for grouping
+ * (#986), since Erli's `externalVariantGroup.attributes` references entries here
+ * by `index` (verified against the Shop API). `index` defaults to the array
+ * position; set explicitly when a grouping ref must point at a specific entry.
  */
 export interface ErliExternalAttribute {
-  source: 'allegro';
+  source: 'allegro' | 'shop';
   id: string;
+  name?: string;
   type: ErliExternalAttributeType;
   values: string[];
+  index?: number;
   unit?: string;
 }
 
 /**
- * Multi-variant grouping reference (#986). `id` is the parent/base OL product id
- * shared by every sibling variant; Erli uses it to render the N sibling products
- * as ONE buyer-facing listing. Unlike Allegro (Product-Catalog auto-grouping off
- * GTIN), Erli grouping is explicit via this id. Single/simple products omit it.
- * PROVISIONAL (#992): the wire key + whether the group id is the parent product
- * id or a dedicated group key is unconfirmed until the sandbox spike.
+ * Multi-variant grouping reference (#986). Erli's verified wire shape is
+ * `{ id, source, attributes }` where `attributes` are **integer indexes** into
+ * the product's `externalAttributes` array (for `source:"integration"`) — the
+ * distinguishing axes that vary across siblings. `id` is the parent/base OL
+ * product id shared by every sibling; Erli renders the siblings as ONE
+ * buyer-facing listing. Single/simple products (or siblings with no
+ * distinguishing axes) omit it and list ungrouped. `attributes` is required and
+ * `minItems: 1`, so a group is only emitted when ≥1 axis exists.
  */
 export interface ErliVariantGroupRef {
   id: string;
-}
-
-/**
- * A variant's distinguishing axis (#986), e.g. `{ name: 'Color', value: 'Red' }`.
- * Declared per-variant so Erli can present selectable options within the grouped
- * listing. Flattened from OL `ProductVariant.attributes` (`Record<string,string>`)
- * by the core populator (#1065, `OfferBuilderService`) into the neutral
- * `OfferVariantGroup.attributes`; the adapter maps that field-for-field here.
- */
-export interface ErliVariantAttribute {
-  name: string;
-  value: string;
+  source: 'integration' | 'marketplace';
+  attributes: number[];
 }
 
 /**
@@ -104,12 +109,13 @@ export interface ErliProductCreateBody {
   /** Allegro parameter reuse (#985); omitted when empty. */
   externalAttributes?: ErliExternalAttribute[];
   /**
-   * Multi-variant grouping (#986); omitted for single/simple products so they
-   * list ungrouped. Present ⇒ this product is one sibling of a grouped listing.
+   * Multi-variant grouping (#986); omitted for single/simple products (and
+   * siblings with no distinguishing axes) so they list ungrouped. Present ⇒ this
+   * product is one sibling of a grouped listing. Its `attributes` index into
+   * `externalAttributes` — there is NO top-level `attributes` field (the API
+   * rejects one).
    */
   externalVariantGroup?: ErliVariantGroupRef;
-  /** Distinguishing axes within a grouped listing (#986); omitted when empty. */
-  attributes?: ErliVariantAttribute[];
 }
 
 /**

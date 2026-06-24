@@ -40,6 +40,8 @@ import { PrestashopCountryResolver } from '../infrastructure/provisioners/presta
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
+import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
+import { PrestashopCategoryPathResolver } from '../infrastructure/provisioners/prestashop-category-path.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -55,6 +57,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // survives across the per-product adapter instances the master sync creates
   // (#1050). A per-adapter cache would never hit.
   private readonly attributeResolver = new PrestashopAttributeResolver();
+
+  // Held on the factory (process-singleton) so their per-connection caches
+  // survive across the per-product adapter instances master sync creates (#1096),
+  // mirroring `attributeResolver`.
+  private readonly featureResolver = new PrestashopFeatureResolver();
+  private readonly categoryPathResolver = new PrestashopCategoryPathResolver();
 
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
@@ -109,7 +117,9 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       identifierMapping,
       productMapper,
       connection,
-      this.attributeResolver
+      this.attributeResolver,
+      this.featureResolver,
+      this.categoryPathResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(

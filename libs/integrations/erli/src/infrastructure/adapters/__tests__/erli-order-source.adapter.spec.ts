@@ -287,7 +287,7 @@ describe('ErliOrderSourceAdapter', () => {
       expect(incoming.customerExternalId).toBeUndefined();
       expect(incoming.customerEmail).toBe('buyer-1@example.test');
       expect(incoming.items[0].productRef).toEqual({
-        type: 'variant',
+        type: 'offer',
         externalId: 'erli-prod-aaa',
       });
       expect(incoming.items[0].price).toBe(50);

@@ -22,6 +22,10 @@ import type { OfferCreationRequestSnapshot } from './offer-creation-request-snap
  * - `draft`: Adapter created the offer on the platform; not yet published.
  * - `validating`: Platform is asynchronously validating (Allegro pattern).
  * - `active`: Offer is published and live.
+ * - `reused`: The offer already existed on the platform (a create that the
+ *   adapter resolved idempotently — e.g. Erli's seller-keyed 409, #1096). A
+ *   success, distinct from `draft` so the UI doesn't read a re-run as a
+ *   fresh create (no new offer was made).
  * - `failed`: Creation or async validation failed. See `errors` on the record.
  */
 export const OfferCreationStatusValues = [
@@ -29,6 +33,7 @@ export const OfferCreationStatusValues = [
   'draft',
   'validating',
   'active',
+  'reused',
   'failed',
 ] as const;
 
@@ -50,6 +55,7 @@ export const OFFER_CREATION_STATUS = {
   Draft: 'draft',
   Validating: 'validating',
   Active: 'active',
+  Reused: 'reused',
   Failed: 'failed',
 } as const satisfies Record<Capitalize<OfferCreationStatus>, OfferCreationStatus>;
 

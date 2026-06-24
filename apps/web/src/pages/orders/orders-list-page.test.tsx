@@ -11,7 +11,7 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
 import type {
   PaginatedOrders,
@@ -290,7 +290,7 @@ describe('OrdersListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
-    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
     await screen.findByText('ALG-FAIL');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
