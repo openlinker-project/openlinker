@@ -161,26 +161,54 @@ Pick the Erli connection in the dialog and click **Continue**:
 
 ![Connection picker](../../assets/erli/06-offer-connection-picker.png)
 
-Step through the wizard — **Variant → Offer details → Review**. Search for the
-product/variant to list:
+The wizard has three steps — **Variant → Offer details → Review**.
 
-![Wizard — variant search](../../assets/erli/08-wizard-variant-results.png)
+**Step 1 — Variant.** Browse or search your catalog for the product to list:
 
-Set price, stock, dispatch time, and (optionally) a category on the details step,
-then submit. OpenLinker enqueues the creation job; Erli accepts it asynchronously
-(HTTP 202) and the offer starts as a **draft**.
+![Wizard — product list](../../assets/erli/07-wizard-variant-step.png)
 
-Once created, the offer appears in **Listings** mapped to the Erli connection.
-Erli keys each offer by the OpenLinker **variant id**, so the offer row shows the
-variant, platform **erli**, and the target connection:
+Search by product name, SKU, or EAN, then expand a product and pick the variant
+to publish:
+
+![Wizard — search results](../../assets/erli/08-wizard-variant-results.png)
+
+![Wizard — variant picked](../../assets/erli/09-wizard-variant-picked.png)
+
+**Step 2 — Offer details.** Set the title, price (PLN), stock, dispatch time, and
+(optionally) a category. The dispatch time defaults to the connection's
+`defaultDispatchTime`; the category can be left blank to resolve from the variant
+barcode at create time:
+
+![Wizard — offer details](../../assets/erli/10-wizard-offer-details.png)
+
+**Step 3 — Review.** The final step summarises the chosen values (variant, price,
+stock, dispatch, images, publish-as-draft). Submitting enqueues the creation job;
+Erli accepts it asynchronously (HTTP 202) and the offer starts as a **draft**.
+
+> **Image requirement (gates submit).** Erli rejects offers without at least one
+> **public `https`** image. OpenLinker pulls images from the master product and
+> **drops any non-`https`/non-public URL**. If the master product has no usable
+> image, the wizard blocks at the variant step and submit fails with
+> *"overrides.imageUrls must be an array of valid URLs"*. Ensure the master
+> product carries public `https` images (or pass `overrides.imageUrls` via the API).
+
+> **Developer aside.** The wizard posts to the offer-creation API; you can also
+> create offers programmatically (single or **bulk**, one offer per variant) via
+> the same endpoint.
+
+### Verify your offers
+
+Created offers appear in **Listings**, the offer-to-variant mapping workbench.
+Erli keys each offer by the OpenLinker **variant id**, so the row shows the
+variant, platform **erli**, the target connection, and the created date:
 
 ![Created Erli offer row in OpenLinker Listings](../../assets/erli/22-ol-offer-row.png)
 
-> **Image requirement.** Erli rejects offers without at least one **public
-> `https`** image. OpenLinker pulls images from the master product and **drops any
-> non-`https`/non-public URL**. If the master product has no usable image, the
-> wizard blocks at the variant step. Ensure the master product carries public
-> `https` images (or pass `overrides.imageUrls` via the API).
+Use the **External ID / Connection / Platform** filters at the top of Listings to
+narrow to a single Erli connection's offers. Because Erli writes are async (~20-min
+cache lag), a freshly created offer's live marketplace status becomes authoritative
+only after offer-status reconciliation runs (see the
+[runbook](./runbook.md#scheduler-env-flags-worker)).
 
 ---
 
