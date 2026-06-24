@@ -12,7 +12,7 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { InvoiceStatus, RegulatoryStatus } from '@openlinker/core/invoicing';
+import { InvoiceStatus, InvoiceStatusValues, RegulatoryStatus } from '@openlinker/core/invoicing';
 
 export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Internal invoice record id' })
@@ -30,7 +30,9 @@ export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Neutral document type (open-world)' })
   documentType!: string;
 
-  @ApiProperty({ description: 'Issuance lifecycle status', enum: ['pending', 'issued', 'failed'] })
+  // Reference the live const (not a hardcoded array) so the published enum can
+  // never drift from InvoiceStatus — `issuing` (#1200) is a serializable value.
+  @ApiProperty({ description: 'Issuance lifecycle status', enum: InvoiceStatusValues })
   status!: InvoiceStatus;
 
   @ApiProperty({ description: 'Provider-assigned document id', nullable: true })

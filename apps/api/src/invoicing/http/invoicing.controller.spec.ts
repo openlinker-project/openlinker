@@ -30,7 +30,7 @@ import { InvoicingController } from './invoicing.controller';
 const NOW = new Date('2026-06-23T10:00:00.000Z');
 
 function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
-  return {
+  const base = {
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'ol_order_1',
@@ -45,10 +45,24 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     pdfUrl: null,
     issuedAt: NOW,
     errorMessage: 'internal diagnostic',
+    failureMode: null,
+    leaseExpiresAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     isIssued: true,
     ...overrides,
+  };
+  // Mirror the real entity derivation (#1200) so the controller's AC-5 gate can
+  // call it: a live `issuing` lease is "in progress".
+  return {
+    ...base,
+    isLeaseLive(now: Date): boolean {
+      return (
+        base.status === 'issuing' &&
+        base.leaseExpiresAt !== null &&
+        (base.leaseExpiresAt as Date).getTime() > now.getTime()
+      );
+    },
   } as InvoiceRecord;
 }
 
@@ -131,6 +145,26 @@ describe('InvoicingController', () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'pending' }));
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('409 Conflict when a row under a LIVE issuing lease is in progress (#1200)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(
+        makeInvoiceRecord({ status: 'issuing', leaseExpiresAt: new Date(Date.now() + 60_000) }),
+      );
+      await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(ConflictException);
+      // An original attempt is mid-flight: never report a fresh 201, never re-issue.
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('does NOT 409 an EXPIRED issuing lease — it is re-claimable, so issuance proceeds (#1200)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(
+        makeInvoiceRecord({ status: 'issuing', leaseExpiresAt: new Date(Date.now() - 60_000) }),
+      );
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+      await controller.issueInvoice(dto);
+      expect(invoiceService.issueInvoice).toHaveBeenCalled();
     });
 
     it('422 when the order record is not `ready` (snapshot unavailable)', async () => {

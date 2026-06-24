@@ -107,24 +107,48 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       .set({ status: 'issuing', leaseExpiresAt })
       .where('id = :id', { id })
       .andWhere(
-        // Claimable iff NOT currently held by a live attempt and NOT terminal:
-        //   - pending / failed (no live lease by definition), OR
+        // Claimable iff NOT currently held by a live attempt and NOT terminal AND
+        // NOT an in-doubt failure (a document may already exist — #1200). Defends
+        // the fiscal invariant at the PERSISTENCE boundary, not just in the SVC:
+        //   - pending (no lease by definition), OR
+        //   - a TERMINAL-`rejected` failed row (definitely no document — safe), OR
         //   - issuing with an expired lease (a crashed prior attempt).
-        `(status IN ('pending', 'failed') OR (status = 'issuing' AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)))`,
+        // An `issued`, an in-doubt/mode-less `failed`, or a live `issuing` row
+        // NEVER matches, so it can never be re-claimed and re-issued.
+        `(status = 'pending'
+          OR (status = 'failed' AND "failureMode" = 'rejected')
+          OR (status = 'issuing' AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)))`,
         { now },
       )
+      // Single statement: RETURNING hands back the just-claimed row in the SAME
+      // write, so there is no UPDATE->read window in which another tx can mutate
+      // the row out from under us (closes the won-but-stale-re-read race).
+      .returning('*')
       .execute();
 
     if (result.affected && result.affected > 0) {
-      // Claim won. Re-read through the entity mapper so the caller gets a fully
-      // hydrated domain record (the UPDATE's raw row is not entity-shaped).
+      const raw = Array.isArray(result.raw) ? result.raw[0] : undefined;
+      if (raw) {
+        // RETURNING gives the raw row shape; hydrate it through the repository's
+        // entity metadata so the caller gets a fully-typed domain record.
+        const entity = this.repository.create(raw as Partial<InvoiceRecordOrmEntity>);
+        return this.toDomain(entity);
+      }
+      // We provably WON the claim (affected > 0) but could not read the row back
+      // (e.g. a driver that does not honour RETURNING). This attempt now HOLDS the
+      // lease, so it MUST NOT be reported as a contended loss (which would make the
+      // holder back off and orphan the row). Re-read; if still unreadable, fail
+      // loud rather than silently downgrade a win to a loss.
       const claimed = await this.repository.findOne({ where: { id } });
-      return claimed ? this.toDomain(claimed) : null;
+      if (claimed) {
+        return this.toDomain(claimed);
+      }
+      throw new InvoiceRecordNotFoundException(id);
     }
 
     // No row updated: either the id does not exist, or the slot is held by a live
-    // attempt / already terminal. Disambiguate so the contract can throw
-    // not-found vs. signal a contended-loss (`null`).
+    // attempt / already terminal / an in-doubt failure. Disambiguate so the
+    // contract can throw not-found vs. signal a contended-loss (`null`).
     const exists = await this.repository.findOne({ where: { id }, select: { id: true } });
     if (!exists) {
       throw new InvoiceRecordNotFoundException(id);

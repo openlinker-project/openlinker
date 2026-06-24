@@ -56,8 +56,17 @@ const MAX_ERROR_MESSAGE_LENGTH = 500;
 /**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed
  * mid-call attempt can block same-key retries before the slot becomes
- * re-claimable. Kept comfortably longer than a real provider issuance round-trip
- * so a slow-but-live attempt is never stolen out from under itself.
+ * re-claimable.
+ *
+ * FISCAL SAFETY — this MUST stay strictly greater than the longest possible
+ * single provider round-trip, or an expired lease could be re-claimed while the
+ * original call is still in flight → a SECOND provider call → a double-issued
+ * fiscal document. Today the Subiekt adapter caps its per-request `timeoutMs` at
+ * 120 s at config validation (subiekt-adapter.factory.ts), so 5 min leaves a
+ * comfortable 2.5× margin. If any provider's max round-trip (incl. transport
+ * retries) is ever allowed to approach this bound, raise the lease (or assert
+ * `maxProviderTimeout < ISSUING_LEASE_MS` at config validation) — the margin must
+ * be by construction, not by coincidence.
  */
 const ISSUING_LEASE_MS = 5 * 60 * 1000;
 
