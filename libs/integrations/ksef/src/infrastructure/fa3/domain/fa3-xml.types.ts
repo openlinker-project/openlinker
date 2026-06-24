@@ -31,6 +31,28 @@ export const FA3_SCHEMA_VERSION = '1-0E';
 export const FA3_ROOT_ELEMENT = 'Faktura';
 
 /**
+ * `RodzajFaktury` value for a plain sales invoice (TRodzajFaktury enum, XSD line
+ * ~1800). `VAT` = "Faktura podstawowa". Correction kinds (`KOR`, `KOR_ZAL`, …)
+ * are out of scope here — they belong to the deferred KOR sequence (C7).
+ */
+export const FA3_RODZAJ_FAKTURY_VAT = 'VAT';
+
+/**
+ * `etd:TWybor1_2` "no" value. The MF 1/2 choice type where `1` = the annotation
+ * applies ("yes") and `2` = it does not ("nie"). Every plain-sale `Adnotacje`
+ * 1/2 flag (`P_16`, `P_17`, `P_18`, `P_18A`, `P_23`) defaults to `2`.
+ */
+export const FA3_WYBOR_NIE = '2';
+
+/**
+ * `etd:TWybor1` "set" value. Single-valued marker type whose only member is `1`.
+ * Used for the negative branch of each `Adnotacje` choice group — `P_19N` (no
+ * exemption), `P_22N` (no new means of transport), `P_PMarzyN` (no margin
+ * scheme) — i.e. the "nothing special" path.
+ */
+export const FA3_WYBOR_TAK = '1';
+
+/**
  * Seller identity + address — injected into the builder by the adapter (resolved
  * from connection config), never discovered inside the pure builder. `nip` is a
  * required system-configuration value (Podmiot1 always carries a seller NIP).
@@ -77,8 +99,6 @@ export interface Fa3BuilderInput {
    * ending in `Z`. Part of the input so the builder stays pure — no `Date.now()`.
    */
   generatedAt: string;
-  /** Echoed into `Adnotacje` for traceability — the neutral order id. */
-  orderReference: string;
   lines: Fa3Line[];
 }
 
