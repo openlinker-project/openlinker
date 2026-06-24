@@ -38,10 +38,14 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type {
   CreateOfferCommand,
   CreateOfferOverrides,
+  OfferManagerPort,
   OfferParameter,
   OfferVariantAttribute,
   OfferVariantGroup,
+  SourceAttribute,
+  SourceCategoryRef,
 } from '@openlinker/core/listings';
+import { isCategoryBrowser, isEanCategoryMatcher } from '@openlinker/core/listings';
 import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
@@ -103,12 +107,23 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
     const product = await productMaster.getProduct(variant.productId);
 
+    // A destination that browses/owns its taxonomy (Allegro — `CategoryBrowser`
+    // / `EanCategoryMatcher`) needs a resolved marketplace category before the
+    // offer can be built. A `borrows` destination (Erli, #1096 / ADR-025 §3)
+    // falls back to source-shop categories (or none), so it must NOT block here.
+    const destination = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      input.connectionId,
+      'OfferManager'
+    );
+    const requiresResolvedCategory =
+      isCategoryBrowser(destination) || isEanCategoryMatcher(destination);
+
     const categoryId = await this.resolveCategory(
       input,
       variant.ean ?? variant.gtin ?? null,
       product.categories
     );
-    if (!categoryId) {
+    if (!categoryId && requiresResolvedCategory) {
       issues.push({
         field: 'overrides.categoryId',
         code: 'REQUIRED',
@@ -126,14 +141,18 @@ export class OfferBuilderService implements IOfferBuilderService {
       throw new OfferBuilderValidationException(issues);
     }
 
-    // `categoryId` is guaranteed non-null here — Gate 1 pushed a `REQUIRED`
-    // issue and threw otherwise.
-    const parameters = await this.buildOfferParameters(
-      input,
-      masterConnectionId,
-      categoryId as string,
-      variant.attributes ?? {}
-    );
+    // Category params only exist relative to a resolved marketplace category. A
+    // `borrows` destination with no resolved category (Erli source-shop fallback)
+    // carries no projected params (#1096) — skip the projection rather than query
+    // it for a null category.
+    const parameters = categoryId
+      ? await this.buildOfferParameters(
+          input,
+          masterConnectionId,
+          categoryId,
+          variant.attributes ?? {}
+        )
+      : [];
 
     // #1065 — a multi-variant product (>1 sibling) becomes one grouped listing.
     // The sibling count is the populate decision; the actual fan-out (after the
@@ -166,6 +185,26 @@ export class OfferBuilderService implements IOfferBuilderService {
       cleanedOverrides.platformParams = overrides.platformParams;
     }
 
+    // #1096 — thread the master product's source-shop categories so a borrows
+    // destination (Erli) can emit `source:"shop"` taxonomy when no marketplace
+    // category was resolved. Neutral data; owns-taxonomy adapters ignore it.
+    // F3: prefer the master's full category path (root→leaf, {id,name}) when
+    // present so the breadcrumb carries names; otherwise fall back to the bare
+    // ids the master always supplies.
+    const sourceCategories: SourceCategoryRef[] =
+      product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0
+        ? product.categoryBreadcrumb.map((c) => ({ id: c.id, name: c.name }))
+        : (product.categories ?? []).map((id) => ({ id }));
+
+    // #1096 F2 — thread the master product's features as neutral source-shop
+    // attributes. A borrows destination (Erli) emits `source:"shop"`
+    // `externalAttributes`; owns-taxonomy adapters ignore them. Each feature's
+    // `id` is a stable slug of its name so the same feature is byte-stable across
+    // runs (idempotency-friendly).
+    const sourceAttributes: SourceAttribute[] = (product.features ?? [])
+      .filter((f) => f.name.length > 0 && f.value.length > 0)
+      .map((f) => ({ id: slugifyFeatureName(f.name), name: f.name, value: f.value }));
+
     const command: CreateOfferCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
@@ -175,6 +214,8 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      ...(sourceCategories.length > 0 ? { sourceCategories } : {}),
+      ...(sourceAttributes.length > 0 ? { sourceAttributes } : {}),
       // Neutral parameters (#1039/#1071): projected attributes merged with
       // operator-picked `overrides.parameters` (operator wins by id). The
       // destination adapter is the sole shaper (splits by `section`). Omitted
@@ -419,6 +460,21 @@ export class OfferBuilderService implements IOfferBuilderService {
  * body-only destination contains the blast radius; Erli validates size
  * server-side).
  */
+/**
+ * Slugify a product-feature name into a stable id (#1096 F2): lowercase, collapse
+ * runs of non-alphanumerics to a single `-`, and trim leading/trailing `-`. Pure.
+ * The slug feeds a body-only `externalAttributes[].id` — never a path/query/SQL
+ * surface — so no length/charset bound beyond this normalisation is applied. A
+ * name that slugs to empty (all-punctuation) yields `''`; the adapter still emits
+ * the entry keyed by its `name`.
+ */
+function slugifyFeatureName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function flattenAttributes(
   attributes: Record<string, string> | null
 ): OfferVariantAttribute[] {

@@ -9,6 +9,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CoreCapabilityValues } from '@openlinker/core/integrations';
+import type { UserRole } from '@openlinker/core/users';
 
 export class ConnectionResponseDto {
   @ApiProperty({
@@ -70,14 +71,18 @@ export class ConnectionResponseDto {
 
   static fromDomain(
     connection: Connection,
-    supportedCapabilities: string[]
+    supportedCapabilities: string[],
+    role?: UserRole
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
     dto.platformType = connection.platformType;
     dto.name = connection.name;
     dto.status = connection.status;
-    dto.config = connection.config;
+    // Deny-by-default: config is only projected for admin callers.
+    // Non-admins receive {} so no raw platform config, OAuth client IDs, or
+    // shop URLs are ever included in a non-admin response (#1124).
+    dto.config = role === 'admin' ? connection.config : {};
     dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;

@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { ListingsListPage } from './listings-list-page';
 import type {
   CreateOfferRequest,
@@ -120,7 +120,7 @@ describe('ListingsListPage', () => {
       listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
     });
 
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
     const cta = await screen.findByRole('button', { name: /create offer/i });
     expect(cta).toBeInTheDocument();
@@ -286,7 +286,7 @@ describe('ListingsListPage', () => {
       },
     });
 
-    renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ListingsListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
 
     expect(await screen.findByRole('button', { name: /publish to shop/i })).toBeInTheDocument();
   });

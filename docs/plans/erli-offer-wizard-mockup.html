@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bulk marketplace offers — Erli config (mockup, #1096)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /*
+    Mockup for #1096 — the REAL flow: Products → select → "Create marketplace
+    offers" → bulk wizard (Config → Resolving → Review → Confirm). This screen
+    is Step 1 (Config) with an ERLI connection selected — the platform branch
+    that differs from Allegro. Visual language adopted verbatim from the
+    OpenLinker admin system (apps/web/src/index.css). Signature = the dispatch-
+    time control (Erli requires dispatchTime; Allegro shows a delivery policy
+    here instead). Static spec, not shippable code.
+  */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #fff; --bg-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+    --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+    --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --accent: oklch(68% 0.18 50); --accent-hover: oklch(62% 0.19 50); --accent-soft: oklch(96% 0.04 60);
+    --accent-soft-strong: oklch(40% 0.16 50); --accent-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+    --ok: oklch(62% 0.13 150); --ok-soft: oklch(96% 0.04 150);
+    --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+    --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem; --space-6:2rem; --space-7:3rem;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans); color: var(--text-primary); background: var(--bg-canvas); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; }
+  .frame { max-width: 1080px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); }
+  .crumbs { display: flex; align-items: center; gap: var(--space-2); font-size: .8125rem; color: var(--text-muted); margin-bottom: var(--space-4); }
+  .crumbs b { color: var(--text-secondary); font-weight: 500; } .crumbs .sep { color: var(--border-strong); }
+
+  .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); overflow: clip; }
+  .card__head { padding: var(--space-5) var(--space-6) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+  .eyebrow { font-size: .6875rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin: 0 0 var(--space-2); }
+  h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+  .sub { margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: .9rem; }
+  .sub b { color: var(--text-primary); font-weight: 600; }
+
+  /* stepper — mirrors the real bulk-wizard: Config → Resolving → Review → Confirm */
+  .stepper { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-4) var(--space-6); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .step { display: flex; align-items: center; gap: var(--space-2); font-size: .8125rem; color: var(--text-muted); }
+  .step .num { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: .75rem; font-weight: 600; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-muted); }
+  .step.active { color: var(--text-primary); font-weight: 600; } .step.active .num { background: var(--accent); border-color: var(--accent); color: var(--text-on-primary); }
+  .step .bar { width: 20px; height: 1px; background: var(--border-default); }
+
+  .body { padding: var(--space-6); display: grid; grid-template-columns: 1fr 300px; gap: var(--space-6); }
+
+  /* connection picker (by OfferManager capability — Allegro + Erli) */
+  .conns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-5); }
+  .conn { text-align: left; appearance: none; cursor: pointer; font: inherit; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: 2px; }
+  .conn[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+  .conn .name { font-weight: 600; font-size: .9rem; display:flex; align-items:center; gap: var(--space-2); }
+  .conn .plat { font-size: .72rem; color: var(--text-muted); } .conn .plat.mono { letter-spacing: 0; }
+  .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); flex:none; }
+
+  .field { margin-bottom: var(--space-5); } .field:last-child { margin-bottom: 0; }
+  .field > label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: var(--space-2); }
+  .hint { font-size: .8rem; color: var(--text-muted); margin-top: var(--space-2); }
+  .req { color: var(--accent-soft-strong); font-weight: 600; }
+  .select, .input { width: 100%; padding: var(--space-3); font: inherit; color: var(--text-primary); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-sm); }
+  .select:focus-visible, .input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
+  /* radio-group policy (use-master / markup / flat) — shared with Allegro */
+  .seglist { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .seglist label { font-size: .82rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-default); border-radius: 999px; color: var(--text-secondary); cursor: pointer; }
+  .seglist input { position: absolute; opacity: 0; } .seglist input:checked + span { color: var(--accent-soft-strong); font-weight: 600; }
+  .seglist label:has(input:checked) { border-color: var(--accent-border); background: var(--accent-soft); }
+
+  /* SIGNATURE: dispatch-time control (Erli branch replaces Allegro's delivery policy) */
+  .dispatch { border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: var(--radius-md); padding: var(--space-4); }
+  .dispatch__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .dispatch__top label { font-size: .85rem; font-weight: 600; }
+  .from-default { font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; color: var(--accent-soft-strong); background: var(--bg-surface); border: 1px solid var(--accent-border); border-radius: 999px; padding: 2px var(--space-2); }
+  .dial { display: flex; align-items: center; gap: var(--space-3); }
+  .seg { display: inline-flex; border: 1px solid var(--accent-border); border-radius: var(--radius-sm); overflow: clip; background: var(--bg-surface); }
+  .seg button { appearance: none; border: 0; background: transparent; font: inherit; cursor: pointer; padding: var(--space-2) var(--space-3); color: var(--text-secondary); min-width: 40px; border-right: 1px solid var(--accent-border); }
+  .seg button:last-child { border-right: 0; } .seg button[aria-pressed='true'] { background: var(--accent); color: var(--text-on-primary); font-weight: 600; }
+  .dispatch__read { margin-top: var(--space-3); font-size: .82rem; color: var(--accent-soft-strong); } .dispatch__read b { font-weight: 600; }
+
+  .policy-note { font-size: .8rem; color: var(--text-secondary); background: var(--bg-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+
+  /* aside */
+  .aside { border-left: 1px solid var(--border-subtle); padding-left: var(--space-6); }
+  .aside h2 { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 var(--space-3); }
+  .kv { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px dashed var(--border-subtle); font-size: .85rem; } .kv:last-of-type { border-bottom: 0; }
+  .kv .k { color: var(--text-muted); } .kv .v { font-weight: 500; text-align: right; }
+  .note { margin-top: var(--space-4); font-size: .8rem; color: var(--text-secondary); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--radius-sm); padding: var(--space-3); }
+
+  .foot { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-6); border-top: 1px solid var(--border-subtle); background: var(--bg-shell); }
+  .btn { appearance: none; font: inherit; font-weight: 600; cursor: pointer; border-radius: var(--radius-sm); padding: var(--space-3) var(--space-5); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); }
+  .btn:hover { background: var(--bg-surface-hover); } .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+  .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-primary); } .btn--primary:hover { background: var(--accent-hover); }
+  .step-count { font-size: .8rem; color: var(--text-muted); }
+
+  @media (max-width: 820px) { .body { grid-template-columns: 1fr; } .conns { grid-template-columns: 1fr; } .aside { border-left: 0; padding-left: 0; border-top: 1px solid var(--border-subtle); padding-top: var(--space-5); } }
+  @media (prefers-reduced-motion: no-preference) { .btn, .seg button, .conn { transition: background .15s ease, color .15s ease, box-shadow .15s ease, border-color .15s ease; } }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <span>Catalog</span><span class="sep">/</span><span>Products</span><span class="sep">/</span><b>Create marketplace offers</b>
+    </nav>
+
+    <section class="card" aria-label="Bulk marketplace offer creation">
+      <header class="card__head">
+        <p class="eyebrow">Bulk marketplace offers</p>
+        <h1>Configure offer creation</h1>
+        <p class="sub">Creating offers for <b>6 products</b> from the catalog selection.</p>
+      </header>
+
+      <div class="stepper" aria-label="Steps">
+        <span class="step active" aria-current="step"><span class="num">1</span> Config</span><span class="bar"></span>
+        <span class="step"><span class="num">2</span> Resolving</span><span class="bar"></span>
+        <span class="step"><span class="num">3</span> Review</span><span class="bar"></span>
+        <span class="step"><span class="num">4</span> Confirm</span>
+      </div>
+
+      <div class="body">
+        <div>
+          <!-- connection picker: any OfferManager connection (Allegro + Erli) -->
+          <div class="field">
+            <label>Target connection</label>
+            <div class="conns" role="group" aria-label="Marketplace connection">
+              <button type="button" class="conn" aria-pressed="false">
+                <span class="name"><span class="dot"></span> My Allegro</span>
+                <span class="plat mono">allegro.publicapi.v1</span>
+              </button>
+              <button type="button" class="conn" aria-pressed="true">
+                <span class="name"><span class="dot"></span> My Erli</span>
+                <span class="plat mono">erli.shopapi.v1</span>
+              </button>
+            </div>
+            <p class="hint">Connections with the <span class="mono">OfferManager</span> capability. The config below adapts to the selected marketplace.</p>
+          </div>
+
+          <!-- SIGNATURE: dispatch time (Erli branch — replaces Allegro's delivery policy) -->
+          <div class="field">
+            <div class="dispatch">
+              <div class="dispatch__top">
+                <label for="dt">Dispatch time <span class="req">· required by Erli</span></label>
+                <span class="from-default">connection default</span>
+              </div>
+              <div class="dial">
+                <span class="seg" role="group" aria-label="Dispatch period">
+                  <button type="button" aria-pressed="false">0</button>
+                  <button type="button" aria-pressed="false">1</button>
+                  <button type="button" aria-pressed="true">2</button>
+                  <button type="button" aria-pressed="false">3</button>
+                  <button type="button" aria-pressed="false">5</button>
+                </span>
+                <select class="select" id="dt-unit" style="width:auto" aria-label="Dispatch unit">
+                  <option selected>working days</option><option>hours</option><option>months</option>
+                </select>
+              </div>
+              <p class="dispatch__read">Applied to all 6 offers — buyers see “ships in <b>2 working days</b>”. Inherited from the connection default; change to override the batch.</p>
+            </div>
+            <p class="policy-note">Erli has no seller/delivery policies — dispatch time stands in for Allegro's policy step. Images are pulled from each product (Erli requires at least one); the Resolving step flags any product missing one.</p>
+          </div>
+
+          <!-- pricing policy (shared with Allegro) -->
+          <div class="field">
+            <label>Pricing</label>
+            <div class="seglist" role="radiogroup" aria-label="Pricing policy">
+              <label><input type="radio" name="price" checked /><span>Use master price</span></label>
+              <label><input type="radio" name="price" /><span>Markup %</span></label>
+              <label><input type="radio" name="price" /><span>Flat price</span></label>
+            </div>
+            <p class="hint">Master catalog price is authoritative; sent to Erli in grosze. Override individual rows in Review.</p>
+          </div>
+
+          <!-- stock policy (shared) -->
+          <div class="field">
+            <label>Stock</label>
+            <div class="seglist" role="radiogroup" aria-label="Stock policy">
+              <label><input type="radio" name="stock" checked /><span>Use master stock</span></label>
+              <label><input type="radio" name="stock" /><span>Flat value</span></label>
+            </div>
+          </div>
+        </div>
+
+        <aside class="aside">
+          <h2>Batch</h2>
+          <div class="kv"><span class="k">Products</span><span class="v">6</span></div>
+          <div class="kv"><span class="k">Marketplace</span><span class="v">Erli</span></div>
+          <div class="kv"><span class="k">Pricing</span><span class="v">Master</span></div>
+          <div class="kv"><span class="k">Dispatch</span><span class="v">2 working days</span></div>
+          <div class="note">Next, <b>Resolving</b> pulls each product's master price/stock + images and flags blockers (missing image, no category). <b>Review</b> lets you edit rows; <b>Confirm</b> creates the offers.</div>
+        </aside>
+      </div>
+
+      <footer class="foot">
+        <button class="btn" type="button">Cancel</button>
+        <span class="step-count">Step 1 of 4</span>
+        <button class="btn btn--primary" type="button">Resolve 6 products →</button>
+      </footer>
+    </section>
+  </div>
+</body>
+</html>

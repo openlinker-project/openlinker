@@ -7,9 +7,15 @@
 import { describe, expect, it } from 'vitest';
 import { mergeResolveOutcomes } from './bulk-wizard';
 import { recomputeRowBlockers, selectBulkProductCardId } from './bulk-policy';
+import { allegroOfferValidation } from '../allegro/allegro-offer-validation';
 import type { BulkResolveOutcome } from './bulk-resolve-step';
 import type { BulkWizardConfig, BulkWizardRow } from './bulk-wizard.types';
 import type { ProductVariant } from '../../../products';
+
+// Allegro's row validator (#1096) — the migrated `needs-product-parameters`
+// blocker is now emitted here, not inside `computeBlockers`.
+const allegroValidate = allegroOfferValidation.validateRow;
+const NEEDS_PARAMS = 'allegro:needs-product-parameters';
 
 function makeRow(productId: string): BulkWizardRow {
   return {
@@ -141,7 +147,7 @@ describe('selectBulkProductCardId (#808)', () => {
 describe('recomputeRowBlockers (#810)', () => {
   const config: BulkWizardConfig = {
     connectionId: 'conn_1',
-    deliveryPolicyId: 'dp_1',
+    platformParams: { deliveryPolicyId: 'dp_1' },
     currency: 'PLN',
     pricingPolicy: { mode: 'flat', amount: 50 },
     stockPolicy: { mode: 'flat', value: 3 },
@@ -170,8 +176,8 @@ describe('recomputeRowBlockers (#810)', () => {
       resolvedProductCardId: null,
       override: { overrides: { categoryId: 'cat-X' } },
     });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]));
-    expect(blockers).toContain('needs-product-parameters');
+    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]), allegroValidate);
+    expect(blockers).toContain(NEEDS_PARAMS);
   });
 
   it('does not raise it once the required params are supplied', () => {
@@ -187,8 +193,8 @@ describe('recomputeRowBlockers (#810)', () => {
         },
       },
     });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]));
-    expect(blockers).not.toContain('needs-product-parameters');
+    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand', 'model']]]), allegroValidate);
+    expect(blockers).not.toContain(NEEDS_PARAMS);
   });
 
   it('exempts a card-linked row (params inherited, #808)', () => {
@@ -197,8 +203,8 @@ describe('recomputeRowBlockers (#810)', () => {
       resolvedProductCardId: 'card-1',
       override: { overrides: { categoryId: 'cat-X' } },
     });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand']]]));
-    expect(blockers).not.toContain('needs-product-parameters');
+    const blockers = recomputeRowBlockers(row, config, new Map([['cat-X', ['brand']]]), allegroValidate);
+    expect(blockers).not.toContain(NEEDS_PARAMS);
   });
 
   it('stays inert until the category schema is known (no map entry)', () => {
@@ -206,8 +212,8 @@ describe('recomputeRowBlockers (#810)', () => {
       resolvedProductCardId: null,
       override: { overrides: { categoryId: 'cat-X' } },
     });
-    const blockers = recomputeRowBlockers(row, config, new Map());
-    expect(blockers).not.toContain('needs-product-parameters');
+    const blockers = recomputeRowBlockers(row, config, new Map(), allegroValidate);
+    expect(blockers).not.toContain(NEEDS_PARAMS);
   });
 
   it('drops the stale card and blocks when a matched row is recategorised to a card-less category', () => {
@@ -219,7 +225,7 @@ describe('recomputeRowBlockers (#810)', () => {
       resolvedProductCardId: 'card-1',
       override: { overrides: { categoryId: 'cat-B' } },
     });
-    const blockers = recomputeRowBlockers(row, config, new Map([['cat-B', ['brand']]]));
-    expect(blockers).toContain('needs-product-parameters');
+    const blockers = recomputeRowBlockers(row, config, new Map([['cat-B', ['brand']]]), allegroValidate);
+    expect(blockers).toContain(NEEDS_PARAMS);
   });
 });

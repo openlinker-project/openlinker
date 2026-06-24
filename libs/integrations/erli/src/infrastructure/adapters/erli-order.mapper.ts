@@ -129,14 +129,18 @@ function derivePaymentStatus(status: ErliOrderStatus, cod: boolean): PaymentStat
 }
 
 /**
- * Maps an Erli line item onto the neutral `IncomingOrderItem`. Emits a RAW
- * external product reference (`{ type: 'variant', externalId }`) — core resolves
- * it to internal ids (#995). `price` is the per-unit amount in decimal PLN.
+ * Maps an Erli line item onto the neutral `IncomingOrderItem`. Emits an
+ * `{ type: 'offer', externalId }` reference: `item.externalId` is the seller-keyed
+ * product id OL set on create, which the offer-creation flow registered as an
+ * `Offer` identifier mapping (`Offer: <externalId> → variant`) on this Erli
+ * connection. Core resolves it via that Offer mapping — NOT a `ProductVariant`
+ * mapping, which only exists on the master/shop connection (#995/#1096).
+ * `price` is the per-unit amount in decimal PLN.
  */
 function mapItem(item: ErliOrderItem): IncomingOrderItem {
   return {
     id: String(item.id),
-    productRef: { type: 'variant', externalId: item.externalId },
+    productRef: { type: 'offer', externalId: item.externalId },
     quantity: item.quantity,
     price: toMajorUnits(item.unitPrice),
     sku: item.sku,

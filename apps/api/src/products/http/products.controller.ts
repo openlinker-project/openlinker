@@ -21,7 +21,6 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import { PRODUCTS_SERVICE_TOKEN, IProductsService } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { Product, ProductVariant } from '@openlinker/core/products';
@@ -64,7 +63,6 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
   };
 }
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('products')
 @Controller('products')
@@ -272,7 +270,6 @@ export class ProductsController {
  *
  * @module apps/api/src/products/http
  */
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('variants')
 @Controller('variants')

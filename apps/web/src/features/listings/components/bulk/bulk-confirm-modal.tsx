@@ -22,6 +22,8 @@ interface BulkConfirmModalProps {
   onOpenChange: (open: boolean) => void;
   rowCount: number;
   connectionName: string;
+  /** Resolved marketplace display name (#1096) — e.g. "Allegro", "Erli". */
+  marketplaceName: string;
   initialPublishImmediately: boolean;
   isSubmitting: boolean;
   errorMessage: string | null;
@@ -33,6 +35,7 @@ export function BulkConfirmModal({
   onOpenChange,
   rowCount,
   connectionName,
+  marketplaceName,
   initialPublishImmediately,
   isSubmitting,
   errorMessage,
@@ -51,7 +54,7 @@ export function BulkConfirmModal({
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
       <DialogContent>
         <DialogTitle>
-          Create {rowCount} Allegro {rowCount === 1 ? 'offer' : 'offers'}?
+          Create {rowCount} {marketplaceName} {rowCount === 1 ? 'offer' : 'offers'}?
         </DialogTitle>
         <DialogDescription>
           You're about to create {rowCount} {rowCount === 1 ? 'offer' : 'offers'} on{' '}

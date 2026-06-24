@@ -49,6 +49,7 @@ import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { Logger } from '@openlinker/shared/logging';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
@@ -231,6 +232,14 @@ export class OrderIngestionService implements IOrderIngestionService {
       return [];
     }
 
+    // Cancellation-observe hook (#1146): capture the prior business status from
+    // the PRE-persist `existing` snapshot, before persistOrder overwrites it.
+    // Defensive string read — mirrors the `OrderRecord.paymentStatus` getter
+    // idiom; an absent/garbled prior status reads as non-cancelled (allowed to
+    // fire once on a first-seen already-cancelled order — the restore is a
+    // harmless absolute-set).
+    const priorStatus = this.readSnapshotStatus(existing);
+
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
       connectionId,
@@ -287,6 +296,40 @@ export class OrderIngestionService implements IOrderIngestionService {
       resolvedItems
     );
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+
+    // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
+    // a marketplace.offer.stockRestore job so the destination marketplace's
+    // stock is restored (e.g. Erli auto-decrements on purchase but does not
+    // restore on cancel — ADR-025 §4a). Transition-gated (priorStatus !==
+    // 'cancelled') so a re-poll within the watermark window doesn't re-fire;
+    // the dedupeKey makes any re-enqueue safe. Marketplace-agnostic — the worker
+    // handler narrows the source connection's adapter to OfferStockRestorer and
+    // no-ops if the capability is absent.
+    if (order.status === 'cancelled' && priorStatus !== 'cancelled') {
+      try {
+        await this.jobQueue.enqueue({
+          type: 'marketplace.offer.stockRestore',
+          connectionId,
+          payload: {
+            schemaVersion: 1,
+            internalOrderId,
+          },
+          options: {
+            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+          },
+        });
+      } catch (error) {
+        // The order is already persisted as `cancelled`, so the transition gate
+        // above won't re-fire on a re-poll — a swallowed enqueue failure would
+        // silently lose the restore. We don't rethrow (that would fail the whole
+        // order-sync and still couldn't re-fire the gate on retry), but we log at
+        // error so the missed restore is loud and actionable.
+        this.logger.error(
+          `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
+          (error as Error).stack,
+        );
+      }
+    }
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
@@ -409,6 +452,17 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.log(message);
     }
     return [];
+  }
+
+  /**
+   * Defensive read of an order record's prior business status from its snapshot
+   * (#1146). Returns `undefined` when there is no prior record or the stored
+   * value isn't a string — both treated as non-cancelled by the caller. Pure
+   * read; binds only to the snapshot's `status` key, not its full JSON layout.
+   */
+  private readSnapshotStatus(existing: OrderRecord | null): string | undefined {
+    const value = existing?.orderSnapshot?.status;
+    return typeof value === 'string' ? value : undefined;
   }
 
   private async resolveCustomerId(

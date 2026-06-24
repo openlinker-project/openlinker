@@ -159,11 +159,18 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       }
     }
 
+    if (result.warnings?.length) {
+      this.logger.warn(
+        `Shop publish completed with non-fatal adapter warnings. connectionId=${input.connectionId} internalVariantId=${input.internalVariantId} externalProductId=${result.externalProductId} warnings=${JSON.stringify(result.warnings)}`,
+      );
+    }
+
     const finalRecord = await this.listingRecords.updateExternalIdAndStatus(
       record.id,
       result.externalProductId,
       result.status,
-      null
+      null,
+      result.warnings?.length ? result.warnings : null,
     );
     return this.buildResult(finalRecord, input.connectionId);
   }
