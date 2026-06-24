@@ -205,9 +205,17 @@ variant, platform **erli**, the target connection, and the created date:
 ![Created Erli offer row in OpenLinker Listings](../../assets/erli/22-ol-offer-row.png)
 
 Use the **External ID / Connection / Platform** filters at the top of Listings to
-narrow to a single Erli connection's offers. Because Erli writes are async (~20-min
-cache lag), a freshly created offer's live marketplace status becomes authoritative
-only after offer-status reconciliation runs (see the
+narrow to a single Erli connection's offers. Click a row to open the **listing
+detail** page — it shows the mapping (variant, external/internal id, platform,
+connection) and the **offer-creation status** (`DRAFT` for a freshly created Erli
+offer that is set up and ready to list):
+
+![Erli listing detail in OpenLinker — mapping + DRAFT offer-creation status](../../assets/erli/30-listing-detail.png)
+
+The "Listing details" panel reads *"Live data unavailable for this adapter"* until
+Erli's async write settles — because Erli writes are async (~20-min cache lag), a
+freshly created offer's live marketplace status becomes authoritative only after
+offer-status reconciliation runs (see the
 [runbook](./runbook.md#scheduler-env-flags-worker)).
 
 **On the Erli side**, the published offers appear in your seller panel under
