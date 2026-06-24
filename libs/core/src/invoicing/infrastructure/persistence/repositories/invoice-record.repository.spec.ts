@@ -187,6 +187,76 @@ describe('InvoiceRecordRepository', () => {
         repository.updateOutcome('missing', { status: 'failed' }),
       ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
     });
+
+    it('persists the #1200 failureMode + lease fields when patched', async () => {
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      const result = await repository.updateOutcome('ol_invoice_1', {
+        status: 'failed',
+        failureMode: 'in-doubt',
+        leaseExpiresAt: null,
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureMode).toBe('in-doubt');
+      expect(saved.leaseExpiresAt).toBeNull();
+      expect(result.failureMode).toBe('in-doubt');
+    });
+  });
+
+  describe('claimForIssue (#1200 CAS)', () => {
+    let updateQb: {
+      update: jest.Mock;
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      execute: jest.Mock;
+    };
+
+    beforeEach(() => {
+      updateQb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn(),
+      };
+      ormRepo.createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(updateQb) as unknown as typeof ormRepo.createQueryBuilder;
+    });
+
+    it('returns the claimed (issuing) record on a winning CAS (affected > 0)', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 1, raw: [] });
+      const lease = new Date('2026-06-25T12:05:00.000Z');
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing', leaseExpiresAt: lease }));
+
+      const result = await repository.claimForIssue('ol_invoice_1', lease);
+
+      expect(updateQb.set).toHaveBeenCalledWith({ status: 'issuing', leaseExpiresAt: lease });
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe('issuing');
+    });
+
+    it('returns null on a LOST CAS (affected 0) when the row still exists', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0, raw: [] });
+      // Existence disambiguation read finds the (contended) row.
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
+
+      const result = await repository.claimForIssue('ol_invoice_1', new Date());
+
+      expect(result).toBeNull();
+    });
+
+    it('throws InvoiceRecordNotFoundException when affected 0 and the row is absent', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0, raw: [] });
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await expect(repository.claimForIssue('missing', new Date())).rejects.toBeInstanceOf(
+        InvoiceRecordNotFoundException,
+      );
+    });
   });
 
   describe('findMany', () => {
