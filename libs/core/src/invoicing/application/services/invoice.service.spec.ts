@@ -99,6 +99,7 @@ describe('InvoiceService', () => {
       findByOrderId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
+      findMany: jest.fn(),
     };
     adapter = {
       issueInvoice: jest.fn(),

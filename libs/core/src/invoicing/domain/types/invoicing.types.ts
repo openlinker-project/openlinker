@@ -12,6 +12,7 @@
  * @module libs/core/src/invoicing/domain/types
  */
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
+import type { InvoiceRecord } from '../entities/invoice-record.entity';
 
 /**
  * Document type — OPEN-WORLD (regimes vary unbounded). Well-known neutral
@@ -162,6 +163,43 @@ export interface CreateInvoiceRecordInput {
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
+}
+
+/**
+ * Read-only filter set for {@link InvoiceRecordRepositoryPort.findMany} (#1119).
+ * Minimal — backs ONLY the AC-6 list filters that map to a real column. The
+ * POST re-issue gate does NOT widen this surface: it reads the order's single
+ * projection row via the existing `findByOrderId(orderId, connectionId)`
+ * primitive (surfaced as `IInvoiceService.getInvoice`), so `findMany` stays a
+ * pure AC-6 list query. No `hasTaxId`: the InvoiceRecord projection has no
+ * buyer/tax-id column (the buyer lives on the Order), so the AC-6
+ * "with/without tax id" sub-filter cannot be served without denormalizing
+ * `buyerTaxId` onto the projection + a migration + a backfill — out of #1119
+ * scope. It is therefore absent from this filter surface AND from the public
+ * `ListInvoicesQueryDto` (where `forbidNonWhitelisted` rejects `hasTaxId` with
+ * a 400 rather than accepting-and-ignoring it). Tracked as #1202; AC-6
+ * sign-off must NOT be claimed for this sub-filter until it ships.
+ */
+export interface InvoiceRecordFilters {
+  status?: InvoiceStatus;
+  connectionId?: string;
+  regulatoryStatus?: RegulatoryStatus;
+  /** Inclusive lower bound on `issuedAt`. */
+  issuedFrom?: Date;
+  /** Inclusive upper bound on `issuedAt`. */
+  issuedTo?: Date;
+}
+
+/** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
+export interface InvoiceRecordPagination {
+  limit: number;
+  offset: number;
+}
+
+/** Page of `InvoiceRecord`s plus the unpaginated match count. */
+export interface PaginatedInvoiceRecords {
+  items: InvoiceRecord[];
+  total: number;
 }
 
 /** Patch applied to an existing record after an issue / transmission attempt. */

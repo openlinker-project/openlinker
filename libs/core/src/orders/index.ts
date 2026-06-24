@@ -155,6 +155,10 @@ export { OrderDestinationNotFoundException } from './domain/exceptions/order-des
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
+export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
+
+// Typed-Order accessor for cross-context command composition (#1119).
+export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';

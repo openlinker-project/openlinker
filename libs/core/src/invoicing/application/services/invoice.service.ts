@@ -31,7 +31,10 @@ import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplica
 import type {
   GetInvoiceByOrderQuery,
   InvoiceOutcomePatch,
+  InvoiceRecordFilters,
+  InvoiceRecordPagination,
   IssueInvoiceCommand,
+  PaginatedInvoiceRecords,
 } from '../../domain/types/invoicing.types';
 
 /**
@@ -172,6 +175,15 @@ export class InvoiceService implements IInvoiceService {
   async getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null> {
     // Projection read of OL's OWN store — NEVER the provider/adapter.
     return this.repo.findByOrderId(query.orderId, query.connectionId);
+  }
+
+  async listInvoices(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords> {
+    // Cross-context list seam (#1119): the HTTP layer reaches the invoice
+    // projection through here, never the repository port. Pure projection read.
+    return this.repo.findMany(filter, pagination);
   }
 
   /**
