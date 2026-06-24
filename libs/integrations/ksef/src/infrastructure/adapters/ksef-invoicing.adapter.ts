@@ -41,7 +41,11 @@ export class KsefInvoicingAdapter implements InvoicingPort {
   }
 
   getInvoice(_query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
-    return Promise.reject(this.notImplemented('getInvoice'));
+    // `getInvoice` is a read, not a mutating fiscal action — an unwired stub has
+    // simply issued nothing, so "not found" (null) is the honest answer and keeps
+    // this in lockstep with FakeKsefInvoicingAdapter. The mutating methods below
+    // still throw loudly. C5 wires the real lookup.
+    return Promise.resolve(null);
   }
 
   upsertCustomer(_cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
