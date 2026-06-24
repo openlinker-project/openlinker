@@ -58,7 +58,6 @@ import {
 } from './dto/bulk-offer-create-response.dto';
 import { BulkListingRetryResponseDto } from './dto/bulk-listing-retry-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('listings')
 @Controller('listings/bulk-create')
@@ -70,6 +69,7 @@ export class BulkListingController {
     private readonly bulkRetry: IBulkListingRetryService
   ) {}
 
+  @Roles('admin')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -144,6 +144,7 @@ export class BulkListingController {
     return this.toSummaryDto(summary);
   }
 
+  @Roles('admin')
   @Post(':batchId/retry-failed')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'batchId', format: 'uuid' })

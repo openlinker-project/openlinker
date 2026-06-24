@@ -72,6 +72,7 @@ export {
   MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
+  MarketplaceOfferStockRestorePayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,
