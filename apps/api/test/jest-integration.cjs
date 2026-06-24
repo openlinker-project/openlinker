@@ -77,6 +77,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/erli/src/$1',
     ),
+    '^@openlinker/integrations-ksef$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/ksef/src/index.ts',
+    ),
+    '^@openlinker/integrations-ksef/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/ksef/src/$1',
+    ),
     '^@openlinker/integrations-dpd-polska$': path.resolve(
       __dirname,
       '../../../libs/integrations/dpd-polska/src/index.ts',
