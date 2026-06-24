@@ -12,7 +12,9 @@ import { Fa3XsdValidationException } from '../../../domain/exceptions/fa3-valida
 import type { Fa3BuilderInput, RawFa3Xml, SellerProfile } from '../domain/fa3-xml.types';
 import { validateFa3Xml } from './fa3-xsd.validator';
 
-const wellFormed = (`<?xml version="1.0" encoding="UTF-8"?>` +
+// Well-formed but structurally incomplete: a bare root + empty Naglowek. The
+// hardened rule set must reject it for the missing required sections.
+const wellFormedButIncomplete = (`<?xml version="1.0" encoding="UTF-8"?>` +
   `<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">` +
   `<Naglowek/></Faktura>`) as RawFa3Xml;
 
@@ -32,19 +34,27 @@ function builtDoc(): RawFa3Xml {
     issueDate: '2026-06-23',
     invoiceNumber: 'FV/2026/06/0001',
     generatedAt: '2026-06-23T10:15:30Z',
-    orderReference: 'ol_order_123',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
   };
   return buildFa3Xml(input);
 }
 
 describe('validateFa3Xml', () => {
-  it('should return normally for a well-formed FA(3) document', () => {
-    expect(() => validateFa3Xml(wellFormed)).not.toThrow();
-  });
-
   it('should return normally for a document produced by the builder', () => {
     expect(() => validateFa3Xml(builtDoc())).not.toThrow();
+  });
+
+  it('should reject a well-formed but structurally incomplete document', () => {
+    try {
+      validateFa3Xml(wellFormedButIncomplete);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      // The missing Fa body + its required children must be flagged.
+      expect(paths).toContain('/Faktura/Fa');
+      expect(paths).toContain('/Faktura/Podmiot1/DaneIdentyfikacyjne');
+    }
   });
 
   it('should throw Fa3XsdValidationException with issues for an invalid document', () => {
