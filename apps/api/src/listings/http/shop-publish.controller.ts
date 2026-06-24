@@ -105,6 +105,7 @@ export class ShopPublishController {
       externalProductId: record.externalProductId,
       bulkBatchId: record.bulkBatchId,
       errors: record.errors,
+      warnings: record.warnings,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
