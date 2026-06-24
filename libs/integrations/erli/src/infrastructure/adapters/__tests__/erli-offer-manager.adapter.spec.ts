@@ -11,7 +11,6 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
-import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import {
   isOfferStatusReader,
   OfferCreateRejectedException,
@@ -48,8 +47,8 @@ function createCmd(overrides: Partial<CreateOfferCommand> = {}): CreateOfferComm
     stock: 10,
     publishImmediately: true,
     ...rest,
-    // Default to a resolvable Allegro category: ADR-025 §3 makes a missing one a
-    // terminal rejection, so the happy-path/unrelated tests must carry one.
+    // Default to a resolved Allegro category so unrelated tests exercise the
+    // common path; a missing one now falls back to shop categories / none (#1096).
     overrides: {
       title: 'Default Widget',
       imageUrls: ['https://cdn.example.com/default.jpg'],
@@ -219,6 +218,21 @@ describe('ErliOfferManagerAdapter', () => {
       expect(messages).not.toContain('SECRET submitted payload echo');
     });
 
+    it('should treat a 409 (already-exists) as an idempotent success, not a rejection', async () => {
+      // POST /products/{id} is create-only and seller-keyed; a duplicate id 409s.
+      // A retry / re-submit of an already-created offer must succeed idempotently.
+      httpClient.post.mockRejectedValue(
+        new ErliApiException('unique key duplication', 409, undefined, 'https://erli.pl/x'),
+      );
+
+      const result = await adapter.createOffer(createCmd());
+
+      expect(result.status).toBe('draft');
+      expect(result.externalOfferId).toBe(VALID_ID);
+      // Flagged so the execution service records it as `reused`, not a fresh create.
+      expect(result.alreadyExisted).toBe(true);
+    });
+
     it('should propagate an authentication error (not wrap it)', async () => {
       httpClient.post.mockRejectedValueOnce(new ErliAuthenticationException('unauthorized', 401));
       await expect(adapter.createOffer(createCmd())).rejects.toBeInstanceOf(ErliAuthenticationException);
@@ -232,13 +246,15 @@ describe('ErliOfferManagerAdapter', () => {
     });
 
     describe('category & parameter reuse (#985)', () => {
-      it('should map overrides.categoryId into a source:"allegro" externalCategories entry', async () => {
+      it('should map overrides.categoryId into a source:"allegro" breadcrumb entry', async () => {
         await adapter.createOffer(createCmd({ overrides: { categoryId: '18654' } }));
 
         const body = httpClient.post.mock.calls[0][1] as {
           externalCategories?: unknown;
         };
-        expect(body.externalCategories).toEqual([{ source: 'allegro', id: '18654' }]);
+        expect(body.externalCategories).toEqual([
+          { source: 'allegro', breadcrumb: [{ id: '18654' }] },
+        ]);
       });
 
       it('should map a dictionary parameter (valuesIds → type:dictionary)', async () => {
@@ -284,12 +300,27 @@ describe('ErliOfferManagerAdapter', () => {
         ]);
       });
 
-      it('should throw OfferCreateRejectedException and NOT POST when no Allegro taxonomy resolves (ADR-025 §3)', async () => {
-        // Explicitly clear the helper's default categoryId so no Allegro taxonomy resolves.
-        await expect(
-          adapter.createOffer(createCmd({ overrides: { categoryId: undefined } })),
-        ).rejects.toBeInstanceOf(OfferCreateRejectedException);
-        expect(httpClient.post).not.toHaveBeenCalled();
+      it('should fall back to source:"shop" categories when no Allegro id is resolved (#1096)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: { categoryId: undefined },
+            sourceCategories: [{ id: '12', name: 'Widgets' }, { id: '34' }],
+          }),
+        );
+
+        expect(httpClient.post).toHaveBeenCalledTimes(1);
+        const body = httpClient.post.mock.calls[0][1] as { externalCategories?: unknown };
+        expect(body.externalCategories).toEqual([
+          { source: 'shop', breadcrumb: [{ id: '12', name: 'Widgets' }, { id: '34' }] },
+        ]);
+      });
+
+      it('should omit externalCategories and still POST when neither Allegro nor shop taxonomy is present (ADR-025 §3 relaxed)', async () => {
+        await adapter.createOffer(createCmd({ overrides: { categoryId: undefined }, sourceCategories: [] }));
+
+        expect(httpClient.post).toHaveBeenCalledTimes(1);
+        const body = httpClient.post.mock.calls[0][1] as { externalCategories?: unknown };
+        expect(body.externalCategories).toBeUndefined();
       });
 
       it('should omit externalAttributes when the category is present but no params map', async () => {
@@ -338,7 +369,7 @@ describe('ErliOfferManagerAdapter', () => {
     describe('variant grouping (#986/#1065)', () => {
       const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
 
-      it('should map the neutral variantGroup to externalVariantGroup + attributes for a multi-variant product', async () => {
+      it('should map a distinguishing axis to an indexed shop externalAttribute + an externalVariantGroup referencing it (#986)', async () => {
         await adapter.createOffer(
           createCmd({
             variantGroup: {
@@ -350,10 +381,21 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as {
           externalVariantGroup?: unknown;
+          externalAttributes?: unknown;
           attributes?: unknown;
         };
-        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
-        expect(body.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+        // The axis becomes a shop-source externalAttribute carrying an explicit
+        // index; the group references that index (Erli's verified wire shape).
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+        ]);
+        expect(body.externalVariantGroup).toEqual({
+          id: GROUP_ID,
+          source: 'integration',
+          attributes: [0],
+        });
+        // The API rejects a top-level `attributes` field — it must not be sent.
+        expect(body).not.toHaveProperty('attributes');
       });
 
       it('should list ungrouped (no externalVariantGroup/attributes) when no variantGroup is present', async () => {
@@ -375,28 +417,43 @@ describe('ErliOfferManagerAdapter', () => {
       it('should give sibling variants the same group id while each posts to its own path', async () => {
         const variantA = `ol_variant_${'a'.repeat(32)}`;
         const variantB = `ol_variant_${'c'.repeat(32)}`;
-        const variantGroup = { groupId: GROUP_ID, attributes: [] };
 
-        await adapter.createOffer(createCmd({ internalVariantId: variantA, variantGroup }));
-        await adapter.createOffer(createCmd({ internalVariantId: variantB, variantGroup }));
+        await adapter.createOffer(
+          createCmd({
+            internalVariantId: variantA,
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+        await adapter.createOffer(
+          createCmd({
+            internalVariantId: variantB,
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Blue' }] },
+          }),
+        );
 
-        const [pathA, bodyA] = httpClient.post.mock.calls[0] as [string, { externalVariantGroup?: unknown }];
-        const [pathB, bodyB] = httpClient.post.mock.calls[1] as [string, { externalVariantGroup?: unknown }];
+        const [pathA, bodyA] = httpClient.post.mock.calls[0] as [
+          string,
+          { externalVariantGroup?: { id?: string } },
+        ];
+        const [pathB, bodyB] = httpClient.post.mock.calls[1] as [
+          string,
+          { externalVariantGroup?: { id?: string } },
+        ];
         expect(pathA).toBe(`products/${variantA}`);
         expect(pathB).toBe(`products/${variantB}`);
-        expect(bodyA.externalVariantGroup).toEqual({ id: GROUP_ID });
-        expect(bodyB.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(bodyA.externalVariantGroup?.id).toBe(GROUP_ID);
+        expect(bodyB.externalVariantGroup?.id).toBe(GROUP_ID);
       });
 
-      it('should emit externalVariantGroup with no attributes key when attributes are empty', async () => {
+      it('should NOT emit a group when the variant has no distinguishing axes (Erli requires ≥1)', async () => {
         await adapter.createOffer(createCmd({ variantGroup: { groupId: GROUP_ID, attributes: [] } }));
 
         const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
-        expect(body.externalVariantGroup).toEqual({ id: GROUP_ID });
+        expect(body).not.toHaveProperty('externalVariantGroup');
         expect(body).not.toHaveProperty('attributes');
       });
 
-      it('should copy the neutral attributes through field-for-field without transformation', async () => {
+      it('should index multiple distinguishing axes and reference them all in the group', async () => {
         await adapter.createOffer(
           createCmd({
             variantGroup: {
@@ -409,11 +466,19 @@ describe('ErliOfferManagerAdapter', () => {
           }),
         );
 
-        const body = httpClient.post.mock.calls[0][1] as { attributes?: unknown };
-        expect(body.attributes).toEqual([
-          { name: 'Color', value: 'Red' },
-          { name: 'Size', value: 'M' },
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: unknown;
+          externalVariantGroup?: unknown;
+        };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+          { source: 'shop', id: 'Size', name: 'Size', type: 'string', values: ['M'], index: 1 },
         ]);
+        expect(body.externalVariantGroup).toEqual({
+          id: GROUP_ID,
+          source: 'integration',
+          attributes: [0, 1],
+        });
       });
 
       it('should never emit grouping on a field-update or quantity PATCH (create-only)', async () => {
@@ -424,6 +489,142 @@ describe('ErliOfferManagerAdapter', () => {
           const body = call[1] as Record<string, unknown>;
           expect(body).not.toHaveProperty('externalVariantGroup');
           expect(body).not.toHaveProperty('attributes');
+        }
+      });
+    });
+
+    describe('shop product features → externalAttributes (#1096 F2)', () => {
+      const GROUP_ID = `ol_product_${'b'.repeat(32)}`;
+
+      it('should emit each feature as a shop-source string externalAttribute with a positional index', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {}, // no Allegro category/params, so no param attributes precede
+            sourceAttributes: [
+              { id: 'material', name: 'Material', value: 'Ceramic' },
+              { id: 'color', name: 'Color', value: 'Blue', unit: undefined },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 0 },
+          { source: 'shop', id: 'color', name: 'Color', type: 'string', values: ['Blue'], index: 1 },
+        ]);
+      });
+
+      it('should carry the unit when a feature supplies one', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [{ id: 'weight', name: 'Weight', value: '500', unit: 'g' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes?.[0]).toEqual({
+          source: 'shop',
+          id: 'weight',
+          name: 'Weight',
+          type: 'string',
+          values: ['500'],
+          index: 0,
+          unit: 'g',
+        });
+      });
+
+      it('should fall back to the feature name as id when the slug id is absent', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [{ name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes?.[0]).toMatchObject({ id: 'Material', name: 'Material' });
+      });
+
+      it('should drop features with an empty name or value', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            sourceAttributes: [
+              { id: 'a', name: '', value: 'x' },
+              { id: 'b', name: 'Material', value: '' },
+              { id: 'c', name: 'Color', value: 'Red' },
+            ],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'c', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+        ]);
+      });
+
+      it('should append features AFTER Allegro param attributes (param indexes precede feature indexes)', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: { categoryId: '18654' },
+            parameters: [{ id: '11323', section: 'product', values: ['Acme'] }],
+            sourceAttributes: [{ id: 'material', name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+        };
+        // Param attribute first (no index on the #985 path), feature appended with
+        // its absolute index = 1 (one preceding param attribute).
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'string', values: ['Acme'] },
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 1 },
+        ]);
+      });
+
+      it('should keep variant-group index refs valid when features are appended after the group axes', async () => {
+        await adapter.createOffer(
+          createCmd({
+            overrides: {},
+            variantGroup: { groupId: GROUP_ID, attributes: [{ name: 'Color', value: 'Red' }] },
+            sourceAttributes: [{ id: 'material', name: 'Material', value: 'Ceramic' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<Record<string, unknown>>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Axis at index 0 (group references it), feature appended at index 1.
+        expect(body.externalAttributes).toEqual([
+          { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+          { source: 'shop', id: 'material', name: 'Material', type: 'string', values: ['Ceramic'], index: 1 },
+        ]);
+        // Group must reference ONLY the axis index (0), never the feature index (1).
+        expect(body.externalVariantGroup?.attributes).toEqual([0]);
+      });
+
+      it('should omit externalAttributes entirely when there are no params, axes, or features', async () => {
+        await adapter.createOffer(createCmd({ overrides: {} }));
+
+        const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+        expect(body).not.toHaveProperty('externalAttributes');
+      });
+
+      it('should never emit feature attributes on a field-update PATCH (create-only)', async () => {
+        await adapter.updateOfferFields({ externalOfferId: VALID_ID, fields: { title: 'T' } });
+
+        for (const call of httpClient.patch.mock.calls) {
+          const body = call[1] as Record<string, unknown>;
+          expect(body).not.toHaveProperty('externalAttributes');
         }
       });
     });
@@ -800,54 +1001,33 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
-  describe('restoreStockOnCancellation (#997 Half B — mechanism, no live trigger)', () => {
-    const VARIANT_A = `ol_variant_${'a'.repeat(32)}`;
-    const VARIANT_B = `ol_variant_${'b'.repeat(32)}`;
+  describe('restoreStockOnCancellation (#997 Half B / #1146 — OfferStockRestorer)', () => {
+    const OFFER_A = `ol_variant_${'a'.repeat(32)}`;
+    const OFFER_B = `ol_variant_${'b'.repeat(32)}`;
 
-    function inventoryQuery(
-      availability: { productVariantId: string; totalAvailable: number; locationCount: number }[],
-    ): jest.Mocked<IInventoryQueryService> {
-      return {
-        listInventoryItems: jest.fn(),
-        getInventoryItem: jest.fn(),
-        getAvailabilityByVariantIds: jest.fn().mockResolvedValue(availability),
-      };
-    }
-
-    it('sets the absolute master-inventory target per variant (never reads back Erli stock)', async () => {
-      const query = inventoryQuery([
-        { productVariantId: VARIANT_A, totalAvailable: 5, locationCount: 1 },
-        { productVariantId: VARIANT_B, totalAvailable: 12, locationCount: 2 },
+    it('sets the absolute target per offer (never reads back Erli stock)', async () => {
+      await adapter.restoreStockOnCancellation([
+        { externalOfferId: OFFER_A, quantity: 5 },
+        { externalOfferId: OFFER_B, quantity: 12 },
       ]);
 
-      await adapter.restoreStockOnCancellation([VARIANT_A, VARIANT_B], query);
-
-      // The master read drives the value...
-      expect(query.getAvailabilityByVariantIds).toHaveBeenCalledWith([VARIANT_A, VARIANT_B]);
-      // ...and NO Erli read-back happens (no GET on the hot path).
+      // NO Erli read-back happens (no GET on the hot path).
       expect(httpClient.get).not.toHaveBeenCalled();
-      // Absolute-set PATCH per variant with the master-derived quantity.
+      // Absolute-set PATCH per offer with the core-resolved quantity.
       expect(httpClient.patch).toHaveBeenCalledTimes(2);
-      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_A}`, { stock: 5 });
-      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_B}`, { stock: 12 });
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${OFFER_A}`, { stock: 5 });
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${OFFER_B}`, { stock: 12 });
     });
 
-    it('restores to 0 when master inventory zero-fills a variant (master authoritative incl. 0)', async () => {
-      const query = inventoryQuery([
-        { productVariantId: VARIANT_A, totalAvailable: 0, locationCount: 0 },
-      ]);
+    it('restores to 0 when the target quantity is 0 (master authoritative incl. 0)', async () => {
+      await adapter.restoreStockOnCancellation([{ externalOfferId: OFFER_A, quantity: 0 }]);
 
-      await adapter.restoreStockOnCancellation([VARIANT_A], query);
-
-      expect(httpClient.patch).toHaveBeenCalledWith(`products/${VARIANT_A}`, { stock: 0 });
+      expect(httpClient.patch).toHaveBeenCalledWith(`products/${OFFER_A}`, { stock: 0 });
     });
 
-    it('is a no-op when the cancelled order has no Erli offer mapping (empty ids)', async () => {
-      const query = inventoryQuery([]);
+    it('is a no-op when the cancelled order has no Erli offer mapping (empty targets)', async () => {
+      await adapter.restoreStockOnCancellation([]);
 
-      await adapter.restoreStockOnCancellation([], query);
-
-      expect(query.getAvailabilityByVariantIds).not.toHaveBeenCalled();
       expect(httpClient.patch).not.toHaveBeenCalled();
     });
   });

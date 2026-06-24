@@ -47,6 +47,7 @@ import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
+import { usePermission } from '../../shared/auth/use-permission';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
@@ -322,6 +323,7 @@ export function OrdersListPage(): ReactElement {
   const slaSummary = slaSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
+  const canRetryOrder = usePermission('orders:write');
 
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
@@ -627,7 +629,7 @@ export function OrdersListPage(): ReactElement {
         align: 'right',
         cell: (order) => {
           const failed = order.syncStatus.find((s) => s.status === 'failed');
-          if (order.recordStatus === 'awaiting_mapping' || !failed) return null;
+          if (order.recordStatus === 'awaiting_mapping' || !failed || !canRetryOrder) return null;
           const isRetrying =
             retryMutation.isPending &&
             retryMutation.variables?.internalOrderId === order.internalOrderId;
@@ -1018,7 +1020,7 @@ export function OrdersListPage(): ReactElement {
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}
-                    {failed && order.recordStatus !== 'awaiting_mapping' ? (
+                    {failed && order.recordStatus !== 'awaiting_mapping' && canRetryOrder ? (
                       <Button
                         tone="ghost"
                         className="button--sm"

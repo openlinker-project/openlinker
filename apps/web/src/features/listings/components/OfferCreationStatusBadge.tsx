@@ -16,6 +16,7 @@ const STATUS_TONE: Record<OfferCreationStatus, StatusBadgeTone> = {
   draft: 'review',
   validating: 'warning',
   active: 'success',
+  reused: 'success',
   failed: 'error',
 };
 
@@ -24,6 +25,7 @@ const STATUS_LABEL: Record<OfferCreationStatus, string> = {
   draft: 'Draft',
   validating: 'Validating',
   active: 'Active',
+  reused: 'Already existed',
   failed: 'Failed',
 };
 

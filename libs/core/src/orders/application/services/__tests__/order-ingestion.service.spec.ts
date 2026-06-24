@@ -533,6 +533,112 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('syncOrderFromSource – cancellation-observe hook (#1146)', () => {
+    const externalOrderId = 'checkout-cancel';
+    const internalOrderId = 'ol_order_cancel';
+    const dedupeKey = `marketplace:${connectionId}:stockRestore:${internalOrderId}`;
+
+    const cancelledIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'cancelled',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-02T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue(internalOrderId);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+    });
+
+    it('should enqueue a stockRestore job once when an order transitions to cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // Prior record has a non-cancelled status → transition fires.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey },
+      });
+    });
+
+    it('should enqueue once when a first-seen order is already cancelled (no prior record)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'marketplace.offer.stockRestore' })
+      );
+    });
+
+    it('should NOT enqueue on a re-poll of an already-cancelled order', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'cancelled' },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should NOT enqueue when the order status is not cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...cancelledIncoming, status: 'BOUGHT' });
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should not fail order sync when the stockRestore enqueue fails (loss is logged, not thrown)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).resolves.not.toThrow();
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      // Order is still persisted; only the restore was lost (and logged).
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+    });
+
+    it('should NOT enqueue on a destination-echo order (cross-origin early-return)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // Existing record originated from a DIFFERENT connection → early-return.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'other-connection',
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+    });
+  });
+
   describe('syncOrderFromMarketplace – customer resolution', () => {
     const externalOrderId = 'checkout-1';
 

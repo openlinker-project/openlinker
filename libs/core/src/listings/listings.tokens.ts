@@ -24,6 +24,8 @@ export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService')
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
+// Order-cancellation stock-restore (#1146)
+export const OFFER_STOCK_RESTORE_SERVICE_TOKEN = Symbol('IOfferStockRestoreService');
 // Shop publish (#1042, ADR-024)
 export const LISTING_CREATION_RECORD_REPOSITORY_TOKEN = Symbol(
   'ListingCreationRecordRepositoryPort',

@@ -32,6 +32,14 @@ export const PermissionValues = [
   'integrations:read',
   'integrations:write',
   'adapters:read',
+  'orders:read',
+  'orders:write',
+  'products:read',
+  'products:write',
+  'inventory:read',
+  'inventory:write',
+  'listings:read',
+  'listings:write',
 ] as const;
 
 /**
@@ -42,8 +50,22 @@ export type Permission = (typeof PermissionValues)[number];
 /**
  * Maps each role to its granted permissions.
  * Permissions are derived at response time, not stored in the database.
+ *
+ * This map drives the `permissions[]` array on GET /me (frontend reads it via
+ * usePermission to control UI visibility). Backend endpoint authorization is
+ * enforced separately via @Roles('admin') guards — adding a permission here
+ * does NOT open a backend endpoint; the controller guard must also be updated.
  */
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   admin: PermissionValues,
-  viewer: ['connections:read', 'sync:read', 'integrations:read', 'adapters:read'],
+  viewer: [
+    'connections:read',
+    'sync:read',
+    'integrations:read',
+    'adapters:read',
+    'orders:read',
+    'products:read',
+    'inventory:read',
+    'listings:read',
+  ],
 } as const;

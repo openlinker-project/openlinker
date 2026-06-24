@@ -29,7 +29,6 @@ import {
   isCategoryBrowser,
   isCategoryParametersReader,
   isEanCategoryMatcher,
-  AdapterCapabilityNotSupportedException,
 } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
@@ -112,8 +111,21 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       connectionId,
       'OfferManager'
     );
+    // A destination that can't batch-match EANs (it `borrows` its taxonomy, e.g.
+    // Erli per ADR-025 §3 — reuses already-resolved Allegro ids, has no catalog
+    // of its own) degrades to `no-match` for every variant rather than aborting
+    // the whole batch. The operator then supplies the category per row in Review
+    // (manual / configured mapping). This mirrors the single-resolve chain's
+    // graceful fall-through and the per-item no-throw contract — "can't match →
+    // no-match" — and is gated on the declared capability, never `platformType`.
     if (!isEanCategoryMatcher(adapter)) {
-      throw new AdapterCapabilityNotSupportedException(connectionId, 'EanCategoryMatcher');
+      this.logger.debug(
+        `Adapter lacks EanCategoryMatcher; degrading ${input.items.length} variant(s) to no-match ` +
+          `for manual category selection (connection=${connectionId})`
+      );
+      return new Map<string, EanMatchResult>(
+        input.items.map((item) => [item.variantId, { kind: 'no-match' }])
+      );
     }
     this.logger.debug(
       `Batch-resolving ${input.items.length} variant EAN(s) (connection=${connectionId})`

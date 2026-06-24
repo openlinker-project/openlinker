@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 
 import {
   DuplicateIdentifierMappingError,
+  MappingAlreadyExistsError,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
@@ -44,7 +45,9 @@ describe('OfferCreationExecutionService', () => {
   let service: OfferCreationExecutionService;
   let builder: jest.Mocked<Pick<IOfferBuilderService, 'buildCreateOfferCommand'>>;
   let records: jest.Mocked<OfferCreationRecordRepositoryPort>;
-  let identifierMapping: jest.Mocked<Pick<IIdentifierMappingService, 'createMapping'>>;
+  let identifierMapping: jest.Mocked<
+    Pick<IIdentifierMappingService, 'createMapping' | 'getInternalId'>
+  >;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let adapter: { createOffer: jest.Mock };
   let offerStatusPoll: jest.Mocked<IOfferStatusPollService>;
@@ -102,6 +105,8 @@ describe('OfferCreationExecutionService', () => {
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),
+      // Default: the winning row (when a duplicate conflict resolves) is ours.
+      getInternalId: jest.fn().mockResolvedValue(VARIANT_ID),
     };
     adapter = {
       createOffer: jest.fn().mockResolvedValue({
@@ -189,6 +194,25 @@ describe('OfferCreationExecutionService', () => {
       null
     );
     expect(offerCreationRecord.status).toBe('active');
+  });
+
+  it('persists status=reused (success) when the adapter resolved an already-existing offer', async () => {
+    adapter.createOffer.mockResolvedValueOnce({
+      externalOfferId: EXTERNAL_OFFER_ID,
+      status: 'draft',
+      alreadyExisted: true,
+    });
+
+    const { offerCreationRecord, outcome } = await service.executeCreation(baseInput);
+
+    expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
+      'rec-1',
+      EXTERNAL_OFFER_ID,
+      'reused',
+      null
+    );
+    expect(offerCreationRecord.status).toBe('reused');
+    expect(outcome).toBe('ok'); // an already-exists create is a success, not a failure
   });
 
   // The pre-existing "logs a warning when the result is validating" test was
@@ -283,13 +307,21 @@ describe('OfferCreationExecutionService', () => {
     expect(records.updateExternalIdAndStatus).not.toHaveBeenCalled();
   });
 
-  it('swallows DuplicateIdentifierMappingError as idempotent success', async () => {
+  it('swallows DuplicateIdentifierMappingError when the winning row is ours (idempotent success)', async () => {
     identifierMapping.createMapping.mockRejectedValueOnce(
       new DuplicateIdentifierMappingError('Offer', EXTERNAL_OFFER_ID, 'allegro', CONNECTION_ID)
     );
+    // The DB-layer conflict carries no winning-row id; the service resolves it
+    // and confirms it points to our variant (PR1099 review).
+    identifierMapping.getInternalId.mockResolvedValueOnce(VARIANT_ID);
 
     const { offerCreationRecord } = await service.executeCreation(baseInput);
 
+    expect(identifierMapping.getInternalId).toHaveBeenCalledWith(
+      'Offer',
+      EXTERNAL_OFFER_ID,
+      CONNECTION_ID
+    );
     expect(records.updateExternalIdAndStatus).toHaveBeenCalledWith(
       'rec-1',
       EXTERNAL_OFFER_ID,
@@ -297,6 +329,42 @@ describe('OfferCreationExecutionService', () => {
       null
     );
     expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('rethrows DuplicateIdentifierMappingError when the winning row points to a different variant (cross-variant collision)', async () => {
+    // An OfferCreator whose externalOfferId is NOT unique per variant could bind
+    // one offer id to two variants — the DB conflict must NOT be swallowed when
+    // the winning row resolves to a different internal id (PR1099 review).
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new DuplicateIdentifierMappingError('Offer', EXTERNAL_OFFER_ID, 'allegro', CONNECTION_ID)
+    );
+    identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_other');
+
+    await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
+      DuplicateIdentifierMappingError
+    );
+  });
+
+  it('swallows MappingAlreadyExistsError when it points to the same variant (idempotent)', async () => {
+    // createMapping resolves the winning row and raises this once the offer
+    // already exists (e.g. the adapter create 409'd as already-exists, #1096).
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new MappingAlreadyExistsError('Offer', EXTERNAL_OFFER_ID, CONNECTION_ID, VARIANT_ID)
+    );
+
+    const { offerCreationRecord } = await service.executeCreation(baseInput);
+
+    expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  it('rethrows MappingAlreadyExistsError pointing to a different internal id (genuine conflict)', async () => {
+    identifierMapping.createMapping.mockRejectedValueOnce(
+      new MappingAlreadyExistsError('Offer', EXTERNAL_OFFER_ID, CONNECTION_ID, 'ol_variant_other')
+    );
+
+    await expect(service.executeCreation(baseInput)).rejects.toBeInstanceOf(
+      MappingAlreadyExistsError
+    );
   });
 
   it('uses the pre-existing record when offerCreationRecordId is provided', async () => {

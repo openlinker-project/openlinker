@@ -46,7 +46,6 @@ import { RetryGroupedSyncJobsDto } from './dto/retry-grouped-sync-jobs.dto';
 import { RetryGroupedSyncJobsResponseDto } from './dto/retry-grouped-sync-jobs-response.dto';
 import { Logger } from '@openlinker/shared/logging';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('sync')
 @Controller('sync')
@@ -64,6 +63,7 @@ export class SyncController {
     private readonly bulkRetryService: ISyncJobBulkRetryService
   ) {}
 
+  @Roles('admin')
   @Post('jobs')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -188,6 +188,7 @@ export class SyncController {
     };
   }
 
+  @Roles('admin')
   @Post('jobs/retry-grouped')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -227,6 +228,7 @@ export class SyncController {
     return this.toDto(job);
   }
 
+  @Roles('admin')
   @Post('jobs/:id/retry')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

@@ -5937,7 +5937,8 @@ a.kpi-card:focus-visible {
   background: var(--status-warning-soft);
 }
 
-.offer-creation-tracker--active {
+.offer-creation-tracker--active,
+.offer-creation-tracker--reused {
   border-color: var(--status-success-border);
   background: var(--status-success-soft);
 }
@@ -8401,6 +8402,174 @@ html[data-density='compact'] .status-badge {
 /* Conditional policy input, indented under the radio caption. */
 .bulk-config__policy-detail {
   padding-left: calc(14px + var(--space-2));
+}
+
+/* Erli dispatch-time control (#1096) — the Erli-specific config field that
+   stands in for Allegro's delivery-policy step. */
+.erli-dispatch {
+  border: 1px solid var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.erli-dispatch__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.erli-dispatch__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.erli-dispatch__req {
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+.erli-dispatch__from-default {
+  font-size: 0.7rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--accent-primary-soft-strong);
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-pill);
+  padding: 2px var(--space-2);
+}
+
+.erli-dispatch__dial {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.erli-dispatch__seg {
+  display: inline-flex;
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  overflow: clip;
+  background: var(--bg-surface);
+}
+
+.erli-dispatch__seg-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  min-width: 40px;
+  border-right: 1px solid var(--accent-primary-border);
+}
+
+.erli-dispatch__seg-btn:last-child {
+  border-right: 0;
+}
+
+.erli-dispatch__seg-btn[aria-pressed='true'] {
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+
+.erli-dispatch__seg-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-ring);
+}
+
+.erli-dispatch__period-input {
+  width: 72px;
+}
+
+.erli-dispatch__unit {
+  width: auto;
+}
+
+.erli-dispatch__readout {
+  margin: var(--space-3) 0 0;
+  font-size: 0.82rem;
+  color: var(--accent-primary-soft-strong);
+}
+
+.erli-dispatch__error {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--status-error-fg);
+}
+
+.erli-config__note {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* Marketplace picker modal (#1096) — shown from Products with 2+ OfferManager connections. */
+.marketplace-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.marketplace-picker__option {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.marketplace-picker__option:hover {
+  background: var(--bg-surface-hover);
+}
+
+.marketplace-picker__option--picked {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.marketplace-picker__option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.marketplace-picker__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.marketplace-picker__name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .erli-dispatch__seg-btn {
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
 }
 
 .bulk-edit__candidates {
