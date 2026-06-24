@@ -50,10 +50,11 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (41 total):
- *   - 33 authenticated children (under `coreChildren`, counting per-children-node
+ * Today's breakdown (42 total):
+ *   - 34 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers/inventory expose multiple
- *     lazy nodes — includes `/dev/ui` design-system page (#775) and `/shipments` (#770))
+ *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
+ *     and `/invoices` list page (#758))
  *   - 2 guest routes (forgot-password, reset-password — login stays eager)
  *   - 7 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
  *     woocommerce setup, erli setup, subiekt setup)
