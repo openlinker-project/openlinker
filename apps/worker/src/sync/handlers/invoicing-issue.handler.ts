@@ -75,8 +75,13 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       await this.invoiceService.issueInvoice(command);
       return { outcome: 'ok' };
     } catch (error) {
-      // Transport / bridge-unreachable → retryable. PII discipline: the message
-      // carries ONLY error.name + orderId + connectionId — never payload/buyer.
+      // ANY issueInvoice failure (transport/bridge-unreachable AND any provider
+      // error that escapes the SVC) is wrapped as retryable here — the deep
+      // pre-validation above has already rejected statically-malformed payloads
+      // as business_failure, and the SVC's `issued`-only exactly-once gate makes
+      // every retry a no-op against the same key, so re-crossing the provider
+      // boundary cannot double-issue. PII discipline: the message carries ONLY
+      // error.name + orderId + connectionId — never payload/buyer.
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       throw new SyncJobExecutionError(
         `invoicing.issue failed: error=${errorName} orderId=${payload.orderId} connectionId=${payload.connectionId}`,

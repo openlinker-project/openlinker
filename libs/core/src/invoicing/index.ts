@@ -17,11 +17,10 @@ export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/ports/invoicing.port';
+// Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/invoice-record-repository.port';
-export type { RegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
-export { isRegulatoryStatusReader } from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';

@@ -46,7 +46,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     MappingsModule, // Required for MAPPING_CONFIG_SERVICE_TOKEN
     CustomersModule, // Required for CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN
     // One-way edge (F3): OrderIngestionService injects AUTO_ISSUE_TRIGGER_SERVICE_TOKEN.
-    // InvoicingModule's mapper imports orders TYPES only (compile-time) → no DI cycle.
+    // InvoicingModule does NOT import OrdersModule — its trigger service consumes
+    // an orders runtime value (PAYMENT_STATUS) via a dependency-free leaf import,
+    // never the orders barrel — so no module-graph cycle.
     InvoicingModule,
   ],
   providers: [

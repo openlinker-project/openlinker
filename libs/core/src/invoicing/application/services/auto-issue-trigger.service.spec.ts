@@ -116,6 +116,24 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    it('auto-on-shipped: non-shipped order warns ONCE per connection (F7/D6 viability log, PII-clean)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-shipped', { id: 'ship-1' })]);
+
+      // Two non-shipped transitions on the same connection.
+      await service.onOrderTransition(makeOrder({ status: 'processing' }), 'src-1');
+      await service.onOrderTransition(makeOrder({ status: 'processing' }), 'src-1');
+
+      // Warned exactly once (not per poll), and the envelope is PII-clean.
+      const viabilityWarns = warnSpy.mock.calls
+        .map((c) => c[0])
+        .filter((m) => m.includes('has not yet seen'));
+      expect(viabilityWarns).toHaveLength(1);
+      expect(viabilityWarns[0]).toContain('connectionId=ship-1');
+      expect(viabilityWarns[0]).toContain('observedStatus=processing');
+      expect(viabilityWarns[0]).not.toContain('Jan Kowalski');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
     it('manual: enqueues ZERO jobs (no-op)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
       await service.onOrderTransition(

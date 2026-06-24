@@ -36,7 +36,12 @@ import {
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
 import type { Order } from '@openlinker/core/orders';
-import { PAYMENT_STATUS } from '@openlinker/core/orders';
+// Deep leaf import (NOT the `@openlinker/core/orders` barrel): the barrel
+// re-exports `OrdersModule` as a runtime value, and `OrdersModule` imports
+// `InvoicingModule` (which provides THIS service) — pulling the barrel here for
+// a runtime value would close a module-load value-cycle. `payment-status.types`
+// is a dependency-free leaf, so importing it directly breaks that edge.
+import { PAYMENT_STATUS } from '../../../orders/domain/types/payment-status.types';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
@@ -73,6 +78,17 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
 export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private readonly logger = new Logger(AutoIssueTriggerService.name);
 
+  /**
+   * F7/D6 one-time viability log: connection ids for which an `auto-on-shipped`
+   * model has already been evaluated against a non-`shipped` order and warned.
+   * `auto-on-shipped` is only honored where the source surfaces `'shipped'`
+   * inbound; a connection configured for it on a source that never emits
+   * `'shipped'` would otherwise silently never issue. We warn ONCE per
+   * connection (not per order) so the misconfiguration is operator-visible
+   * without flooding the log on every poll.
+   */
+  private readonly shippedViabilityWarned = new Set<string>();
+
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
@@ -104,7 +120,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           connection.config.invoicing?.triggerModel,
         );
 
-        if (!this.qualifies(order, triggerModel)) {
+        if (!this.qualifies(order, triggerModel, connection.id)) {
           continue;
         }
 
@@ -161,16 +177,36 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * Decide whether the trigger model qualifies for THIS transition
    * (level-evaluated, D3): `auto-on-paid` iff paid; `auto-on-shipped` iff
    * `order.status === 'shipped'`; `manual` → false; `batched` → throws
-   * `BatchedTriggerNotImplementedError`.
+   * `BatchedTriggerNotImplementedError`. For `auto-on-shipped` on a non-shipped
+   * order it emits the F7/D6 one-time viability warning (keyed by `connectionId`)
+   * so a source that never surfaces `'shipped'` is operator-diagnosable.
    */
-  private qualifies(order: Order, triggerModel: InvoiceTriggerModel): boolean {
+  private qualifies(
+    order: Order,
+    triggerModel: InvoiceTriggerModel,
+    connectionId: string,
+  ): boolean {
     switch (triggerModel) {
       case 'auto-on-paid':
         // D3 level-evaluated: qualifies iff the order is currently paid.
         return order.paymentStatus === PAYMENT_STATUS.Paid;
       case 'auto-on-shipped':
         // D6: honored only where the source surfaces 'shipped' inbound.
-        return order.status === 'shipped';
+        if (order.status === 'shipped') {
+          return true;
+        }
+        // F7: a non-`shipped` order on an `auto-on-shipped` connection is the
+        // signal that the source may never emit `'shipped'`. Warn ONCE per
+        // connection (PII-clean: connectionId + observed status only) so the
+        // silent no-issue is diagnosable without per-poll log spam.
+        if (!this.shippedViabilityWarned.has(connectionId)) {
+          this.shippedViabilityWarned.add(connectionId);
+          this.logger.warn(
+            `auto-on-shipped connection has not yet seen a 'shipped' order: connectionId=${connectionId} observedStatus=${order.status}. ` +
+              `If the source never surfaces 'shipped' inbound, this connection will never auto-issue (D6).`,
+          );
+        }
+        return false;
       case 'manual':
         return false;
       case 'batched':
