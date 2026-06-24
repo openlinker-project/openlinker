@@ -3,14 +3,18 @@
  *
  * Fetches MF public-key certificates from `GET /security/public-key-certificates`
  * and caches the selected cert per `(connectionId, usage)` via the host cache.
- * The cache TTL is derived from the cert's validity window (`validUntil - now`,
- * minus a safety margin) — never a hardcoded constant — so a rotated cert can't
- * be served past its lifetime. When no host cache is wired the service degrades
- * to a per-call fetch.
+ * The endpoint returns a flat ARRAY of `PublicKeyCertificate` entries — each
+ * carries `certificate` (DER, base64), `certificateId`, `publicKeyId` (the
+ * 44-char encryption-key selector), `validFrom`/`validTo`, and `usage` as an
+ * ARRAY of operations. The cache TTL is derived from the cert's validity window
+ * (`validTo - now`, minus a safety margin) — never a hardcoded constant — so a
+ * rotated cert can't be served past its lifetime. When no host cache is wired
+ * the service degrades to a per-call fetch.
  *
  * Used by both `KsefTokenEncryptor` (usage `KsefTokenEncryption`) and
  * `KsefSessionCryptoService` (usage `SymmetricKeyEncryption`); the usage is a
- * required selector to avoid key-confusion between the two cert kinds.
+ * required selector (matched against the cert's `usage` array) to avoid
+ * key-confusion between the two cert kinds.
  *
  * SECURITY: logs only the cache key (connectionId + usage), the selected cert
  * hash, and the derived TTL — never the PEM / key material.
@@ -25,29 +29,35 @@ import type { KsefCertificateUsage, PublicKeyCertificate } from '../http/ksef-cr
 import { validateMfPublicKeyCertificate } from './mf-public-key-validator';
 import { KsefSessionCryptoException } from '../../domain/exceptions/ksef-session-crypto.exception';
 
-/** Refetch this many ms before a cert's `validUntil`, so an in-flight wrap never races expiry. */
+/** Refetch this many ms before a cert's `validTo`, so an in-flight wrap never races expiry. */
 const CERT_REFRESH_MARGIN_MS = 5 * 60_000;
 
 const MF_CERTIFICATES_PATH = '/security/public-key-certificates';
 
-/** Wire shape of one entry in the MF public-key-certificates response. */
+/**
+ * Wire shape of one `PublicKeyCertificate` entry. `certificate` is DER bytes
+ * base64-encoded; `usage` is an array of operations the cert may be used for.
+ */
 interface MfCertificateResponseEntry {
   certificate: string;
-  usage: KsefCertificateUsage;
+  certificateId?: string;
+  publicKeyId?: string;
+  usage: string[];
   validFrom: string;
-  validUntil: string;
+  validTo: string;
 }
 
-interface MfCertificatesResponse {
-  certificates: MfCertificateResponseEntry[];
-}
+/** The endpoint returns a bare array of certificate entries. */
+type MfCertificatesResponse = MfCertificateResponseEntry[];
 
 /** Cached shape (PEM + ISO dates) — dates are re-hydrated to `Date` on read. */
 interface CachedCertificate {
   certificatePem: string;
-  usage: KsefCertificateUsage;
+  usage: KsefCertificateUsage[];
   validFrom: string;
-  validUntil: string;
+  validTo: string;
+  publicKeyId?: string;
+  certificateId?: string;
   certificateHash: string;
 }
 
@@ -62,8 +72,8 @@ export class MfPublicKeyCacheService {
 
   /**
    * Resolve the active MF public-key cert for a usage, cache-first. On miss /
-   * expiry, fetches, selects the latest valid cert, validates it, and caches it
-   * with a validity-derived TTL.
+   * expiry, fetches, selects the latest valid cert whose `usage` array includes
+   * the requested usage, validates it, and caches it with a validity-derived TTL.
    */
   async fetchAndCachePublicKey(usage: KsefCertificateUsage): Promise<PublicKeyCertificate> {
     const cacheKey = this.cacheKeyFor(usage);
@@ -102,7 +112,9 @@ export class MfPublicKeyCacheService {
       certificatePem: entry.certificatePem,
       usage: entry.usage,
       validFrom: new Date(entry.validFrom),
-      validUntil: new Date(entry.validUntil),
+      validTo: new Date(entry.validTo),
+      publicKeyId: entry.publicKeyId,
+      certificateId: entry.certificateId,
       certificateHash: entry.certificateHash,
     };
     try {
@@ -123,7 +135,7 @@ export class MfPublicKeyCacheService {
     if (!this.cache) {
       return;
     }
-    const ttlMs = cert.validUntil.getTime() - CERT_REFRESH_MARGIN_MS - now.getTime();
+    const ttlMs = cert.validTo.getTime() - CERT_REFRESH_MARGIN_MS - now.getTime();
     if (ttlMs <= 0) {
       // Cert is within the refresh margin of expiry — usable now but not worth
       // caching; the next call refetches.
@@ -134,7 +146,9 @@ export class MfPublicKeyCacheService {
       certificatePem: cert.certificatePem,
       usage: cert.usage,
       validFrom: cert.validFrom.toISOString(),
-      validUntil: cert.validUntil.toISOString(),
+      validTo: cert.validTo.toISOString(),
+      publicKeyId: cert.publicKeyId,
+      certificateId: cert.certificateId,
       certificateHash: cert.certificateHash,
     };
     await this.cache.set(cacheKey, entry, ttlSec);
@@ -146,8 +160,9 @@ export class MfPublicKeyCacheService {
     now: Date,
   ): Promise<PublicKeyCertificate> {
     const response = await this.httpClient.get<MfCertificatesResponse>(MF_CERTIFICATES_PATH);
-    const matching = (response.data.certificates ?? [])
-      .filter((entry) => entry.usage === usage)
+    const entries = Array.isArray(response.data) ? response.data : [];
+    const matching = entries
+      .filter((entry) => (entry.usage ?? []).includes(usage))
       .map((entry) => this.toCertificate(entry))
       // Latest-issued first.
       .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
@@ -171,12 +186,28 @@ export class MfPublicKeyCacheService {
   }
 
   private toCertificate(entry: MfCertificateResponseEntry): PublicKeyCertificate {
+    const certificatePem = this.toPem(entry.certificate);
     return {
-      certificatePem: entry.certificate,
-      usage: entry.usage,
+      certificatePem,
+      usage: (entry.usage ?? []) as KsefCertificateUsage[],
       validFrom: new Date(entry.validFrom),
-      validUntil: new Date(entry.validUntil),
-      certificateHash: createHash('sha256').update(entry.certificate).digest('hex'),
+      validTo: new Date(entry.validTo),
+      publicKeyId: entry.publicKeyId,
+      certificateId: entry.certificateId,
+      certificateHash: createHash('sha256').update(certificatePem).digest('hex'),
     };
+  }
+
+  /**
+   * Wrap a base64-DER X.509 certificate into a PEM block. `createPublicKey`
+   * (in the RSA wrapper) accepts a certificate PEM and extracts the SPKI. A
+   * payload that is already PEM (legacy/test fixtures) is passed through.
+   */
+  private toPem(certificate: string): string {
+    if (certificate.includes('-----BEGIN')) {
+      return certificate;
+    }
+    const lines = certificate.replace(/\s+/g, '').match(/.{1,64}/g) ?? [certificate];
+    return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`;
   }
 }
