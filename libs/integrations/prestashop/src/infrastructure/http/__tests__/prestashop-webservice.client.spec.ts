@@ -829,4 +829,140 @@ describe('PrestashopWebserviceClient', () => {
       expect(result).toBeDefined();
     });
   });
+
+  describe('uploadImage', () => {
+    const imageBytes = new Uint8Array([0xff, 0xd8, 0xff]); // minimal JPEG header bytes
+    const mimeType = 'image/jpeg';
+    const resourcePath = 'images/products/42';
+
+    function mockUploadOk(responseBody: unknown): void {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(responseBody)),
+      });
+    }
+
+    it('should POST to the correct URL for the resource path', async () => {
+      mockUploadOk({ prestashop: { image: { id: '7' } } });
+
+      await client.uploadImage(resourcePath, imageBytes, mimeType);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: dynamic spy
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toBe('https://shop.example.com/api/images/products/42');
+    });
+
+    it('should use POST method with Authorization and Output-Format headers', async () => {
+      mockUploadOk({ prestashop: { image: { id: '7' } } });
+
+      await client.uploadImage(resourcePath, imageBytes, mimeType);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: dynamic spy
+      const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+      const headers = init.headers as Headers;
+      expect(init.method).toBe('POST');
+      expect(headers.get('Authorization')).toBe('Basic dGVzdC1hcGkta2V5LTEyMzQ1Og==');
+      expect(headers.get('Output-Format')).toBe('JSON');
+      // Content-Type must NOT be set manually — fetch sets the multipart boundary automatically.
+      expect(headers.get('Content-Type')).toBeNull();
+    });
+
+    it('should send a FormData body containing the image field', async () => {
+      mockUploadOk({ prestashop: { image: { id: '7' } } });
+
+      await client.uploadImage(resourcePath, imageBytes, mimeType, 'photo.jpg');
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: dynamic spy
+      const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+      expect(init.body).toBeInstanceOf(FormData);
+      const form = init.body as FormData;
+      expect(form.get('image')).toBeTruthy();
+    });
+
+    it('should return image id from the nested `prestashop.image` response shape', async () => {
+      mockUploadOk({ prestashop: { image: { id: '99' } } });
+
+      const result = await client.uploadImage(resourcePath, imageBytes, mimeType);
+
+      expect(result).toEqual({ id: '99' });
+    });
+
+    it('should return image id from the flat `image` response shape', async () => {
+      // PS may omit the outer `prestashop` wrapper in some API versions.
+      mockUploadOk({ image: { id: '55' } });
+
+      const result = await client.uploadImage(resourcePath, imageBytes, mimeType);
+
+      expect(result).toEqual({ id: '55' });
+    });
+
+    it('should return image id from the XML-parsed attribute shape (`@_id`)', async () => {
+      // fast-xml-parser represents XML attributes as `@_key`; the images endpoint
+      // may respond with XML even when `Output-Format: JSON` is requested on some PS versions.
+      mockUploadOk({ prestashop: { image: { '@_id': '33' } } });
+
+      const result = await client.uploadImage(resourcePath, imageBytes, mimeType);
+
+      expect(result).toEqual({ id: '33' });
+    });
+
+    it('should throw PrestashopAuthenticationException on 401', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: () => Promise.resolve('Unauthorized'),
+      });
+
+      await expect(client.uploadImage(resourcePath, imageBytes, mimeType)).rejects.toThrow(
+        PrestashopAuthenticationException,
+      );
+    });
+
+    it('should throw PrestashopApiException on 5xx and NOT retry', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        text: () => Promise.resolve('Internal Server Error'),
+      });
+
+      await expect(client.uploadImage(resourcePath, imageBytes, mimeType)).rejects.toThrow(
+        PrestashopApiException,
+      );
+      // uploadImage uses its own fetch, not requestWithRetry — one attempt only.
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw PrestashopApiException with timeout message on AbortError', async () => {
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+      (global.fetch as jest.Mock).mockRejectedValueOnce(abortError);
+
+      await expect(client.uploadImage(resourcePath, imageBytes, mimeType)).rejects.toMatchObject({
+        constructor: PrestashopApiException,
+        message: expect.stringContaining('timeout'),
+      });
+    });
+
+    it('should throw PrestashopApiException wrapping a network error', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      await expect(client.uploadImage(resourcePath, imageBytes, mimeType)).rejects.toMatchObject({
+        constructor: PrestashopApiException,
+        message: expect.stringContaining('Network error'),
+      });
+    });
+
+    it('should throw PrestashopApiException when the response contains no image id', async () => {
+      // PS returned an unexpected shape — guard against silent `undefined` id.
+      mockUploadOk({ prestashop: { product: { id: '1' } } });
+
+      await expect(client.uploadImage(resourcePath, imageBytes, mimeType)).rejects.toThrow(
+        PrestashopApiException,
+      );
+    });
+  });
 });
