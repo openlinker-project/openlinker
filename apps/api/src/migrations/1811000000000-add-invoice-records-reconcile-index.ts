@@ -13,8 +13,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceRecordsReconcileIndex1810000000000 implements MigrationInterface {
-  name = 'AddInvoiceRecordsReconcileIndex1810000000000';
+export class AddInvoiceRecordsReconcileIndex1811000000000 implements MigrationInterface {
+  name = 'AddInvoiceRecordsReconcileIndex1811000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
