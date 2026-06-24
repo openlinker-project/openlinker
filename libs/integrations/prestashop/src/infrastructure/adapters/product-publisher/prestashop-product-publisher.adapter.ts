@@ -235,7 +235,7 @@ export class PrestashopProductPublisherAdapter
     const rows = await this.client.listResources<PrestashopProductListItem>('products', {
       custom: { 'filter[reference]': reference },
     });
-    const match = rows.find((row) => String(row.reference ?? '') === reference) ?? rows[0];
+    const match = rows.find((row) => String(row.reference ?? '') === reference);
     return match ? String(match.id) : null;
   }
 

@@ -153,6 +153,30 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(result.externalProductId).toBe('900');
     });
 
+    it('should create a new product when PS returns rows but none match the exact reference (#1107)', async () => {
+      // PS filter may return partial-match rows (e.g. a row with a different reference).
+      // The adapter must NOT fall back to adopting rows[0] — it must fall through to create
+      // so an unrelated PS product is never overwritten.
+      client.listResources.mockImplementation((resource) => {
+        if (resource === 'products') {
+          return Promise.resolve([{ id: '999', reference: 'ol_variant_different' }]);
+        }
+        return Promise.resolve([{ id: '1', id_product: '200', quantity: '0' }]);
+      });
+      client.createResource.mockResolvedValue({ id: '200', active: '1' });
+      client.updateResource.mockResolvedValue({ id: '1' });
+
+      const result = await adapter.publishProduct(baseCommand());
+
+      expect(client.createResource).toHaveBeenCalledWith('products', expect.any(Object));
+      expect(client.updateResource).not.toHaveBeenCalledWith(
+        'products',
+        '999',
+        expect.anything(),
+      );
+      expect(result.externalProductId).toBe('200');
+    });
+
     it('should propagate a reference-lookup failure rather than risk a duplicate (#1107)', async () => {
       // An ambiguous lookup (transport error) must NOT fall through to create.
       client.listResources.mockRejectedValue(new PrestashopApiException('WS down', 503));
