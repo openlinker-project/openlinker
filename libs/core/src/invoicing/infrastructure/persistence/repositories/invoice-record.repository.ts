@@ -127,11 +127,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       .execute();
 
     if (result.affected && result.affected > 0) {
-      const raw = Array.isArray(result.raw) ? result.raw[0] : undefined;
+      const rawRows = (Array.isArray(result.raw) ? result.raw : []) as unknown[];
+      const raw = rawRows[0] as Partial<InvoiceRecordOrmEntity> | undefined;
       if (raw) {
         // RETURNING gives the raw row shape; hydrate it through the repository's
         // entity metadata so the caller gets a fully-typed domain record.
-        const entity = this.repository.create(raw as Partial<InvoiceRecordOrmEntity>);
+        const entity = this.repository.create(raw);
         return this.toDomain(entity);
       }
       // We provably WON the claim (affected > 0) but could not read the row back

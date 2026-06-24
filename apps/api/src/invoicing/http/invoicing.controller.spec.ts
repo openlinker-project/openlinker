@@ -60,7 +60,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
       return (
         base.status === 'issuing' &&
         base.leaseExpiresAt !== null &&
-        (base.leaseExpiresAt as Date).getTime() > now.getTime()
+        (base.leaseExpiresAt).getTime() > now.getTime()
       );
     },
   } as InvoiceRecord;

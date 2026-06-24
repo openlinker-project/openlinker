@@ -19,11 +19,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import {
-  InvoiceFailureMode,
-  InvoiceStatus,
-  RegulatoryStatus,
-} from '../../../domain/types/invoicing.types';
+import type { InvoiceFailureMode } from '../../../domain/types/invoicing.types';
+import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
 @Entity('invoice_records')
 @Index('IDX_invoice_records_order_connection', ['orderId', 'connectionId'])
