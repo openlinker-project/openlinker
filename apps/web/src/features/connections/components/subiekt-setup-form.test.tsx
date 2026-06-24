@@ -197,4 +197,63 @@ describe('SubiektSetupForm', () => {
     expect(await screen.findByText('Connection test failed')).toBeInTheDocument();
     expect(screen.getByText(/Bridge unreachable/)).toBeInTheDocument();
   });
+
+  it('surfaces the "Unable to test connection" alert when the test request rejects', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
+    // A rejected test request (network failure / 5xx) leaves testResult null and
+    // surfaces the error via testConnection.error — distinct from a resolved
+    // { success: false } result.
+    const test = vi.fn().mockRejectedValue(new Error('Bridge offline'));
+    const apiClient = createMockApiClient({ connections: { create, test } });
+
+    renderWithProviders(<SubiektSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Subiekt' },
+    });
+    fireEvent.change(screen.getByLabelText('Bridge URL'), {
+      target: { value: 'http://127.0.0.1:5000' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+    const testButton = await screen.findByRole('button', { name: 'Test connection' });
+    fireEvent.click(testButton);
+
+    expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
+    expect(screen.getByText(/Bridge offline/)).toBeInTheDocument();
+    // The success/fail result alert must NOT appear on the rejected path.
+    expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
+  });
+
+  it('clears a stale failed result when a subsequent test request rejects', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
+    const test = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false, status: 502, message: 'Bridge unreachable', latencyMs: 10 })
+      .mockRejectedValueOnce(new Error('Bridge offline'));
+    const apiClient = createMockApiClient({ connections: { create, test } });
+
+    renderWithProviders(<SubiektSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Subiekt' },
+    });
+    fireEvent.change(screen.getByLabelText('Bridge URL'), {
+      target: { value: 'http://127.0.0.1:5000' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+    const testButton = await screen.findByRole('button', { name: 'Test connection' });
+
+    // First test → resolved failure result shown.
+    fireEvent.click(testButton);
+    expect(await screen.findByText('Connection test failed')).toBeInTheDocument();
+
+    // Re-test → rejects. The stale failed-result alert must be cleared, leaving
+    // only the "Unable to test connection" error.
+    fireEvent.click(testButton);
+    expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
+    expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
+  });
 });
