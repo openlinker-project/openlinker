@@ -1,21 +1,34 @@
 /**
- * Subiekt Bridge — wire types
+ * Subiekt Bridge — wire types (RECONCILED to the REAL bridge HTTP DTO, #753)
  *
  * Request/response shapes for the OpenLinker Subiekt Bridge REST surface — the
  * Windows .NET service that wraps InsERT's Sfera SDK (#728 §3.1). These are
- * **bridge-native** (Subiekt/PL dialect: `nip`, KSeF regulatory states) — the
- * neutral ⇄ bridge mapping lives in the real adapter (#753), NOT here. The
- * authoritative REST contract is owned by the bridge bootstrap issue (#752);
- * these shapes are the TS expression of it and may be reconciled when #752
- * lands — the shared contract suite is where divergence surfaces.
+ * **bridge-native** (Subiekt/PL dialect: Polish field names, `FV`/`PA` document
+ * types, `nip`, KSeF regulatory states) — the neutral ⇄ bridge mapping lives in
+ * the real adapter (#753), NOT here.
+ *
+ * IMPORTANT (reconciliation): these shapes were realigned to the bridge's actual
+ * .NET Contracts (`CreateFirmaRequestDto`/`CreateInvoiceRequestDto`/`BuyerDto`/
+ * `AddressDto` + the `ResponseEnvelope<T>` wrapper) after a live wire-test proved
+ * the previous `#754` shapes (wrapped `buyer`, English line/address fields,
+ * `faktura`/`paragon`) were rejected by the bridge with HTTP 400. The authoritative
+ * source is the bridge repo:
+ *   bridge/Subiekt.Bridge.Api/Models/ResponseEnvelope.cs (the DTOs)
+ *   bridge/Subiekt.Bridge.Api/Contracts/{InvoiceContracts,UpsertCustomerContracts}.cs
+ *   bridge/Subiekt.Bridge.Api/Endpoints/{Invoices,Customers}Endpoints.cs (the envelope + response data)
+ *
+ * The bridge wraps EVERY response in `{ success, data, error }`; the `Bridge*Response`
+ * types below model the `data` payload (the HTTP client unwraps the envelope).
  *
  * @module libs/integrations/subiekt/bridge
  */
 
 /**
- * KSeF-native regulatory status the bridge reports for a document. The neutral
+ * KSeF-native regulatory status the bridge reports for a document (the
+ * `data.regulatoryStatus`/`data.ksef.status` field). The neutral
  * `RegulatoryStatus` (`@openlinker/core/invoicing`) is derived from this by the
- * #753 adapter — it is not referenced here.
+ * #753 adapter — it is not referenced here. Observed live values: `none` (PA),
+ * `pending` (FV pre-KSeF); the rest are the documented KSeF lifecycle.
  */
 export const BridgeRegulatoryStatusValues = [
   'none',
@@ -26,65 +39,113 @@ export const BridgeRegulatoryStatusValues = [
 ] as const;
 export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[number];
 
-/** Bridge-side issuance result state. */
+/** Bridge-side issuance result state (`data.state`). */
 export const BridgeInvoiceStateValues = ['issued', 'failed'] as const;
 export type BridgeInvoiceState = (typeof BridgeInvoiceStateValues)[number];
 
-/** Postal address as the bridge expects it. */
+/** Bridge-native document type. `FV` = faktura, `PA` = paragon. */
+export const BridgeDocumentTypeValues = ['FV', 'PA'] as const;
+export type BridgeDocumentType = (typeof BridgeDocumentTypeValues)[number];
+
+/**
+ * Postal address as the bridge expects it (Subiekt `AdresPodstawowy`). Polish
+ * field names, mapped 1:1 onto the bridge's `AddressDto`. All parts are optional
+ * on the wire; `countryCode` defaults to `"PL"` server-side when blank.
+ */
 export interface BridgeAddress {
-  line1: string;
-  line2: string | null;
-  city: string;
-  postalCode: string;
+  ulica?: string;
+  nrDomu?: string;
+  nrLokalu?: string | null;
+  kodPocztowy?: string;
+  miejscowosc?: string;
+  poczta?: string | null;
   countryCode: string;
 }
 
-/** Buyer (kontrahent) in the bridge's dialect — `nip` is provider-native here. */
+/**
+ * Inline buyer (kontrahent) on an issue-invoice request — the bridge's `BuyerDto`.
+ * When `nip` is present (or `isCompany` is true) the bridge treats the buyer as a
+ * `firma`. `nip` is provider-native (a bare PL NIP), `null` for B2C.
+ */
 export interface BridgeBuyer {
   name: string;
   nip: string | null;
-  address: BridgeAddress;
   isCompany: boolean;
-}
-
-/** One invoice line in the bridge request. */
-export interface BridgeLine {
-  name: string;
-  quantity: number;
-  unitPriceGross: number;
-  taxRate: string;
+  telefon?: string;
+  address?: BridgeAddress;
 }
 
 /**
- * Issue-invoice request. `documentType` is a provider-native string (the bridge
- * resolves it to a Subiekt document kind); #752 owns the well-known values.
+ * One invoice line — the bridge's `CreateInvoiceLineRequestDto`. A line references
+ * a catalogue product by `towarSymbol`, OR carries a one-time `name` (product not
+ * in Subiekt's catalogue); at least one of the two must be present. `ilosc` is the
+ * quantity, `cenaBrutto` the gross unit price, `stawkaVAT` the VAT-rate code (e.g.
+ * `"23"`).
+ */
+export interface BridgeLine {
+  towarSymbol?: string;
+  ilosc: number;
+  cenaBrutto: number;
+  stawkaVAT: string;
+  name?: string;
+}
+
+/**
+ * Issue-invoice request — the bridge's `CreateInvoiceRequestDto`.
+ *
+ * `documentType` is `"FV"` (faktura) or `"PA"` (paragon). The buyer is carried
+ * INLINE: when `kontrahentId` is absent/<=0 and `buyer.name` is present, the
+ * bridge auto-upserts the buyer and bills it in one unit of work (self-sufficient
+ * mode). `idempotencyKey` makes a retried call return the SAME document.
  */
 export interface BridgeIssueInvoiceRequest {
-  orderId: string;
-  idempotencyKey?: string;
-  documentType: string;
+  documentType: BridgeDocumentType;
   currency: string;
-  buyer: BridgeBuyer;
+  orderId?: string;
+  idempotencyKey?: string;
+  /** ISO-8601 issue date; the bridge defaults to "now" when omitted. */
+  issueDate?: string;
+  /** Explicit existing customer id; omit (or <=0) to use the inline `buyer`. */
+  kontrahentId?: number;
+  buyer?: BridgeBuyer;
   lines: BridgeLine[];
 }
 
-/** Issue-invoice response. */
+/**
+ * Issue-invoice response — the `data` payload of the bridge's `ResponseEnvelope`.
+ * `providerInvoiceId` is a numeric Subiekt document id (the bridge returns it as a
+ * JSON number); the adapter stringifies it for the neutral `InvoiceRecord`.
+ */
 export interface BridgeIssueInvoiceResponse {
-  providerInvoiceId: string;
+  providerInvoiceId: number;
   providerInvoiceNumber: string;
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
 }
 
-/** Customer (kontrahent) upsert request. */
+/**
+ * Customer (kontrahent) upsert request — the bridge's `CreateFirmaRequestDto`.
+ * TOP-LEVEL (NOT wrapped in a `buyer`). `typ` is `"firma"` | `"osoba"`.
+ */
 export interface BridgeUpsertCustomerRequest {
-  buyer: BridgeBuyer;
+  nazwaSkrocona: string;
+  nip: string | null;
+  typ: 'firma' | 'osoba';
+  telefon?: string;
+  address?: BridgeAddress;
 }
 
-/** Customer upsert response — the provider's customer id. */
+/**
+ * Customer upsert response — the `data` payload of the bridge's `ResponseEnvelope`
+ * (`{ id, numer, nazwaSkrocona, nip }`). `id` is the numeric Subiekt customer id;
+ * the adapter stringifies it into `providerCustomerId`.
+ */
 export interface BridgeUpsertCustomerResponse {
-  providerCustomerId: string;
+  id: number;
+  numer: string;
+  nazwaSkrocona: string;
+  nip: string | null;
 }
 
 /** Status-read request, keyed by the provider's invoice id. */
@@ -92,8 +153,31 @@ export interface BridgeInvoiceStatusRequest {
   providerInvoiceId: string;
 }
 
-/** Status-read response. */
+/**
+ * Status-read response — derived from the `data` payload of
+ * `GET /api/invoices/{id}/status`. The bridge's status payload carries the KSeF
+ * `regulatoryStatus` and a Polish document `status` (e.g. `"zatwierdzony"`) but no
+ * `state` field; the HTTP client derives `state: 'issued'` for a document that
+ * reads back, `'failed'` otherwise.
+ */
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+}
+
+/**
+ * The bridge's uniform response envelope. EVERY endpoint returns this shape; the
+ * HTTP client reads `data` on success and `error.reason` on a business failure.
+ */
+export interface BridgeResponseEnvelope<T> {
+  success: boolean;
+  data: T | null;
+  error: BridgeEnvelopeError | null;
+}
+
+/** Structured error inside a non-success `BridgeResponseEnvelope`. */
+export interface BridgeEnvelopeError {
+  code: string;
+  reason: string;
+  correlationId: string | null;
 }
