@@ -34,5 +34,10 @@ export class ListingCreationRecord {
      * construction sites stay unchanged.
      */
     public readonly bulkBatchId: string | null = null,
+    /**
+     * Non-fatal warnings emitted by the adapter on a successful publish (#1131).
+     * Null when the adapter reported no warnings. Never set on failed records.
+     */
+    public readonly warnings: string[] | null = null,
   ) {}
 }
