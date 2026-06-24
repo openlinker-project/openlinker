@@ -89,6 +89,18 @@ describe('OfferMappingSyncService', () => {
     );
   });
 
+  it('no-ops for an adapter that supports neither listOffers nor listOfferEvents (#1096)', async () => {
+    // Reconciliation-first adapter (e.g. Erli) — offer mappings are created at
+    // offer-creation time, so a scheduled offers-sync must skip, not throw.
+    const bareAdapter = { updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort;
+    (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue(bareAdapter);
+
+    const result = await service.sync('connection-1', { limit: 50 });
+
+    expect(result).toEqual({ scanned: 0, linked: 0, skipped: 0, nextCursor: null });
+    expect(identifierMapping.getOrCreateExactMapping).not.toHaveBeenCalled();
+  });
+
   it('links offers deterministically and upserts mappings', async () => {
     (marketplace.listOffers as jest.Mock).mockResolvedValue({
       items: [

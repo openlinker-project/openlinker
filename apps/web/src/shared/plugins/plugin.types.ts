@@ -191,6 +191,131 @@ export interface ExtraConfigSectionProps {
 }
 
 /**
+ * Bulk-offer config form values (#1096). The shared slice the host owns
+ * (pricing/stock policy, currency, publish/AI toggles) plus an open
+ * `platformParams` slot the per-platform section writes into. Owned by the
+ * plugin contract (NOT `features/listings`) so plugins and the host bind
+ * against one stable shape — and so `shared/plugins`'s narrow feature-import
+ * allow-list (`.eslintrc.js`) isn't widened.
+ */
+export interface BulkConfigFormValues {
+  pricingMode: 'use-master' | 'markup' | 'flat';
+  markupPercent: string;
+  flatPriceAmount: string;
+  stockMode: 'use-master' | 'cap' | 'flat';
+  capValue: string;
+  flatStockValue: string;
+  publishImmediately: boolean;
+  generateDescription: boolean;
+  /** Listing currency. Allegro section owns the picker; Erli fixes PLN. */
+  currency: string;
+  /** Open slot the platform section writes (deliveryPolicyId, dispatchTime, …). */
+  platformParams: Record<string, unknown>;
+}
+
+/**
+ * Props the per-platform bulk-offer config section receives (#1096). Mirrors
+ * the `StructuredConfigSection` precedent: content-only, takes the parent RHF
+ * form, registers its fields under `platformParams.*`.
+ */
+export interface BulkOfferConfigSectionProps {
+  connection: Connection;
+  form: UseFormReturn<BulkConfigFormValues>;
+}
+
+/**
+ * Per-platform bulk-offer config section contribution (#1096). Lives on
+ * `PlatformContribution` (render-time, resolved via `usePlatform`) — same
+ * altitude as `StructuredConfigSection`/`ExtraConfigSection`, not `build`.
+ * `isComplete` is a pure predicate the host ANDs into its `canProceed` gate
+ * (the host validates the shared slice; the section validates its own fields).
+ */
+export interface BulkOfferConfigSectionContribution {
+  component: ComponentType<BulkOfferConfigSectionProps>;
+  isComplete: (values: BulkConfigFormValues) => boolean;
+}
+
+/**
+ * Per-platform per-ROW config section for the bulk Review's edit modal (#1096),
+ * letting an operator override a platform field for a single product (e.g. Erli
+ * dispatch time) instead of only batch-wide. Controlled: the host owns the row's
+ * `platformParams` (seeded from any existing per-row override) and the section
+ * reads `platformParams` + emits the next value via `onChange`. A platform
+ * typically gates its field behind a toggle so an untouched row inherits the
+ * batch default (the submit deep-merges shared `platformParams` under per-row).
+ * Resolved via `usePlatform(connection.platformType)`. Absent ⇒ no per-row
+ * platform fields (price/stock are host-generic and already per-row editable).
+ */
+export interface BulkOfferRowSectionProps {
+  connection: Connection;
+  platformParams: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}
+
+/**
+ * Chip tone for a per-platform offer blocker (#1096). Structurally matches
+ * `StatusBadgeTone` from `shared/ui` — duplicated here so the plugin contract
+ * doesn't depend on `shared/ui`. The chip render site (which already imports
+ * `shared/ui`) accepts it where `StatusBadgeTone` is expected.
+ */
+export type OfferBlockerTone =
+  | 'error'
+  | 'info'
+  | 'neutral'
+  | 'review'
+  | 'success'
+  | 'warning';
+
+/**
+ * Static descriptor for a platform-specific offer blocker (#1096). The host
+ * Review/single-wizard render the chip generically from these — a new
+ * marketplace declares its blockers in its plugin with zero host enum edits.
+ * `id` is an open-world namespaced string (e.g. `'erli:missing-image'`).
+ */
+export interface OfferBlockerDescriptor {
+  id: string;
+  tone: OfferBlockerTone;
+  label: string;
+}
+
+/**
+ * Neutral, host-mapped inputs a platform validator reads (#1096). NOT the
+ * wizard's internal row type — the host translates its row → this shape at the
+ * call site, keeping the contract free of `features/listings` types. Each
+ * validator reads only the fields relevant to its platform.
+ */
+export interface OfferRowValidationInput {
+  /** Resolved master image count (Erli requires ≥1). */
+  imageCount: number;
+  /** Submit category needs product params the operator hasn't supplied (Allegro). */
+  needsProductParameters: boolean;
+  /** A catalogue card will be linked, exempting product-param requirements (Allegro). */
+  willLinkProductCard: boolean;
+}
+
+/**
+ * Per-platform offer-validation contribution (#1096). Declares the platform's
+ * blocker descriptors once and a pure row validator; serves BOTH the bulk
+ * Review step and the single-offer wizard so a marketplace declares its
+ * blockers in exactly one place. Lives on `PlatformContribution` (resolved via
+ * `usePlatform`).
+ */
+export interface OfferValidationContribution {
+  blockers: readonly OfferBlockerDescriptor[];
+  /** Returns the active platform-specific blocker ids for a row. Pure. */
+  validateRow: (input: OfferRowValidationInput) => string[];
+  /**
+   * Whether this platform's `validateRow` reads `needsProductParameters` (#1096).
+   * The host's per-category required-product-parameter schema fetch
+   * (`useBulkRequiredProductParams`, an Allegro #810 concern) is wasted work for
+   * platforms whose validator ignores that input (e.g. Erli reads only
+   * `imageCount`). Opt-in keeps the host neutral — it gates the fetch on this
+   * flag rather than on a `platformType` string. Absent ⇒ treated as `false`.
+   */
+  needsCategoryParameterSchema?: boolean;
+}
+
+/**
  * Build-time contribution bag. Folded by the host at module load.
  */
 export interface BuildContribution {
@@ -270,6 +395,32 @@ export interface PlatformContribution {
    * produced the error.
    */
   extractContentPublishErrors?: (err: unknown) => StructuredError[] | null;
+  /**
+   * Bulk offer creation: render the platform-specific bulk-config section
+   * inside `bulk-config-step` (#1096). Same altitude as `StructuredConfigSection`
+   * — a render-time, per-platform config form section resolved via
+   * `usePlatform(platformType)`. (Contrast `build.offerCreationWizard`, which
+   * is in `build` only because its launcher reaches it through an `app/`-tier
+   * hook to dodge a `features → plugins` import; our consumers live in
+   * `features/` and can call `usePlatform` directly.) Absent ⇒ the bulk-config
+   * step renders a "marketplace not supported for bulk" fallback.
+   */
+  bulkOfferConfigSection?: BulkOfferConfigSectionContribution;
+  /**
+   * Bulk offer creation: render a platform-specific section in the Review
+   * edit modal so an operator can override a platform field PER PRODUCT (e.g.
+   * Erli dispatch time), not only batch-wide (#1096). Resolved via
+   * `usePlatform(platformType)`. Absent ⇒ the edit modal shows only the
+   * host-generic per-row fields (title, category, price, stock, description).
+   */
+  bulkOfferRowSection?: ComponentType<BulkOfferRowSectionProps>;
+  /**
+   * Offer creation: declare the platform's blocker chips + row validator once
+   * (#1096), consumed by BOTH the bulk Review step and the single-offer wizard.
+   * Resolved via `usePlatform(platformType)`. Absent ⇒ only the host-neutral
+   * blockers (price/stock/category) apply.
+   */
+  offerValidation?: OfferValidationContribution;
 }
 
 /**

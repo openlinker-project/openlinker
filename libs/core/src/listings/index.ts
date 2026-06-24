@@ -162,6 +162,8 @@ export type {
   CreateOfferValidationError,
   OfferVariantGroup,
   OfferVariantAttribute,
+  SourceCategoryRef,
+  SourceAttribute,
 } from './domain/types/offer-create.types';
 export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';

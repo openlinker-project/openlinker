@@ -41,7 +41,6 @@ import {
 import {
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
-  OfferCreateRejectedException,
   type CreateOfferCommand,
   type IOfferStatusSyncService,
   type OfferCreator,
@@ -158,7 +157,11 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
     expect(body.stock).toBe(7);
     // Barcode rides the `ean` wire key (EAN/GTIN), not `barcode`.
     expect(body.ean).toBe('5901234123457');
-    expect(body.externalCategories).toEqual([{ source: 'allegro', id: ALLEGRO_CATEGORY_ID }]);
+    // #1096: the resolved Allegro id rides a single-element `source:"allegro"`
+    // breadcrumb entry (flat `{source,id}` 422s on the real API, ADR-025 §3).
+    expect(body.externalCategories).toEqual([
+      { source: 'allegro', breadcrumb: [{ id: ALLEGRO_CATEGORY_ID }] },
+    ]);
     // No grouping for a single/simple product.
     expect(body.externalVariantGroup).toBeUndefined();
   });
@@ -209,7 +212,7 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
   });
 
   // ── S4: variant grouping body shape ────────────────────────────────────────
-  it('S4: multi-variant create emits externalVariantGroup.id + attributes; single omits', async () => {
+  it('S4: multi-variant create indexes the axis into externalAttributes + references it from externalVariantGroup; single omits', async () => {
     const adapter = await getAdapter();
 
     // Multi-variant sibling: core-populated variantGroup hint present.
@@ -222,8 +225,18 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
       }),
     );
     const groupedBody = erli.fake.callsOf('POST')[0].body as Record<string, unknown>;
-    expect(groupedBody.externalVariantGroup).toEqual({ id: PARENT_PRODUCT_ID });
-    expect(groupedBody.attributes).toEqual([{ name: 'Color', value: 'Red' }]);
+    // #986/#1065: the distinguishing axis becomes a shop-source externalAttribute
+    // carrying an explicit index; the group references that index (Erli's verified
+    // wire shape). There is NO top-level `attributes` field — the API rejects it.
+    expect(groupedBody.externalAttributes).toEqual([
+      { source: 'shop', id: 'Color', name: 'Color', type: 'string', values: ['Red'], index: 0 },
+    ]);
+    expect(groupedBody.externalVariantGroup).toEqual({
+      id: PARENT_PRODUCT_ID,
+      source: 'integration',
+      attributes: [0],
+    });
+    expect(groupedBody.attributes).toBeUndefined();
 
     erli.fake.reset();
 
@@ -305,19 +318,23 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
     expect(erli.fake.calls).toHaveLength(0);
   });
 
-  // ── Sanity: missing Allegro taxonomy is a terminal create rejection ────────
-  it('rejects create with OfferCreateRejectedException when no Allegro category is resolved', async () => {
+  // ── Sanity: no taxonomy → lists uncategorised (ADR-025 §3 relaxed, #1096) ──
+  it('lists uncategorised (omits externalCategories) when no Allegro or shop taxonomy resolves', async () => {
     const adapter = await getAdapter();
 
-    await expect(
-      adapter.createOffer(
-        // Clear the helper's default categoryId so no Allegro taxonomy resolves
-        // (deep-merge keeps imageUrls, so the failure is the missing category, not images).
-        baseCreateCommand(connectionId, VARIANT_A, {
-          overrides: { title: 'No category', categoryId: undefined },
-        }),
-      ),
-    ).rejects.toBeInstanceOf(OfferCreateRejectedException);
+    // Clear the helper's default categoryId so no Allegro taxonomy resolves and
+    // the command carries no shop categories. #1096 relaxed the old fail-closed
+    // reject: Erli's API makes category optional, so the offer lists uncategorised
+    // (deep-merge keeps imageUrls, so this is genuinely the no-category path).
+    const result = await adapter.createOffer(
+      baseCreateCommand(connectionId, VARIANT_A, {
+        overrides: { title: 'No category', categoryId: undefined },
+      }),
+    );
+
+    expect(result.status).toBe('draft');
+    const body = erli.fake.callsOf('POST')[0].body as Record<string, unknown>;
+    expect(body.externalCategories).toBeUndefined();
   });
 });
 

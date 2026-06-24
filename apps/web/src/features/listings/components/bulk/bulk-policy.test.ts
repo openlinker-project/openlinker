@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
+import { allegroOfferValidation } from '../allegro/allegro-offer-validation';
 import {
   clampMarkupPercent,
   computeBlockers,
@@ -13,6 +14,12 @@ import {
   roundHalfUp,
   type ComputeBlockersInput,
 } from './bulk-policy';
+
+// #1096 — `needs-product-parameters` is emitted by Allegro's row validator
+// (passed via `platformValidate`), not inline in `computeBlockers`. The blocker
+// id is now namespaced.
+const allegroValidate = allegroOfferValidation.validateRow;
+const NEEDS_PARAMS = 'allegro:needs-product-parameters';
 
 const NO_OVERRIDE: BulkPerProductOverride = {};
 
@@ -180,6 +187,34 @@ describe('computeBlockers', () => {
     ).toEqual(['multi-match']);
   });
 
+  it('suppresses the category blocker for a destination that resolves it at submit (#1096)', () => {
+    // A `borrows` destination (Erli) resolves the category server-side at submit
+    // (override → barcode → mapping), so a pre-flight non-match must not block.
+    const cases: ComputeBlockersInput['categoryResult'][] = [
+      { kind: 'no-match' },
+      { kind: 'no-ean' },
+      { kind: 'multi-match', candidates: [] },
+    ];
+    for (const categoryResult of cases) {
+      expect(
+        computeBlockers(base({ categoryResult, destinationResolvesCategoryAtSubmit: true })),
+      ).toEqual([]);
+    }
+  });
+
+  it('still blocks price/stock when category resolves at submit', () => {
+    // The submit-time category resolution doesn't excuse genuine price/stock gaps.
+    expect(
+      computeBlockers(
+        base({
+          categoryResult: { kind: 'no-match' },
+          destinationResolvesCategoryAtSubmit: true,
+          masterPrice: null,
+        }),
+      ),
+    ).toEqual(['no-master-price']);
+  });
+
   it('co-occurs no-ean + no-master-price', () => {
     const result = computeBlockers(
       base({ categoryResult: { kind: 'no-ean' }, masterPrice: null }),
@@ -223,12 +258,14 @@ describe('computeBlockers', () => {
     expect(result).toEqual([]);
   });
 
-  // #810 — needs-product-parameters (no card to inherit from + required product params)
+  // #810/#1096 — needs-product-parameters via Allegro's platform validator
+  // (no card to inherit from + required product params).
   const withPickedCategory = (extra: Partial<ComputeBlockersInput> = {}) =>
     base({
       categoryResult: { kind: 'no-match' },
       override: { overrides: { categoryId: 'cat-1' } },
       willLinkProductCard: false,
+      platformValidate: allegroValidate,
       ...extra,
     });
 
@@ -236,7 +273,7 @@ describe('computeBlockers', () => {
     const result = computeBlockers(
       withPickedCategory({ requiredProductParamIds: ['brand', 'model'] }),
     );
-    expect(result).toContain('needs-product-parameters');
+    expect(result).toContain(NEEDS_PARAMS);
   });
 
   it('does NOT fire when all required product params are supplied (clearable)', () => {
@@ -254,7 +291,7 @@ describe('computeBlockers', () => {
         },
       }),
     );
-    expect(result).not.toContain('needs-product-parameters');
+    expect(result).not.toContain(NEEDS_PARAMS);
   });
 
   it('does NOT fire when the row links a product card (params inherited, #808)', () => {
@@ -264,20 +301,20 @@ describe('computeBlockers', () => {
         requiredProductParamIds: ['brand'],
       }),
     );
-    expect(result).not.toContain('needs-product-parameters');
+    expect(result).not.toContain(NEEDS_PARAMS);
   });
 
   it('does NOT fire while the category schema is still unknown (undefined ids)', () => {
     const result = computeBlockers(withPickedCategory({ requiredProductParamIds: undefined }));
-    expect(result).not.toContain('needs-product-parameters');
+    expect(result).not.toContain(NEEDS_PARAMS);
   });
 
   it('does NOT fire for a category with no required product params (empty ids)', () => {
     const result = computeBlockers(withPickedCategory({ requiredProductParamIds: [] }));
-    expect(result).not.toContain('needs-product-parameters');
+    expect(result).not.toContain(NEEDS_PARAMS);
   });
 
-  it('orders the param blocker after the category resolves and before price/stock', () => {
+  it('orders the param blocker before price/stock', () => {
     const result = computeBlockers(
       withPickedCategory({
         requiredProductParamIds: ['brand'],
@@ -285,6 +322,6 @@ describe('computeBlockers', () => {
         masterStock: null,
       }),
     );
-    expect(result).toEqual(['needs-product-parameters', 'no-master-price', 'no-master-stock']);
+    expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'no-master-stock']);
   });
 });

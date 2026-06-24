@@ -724,6 +724,79 @@ describe('PrestashopProductMapper', () => {
     });
   });
 
+  describe('extractFeatureRefs (#1096 F2)', () => {
+    it('should parse the JSON association shape (flat array)', () => {
+      const product: PrestashopProduct = {
+        id: '1',
+        associations: {
+          product_features: [
+            { id: '1', id_feature_value: '10' },
+            { id: '2', id_feature_value: '20' },
+          ],
+        },
+      };
+
+      expect(mapper.extractFeatureRefs(product)).toEqual([
+        { featureId: '1', featureValueId: '10' },
+        { featureId: '2', featureValueId: '20' },
+      ]);
+    });
+
+    it('should parse the XML association shape (product_feature array)', () => {
+      const product: PrestashopProduct = {
+        id: '1',
+        associations: {
+          product_features: {
+            product_feature: [
+              { id: '1', id_feature_value: '10' },
+              { id: '2', id_feature_value: '20' },
+            ],
+          },
+        },
+      };
+
+      expect(mapper.extractFeatureRefs(product)).toEqual([
+        { featureId: '1', featureValueId: '10' },
+        { featureId: '2', featureValueId: '20' },
+      ]);
+    });
+
+    it('should parse the XML single-object association shape', () => {
+      const product: PrestashopProduct = {
+        id: '1',
+        associations: {
+          product_features: { product_feature: { id: '3', id_feature_value: '30' } },
+        },
+      };
+
+      expect(mapper.extractFeatureRefs(product)).toEqual([
+        { featureId: '3', featureValueId: '30' },
+      ]);
+    });
+
+    it('should skip entries missing a feature id or feature-value id', () => {
+      const product = {
+        id: '1',
+        associations: {
+          product_features: [
+            { id: '1' },
+            { id_feature_value: '20' },
+            { id: '2', id_feature_value: '20' },
+          ],
+        },
+      } as unknown as PrestashopProduct;
+
+      expect(mapper.extractFeatureRefs(product)).toEqual([
+        { featureId: '2', featureValueId: '20' },
+      ]);
+    });
+
+    it('should return [] when there are no feature associations', () => {
+      expect(mapper.extractFeatureRefs({ id: '1' })).toEqual([]);
+      expect(mapper.extractFeatureRefs({ id: '1', associations: {} })).toEqual([]);
+    });
+  });
+
   describe('localizeField', () => {
     it('should read a flat string field', () => {
       expect(mapper.localizeField('Red')).toBe('Red');

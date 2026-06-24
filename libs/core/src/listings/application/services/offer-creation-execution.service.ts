@@ -25,7 +25,13 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { DuplicateIdentifierMappingError, IDENTIFIER_MAPPING_SERVICE_TOKEN, IIdentifierMappingService, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import {
+  DuplicateIdentifierMappingError,
+  MappingAlreadyExistsError,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  IIdentifierMappingService,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
 import type { OfferManagerPort, SmartClassificationReport } from '@openlinker/core/listings';
 import {
   isOfferCreator,
@@ -136,18 +142,46 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
         input.internalVariantId
       );
     } catch (error) {
-      if (!(error instanceof DuplicateIdentifierMappingError)) {
+      // Idempotent retry: the mapping was already inserted on a prior attempt
+      // (e.g. an adapter create that 409'd as already-exists, or a re-run job).
+      // `createMapping` raises `DuplicateIdentifierMappingError` at the DB layer
+      // and `MappingAlreadyExistsError` once it resolves the winning row. Either
+      // is benign **only** when the existing mapping points to the same internal
+      // id we intended; a DIFFERENT internal id is a genuine cross-variant
+      // `externalOfferId` collision (one offer id bound to two variants) and must
+      // rethrow — never silently bind it to the wrong variant (PR1099 review).
+      if (error instanceof MappingAlreadyExistsError) {
+        if (error.existingInternalId !== input.internalVariantId) {
+          throw error;
+        }
+        // Existing mapping is exactly `externalOfferId → internalVariantId`.
+      } else if (error instanceof DuplicateIdentifierMappingError) {
+        // The DB-layer conflict carries no winning-row id. Resolve it and verify
+        // it's ours — symmetry with the MappingAlreadyExistsError branch above,
+        // so an `OfferCreator` whose `externalOfferId` is NOT unique per variant
+        // can't silently mis-bind. A null re-read (row vanished mid-race) is an
+        // unexpected state → rethrow so the job retries rather than guesses.
+        const winningInternalId = await this.identifierMapping.getInternalId(
+          CORE_ENTITY_TYPE.Offer,
+          result.externalOfferId,
+          input.connectionId
+        );
+        if (winningInternalId !== input.internalVariantId) {
+          throw error;
+        }
+      } else {
         throw error;
       }
-      // Idempotent retry: the mapping was already inserted on a prior attempt.
-      // createMapping's `externalId → internalId` is exactly what we wanted, so continue.
     }
 
     const persistedErrors = this.mapResultValidationErrors(result.validationErrors);
+    // An idempotent already-exists create is a success, recorded as `reused`
+    // (not `draft`) so a re-run doesn't read as a fresh offer (#1096).
+    const recordStatus = result.alreadyExisted ? OFFER_CREATION_STATUS.Reused : result.status;
     const finalRecord = await this.offerCreationRecords.updateExternalIdAndStatus(
       record.id,
       result.externalOfferId,
-      result.status,
+      recordStatus,
       persistedErrors
     );
 
@@ -225,6 +259,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
       case OFFER_CREATION_STATUS.Active:
       case OFFER_CREATION_STATUS.Draft:
       case OFFER_CREATION_STATUS.Validating:
+      case OFFER_CREATION_STATUS.Reused:
         return 'ok';
       case OFFER_CREATION_STATUS.Pending:
         throw new OfferCreationInvariantException(record.id, record.status);
