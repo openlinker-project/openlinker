@@ -3,7 +3,9 @@
  *
  * Unit tests for OfferStockRestoreService (#1146). Mocks all ports; verifies
  * target resolution (variant → external offer id → master quantity), dispatch
- * to the OfferStockRestorer capability, and the guard-absent no-op.
+ * to the OfferStockRestorer capability, and the capability-first no-op paths
+ * (non-restorer adapter, unsupported/disabled OfferManager, non-capability
+ * error rethrow, and the missing-record / no-variant / no-mapping skips).
  *
  * @module libs/core/src/listings/application/services/__tests__
  */

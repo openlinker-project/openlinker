@@ -36,10 +36,9 @@ import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/cor
 import type {
   OfferManagerPort,
   OfferStockRestorer,
-  OfferStockRestoreTarget
+  OfferStockRestoreTarget,
 } from '@openlinker/core/listings';
-import { isOfferStockRestorer ,
-  OfferMappingRepositoryPort} from '@openlinker/core/listings';
+import { isOfferStockRestorer, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
 import type { IOfferStockRestoreService } from '../interfaces/offer-stock-restore.service.interface';
