@@ -20,7 +20,7 @@
 import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { Alert, Button, FormField, Input } from '../../../../shared/ui';
+import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
@@ -182,11 +182,7 @@ export function BulkConfigStep({
 
       {offerManagerConnections.length > 1 ? (
         <FormField name="bulk-config-connection" label="Marketplace connection">
-          <select
-            className="control control--select"
-            value={connectionId}
-            onChange={(e) => setConnectionId(e.target.value)}
-          >
+          <Select value={connectionId} onChange={(e) => setConnectionId(e.target.value)}>
             <option value="" disabled>
               Select a connection…
             </option>
@@ -199,7 +195,7 @@ export function BulkConfigStep({
                 </option>
               );
             })}
-          </select>
+          </Select>
         </FormField>
       ) : (
         <Alert tone="info">
