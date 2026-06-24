@@ -10,6 +10,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge'
 import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Select } from '../../shared/ui/select';
+import { usePermission } from '../../shared/auth/use-permission';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -68,6 +69,7 @@ export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
   const plugins = usePlatforms();
+  const canWrite = usePermission('connections:write');
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -109,9 +111,11 @@ export function ConnectionsListPage(): ReactElement {
       title="Connections"
       description="All configured integration connections — filter by platform or status."
       actions={
-        <Link className="button" to="/connections/new">
-          New connection
-        </Link>
+        canWrite ? (
+          <Link className="button" to="/connections/new">
+            New connection
+          </Link>
+        ) : null
       }
     >
       {/* Filters */}
@@ -165,11 +169,11 @@ export function ConnectionsListPage(): ReactElement {
           action={
             filtersActive ? (
               <Button onClick={clearFilters}>Clear filters</Button>
-            ) : (
+            ) : canWrite ? (
               <Link className="button button--primary" to="/connections/new">
                 Add the first connection
               </Link>
-            )
+            ) : null
           }
         />
       ) : (

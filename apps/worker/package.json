@@ -30,6 +30,7 @@
     "@openlinker/integrations-erli": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
+    "@openlinker/integrations-subiekt": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "pg": "8.11.3",

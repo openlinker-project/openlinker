@@ -113,4 +113,20 @@ describe('BulkBatchProgressTable', () => {
     expect(link).toHaveAttribute('href', 'https://allegro.pl/oferta/ALG-123');
     expect(screen.queryByRole('button', { name: /Failure details/ })).not.toBeInTheDocument();
   });
+
+  it('marks an already-existing (reused) offer as a success and links to it (#1096)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[rec({ status: 'reused', externalOfferId: 'ERLI-9', errors: null })]}
+        buildExternalOfferUrl={(id) => `https://erli.pl/p/${id}`}
+      />,
+    );
+
+    expect(screen.getByText('already existed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /ERLI-9/ })).toHaveAttribute(
+      'href',
+      'https://erli.pl/p/ERLI-9',
+    );
+    expect(screen.queryByRole('button', { name: /Failure details/ })).not.toBeInTheDocument();
+  });
 });

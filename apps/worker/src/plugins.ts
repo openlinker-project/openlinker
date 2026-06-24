@@ -35,6 +35,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -47,4 +48,7 @@ export const workerPlugins: PluginEntry[] = [
   // SOAP DPDInfoServices, ADR-022). Scheduler runs api-side; worker only drains.
   DpdIntegrationModule,
   ErliIntegrationModule,
+  // #753: resolve the Subiekt 'Invoicing' capability when issuance is driven
+  // from the worker (mirrors WooCommerce/InPost dual registration).
+  SubiektIntegrationModule,
 ];

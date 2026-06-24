@@ -21,7 +21,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react';
 
 import { useOfferCreationWizard } from '../../../app/plugin-bindings/use-offer-creation-wizard';
 import { Alert } from '../../../shared/ui/alert';
@@ -210,13 +210,17 @@ export function OfferCreationLauncher({
     title = `Create ${pickedConnection.platformType} offer`;
     description = null;
     const Wizard = wizardContribution.component;
+    // Contributed wizards may be `React.lazy` (#1096) — provide the Suspense
+    // boundary here so a lazy chunk doesn't throw on first render.
     body = (
-      <Wizard
-        connection={pickedConnection}
-        initialValues={initialValues}
-        onCancel={onClose}
-        onSubmitted={onSubmitted}
-      />
+      <Suspense fallback={<p className="muted-text">Loading…</p>}>
+        <Wizard
+          connection={pickedConnection}
+          initialValues={initialValues}
+          onCancel={onClose}
+          onSubmitted={onSubmitted}
+        />
+      </Suspense>
     );
   }
 

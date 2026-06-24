@@ -439,7 +439,16 @@ const DEFAULT_TEST_USER: SessionUser = {
   username: 'admin',
   email: 'admin@example.com',
   role: 'admin',
-  permissions: [],
+  permissions: [
+    'connections:read', 'connections:write',
+    'sync:read', 'sync:write',
+    'integrations:read', 'integrations:write',
+    'adapters:read',
+    'orders:read', 'orders:write',
+    'products:read', 'products:write',
+    'inventory:read', 'inventory:write',
+    'listings:read', 'listings:write',
+  ],
 };
 
 export function createAuthenticatedSessionAdapter(

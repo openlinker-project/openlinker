@@ -1,59 +1,62 @@
 /**
  * Regulatory Transmitter Capability
  *
- * Optional ADR-002 sub-capability of `InvoicingPort` — adapters that transmit an
- * issued fiscal document to a tax authority for clearance declare
- * `implements InvoicingPort, RegulatoryTransmitter`. Issuance and regulatory
- * clearance are distinct acts with different lifecycles, so clearance is composed
- * onto the base port rather than baked into it (ADR-026 step 9 / 49): a
- * non-clearance provider simply doesn't implement the guard and the clearance
- * block is skipped.
+ * The full SUBMIT + READ regulatory-clearance seam (#1143, ADR-026 §Decision.2,
+ * ADR-002 sub-capability pattern). An optional sub-capability of `InvoicingPort`:
+ * an invoicing adapter that **OL itself transmits through** to a tax authority
+ * (a future KSeF-direct adapter; IT SDI, ES SII…) declares `implements
+ * RegulatoryTransmitter`. The adapter maps the authority's regime states onto the
+ * neutral `RegulatoryStatus` lifecycle and returns a `clearanceReference`.
  *
- * Country-agnostic: results carry only the neutral CTC `RegulatoryStatus`
- * lifecycle plus an opaque `clearanceReference` the authority assigns and the
- * adapter interprets — core carries it inert. No country/regime tax vocabulary
- * crosses this contract; that lives behind the provider adapter.
+ * **Why this `extends RegulatoryStatusReader`** — this is the FIRST capability
+ * interface in the codebase to extend another (OL's idiom is otherwise flat,
+ * independent capabilities composed via `implements A, B`). It is justified, not
+ * accidental: a transmitter is *necessarily* also a reader — the authority
+ * reference (KSeF number / SDI id) is assigned only after submission and is
+ * knowable only by reading status, so submit logically entails read. That is a
+ * genuine is-a (LSP subset), unlike OL's orthogonal `*Reader`/`*Updater` pairs
+ * (e.g. `FulfillmentStatusReader` vs `OrderFulfillmentUpdater`) which share no
+ * subset relationship. **Do NOT cargo-cult `extends` for orthogonal capabilities**
+ * — keep those flat and independent. The `extends` also lets the #1121
+ * reconciliation poller narrow every transmitter with the one
+ * `isRegulatoryStatusReader` guard.
  *
- * See `../../../listings/domain/ports/capabilities/offer-status-reader.capability.ts`
- * for the shared naming + guard convention this mirrors.
+ * Neutral-vocabulary litmus (ADR-026): no `nip`/`ksef`/`vat`/`jpk`/`faktura` here.
  *
  * @module libs/core/src/invoicing/domain/ports/capabilities
+ * @see {@link RegulatoryStatusReader} for the read-only half (Subiekt-style providers)
  */
 import type { InvoiceRecord } from '../../entities/invoice-record.entity';
-import type { RegulatoryStatus } from '../../types/invoicing.types';
+import type { RegulatoryClearanceResult } from '../../types/invoicing.types';
 import type { InvoicingPort } from '../invoicing.port';
+import type { RegulatoryStatusReader } from './regulatory-status-reader.capability';
 
-/**
- * Neutral outcome of a clearance operation — shared by both
- * {@link RegulatoryTransmitter.submitForClearance} (immediate result) and
- * {@link RegulatoryTransmitter.getClearanceStatus} (later status read).
- * `clearanceReference` is the authority-assigned identifier, opaque to core.
- */
-export interface ClearanceResult {
-  regulatoryStatus: RegulatoryStatus;
-  clearanceReference: string | null;
-}
-
-/** Status read of a previously-submitted document; same neutral shape as the submit result. */
-export type ClearanceStatus = ClearanceResult;
-
-export interface RegulatoryTransmitter {
-  /** Submit an issued document to the tax authority for clearance. */
-  submitForClearance(record: InvoiceRecord): Promise<ClearanceResult>;
-
+export interface RegulatoryTransmitter extends RegulatoryStatusReader {
   /**
-   * Read the current clearance status — by the authority-assigned reference, or
-   * by the issued record when the reference is not yet to hand.
+   * Transmit an issued document to the tax authority for clearance. Returns the
+   * neutral status the submit yielded: a *synchronous* regime (Spain SII /
+   * Veri*factu) reports the final status here; an *asynchronous* clearance regime
+   * (KSeF, SDI) returns `submitted` and the caller later polls `getClearanceStatus`.
+   * A business refusal is returned as `rejected` data; a transport/infrastructure
+   * failure throws. Should be a no-op returning current status when re-submitted
+   * for an already-cleared document where the regime allows (exactly-once
+   * *issuance* is gated upstream on the command — ADR-026). `record` is the issued
+   * `InvoiceRecord`; the adapter performs no identifier mapping.
    */
-  getClearanceStatus(reference: string | InvoiceRecord): Promise<ClearanceStatus>;
+  submitForClearance(record: InvoiceRecord): Promise<RegulatoryClearanceResult>;
 }
 
 export function isRegulatoryTransmitter(
   adapter: InvoicingPort,
 ): adapter is InvoicingPort & RegulatoryTransmitter {
-  const candidate = adapter as Partial<RegulatoryTransmitter>;
+  // Multi-method capability: the narrowed type promises BOTH the transmit method
+  // and the inherited read method, so the runtime guard must verify both (unlike
+  // the single-method capability guards elsewhere). Otherwise an adapter exposing
+  // only `submitForClearance` would narrow to a contract it can't honour and the
+  // #1121 poller's `getClearanceStatus` call would hit `undefined`.
+  const partial = adapter as Partial<RegulatoryTransmitter>;
   return (
-    typeof candidate.submitForClearance === 'function' &&
-    typeof candidate.getClearanceStatus === 'function'
+    typeof partial.submitForClearance === 'function' &&
+    typeof partial.getClearanceStatus === 'function'
   );
 }

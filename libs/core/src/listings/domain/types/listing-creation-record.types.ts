@@ -66,4 +66,6 @@ export interface CreateListingCreationRecordInput {
   errors?: ListingCreationError[] | null;
   /** Parent bulk-batch id when created as part of a bulk submission (#1044). Null/omitted for single publishes. */
   bulkBatchId?: string | null;
+  /** Non-fatal warnings emitted by the adapter on a successful publish (#1131). Null/omitted when none. */
+  warnings?: string[] | null;
 }

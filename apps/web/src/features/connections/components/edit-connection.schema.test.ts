@@ -288,3 +288,34 @@ describe('editConnectionSchema — unmanagedStockQuantity (WooCommerce, #969 §7
     },
   );
 });
+
+describe('mergeStructuredIntoConfig — inpostPsModuleType (#767/#1155)', () => {
+  it("writes 'official_inpost' to config", () => {
+    const result = mergeStructuredIntoConfig({}, { inpostPsModuleType: 'official_inpost' });
+    expect(result).toEqual({ inpostPsModuleType: 'official_inpost' });
+  });
+
+  it('deletes the key when cleared to empty string', () => {
+    const base = {
+      inpostPsModuleType: 'official_inpost',
+      baseUrl: 'https://shop.example.com',
+    };
+    const result = mergeStructuredIntoConfig(base, { inpostPsModuleType: '' });
+    expect(result).toEqual({ baseUrl: 'https://shop.example.com' });
+    expect('inpostPsModuleType' in result).toBe(false);
+  });
+
+  it('leaves key untouched when the patch omits it', () => {
+    const base = { inpostPsModuleType: 'official_inpost' };
+    const result = mergeStructuredIntoConfig(base, { baseUrl: 'https://shop.example.com' });
+    expect(result).toEqual({
+      inpostPsModuleType: 'official_inpost',
+      baseUrl: 'https://shop.example.com',
+    });
+  });
+
+  it('does not create the key when empty string is patched into an empty config', () => {
+    const result = mergeStructuredIntoConfig({}, { inpostPsModuleType: '' });
+    expect('inpostPsModuleType' in result).toBe(false);
+  });
+});

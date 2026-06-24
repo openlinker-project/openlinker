@@ -31,6 +31,8 @@
       "@openlinker/integrations-woocommerce/*": ["../../libs/integrations/woocommerce/src/*"],
       "@openlinker/integrations-erli": ["../../libs/integrations/erli/src/index.ts"],
       "@openlinker/integrations-erli/*": ["../../libs/integrations/erli/src/*"],
+      "@openlinker/integrations-subiekt": ["../../libs/integrations/subiekt/src/index.ts"],
+      "@openlinker/integrations-subiekt/*": ["../../libs/integrations/subiekt/src/*"],
       "@openlinker/plugin-sdk": ["../../libs/plugin-sdk/src/index.ts"],
       "@openlinker/plugin-sdk/*": ["../../libs/plugin-sdk/src/*"]
     }

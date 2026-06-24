@@ -206,6 +206,23 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
 }
 
 /**
+ * Payload for `marketplace.offer.stockRestore` jobs (#1146).
+ *
+ * Enqueued by the `OrderIngestionService` cancellation-observe hook when an
+ * order transitions to `cancelled`. The worker handler delegates to the core
+ * `OfferStockRestoreService`, which loads the order's resolved variant ids,
+ * resolves their distinct external offer ids + absolute master-inventory
+ * targets, and issues the destination marketplace's stock-restore (capability
+ * `OfferStockRestorer`). Connection id comes from `job.connectionId` (the
+ * order's source marketplace), not the payload.
+ */
+export interface MarketplaceOfferStockRestorePayloadV1 {
+  schemaVersion: 1;
+  /** OL internal order id whose cancellation triggers the stock restore. */
+  internalOrderId: string;
+}
+
+/**
  * Payload v1 — Marketplace Shipment Status Sync (#838)
  *
  * Cursor-paced refresh of non-terminal `Shipment` rows for one carrier

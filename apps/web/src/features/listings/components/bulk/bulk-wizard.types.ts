@@ -37,10 +37,6 @@ export const BulkRowBlockerValues = [
   'no-match',
   // EAN matched several Allegro cards — operator picks one from the candidates.
   'multi-match',
-  // Row will create a product inline (no card to inherit from) under a category
-  // whose required product-section params (Marka, Model, EAN, …) aren't supplied.
-  // Clears once the operator fills them in the edit modal (#810).
-  'needs-product-parameters',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
   // Active stock policy needs a master stock value and it's 0 or null.
@@ -48,7 +44,18 @@ export const BulkRowBlockerValues = [
   // Master price currency differs from the batch currency (use-master/markup only).
   'currency-mismatch',
 ] as const;
-export type BulkRowBlocker = (typeof BulkRowBlockerValues)[number];
+/**
+ * Host-neutral blocker ids — generic across every `OfferManager` marketplace
+ * (variant/EAN/category/price/stock). Platform-specific blockers (e.g.
+ * Allegro's `allegro:needs-product-parameters` (#810), Erli's
+ * `erli:missing-image`) are NOT in this union — they're declared by each
+ * plugin's `offerValidation` contribution as open-world namespaced strings and
+ * concatenated onto the neutral set at compute time (#1096). A row's `blockers`
+ * array therefore holds `string`, not the closed union.
+ */
+export type BulkRowNeutralBlocker = (typeof BulkRowBlockerValues)[number];
+/** A blocker id on a row — neutral-host or plugin-declared (open-world). */
+export type BulkRowBlocker = string;
 
 /**
  * Provenance of a computed price/stock value — drives the Review-step badge.
@@ -113,8 +120,13 @@ export interface BulkWizardRow {
 
 export interface BulkWizardConfig {
   connectionId: string;
-  /** Allegro delivery policy ID. */
-  deliveryPolicyId: string;
+  /**
+   * Generic per-platform offer knobs the config section populated (#1096):
+   * Allegro `deliveryPolicyId`, Erli `dispatchTime`, … Threaded verbatim to
+   * `sharedConfig.overrides.platformParams` on submit. Replaces the former
+   * hardcoded `deliveryPolicyId` field (which was Allegro-shaped).
+   */
+  platformParams: Record<string, unknown>;
   /** Batch-wide listing currency (D7) — flat-price + mismatch reason key off this. */
   currency: string;
   /** How each row's price is computed from master data. */
