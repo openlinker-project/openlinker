@@ -17,7 +17,11 @@ import type {
   WebhookSecretProviderPort,
 } from '@openlinker/core/integrations';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import type { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
+import type {
+  InpostPsModuleType,
+  PrestashopConnectionConfig,
+} from '../domain/types/prestashop-config.types';
+import { InpostPsModuleTypeValues } from '../domain/types/prestashop-config.types';
 import type { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
 import { PrestashopConfigException } from '../domain/exceptions/prestashop-config.exception';
 import { PrestashopWebserviceClient } from '../infrastructure/http/prestashop-webservice.client';
@@ -317,6 +321,20 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       }
     }
 
+    // Validate inpostPsModuleType (if provided)
+    if (config.inpostPsModuleType !== undefined) {
+      if (
+        typeof config.inpostPsModuleType !== 'string' ||
+        !(InpostPsModuleTypeValues as readonly string[]).includes(config.inpostPsModuleType)
+      ) {
+        throw new PrestashopConfigException(
+          `inpostPsModuleType must be one of: ${InpostPsModuleTypeValues.join(', ')}`,
+          'inpostPsModuleType',
+          config.inpostPsModuleType
+        );
+      }
+    }
+
     const currency = this.parseOptionalIsoCurrency(config.currency);
 
     // Build validated config with defaults
@@ -334,6 +352,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       responseFormat: (config.responseFormat as 'auto' | 'json' | 'xml' | undefined) ?? 'auto',
       currency,
       defaultCarrierId: config.defaultCarrierId as number | undefined,
+      inpostPsModuleType: config.inpostPsModuleType as InpostPsModuleType | undefined,
     };
 
     return validatedConfig;

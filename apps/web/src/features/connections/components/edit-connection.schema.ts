@@ -137,6 +137,10 @@ export const editConnectionSchema = z.object({
       z.literal(''),
     ])
     .optional(),
+  // PS-only structured field for the installed InPost PS module type (#767/#1155).
+  // Controls whether OL reads the paczkomat locker code from address2 on order
+  // ingestion. '' (empty string, select sentinel) = clear the key; 'official_inpost' = enabled.
+  inpostPsModuleType: z.union([z.literal('official_inpost'), z.literal('')]).optional(),
   configText: z
     .string()
     .trim()
@@ -189,6 +193,12 @@ export interface StructuredConfigPatch {
    * under `inventory` are preserved.
    */
   unmanagedStockQuantity?: string;
+  /**
+   * PS-only: which InPost PS module is installed (#767/#1155). Empty string is the
+   * select sentinel — clears the key from config (no locker-code read);
+   * 'official_inpost' enables address2 read.
+   */
+  inpostPsModuleType?: 'official_inpost' | '';
   /**
    * #430 — Allegro seller defaults. The merge helper writes a fully
    * resolved object into `config.sellerDefaults` whenever `sellerDefaults`
@@ -276,6 +286,13 @@ export function mergeStructuredIntoConfig(
     } else {
       // Schema's Zod refine guarantees this is a positive-integer string.
       next.defaultCarrierId = Number.parseInt(structured.defaultCarrierId, 10);
+    }
+  }
+  if (structured.inpostPsModuleType !== undefined) {
+    if (structured.inpostPsModuleType === '') {
+      delete next.inpostPsModuleType;
+    } else {
+      next.inpostPsModuleType = structured.inpostPsModuleType;
     }
   }
   if (structured.sellerDefaults !== undefined) {
