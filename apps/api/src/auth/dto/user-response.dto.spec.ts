@@ -44,8 +44,20 @@ describe('UserResponseDto', () => {
       const dto = UserResponseDto.fromDomain(user);
 
       expect(dto.permissions).toEqual([...ROLE_PERMISSIONS['viewer']]);
+      // read gates present
       expect(dto.permissions).toContain('connections:read');
+      expect(dto.permissions).toContain('orders:read');
+      expect(dto.permissions).toContain('products:read');
+      expect(dto.permissions).toContain('inventory:read');
+      expect(dto.permissions).toContain('listings:read');
+      expect(dto.permissions).toContain('sync:read');
+      // write gates absent
       expect(dto.permissions).not.toContain('connections:write');
+      expect(dto.permissions).not.toContain('orders:write');
+      expect(dto.permissions).not.toContain('products:write');
+      expect(dto.permissions).not.toContain('inventory:write');
+      expect(dto.permissions).not.toContain('listings:write');
+      expect(dto.permissions).not.toContain('sync:write');
     });
 
     it('should not expose passwordHash', () => {
