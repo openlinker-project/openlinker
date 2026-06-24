@@ -2,41 +2,66 @@
  * KSeF Auth Handshake Types
  *
  * Wire shapes for the KSeF 2.0 authentication handshake: challenge issuance,
- * the ksef-token / qualified-seal submit payloads, the reference-number poll
- * for the issued session, and the redeem step that yields access/refresh JWTs.
+ * the ksef-token / xades submit payloads, the reference-number poll for the
+ * issued session, and the redeem step that yields access/refresh JWTs.
  * Adapter-internal (ADR-026): NIP, faktura, KSeF status etc. never reach core.
  *
- * Endpoint shapes here are inferred from the documented KSeF 2.0 sequence; live
- * validation lands when the client is exercised against the test endpoint (C3
- * acceptance criterion). Where the spec is ambiguous the field is optional and
- * the handshake degrades safely.
+ * Shapes here are reconciled to the AUTHORITATIVE KSeF 2.0 OpenAPI spec
+ * (api-test, v2.6.1) — see `AuthenticationChallengeResponse`,
+ * `InitTokenAuthenticationRequest`, `AuthenticationInitResponse`,
+ * `AuthenticationOperationStatusResponse`, `AuthenticationTokensResponse`,
+ * `AuthenticationTokenRefreshResponse`.
  *
  * @module libs/integrations/ksef/src/infrastructure/http
  */
 
 /**
- * Response from `POST /auth/challenge`. `challenge` is the base64 nonce the
- * client signs/encrypts; `timestamp` (server clock, ISO-8601) is folded into
- * the encrypted token payload to bind the request to this challenge window.
+ * Response from `POST /auth/challenge` (`AuthenticationChallengeResponse`).
+ * `challenge` is the 36-char nonce folded into the encrypted token payload;
+ * `timestamp` (server clock, ISO-8601) binds the request to the challenge
+ * window. `timestampMs` / `clientIp` are returned by the server but unused by
+ * the handshake.
  */
 export interface AuthChallenge {
   challenge: string;
   timestamp: string;
+  timestampMs?: number;
+  clientIp?: string;
 }
 
 /**
- * Submit payload for the ksef-token flow (`POST /auth/ksef-token`): the
- * RSA-OAEP-encrypted (token | timestamp) blob, base64-encoded, plus the NIP
- * (context identifier) the token authenticates.
+ * Context-identifier types KSeF accepts (`AuthenticationContextIdentifierType`).
+ * The OL ksef-token flow always authenticates against a NIP.
+ */
+export const KsefContextIdentifierTypeValues = [
+  'Nip',
+  'InternalId',
+  'NipVatUe',
+  'PeppolId',
+] as const;
+export type KsefContextIdentifierType = (typeof KsefContextIdentifierTypeValues)[number];
+
+/** The context the token authenticates (`AuthenticationContextIdentifier`). */
+export interface KsefContextIdentifier {
+  type: KsefContextIdentifierType;
+  value: string;
+}
+
+/**
+ * Submit body for the ksef-token flow (`POST /auth/ksef-token`,
+ * `InitTokenAuthenticationRequest`): the previously-issued `challenge`, the
+ * `contextIdentifier` the token authenticates, and the RSA-OAEP(SHA-256)
+ * -encrypted `token|timestamp` blob, base64-encoded. `publicKeyId` optionally
+ * identifies the MF cert used to encrypt the token (44 chars).
  *
  * SECURITY: `encryptedToken` is ciphertext, never the plaintext token — but it
  * is still credential-derived material and MUST NOT be logged.
  */
-export interface KsefTokenEncryptionRequest {
-  contextNip: string;
+export interface InitTokenAuthenticationRequest {
+  challenge: string;
+  contextIdentifier: KsefContextIdentifier;
   encryptedToken: string;
-  /** Echo of the challenge timestamp folded into the encrypted payload. */
-  challengeTimestamp: string;
+  publicKeyId?: string;
 }
 
 /**
@@ -49,40 +74,79 @@ export interface QualifiedSealAuthRequest {
 }
 
 /**
- * Response from a submit step (`/auth/ksef-token` or `/auth/xades-signature`).
- * KSeF issues the session asynchronously: the submit returns a
- * `referenceNumber` the client polls, not the final tokens.
+ * Issued JWT/expiry pair (`TokenInfo`). KSeF nests every issued token under
+ * this shape — `token` is the JWT, `validUntil` the server-asserted expiry.
+ *
+ * SECURITY: `token` must never be logged.
  */
-export interface AuthSubmitResult {
-  referenceNumber: string;
+export interface KsefTokenInfo {
+  token: string;
+  validUntil: string;
 }
 
 /**
- * Status of an in-flight auth reference returned by the poll
- * (`GET /auth/{referenceNumber}`). `accessToken`/`refreshToken` are present
- * only once `status === 'completed'`.
+ * Response from a submit step (`POST /auth/ksef-token` or
+ * `/auth/xades-signature`, `AuthenticationInitResponse`). KSeF issues the
+ * session asynchronously: the submit returns the `referenceNumber` to poll plus
+ * a short-lived `authenticationToken` (the Bearer used to authenticate the poll
+ * and the redeem call), NOT the final access/refresh tokens.
+ *
+ * SECURITY: `authenticationToken.token` must never be logged.
  */
-export const AuthRedeemStatusValues = ['processing', 'completed', 'failed'] as const;
-export type AuthRedeemStatus = (typeof AuthRedeemStatusValues)[number];
+export interface AuthInitResult {
+  referenceNumber: string;
+  authenticationToken: KsefTokenInfo;
+}
 
 /**
- * Poll/redeem response (`GET /auth/{referenceNumber}` then
- * `POST /auth/token/redeem`). Carries the issued JWTs once ready.
+ * Status-info block (`StatusInfo`) carried by the operation-status poll.
+ * `code` is an int32 processing-status code (100 = in progress, 200 = success;
+ * 4xx = various failures per the spec's status-code table); `description` is
+ * the human-readable text; `details` an optional string list.
+ */
+export interface KsefStatusInfo {
+  code: number;
+  description: string;
+  details?: string[];
+}
+
+/** Processing-status codes used by the auth poll (`StatusInfo.code`). */
+export const KSEF_AUTH_STATUS_IN_PROGRESS = 100;
+export const KSEF_AUTH_STATUS_SUCCESS = 200;
+
+/**
+ * Poll response (`GET /auth/{referenceNumber}`,
+ * `AuthenticationOperationStatusResponse`). `status.code === 200` signals the
+ * session is issued and ready to redeem; `100` is still-in-progress; any other
+ * code is a terminal failure. `isTokenRedeemed` / `refreshTokenValidUntil` are
+ * returned post-redeem.
+ */
+export interface AuthOperationStatus {
+  status: KsefStatusInfo;
+  startDate?: string;
+  isTokenRedeemed?: boolean | null;
+  lastTokenRefreshDate?: string | null;
+  refreshTokenValidUntil?: string | null;
+}
+
+/**
+ * Redeem response (`POST /auth/token/redeem`, `AuthenticationTokensResponse`).
+ * Authenticated with the submit step's `authenticationToken` as Bearer; carries
+ * the final access + refresh JWTs (each a nested `TokenInfo`).
  *
  * SECURITY: token fields must never be logged.
  */
-export interface AuthTokenRedeem {
-  status: AuthRedeemStatus;
-  accessToken?: string;
-  refreshToken?: string;
+export interface AuthTokensResult {
+  accessToken: KsefTokenInfo;
+  refreshToken: KsefTokenInfo;
 }
 
 /**
- * Refresh request/response (`POST /auth/token/refresh`). The refresh token is
- * sent in the body (NOT as a bearer header); the response carries a rotated
- * access token (and possibly a rotated refresh token).
+ * Refresh response (`POST /auth/token/refresh`,
+ * `AuthenticationTokenRefreshResponse`). Authenticated with the refresh token
+ * as Bearer (NOT a body field); carries only a rotated access token. The
+ * refresh token is not re-issued by this call.
  */
 export interface AuthTokenRefreshResult {
-  accessToken: string;
-  refreshToken?: string;
+  accessToken: KsefTokenInfo;
 }

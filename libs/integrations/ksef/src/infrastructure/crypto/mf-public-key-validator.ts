@@ -29,9 +29,9 @@ export function validateMfPublicKeyCertificate(
   usage: KsefCertificateUsage,
   now: Date = new Date(),
 ): void {
-  if (cert.usage !== usage) {
+  if (!cert.usage.includes(usage)) {
     throw new KsefSessionCryptoException(
-      `MF cert usage mismatch: expected ${usage}, got ${cert.usage} (cert ${cert.certificateHash})`,
+      `MF cert usage mismatch: expected ${usage}, got [${cert.usage.join(', ')}] (cert ${cert.certificateHash})`,
       'CERT_USAGE_MISMATCH',
     );
   }
@@ -41,9 +41,9 @@ export function validateMfPublicKeyCertificate(
       'CERT_NOT_YET_VALID',
     );
   }
-  if (now.getTime() >= cert.validUntil.getTime()) {
+  if (now.getTime() >= cert.validTo.getTime()) {
     throw new KsefSessionCryptoException(
-      `MF cert expired (validUntil ${cert.validUntil.toISOString()}, cert ${cert.certificateHash})`,
+      `MF cert expired (validTo ${cert.validTo.toISOString()}, cert ${cert.certificateHash})`,
       'CERT_EXPIRED',
     );
   }

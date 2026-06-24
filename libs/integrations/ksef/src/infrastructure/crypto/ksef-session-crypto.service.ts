@@ -54,14 +54,18 @@ export class KsefSessionCryptoService {
     const wrapped = wrapKeyWithRsa(symmetricKey.key, cert.certificatePem);
 
     const sessionCap = now.getTime() + SESSION_TTL_MS;
-    const certCap = cert.validUntil.getTime();
+    const certCap = cert.validTo.getTime();
     const expiresAt = new Date(Math.min(sessionCap, certCap));
 
     this.logger.debug(`Initialized KSeF session crypto (cert ${cert.certificateHash}, expires ${expiresAt.toISOString()})`);
 
     return {
       symmetricKey,
-      wrappedKey: { wrappedKey: wrapped, certificateHash: cert.certificateHash },
+      wrappedKey: {
+        wrappedKey: wrapped,
+        publicKeyId: cert.publicKeyId,
+        certificateHash: cert.certificateHash,
+      },
       expiresAt,
     };
   }
