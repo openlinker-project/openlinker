@@ -102,7 +102,8 @@ export class InvoicingController {
     // AC-5 re-issue gate. Read the order's CURRENT invoice projection on this
     // connection (single-row primitive — not the list query). Allow issuance
     // only when there is no record yet ("not issued") or the prior attempt
-    // `failed`; reject `issued` (already done) and `pending` (in progress).
+    // `failed`; reject `issued` (already done) and an in-progress attempt —
+    // `pending`, or `issuing` under a LIVE CAS lease (#1200) — as 409.
     const existing = await this.invoiceService.getInvoice({
       orderId: dto.orderId,
       connectionId: dto.connectionId,
@@ -111,7 +112,12 @@ export class InvoicingController {
       if (existing.status === 'issued') {
         throw new ConflictException(`Invoice already issued for order: ${dto.orderId}`);
       }
-      if (existing.status === 'pending') {
+      // `pending` (intent persisted, not yet claimed) and a LIVE `issuing` lease
+      // (an attempt currently crossing the provider boundary) are both "in
+      // progress". A re-issue must NOT be reported as a fresh 201 success while an
+      // original attempt is in flight (#1200) — surface 409 so the caller retries
+      // later. An EXPIRED `issuing` lease falls through: it is re-claimable below.
+      if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
         throw new ConflictException(`Invoice issuance already in progress for order: ${dto.orderId}`);
       }
     }
