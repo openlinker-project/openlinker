@@ -220,6 +220,90 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     await this.requestWithRetry(url, { method: 'DELETE' });
   }
 
+  async uploadImage(
+    resourcePath: string,
+    imageBytes: Uint8Array,
+    mimeType: string,
+    filename = 'image',
+  ): Promise<{ id: string }> {
+    const url = `${this.baseUrl}/api/${resourcePath}`;
+    this.logger.debug(`Uploading image to ${resourcePath}`);
+
+    const form = new FormData();
+    form.append('image', new Blob([imageBytes], { type: mimeType }), filename);
+
+    const headers = new Headers({
+      Authorization: `Basic ${this.getBasicAuth()}`,
+      'Output-Format': 'JSON',
+    });
+
+    // Own AbortController — intentionally not using requestWithRetry because
+    // retrying a multipart POST creates duplicate image records on PS (#1164).
+    const controller = new AbortController();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+    const configTimeoutMs = this.config.timeoutMs;
+    const timeoutMs: number = configTimeoutMs ?? 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: form,
+        signal: controller.signal,
+      });
+
+      const body = await response.text();
+
+      if (!response.ok) {
+        this.handleError(response.status, body, url);
+      }
+
+      const contentType = response.headers.get('content-type') ?? undefined;
+      const parsed = PrestashopResponseParser.parse(body, contentType, 'auto');
+      const obj = parsed as Record<string, unknown>;
+
+      // PS image upload response: { prestashop: { image: { id } } } or { image: { id } }
+      const inner =
+        (obj.prestashop as Record<string, unknown> | undefined)?.image ?? obj.image;
+      const imageData = inner as Record<string, unknown> | undefined;
+      const rawId = imageData?.id ?? imageData?.['@_id'];
+
+      if (rawId == null) {
+        throw new PrestashopApiException(
+          `Unexpected image upload response from ${url}: ${JSON.stringify(obj)}`,
+          undefined,
+          undefined,
+        );
+      }
+
+      return { id: String(rawId) };
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new PrestashopApiException(
+          `Image upload timeout after ${timeoutMs}ms: ${url}`,
+          undefined,
+          undefined,
+        );
+      }
+      if (
+        error instanceof PrestashopApiException ||
+        error instanceof PrestashopAuthenticationException ||
+        error instanceof PrestashopResourceNotFoundException
+      ) {
+        throw error;
+      }
+      const errorMessage: string = error instanceof Error ? error.message : String(error);
+      throw new PrestashopApiException(
+        `Network error during image upload: ${errorMessage}`,
+        undefined,
+        undefined,
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   /**
    * Shared POST/PUT writer.
    *
