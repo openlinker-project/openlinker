@@ -1,8 +1,8 @@
 /**
  * Specs for the pure KSeF status-code → neutral RegulatoryStatus mapping table
- * (#1150 / C6). Exercises the full table including 100/150 (processing), 200
- * (success), 210/410/445 (terminal failures), unknown business codes, and the
- * 5xx transient band (mapped to the `null` retry sentinel).
+ * (#1150 / C6). Exercises the full range logic: 100/150 (processing) → submitted,
+ * 200 (Success) → accepted, any other deterministic business code (e.g. 400) →
+ * rejected (terminal), and the 5xx transient band → the `null` retry sentinel.
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
@@ -12,17 +12,19 @@ describe('mapKsefStatusToRegulatoryStatus', () => {
   it.each([
     [100, 'submitted'],
     [150, 'submitted'],
+    [199, 'submitted'],
     [200, 'accepted'],
-    [210, 'rejected'],
-    [410, 'rejected'],
-    [445, 'rejected'],
   ])('should map KSeF status %i → %s', (code, expected) => {
     expect(mapKsefStatusToRegulatoryStatus(code)).toBe(expected);
   });
 
-  it('should map an unknown deterministic business code → rejected (terminal)', () => {
-    expect(mapKsefStatusToRegulatoryStatus(400)).toBe('rejected');
-    expect(mapKsefStatusToRegulatoryStatus(404)).toBe('rejected');
+  it.each([
+    [400, 'rejected'],
+    [404, 'rejected'],
+    [410, 'rejected'],
+    [445, 'rejected'],
+  ])('should map deterministic business code %i → rejected (terminal)', (code, expected) => {
+    expect(mapKsefStatusToRegulatoryStatus(code)).toBe(expected);
   });
 
   it.each([500, 502, 503, 599])('should map 5xx (%i) → null transient sentinel', (code) => {

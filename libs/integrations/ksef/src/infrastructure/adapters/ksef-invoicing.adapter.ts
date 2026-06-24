@@ -31,8 +31,9 @@
  *   3. KSeF assigns the KSeF number asynchronously — it is NOT returned at submit
  *      time. The adapter returns `regulatoryStatus='submitted'` +
  *      `clearanceReference=null`; C6 reconciles the cleared status later.
- *   4. Session status `445` (closed with zero valid invoices) → throw
- *      `KsefSessionException` (a terminal business failure, never a success).
+ *   4. A processed session with zero successful invoices (count-based check on
+ *      the session status) → throw `KsefSessionException` (a terminal business
+ *      failure, never a success).
  *
  * IDEMPOTENCY / PERSISTENCE: the adapter is a pure mechanism. It writes NOTHING
  * to any repository — it returns the neutral result and the core `InvoiceService`
@@ -72,11 +73,10 @@ import {
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
-import { encodeProviderInvoiceId } from './ksef-provider-invoice-id';
+import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import {
   KSEF_NUMBER_PATTERN,
-  KSEF_SESSION_CLOSED_ZERO_VALID,
   KSEF_STATUS_SUCCESS,
   type InvoiceStatusResponse,
   type OnlineSessionStatusResponse,
@@ -131,7 +131,8 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     }
 
     // 3. KSeF rejects-with-zero-valid is reported on the session status, not the
-    //    submit POST — read it so a 445 is a loud failure, not a false success.
+    //    submit POST — read it so a zero-valid session is a loud failure, not a
+    //    false success.
     await this.assertSessionAccepted(sessionRef);
 
     this.logger.log(
@@ -207,25 +208,26 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   /**
    * Read the current clearance status by polling KSeF (#1150 / C6).
    *
-   * Resolves the invoice reference (the session-scoped `referenceNumber` C5
-   * persisted as `providerInvoiceId`) or an already-assigned KSeF number, reads
-   * the per-invoice status, maps the KSeF status code → neutral `RegulatoryStatus`,
-   * and on success captures the 35-char KSeF number as the opaque
-   * `clearanceReference`. The UPO document pointer is fetched for traceability but
-   * does NOT ride back on C1's neutral shape (see {@link buildClearedStatus}). A
-   * `5xx` from KSeF propagates as a
-   * thrown transport exception (transient — the #1121 job retries); a terminal
-   * business status is returned as a `rejected` read result, not thrown.
+   * Decodes the composite `providerInvoiceId` (`{sessionRef}:{invoiceRef}`, C5)
+   * into both references, reads the session-scoped per-invoice status
+   * (`GET /sessions/{sessionRef}/invoices/{invoiceRef}`), maps the KSeF status
+   * code → neutral `RegulatoryStatus`, and on success captures the KSeF number as
+   * the opaque `clearanceReference`. The UPO document pointer is fetched for
+   * traceability but does NOT ride back on C1's neutral shape (see
+   * {@link buildClearedStatus}). A `5xx` from KSeF propagates as a thrown
+   * transport exception (transient — the #1121 job retries); a terminal business
+   * status is returned as a `rejected` read result, not thrown.
    */
   async getClearanceStatus(reference: string | InvoiceRecordType): Promise<ClearanceStatus> {
-    const invoiceRef = this.resolveInvoiceReference(reference);
+    const { sessionRef, invoiceRef } = this.resolveInvoiceReference(reference);
+    const statusPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
+      invoiceRef,
+    )}`;
     this.logger.log(
-      `Reading KSeF clearance status (connection ${this.connectionId}, invoice ref ${invoiceRef})`,
+      `Reading KSeF clearance status (connection ${this.connectionId}, session ref ${sessionRef}, invoice ref ${invoiceRef})`,
     );
 
-    const response = await this.httpClient.get<InvoiceStatusResponse>(
-      `/invoices/${encodeURIComponent(invoiceRef)}`,
-    );
+    const response = await this.httpClient.get<InvoiceStatusResponse>(statusPath);
     const code = response.data.status?.code;
     if (typeof code !== 'number') {
       throw new KsefSessionException(
@@ -242,7 +244,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
         `KSeF invoice status read returned transient status ${code}`,
         code,
         undefined,
-        `/invoices/${invoiceRef}`,
+        statusPath,
       );
     }
 
@@ -251,12 +253,13 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       return { regulatoryStatus, clearanceReference: null };
     }
 
-    return this.buildClearedStatus(response.data, invoiceRef);
+    return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
   }
 
   /**
-   * On a cleared invoice, capture the KSeF number (validated against the 35-char
-   * pattern) as the neutral `clearanceReference`, and fetch the UPO pointer.
+   * On a cleared invoice, capture the KSeF number (validated against the
+   * authoritative pattern) as the neutral `clearanceReference`, and fetch the
+   * UPO pointer.
    *
    * UPO LANDING (#1150 reconciliation note): C1's `ClearanceStatus` shape is
    * strictly `{ regulatoryStatus, clearanceReference }` — it has NO `pdfUrl`/
@@ -264,15 +267,14 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
    * with a `ksef`/`upo` string. So the UPO reference cannot ride back on the
    * return value; we fetch it (confirming availability) and log a stable pointer
    * for traceability. C8 (UPO download) resolves the UPO document from the
-   * `clearanceReference` (KSeF number) the record already carries — the KSeF
-   * number is the stable key into the UPO endpoint
-   * (`/invoices/ksef/{ksefNumber}/upo`), so no extra field is needed.
+   * `clearanceReference` (KSeF number) the record already carries.
    */
   private async buildClearedStatus(
     data: InvoiceStatusResponse,
+    sessionRef: string,
     invoiceRef: string,
   ): Promise<ClearanceStatus> {
-    const ksefNumber = data.ksefReferenceNumber;
+    const ksefNumber = data.ksefNumber;
     if (!ksefNumber || !KSEF_NUMBER_PATTERN.test(ksefNumber)) {
       throw new KsefSessionException(
         `KSeF reported success (status ${KSEF_STATUS_SUCCESS}) without a valid KSeF number`,
@@ -281,7 +283,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       );
     }
 
-    const upoReference = await this.resolveUpoReference(data, ksefNumber);
+    const upoReference = await this.resolveUpoReference(data, sessionRef, invoiceRef);
     if (upoReference) {
       this.logger.log(
         `KSeF clearance accepted (connection ${this.connectionId}); UPO available at ${upoReference}`,
@@ -292,28 +294,27 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   }
 
   /**
-   * Resolve a stable UPO document pointer for a cleared invoice. Prefers the
-   * pointer KSeF already returned on the status payload; otherwise reads the UPO
-   * metadata endpoint by KSeF number. Best-effort — a UPO read failure does NOT
-   * fail the clearance read (the document cleared regardless), so a transient UPO
-   * fetch error is swallowed and the #1121 job re-resolves it next tick.
-   *
-   * PROVISIONAL endpoints (`/invoices/ksef/{ksefNumber}/upo`) and field names —
-   * best-reading of KSeF 2.0; reconcile against live docs (same posture as C4/C5).
+   * Resolve a stable UPO document URL for a cleared invoice. Prefers the
+   * ready-to-use `upoDownloadUrl` KSeF already returned on the status payload;
+   * otherwise reads the session-scoped UPO endpoint
+   * (`GET /sessions/{sessionRef}/invoices/{invoiceRef}/upo`). Best-effort — a UPO
+   * read failure does NOT fail the clearance read (the document cleared
+   * regardless), so a transient UPO fetch error is swallowed and the #1121 job
+   * re-resolves it next tick.
    */
   private async resolveUpoReference(
     data: InvoiceStatusResponse,
-    ksefNumber: string,
+    sessionRef: string,
+    invoiceRef: string,
   ): Promise<string | null> {
-    const fromStatus = data.upo?.downloadUrl ?? data.upo?.referenceNumber ?? null;
-    if (fromStatus) {
-      return fromStatus;
+    if (data.upoDownloadUrl) {
+      return data.upoDownloadUrl;
     }
     try {
-      const upo = await this.httpClient.get<{ referenceNumber?: string; downloadUrl?: string }>(
-        `/invoices/ksef/${encodeURIComponent(ksefNumber)}/upo`,
+      const upo = await this.httpClient.get<{ upoDownloadUrl?: string; downloadUrl?: string }>(
+        `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(invoiceRef)}/upo`,
       );
-      return upo.data.downloadUrl ?? upo.data.referenceNumber ?? null;
+      return upo.data.upoDownloadUrl ?? upo.data.downloadUrl ?? null;
     } catch (error) {
       this.logger.warn(
         `KSeF UPO pointer fetch failed for a cleared invoice (connection ${this.connectionId}): ${(error as Error).message}`,
@@ -323,19 +324,30 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   }
 
   /**
-   * Resolve the KSeF identifier to poll. An `InvoiceRecord` carries the
-   * session-scoped invoice reference C5 persisted as `providerInvoiceId`; a bare
-   * string is taken as that reference directly (the reconciliation job passes
-   * whichever it holds).
+   * Decode the composite `providerInvoiceId` (`{sessionRef}:{invoiceRef}`, C5)
+   * into the session + invoice references the session-scoped status/UPO reads
+   * need. A bare string is decoded the same way; a value that does not carry both
+   * references (legacy record) cannot be read without a session ref, so we fail
+   * loudly rather than guess.
    */
-  private resolveInvoiceReference(reference: string | InvoiceRecordType): string {
-    const invoiceRef = typeof reference === 'string' ? reference : reference.providerInvoiceId;
-    if (!invoiceRef) {
+  private resolveInvoiceReference(reference: string | InvoiceRecordType): {
+    sessionRef: string;
+    invoiceRef: string;
+  } {
+    const providerInvoiceId =
+      typeof reference === 'string' ? reference : reference.providerInvoiceId;
+    if (!providerInvoiceId) {
       throw new KsefSessionException(
         'Cannot read KSeF clearance status: no invoice reference on the record',
       );
     }
-    return invoiceRef;
+    const decoded = decodeProviderInvoiceId(providerInvoiceId);
+    if (!decoded) {
+      throw new KsefSessionException(
+        'Cannot read KSeF clearance status: providerInvoiceId is missing the session reference',
+      );
+    }
+    return decoded;
   }
 
   private async openOnlineSession(context: SessionCryptoContext): Promise<string> {
@@ -403,11 +415,16 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     const response = await this.httpClient.get<OnlineSessionStatusResponse>(
       `/sessions/${encodeURIComponent(sessionRef)}`,
     );
-    const code = response.data.status?.code;
-    if (code === KSEF_SESSION_CLOSED_ZERO_VALID) {
+    const { status, successfulInvoiceCount, failedInvoiceCount } = response.data;
+    // Zero-valid terminal failure: the session was processed (status 200) but
+    // nothing cleared — count-based, since KSeF carries integer invoice counts on
+    // SessionStatusResponse rather than a magic status code.
+    const processed = status?.code === KSEF_STATUS_SUCCESS;
+    const noSuccesses = (successfulInvoiceCount ?? 0) === 0;
+    if (processed && noSuccesses && ((failedInvoiceCount ?? 0) > 0 || successfulInvoiceCount === 0)) {
       throw new KsefSessionException(
-        `KSeF session closed with zero valid invoices (status ${code})`,
-        code,
+        `KSeF session processed with zero valid invoices (successful ${successfulInvoiceCount ?? 0}, failed ${failedInvoiceCount ?? 0})`,
+        status?.code,
         sessionRef,
       );
     }
