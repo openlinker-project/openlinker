@@ -23,13 +23,19 @@ request leaves.
 ## Auth handshake (ksef-token flow)
 
 1. `POST /auth/challenge` → `{ challenge, timestamp }`
-2. `KsefTokenEncryptor` RSA-OAEP-wraps `token|timestamp` under the MF
-   `KsefTokenEncryption` public key
-3. `POST /auth/ksef-token` → `{ referenceNumber }` (async)
-4. poll `GET /auth/{referenceNumber}` until `status=completed`
-   (exponential backoff to 5 s, 300 s deadline)
-5. `POST /auth/token/redeem` → `{ accessToken, refreshToken }` (JWTs)
-6. `parseJwtExpiry(accessToken)` → cache TTL (read from `exp`, never hardcoded)
+2. `KsefTokenEncryptor.buildInitRequest` RSA-OAEP-wraps `token|timestamp` under
+   the MF `KsefTokenEncryption` public key and assembles
+   `InitTokenAuthenticationRequest { challenge, contextIdentifier{type,value},
+   encryptedToken, publicKeyId? }`
+3. `POST /auth/ksef-token` → `{ referenceNumber, authenticationToken }` (async;
+   `authenticationToken` is the Bearer for the next two calls)
+4. poll `GET /auth/{referenceNumber}` (Bearer authenticationToken) until
+   `status.code === 200` (`100` = in progress; exponential backoff to 5 s,
+   300 s deadline)
+5. `POST /auth/token/redeem` (Bearer authenticationToken, NO body) →
+   `{ accessToken: TokenInfo, refreshToken: TokenInfo }`
+6. `parseJwtExpiry(accessToken.token)` → cache TTL (read from `exp`, never
+   hardcoded)
 
 The **qualified-seal** flow (XAdES signing → `POST /auth/xades-signature`) is
 DEFERRED to C4: it needs real X.509/HSM material and a vetted XML signing

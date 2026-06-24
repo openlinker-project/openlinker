@@ -17,6 +17,7 @@ import {
   type SellerProfile,
 } from '../domain/fa3-xml.types';
 import { buildFa3Xml } from './fa3-xml.builder';
+import { validateFa3Xml } from '../validators/fa3-xsd.validator';
 
 const seller: SellerProfile = {
   nip: '1234567890',
@@ -46,7 +47,6 @@ function b2bInput(): Fa3BuilderInput {
     issueDate: '2026-06-23',
     invoiceNumber: 'FV/2026/06/0001',
     generatedAt: '2026-06-23T10:15:30Z',
-    orderReference: 'ol_order_123',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
   };
 }
@@ -81,8 +81,27 @@ describe('buildFa3Xml', () => {
     expect(xml).toMatch(/<Podmiot2>.*<NIP>9876543210<\/NIP>.*<\/Podmiot2>/s);
   });
 
-  it('should echo the order reference into Adnotacje', () => {
-    expect(buildFa3Xml(b2bInput())).toMatch(/<Adnotacje>.*ol_order_123.*<\/Adnotacje>/s);
+  it('should emit RodzajFaktury=VAT for a plain sales invoice', () => {
+    expect(buildFa3Xml(b2bInput())).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+  });
+
+  it('should emit the required Adnotacje children with "nothing special" defaults', () => {
+    const xml = buildFa3Xml(b2bInput());
+    // The five TWybor1_2 flags default to "2" (no).
+    expect(xml).toMatch(/<Adnotacje>[^]*<P_16>2<\/P_16>[^]*<\/Adnotacje>/);
+    expect(xml).toContain('<P_17>2</P_17>');
+    expect(xml).toContain('<P_18>2</P_18>');
+    expect(xml).toContain('<P_18A>2</P_18A>');
+    expect(xml).toContain('<P_23>2</P_23>');
+    // Each choice group takes its negative branch (TWybor1 = "1").
+    expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
+    expect(xml).toContain('<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu>');
+    expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+  });
+
+  it('should emit Fa children in schema order (P_15 → Adnotacje → RodzajFaktury → FaWiersz)', () => {
+    const xml = buildFa3Xml(b2bInput());
+    expect(xml).toMatch(/<P_15>[^]*<Adnotacje>[^]*<\/Adnotacje>[^]*<RodzajFaktury>[^]*<FaWiersz/);
   });
 
   it('should emit P_1 (issue date) and P_2 (invoice number)', () => {
@@ -146,6 +165,13 @@ describe('buildFa3Xml', () => {
       };
     }
 
+    it('should produce a KOR document that passes the structural FA(3) validator', () => {
+      // The KOR body must still satisfy the hardened required-section rule set
+      // (Naglowek + FA(3) form code, Podmiot1, Fa with KodWaluty/P_1/P_2/
+      // RodzajFaktury/Adnotacje and >=1 FaWiersz).
+      expect(() => validateFa3Xml(buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01')))).not.toThrow();
+    });
+
     it('should emit RodzajFaktury=KOR with reason and TypKorekty', () => {
       const xml = buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01'));
       expect(xml).toContain('<RodzajFaktury>KOR</RodzajFaktury>');
@@ -188,8 +214,13 @@ describe('buildFa3Xml', () => {
       expect(xml).toContain('<P_15>123.00</P_15>');
     });
 
-    it('should not emit RodzajFaktury for a plain (non-correction) invoice', () => {
-      expect(buildFa3Xml(b2bInput())).not.toContain('<RodzajFaktury>');
+    it('should emit RodzajFaktury=VAT (not KOR) for a plain (non-correction) invoice', () => {
+      // RodzajFaktury is XSD-required on every FA(3); a plain invoice is `VAT`,
+      // and carries none of the KOR-only correction metadata.
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+      expect(xml).not.toContain('<DaneFaKorygowanej>');
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
     });
   });
 });
