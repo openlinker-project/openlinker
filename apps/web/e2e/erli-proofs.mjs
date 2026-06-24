@@ -1,11 +1,11 @@
 /**
- * Erli functionality-proof captures (cropped) for the operator guide.
+ * Erli setup-guide captures (cropped).
  *
  * Drives the running web app (:4173) as the bootstrap admin and captures tight,
- * cropped screenshots that prove the live Erli flow:
+ * cropped screenshots of the Erli flow for docs/integrations/erli/setup-guide.md:
  *   20/21 are panel shots (separate script: erli-panel.mjs)
  *   22 — the created Erli offer row in OL Listings (cropped to the row)
- *   23 — the OL inventory value after a live PrestaShop stock change (cropped)
+ *   23 — the OL inventory value after a PrestaShop stock change (cropped)
  *   24 — the ingested Erli order detail in OL Orders (cropped)
  *
  * Run with the dev stack + API + web up. Uses locator.screenshot() / clip for
@@ -71,7 +71,7 @@ try {
     height: 420,
   });
 
-  // 23 — OL inventory value after the live PS stock change (crop the variant row).
+  // 23 — OL inventory value after a PS stock change (crop the variant row).
   await page.goto(`${BASE}/inventory`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
   // Try a search box first to isolate the variant if one exists.

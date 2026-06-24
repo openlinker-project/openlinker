@@ -1,9 +1,10 @@
 /**
- * Erli operator walkthrough — screenshot capture for the operator guide.
+ * Erli setup-guide screenshot capture.
  *
  * Drives the running web app (:4173) with a real browser, logs in as the
- * bootstrap admin, and captures a screenshot at each operator step of the Erli
- * flow into docs/assets/erli/. Run with the dev stack + API + web up.
+ * bootstrap admin, and captures a screenshot at each step of the Erli setup
+ * flow into docs/assets/erli/ (used by docs/integrations/erli/setup-guide.md).
+ * Run with the dev stack + API + web up.
  *
  * Usage: node apps/web/e2e/erli-walkthrough.mjs [step]
  *   step (optional): connection | offer | all   (default: connection)

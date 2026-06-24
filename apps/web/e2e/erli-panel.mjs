@@ -1,7 +1,7 @@
 /**
- * Erli SANDBOX seller-panel screenshot capture for the operator guide.
+ * Erli SANDBOX seller-panel screenshot capture for the setup guide.
  *
- * Separate from the OL walkthrough scripts because it targets a different origin
+ * Separate from the OL capture scripts because it targets a different origin
  * (the Erli sandbox seller panel) with different credentials. Logs into the Erli
  * sandbox seller panel and captures:
  *   20 — where the Shop API key is generated / found
