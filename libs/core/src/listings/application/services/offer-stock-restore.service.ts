@@ -26,11 +26,16 @@
  * @implements {IOfferStockRestoreService}
  */
 import { Injectable, Inject } from '@nestjs/common';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  CapabilityNotSupportedException,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import type {
   OfferManagerPort,
+  OfferStockRestorer,
   OfferStockRestoreTarget
 } from '@openlinker/core/listings';
 import { isOfferStockRestorer ,
@@ -64,6 +69,18 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     connectionId: string,
     internalOrderId: string,
   ): Promise<void> {
+    // Resolve the destination restorer FIRST. The ingestion hook enqueues this
+    // job on every `→cancelled` transition regardless of marketplace, so most
+    // invocations are for connections that restore their own stock (Allegro) or
+    // expose no `OfferStockRestorer` at all. Short-circuiting here keeps those
+    // common cases off the per-variant mapping + availability reads below, and
+    // a capability that is unsupported / disabled on the connection is a routine
+    // no-op — not a job failure that should dead-letter.
+    const restorer = await this.resolveStockRestorer(connectionId, internalOrderId);
+    if (!restorer) {
+      return;
+    }
+
     const record = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!record) {
       this.logger.debug(
@@ -105,21 +122,53 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       targets.push({ externalOfferId, quantity });
     }
 
-    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
-      connectionId,
-      'OfferManager',
-    );
-    if (!isOfferStockRestorer(adapter)) {
-      this.logger.warn(
-        `Connection ${connectionId} adapter does not support OfferStockRestorer; skipping stock restore`,
-      );
-      return;
-    }
-
     this.logger.debug(
       `Restoring marketplace stock for ${targets.length} offer(s) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
     );
-    await adapter.restoreStockOnCancellation(targets);
+    await restorer.restoreStockOnCancellation(targets);
+  }
+
+  /**
+   * Resolve the connection's `OfferManager` adapter and narrow it to an
+   * `OfferStockRestorer`, or return `null` when the source marketplace does not
+   * participate in core-driven stock restore. All three "doesn't participate"
+   * paths are routine no-ops, logged at debug — never `warn` (this fires on
+   * every cancellation platform-wide) and never thrown (a thrown capability
+   * error would fail the job and dead-letter it):
+   *   - `OfferManager` not supported by the adapter, or not enabled on the
+   *     connection → `CapabilityNotSupportedException` (and its
+   *     `CapabilityNotEnabledException` subclass);
+   *   - adapter present but does not implement `OfferStockRestorer` (e.g.
+   *     Allegro, which restores its own stock on cancellation).
+   */
+  private async resolveStockRestorer(
+    connectionId: string,
+    internalOrderId: string,
+  ): Promise<(OfferManagerPort & OfferStockRestorer) | null> {
+    let adapter: OfferManagerPort;
+    try {
+      adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        connectionId,
+        'OfferManager',
+      );
+    } catch (error) {
+      if (error instanceof CapabilityNotSupportedException) {
+        this.logger.debug(
+          `Stock-restore skipped: connection does not support/enable OfferManager [connectionId=${connectionId}, orderId=${internalOrderId}]`,
+        );
+        return null;
+      }
+      throw error;
+    }
+
+    if (!isOfferStockRestorer(adapter)) {
+      this.logger.debug(
+        `Stock-restore skipped: adapter does not implement OfferStockRestorer (marketplace restores its own stock) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
+      );
+      return null;
+    }
+
+    return adapter;
   }
 
   /**

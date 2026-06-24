@@ -10,6 +10,10 @@
 
 import { OfferStockRestoreService } from '../offer-stock-restore.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  CapabilityNotEnabledException,
+  CapabilityNotSupportedException,
+} from '@openlinker/core/integrations';
 import type { IInventoryQueryService, VariantAvailability } from '@openlinker/core/inventory';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import type {
@@ -122,11 +126,9 @@ describe('OfferStockRestoreService', () => {
     ]);
   });
 
-  it('should no-op when the adapter does not support OfferStockRestorer', async () => {
-    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
-    offerMappings.findMany.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
-    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 5]]));
-    // Adapter without the capability method.
+  it('should no-op (no order/mapping reads) when the adapter does not support OfferStockRestorer', async () => {
+    // Capability is resolved first; a non-restorer adapter (e.g. Allegro, which
+    // restores its own stock) short-circuits before any DB work.
     integrationsService.getCapabilityAdapter.mockResolvedValue({
       updateOfferQuantity: jest.fn(),
     } as unknown as OfferManagerPort);
@@ -135,7 +137,43 @@ describe('OfferStockRestoreService', () => {
       service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
     ).resolves.toBeUndefined();
 
+    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
+    expect(offerMappings.findMany).not.toHaveBeenCalled();
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+  });
+
+  it('should no-op (not throw) when OfferManager is unsupported by the adapter', async () => {
+    integrationsService.getCapabilityAdapter.mockRejectedValue(
+      new CapabilityNotSupportedException('erli.shopapi.v1', 'OfferManager')
+    );
+
+    await expect(
+      service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+    ).resolves.toBeUndefined();
+
+    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+  });
+
+  it('should no-op (not throw) when OfferManager is disabled on the connection', async () => {
+    integrationsService.getCapabilityAdapter.mockRejectedValue(
+      new CapabilityNotEnabledException(CONNECTION_ID, 'erli.shopapi.v1', 'OfferManager')
+    );
+
+    await expect(
+      service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+    ).resolves.toBeUndefined();
+
+    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+  });
+
+  it('should rethrow non-capability errors from adapter resolution', async () => {
+    integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('connection lookup failed'));
+
+    await expect(
+      service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+    ).rejects.toThrow('connection lookup failed');
   });
 
   it('should no-op when the order record is not found', async () => {
@@ -144,7 +182,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(offerMappings.findMany).not.toHaveBeenCalled();
-    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 
   it('should no-op when the order has no resolved variants', async () => {
@@ -153,7 +191,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(offerMappings.findMany).not.toHaveBeenCalled();
-    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 
   it('should no-op when none of the order variants have an offer mapping', async () => {
@@ -163,6 +201,6 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
-    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
 });

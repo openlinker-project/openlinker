@@ -606,6 +606,23 @@ describe('OrderIngestionService', () => {
       expect(jobQueue.enqueue).not.toHaveBeenCalled();
     });
 
+    it('should not fail order sync when the stockRestore enqueue fails (loss is logged, not thrown)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).resolves.not.toThrow();
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      // Order is still persisted; only the restore was lost (and logged).
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+    });
+
     it('should NOT enqueue on a destination-echo order (cross-origin early-return)', async () => {
       orderSource.getOrder.mockResolvedValue(cancelledIncoming);
       // Existing record originated from a DIFFERENT connection → early-return.

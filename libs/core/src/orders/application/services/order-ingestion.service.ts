@@ -306,17 +306,29 @@ export class OrderIngestionService implements IOrderIngestionService {
     // handler narrows the source connection's adapter to OfferStockRestorer and
     // no-ops if the capability is absent.
     if (order.status === 'cancelled' && priorStatus !== 'cancelled') {
-      await this.jobQueue.enqueue({
-        type: 'marketplace.offer.stockRestore',
-        connectionId,
-        payload: {
-          schemaVersion: 1,
-          internalOrderId,
-        },
-        options: {
-          dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
-        },
-      });
+      try {
+        await this.jobQueue.enqueue({
+          type: 'marketplace.offer.stockRestore',
+          connectionId,
+          payload: {
+            schemaVersion: 1,
+            internalOrderId,
+          },
+          options: {
+            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+          },
+        });
+      } catch (error) {
+        // The order is already persisted as `cancelled`, so the transition gate
+        // above won't re-fire on a re-poll — a swallowed enqueue failure would
+        // silently lose the restore. We don't rethrow (that would fail the whole
+        // order-sync and still couldn't re-fire the gate on retry), but we log at
+        // error so the missed restore is loud and actionable.
+        this.logger.error(
+          `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
+          (error as Error).stack,
+        );
+      }
     }
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
