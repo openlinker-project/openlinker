@@ -19,15 +19,24 @@ export const KsefCertificateUsageValues = ['KsefTokenEncryption', 'SymmetricKeyE
 export type KsefCertificateUsage = (typeof KsefCertificateUsageValues)[number];
 
 /**
- * An MF public-key certificate with its validity window. `certificatePem` is
- * the PEM the RSA wrapper loads; `certificateHash` (SHA-256 of the PEM) is
- * stamped onto wrapped keys so the server can identify which cert was used.
+ * An MF public-key certificate with its validity window, reconciled to the spec
+ * `PublicKeyCertificate` shape. The wire response carries `certificate` (DER,
+ * base64), `usage` as an ARRAY of operations, `validFrom`/`validTo`, plus a
+ * `publicKeyId` (44 chars) used as the encryption-key selector and a
+ * `certificateId`.
+ *
+ * `certificatePem` is the PEM the RSA wrapper loads (built from the wire
+ * `certificate` DER). `publicKeyId` is stamped onto the encrypted-symmetric-key
+ * / init-token payloads so MF knows which key to unwrap with; `certificateHash`
+ * (SHA-256 of the PEM) is kept for log-safe identification.
  */
 export interface PublicKeyCertificate {
   certificatePem: string;
-  usage: KsefCertificateUsage;
+  usage: KsefCertificateUsage[];
   validFrom: Date;
-  validUntil: Date;
+  validTo: Date;
+  publicKeyId?: string;
+  certificateId?: string;
   certificateHash: string;
 }
 
@@ -45,11 +54,15 @@ export interface SymmetricKey {
 
 /**
  * An AES key wrapped under an MF RSA public key (RSA-OAEP, SHA-256). Submitted
- * to MF to bootstrap the encrypted session. `certificateHash` identifies the
- * wrapping cert so the server can unwrap and (on rotation) audit.
+ * to MF (as `EncryptionInfo.encryptedSymmetricKey`, base64) to bootstrap the
+ * encrypted session. `publicKeyId` (when the cert carried one) is the spec
+ * selector MF uses to pick the unwrapping key — surfaced as
+ * `EncryptionInfo.publicKeyId` by C5. `certificateHash` is kept for log-safe
+ * identification of the wrapping cert.
  */
 export interface RsaWrappedKey {
   wrappedKey: Uint8Array;
+  publicKeyId?: string;
   certificateHash: string;
 }
 
@@ -68,7 +81,7 @@ export interface EncryptedDocument {
  * The full session-crypto context an issuance flow holds while encrypting one
  * or more documents in a batch. Combines the symmetric key, its RSA-wrapped
  * form, and an `expiresAt` (min of a self-imposed session TTL and the wrapping
- * cert's `validUntil`) so the caller can proactively re-initialize before stale.
+ * cert's `validTo`) so the caller can proactively re-initialize before stale.
  *
  * SECURITY: `symmetricKey` carries raw key bytes — never log this object.
  */

@@ -38,14 +38,17 @@ live KSeF test vectors land.
 
 `MfPublicKeyCacheService.fetchAndCachePublicKey(usage)`:
 
-- `GET /security/public-key-certificates`, filter by `usage`
+- `GET /security/public-key-certificates` returns a flat ARRAY of
+  `PublicKeyCertificate` (`certificate` DER-base64, `publicKeyId`, `validFrom`/
+  `validTo`, `usage` as an ARRAY). Filter by `usage` array membership
   (`KsefTokenEncryption` vs `SymmetricKeyEncryption` — required to avoid
-  key-confusion), pick the latest valid cert.
+  key-confusion), pick the latest valid cert. The selected `publicKeyId` is the
+  spec selector stamped onto the init-token / encrypted-symmetric-key payloads.
 - `validateMfPublicKeyCertificate` enforces the validity window + usage before
   the cert is trusted. (Root-of-trust pinning + OCSP/CRL is a tracked follow-up;
   KSeF serves these over TLS and C3 validates the window + usage.)
 - Cache key is `ksef:mf-public-key:{connectionId}:{usage}` — per-connection,
-  per-usage. TTL is derived from `validUntil - now - 5m` (never hardcoded), so a
+  per-usage. TTL is derived from `validTo - now - 5m` (never hardcoded), so a
   rotated cert can't be served past its lifetime. A cert cached but rotated early
   is detected as stale on read and refetched.
 
