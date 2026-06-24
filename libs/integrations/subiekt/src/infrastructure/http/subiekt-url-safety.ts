@@ -90,13 +90,19 @@ const BLOCKED_METADATA_HOSTNAMES = new Set([
 function isMetadataIp(canonicalHost: string): boolean {
   const h = canonicalHost.toLowerCase();
   if (h.includes(':')) {
-    // IPv4-mapped IPv6 (::ffff:169.254.x) — strip the mapped suffix and re-check.
-    if (h.startsWith('::ffff:')) {
-      const mapped = h.slice('::ffff:'.length);
-      // Node's URL parser normalises the dotted mapped form
-      // (::ffff:169.254.169.254) to two hex hextets (::ffff:a9fe:a9fe), which
-      // neither isIP nor canonicalizeNumericIpv4 can decode — so decode the
-      // hextets to dotted-quad here, else the mapped IMDS form bypasses the guard.
+    // Embedded-IPv4 IPv6 forms carry the same IMDS surface as a bare IPv4 and
+    // MUST be decoded before the range check. Node's URL parser normalises both
+    // to hex hextets, which neither isIP nor canonicalizeNumericIpv4 decode:
+    //   - IPv4-mapped     [::ffff:169.254.169.254] -> ::ffff:a9fe:a9fe
+    //   - IPv4-compatible [::169.254.169.254]      -> ::a9fe:a9fe   (deprecated)
+    // Decode the trailing two hextets to dotted-quad in both cases; otherwise the
+    // embedded IMDS address bypasses the guard.
+    const mapped = h.startsWith('::ffff:')
+      ? h.slice('::ffff:'.length)
+      : h.startsWith('::')
+        ? h.slice('::'.length)
+        : undefined;
+    if (mapped !== undefined) {
       const hextets = mapped.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
       if (hextets) {
         const hi = parseInt(hextets[1], 16);
@@ -104,12 +110,14 @@ function isMetadataIp(canonicalHost: string): boolean {
         const dotted = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join('.');
         return isMetadataIp(dotted);
       }
-      // Dotted mapped form (::ffff:169.254.169.254) in case the parser ever
-      // emits it un-normalised.
+      // Dotted embedded form (e.g. ::ffff:169.254.169.254) in case the parser
+      // ever emits it un-normalised. A non-numeric tail (e.g. ::1 loopback) does
+      // not canonicalise and is not metadata.
       const canonical = canonicalizeNumericIpv4(mapped) ?? mapped;
-      return isIP(canonical) !== 0 ? isMetadataIp(canonical) : false;
+      return isIP(canonical) !== 0 && !canonical.includes(':') ? isMetadataIp(canonical) : false;
     }
-    // IPv6 link-local fe80::/10 carries no IMDS surface for the bridge; allow.
+    // Other IPv6 (link-local fe80::/10, ULA fc00::/7) carries no IMDS surface for
+    // the bridge; allow.
     return false;
   }
   const [a, b] = h.split('.').map(Number);

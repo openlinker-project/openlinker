@@ -18,6 +18,8 @@ describe('isBridgeUrlSafe', () => {
       ['octal dotted', 'http://0251.0376.0251.0376/'],
       ['IPv4-mapped IPv6 (dotted)', 'http://[::ffff:169.254.169.254]/'],
       ['IPv4-mapped IPv6 (hex hextets)', 'http://[::ffff:a9fe:a9fe]/'],
+      ['IPv4-compatible IPv6 (dotted)', 'http://[::169.254.169.254]/'],
+      ['IPv4-compatible IPv6 (hex hextets)', 'http://[::a9fe:a9fe]/'],
     ])('blocks %s', (_label, url) => {
       expect(isBridgeUrlSafe(url)).toBe(false);
     });
@@ -40,6 +42,8 @@ describe('isBridgeUrlSafe', () => {
       'http://127.0.0.1:8080',
       'http://localhost:5000',
       'http://[::1]/',
+      'http://[::ffff:c0a8:1]/', // IPv4-mapped 192.168.0.1 — LAN, not IMDS
+      'http://[2001:db8::1]/', // global IPv6 — embedded-IPv4 decode must not over-block
       'https://bridge.internal-lan.example/api',
     ])('allows %s', (url) => {
       expect(isBridgeUrlSafe(url)).toBe(true);
