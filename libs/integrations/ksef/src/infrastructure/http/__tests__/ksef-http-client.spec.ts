@@ -29,7 +29,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('KsefHttpClient', () => {
-  const baseUrl = 'https://ksef-test.mf.gov.pl/api/v2';
+  const baseUrl = 'https://api-test.ksef.mf.gov.pl/v2';
   let fetchMock: jest.MockedFunction<typeof fetch>;
   let lifecycle: KsefTokenLifecycle;
 
