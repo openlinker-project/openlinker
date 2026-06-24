@@ -22,6 +22,7 @@ const makeUser = (overrides: Partial<User> = {}): User =>
     overrides.email ?? null,
     overrides.passwordHash ?? '$2a$10$hashedpassword',
     overrides.role ?? 'admin',
+    overrides.status ?? 'active',
     overrides.createdAt ?? new Date(),
     overrides.updatedAt ?? new Date()
   );

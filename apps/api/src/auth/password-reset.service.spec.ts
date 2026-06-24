@@ -16,7 +16,7 @@ import {
 } from '@openlinker/core/users';
 
 const makeUser = (): User =>
-  new User('u-1', 'admin', 'admin@example.com', 'hash', 'admin', new Date(), new Date());
+  new User('u-1', 'admin', 'admin@example.com', 'hash', 'admin', 'active', new Date(), new Date());
 
 const makeConfig = (ttl = 60) => ({ get: jest.fn(() => ttl) }) as unknown as ConfigService;
 
@@ -25,8 +25,13 @@ function makeMocks() {
     findByUsername: jest.fn(),
     findByEmail: jest.fn(),
     findById: jest.fn(),
+    findAll: jest.fn(),
     save: jest.fn(),
     updatePasswordHash: jest.fn(),
+    updateStatus: jest.fn(),
+    updateRole: jest.fn(),
+    approveUser: jest.fn(),
+    deleteById: jest.fn(),
   };
   const tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort> = {
     save: jest.fn(),

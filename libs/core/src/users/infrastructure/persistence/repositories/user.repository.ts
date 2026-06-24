@@ -15,6 +15,8 @@ import { User } from '../../../domain/entities/user.entity';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
 import type { UserRole } from '../../../domain/types/role.types';
 import { UserRoleValues } from '../../../domain/types/role.types';
+import type { UserStatus } from '../../../domain/types/user-status.types';
+import { UserStatusValues } from '../../../domain/types/user-status.types';
 import { UserOrmEntity } from '../entities/user.orm-entity';
 
 @Injectable()
@@ -39,16 +41,54 @@ export class UserRepository implements UserRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findAll(opts?: {
+    status?: UserStatus;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ users: User[]; total: number }> {
+    const page = opts?.page ?? 0;
+    const pageSize = opts?.pageSize ?? 25;
+    const where = opts?.status ? { status: opts.status } : {};
+
+    const [entities, total] = await this.ormRepository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: page * pageSize,
+      take: pageSize,
+    });
+
+    return { users: entities.map((e) => this.toDomain(e)), total };
+  }
+
   async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
     await this.ormRepository.update({ id: userId }, { passwordHash });
   }
 
-  async save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role'>): Promise<User> {
+  async updateStatus(userId: string, status: UserStatus): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { status });
+  }
+
+  async updateRole(userId: string, role: UserRole): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { role });
+  }
+
+  async approveUser(userId: string, role: UserRole): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { role, status: 'active' });
+  }
+
+  async deleteById(userId: string): Promise<void> {
+    await this.ormRepository.delete({ id: userId });
+  }
+
+  async save(
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>
+  ): Promise<User> {
     const entity = this.ormRepository.create({
       username: user.username,
       email: user.email,
       passwordHash: user.passwordHash,
       role: user.role,
+      status: user.status,
     });
     const saved = await this.ormRepository.save(entity);
     return this.toDomain(saved);
@@ -59,12 +99,17 @@ export class UserRepository implements UserRepositoryPort {
       ? (entity.role as UserRole)
       : 'viewer';
 
+    const status = UserStatusValues.includes(entity.status as UserStatus)
+      ? (entity.status as UserStatus)
+      : 'active';
+
     return new User(
       entity.id,
       entity.username,
       entity.email,
       entity.passwordHash,
       role,
+      status,
       entity.createdAt,
       entity.updatedAt
     );

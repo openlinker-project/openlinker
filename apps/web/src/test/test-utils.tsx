@@ -112,6 +112,7 @@ export function createMockApiClient(
     } as ApiClient['aiProviderSettings'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
+      register: vi.fn().mockResolvedValue({ ok: true }),
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
@@ -405,6 +406,16 @@ export function createMockApiClient(
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.webhookDeliveries,
     } as ApiClient['webhookDeliveries'],
+    users: {
+      list: vi.fn().mockResolvedValue({ users: [], total: 0 }),
+      approve: vi.fn().mockResolvedValue(undefined),
+      reject: vi.fn().mockResolvedValue(undefined),
+      updateRole: vi.fn().mockResolvedValue(undefined),
+      deactivate: vi.fn().mockResolvedValue(undefined),
+      reactivate: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      ...overrides.users,
+    } as ApiClient['users'],
   };
 
   // Fold plugin mock defaults, layering caller overrides per namespace. Caller

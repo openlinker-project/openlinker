@@ -11,7 +11,7 @@ import { User } from '@openlinker/core/users';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 
 const makeUser = (username: string): User =>
-  new User('id', username, null, 'hash', 'admin', new Date(), new Date());
+  new User('id', username, null, 'hash', 'admin', 'active', new Date(), new Date());
 
 const makeConfig = (overrides: Record<string, string | undefined> = {}): ConfigService => {
   const values: Record<string, string | undefined> = {
@@ -29,8 +29,13 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   findByUsername: jest.fn(),
   findByEmail: jest.fn(),
   findById: jest.fn(),
+  findAll: jest.fn(),
   save: jest.fn(),
   updatePasswordHash: jest.fn(),
+  updateStatus: jest.fn(),
+  updateRole: jest.fn(),
+  approveUser: jest.fn(),
+  deleteById: jest.fn(),
 });
 
 describe('BootstrapAdminService', () => {

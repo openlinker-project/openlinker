@@ -34,7 +34,15 @@ export class AuthService {
       return null;
     }
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    return isMatch ? user : null;
+    if (!isMatch) {
+      return null;
+    }
+    // Non-active users (pending/deactivated) get the same 401 as wrong password
+    // to avoid account-status enumeration via the login endpoint.
+    if (user.status !== 'active') {
+      return null;
+    }
+    return user;
   }
 
   login(user: User): LoginResponseDto {

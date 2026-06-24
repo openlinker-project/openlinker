@@ -30,7 +30,7 @@ import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { REFRESH_COOKIE_NAME } from './auth.cookies';
 
 const makeUser = (): User =>
-  new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', new Date(), new Date());
+  new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', 'active', new Date(), new Date());
 
 const makeLoginResponse = (): LoginResponseDto => {
   const dto = new LoginResponseDto();

@@ -15,7 +15,9 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -31,6 +33,7 @@ import { Request, Response } from 'express';
 import {
   InvalidPasswordResetTokenException,
   RefreshTokenReuseDetectedException,
+  UserAlreadyExistsException,
   WeakPasswordException,
 } from '@openlinker/core/users';
 import { AuthService } from './auth.service';
@@ -43,11 +46,14 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { OkResponseDto } from './dto/ok-response.dto';
+import { RegisterDto } from './dto/register.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
   PASSWORD_RESET_SERVICE_TOKEN,
 } from './password-reset.service.interface';
+import { IRegistrationService } from './registration.service.interface';
+import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { RotatedRefreshToken } from './refresh-token.types';
@@ -72,6 +78,8 @@ export class AuthController {
     private readonly passwordResetService: IPasswordResetService,
     @Inject(REFRESH_TOKEN_SERVICE_TOKEN)
     private readonly refreshTokenService: IRefreshTokenService,
+    @Inject(REGISTRATION_SERVICE_TOKEN)
+    private readonly registrationService: IRegistrationService,
   ) {}
 
   @Public()
@@ -96,6 +104,30 @@ export class AuthController {
     setRefreshCookie(res, refresh.rawToken);
     setCsrfCookie(res);
     return accessTokenDto;
+  }
+
+  @Public()
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Self-service registration. Creates a pending user that requires admin approval.',
+  })
+  @ApiResponse({ status: 201, description: 'Registration submitted — awaiting admin approval', type: OkResponseDto })
+  @ApiResponse({ status: 403, description: 'Registration is disabled for this installation' })
+  @ApiResponse({ status: 409, description: 'Username or email already taken' })
+  async register(@Body() dto: RegisterDto): Promise<OkResponseDto> {
+    try {
+      await this.registrationService.register(dto.username, dto.email, dto.password);
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      if (error instanceof UserAlreadyExistsException) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+    return { ok: true };
   }
 
   @Public()

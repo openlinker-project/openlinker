@@ -81,6 +81,7 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
         email,
         passwordHash,
         role: 'admin',
+        status: 'active',
       });
     } catch (error) {
       // Concurrent boot peer won the insert — username unique constraint fired.

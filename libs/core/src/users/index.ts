@@ -14,6 +14,8 @@ export type { PasswordResetTokenRepositoryPort } from './domain/ports/password-r
 export type { PasswordResetNotifierPort } from './domain/ports/password-reset-notifier.port';
 export type { RefreshTokenRepositoryPort } from './domain/ports/refresh-token-repository.port';
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
+export { UserAlreadyExistsException } from './domain/exceptions/user-already-exists.exception';
+export { UserNotPendingException } from './domain/exceptions/user-not-pending.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
 export { WeakPasswordException } from './domain/exceptions/weak-password.exception';
 export { RefreshTokenReuseDetectedException } from './domain/exceptions/refresh-token-reuse-detected.exception';
@@ -25,6 +27,8 @@ export {
   ROLE_PERMISSIONS,
 } from './domain/types/role.types';
 export type { UserRole, Permission } from './domain/types/role.types';
+export { UserStatusValues } from './domain/types/user-status.types';
+export type { UserStatus } from './domain/types/user-status.types';
 export {
   RefreshTokenRevocationReasonValues,
   parseRefreshTokenRevocationReason,

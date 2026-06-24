@@ -25,6 +25,8 @@ import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface
 import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import { RegistrationService } from './registration.service';
+import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
     { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
     RefreshTokenService,
     { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
+    RegistrationService,
+    { provide: REGISTRATION_SERVICE_TOKEN, useExisting: RegistrationService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
