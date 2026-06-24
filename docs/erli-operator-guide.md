@@ -35,6 +35,18 @@ You configure these **in your Erli seller panel**, before touching OpenLinker.
 | **Sandbox account** (for testing) | Request sandbox access from Erli; log in at the sandbox seller panel | Sandbox base URL is `https://sandbox.erli.dev/svc/shop-api`. Production is `https://erli.pl/svc/shop-api`. |
 | **A product to list** | You list OpenLinker products onto Erli — no Erli-side product needed up front | Erli requires each offer to carry **at least one public `https` image** and a **dispatch (handling) time**. See §6. |
 
+**Where to generate the Shop API key (exact path).** In the Erli seller panel:
+**moje Erli** (top-right) → **Ustawienia sklepu** (Store settings) →
+**Metoda Integracji** (Integration method) → **Własna integracja po API**
+(Custom API integration) → **Wygeneruj nowy klucz** (Generate new key). The key is
+shown once — copy it straight into OpenLinker's connection form (§3).
+
+> **Note — no seller-panel screenshot in this guide.** The Erli seller-panel
+> login is gated by a Google reCAPTCHA challenge, so we could not script a clean
+> capture of the API-key screen for this guide. The navigation path above is the
+> authoritative route (confirmed against Erli's own API docs and integration
+> guides); follow it manually in your own panel.
+
 **There is no Erli API to create test orders.** An order only enters the system
 when a **buyer places it** on the Erli marketplace (or Erli support seeds one in
 sandbox). OpenLinker cannot synthesise a buyer purchase.
@@ -124,6 +136,15 @@ Then set price, stock, dispatch time, and (optionally) category on the details s
 Submit. OpenLinker enqueues the creation job; Erli accepts it asynchronously
 (HTTP 202) and the offer starts as **draft**.
 
+Once created, the offer appears in **Listings** mapped to the Erli connection.
+Erli keys each offer by the OpenLinker **variant id**, so the offer row shows the
+variant (`ol_variant_2dab…`), platform **erli**, and the target connection:
+
+![Created Erli offer row in OpenLinker Listings](./assets/erli/22-ol-offer-row.png)
+
+*(Verified live: offer for variant `ol_variant_2dab6f6b…` — "OL E2E Resin Ring
+(size 18)" — created on the Erli sandbox and mapped to the `My erli` connection.)*
+
 > **Image requirement (important).** Erli rejects offers without at least one
 > **public `https`** image. OpenLinker pulls images from the master product and
 > **drops any non-`https`/non-public URL** (e.g. a PrestaShop dev store on
@@ -145,8 +166,18 @@ master inventory change  →  inventory.propagateToMarketplaces
 
 When the master (e.g. PrestaShop) stock for a mapped product changes, the next
 master-inventory sync writes the new value and OpenLinker pushes it to the linked
-Erli offer automatically. *(Verified live: a master change from 100 → 7 propagated
-to the Erli offer within one sync cycle.)*
+Erli offer automatically.
+
+The OpenLinker **Inventory** view reflects the new master quantity for the mapped
+variant — here the variant's available quantity after a live PrestaShop change:
+
+![OL inventory after a live stock change](./assets/erli/23-ol-stock-after-change.png)
+
+*(Verified live: PrestaShop stock for variant `ol_variant_2dab6f6b…` changed
+100 → 33; the master-inventory sync wrote `availableQuantity = 33` to OpenLinker
+and enqueued a `marketplace.offerQuantity.update` job — succeeded — that pushed
+`quantity = 33` to the linked Erli offer within one cycle. PrestaShop stock was
+restored to 100 afterward.)*
 
 > **Frozen fields.** If a seller manually edits an offer in the Erli panel, Erli
 > marks those fields `frozen`. OpenLinker excludes frozen **content** fields
@@ -172,8 +203,14 @@ Ingested orders appear under **Orders**:
 
 ![Orders](./assets/erli/11-orders-list.png)
 
-*(Verified live: an existing sandbox order ingested via the poll with
-`recordStatus = ready`.)*
+Opening the ingested order shows its **source = the Erli connection** (`My erli` /
+`erli`) flowing to the PrestaShop destination:
+
+![Ingested Erli order detail in OpenLinker](./assets/erli/24-ol-order-detail.png)
+
+*(Verified live: order `ol_order_0b951671…` ingested from the Erli sandbox via
+the poll — source connection `My erli`, `recordStatus = ready`, status
+PROCESSING / PAID.)*
 
 > **Downstream fulfilment.** Ingestion (the OrderSource half) is independent of
 > creating the order on a destination shop. The latter requires resolved customer
