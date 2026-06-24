@@ -177,8 +177,8 @@ export interface CreateInvoiceRecordInput {
  * `buyerTaxId` onto the projection + a migration + a backfill — out of #1119
  * scope. It is therefore absent from this filter surface AND from the public
  * `ListInvoicesQueryDto` (where `forbidNonWhitelisted` rejects `hasTaxId` with
- * a 400 rather than accepting-and-ignoring it). Tracked as a dedicated #1119
- * follow-up; AC-6 sign-off must NOT be claimed for this sub-filter.
+ * a 400 rather than accepting-and-ignoring it). Tracked as #1202; AC-6
+ * sign-off must NOT be claimed for this sub-filter until it ships.
  */
 export interface InvoiceRecordFilters {
   status?: InvoiceStatus;

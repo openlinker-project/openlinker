@@ -209,7 +209,7 @@ export class InvoicingController {
       'issued date range. The AC-6 "with/without tax id" sub-filter is NOT exposed ' +
       'here: the persisted InvoiceRecord projection has no buyer/tax-id column (the ' +
       'buyer lives on the Order), so it cannot be served without a schema migration ' +
-      'that is out of #1119 scope. Tracked as a #1119 follow-up; not silently "done".',
+      'that is out of #1119 scope. Tracked as #1202; not silently "done".',
   })
   @ApiResponse({
     status: 200,
