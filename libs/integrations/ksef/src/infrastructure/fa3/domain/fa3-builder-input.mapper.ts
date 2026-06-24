@@ -63,7 +63,6 @@ export function mapToFa3BuilderInput(
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
-    orderReference: cmd.orderId,
     lines,
   };
 }

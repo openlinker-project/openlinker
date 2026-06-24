@@ -2,14 +2,20 @@
  * KSeF Auth Handshake Service
  *
  * Runs the KSeF 2.0 authentication handshake and yields the access/refresh JWT
- * bundle the HTTP client injects + rotates. Sequence (ksef-token flow):
+ * bundle the HTTP client injects + rotates. Sequence (ksef-token flow), all
+ * reconciled to the authoritative spec:
  *
  *   1. POST /auth/challenge            → { challenge, timestamp }
- *   2. encrypt (token|timestamp)       → RSA-OAEP under MF token-enc key
- *   3. POST /auth/ksef-token           → { referenceNumber }  (async)
- *   4. poll GET /auth/{referenceNumber} until status=completed (backoff+timeout)
- *   5. POST /auth/token/redeem         → { accessToken, refreshToken } (JWTs)
- *   6. parse accessToken `exp`         → cache TTL (never hardcoded)
+ *   2. encrypt (token|timestamp)       → RSA-OAEP under MF token-enc key;
+ *      build InitTokenAuthenticationRequest { challenge, contextIdentifier,
+ *      encryptedToken, publicKeyId? }
+ *   3. POST /auth/ksef-token           → { referenceNumber, authenticationToken }
+ *      (async; authenticationToken is the Bearer for the next two calls)
+ *   4. poll GET /auth/{referenceNumber} (Bearer authenticationToken) until
+ *      status.code === 200 (backoff+timeout)
+ *   5. POST /auth/token/redeem (Bearer authenticationToken, NO body)
+ *      → { accessToken: TokenInfo, refreshToken: TokenInfo }
+ *   6. parse accessToken.token `exp`   → cache TTL (never hardcoded)
  *
  * The qualified-seal flow (step 2/3 via XAdES + /auth/xades-signature) is
  * DEFERRED to C4: `authenticate` throws `KsefConfigException` for that authType
@@ -17,11 +23,12 @@
  *
  * Partial-failure posture: challenge/submit transient (5xx/network) failures are
  * retried by the HTTP client itself; a poll timeout throws
- * `KsefAuthenticationException` (the sessionToken/reference is lost — the caller
- * restarts the handshake). A `429` on any auth endpoint surfaces as the client's
- * rate-limit retry, then as an auth exception if exhausted.
+ * `KsefAuthenticationException` (the reference is lost — the caller restarts the
+ * handshake). A `429` on any auth endpoint surfaces as the client's rate-limit
+ * retry, then as an auth exception if exhausted.
  *
- * SECURITY: never logs the token, challenge, accessToken, or refreshToken.
+ * SECURITY: never logs the token, challenge, authenticationToken, accessToken,
+ * or refreshToken.
  *
  * @module libs/integrations/ksef/src/infrastructure/http/auth
  */
@@ -30,10 +37,12 @@ import type { IKsefHttpClient } from '../ksef-http-client.interface';
 import type { KsefAuthenticationToken } from '../ksef-http-client.types';
 import type {
   AuthChallenge,
-  AuthSubmitResult,
-  AuthTokenRedeem,
-  KsefTokenEncryptionRequest,
+  AuthInitResult,
+  AuthOperationStatus,
+  AuthTokensResult,
+  InitTokenAuthenticationRequest,
 } from '../ksef-auth.types';
+import { KSEF_AUTH_STATUS_IN_PROGRESS, KSEF_AUTH_STATUS_SUCCESS } from '../ksef-auth.types';
 import type { KsefTokenEncryptor } from './ksef-token-encryptor.service';
 import { parseJwtExpiry } from './ksef-jwt-parser';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
@@ -67,13 +76,16 @@ export class KsefAuthHandshakeService {
     this.logger.log(`KSeF auth handshake started (connection ${this.connectionId})`);
 
     const challenge = await this.requestChallenge();
-    const encrypted = await this.tokenEncryptor.encryptToken(
+    const initRequest = await this.tokenEncryptor.buildInitRequest(
       material.token,
       material.contextNip,
+      challenge.challenge,
       challenge.timestamp,
     );
-    const submit = await this.submitKsefToken(encrypted);
-    const redeemed = await this.pollForToken(submit.referenceNumber);
+    const init = await this.submitKsefToken(initRequest);
+    const authToken = init.authenticationToken.token;
+    await this.pollUntilReady(init.referenceNumber, authToken);
+    const redeemed = await this.redeem(authToken);
     return this.toAuthenticationToken(redeemed);
   }
 
@@ -88,44 +100,50 @@ export class KsefAuthHandshakeService {
   }
 
   private async submitKsefToken(
-    encrypted: KsefTokenEncryptionRequest,
-  ): Promise<AuthSubmitResult> {
+    initRequest: InitTokenAuthenticationRequest,
+  ): Promise<AuthInitResult> {
     // Submit is safe to repeat (the server issues a fresh reference each time
     // from the same challenge), so opt into transient retries.
-    const response = await this.httpClient.post<AuthSubmitResult>(
+    const response = await this.httpClient.post<AuthInitResult>(
       '/auth/ksef-token',
-      { ...encrypted },
+      { ...initRequest },
       { idempotent: true },
     );
-    if (!response.data.referenceNumber) {
-      throw new KsefAuthenticationException('KSeF /auth/ksef-token returned no referenceNumber');
+    if (!response.data.referenceNumber || !response.data.authenticationToken?.token) {
+      throw new KsefAuthenticationException(
+        'KSeF /auth/ksef-token returned no referenceNumber / authenticationToken',
+      );
     }
     return response.data;
   }
 
   /**
-   * Poll the async session-issuance status until completed, with exponential
-   * backoff capped at `POLL_MAX_DELAY_MS` and a hard `POLL_DEADLINE_MS` wall.
-   * `4xx` (other than the still-processing case) propagates from the client.
+   * Poll the async operation-status endpoint until `status.code === 200`
+   * (success), with exponential backoff capped at `POLL_MAX_DELAY_MS` and a hard
+   * `POLL_DEADLINE_MS` wall. The poll is authenticated with the submit step's
+   * `authenticationToken`. Code `100` is still-in-progress; any other terminal
+   * code throws.
    */
-  private async pollForToken(referenceNumber: string): Promise<AuthTokenRedeem> {
+  private async pollUntilReady(referenceNumber: string, authToken: string): Promise<void> {
     const deadline = Date.now() + POLL_DEADLINE_MS;
     let delay = POLL_INITIAL_DELAY_MS;
+    const auth = { headers: { Authorization: `Bearer ${authToken}` } };
 
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       if (Date.now() > deadline) {
         break;
       }
-      const response = await this.httpClient.get<AuthTokenRedeem>(
+      const response = await this.httpClient.get<AuthOperationStatus>(
         `/auth/${encodeURIComponent(referenceNumber)}`,
+        auth,
       );
-      const { status } = response.data;
-      if (status === 'completed') {
-        return this.redeem(referenceNumber);
+      const code = response.data.status?.code;
+      if (code === KSEF_AUTH_STATUS_SUCCESS) {
+        return;
       }
-      if (status === 'failed') {
+      if (code !== KSEF_AUTH_STATUS_IN_PROGRESS) {
         throw new KsefAuthenticationException(
-          `KSeF auth reference ${referenceNumber} reported failed status`,
+          `KSeF auth reference ${referenceNumber} reported terminal status code ${code ?? 'unknown'}`,
         );
       }
       this.logger.debug(
@@ -140,23 +158,24 @@ export class KsefAuthHandshakeService {
     );
   }
 
-  private async redeem(referenceNumber: string): Promise<AuthTokenRedeem> {
-    const response = await this.httpClient.post<AuthTokenRedeem>(
-      '/auth/token/redeem',
-      { referenceNumber },
-      { idempotent: true },
-    );
+  private async redeem(authToken: string): Promise<AuthTokensResult> {
+    // Redeem takes NO body and is authenticated with the operation's
+    // authenticationToken as Bearer.
+    const response = await this.httpClient.post<AuthTokensResult>('/auth/token/redeem', undefined, {
+      idempotent: true,
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
     return response.data;
   }
 
-  private toAuthenticationToken(redeemed: AuthTokenRedeem): KsefAuthenticationToken {
-    if (!redeemed.accessToken || !redeemed.refreshToken) {
+  private toAuthenticationToken(redeemed: AuthTokensResult): KsefAuthenticationToken {
+    if (!redeemed.accessToken?.token || !redeemed.refreshToken?.token) {
       throw new KsefAuthenticationException('KSeF redeem returned no access/refresh token');
     }
     return {
-      accessToken: redeemed.accessToken,
-      refreshToken: redeemed.refreshToken,
-      accessTokenExpiresAt: parseJwtExpiry(redeemed.accessToken),
+      accessToken: redeemed.accessToken.token,
+      refreshToken: redeemed.refreshToken.token,
+      accessTokenExpiresAt: parseJwtExpiry(redeemed.accessToken.token),
     };
   }
 
