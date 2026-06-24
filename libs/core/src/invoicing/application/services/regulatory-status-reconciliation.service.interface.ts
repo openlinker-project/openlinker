@@ -9,10 +9,14 @@
  * the next sweep. Receipts / `not-applicable` are never polled (excluded by the
  * repository query).
  *
- * Paging is offset-0 every run (no cursor): the non-terminal frontier is a
- * SHRINKING set, so it is walked from the front ordered `updatedAt ASC` — a
- * connection with more non-terminal rows than `limit` is covered across multiple
- * ticks, skip-free and starvation-bounded (plan decision #5).
+ * Paging is a `(updatedAt, id)` KEYSET CURSOR walked across pages WITHIN one run
+ * (plan decision #5, revised on #1206): `limit` is the per-PAGE size and the
+ * sweep pages forward — strictly after the last-seen `(updatedAt, id)` — until
+ * the frontier is drained. The cursor advances on every scanned row regardless
+ * of whether it was written, so the WHOLE non-terminal frontier is visited each
+ * run even when the oldest rows are perpetually unchanged (a no-op read does NOT
+ * bump `updatedAt`) and `total > limit`. Skip-free and starvation-free; the
+ * cursor is intra-run and unrelated to the exactly-once issuance key.
  *
  * @module libs/core/src/invoicing/application/services
  */

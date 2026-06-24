@@ -10,12 +10,20 @@
  * never concrete adapters; nothing from `libs/integrations` is imported. No
  * `faktura`/`ksef`/`NIP` vocabulary lives here.
  *
- * Paging is offset-0 every run (NO cursor): the non-terminal frontier is a
- * SHRINKING set (terminal/changed reads bump `updatedAt`, pushing rows to the
- * back), so it is walked from the front ordered `updatedAt ASC, id ASC`. A
- * connection with more non-terminal rows than `limit` is covered across multiple
- * 30-min ticks — skip-free and starvation-bounded by
- * `ceil(non_terminal_count / limit)` runs (plan decisions #5/#8f).
+ * Paging is a `(updatedAt, id)` KEYSET CURSOR walked across pages WITHIN one run
+ * (plan decision #5, REVISED on #1206). `opts.limit` is the per-PAGE size; the
+ * sweep keeps fetching the next page — bounded strictly after the last-seen
+ * `(updatedAt, id)` — until a short page (fewer than `limit` rows) drains the
+ * frontier, capping the number of pages at `MAX_PAGES_PER_RUN` as a runaway
+ * guard. This replaces the former offset-0/cursor-free walk, which starved the
+ * tail: a no-op read does NOT bump `updatedAt` (decision #8c), so under
+ * `total > limit` the oldest perpetually-unchanged rows pinned the front of the
+ * window every run and newer non-terminal rows behind them were never reached.
+ * The keyset cursor advances PAST already-scanned rows regardless of whether
+ * they were written, so every non-terminal row is visited each run (skip-free,
+ * starvation-free). The cursor is intra-run only and is unrelated to the
+ * issuance idempotency key — exactly-once issuance is untouched (decisions
+ * #5/#8f).
  *
  * Error & write discipline (plan decision #8):
  *  - (8a) the defensive terminal skip applies to the RECORD's current status,
@@ -63,6 +71,15 @@ const INVOICING_CAPABILITY = 'Invoicing';
  */
 const MAX_ERROR_MESSAGE_LENGTH = 500;
 
+/**
+ * Runaway guard on the intra-run keyset page walk (#1206). The walk normally
+ * terminates when a page returns fewer than `limit` rows; this caps the worst
+ * case (e.g. a frontier that keeps growing under concurrent issuance) so a
+ * single run cannot spin unboundedly. At the default page size (100) this is
+ * 100k records/run — far above any realistic MVP frontier.
+ */
+const MAX_PAGES_PER_RUN = 1000;
+
 @Injectable()
 export class RegulatoryStatusReconciliationService
   implements IRegulatoryStatusReconciliationService
@@ -104,48 +121,83 @@ export class RegulatoryStatusReconciliationService
       return result;
     }
 
-    const { items, total } = await this.repo.findIssuedNonTerminal(connectionId, {
-      limit: opts.limit,
-    });
-    result.total = total;
+    // Intra-run KEYSET page walk (#1206). `opts.limit` is the per-page size; we
+    // page forward by a `(updatedAt, id)` cursor — strictly AFTER the last row
+    // of the previous page — so the cursor advances independently of whether a
+    // scanned row was written. This visits every non-terminal row each run,
+    // even when the oldest rows are perpetually unchanged (a no-op read does
+    // NOT bump `updatedAt`, decision #8c) and `total > limit`. `total` (full
+    // frontier count, cursor-independent) is captured from the first page.
+    let cursor: { updatedAt: Date; id: string } | undefined;
+    let pages = 0;
+    let totalCaptured = false;
 
-    for (const record of items) {
-      // (8a) Defensive race guard: the selection predicate already excludes
-      // terminal records, but a concurrent write could have flipped one. The
-      // skip applies to the RECORD's CURRENT status only — never to a read
-      // result (a terminal read is always written, below).
-      if (isTerminalRegulatoryStatus(record.regulatoryStatus)) {
-        result.skippedTerminal += 1;
-        continue;
+    while (pages < MAX_PAGES_PER_RUN) {
+      const { items, total } = await this.repo.findIssuedNonTerminal(connectionId, {
+        limit: opts.limit,
+        cursor,
+      });
+      if (!totalCaptured) {
+        result.total = total;
+        totalCaptured = true;
+      }
+      pages += 1;
+
+      for (const record of items) {
+        // Advance the keyset cursor for EVERY scanned row (before any
+        // skip/continue) so the next page never re-reads it — this is what
+        // breaks tail starvation: forward progress does not depend on a write.
+        cursor = { updatedAt: record.updatedAt, id: record.id };
+
+        // (8a) Defensive race guard: the selection predicate already excludes
+        // terminal records, but a concurrent write could have flipped one. The
+        // skip applies to the RECORD's CURRENT status only — never to a read
+        // result (a terminal read is always written, below).
+        if (isTerminalRegulatoryStatus(record.regulatoryStatus)) {
+          result.skippedTerminal += 1;
+          continue;
+        }
+
+        let read: RegulatoryClearanceResult;
+        try {
+          read = await this.readStatus(adapter, record);
+        } catch (error) {
+          // (8d) Per-record read errors are caught, counted, and logged BOUNDED
+          // (ids + error.name + sanitized message) — never the raw provider
+          // string. (8e) The sweep continues; nothing re-throws past the loop.
+          result.readErrors += 1;
+          const err = error instanceof Error ? error : new Error(String(error));
+          this.logger.error(
+            `Regulatory status read failed (connection=${connectionId}, record=${record.id}): ${err.name}: ${this.sanitizeError(error)}`,
+          );
+          continue;
+        }
+
+        result.scanned += 1;
+
+        // (8b/8c) Write-on-change. The patch omits the clearanceReference key
+        // unless the read returns a non-null, changed value — an empty patch is
+        // a no-op (idempotent, safe to re-run).
+        const patch = this.buildPatch(record, read);
+        if (Object.keys(patch).length === 0) {
+          continue;
+        }
+
+        await this.repo.updateOutcome(record.id, patch);
+        result.updated += 1;
       }
 
-      let read: RegulatoryClearanceResult;
-      try {
-        read = await this.readStatus(adapter, record);
-      } catch (error) {
-        // (8d) Per-record read errors are caught, counted, and logged BOUNDED
-        // (ids + error.name + sanitized message) — never the raw provider
-        // string. (8e) The sweep continues; nothing re-throws past the loop.
-        result.readErrors += 1;
-        const err = error instanceof Error ? error : new Error(String(error));
-        this.logger.error(
-          `Regulatory status read failed (connection=${connectionId}, record=${record.id}): ${err.name}: ${this.sanitizeError(error)}`,
-        );
-        continue;
+      // A short (or empty) page means the frontier is drained — stop. A full
+      // page means more rows may follow the cursor; fetch the next page.
+      if (items.length < opts.limit) {
+        break;
       }
+    }
 
-      result.scanned += 1;
-
-      // (8b/8c) Write-on-change. The patch omits the clearanceReference key
-      // unless the read returns a non-null, changed value — an empty patch is
-      // a no-op (idempotent, safe to re-run).
-      const patch = this.buildPatch(record, read);
-      if (Object.keys(patch).length === 0) {
-        continue;
-      }
-
-      await this.repo.updateOutcome(record.id, patch);
-      result.updated += 1;
+    if (pages >= MAX_PAGES_PER_RUN) {
+      this.logger.warn(
+        `Regulatory reconcile hit the per-run page cap (${MAX_PAGES_PER_RUN}) for connection ${connectionId}; remaining rows will be picked up next run (no permanent skip).`,
+      );
     }
 
     return result;

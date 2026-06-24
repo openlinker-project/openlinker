@@ -125,25 +125,43 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
 
   async findIssuedNonTerminal(
     connectionId: string,
-    opts: { limit: number },
+    opts: { limit: number; cursor?: { updatedAt: Date; id: string } },
   ): Promise<{ items: InvoiceRecord[]; total: number }> {
     // Selection predicate (single source of truth in `TerminalRegulatoryStatusValues`,
     // mirrored by the `IDX_invoice_records_reconcile` partial index):
     //   status = 'issued' AND regulatoryStatus NOT IN (TerminalRegulatoryStatusValues)
-    // Connection-scoped, ordered `updatedAt ASC, id ASC` (oldest-reconciled first),
-    // capped at `opts.limit` with NO offset — the non-terminal frontier is a
-    // shrinking set walked from offset 0 every run (#1121 plan decision #5).
-    const [entities, total] = await this.repository
-      .createQueryBuilder('record')
-      .where('record.connectionId = :connectionId', { connectionId })
-      .andWhere('record.status = :status', { status: 'issued' })
-      .andWhere('record.regulatoryStatus NOT IN (:...terminal)', {
-        terminal: [...TerminalRegulatoryStatusValues],
-      })
+    // Connection-scoped, ordered `updatedAt ASC, id ASC` (oldest-first, with a
+    // fully deterministic `id` tie-break), capped at `opts.limit`. When a cursor
+    // is supplied the page is the rows strictly AFTER it in `(updatedAt, id)`
+    // order — KEYSET paging that lets the service walk the WHOLE non-terminal
+    // frontier within one run even when the oldest rows never bump `updatedAt`
+    // (#1121 plan decision #5, revised on #1206).
+    const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) =>
+      qb
+        .where('record.connectionId = :connectionId', { connectionId })
+        .andWhere('record.status = :status', { status: 'issued' })
+        .andWhere('record.regulatoryStatus NOT IN (:...terminal)', {
+          terminal: [...TerminalRegulatoryStatusValues],
+        });
+
+    const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
+    if (opts.cursor) {
+      // Row-value keyset comparison: (updatedAt, id) > (cursor.updatedAt, cursor.id).
+      pageQb.andWhere(
+        '(record.updatedAt, record.id) > (:cursorUpdatedAt, :cursorId)',
+        { cursorUpdatedAt: opts.cursor.updatedAt, cursorId: opts.cursor.id },
+      );
+    }
+    const entities = await pageQb
       .orderBy('record.updatedAt', 'ASC')
       .addOrderBy('record.id', 'ASC')
       .take(opts.limit)
-      .getManyAndCount();
+      .getMany();
+
+    // `total` is the FULL non-terminal count (cursor-independent) — coverage
+    // logging only, never used for paging — so it stays stable across the
+    // service's intra-run page walk.
+    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
 
     return { items: entities.map((e) => this.toDomain(e)), total };
   }

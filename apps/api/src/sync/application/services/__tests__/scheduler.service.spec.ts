@@ -349,6 +349,7 @@ describe('SchedulerService', () => {
 
       expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith({
         capability: 'Invoicing',
+        lazy: true,
       });
       expect(connections).toEqual([conn]);
       expect(task?.platformType).toBeUndefined();

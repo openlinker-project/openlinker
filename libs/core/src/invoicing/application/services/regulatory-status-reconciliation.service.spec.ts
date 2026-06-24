@@ -26,6 +26,7 @@ function makeRecord(
     status: 'pending' | 'issued' | 'failed';
     regulatoryStatus: RegulatoryStatus;
     clearanceReference: string | null;
+    updatedAt: Date;
   }> = {},
 ): InvoiceRecord {
   return new InvoiceRecord(
@@ -44,7 +45,7 @@ function makeRecord(
     new Date('2026-06-01T10:00:00Z'),
     null,
     new Date('2026-06-01T10:00:00Z'),
-    new Date('2026-06-01T10:00:00Z'),
+    overrides.updatedAt ?? new Date('2026-06-01T10:00:00Z'),
   );
 }
 
@@ -110,7 +111,11 @@ describe('RegulatoryStatusReconciliationService', () => {
       await service.reconcile(CONNECTION_ID, { limit: 50 });
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'Invoicing');
-      expect(repo.findIssuedNonTerminal).toHaveBeenCalledWith(CONNECTION_ID, { limit: 50 });
+      // First page of the intra-run keyset walk carries no cursor.
+      expect(repo.findIssuedNonTerminal).toHaveBeenCalledWith(CONNECTION_ID, {
+        limit: 50,
+        cursor: undefined,
+      });
     });
 
     it('does not query the repo and returns a zeroed result when the adapter is not a RegulatoryStatusReader', async () => {
@@ -276,28 +281,80 @@ describe('RegulatoryStatusReconciliationService', () => {
     });
   });
 
-  describe('eventual coverage (decision #5 / #8f)', () => {
-    it('reads the limit oldest-by-updatedAt rows when total > limit, and a follow-up run reaches the rest (no permanent skip)', async () => {
+  describe('keyset paging / tail coverage (decision #5, revised on #1206)', () => {
+    it('walks the WHOLE non-terminal frontier within ONE run via the (updatedAt, id) cursor when total > limit', async () => {
       const reader = readerAdapter({ regulatoryStatus: 'accepted', clearanceReference: null });
       integrations.getCapabilityAdapter.mockResolvedValue(reader);
 
-      // First run: repo returns the first page (limit=1) of a total of 2.
-      repo.findIssuedNonTerminal.mockResolvedValueOnce({
-        items: [makeRecord({ id: 'rec-old', regulatoryStatus: 'submitted' })],
-        total: 2,
-      });
-      const first = await service.reconcile(CONNECTION_ID, { limit: 1 });
-      expect(first.total).toBe(2);
-      expect(first.updated).toBe(1);
+      // total=3, page size limit=1: the service must page three times within
+      // the SAME run, carrying the (updatedAt, id) cursor forward, and reach the
+      // tail (rec-c) — not just the oldest `limit` rows.
+      const recA = makeRecord({ id: 'rec-a', updatedAt: new Date('2026-06-01T10:00:00Z') });
+      const recB = makeRecord({ id: 'rec-b', updatedAt: new Date('2026-06-01T10:05:00Z') });
+      const recC = makeRecord({ id: 'rec-c', updatedAt: new Date('2026-06-01T10:10:00Z') });
+      repo.findIssuedNonTerminal
+        .mockResolvedValueOnce({ items: [recA], total: 3 })
+        .mockResolvedValueOnce({ items: [recB], total: 3 })
+        .mockResolvedValueOnce({ items: [recC], total: 3 })
+        // Frontier drained on the (terminal-already) follow-up page.
+        .mockResolvedValueOnce({ items: [], total: 0 });
 
-      // Second run (rec-old now terminal, dropped out): the previously-unreached
-      // row surfaces — no permanent skip.
-      repo.findIssuedNonTerminal.mockResolvedValueOnce({
-        items: [makeRecord({ id: 'rec-new', regulatoryStatus: 'submitted' })],
-        total: 1,
+      const result = await service.reconcile(CONNECTION_ID, { limit: 1 });
+
+      expect(result.total).toBe(3);
+      expect(result.scanned).toBe(3);
+      // The cursor advanced after each page (strictly after the last row).
+      expect(repo.findIssuedNonTerminal).toHaveBeenNthCalledWith(1, CONNECTION_ID, {
+        limit: 1,
+        cursor: undefined,
       });
-      const second = await service.reconcile(CONNECTION_ID, { limit: 1 });
-      expect(second.total).toBe(1);
+      expect(repo.findIssuedNonTerminal).toHaveBeenNthCalledWith(2, CONNECTION_ID, {
+        limit: 1,
+        cursor: { updatedAt: recA.updatedAt, id: 'rec-a' },
+      });
+      expect(repo.findIssuedNonTerminal).toHaveBeenNthCalledWith(3, CONNECTION_ID, {
+        limit: 1,
+        cursor: { updatedAt: recB.updatedAt, id: 'rec-b' },
+      });
+      // The TAIL row is reached and written — the bug this fix closes.
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-c', { regulatoryStatus: 'accepted' });
+    });
+
+    it('advances the cursor past a no-op-read row so the tail is reached even when the oldest rows never change (no starvation)', async () => {
+      // rec-old reads back UNCHANGED (no updateOutcome, no updatedAt bump). Under
+      // the old offset-0 walk it would pin the front every run and starve rec-new.
+      // With the keyset cursor the next page is bounded strictly after rec-old.
+      const recOld = makeRecord({
+        id: 'rec-old',
+        regulatoryStatus: 'submitted',
+        clearanceReference: 'KSEF-STEADY',
+        updatedAt: new Date('2026-06-01T09:00:00Z'),
+      });
+      const recNew = makeRecord({
+        id: 'rec-new',
+        regulatoryStatus: 'submitted',
+        updatedAt: new Date('2026-06-01T11:00:00Z'),
+      });
+      const reader = readerAdapter((record) =>
+        record.id === 'rec-old'
+          ? Promise.resolve({ regulatoryStatus: 'submitted', clearanceReference: 'KSEF-STEADY' }) // no-op
+          : Promise.resolve({ regulatoryStatus: 'accepted', clearanceReference: null }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue(reader);
+      repo.findIssuedNonTerminal
+        .mockResolvedValueOnce({ items: [recOld], total: 2 })
+        .mockResolvedValueOnce({ items: [recNew], total: 2 })
+        .mockResolvedValueOnce({ items: [], total: 2 });
+
+      const result = await service.reconcile(CONNECTION_ID, { limit: 1 });
+
+      expect(result.scanned).toBe(2);
+      // rec-old produced NO write (clean no-op) yet the cursor still advanced...
+      expect(repo.findIssuedNonTerminal).toHaveBeenNthCalledWith(2, CONNECTION_ID, {
+        limit: 1,
+        cursor: { updatedAt: recOld.updatedAt, id: 'rec-old' },
+      });
+      // ...so the tail row was reached and reconciled within the same run.
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-new', { regulatoryStatus: 'accepted' });
     });
   });

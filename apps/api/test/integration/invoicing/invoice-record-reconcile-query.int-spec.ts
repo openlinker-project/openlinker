@@ -138,6 +138,32 @@ describe('invoice_records reconcile query (integration)', () => {
     expect(total).toBe(5);
   });
 
+  it('keyset cursor pages forward by (updatedAt, id): a cursor returns only rows strictly after it (decision #5, revised on #1206)', async () => {
+    // Three non-terminal rows; same connection. Page size 1, walk the keyset
+    // cursor and assert every row is reached within the walk (no offset reuse).
+    for (let i = 0; i < 3; i += 1) {
+      await ormRepo.save(row({ regulatoryStatus: 'submitted' }));
+    }
+
+    const seen: string[] = [];
+    let cursor: { updatedAt: Date; id: string } | undefined;
+    for (let page = 0; page < 5; page += 1) {
+      const { items } = await repo.findIssuedNonTerminal(CONNECTION_ID, {
+        limit: 1,
+        cursor,
+      });
+      if (items.length === 0) break;
+      const last = items[items.length - 1];
+      seen.push(last.id);
+      cursor = { updatedAt: last.updatedAt, id: last.id };
+    }
+
+    // All three distinct rows visited within one cursor walk — even without any
+    // updatedAt bump (no updateOutcome was called), proving forward progress is
+    // cursor-driven, not write-driven (the tail-starvation fix).
+    expect(new Set(seen).size).toBe(3);
+  });
+
   it('does not leak other connections rows', async () => {
     await ormRepo.save(row({ regulatoryStatus: 'submitted' }));
     await ormRepo.save(

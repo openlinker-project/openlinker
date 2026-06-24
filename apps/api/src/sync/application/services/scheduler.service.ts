@@ -19,7 +19,7 @@ import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import type { SyncJobRequest, SchedulerTaskConfig } from '@openlinker/core/sync';
+import type { SyncJobRequest, SchedulerTaskConfig, JobType } from '@openlinker/core/sync';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -34,6 +34,88 @@ import { Logger } from '@openlinker/shared/logging';
  * (#1121). The worker handler clamps a payload-supplied `limit` to MAX_LIMIT.
  */
 const REGULATORY_RECONCILE_DEFAULT_LIMIT = 100;
+
+/**
+ * Static descriptor for a core capability-scoped scheduler task. The four core
+ * tasks (inventory / product / pickup-point / regulatory-reconcile) are
+ * structurally identical — drain every active connection supporting `capability`
+ * and enqueue `jobType` — differing only in these literals. `registerCapabilityTask`
+ * turns one descriptor into a `SchedulerTaskConfig` so the `connectionFilter`,
+ * idempotency-key, and payload shapes are defined ONCE (#1206 cleanup).
+ */
+interface CoreCapabilityTaskDescriptor {
+  /** Stable task id / cron-registry key. */
+  readonly taskId: string;
+  /** Sync job type enqueued per matching connection. */
+  readonly jobType: JobType;
+  /** Adapter/connection capability the task drains. */
+  readonly capability: string;
+  /** Env var that gates registration AND each run (`'false'` disables). */
+  readonly enabledEnvVar: string;
+  /** Env var holding the cron expression. */
+  readonly cronEnvVar: string;
+  /** Cron expression used when `cronEnvVar` is unset. */
+  readonly defaultCron: string;
+  /**
+   * Builds the idempotency key for a (connection, minute-timestamp) pair.
+   * Preserves each task's existing key namespace verbatim.
+   */
+  readonly idempotencyKey: (connectionId: string, timestamp: string) => string;
+  /**
+   * Optional extra payload fields merged onto the `{ schemaVersion: 1 }` base.
+   * Only the regulatory-reconcile task carries one (`limit`).
+   */
+  readonly extraPayload?: Record<string, unknown>;
+}
+
+/**
+ * The core capability tasks, in their existing registration order. Behaviour is
+ * byte-for-byte the same as the former `register*Task` methods — same taskIds,
+ * jobTypes, capabilities, env vars, default crons, key namespaces, and payloads.
+ */
+const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
+  {
+    taskId: 'master-inventory-sync',
+    jobType: 'master.inventory.syncAll',
+    capability: 'InventoryMaster',
+    enabledEnvVar: 'OL_INVENTORY_SYNC_ENABLED',
+    cronEnvVar: 'OL_INVENTORY_SYNC_CRON',
+    defaultCron: '*/15 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `master:${connectionId}:inventory:syncAll:${timestamp}`,
+  },
+  {
+    taskId: 'master-product-sync',
+    jobType: 'master.product.syncAll',
+    capability: 'ProductMaster',
+    enabledEnvVar: 'OL_PRODUCT_SYNC_ENABLED',
+    cronEnvVar: 'OL_PRODUCT_SYNC_CRON',
+    defaultCron: '*/20 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `master:${connectionId}:product:syncAll:${timestamp}`,
+  },
+  {
+    taskId: 'pickup-point-refresh',
+    jobType: 'shipping.pickupPoint.refreshFrequent',
+    capability: 'ShippingProviderManager',
+    enabledEnvVar: 'OL_PICKUP_POINT_REFRESH_ENABLED',
+    cronEnvVar: 'OL_PICKUP_POINT_REFRESH_CRON',
+    defaultCron: '0 3 * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `shipping:${connectionId}:pickupPoints:refresh:${timestamp}`,
+  },
+  {
+    taskId: 'regulatory-status-reconcile',
+    jobType: 'invoicing.regulatoryStatus.reconcile',
+    capability: 'Invoicing',
+    enabledEnvVar: 'OL_REGULATORY_RECONCILE_ENABLED',
+    cronEnvVar: 'OL_REGULATORY_RECONCILE_CRON',
+    defaultCron: '*/30 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `invoicing:${connectionId}:regulatoryStatus:reconcile:${timestamp}`,
+    extraPayload: { limit: REGULATORY_RECONCILE_DEFAULT_LIMIT },
+  },
+];
 
 @Injectable()
 export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -54,13 +136,13 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
   ) {}
 
   onApplicationBootstrap(): void {
-    // Register the two capability-based core tasks (cross-platform — drain
-    // every connection that supports a given capability). These stay
-    // core-side; only platform-specific *triggers* move to integrations.
-    this.registerInventorySyncTask();
-    this.registerProductSyncTask();
-    this.registerPickupPointRefreshTask();
-    this.registerRegulatoryStatusReconcileTask();
+    // Register the capability-based core tasks (cross-platform — drain every
+    // connection that supports a given capability). These stay core-side; only
+    // platform-specific *triggers* move to integrations. Each is a row in
+    // CORE_CAPABILITY_TASKS — see registerCapabilityTask for the shared shape.
+    for (const descriptor of CORE_CAPABILITY_TASKS) {
+      this.registerCapabilityTask(descriptor);
+    }
 
     // Drain plugin-contributed tasks. Integration modules have already
     // populated the registry at `onModuleInit`; NestJS guarantees every
@@ -255,148 +337,53 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   /**
-   * Register periodic inventory sync task.
+   * Register one core capability-scoped task from a static descriptor (#1206).
    *
-   * Enqueues master.inventory.syncAll jobs for all active connections
-   * that support the InventoryMaster capability.
+   * Single data-driven replacement for the former four near-identical
+   * `register*Task` methods (inventory / product / pickup-point /
+   * regulatory-reconcile). Behaviour is preserved verbatim per descriptor:
+   *  - registration is skipped when `enabledEnvVar` is literally `'false'`
+   *    (default `'true'`) — the same registration-time gate the old methods had,
+   *    on top of the per-run check in `scheduleTask`/`executeTask`;
+   *  - `connectionFilter` drains every active connection whose adapter+operator
+   *    enable `capability` (via `listCapabilityAdapters`, mapped to `.connection`),
+   *    null-coerced to `[]` exactly as before;
+   *  - the payload is `{ schemaVersion: 1, ...extraPayload }` (only reconcile
+   *    adds `limit`);
+   *  - the idempotency key uses the descriptor's per-task namespace builder.
    */
-  private registerInventorySyncTask(): void {
-    const inventorySyncEnabled = this.configService.get<string>(
-      'OL_INVENTORY_SYNC_ENABLED',
-      'true'
+  private registerCapabilityTask(descriptor: CoreCapabilityTaskDescriptor): void {
+    const enabled = this.configService.get<string>(descriptor.enabledEnvVar, 'true');
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      descriptor.cronEnvVar,
+      descriptor.defaultCron
     );
-    if (inventorySyncEnabled === 'false') {
-      return;
-    }
-
-    const inventoryCron = this.configService.get<string>('OL_INVENTORY_SYNC_CRON', '*/15 * * * *');
 
     this.tasks.push({
-      taskId: 'master-inventory-sync',
-      jobType: 'master.inventory.syncAll',
-      cronExpression: inventoryCron,
-      enabledEnvVar: 'OL_INVENTORY_SYNC_ENABLED',
+      taskId: descriptor.taskId,
+      jobType: descriptor.jobType,
+      cronExpression,
+      enabledEnvVar: descriptor.enabledEnvVar,
       connectionFilter: async () => {
+        // `lazy` (#1206): the fan-out needs only `.connection`; deferring adapter
+        // construction avoids building (and credential-resolving) a live adapter
+        // per active connection every tick just to discard it.
         const adapters = await this.integrationsService.listCapabilityAdapters({
-          capability: 'InventoryMaster',
+          capability: descriptor.capability,
+          lazy: true,
         });
         return (adapters ?? []).map((a) => a.connection);
       },
       generatePayload: () => ({
         schemaVersion: 1,
+        ...descriptor.extraPayload,
       }),
       generateIdempotencyKey: (connection, timestamp) =>
-        `master:${connection.id}:inventory:syncAll:${timestamp}`,
-    });
-  }
-
-  /**
-   * Register periodic product catalog sync task.
-   *
-   * Enqueues master.product.syncAll jobs for all active connections that support
-   * the ProductMaster capability. Handler enumerates source-platform products and
-   * fans out per-product syncByExternalId sub-jobs — this is the catalog-discovery
-   * path that populates identifier mappings on a fresh connection.
-   */
-  private registerProductSyncTask(): void {
-    const productSyncEnabled = this.configService.get<string>('OL_PRODUCT_SYNC_ENABLED', 'true');
-    if (productSyncEnabled === 'false') {
-      return;
-    }
-
-    const productCron = this.configService.get<string>('OL_PRODUCT_SYNC_CRON', '*/20 * * * *');
-
-    this.tasks.push({
-      taskId: 'master-product-sync',
-      jobType: 'master.product.syncAll',
-      cronExpression: productCron,
-      enabledEnvVar: 'OL_PRODUCT_SYNC_ENABLED',
-      connectionFilter: async () => {
-        const adapters = await this.integrationsService.listCapabilityAdapters({
-          capability: 'ProductMaster',
-        });
-        return (adapters ?? []).map((a) => a.connection);
-      },
-      generatePayload: () => ({
-        schemaVersion: 1,
-      }),
-      generateIdempotencyKey: (connection, timestamp) =>
-        `master:${connection.id}:product:syncAll:${timestamp}`,
-    });
-  }
-
-  /**
-   * Register the periodic paczkomat-cache re-warm task (#849).
-   *
-   * Enqueues `shipping.pickupPoint.refreshFrequent` for every active connection
-   * that supports the ShippingProviderManager capability (capability-scoped —
-   * covers InPost and DPD alike). The worker handler delegates to the core
-   * `PickupPointRefreshService`, which re-runs the top-N most-frequent searches;
-   * connections without a pickup-point finder no-op cleanly. Daily by default.
-   */
-  private registerPickupPointRefreshTask(): void {
-    const enabled = this.configService.get<string>('OL_PICKUP_POINT_REFRESH_ENABLED', 'true');
-    if (enabled === 'false') {
-      return;
-    }
-
-    const cron = this.configService.get<string>('OL_PICKUP_POINT_REFRESH_CRON', '0 3 * * *');
-
-    this.tasks.push({
-      taskId: 'pickup-point-refresh',
-      jobType: 'shipping.pickupPoint.refreshFrequent',
-      cronExpression: cron,
-      enabledEnvVar: 'OL_PICKUP_POINT_REFRESH_ENABLED',
-      connectionFilter: async () => {
-        const adapters = await this.integrationsService.listCapabilityAdapters({
-          capability: 'ShippingProviderManager',
-        });
-        return (adapters ?? []).map((a) => a.connection);
-      },
-      generatePayload: () => ({
-        schemaVersion: 1,
-      }),
-      generateIdempotencyKey: (connection, timestamp) =>
-        `shipping:${connection.id}:pickupPoints:refresh:${timestamp}`,
-    });
-  }
-
-  /**
-   * Register the periodic KSeF regulatory-status reconciliation task (#1121).
-   *
-   * Enqueues `invoicing.regulatoryStatus.reconcile` for every active connection
-   * that supports the `Invoicing` capability (capability-scoped — the exact
-   * structural twin of `registerPickupPointRefreshTask`). The worker handler
-   * delegates to the core `RegulatoryStatusReconciliationService`, which reads
-   * authoritative status via the `RegulatoryStatusReader` sub-capability and
-   * refreshes the non-terminal frontier; connections whose adapter lacks the
-   * reader no-op cleanly. Every 30 minutes by default.
-   */
-  private registerRegulatoryStatusReconcileTask(): void {
-    const enabled = this.configService.get<string>('OL_REGULATORY_RECONCILE_ENABLED', 'true');
-    if (enabled === 'false') {
-      return;
-    }
-
-    const cron = this.configService.get<string>('OL_REGULATORY_RECONCILE_CRON', '*/30 * * * *');
-
-    this.tasks.push({
-      taskId: 'regulatory-status-reconcile',
-      jobType: 'invoicing.regulatoryStatus.reconcile',
-      cronExpression: cron,
-      enabledEnvVar: 'OL_REGULATORY_RECONCILE_ENABLED',
-      connectionFilter: async () => {
-        const adapters = await this.integrationsService.listCapabilityAdapters({
-          capability: 'Invoicing',
-        });
-        return (adapters ?? []).map((a) => a.connection);
-      },
-      generatePayload: () => ({
-        schemaVersion: 1,
-        limit: REGULATORY_RECONCILE_DEFAULT_LIMIT,
-      }),
-      generateIdempotencyKey: (connection, timestamp) =>
-        `invoicing:${connection.id}:regulatoryStatus:reconcile:${timestamp}`,
+        descriptor.idempotencyKey(connection.id, timestamp),
     });
   }
 }

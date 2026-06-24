@@ -8,9 +8,11 @@
  * scheduler fans this out, one job per `Invoicing` connection; connections whose
  * adapter lacks the reader no-op in the service.
  *
- * NO cursor (the reconciliation frontier is a shrinking set walked from offset 0
- * every run — plan decision #5), so this handler does NOT inject
- * `ConnectionCursorRepositoryPort`. The payload `limit` is validated AND clamped
+ * No PERSISTED cursor across runs (plan decision #5, revised on #1206): the
+ * service walks an intra-run `(updatedAt, id)` keyset cursor that drains the
+ * whole non-terminal frontier each run, so this handler does NOT inject
+ * `ConnectionCursorRepositoryPort`. The payload `limit` is the per-PAGE size,
+ * validated AND clamped
  * to `MAX_LIMIT` (decision #13). The outer catch only ever interpolates
  * OL-shaped messages — the service never re-throws a raw provider error past its
  * per-record loop (#8e).

@@ -54,12 +54,23 @@ export interface InvoiceRecordRepositoryPort {
    * Select `issued` records on the connection whose regulatory status is
    * NON-terminal (NOT in `TerminalRegulatoryStatusValues` — so receipts /
    * `not-applicable` are excluded structurally). Ordered `updatedAt ASC, id ASC`
-   * (oldest-reconciled-first), capped at `opts.limit` — NO offset (the
-   * reconciliation frontier is a SHRINKING set, walked from offset 0 every run;
-   * see #1121 plan decision #5). Backs the regulatory-status reconciliation job.
+   * (oldest-first, fully deterministic tie-break on `id`), capped at `opts.limit`.
+   *
+   * KEYSET PAGING (#1121 plan decision #5, revised on #1206): when `opts.cursor`
+   * is supplied the page is bounded to rows strictly AFTER it in
+   * `(updatedAt, id)` order — `(updatedAt, id) > (cursor.updatedAt, cursor.id)`.
+   * The service threads the last-seen `(updatedAt, id)` across pages within one
+   * run so the whole non-terminal frontier is visited even when the oldest rows
+   * never change `updatedAt` (a no-op read does NOT bump it). `total` is the full
+   * non-terminal count for the connection (cursor-independent) — for coverage
+   * logging only. The `IDX_invoice_records_reconcile` partial index keys
+   * `(updatedAt, id)` so the keyset seek stays index-only.
    */
   findIssuedNonTerminal(
     connectionId: string,
-    opts: { limit: number },
+    opts: {
+      limit: number;
+      cursor?: { updatedAt: Date; id: string };
+    },
   ): Promise<{ items: InvoiceRecord[]; total: number }>;
 }
