@@ -17,9 +17,10 @@ describe('KsefSessionCryptoService', () => {
 
   const cert: PublicKeyCertificate = {
     certificatePem: publicPem,
-    usage: 'SymmetricKeyEncryption',
+    usage: ['SymmetricKeyEncryption'],
     validFrom: new Date('2026-01-01T00:00:00Z'),
-    validUntil: new Date('2027-01-01T00:00:00Z'),
+    validTo: new Date('2027-01-01T00:00:00Z'),
+    publicKeyId: 'PKID-SYM' + 'z'.repeat(36),
     certificateHash: createHash('sha256').update(publicPem).digest('hex'),
   };
 
@@ -35,6 +36,9 @@ describe('KsefSessionCryptoService', () => {
     expect(ctx.symmetricKey.key.byteLength).toBe(KSEF_AES_KEY_BYTES);
     expect(ctx.symmetricKey.iv.byteLength).toBe(KSEF_AES_IV_BYTES);
     expect(ctx.wrappedKey.certificateHash).toBe(cert.certificateHash);
+    // The wrapping cert's publicKeyId rides along so C5 can stamp
+    // EncryptionInfo.publicKeyId on the session-open request.
+    expect(ctx.wrappedKey.publicKeyId).toBe(cert.publicKeyId);
 
     // The server (holding the private half) must recover the exact AES key.
     const unwrapped = unwrapKeyWithRsa(ctx.wrappedKey.wrappedKey, privatePem);
@@ -52,6 +56,6 @@ describe('KsefSessionCryptoService', () => {
   it('should bound the session expiry by the cert validity', async () => {
     const now = new Date('2026-12-31T23:50:00Z');
     const ctx = await service().initializeSession(now);
-    expect(ctx.expiresAt.getTime()).toBeLessThanOrEqual(cert.validUntil.getTime());
+    expect(ctx.expiresAt.getTime()).toBeLessThanOrEqual(cert.validTo.getTime());
   });
 });
