@@ -15,6 +15,13 @@
  *     Reads `retryability` when the caught error is the phase-carrying subclass
  *     (`SubiektBridgeUnreachableWithPhaseError`); otherwise DEFAULTS to
  *     `'indeterminate'` (the fiscal-safe default — the branch the fake exercises).
+ *   - recognised terminal Subiekt errors (`SubiektBridgeAuthError`,
+ *     `SubiektUnsupportedDocumentTypeError`, `SubiektConfigException`) pass through.
+ *   - any genuinely-UNKNOWN throwable -> a Subiekt-typed `'indeterminate'`
+ *     `SubiektBridgeTransportError` (original preserved as `cause`). Keeps the
+ *     fiscal-safe "unknown -> non-retryable" intent LOCAL to Subiekt so the
+ *     retry classifier needs no global catch-all that would mis-classify sibling
+ *     plugins' errors.
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters
  */
@@ -35,8 +42,11 @@ import {
   SubiektRejectedError,
 } from '../../bridge/subiekt-bridge.errors';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
-import type { SubiektTransportRetryability } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { SubiektInvoiceRejectedError } from '../../domain/exceptions/subiekt-invoice-rejected.exception';
+import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
+import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/subiekt-unsupported-document-type.exception';
+import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { deriveNeutralDocumentType, toBridgeDocumentType } from '../mappers/subiekt-document-type.mapper';
 import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
 import { toBridgeLines } from '../mappers/subiekt-line.mapper';
@@ -130,7 +140,15 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
    *   - `SubiektRejectedError`        -> `SubiektInvoiceRejectedError` (terminal).
    *   - `SubiektBridgeUnreachableError` -> `SubiektBridgeTransportError`,
    *     carrying the retryability phase (defaulting to `'indeterminate'`).
-   *   - anything else is rethrown unchanged.
+   *   - other recognised Subiekt-owned terminal errors (`SubiektBridgeAuthError`,
+   *     `SubiektUnsupportedDocumentTypeError`, `SubiektConfigException`) pass
+   *     through unchanged so the retry classifier sees their concrete type.
+   *   - a genuinely-UNKNOWN throwable is wrapped into a Subiekt-typed
+   *     `'indeterminate'` `SubiektBridgeTransportError`. We cannot prove the POST
+   *     never reached Subiekt, so this keeps the fiscal-safe "unknown ->
+   *     non-retryable" intent LOCAL to the Subiekt path — the retry classifier
+   *     no longer needs a global catch-all that would wrongly mark sibling
+   *     plugins' errors non-retryable.
    */
   private translateBridgeError(error: unknown): unknown {
     if (error instanceof SubiektInvoiceRejectedError) {
@@ -142,7 +160,18 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
     if (error instanceof SubiektBridgeUnreachableError) {
       return new SubiektBridgeTransportError(error.message, readRetryability(error));
     }
-    return error;
+    if (
+      error instanceof SubiektBridgeAuthError ||
+      error instanceof SubiektUnsupportedDocumentTypeError ||
+      error instanceof SubiektConfigException
+    ) {
+      return error;
+    }
+    return new SubiektBridgeTransportError(
+      error instanceof Error ? error.message : 'Unknown Subiekt bridge error',
+      'indeterminate',
+      { cause: error },
+    );
   }
 
   /**

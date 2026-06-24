@@ -151,6 +151,20 @@ describe('SubiektInvoicingAdapter', () => {
       });
     });
 
+    it("wraps a genuinely-unknown throwable into a Subiekt-typed 'indeterminate' transport error", async () => {
+      // Keeps the fiscal-safe "unknown -> non-retryable" intent LOCAL to the
+      // Subiekt path so the retry classifier needs no global catch-all that
+      // would wrongly mark sibling plugins' errors non-retryable.
+      const { adapter, bridge } = makeAdapter();
+      const original = new Error('socket hang up');
+      jest.spyOn(bridge, 'issueInvoice').mockRejectedValue(original);
+      const caught = await adapter.issueInvoice(command()).catch((e: unknown) => e);
+      expect(caught).toBeInstanceOf(SubiektBridgeTransportError);
+      expect(caught).toMatchObject({ retryability: 'indeterminate', retryable: false });
+      // Original throwable preserved for debugging.
+      expect((caught as SubiektBridgeTransportError).cause).toBe(original);
+    });
+
     it('rejects an explicit documentType outside {invoice, receipt} with SubiektUnsupportedDocumentTypeError', async () => {
       const { adapter } = makeAdapter();
       await expect(

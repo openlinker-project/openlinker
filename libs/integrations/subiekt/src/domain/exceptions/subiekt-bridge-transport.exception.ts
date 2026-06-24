@@ -25,14 +25,21 @@
  * @module libs/integrations/subiekt/src/domain/exceptions
  */
 
-export type SubiektTransportRetryability = 'safe' | 'indeterminate';
+import type { SubiektTransportRetryability } from '../types/subiekt-transport-retryability.types';
 
 export class SubiektBridgeTransportError extends Error {
   readonly retryability: SubiektTransportRetryability;
   readonly retryable: boolean;
 
-  constructor(message: string, retryability: SubiektTransportRetryability) {
-    super(message);
+  constructor(
+    message: string,
+    retryability: SubiektTransportRetryability,
+    // Original throwable, preserved for debugging when an unknown error is
+    // wrapped into a Subiekt-typed transport error (fiscal-issuance paths lose
+    // the most useful stack otherwise).
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
     this.name = 'SubiektBridgeTransportError';
     this.retryability = retryability;
     this.retryable = retryability === 'safe';

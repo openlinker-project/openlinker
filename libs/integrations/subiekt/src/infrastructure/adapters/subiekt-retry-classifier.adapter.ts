@@ -8,7 +8,19 @@
  * "retryable", which is fiscally unsafe for an `'indeterminate'` transport
  * failure (see below).
  *
- * Non-retryable (`true`) — the fiscal-safe DEFAULT for anything not proven safe:
+ * This classifier recognises ONLY Subiekt-owned exception types. The sync
+ * runner aggregates every plugin's classifier OR-across-all with no platform
+ * scoping (`RetryClassifierRegistryService.isNonRetryable`), so a catch-all
+ * `return true` here would mark EVERY sibling plugin's transient error (a failed
+ * Allegro 5xx, an Erli network blip, a PrestaShop timeout) non-retryable. We
+ * therefore mirror `ErliRetryClassifierAdapter` / `AllegroRetryClassifierAdapter`
+ * and return `false` for anything we do not own. The fiscal-safe "unknown ->
+ * non-retryable" intent is preserved LOCALLY: `SubiektInvoicingAdapter`
+ * wraps genuinely-unknown throwables into a Subiekt-typed `'indeterminate'`
+ * `SubiektBridgeTransportError`, which this classifier then recognises.
+ *
+ * Non-retryable (`true`) — the fiscal-safe default for our OWN proven-terminal
+ * and not-proven-safe errors:
  *   - `SubiektInvoiceRejectedError` — TERMINAL business rejection; the same
  *     input will be rejected again, so retrying burns capacity.
  *   - `SubiektUnsupportedDocumentTypeError` — TERMINAL caller contract
@@ -23,14 +35,13 @@
  *     bridge, so an auto-retry risks DOUBLE-ISSUING a fiscal document. It is
  *     classified non-retryable until the bridge guarantees idempotency-key
  *     dedup (#752); only then may this branch flip.
- *   - anything unrecognized — for a fiscal issuance path the safe default is
- *     NON-RETRYABLE. We cannot prove an unknown throwable never reached Subiekt,
- *     so auto-retrying it risks a double-issued fiscal document.
  *
- * Retryable (`false`) — ONLY the proven-safe transport phase:
+ * Retryable (`false`):
  *   - `SubiektBridgeTransportError` with `retryability === 'safe'` — the
  *     transport PROVED the request never left the host (connect-refused /
  *     DNS-failure), so a retry cannot double-issue.
+ *   - anything NOT Subiekt-owned — another plugin owns it; we abstain so the
+ *     runner's OR-aggregation isn't polluted by a foreign catch-all.
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
@@ -50,7 +61,7 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
       // fiscal document (see the exception docblock and #752).
       return cause.retryability !== 'safe';
     }
-    // Known-terminal Subiekt errors are non-retryable...
+    // Known-terminal Subiekt errors are non-retryable.
     if (
       cause instanceof SubiektInvoiceRejectedError ||
       cause instanceof SubiektUnsupportedDocumentTypeError ||
@@ -59,9 +70,12 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
     ) {
       return true;
     }
-    // ...and so is anything unrecognized: on a fiscal issuance path we cannot
-    // prove an unknown throwable never reached Subiekt, so the safe default is
-    // NON-RETRYABLE (never auto-retry into a possible double-issue).
-    return true;
+    // Anything we do not own belongs to another plugin: abstain (`false`). The
+    // runner OR-aggregates classifiers with no platform scoping, so a catch-all
+    // `true` here would turn sibling plugins' transient errors terminal. The
+    // fiscal-safe "unknown -> non-retryable" default is enforced upstream:
+    // SubiektInvoicingAdapter wraps unknown throwables into a Subiekt-typed
+    // 'indeterminate' SubiektBridgeTransportError, handled above.
+    return false;
   }
 }

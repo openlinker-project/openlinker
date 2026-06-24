@@ -49,11 +49,15 @@ describe('SubiektRetryClassifierAdapter', () => {
     expect(classifier.isNonRetryable(new SubiektBridgeAuthError(403))).toBe(true);
   });
 
-  it('treats an arbitrary unknown Error as NON-retryable (fiscal-safe default)', () => {
-    // For a fiscal issuance path we cannot prove an unknown throwable never
-    // reached Subiekt, so the safe default is non-retryable.
-    expect(classifier.isNonRetryable(new Error('boom'))).toBe(true);
-    expect(classifier.isNonRetryable(undefined)).toBe(true);
-    expect(classifier.isNonRetryable({ weird: true })).toBe(true);
+  it('ABSTAINS (returns false) for non-Subiekt errors so sibling plugins keep their own retry policy', () => {
+    // The runner OR-aggregates every plugin's classifier with no platform
+    // scoping, so a catch-all `true` here would mark a failed Allegro 5xx / Erli
+    // network blip / PrestaShop timeout non-retryable platform-wide. We own only
+    // Subiekt types; the fiscal-safe "unknown -> non-retryable" intent is
+    // enforced upstream by SubiektInvoicingAdapter wrapping unknowns into a
+    // Subiekt-typed 'indeterminate' transport error.
+    expect(classifier.isNonRetryable(new Error('boom'))).toBe(false);
+    expect(classifier.isNonRetryable(undefined)).toBe(false);
+    expect(classifier.isNonRetryable({ weird: true })).toBe(false);
   });
 });

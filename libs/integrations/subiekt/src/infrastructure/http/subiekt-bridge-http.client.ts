@@ -45,7 +45,7 @@ import type {
   BridgeUpsertCustomerResponse,
 } from '../../bridge/subiekt-bridge.types';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
-import type { SubiektTransportRetryability } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
 

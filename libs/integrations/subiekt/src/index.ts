@@ -52,10 +52,8 @@ export type { SubiektBridgeCredentials } from './domain/types/subiekt-credential
 // Domain exceptions
 export { SubiektConfigException } from './domain/exceptions/subiekt-config.exception';
 export { SubiektInvoiceRejectedError } from './domain/exceptions/subiekt-invoice-rejected.exception';
-export {
-  SubiektBridgeTransportError,
-  type SubiektTransportRetryability,
-} from './domain/exceptions/subiekt-bridge-transport.exception';
+export { SubiektBridgeTransportError } from './domain/exceptions/subiekt-bridge-transport.exception';
+export type { SubiektTransportRetryability } from './domain/types/subiekt-transport-retryability.types';
 export { SubiektUnsupportedDocumentTypeError } from './domain/exceptions/subiekt-unsupported-document-type.exception';
 export { SubiektBridgeAuthError } from './domain/exceptions/subiekt-bridge-auth.exception';
 
