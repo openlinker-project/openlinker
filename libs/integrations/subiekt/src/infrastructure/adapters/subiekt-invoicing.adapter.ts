@@ -150,7 +150,7 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
    *     no longer needs a global catch-all that would wrongly mark sibling
    *     plugins' errors non-retryable.
    */
-  private translateBridgeError(error: unknown): unknown {
+  private translateBridgeError(error: unknown): Error {
     if (error instanceof SubiektInvoiceRejectedError) {
       return error;
     }
