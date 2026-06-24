@@ -44,7 +44,6 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('orders')
 @Controller('orders')
@@ -179,6 +178,7 @@ export class OrdersController {
     return this.toDto(order);
   }
 
+  @Roles('admin')
   @Post(':internalOrderId/destinations/:connectionId/retry')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

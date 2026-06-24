@@ -23,8 +23,12 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
+import { usePlatforms } from '../../shared/plugins';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import type { Product, ProductFilters } from '../../features/products/api/products.types';
+import { useConnectionsQuery } from '../../features/connections';
+import type { Connection } from '../../features/connections';
+import { MarketplacePickerModal } from './marketplace-picker-modal';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -64,6 +68,21 @@ export function ProductsListPage(): ReactElement {
   // link"). On submit click, the variant IDs are serialised into the wizard
   // route so the destination has the full list.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Capability-gated create-offers action (#1096): select target connections by
+  // the `OfferManager` capability — never a literal platformType. Display names
+  // resolve through the plugin registry.
+  const connectionsQuery = useConnectionsQuery();
+  const platforms = usePlatforms();
+  const offerManagerConnections = useMemo<Connection[]>(
+    () =>
+      (connectionsQuery.data ?? [])
+        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferManager'))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [connectionsQuery.data],
+  );
 
   const filters: ProductFilters = { search: debouncedSearch || undefined };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -174,12 +193,35 @@ export function ProductsListPage(): ReactElement {
   // page consumes ?productIds= and hydrates products + variants from there.
   // We send product IDs; the wizard resolves each to its primary variant
   // before calling the BE bulk-create endpoint (which actually accepts
-  // variant IDs — see bulk-listings.types.ts file header).
-  const handleSubmit = useCallback(() => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds).join(',');
-    void navigate(`/listings/bulk-create/wizard?productIds=${encodeURIComponent(ids)}`);
-  }, [selectedIds, navigate]);
+  // variant IDs — see bulk-listings.types.ts file header). `connectionId`
+  // (when known — exactly-one or picker-chosen) preselects the wizard's
+  // connection (#1096).
+  const goToWizard = useCallback(
+    (connectionId?: string) => {
+      if (selectedIds.size === 0) return;
+      const ids = Array.from(selectedIds).join(',');
+      const params = new URLSearchParams({ productIds: ids });
+      if (connectionId) params.set('connectionId', connectionId);
+      void navigate(`/listings/bulk-create/wizard?${params.toString()}`);
+    },
+    [selectedIds, navigate],
+  );
+
+  // Capability-aware launch: 1 connection → straight to wizard (preselected);
+  // 2+ → marketplace-picker modal. (0 is handled by hiding the action.)
+  const handleCreateOffers = useCallback(() => {
+    if (offerManagerConnections.length === 1) {
+      goToWizard(offerManagerConnections[0]!.id);
+    } else if (offerManagerConnections.length > 1) {
+      setPickerOpen(true);
+    }
+  }, [offerManagerConnections, goToWizard]);
+
+  const soleConnectionName =
+    offerManagerConnections.length === 1
+      ? (platforms.find((p) => p.platformType === offerManagerConnections[0]!.platformType)
+          ?.displayName ?? offerManagerConnections[0]!.platformType)
+      : null;
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
 
@@ -377,11 +419,27 @@ export function ProductsListPage(): ReactElement {
                 <Button tone="ghost" className="button--sm" onClick={clearSelection}>
                   Clear
                 </Button>
-                <Button tone="primary" onClick={handleSubmit}>
-                  Create Allegro offers ({selectedIds.size.toLocaleString()})
-                </Button>
+                {/* Capability-gated (#1096): hidden with 0 OfferManager connections. */}
+                {offerManagerConnections.length > 0 ? (
+                  <Button tone="primary" onClick={handleCreateOffers}>
+                    {soleConnectionName
+                      ? `Create ${soleConnectionName} offers (${selectedIds.size.toLocaleString()})`
+                      : `Create offers (${selectedIds.size.toLocaleString()})`}
+                  </Button>
+                ) : null}
               </>
             }
+          />
+
+          <MarketplacePickerModal
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            productCount={selectedIds.size}
+            connections={offerManagerConnections}
+            onContinue={(connectionId) => {
+              setPickerOpen(false);
+              goToWizard(connectionId);
+            }}
           />
         </>
       )}

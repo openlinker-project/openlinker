@@ -64,12 +64,11 @@ export interface IInvoiceService {
    *   while a deterministic terminal rejection simply fails again with no
    *   double-issue.
    *
-   * Follow-up (R2/R3 closure): see GitHub issue TODO(#<follow-up>) — neutral
+   * Follow-up (R2/R3 closure): see GitHub issue #1200 — neutral
    * `retryable` discriminator (so `failed` rows from terminal vs. transient
    * outcomes are distinguishable) + compare-and-swap/lease on
    * `InvoiceRecordRepositoryPort` (so a `pending` row's still-in-flight original is
-   * excluded before a retry re-crosses the boundary). (Number recorded during the
-   * LOGIC pass.)
+   * excluded before a retry re-crosses the boundary).
    */
   issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
 

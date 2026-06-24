@@ -13,6 +13,8 @@ import { createTestConnection } from '../../../__tests__/fixtures/connection.fix
 import { samplePrestashopProduct } from '../../../__tests__/fixtures/prestashop-product.fixture';
 import { PrestashopProductMapper } from '../../mappers/prestashop-product.mapper';
 import { PrestashopAttributeResolver } from '../../provisioners/prestashop-attribute.resolver';
+import { PrestashopFeatureResolver } from '../../provisioners/prestashop-feature.resolver';
+import { PrestashopCategoryPathResolver } from '../../provisioners/prestashop-category-path.resolver';
 import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
@@ -131,6 +133,130 @@ describe('PrestashopProductMasterAdapter', () => {
       // Verify mapper was called with langId 2
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.getResource).toHaveBeenCalled();
+    });
+  });
+
+  describe('getProduct — features & category path (#1096)', () => {
+    const internalId = 'internal-product-123';
+    const externalId = '42';
+
+    function mapExternalId(): void {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId, entityType: 'Product' }]);
+    }
+
+    it('enriches the product with resolved features when a feature resolver is wired (F2)', async () => {
+      mapExternalId();
+      const productWithFeatures: PrestashopProduct = {
+        ...samplePrestashopProduct,
+        associations: {
+          ...(samplePrestashopProduct.associations as Record<string, unknown>),
+          product_features: [{ id: '1', id_feature_value: '10' }],
+        },
+      };
+
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(productWithFeatures);
+      mockHttpClient.listResources = jest.fn((resource: string) => {
+        if (resource === 'product_features') return Promise.resolve([{ id: '1', name: 'Material' }]);
+        if (resource === 'product_feature_values')
+          return Promise.resolve([{ id: '10', value: 'Ceramic' }]);
+        return Promise.resolve([]);
+      }) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+
+      const featureResolver = new PrestashopFeatureResolver();
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver(),
+        featureResolver
+      );
+
+      const result = await adapterWithResolver.getProduct(internalId);
+
+      expect(result.features).toEqual([{ name: 'Material', value: 'Ceramic' }]);
+    });
+
+    it('leaves features unset when no feature resolver is wired (F2)', async () => {
+      mapExternalId();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+
+      const result = await adapter.getProduct(internalId);
+
+      expect(result.features).toBeUndefined();
+    });
+
+    it('does not break sync when the feature resolver throws (F2)', async () => {
+      mapExternalId();
+      const productWithFeatures: PrestashopProduct = {
+        ...samplePrestashopProduct,
+        associations: { product_features: [{ id: '1', id_feature_value: '10' }] },
+      };
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(productWithFeatures);
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValue(new Error('boom')) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver(),
+        new PrestashopFeatureResolver()
+      );
+
+      const result = await adapterWithResolver.getProduct(internalId);
+
+      expect(result.features).toBeUndefined();
+      expect(result.id).toBe(internalId);
+    });
+
+    it('enriches the product with a full category breadcrumb (F3)', async () => {
+      mapExternalId();
+      const productWithCategory: PrestashopProduct = {
+        ...samplePrestashopProduct,
+        id_category_default: '12',
+      };
+      const categories: Record<string, { id: string; name: string; id_parent: string }> = {
+        '5': { id: '5', name: 'Home & Garden', id_parent: '2' },
+        '12': { id: '12', name: 'Mugs', id_parent: '5' },
+      };
+      mockHttpClient.getResource = jest.fn((resource: string, id: string | number) => {
+        if (resource === 'categories') return Promise.resolve(categories[String(id)]);
+        return Promise.resolve(productWithCategory);
+      }) as unknown as jest.Mocked<IPrestashopWebserviceClient>['getResource'];
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver(),
+        new PrestashopFeatureResolver(),
+        new PrestashopCategoryPathResolver()
+      );
+
+      const result = await adapterWithResolver.getProduct(internalId);
+
+      expect(result.categoryBreadcrumb).toEqual([
+        { id: '5', name: 'Home & Garden' },
+        { id: '12', name: 'Mugs' },
+      ]);
+    });
+
+    it('leaves categoryBreadcrumb unset when no path resolver is wired (F3)', async () => {
+      mapExternalId();
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, id_category_default: '12' });
+
+      const result = await adapter.getProduct(internalId);
+
+      expect(result.categoryBreadcrumb).toBeUndefined();
     });
   });
 
@@ -340,6 +466,55 @@ describe('PrestashopProductMasterAdapter', () => {
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '102' }),
         ])
       );
+    });
+
+    it('resolves a combination price as base + impact (impact 0 when unset) (#1096)', async () => {
+      const productId = 'internal-product-123';
+      // Base product price is 19.99 (fixture). PrestaShop combination `price` is
+      // an IMPACT, so absolute = 19.99 + impact; an unset impact yields the base.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const combinations: PrestashopCombination[] = [
+        { id: '101', id_product: '42', reference: 'IMP-5', price: '5.00', quantity: '10' },
+        { id: '102', id_product: '42', reference: 'NO-IMP', quantity: '20' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(
+        new Map([
+          ['101:test-connection-id', 'internal-variant-1'],
+          ['102:test-connection-id', 'internal-variant-2'],
+        ])
+      );
+
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result[0].price).toBe(24.99); // 19.99 + 5.00
+      expect(result[1].price).toBe(19.99); // 19.99 + 0 (impact unset)
+    });
+
+    it('treats a non-positive absolute combination price as no-master-price (#1099 self-review)', async () => {
+      const productId = 'internal-product-123';
+      // Base 19.99; a negative impact larger than the base would yield a negative
+      // absolute price — invalid, so the variant must surface no price at all
+      // (the `no-master-price` blocker) rather than publishing a negative price.
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const combinations: PrestashopCombination[] = [
+        { id: '101', id_product: '42', reference: 'NEG', price: '-25.00', quantity: '10' },
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+        .fn()
+        .mockResolvedValue(new Map([['101:test-connection-id', 'internal-variant-1']]));
+
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].price).toBeUndefined();
     });
 
     it('does not fallback to product barcode when multiple combinations exist', async () => {

@@ -132,6 +132,10 @@ export const OfferCreationStatusValues = [
   'draft',
   'validating',
   'active',
+  // The offer already existed on the platform — an idempotent create the adapter
+  // resolved (e.g. Erli's seller-keyed 409, #1096). A terminal success, distinct
+  // from `draft` so a re-run doesn't read as a fresh create.
+  'reused',
   'failed',
 ] as const;
 export type OfferCreationStatus = (typeof OfferCreationStatusValues)[number];
@@ -139,6 +143,7 @@ export type OfferCreationStatus = (typeof OfferCreationStatusValues)[number];
 export const TERMINAL_OFFER_CREATION_STATUSES: readonly OfferCreationStatus[] = [
   'draft',
   'active',
+  'reused',
   'failed',
 ];
 

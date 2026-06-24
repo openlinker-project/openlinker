@@ -17,7 +17,11 @@ import type {
   WebhookSecretProviderPort,
 } from '@openlinker/core/integrations';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import type { PrestashopConnectionConfig } from '../domain/types/prestashop-config.types';
+import type {
+  InpostPsModuleType,
+  PrestashopConnectionConfig,
+} from '../domain/types/prestashop-config.types';
+import { InpostPsModuleTypeValues } from '../domain/types/prestashop-config.types';
 import type { PrestashopCredentials } from '../domain/types/prestashop-credentials.types';
 import { PrestashopConfigException } from '../domain/exceptions/prestashop-config.exception';
 import { PrestashopWebserviceClient } from '../infrastructure/http/prestashop-webservice.client';
@@ -29,12 +33,15 @@ import { PrestashopProductMasterAdapter } from '../infrastructure/adapters/prest
 import { PrestashopInventoryMasterAdapter } from '../infrastructure/adapters/prestashop-inventory-master.adapter';
 import { PrestashopOrderSourceAdapter } from '../infrastructure/adapters/prestashop-order-source.adapter';
 import { PrestashopOrderProcessorManagerAdapter } from '../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+import { PrestashopProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter';
 import type { PrestashopCustomerProvisioner } from '../infrastructure/provisioners/prestashop-customer-provisioner';
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
+import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
+import { PrestashopCategoryPathResolver } from '../infrastructure/provisioners/prestashop-category-path.resolver';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -50,6 +57,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // survives across the per-product adapter instances the master sync creates
   // (#1050). A per-adapter cache would never hit.
   private readonly attributeResolver = new PrestashopAttributeResolver();
+
+  // Held on the factory (process-singleton) so their per-connection caches
+  // survive across the per-product adapter instances master sync creates (#1096),
+  // mirroring `attributeResolver`.
+  private readonly featureResolver = new PrestashopFeatureResolver();
+  private readonly categoryPathResolver = new PrestashopCategoryPathResolver();
 
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
@@ -104,7 +117,9 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       identifierMapping,
       productMapper,
       connection,
-      this.attributeResolver
+      this.attributeResolver,
+      this.featureResolver,
+      this.categoryPathResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
@@ -164,6 +179,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       );
     }
 
+    const productPublisher = new PrestashopProductPublisherAdapter(httpClient, connection);
+
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
     return {
@@ -171,6 +188,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       inventoryMaster,
       orderSource,
       orderProcessorManager,
+      productPublisher,
     };
   }
 
@@ -313,6 +331,20 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       }
     }
 
+    // Validate inpostPsModuleType (if provided)
+    if (config.inpostPsModuleType !== undefined) {
+      if (
+        typeof config.inpostPsModuleType !== 'string' ||
+        !(InpostPsModuleTypeValues as readonly string[]).includes(config.inpostPsModuleType)
+      ) {
+        throw new PrestashopConfigException(
+          `inpostPsModuleType must be one of: ${InpostPsModuleTypeValues.join(', ')}`,
+          'inpostPsModuleType',
+          config.inpostPsModuleType
+        );
+      }
+    }
+
     const currency = this.parseOptionalIsoCurrency(config.currency);
 
     // Build validated config with defaults
@@ -330,6 +362,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       responseFormat: (config.responseFormat as 'auto' | 'json' | 'xml' | undefined) ?? 'auto',
       currency,
       defaultCarrierId: config.defaultCarrierId as number | undefined,
+      inpostPsModuleType: config.inpostPsModuleType as InpostPsModuleType | undefined,
     };
 
     return validatedConfig;

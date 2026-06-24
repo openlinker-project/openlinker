@@ -11,7 +11,14 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useRef, type ReactElement } from 'react';
+import {
+  Suspense,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactElement,
+} from 'react';
 import {
   Controller,
   FormProvider,
@@ -19,6 +26,8 @@ import {
   useFormContext,
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { usePlatform, type BulkOfferRowSectionProps } from '../../../../shared/plugins';
+import type { Connection } from '../../../connections';
 import {
   Alert,
   Button,
@@ -45,7 +54,7 @@ import {
 import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
 import type { CategoryParameterFormValues } from '../category-parameter-form.types';
 import {
-  bulkEditModalSchema,
+  makeBulkEditModalSchema,
   type BulkEditModalSubmission,
   type BulkEditModalValues,
 } from './bulk-edit-modal.schema';
@@ -56,7 +65,19 @@ interface BulkEditModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: BulkWizardRow;
-  connectionId: string;
+  /**
+   * The batch's marketplace connection. Drives both the CategoryPicker
+   * (by id) and the per-row platform section resolved via its `platformType`.
+   */
+  connection: Connection;
+  /**
+   * Whether the destination exposes a browsable category tree (`CategoryBrowser`,
+   * #1096). True → the Allegro tree picker + category-parameter step. False → a
+   * manual marketplace-category-id input and no parameter step, for a `borrows`
+   * destination (Erli reuses the resolved Allegro id, ADR-025 §3; it has no
+   * browsable tree and no product-section parameters).
+   */
+  canBrowseCategories: boolean;
   /**
    * Defaults applied to fields the operator hasn't overridden yet.
    * Pulled from the wizard's `sharedConfig` so the modal opens pre-filled.
@@ -84,7 +105,8 @@ export function BulkEditModal({
   open,
   onOpenChange,
   row,
-  connectionId,
+  connection,
+  canBrowseCategories,
   defaults,
   onSave,
 }: BulkEditModalProps): ReactElement | null {
@@ -95,7 +117,8 @@ export function BulkEditModal({
       <DialogContent>
         <BulkEditModalForm
           row={row}
-          connectionId={connectionId}
+          connection={connection}
+          canBrowseCategories={canBrowseCategories}
           defaults={defaults}
           onSave={onSave}
           onClose={() => { onOpenChange(false); }}
@@ -107,7 +130,8 @@ export function BulkEditModal({
 
 interface BulkEditModalFormProps {
   row: BulkWizardRow;
-  connectionId: string;
+  connection: Connection;
+  canBrowseCategories: boolean;
   defaults: BulkEditModalProps['defaults'];
   onSave: BulkEditModalProps['onSave'];
   onClose: () => void;
@@ -115,12 +139,23 @@ interface BulkEditModalFormProps {
 
 function BulkEditModalForm({
   row,
-  connectionId,
+  connection,
+  canBrowseCategories,
   defaults,
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
+  const connectionId = connection.id;
   const variantId = row.primaryVariant?.id ?? '';
+
+  // Per-platform per-row knobs (#1096) — e.g. Erli dispatch time. Seeded from
+  // any existing per-row override (NOT the batch default): an absent key means
+  // the row inherits the batch-wide value at submit, so the platform section's
+  // toggle starts off. The resolved section reads/writes this verbatim.
+  const platformSection = usePlatform(connection.platformType)?.bulkOfferRowSection;
+  const [platformParams, setPlatformParams] = useState<Record<string, unknown>>(
+    () => ({ ...(row.override.overrides?.platformParams ?? {}) }),
+  );
 
   // Snapshot the row's resolved values at modal-open time. `BulkEditModalForm`
   // mounts fresh on open (Radix Dialog portals its content), so a one-time ref
@@ -153,17 +188,26 @@ function BulkEditModalForm({
   }
   const initialValues = initialValuesRef.current;
 
+  const schema = useMemo(
+    () => makeBulkEditModalSchema(canBrowseCategories),
+    [canBrowseCategories],
+  );
   const form = useForm<BulkEditModalValues, undefined, BulkEditModalSubmission>({
     defaultValues: initialValues,
-    resolver: zodResolver(bulkEditModalSchema),
+    resolver: zodResolver(schema),
     mode: 'onSubmit',
   });
 
   // Watch categoryId so the parameters query refetches on category change.
   const watchedCategoryId = form.watch('categoryId');
+  // Only a `CategoryBrowser` destination exposes per-category parameters; a
+  // `borrows` destination (Erli) has none, so pass an empty id to keep the query
+  // disabled (its `fetchCategoryParameters` would 422). (#1096)
   const parametersQuery = useCategoryParametersQuery(
     connectionId,
-    typeof watchedCategoryId === 'string' && watchedCategoryId.length > 0
+    canBrowseCategories &&
+      typeof watchedCategoryId === 'string' &&
+      watchedCategoryId.length > 0
       ? watchedCategoryId
       : '',
   );
@@ -201,9 +245,15 @@ function BulkEditModalForm({
       overrides: {
         title: values.title,
         description: values.description,
-        categoryId: values.categoryId,
+        // A blank category (allowed for a `borrows` destination) is omitted so
+        // the backend resolves it at submit (mapping / barcode), rather than
+        // writing an empty override. (#1096)
+        ...(values.categoryId ? { categoryId: values.categoryId } : {}),
         ...(values.productCardId ? { productCardId: values.productCardId } : {}),
         ...(parameters.length > 0 ? { parameters } : {}),
+        // Per-row platform overrides (#1096) — e.g. Erli dispatch time. Empty
+        // ⇒ omitted so the row inherits the batch-wide `platformParams`.
+        ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
       },
     };
 
@@ -280,32 +330,52 @@ function BulkEditModalForm({
               </div>
             </div>
           ) : null}
-          <FormField
-            name="bulk-edit-category"
-            label="Allegro category"
-            description="EAN auto-match prefilled this where possible."
-            error={form.formState.errors.categoryId?.message}
-          >
-            <Controller
-              control={form.control}
-              name="categoryId"
-              render={({ field }) => (
-                <CategoryPicker
-                  connectionId={connectionId}
-                  value={field.value || null}
-                  onChange={(id) => {
-                    field.onChange(id);
-                    // A manual category pick is not tied to a candidate card —
-                    // drop any card so the offer doesn't link a card from a
-                    // different category (#810). Re-clicking a candidate chip
-                    // re-sets both.
-                    form.setValue('productCardId', '', { shouldDirty: true });
-                  }}
-                  invalid={Boolean(form.formState.errors.categoryId)}
-                />
-              )}
-            />
-          </FormField>
+          {canBrowseCategories ? (
+            <FormField
+              name="bulk-edit-category"
+              label="Allegro category"
+              description="EAN auto-match prefilled this where possible."
+              error={form.formState.errors.categoryId?.message}
+            >
+              <Controller
+                control={form.control}
+                name="categoryId"
+                render={({ field }) => (
+                  <CategoryPicker
+                    connectionId={connectionId}
+                    value={field.value || null}
+                    onChange={(id) => {
+                      field.onChange(id);
+                      // A manual category pick is not tied to a candidate card —
+                      // drop any card so the offer doesn't link a card from a
+                      // different category (#810). Re-clicking a candidate chip
+                      // re-sets both.
+                      form.setValue('productCardId', '', { shouldDirty: true });
+                    }}
+                    invalid={Boolean(form.formState.errors.categoryId)}
+                  />
+                )}
+              />
+            </FormField>
+          ) : (
+            // A `borrows` destination (Erli) has no browsable tree — the operator
+            // supplies the resolved Allegro category id directly (taxonomy reuse,
+            // ADR-025 §3). Left blank, the category is resolved server-side at
+            // submit (override → barcode → configured category mapping). (#1096)
+            <FormField
+              name="bulk-edit-category"
+              label="Allegro category ID"
+              description="Reuses the resolved Allegro category id. Leave blank to resolve from your configured category mappings at submit."
+              error={form.formState.errors.categoryId?.message}
+            >
+              <Input
+                {...form.register('categoryId')}
+                placeholder="e.g. 12345"
+                inputMode="numeric"
+                aria-invalid={Boolean(form.formState.errors.categoryId)}
+              />
+            </FormField>
+          )}
 
           <DescriptionField productId={row.product?.id ?? ''} />
 
@@ -363,11 +433,25 @@ function BulkEditModalForm({
             </span>
           </label>
 
-          <ParameterSection
-            watchedCategoryId={watchedCategoryId}
-            parametersQuery={parametersQuery}
-            categoryParameters={categoryParameters}
-          />
+          {canBrowseCategories ? (
+            <ParameterSection
+              watchedCategoryId={watchedCategoryId}
+              parametersQuery={parametersQuery}
+              categoryParameters={categoryParameters}
+            />
+          ) : null}
+
+          {/* Per-platform per-row override (#1096) — e.g. Erli dispatch time. */}
+          {platformSection ? (
+            <Suspense fallback={<p className="muted-text">Loading…</p>}>
+              <PlatformRowSection
+                section={platformSection}
+                connection={connection}
+                platformParams={platformParams}
+                onChange={setPlatformParams}
+              />
+            </Suspense>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -381,6 +465,25 @@ function BulkEditModalForm({
       </form>
     </FormProvider>
   );
+}
+
+/**
+ * Renders the plugin-resolved per-row platform section (#1096). A thin wrapper
+ * so the dynamically-resolved `ComponentType` is invoked as a capitalized JSX
+ * element with the controlled `platformParams` contract.
+ */
+function PlatformRowSection({
+  section: Section,
+  connection,
+  platformParams,
+  onChange,
+}: {
+  section: ComponentType<BulkOfferRowSectionProps>;
+  connection: Connection;
+  platformParams: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}): ReactElement {
+  return <Section connection={connection} platformParams={platformParams} onChange={onChange} />;
 }
 
 function DescriptionField({ productId }: { productId: string }): ReactElement {
