@@ -15,7 +15,7 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
-import type { OrderFeedInput } from '@openlinker/core/orders';
+import { isOrderStatusWriteback, type OrderFeedInput } from '@openlinker/core/orders';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import type { ErliHttpResponse } from '../../http/erli-http-client.types';
@@ -363,6 +363,193 @@ describe('ErliOrderSourceAdapter', () => {
       client.get.mockRejectedValue(notFound);
 
       await expect(adapter.getOrder({ externalOrderId: 'missing' })).rejects.toBe(notFound);
+    });
+  });
+
+  describe('write — OrderStatusWriteback (#997 Half A / #1168)', () => {
+    const ORDER_ID = 'erli-order-xyz';
+
+    // #992 release gate (#1086 review): dispatch writeback is opt-in / default OFF.
+    // Enable it for the `dispatched` assertions below; restore the env after each.
+    let prevGate: string | undefined;
+    beforeEach(() => {
+      prevGate = process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = 'true';
+    });
+    afterEach(() => {
+      if (prevGate === undefined) delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      else process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED = prevGate;
+    });
+
+    it('is narrowed by isOrderStatusWriteback', () => {
+      expect(isOrderStatusWriteback(adapter)).toBe(true);
+    });
+
+    it('reports unsupported for a cancelled event (Erli has no cancel writeback verb)', async () => {
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('unsupported');
+      expect(client.patch).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('reports unsupported (no PATCH, no POST) when the #992 writeback gate is OFF by default (#1086)', async () => {
+      delete process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED;
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(result.outcome).toBe('unsupported');
+      expect(client.patch).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalled();
+      // The skip is signalled at warn level (not debug) so operators can tell the
+      // dispatch was not propagated upstream (PR1086 review) — and carries no PII.
+      const emitted = warnSpy.mock.calls.flat().join(' ');
+      expect(emitted).toContain('Erli dispatch writeback skipped');
+      expect(emitted).not.toContain(ORDER_ID);
+      expect(emitted).not.toContain('WB-FAKE-123');
+      warnSpy.mockRestore();
+    });
+
+    it('attaches the waybill when trackingNumber is present (non-Erli carrier)', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockResolvedValue(ok(undefined, 202));
+
+      // The real relay passes a SHIPPING-carrier hint (never 'erli').
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(result.outcome).toBe('applied');
+      // One status writeback (mark sent) via the order-status enum endpoint.
+      expect(client.patch).toHaveBeenCalledTimes(1);
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/status`, {
+        status: 'sent',
+      });
+      // One external-shipment registration (array body) carrying the waybill +
+      // vendor (the shipping carrier's platformType).
+      expect(client.post).toHaveBeenCalledTimes(1);
+      expect(client.post).toHaveBeenCalledWith(
+        '/shipping/external',
+        [{ vendor: 'inpost', orderId: ORDER_ID, trackingNumber: 'WB-FAKE-123' }],
+        { idempotent: true },
+      );
+    });
+
+    it('omits the tracking attach when trackingNumber is absent (Erli-managed)', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+
+      // Erli-managed / omp_fulfilled: relay passes trackingNumber undefined.
+      const result = await adapter.write({ type: 'dispatched', externalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('applied');
+      // Status writeback only — NO shipment registration.
+      expect(client.patch).toHaveBeenCalledTimes(1);
+      expect(client.patch).toHaveBeenCalledWith(`/orders/${ORDER_ID}/status`, {
+        status: 'sent',
+      });
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('treats a 409 on the status writeback as applied (idempotent)', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('already dispatched', 409));
+
+      const result = await adapter.write({ type: 'dispatched', externalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('applied');
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('reports rejected on a non-409 status-writeback failure', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('bad request', 400));
+
+      const result = await adapter.write({ type: 'dispatched', externalOrderId: ORDER_ID });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toBeDefined();
+    });
+
+    it('treats a 409 on the waybill attach as applied (retry convergence)', async () => {
+      // Status PATCH succeeds; the waybill POST 409s (already attached from a prior
+      // partial run) — must converge, not fail permanently (PR1082-TECH-03).
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockRejectedValue(new ErliApiException('shipment already attached', 409));
+
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(result.outcome).toBe('applied');
+    });
+
+    it('reports rejected on a non-409 waybill-attach failure after the status writeback succeeded', async () => {
+      // Partial failure: mark-dispatched landed, the attach POST fails terminally
+      // — surfaces as rejected; the status writeback already happened (PR1082-TECH-04).
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockRejectedValue(new ErliApiException('bad request', 400));
+
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-123',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(result.outcome).toBe('rejected');
+      expect(client.patch).toHaveBeenCalledTimes(1);
+    });
+
+    it('never logs trackingNumber or externalOrderId on the success path', async () => {
+      client.patch.mockResolvedValue(ok(undefined, 200));
+      client.post.mockResolvedValue(ok(undefined, 202));
+      const logSpy = jest
+        .spyOn((adapter as unknown as { logger: { log: () => void } }).logger, 'log')
+        .mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: () => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-456',
+        carrier: { platformType: 'dpd' },
+      });
+
+      const emitted = [...logSpy.mock.calls, ...warnSpy.mock.calls].flat().join(' ');
+      expect(emitted).not.toContain('WB-FAKE-456');
+      expect(emitted).not.toContain(ORDER_ID);
+    });
+
+    it('rejected detail carries no waybill or order id', async () => {
+      client.patch.mockRejectedValue(new ErliApiException('upstream 400', 400));
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: () => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      const result = await adapter.write({
+        type: 'dispatched',
+        externalOrderId: ORDER_ID,
+        trackingNumber: 'WB-FAKE-789',
+      });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail ?? '').not.toContain('WB-FAKE-789');
+      expect(result.detail ?? '').not.toContain(ORDER_ID);
+      const emitted = warnSpy.mock.calls.flat().join(' ');
+      expect(emitted).not.toContain('WB-FAKE-789');
+      expect(emitted).not.toContain(ORDER_ID);
     });
   });
 });
