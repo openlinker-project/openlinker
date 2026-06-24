@@ -20,6 +20,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
   type CategoryProvisioner,
+  type OfferParameter,
   type ProvisionCategoryCommand,
   type ProvisionCategoryResult,
   type PublishProductCommand,
@@ -33,6 +34,11 @@ import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservi
 import type {
   PrestashopCategoryListItem,
   PrestashopCategoryResponse,
+  PrestashopFeatureAssociation,
+  PrestashopFeatureListItem,
+  PrestashopFeatureResponse,
+  PrestashopFeatureValueListItem,
+  PrestashopFeatureValueResponse,
   PrestashopLangField,
   PrestashopProductListItem,
   PrestashopProductResponse,
@@ -61,32 +67,14 @@ export class PrestashopProductPublisherAdapter
       cmd.platformParams?.languageId ?? (this.connection.config?.langId as number | undefined) ?? 1,
     );
 
-    // Collect v1 deferral warnings before the API call so the caller knows what was skipped.
-    const warnings: string[] = [];
+    // Provision features hard-fail: associations are structural — a product without
+    // its declared features is semantically incomplete, unlike a missing image.
+    const featureAssociations =
+      cmd.parameters != null && cmd.parameters.length > 0
+        ? await this.provisionFeatures(cmd.parameters, languageId)
+        : [];
 
-    // v1 deferral: PS WS images require binary multipart upload to
-    // /images/products/{id} — unlike WooCommerce's URL reference model, each
-    // image needs a separate POST with raw bytes. Not yet implemented; the
-    // operator is warned so products are not silently image-less.
-    if (cmd.content?.imageUrls != null && cmd.content.imageUrls.length > 0) {
-      warnings.push(
-        'imageUrls: image upload is not yet supported for PrestaShop in this adapter version — ' +
-          'images skipped. PrestaShop WebService images require binary multipart upload to /images/products/{id}.',
-      );
-    }
-
-    // v1 deferral: PrestaShop parameters would map to product Features + FeatureValues
-    // (separate PS WS resources requiring multi-step provisioning). Not yet
-    // implemented; the operator is warned so attributes are not silently dropped.
-    if (cmd.parameters != null && cmd.parameters.length > 0) {
-      warnings.push(
-        'parameters: category/attribute parameters are not yet supported for PrestaShop in this ' +
-          'adapter version — parameters skipped. PrestaShop features require separate ' +
-          'feature + feature_value resources.',
-      );
-    }
-
-    const body = this.buildProductBody(cmd, languageId);
+    const body = this.buildProductBody(cmd, languageId, featureAssociations);
     const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
 
     this.logger.debug(
@@ -125,6 +113,13 @@ export class PrestashopProductPublisherAdapter
 
     const productId = String(response.id);
     await this.updateStock(productId, cmd.stock);
+
+    // Upload images best-effort: per-image failures are warned, not fatal.
+    // Mirrors the updateStock posture — an unset image heals on the next sync.
+    const warnings: string[] = [];
+    if (cmd.content?.imageUrls != null && cmd.content.imageUrls.length > 0) {
+      await this.uploadImages(productId, cmd.content.imageUrls, warnings);
+    }
 
     // Derive the observed status from response.active (the contract says
     // PublishProductResult.status is the state observed after the call, not the
@@ -182,6 +177,7 @@ export class PrestashopProductPublisherAdapter
   private buildProductBody(
     cmd: PublishProductCommand,
     languageId: string,
+    featureAssociations: PrestashopFeatureAssociation[],
   ): PrestashopProductWriteBody {
     const title = cmd.content?.title ?? '';
     const slug = (cmd.content?.seo?.slug ?? this.slugify(title)) || 'product';
@@ -207,11 +203,14 @@ export class PrestashopProductPublisherAdapter
       body.description = langField(cmd.content.description, languageId);
     }
 
-    if (cmd.destinationCategoryIds.length > 0) {
+    const hasCategories = cmd.destinationCategoryIds.length > 0;
+    const hasFeatures = featureAssociations.length > 0;
+    if (hasCategories || hasFeatures) {
       body.associations = {
-        categories: {
-          category: cmd.destinationCategoryIds.map((id) => ({ id: String(id) })),
-        },
+        ...(hasCategories
+          ? { categories: { category: cmd.destinationCategoryIds.map((id) => ({ id: String(id) })) } }
+          : {}),
+        ...(hasFeatures ? { product_features: { product_feature: featureAssociations } } : {}),
       };
     }
 
@@ -269,6 +268,111 @@ export class PrestashopProductPublisherAdapter
         `Stock update failed for product ${productId} on connection ${this.connection.id} — left unset. Will self-heal on next inventory sync.`,
         (err as Error).stack,
       );
+    }
+  }
+
+  /**
+   * Resolve-or-create PS Feature and FeatureValue resources for each parameter.
+   * Hard-fail: if PS rejects a feature write the product body would be incomplete,
+   * so the error propagates to the caller (unlike best-effort image upload).
+   */
+  private async provisionFeatures(
+    parameters: OfferParameter[],
+    languageId: string,
+  ): Promise<PrestashopFeatureAssociation[]> {
+    const associations: PrestashopFeatureAssociation[] = [];
+
+    for (const param of parameters) {
+      const featureName = param.id;
+
+      // Resolve or create the feature
+      const existingFeatures = await this.client.listResources<PrestashopFeatureListItem>(
+        'product_features',
+        { custom: { 'filter[name]': featureName } },
+      );
+      const existingFeature = existingFeatures.find(
+        (f) => this.extractLangText(f.name, languageId) === featureName,
+      );
+
+      let featureId: string;
+      if (existingFeature) {
+        featureId = String(existingFeature.id);
+      } else {
+        const created = await this.client.createResource<PrestashopFeatureResponse>(
+          'product_features',
+          { name: langField(featureName, languageId) },
+        );
+        featureId = String(created.id);
+      }
+
+      // Resolve or create each feature value
+      for (const value of param.values ?? []) {
+        const existingValues = await this.client.listResources<PrestashopFeatureValueListItem>(
+          'product_feature_values',
+          { custom: { 'filter[id_feature]': featureId } },
+        );
+        const existingValue = existingValues.find(
+          (v) => this.extractLangText(v.value, languageId) === value,
+        );
+
+        let featureValueId: string;
+        if (existingValue) {
+          featureValueId = String(existingValue.id);
+        } else {
+          const created = await this.client.createResource<PrestashopFeatureValueResponse>(
+            'product_feature_values',
+            { id_feature: featureId, value: langField(value, languageId) },
+          );
+          featureValueId = String(created.id);
+        }
+
+        associations.push({ id: featureId, id_feature_value: featureValueId });
+      }
+    }
+
+    return associations;
+  }
+
+  /**
+   * Upload product images best-effort. Per-image fetch or upload failures are
+   * appended to `warnings` and processing continues — mirrors the `updateStock`
+   * posture. An unset image can be recovered on the next publish/sync cycle.
+   */
+  private async uploadImages(
+    productId: string,
+    imageUrls: string[],
+    warnings: string[],
+  ): Promise<void> {
+    for (const url of imageUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutMs: number = (this.connection.config?.timeoutMs as number | undefined) ?? 30000;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        let bytes: Uint8Array;
+        let mimeType: string;
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const buffer = await response.arrayBuffer();
+          bytes = new Uint8Array(buffer);
+          mimeType = (response.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim();
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        const filename = url.split('/').pop()?.split('?')[0] ?? 'image';
+        await this.client.uploadImage(`images/products/${productId}`, bytes, mimeType, filename);
+      } catch (err) {
+        this.logger.warn(
+          `Image upload failed for product ${productId} url="${url}" connection=${this.connection.id} — skipped.`,
+          (err as Error).stack,
+        );
+        warnings.push(
+          `imageUrls: failed to upload "${url}" for product ${productId} — ${(err as Error).message}`,
+        );
+      }
     }
   }
 

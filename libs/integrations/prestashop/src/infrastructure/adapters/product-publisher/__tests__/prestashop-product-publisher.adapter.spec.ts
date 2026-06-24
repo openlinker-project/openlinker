@@ -2,7 +2,8 @@
  * PrestaShop Product Publisher Adapter — unit spec
  *
  * Covers `publishProduct` (create vs upsert, status mapping, multi-category,
- * platformParams passthrough, 4xx → rejection, 5xx propagation, 401 propagation)
+ * platformParams passthrough, 4xx → rejection, 5xx propagation, 401 propagation,
+ * image upload best-effort, feature/parameter provisioning)
  * and `provisionCategory` (find-vs-create, hierarchical parent threading, mixed
  * found/created path). WebService client is mocked.
  *
@@ -27,6 +28,7 @@ function makeClient(): jest.Mocked<IPrestashopWebserviceClient> {
     createResource: jest.fn(),
     updateResource: jest.fn(),
     deleteResource: jest.fn(),
+    uploadImage: jest.fn(),
   };
 }
 
@@ -300,9 +302,15 @@ describe('PrestashopProductPublisherAdapter', () => {
       );
     });
 
-    it('should emit a warning when imageUrls are provided (v1 deferral)', async () => {
+    it('should upload images via client.uploadImage after product creation', async () => {
       client.createResource.mockResolvedValue({ id: '1', active: '1' });
       withDefaultStockMock(client);
+      client.uploadImage.mockResolvedValue({ id: 'img-1' });
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)),
+        headers: { get: (_h: string) => 'image/jpeg' },
+      } as unknown as Response);
 
       const result = await adapter.publishProduct(
         baseCommand({
@@ -310,23 +318,43 @@ describe('PrestashopProductPublisherAdapter', () => {
         }),
       );
 
-      expect(result.warnings).toEqual(
-        expect.arrayContaining([expect.stringContaining('imageUrls')]),
+      expect(client.uploadImage).toHaveBeenCalledWith(
+        'images/products/1',
+        expect.any(Uint8Array),
+        'image/jpeg',
+        'img.jpg',
       );
+      expect(result.warnings).toBeUndefined();
       expect(result.externalProductId).toBe('1');
+      fetchSpy.mockRestore();
     });
 
-    it('should emit a warning when parameters are provided (v1 deferral)', async () => {
-      client.createResource.mockResolvedValue({ id: '1', active: '1' });
-      withDefaultStockMock(client);
+    it('should provision features and associate them on the product body', async () => {
+      client.listResources.mockImplementation((resource: string) => {
+        if (resource === 'product_features') return Promise.resolve([]);
+        if (resource === 'product_feature_values') return Promise.resolve([]);
+        if (resource === 'stock_availables')
+          return Promise.resolve([{ id: '9', id_product: '1', quantity: '0' }]);
+        return Promise.resolve([]); // products orphan lookup
+      });
+      client.createResource.mockImplementation((resource: string) => {
+        if (resource === 'product_features') return Promise.resolve({ id: '10', name: 'brand' });
+        if (resource === 'product_feature_values')
+          return Promise.resolve({ id: '20', id_feature: '10', value: 'Acme' });
+        return Promise.resolve({ id: '1', active: '1' }); // products
+      });
+      client.updateResource.mockResolvedValue({ id: '9' });
 
       const result = await adapter.publishProduct(
         baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
       );
 
-      expect(result.warnings).toEqual(
-        expect.arrayContaining([expect.stringContaining('parameters')]),
-      );
+      expect(result.externalProductId).toBe('1');
+      expect(result.warnings).toBeUndefined();
+      const productBody = client.createResource.mock.calls.find((c) => c[0] === 'products')?.[1];
+      expect((productBody?.associations as Record<string, unknown>)?.product_features).toEqual({
+        product_feature: [{ id: '10', id_feature_value: '20' }],
+      });
     });
 
     it('should derive result status from response.active, not cmd.status', async () => {
@@ -427,6 +455,281 @@ describe('PrestashopProductPublisherAdapter', () => {
       });
 
       expect(result).toEqual({ destinationCategoryId: '20', createdPath: ['20'] });
+    });
+  });
+
+  describe('image upload', () => {
+    let fetchSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)),
+        headers: { get: (_h: string) => 'image/jpeg' },
+      } as unknown as Response);
+      client.uploadImage.mockResolvedValue({ id: 'img-1' });
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it('should call client.uploadImage with correct resource path', async () => {
+      client.createResource.mockResolvedValue({ id: '42', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({ content: { title: 'Widget', imageUrls: ['https://cdn.example/photo.jpg'] } }),
+      );
+
+      expect(client.uploadImage).toHaveBeenCalledWith(
+        'images/products/42',
+        expect.any(Uint8Array),
+        'image/jpeg',
+        'photo.jpg',
+      );
+    });
+
+    it('should upload all imageUrls in order', async () => {
+      client.createResource.mockResolvedValue({ id: '5', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({
+          content: {
+            title: 'Widget',
+            imageUrls: ['https://cdn.example/a.jpg', 'https://cdn.example/b.png'],
+          },
+        }),
+      );
+
+      expect(client.uploadImage).toHaveBeenCalledTimes(2);
+      expect(client.uploadImage).toHaveBeenNthCalledWith(
+        1,
+        'images/products/5',
+        expect.any(Uint8Array),
+        'image/jpeg',
+        'a.jpg',
+      );
+      expect(client.uploadImage).toHaveBeenNthCalledWith(
+        2,
+        'images/products/5',
+        expect.any(Uint8Array),
+        'image/jpeg',
+        'b.png',
+      );
+    });
+
+    it('should not call client.uploadImage when no imageUrls provided', async () => {
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(baseCommand());
+
+      expect(client.uploadImage).not.toHaveBeenCalled();
+      expect(result.warnings).toBeUndefined();
+    });
+
+    it('should emit warning and continue when image fetch fails (best-effort)', async () => {
+      fetchSpy.mockRejectedValue(new Error('ECONNREFUSED'));
+      client.createResource.mockResolvedValue({ id: '3', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(
+        baseCommand({
+          content: { title: 'Widget', imageUrls: ['https://cdn.example/broken.jpg'] },
+        }),
+      );
+
+      expect(result.externalProductId).toBe('3');
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('broken.jpg')]),
+      );
+      expect(client.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('should emit warning and continue when client.uploadImage throws (best-effort)', async () => {
+      client.uploadImage.mockRejectedValue(new PrestashopApiException('Upload failed', 500));
+      client.createResource.mockResolvedValue({ id: '7', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(
+        baseCommand({ content: { title: 'Widget', imageUrls: ['https://cdn.example/ok.jpg'] } }),
+      );
+
+      expect(result.externalProductId).toBe('7');
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('ok.jpg')]),
+      );
+    });
+
+    it('should continue uploading remaining images after one upload failure', async () => {
+      client.uploadImage
+        .mockRejectedValueOnce(new PrestashopApiException('first fail', 500))
+        .mockResolvedValueOnce({ id: 'img-2' });
+      client.createResource.mockResolvedValue({ id: '8', active: '1' });
+      withDefaultStockMock(client);
+
+      const result = await adapter.publishProduct(
+        baseCommand({
+          content: {
+            title: 'Widget',
+            imageUrls: ['https://cdn.example/fail.jpg', 'https://cdn.example/ok.jpg'],
+          },
+        }),
+      );
+
+      expect(client.uploadImage).toHaveBeenCalledTimes(2);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.externalProductId).toBe('8');
+    });
+
+    it('should strip mime-type parameters (e.g. charset) from content-type header', async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)),
+        headers: { get: (_h: string) => 'image/png; charset=utf-8' },
+      } as unknown as Response);
+      client.createResource.mockResolvedValue({ id: '9', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({ content: { title: 'Widget', imageUrls: ['https://cdn.example/img.png'] } }),
+      );
+
+      const [, , mimeType] = client.uploadImage.mock.calls[0];
+      expect(mimeType).toBe('image/png');
+    });
+  });
+
+  describe('parameter provisioning (features)', () => {
+    function withFeaturesMock(
+      c: jest.Mocked<IPrestashopWebserviceClient>,
+      opts: {
+        existingFeature?: { id: string; name: string };
+        existingValue?: { id: string; id_feature: string; value: string };
+        featureId?: string;
+        featureValueId?: string;
+      } = {},
+    ): void {
+      const { existingFeature, existingValue, featureId = '10', featureValueId = '20' } = opts;
+      c.listResources.mockImplementation((resource: string) => {
+        if (resource === 'product_features')
+          return Promise.resolve(existingFeature ? [existingFeature] : []);
+        if (resource === 'product_feature_values')
+          return Promise.resolve(existingValue ? [existingValue] : []);
+        if (resource === 'stock_availables')
+          return Promise.resolve([{ id: '9', id_product: '1', quantity: '0' }]);
+        return Promise.resolve([]); // products orphan lookup
+      });
+      c.createResource.mockImplementation((resource: string) => {
+        if (resource === 'product_features')
+          return Promise.resolve({ id: featureId, name: 'brand' });
+        if (resource === 'product_feature_values')
+          return Promise.resolve({ id: featureValueId, id_feature: featureId, value: 'Acme' });
+        return Promise.resolve({ id: '1', active: '1' }); // products
+      });
+      c.updateResource.mockResolvedValue({ id: '9' });
+    }
+
+    it('should create feature when no match exists', async () => {
+      withFeaturesMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+      );
+
+      expect(client.createResource).toHaveBeenCalledWith(
+        'product_features',
+        expect.objectContaining({ name: expect.anything() }),
+      );
+    });
+
+    it('should reuse an existing feature by name match', async () => {
+      withFeaturesMock(client, { existingFeature: { id: '5', name: 'brand' } });
+
+      await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+      );
+
+      const featureCreates = client.createResource.mock.calls.filter(
+        (c) => c[0] === 'product_features',
+      );
+      expect(featureCreates).toHaveLength(0);
+    });
+
+    it('should create feature value when not found under the feature', async () => {
+      withFeaturesMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+      );
+
+      expect(client.createResource).toHaveBeenCalledWith(
+        'product_feature_values',
+        expect.objectContaining({ id_feature: '10' }),
+      );
+    });
+
+    it('should reuse an existing feature value by value match', async () => {
+      withFeaturesMock(client, {
+        existingFeature: { id: '5', name: 'brand' },
+        existingValue: { id: '15', id_feature: '5', value: 'Acme' },
+      });
+
+      await adapter.publishProduct(
+        baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+      );
+
+      const valueCreates = client.createResource.mock.calls.filter(
+        (c) => c[0] === 'product_feature_values',
+      );
+      expect(valueCreates).toHaveLength(0);
+    });
+
+    it('should produce one association per parameter value', async () => {
+      withFeaturesMock(client);
+
+      await adapter.publishProduct(
+        baseCommand({
+          parameters: [
+            { id: 'brand', values: ['Acme'], section: 'offer' },
+            { id: 'color', values: ['Red'], section: 'offer' },
+          ],
+        }),
+      );
+
+      const productBody = client.createResource.mock.calls.find((c) => c[0] === 'products')?.[1];
+      const featureList = (productBody?.associations as Record<string, unknown>)
+        ?.product_features as { product_feature: unknown[] } | undefined;
+      expect(featureList?.product_feature).toHaveLength(2);
+    });
+
+    it('should hard-fail and not create the product when feature lookup throws', async () => {
+      client.listResources.mockImplementation((resource: string) => {
+        if (resource === 'product_features')
+          return Promise.reject(new PrestashopApiException('WS error', 503));
+        return Promise.resolve([]);
+      });
+
+      await expect(
+        adapter.publishProduct(
+          baseCommand({ parameters: [{ id: 'brand', values: ['Acme'], section: 'offer' }] }),
+        ),
+      ).rejects.toBeInstanceOf(PrestashopApiException);
+      expect(client.createResource).not.toHaveBeenCalled();
+    });
+
+    it('should skip feature provisioning when parameters is empty', async () => {
+      client.createResource.mockResolvedValue({ id: '1', active: '1' });
+      withDefaultStockMock(client);
+
+      await adapter.publishProduct(baseCommand({ parameters: [] }));
+
+      const featureListCalls = client.listResources.mock.calls.filter(
+        (c) => c[0] === 'product_features',
+      );
+      expect(featureListCalls).toHaveLength(0);
     });
   });
 });
