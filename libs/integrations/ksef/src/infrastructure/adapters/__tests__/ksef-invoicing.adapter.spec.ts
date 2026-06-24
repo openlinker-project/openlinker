@@ -1,7 +1,8 @@
 /**
  * KSeF invoicing adapter specs — online-session issuance, neutral result purity,
- * 445 terminal-failure, document-type discovery, and the RegulatoryTransmitter
- * guard. The HTTP client + session crypto are mocked — no network, no real crypto.
+ * zero-valid terminal-failure (count-based), document-type discovery, and the
+ * RegulatoryTransmitter guard. The HTTP client + session crypto are mocked — no
+ * network, no real crypto.
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
@@ -13,7 +14,8 @@ import type {
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
 import { KsefSessionException } from '../../../domain/exceptions/ksef-session.exception';
-import { KSEF_SESSION_CLOSED_ZERO_VALID } from '../ksef-session.types';
+import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
+import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -98,7 +100,14 @@ function fakeCrypto(): KsefSessionCryptoService {
   } as unknown as KsefSessionCryptoService;
 }
 
-function seedHappyPath(http: FakeKsefHttpClient, sessionStatusCode = 200): void {
+function seedHappyPath(
+  http: FakeKsefHttpClient,
+  sessionStatus: { code?: number; successfulInvoiceCount?: number; failedInvoiceCount?: number } = {
+    code: 200,
+    successfulInvoiceCount: 1,
+    failedInvoiceCount: 0,
+  },
+): void {
   http
     .seed('POST', '/sessions/online', {
       data: { referenceNumber: SESSION_REF },
@@ -115,8 +124,12 @@ function seedHappyPath(http: FakeKsefHttpClient, sessionStatusCode = 200): void 
       status: 200,
       headers: {},
     })
-    .seed('GET', `/sessions/online/${SESSION_REF}`, {
-      data: { status: { code: sessionStatusCode } },
+    .seed('GET', `/sessions/${SESSION_REF}`, {
+      data: {
+        status: { code: sessionStatus.code },
+        successfulInvoiceCount: sessionStatus.successfulInvoiceCount,
+        failedInvoiceCount: sessionStatus.failedInvoiceCount,
+      },
       status: 200,
       headers: {},
     });
@@ -141,7 +154,7 @@ describe('KsefInvoicingAdapter', () => {
 
       const record = await adapter(http).issueInvoice(command());
 
-      expect(record.providerInvoiceId).toBe(INVOICE_REF);
+      expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.clearanceReference).toBeNull();
       expect(record.status).toBe('issued');
@@ -154,7 +167,7 @@ describe('KsefInvoicingAdapter', () => {
         'POST /sessions/online',
         `POST /sessions/online/${SESSION_REF}/invoices`,
         `POST /sessions/online/${SESSION_REF}/close`,
-        `GET /sessions/online/${SESSION_REF}`,
+        `GET /sessions/${SESSION_REF}`,
       ]);
     });
 
@@ -176,9 +189,9 @@ describe('KsefInvoicingAdapter', () => {
       expect(submitBody.encryptedInvoiceContent).toBe(Buffer.from([9, 9, 9, 9]).toString('base64'));
     });
 
-    it('should throw KsefSessionException (not succeed) when session status is 445', async () => {
+    it('should throw KsefSessionException (not succeed) when a processed session cleared zero invoices', async () => {
       const http = new FakeKsefHttpClient();
-      seedHappyPath(http, KSEF_SESSION_CLOSED_ZERO_VALID);
+      seedHappyPath(http, { code: 200, successfulInvoiceCount: 0, failedInvoiceCount: 1 });
 
       await expect(adapter(http).issueInvoice(command())).rejects.toBeInstanceOf(KsefSessionException);
     });
@@ -239,13 +252,13 @@ describe('KsefInvoicingAdapter', () => {
         'POST /sessions/online',
         `POST /sessions/online/${SESSION_REF}/invoices`,
         `POST /sessions/online/${SESSION_REF}/close`,
-        `GET /sessions/online/${SESSION_REF}`,
+        `GET /sessions/${SESSION_REF}`,
       ]);
 
       // Neutral result keeps the corrected document type + submitted status.
       expect(record.documentType).toBe('corrected');
       expect(record.regulatoryStatus).toBe('submitted');
-      expect(record.providerInvoiceId).toBe(INVOICE_REF);
+      expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
 
       // The adapter mapped the neutral correction into a fully-mapped KOR input.
       const built = lastInput();
@@ -299,6 +312,162 @@ describe('KsefInvoicingAdapter', () => {
   describe('isRegulatoryTransmitter', () => {
     it('should be true for the adapter', () => {
       expect(isRegulatoryTransmitter(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+  });
+
+  describe('getClearanceStatus (#1150 / C6)', () => {
+    const KSEF_NUMBER = '5265877635-20250826-0100001AF629-AF';
+    const PROVIDER_INVOICE_ID = `${SESSION_REF}:${INVOICE_REF}`;
+    const STATUS_PATH = `/sessions/${SESSION_REF}/invoices/${INVOICE_REF}`;
+    const UPO_PATH = `/sessions/${SESSION_REF}/invoices/${INVOICE_REF}/upo`;
+
+    function record(): InvoiceRecord {
+      return new InvoiceRecord(
+        'rec-1',
+        'conn-1',
+        'ol_order_123',
+        'ksef',
+        'invoice',
+        'issued',
+        PROVIDER_INVOICE_ID, // composite {sessionRef}:{invoiceRef} packed by C5
+        null,
+        'submitted',
+        null,
+        null,
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        new Date('2026-06-23T10:00:00.000Z'),
+      );
+    }
+
+    it('should return submitted (no reference) while the invoice is in progress (150)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 150 } }, status: 200, headers: {} });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.clearanceReference).toBeNull();
+    });
+
+    it('should return rejected (terminal) on a deterministic business code (400)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 400 } }, status: 200, headers: {} });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('rejected');
+      expect(result.clearanceReference).toBeNull();
+    });
+
+    it('should capture the KSeF number into clearanceReference on success (200)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: {
+          status: { code: 200 },
+          ksefNumber: KSEF_NUMBER,
+          upoDownloadUrl: 'https://ksef.example/upo/abc',
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('accepted');
+      expect(result.clearanceReference).toBe(KSEF_NUMBER);
+    });
+
+    it('should fetch the session-scoped UPO pointer when not on the status payload', async () => {
+      const http = new FakeKsefHttpClient();
+      http
+        .seed('GET', STATUS_PATH, {
+          data: { status: { code: 200 }, ksefNumber: KSEF_NUMBER },
+          status: 200,
+          headers: {},
+        })
+        .seed('GET', UPO_PATH, {
+          data: { upoDownloadUrl: 'https://ksef.example/upo/fallback' },
+          status: 200,
+          headers: {},
+        });
+
+      await adapter(http).getClearanceStatus(record());
+
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      expect(paths).toContain(`GET ${UPO_PATH}`);
+    });
+
+    it('should not fail the clearance read when the UPO fetch errors (best-effort)', async () => {
+      const http = new FakeKsefHttpClient();
+      // status seeded (no upoDownloadUrl), UPO endpoint NOT seeded → fetch rejects, swallowed.
+      http.seed('GET', STATUS_PATH, {
+        data: { status: { code: 200 }, ksefNumber: KSEF_NUMBER },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('accepted');
+      expect(result.clearanceReference).toBe(KSEF_NUMBER);
+    });
+
+    it('should throw when success (200) carries no valid KSeF number', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: { status: { code: 200 }, ksefNumber: 'not-a-ksef-number' },
+        status: 200,
+        headers: {},
+      });
+
+      await expect(adapter(http).getClearanceStatus(record())).rejects.toBeInstanceOf(
+        KsefSessionException,
+      );
+    });
+
+    it('should throw a transient KsefApiException on a 5xx status code', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 500 } }, status: 200, headers: {} });
+
+      await expect(adapter(http).getClearanceStatus(record())).rejects.toBeInstanceOf(
+        KsefApiException,
+      );
+    });
+
+    it('should accept a bare composite-reference string and poll the session-scoped path', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 150 } }, status: 200, headers: {} });
+
+      const result = await adapter(http).getClearanceStatus(PROVIDER_INVOICE_ID);
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(http.calls.map((c) => c.path)).toContain(STATUS_PATH);
+    });
+
+    it('should throw when the providerInvoiceId carries no session reference (legacy bare value)', async () => {
+      const http = new FakeKsefHttpClient();
+
+      await expect(adapter(http).getClearanceStatus(INVOICE_REF)).rejects.toBeInstanceOf(
+        KsefSessionException,
+      );
+    });
+  });
+
+  describe('submitForClearance (#1150 / C6)', () => {
+    it('should echo the submitted status (no-op — clearance is folded into issue)', async () => {
+      const http = new FakeKsefHttpClient();
+      const issued = await (async (): Promise<InvoiceRecord> => {
+        seedHappyPath(http);
+        return adapter(http).issueInvoice(command());
+      })();
+
+      const result = await adapter(new FakeKsefHttpClient()).submitForClearance(issued);
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.clearanceReference).toBeNull();
     });
   });
 });

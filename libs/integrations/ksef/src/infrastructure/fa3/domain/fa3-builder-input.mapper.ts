@@ -61,11 +61,8 @@ export function mapToFa3BuilderInput(
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
-    orderReference: cmd.orderId,
     lines: cmd.lines.map(mapLine),
-    ...(cmd.correction !== undefined
-      ? { correction: mapCorrection(cmd) }
-      : {}),
+    ...(cmd.correction !== undefined ? { correction: mapCorrection(cmd) } : {}),
   };
 }
 

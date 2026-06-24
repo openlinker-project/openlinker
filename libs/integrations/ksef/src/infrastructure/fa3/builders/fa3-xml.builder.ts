@@ -12,8 +12,9 @@
  * every user-supplied value is entity-escaped — the builder NEVER hand-concats
  * XML strings. The document is laid out as: Naglowek (KodFormularza + version +
  * namespace), Podmiot1 (seller NIP + address), Podmiot2 (buyer identification
- * choice), Fa (header: KodWaluty, P_13/P_14/P_15 aggregates, Adnotacje), and one
- * FaWiersz per line.
+ * choice), Fa (KodWaluty, P_1, P_2, the P_13/P_14/P_15 aggregates, the required
+ * Adnotacje, the required RodzajFaktury, then one FaWiersz per line) — emitted in
+ * the exact element order the FA(3) v1-0E XSD mandates.
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/builders
  */
@@ -23,8 +24,12 @@ import type { Fa3P12Value } from '../domain/fa3-schema.types';
 import {
   FA3_FORM_CODE,
   FA3_NAMESPACE,
+  FA3_RODZAJ_FAKTURY_VAT,
   FA3_RODZAJ_KOREKTA,
   FA3_SCHEMA_VERSION,
+  FA3_SYSTEM_CODE,
+  FA3_WYBOR_NIE,
+  FA3_WYBOR_TAK,
   type Fa3BuilderInput,
   type Fa3CorrectionContext,
   type Fa3Line,
@@ -148,7 +153,7 @@ function aggregateTotals(lines: Fa3Line[]): { bands: XmlNodeObject; grandTotal: 
 function headerNode(input: Fa3BuilderInput): XmlNodeObject {
   return {
     KodFormularza: {
-      [`${XML_ATTR_PREFIX}kodSystemowy`]: 'FA (3)',
+      [`${XML_ATTR_PREFIX}kodSystemowy`]: FA3_SYSTEM_CODE,
       [`${XML_ATTR_PREFIX}wersjaSchemy`]: FA3_SCHEMA_VERSION,
       '#text': FA3_FORM_CODE,
     },
@@ -207,7 +212,33 @@ function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionCo
   return [...before, ...after];
 }
 
-/** The invoice body (`Fa`) — header fields, VAT aggregates, lines, Adnotacje. */
+/**
+ * The required `Adnotacje` block (XSD line ~2641) emitted with the "nothing
+ * special" defaults for a plain domestic sale: every `etd:TWybor1_2` flag set to
+ * "no" (`2`), and each choice group taking its negative branch (`P_19N`, `P_22N`,
+ * `P_PMarzyN`, all `etd:TWybor1` = `1`). The schema-mandated child order is
+ * P_16, P_17, P_18, P_18A, Zwolnienie, NoweSrodkiTransportu, P_23, PMarzy.
+ */
+function adnotacjeNode(): XmlNodeObject {
+  return {
+    P_16: FA3_WYBOR_NIE,
+    P_17: FA3_WYBOR_NIE,
+    P_18: FA3_WYBOR_NIE,
+    P_18A: FA3_WYBOR_NIE,
+    Zwolnienie: { P_19N: FA3_WYBOR_TAK },
+    NoweSrodkiTransportu: { P_22N: FA3_WYBOR_TAK },
+    P_23: FA3_WYBOR_NIE,
+    PMarzy: { P_PMarzyN: FA3_WYBOR_TAK },
+  };
+}
+
+/**
+ * The invoice body (`Fa`). Elements are emitted in schema order (XSD line ~2439):
+ * KodWaluty, P_1, P_2, the P_13_x/P_14_x VAT-band aggregates, P_15 grand total,
+ * the required `Adnotacje`, the required `RodzajFaktury` (`VAT` for a plain sale,
+ * `KOR` for a correction), the correction metadata (KOR only:
+ * `PrzyczynaKorekty`/`TypKorekty`/`DaneFaKorygowanej`), then the `FaWiersz` rows.
+ */
 function faNode(input: Fa3BuilderInput): XmlNodeObject {
   const { correction } = input;
   // KOR aggregates reflect the post-correction ("after") state; a plain invoice
@@ -223,17 +254,18 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     KodWaluty: input.currency,
     P_1: input.issueDate,
     P_2: input.invoiceNumber,
+    ...bands,
+    P_15: money(grandTotal),
+    Adnotacje: adnotacjeNode(),
+    RodzajFaktury: correction !== undefined ? FA3_RODZAJ_KOREKTA : FA3_RODZAJ_FAKTURY_VAT,
   };
   if (correction !== undefined) {
-    // RodzajFaktury + correction metadata precede the monetary aggregates.
-    node.RodzajFaktury = FA3_RODZAJ_KOREKTA;
+    // The KOR correction metadata follows RodzajFaktury in schema order, before
+    // the FaWiersz rows.
     node.PrzyczynaKorekty = correction.reason;
     node.TypKorekty = correction.typKorekty;
     node.DaneFaKorygowanej = correctedInvoiceNode(correction);
   }
-  Object.assign(node, bands);
-  node.P_15 = money(grandTotal);
-  node.Adnotacje = { OznaczenieNumeruZamowienia: input.orderReference };
   node.FaWiersz = wiersze;
   return node;
 }
