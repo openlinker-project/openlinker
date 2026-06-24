@@ -160,6 +160,8 @@ export type {
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferVariantGroup,
+  OfferVariantAttribute,
 } from './domain/types/offer-create.types';
 export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
@@ -177,6 +179,9 @@ export type { OfferQuantityBatchUpdater } from './domain/ports/capabilities/offe
 export { isOfferQuantityBatchUpdater } from './domain/ports/capabilities/offer-quantity-batch-updater.capability';
 export type { OfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
 export { isOfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
+export type { OfferStockRestorer } from './domain/ports/capabilities/offer-stock-restorer.capability';
+export { isOfferStockRestorer } from './domain/ports/capabilities/offer-stock-restorer.capability';
+export type { OfferStockRestoreTarget } from './domain/types/offer-stock-restore.types';
 export type { CategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export { isCategoryBrowser } from './domain/ports/capabilities/category-browser.capability';
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
@@ -247,6 +252,7 @@ export type {
   IOfferStatusSyncService,
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
+export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
 export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';

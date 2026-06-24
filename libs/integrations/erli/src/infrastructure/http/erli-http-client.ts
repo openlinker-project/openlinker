@@ -115,6 +115,10 @@ export class ErliHttpClient implements IErliHttpClient {
     return this.request<T>('PATCH', path, body, options);
   }
 
+  put<T>(path: string, body?: unknown, options?: ErliRequestOptions): Promise<ErliHttpResponse<T>> {
+    return this.request<T>('PUT', path, body, options);
+  }
+
   /**
    * Run one request through the retry loop. Retries only the internal
    * `RetryableHttpError` marker (429 always; idempotent 5xx/network), honoring

@@ -10,6 +10,7 @@ import type { IFulfillmentRoutingService } from '@openlinker/core/mappings';
 import { FULFILLMENT_PROCESSOR_KIND } from '@openlinker/core/mappings';
 import type {
   FulfillmentStatusReader,
+  IOrderLifecycleRelayService,
   IOrderRecordService,
   OrderRecord,
 } from '@openlinker/core/orders';
@@ -72,6 +73,7 @@ describe('FulfillmentStatusSyncService', () => {
   let routing: jest.Mocked<IFulfillmentRoutingService>;
   let integrations: jest.Mocked<IIntegrationsService>;
   let getFulfillmentStatus: jest.Mock;
+  let relay: jest.Mocked<IOrderLifecycleRelayService>;
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
@@ -114,12 +116,15 @@ describe('FulfillmentStatusSyncService', () => {
       getCapabilityAdapter: jest.fn().mockResolvedValue(ompAdapter),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    relay = { relay: jest.fn().mockResolvedValue({ targets: [] }) };
+
     service = new FulfillmentStatusSyncService(
       shipments,
       orderRecords,
       routing,
       integrations,
       { recompute: jest.fn() },
+      relay,
     );
   });
 
@@ -173,6 +178,174 @@ describe('FulfillmentStatusSyncService', () => {
       const createInput = shipments.create.mock.calls[0][0];
       expect(createInput.initialStatus).toBe(SHIPMENT_STATUS.Delivered);
       expect(createInput.deliveredAt).toEqual(deliveredAt);
+    });
+  });
+
+  describe('#1160 — dispatch relay to source', () => {
+    it('relays dispatched + tracking to the source when a branch-1 row is born dispatched', async () => {
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Dispatched,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: PS,
+        event: { type: 'dispatched', trackingNumber: 'PS-TRK-1' },
+      });
+    });
+
+    it('relays dispatched when the shop jumps straight to delivered (delivered implies sent)', async () => {
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Delivered,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: new Date('2026-05-28T08:00:00.000Z'),
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay.mock.calls[0][0].event).toEqual({
+        type: 'dispatched',
+        trackingNumber: 'PS-TRK-1',
+      });
+    });
+
+    it('does NOT relay on an unchanged-status re-poll (at-most-once via the transition-gate)', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+          trackingNumber: 'PS-TRK-1',
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Dispatched,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
+    it('does NOT re-relay on the delivered transition of an already-dispatched shipment', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Delivered,
+        trackingNumber: null,
+        deliveredAt: new Date('2026-05-28T08:00:00.000Z'),
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalledTimes(1); // status → delivered
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sync loop alive when the relay throws (best-effort, surfaced)', async () => {
+      relay.relay.mockRejectedValue(new Error('relay boom'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Dispatched,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: null,
+      });
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(result).toMatchObject({ created: 1, failed: 0 });
+    });
+  });
+
+  describe('#1170 — cancel relay to source', () => {
+    it('relays cancelled to the source when a branch-1 row is born cancelled', async () => {
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: PS,
+        event: { type: 'cancelled' },
+      });
+    });
+
+    it('relays cancelled on the FIRST transition into cancelled of an existing row', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalledTimes(1); // status → cancelled
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+      expect(relay.relay.mock.calls[0][0].event).toEqual({ type: 'cancelled' });
+    });
+
+    it('does NOT re-relay cancelled on an unchanged-status re-poll (at-most-once)', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'cancelled',
+          cancelledAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sync loop alive when the cancel relay throws (best-effort)', async () => {
+      relay.relay.mockRejectedValue(new Error('cancel relay boom'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Cancelled,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(result).toMatchObject({ created: 1, failed: 0 });
     });
   });
 

@@ -17,6 +17,7 @@ import {
   selectShopPublishConnections,
 } from '../../features/listings/components/ShopPublishLauncher';
 import { useConnectionsQuery } from '../../features/connections';
+import { usePermission } from '../../shared/auth/use-permission';
 import type {
   CreateOfferRequest,
   ListingsFilters,
@@ -151,6 +152,7 @@ export function ListingsListPage(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const shopPublishConnections = selectShopPublishConnections(connectionsQuery.data ?? []);
   const canPublishToShop = shopPublishConnections.length > 0;
+  const canWrite = usePermission('listings:write');
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isShopPublishOpen, setIsShopPublishOpen] = useState(false);
@@ -204,14 +206,16 @@ export function ListingsListPage(): ReactElement {
       title="Listings"
       description="Offer mapping workbench — browse offer-to-variant identifier mappings across platforms."
       actions={
-        <>
-          <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
-          {canPublishToShop ? (
-            <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
-              Publish to shop
-            </Button>
-          ) : null}
-        </>
+        canWrite ? (
+          <>
+            <Button onClick={() => setIsWizardOpen(true)}>Create offer</Button>
+            {canPublishToShop ? (
+              <Button tone="secondary" onClick={() => setIsShopPublishOpen(true)}>
+                Publish to shop
+              </Button>
+            ) : null}
+          </>
+        ) : null
       }
     >
       {hasTracker ? (

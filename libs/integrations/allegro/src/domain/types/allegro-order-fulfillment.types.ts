@@ -14,6 +14,15 @@
 /** Fulfillment status set on mark-sent. `needs-sandbox-probe`: enum spelling. */
 export const ALLEGRO_FULFILLMENT_STATUS_SENT = 'SENT';
 
+/**
+ * Fulfillment status set when OL relays an order cancellation to Allegro
+ * (#1159). Verified present in Allegro's fulfillment-status enum (set via the
+ * same `PUT /order/checkout-forms/{id}/fulfillment` endpoint). This is the
+ * seller-side handling signal only — it issues no refund (OL is never the money
+ * book of record, ADR-027). `needs-sandbox-probe`: post-SENT transition rules.
+ */
+export const ALLEGRO_FULFILLMENT_STATUS_CANCELLED = 'CANCELLED';
+
 export interface AllegroSetFulfillmentRequest {
   status: string;
 }

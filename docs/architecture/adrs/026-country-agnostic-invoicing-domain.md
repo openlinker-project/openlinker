@@ -95,3 +95,9 @@ sequenceDiagram
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (sub-capability composition), [ADR-024](./024-destination-listing-capabilities.md) (capability-port precedent), [ADR-009](./009-persisted-offer-status-snapshots.md) (reconciled-status precedent)
 - Standards: EN 16931 (semantic invoice model), UNTDID 1001 (document types), UNCL 5305 (tax categories), ISO 6523 / ISO 4217; CTC taxonomy (post-audit / clearance / real-time reporting)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
+
+## Amendments
+
+> ADRs are append-only — the notes below **refine deferred details**, they do not change the decision.
+
+**Amendment (2026-06-23, #1143).** The deferred `RegulatoryTransmitter` interface (Decision 2) is realized as **two** ADR-002 sub-capabilities: a read-only `RegulatoryStatusReader` (`getClearanceStatus`) and `RegulatoryTransmitter extends RegulatoryStatusReader` (adds `submitForClearance`). Providers that transmit natively and only expose status (Subiekt → KSeF, #1121) implement the reader alone; providers OL submits to directly implement the full transmitter. Across CTC regimes (PL KSeF, IT SDI, FR PA, Peppol) and compliance vendors, "submit for clearance" and "read clearance status" are consistently distinct operations — Poland even makes `InvoiceRead`/`InvoiceWrite` independently grantable permissions — and the authority reference (KSeF number / SDI id) is knowable only by reading post-submit, so a transmitter is necessarily also a reader (the `extends` is a genuine `is-a`). Both methods return a neutral `RegulatoryClearanceResult` (`regulatoryStatus` + optional `clearanceReference`); a business verdict incl. `rejected` is returned as data, a transport/infra failure throws. This refines, not changes, Decision 2 — it fills the interface ADR-026 deferred to the KSeF issue.

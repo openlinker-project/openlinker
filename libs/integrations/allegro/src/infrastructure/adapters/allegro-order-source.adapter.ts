@@ -13,7 +13,9 @@
 import type {
   OrderSourcePort,
   SourceOptionsReader,
-  OrderDispatchNotifier,
+  OrderStatusWriteback,
+  OrderLifecycleEvent,
+  OrderWritebackResult,
   DispatchCarrierHint,
   MappingOption,
 } from '@openlinker/core/orders';
@@ -42,6 +44,7 @@ import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment
 import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
+  ALLEGRO_FULFILLMENT_STATUS_CANCELLED,
   ALLEGRO_OTHER_CARRIER_ID,
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -61,7 +64,7 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * does not need the identifier-mapping port itself.
  */
 export class AllegroOrderSourceAdapter
-  implements OrderSourcePort, SourceOptionsReader, OrderDispatchNotifier
+  implements OrderSourcePort, SourceOptionsReader, OrderStatusWriteback
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -74,45 +77,88 @@ export class AllegroOrderSourceAdapter
   }
 
   /**
-   * Order-side dispatch (#837): mark the Allegro order sent, and attach the
-   * waybill when one is supplied (own-contract branch). For the source-brokered
-   * branch (Allegro Delivery) no `trackingNumber` is passed — Allegro already
-   * holds the waybill it issued — so only the fulfillment status is set.
+   * `OrderStatusWriteback` (#1159 / ADR-027): the single event-as-data writeback
+   * the lifecycle relay dispatches through. `dispatched` reuses the mark-sent +
+   * waybill mechanics; `cancelled` sets Allegro's fulfillment status to
+   * `CANCELLED`. Reports the per-participant outcome via `OrderWritebackResult`
+   * and never throws (mirrors the PrestaShop adapter's `write`).
+   *
+   * A `cancelled` write Allegro refuses (incl. a 409 — e.g. the order is already
+   * `SENT`) is reported `rejected`, NOT swallowed as success: the operator must
+   * see the conflict. (We do not reuse the mark-sent `409 ⇒ success` branch here
+   * — its semantics are only safe for SENT.) Exact cancel transition rules are
+   * `needs-sandbox-probe`. No refund is issued — OL is never the money book of
+   * record (ADR-027).
    */
-  async notifyDispatched(input: {
-    externalOrderId: string;
-    trackingNumber?: string;
-    carrier?: DispatchCarrierHint;
-  }): Promise<void> {
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    try {
+      if (event.type === 'dispatched') {
+        await this.markSent(event.externalOrderId, event.trackingNumber, event.carrier);
+        return { outcome: 'applied' };
+      }
+
+      // event.type === 'cancelled'
+      await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `OrderStatusWriteback '${event.type}' rejected for Allegro order ` +
+          `${event.externalOrderId}: ${detail} (connection: ${this.connectionId})`,
+      );
+      return { outcome: 'rejected', detail };
+    }
+  }
+
+  /**
+   * Mark the Allegro order sent, and attach the waybill when one is supplied
+   * (own-contract branch). For the source-brokered branch (Allegro Delivery) no
+   * `trackingNumber` is passed — Allegro already holds the waybill it issued —
+   * so only the fulfillment status is set. Drives the `OrderStatusWriteback`
+   * `dispatched` path. Throws `AllegroOrderDispatchRejectedException` on a
+   * non-idempotent failure; `write` catches it and reports `rejected`.
+   */
+  private async markSent(
+    externalOrderId: string,
+    trackingNumber?: string,
+    carrier?: DispatchCarrierHint,
+  ): Promise<void> {
     // 1. Mark sent. Treat a 409 (stale optimistic-lock revision / already-sent)
     //    as success for idempotency. `needs-sandbox-probe`: exact 409 semantics.
     try {
-      await this.httpClient.put(
-        `/order/checkout-forms/${input.externalOrderId}/fulfillment`,
-        { status: ALLEGRO_FULFILLMENT_STATUS_SENT },
-      );
+      await this.putFulfillment(externalOrderId, ALLEGRO_FULFILLMENT_STATUS_SENT);
     } catch (error) {
       if (this.isAlreadySentOrStale(error)) {
         this.logger.debug(
-          `Allegro order ${input.externalOrderId} fulfillment already sent / stale revision — treating as success (connection: ${this.connectionId})`,
+          `Allegro order ${externalOrderId} fulfillment already sent / stale revision — treating as success (connection: ${this.connectionId})`,
         );
       } else {
-        throw this.toRejected(error, `mark Allegro order ${input.externalOrderId} sent`);
+        throw this.toRejected(error, `mark Allegro order ${externalOrderId} sent`);
       }
     }
 
     // 2. Attach the waybill when present (own-contract branch).
-    if (input.trackingNumber) {
-      const { carrierId, carrierName } = this.resolveCarrier(input.carrier);
+    if (trackingNumber) {
+      const { carrierId, carrierName } = this.resolveCarrier(carrier);
       try {
         await this.httpClient.post(
-          `/order/checkout-forms/${input.externalOrderId}/shipments`,
-          { carrierId, waybill: input.trackingNumber, ...(carrierName ? { carrierName } : {}) },
+          `/order/checkout-forms/${externalOrderId}/shipments`,
+          { carrierId, waybill: trackingNumber, ...(carrierName ? { carrierName } : {}) },
         );
       } catch (error) {
-        throw this.toRejected(error, `attach waybill to Allegro order ${input.externalOrderId}`);
+        throw this.toRejected(error, `attach waybill to Allegro order ${externalOrderId}`);
       }
     }
+  }
+
+  /**
+   * Set the Allegro order's fulfillment status. The single wire shape behind
+   * both the `dispatched` mark-sent step and the `cancelled` writeback — callers
+   * own their own success/failure semantics (idempotent-409 for SENT, surface for
+   * CANCELLED), so this helper stays a thin one-liner with no error handling.
+   */
+  private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
+    await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
   }
 
   /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */

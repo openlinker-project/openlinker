@@ -19,6 +19,13 @@
  *     because Allegro catalog smart-link (#431/#808) inherits them from the
  *     card; gating them here would false-fail card-linked / bulk (#824) offers.
  *
+ * Variant-group pre-resolution (#1065): for a multi-variant product (>1 sibling
+ * variant) the builder stamps a platform-neutral `command.variantGroup`
+ * (`groupId` = parent product id + this variant's flattened distinguishing
+ * `attributes`). Adapters that group explicitly (Erli `externalVariantGroup`)
+ * consume it; auto-grouping adapters (Allegro) ignore it. Single-variant /
+ * simple products leave `variantGroup` absent and list standalone.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
  */
@@ -28,8 +35,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { CreateOfferCommand, CreateOfferOverrides, OfferParameter } from '@openlinker/core/listings';
-import type { ProductMasterPort } from '@openlinker/core/products';
+import type {
+  CreateOfferCommand,
+  CreateOfferOverrides,
+  OfferParameter,
+  OfferVariantAttribute,
+  OfferVariantGroup,
+} from '@openlinker/core/listings';
+import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
@@ -122,6 +135,13 @@ export class OfferBuilderService implements IOfferBuilderService {
       variant.attributes ?? {}
     );
 
+    // #1065 — a multi-variant product (>1 sibling) becomes one grouped listing.
+    // The sibling count is the populate decision; the actual fan-out (after the
+    // #824 barcode filter) can be smaller and need not match. Resolved after the
+    // validation throw above so a build that fails validation skips the read.
+    const siblings = await this.productsService.getVariantsByProductId(variant.productId);
+    const variantGroup = this.resolveVariantGroup(variant, siblings.length);
+
     const title = input.overrides?.title ?? product.name;
     const description = input.overrides?.description ?? product.description;
     const imageUrls = input.overrides?.imageUrls ?? product.images;
@@ -171,11 +191,37 @@ export class OfferBuilderService implements IOfferBuilderService {
       productCardId: input.overrides?.productCardId ?? null,
     };
 
+    // #1065 — only set when populated, keeping the command shape tidy (mirrors
+    // the `?? null` / cleanedOverrides posture above).
+    if (variantGroup) {
+      command.variantGroup = variantGroup;
+    }
+
     this.logger.debug(
       `Built CreateOfferCommand for variant=${input.internalVariantId} connection=${input.connectionId} categoryId=${categoryId ?? 'null'} params=${parameters.length} productCardId=${command.productCardId ?? 'null'}`
     );
 
     return command;
+  }
+
+  /**
+   * Pure helper (#1065): build the platform-neutral grouping hint for a sibling
+   * of a multi-variant product. Returns `undefined` for single-variant / simple
+   * products (`siblingCount <= 1`) so they list standalone. The `groupId` is the
+   * parent product id — the natural, stable, already-loaded anchor every sibling
+   * shares (no new identifier-mapping row).
+   */
+  private resolveVariantGroup(
+    variant: ProductVariant,
+    siblingCount: number
+  ): OfferVariantGroup | undefined {
+    if (siblingCount <= 1) {
+      return undefined;
+    }
+    return {
+      groupId: variant.productId,
+      attributes: flattenAttributes(variant.attributes),
+    };
   }
 
   private async resolveCategory(
@@ -357,4 +403,27 @@ export class OfferBuilderService implements IOfferBuilderService {
     const value = config['masterCatalogConnectionId'];
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
+}
+
+/**
+ * Flatten a variant's `attributes` map (#1065) into the neutral distinguishing
+ * axes array. Drops empty names/values (no `trim` — a deliberately-set single
+ * space is preserved) and sorts by name so two runs of the same variant produce
+ * a byte-identical command (idempotency-friendly). Pure (no I/O). A `null`
+ * attributes map yields `[]` — the group ref alone groups siblings; the axes
+ * only label the selectable options.
+ *
+ * Attribute strings are externally-sourced (PrestaShop combinations, etc.) and
+ * pass through verbatim into the adapter request body only — never a path /
+ * query / SQL / log surface. v1 applies no length/cardinality bound (the
+ * body-only destination contains the blast radius; Erli validates size
+ * server-side).
+ */
+function flattenAttributes(
+  attributes: Record<string, string> | null
+): OfferVariantAttribute[] {
+  return Object.entries(attributes ?? {})
+    .filter(([name, value]) => name.length > 0 && value.length > 0)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, value]) => ({ name, value }));
 }

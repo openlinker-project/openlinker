@@ -69,6 +69,8 @@ export const prestashopAdapterManifest: AdapterMetadata = {
     'InventoryMaster',
     'OrderSource',
     'OrderProcessorManager',
+    'ProductPublisher',
+    'CategoryProvisioner',
   ],
   displayName: 'PrestaShop WebService v1',
   version: '1.0.0',
@@ -169,6 +171,13 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
             }
             return adapters.orderProcessorManager;
           },
+          // ProductPublisher and CategoryProvisioner are both implemented by
+          // PrestashopProductPublisherAdapter. CategoryProvisioner needs its
+          // own dispatch entry because IntegrationsService.getCapabilityAdapter
+          // looks up by capability string — dispatchCapability would throw
+          // "adapter does not support capability: CategoryProvisioner" without it.
+          ProductPublisher: () => adapters.productPublisher,
+          CategoryProvisioner: () => adapters.productPublisher,
         },
         PRESTASHOP_BRAND,
       );

@@ -18,16 +18,31 @@ export type { DestinationOptionsReader } from './domain/ports/capabilities/desti
 export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
 export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
 export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
-// Dispatch-notify sub-capabilities (#837): mark-sent on the source + post-create
-// fulfillment update on the destination.
-export type { OrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
-export { isOrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
+// Destination post-create fulfillment update (#858). Retained for order
+// provisioning (OL driving an order it created), outside the relay path;
+// the source-side dispatch notify folded into OrderStatusWriteback (#1168).
 export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
 export { isFulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
+// Order status writeback (#1157 / ADR-027): the single platform-neutral,
+// role-agnostic writeback contract the lifecycle relay dispatches through.
+// Collapses the writeback role of OrderDispatchNotifier + OrderFulfillmentUpdater
+// (event-as-data); per-participant support reported via OrderWritebackResult.
+export type { OrderStatusWriteback } from './domain/ports/capabilities/order-status-writeback.capability';
+export { isOrderStatusWriteback } from './domain/ports/capabilities/order-status-writeback.capability';
+export type {
+  OrderLifecycleEvent,
+  OrderLifecycleEventType,
+  OrderWritebackOutcome,
+  OrderWritebackResult,
+} from './domain/types/order-lifecycle-event.types';
+export {
+  OrderLifecycleEventTypeValues,
+  OrderWritebackOutcomeValues,
+} from './domain/types/order-lifecycle-event.types';
 export type {
   FulfillmentStatus,
   FulfillmentStatusSnapshot,
@@ -117,6 +132,12 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+export type {
+  IOrderLifecycleRelayService,
+  OrderLifecycleRelayInput,
+  OrderLifecycleRelayResult,
+  OrderLifecycleRelayTargetResult,
+} from './application/interfaces/order-lifecycle-relay.service.interface';
 export * from './orders.tokens';
 
 // Domain entities

@@ -14,7 +14,9 @@
  * The #985 taxonomy fields (`externalCategories` / `externalAttributes`, tagged
  * `source:"allegro"`, reusing OL's already-resolved Allegro ids — ADR-025 §3)
  * and the #986 variant-grouping shapes (`externalVariantGroup` + per-variant
- * `attributes`) are layered in here as the same single reconciliation point.
+ * `attributes`) are layered in here as the same single reconciliation point. The
+ * adapter maps the neutral, core-populated `cmd.variantGroup` (#1065) onto these
+ * wire shapes; no erli-named key lives in core.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
@@ -73,7 +75,8 @@ export interface ErliVariantGroupRef {
  * A variant's distinguishing axis (#986), e.g. `{ name: 'Color', value: 'Red' }`.
  * Declared per-variant so Erli can present selectable options within the grouped
  * listing. Flattened from OL `ProductVariant.attributes` (`Record<string,string>`)
- * by the (deferred) core populator before it reaches the command.
+ * by the core populator (#1065, `OfferBuilderService`) into the neutral
+ * `OfferVariantGroup.attributes`; the adapter maps that field-for-field here.
  */
 export interface ErliVariantAttribute {
   name: string;
@@ -136,7 +139,23 @@ export type ErliProductPatchBody = Pick<
  * {@link ErliOfferManagerAdapter.fetchErliProduct}'s consumers are the single
  * change point. #989 reuses this same read path for offer-status reconciliation.
  */
+/**
+ * Erli-side publication status of a product/offer (read side, #989).
+ * PROVISIONAL (#992): exact value set unconfirmed; the adapter maps it to the
+ * neutral closed `OfferPublicationStatus` union.
+ */
+export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
+
 export interface ErliProductResource {
-  /** Erli field names the seller has frozen via manual panel edits. */
+  /**
+   * Erli field names the seller has frozen via manual panel edits (#988). May
+   * include `"stock"` (#1066): reconciliation reads it to populate the per-offer
+   * frozen-stock cache flag the hot quantity path honors. No shape change — the
+   * flat `string[]` already covers it (#992-provisional, same as the other names).
+   */
   frozenFields?: string[];
+  /** Current Erli-side publication status (#989). */
+  status?: ErliProductStatus;
+  /** Rejection / inactivation detail Erli supplies, when present (#989). */
+  statusReason?: string;
 }

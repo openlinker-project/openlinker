@@ -49,6 +49,16 @@ export class ErliConnectionConfigShapeValidatorAdapter
 
     this.validateDispatchTime(config.defaultDispatchTime, issues);
 
+    const callbackBaseUrl = config.callbackBaseUrl;
+    if (callbackBaseUrl !== undefined) {
+      // http allowed (dev: host.docker.internal); only require a parseable URL.
+      if (typeof callbackBaseUrl !== 'string' || callbackBaseUrl.trim().length === 0) {
+        issues.push({ path: 'callbackBaseUrl', message: 'must be a non-empty string when provided' });
+      } else if (!this.isHttpUrl(callbackBaseUrl)) {
+        issues.push({ path: 'callbackBaseUrl', message: 'must be a valid http(s) URL' });
+      }
+    }
+
     if (issues.length > 0) {
       return Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues));
     }
@@ -61,6 +71,15 @@ export class ErliConnectionConfigShapeValidatorAdapter
       return url.protocol === 'https:' ? url : null;
     } catch {
       return null;
+    }
+  }
+
+  private isHttpUrl(value: string): boolean {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === 'https:' || protocol === 'http:';
+    } catch {
+      return false;
     }
   }
 

@@ -14,6 +14,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CachePort } from '@openlinker/shared';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../domain/types/erli-connection.types';
 import { ERLI_ADAPTER_KEY } from '../erli.constants';
 import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-manager.adapter';
+import { ErliOrderSourceAdapter } from '../infrastructure/adapters/erli-order-source.adapter';
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
 import type { IErliHttpClient } from '../infrastructure/http/erli-http-client.interface';
 import type { RetryConfig } from '../infrastructure/http/erli-http-client.types';
@@ -41,11 +43,19 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
    * adapter today but kept so #985/#986/#988 extend behaviour without churning
    * this signature or the plugin's dispatch call site (Allegro pays the same
    * unused-dep cost deliberately).
+   *
+   * `cache` is the host-provided distributed cache (`host.cache`); the offer
+   * adapter uses it for the #1066 frozen-stock flag. Optional — when absent the
+   * adapter fails open (pushes stock) exactly as before. Threaded through this
+   * method (rather than the constructor as Allegro does) because Erli's factory
+   * is constructed argument-less inside `createCapabilityAdapter` — an Erli-local
+   * choice; the cache still arrives from `host.cache` either way.
    */
   async createAdapters(
     connection: Connection,
     _identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
+    cache?: CachePort,
   ): Promise<ErliAdapters> {
     const httpClient = await this.createHttpClient(connection, credentialsResolver);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
@@ -55,7 +65,11 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
         ERLI_ADAPTER_KEY,
         httpClient,
         config.defaultDispatchTime,
+        cache,
       ),
+      // Shares the one per-connection HTTP client with the offer adapter, exactly
+      // as Allegro shares one client across its order-source + offer adapters.
+      orderSource: new ErliOrderSourceAdapter(connection.id, httpClient),
     };
   }
 
