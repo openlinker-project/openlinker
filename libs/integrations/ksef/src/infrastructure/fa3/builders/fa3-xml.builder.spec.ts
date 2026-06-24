@@ -46,7 +46,6 @@ function b2bInput(): Fa3BuilderInput {
     issueDate: '2026-06-23',
     invoiceNumber: 'FV/2026/06/0001',
     generatedAt: '2026-06-23T10:15:30Z',
-    orderReference: 'ol_order_123',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
   };
 }
@@ -81,8 +80,27 @@ describe('buildFa3Xml', () => {
     expect(xml).toMatch(/<Podmiot2>.*<NIP>9876543210<\/NIP>.*<\/Podmiot2>/s);
   });
 
-  it('should echo the order reference into Adnotacje', () => {
-    expect(buildFa3Xml(b2bInput())).toMatch(/<Adnotacje>.*ol_order_123.*<\/Adnotacje>/s);
+  it('should emit RodzajFaktury=VAT for a plain sales invoice', () => {
+    expect(buildFa3Xml(b2bInput())).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+  });
+
+  it('should emit the required Adnotacje children with "nothing special" defaults', () => {
+    const xml = buildFa3Xml(b2bInput());
+    // The five TWybor1_2 flags default to "2" (no).
+    expect(xml).toMatch(/<Adnotacje>[^]*<P_16>2<\/P_16>[^]*<\/Adnotacje>/);
+    expect(xml).toContain('<P_17>2</P_17>');
+    expect(xml).toContain('<P_18>2</P_18>');
+    expect(xml).toContain('<P_18A>2</P_18A>');
+    expect(xml).toContain('<P_23>2</P_23>');
+    // Each choice group takes its negative branch (TWybor1 = "1").
+    expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
+    expect(xml).toContain('<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu>');
+    expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+  });
+
+  it('should emit Fa children in schema order (P_15 → Adnotacje → RodzajFaktury → FaWiersz)', () => {
+    const xml = buildFa3Xml(b2bInput());
+    expect(xml).toMatch(/<P_15>[^]*<Adnotacje>[^]*<\/Adnotacje>[^]*<RodzajFaktury>[^]*<FaWiersz/);
   });
 
   it('should emit P_1 (issue date) and P_2 (invoice number)', () => {
