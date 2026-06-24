@@ -46,4 +46,5 @@ Erli is the second PL marketplace OpenLinker integrates (product spec #978, issu
 - Related ADRs: [ADR-009](./009-persisted-offer-status-snapshots.md), [ADR-008](./008-auth-failure-classifier-connection-reauth.md), [ADR-015](./015-inbound-event-routing-capability-translated.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
 - Product spec: [docs/specs/product-spec-978-erli-marketplace-integration.md](../../specs/product-spec-978-erli-marketplace-integration.md)
+- Operator guide: [docs/erli-operator-guide.md](../../erli-operator-guide.md)
 - Erli Shop API documentation: https://erli.pl/svc/shop-api/doc/
