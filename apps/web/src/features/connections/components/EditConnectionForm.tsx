@@ -35,7 +35,8 @@ type StructuredField =
   | 'openlinkerCallbackBaseUrl'
   | 'masterCatalogConnectionId'
   | 'defaultCarrierId'
-  | 'unmanagedStockQuantity';
+  | 'unmanagedStockQuantity'
+  | 'inpostPsModuleType';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -173,6 +174,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // WC `inventory.unmanagedStockQuantity` is persisted as a number nested
       // under `config.inventory`; the form keeps it as a string (#969 §7.3).
       unmanagedStockQuantity: readUnmanagedStockQuantity(connection.config),
+      inpostPsModuleType:
+        connection.config.inpostPsModuleType === 'official_inpost' ? 'official_inpost' : '',
       configText: JSON.stringify(connection.config, null, 2),
       adapterKey: connection.adapterKey ?? '',
       sellerDefaults: readSellerDefaults(connection.config),
