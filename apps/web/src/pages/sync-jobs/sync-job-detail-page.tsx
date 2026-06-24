@@ -15,6 +15,7 @@ import type { SyncJob } from '../../features/sync-jobs/api/sync-jobs.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { OfferCreationTracker } from '../../features/listings/components/OfferCreationTracker';
+import { usePermission } from '../../shared/auth/use-permission';
 
 /**
  * Extracts the offer-creation record ID from a `marketplace.offer.create`
@@ -76,6 +77,7 @@ export function SyncJobDetailPage(): ReactElement {
   // before the loading/error guards below.
   const connectionQuery = useConnectionQuery(query.data?.connectionId ?? '');
   const retry = useRetrySyncJobMutation();
+  const canRetry = usePermission('sync:write');
   const { showToast } = useToast();
 
   if (query.isLoading) {
@@ -130,9 +132,11 @@ export function SyncJobDetailPage(): ReactElement {
           tone="error"
           title={`Job failed after ${job.attempts} attempt${job.attempts === 1 ? '' : 's'}`}
           action={
-            <Button onClick={handleRetry} disabled={retry.isPending}>
-              {retry.isPending ? 'Retrying…' : 'Retry'}
-            </Button>
+            canRetry ? (
+              <Button onClick={handleRetry} disabled={retry.isPending}>
+                {retry.isPending ? 'Retrying…' : 'Retry'}
+              </Button>
+            ) : null
           }
         >
           {job.lastError ? (

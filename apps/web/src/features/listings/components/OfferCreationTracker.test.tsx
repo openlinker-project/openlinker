@@ -76,6 +76,27 @@ describe('OfferCreationTracker', () => {
     expect(screen.getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
   });
 
+  it('renders the reused state (already existed) with the external offer id', async () => {
+    const mockApi = createMockApiClient({
+      listings: {
+        getOfferCreationStatus: vi
+          .fn()
+          .mockResolvedValue(makeRecord('reused', { externalOfferId: 'erli-sku-1' })),
+      },
+    });
+
+    renderWithProviders(
+      <OfferCreationTracker connectionId="conn-1" offerCreationRecordId="rec-1" onDismiss={vi.fn()} />,
+      { apiClient: mockApi },
+    );
+
+    expect(await screen.findByText('Already existed')).toBeInTheDocument();
+    expect(screen.getByText(/reused the existing listing/i)).toBeInTheDocument();
+    expect(screen.getByText('erli-sku-1')).toBeInTheDocument();
+    // Reused is terminal → Dismiss is visible.
+    expect(screen.getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
+  });
+
   it('renders the error list on failed status', async () => {
     const mockApi = createMockApiClient({
       listings: {

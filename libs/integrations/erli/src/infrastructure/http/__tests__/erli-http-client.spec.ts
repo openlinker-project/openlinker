@@ -82,6 +82,7 @@ describe('ErliHttpClient', () => {
       await client.get('/offers');
       await client.post('/offers', { sku: 'A' });
       await client.patch('/offers/1', { qty: 5 });
+      await client.put('/hooks/orderCreated', { url: 'https://x', accessToken: 's' });
 
       const calls = recordedCalls(fetchMock);
       for (const [, init] of calls) {
@@ -90,6 +91,7 @@ describe('ErliHttpClient', () => {
       expect(calls[0][1].method).toBe('GET');
       expect(calls[1][1].method).toBe('POST');
       expect(calls[2][1].method).toBe('PATCH');
+      expect(calls[3][1].method).toBe('PUT');
     });
 
     it('should preserve the base-URL path prefix when joining the request path', async () => {

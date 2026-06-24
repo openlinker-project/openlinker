@@ -41,11 +41,15 @@ import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
+  ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
+import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
+import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { Logger } from '@openlinker/shared/logging';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
@@ -76,7 +80,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
-    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService
+    private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
+    @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService
   ) {}
 
   async ingestOrders(
@@ -178,8 +184,18 @@ export class OrderIngestionService implements IOrderIngestionService {
   async syncOrderFromSource(
     connectionId: string,
     externalOrderId: string,
-    sourceEventId?: string
+    sourceEventId?: string,
+    eventType?: OrderFeedEventType
   ): Promise<ReturnType<IOrderSyncService['syncOrder']> extends Promise<infer T> ? T : never> {
+    // Inbound cancellation (#1158): a source `cancelled` event must NOT re-run the
+    // create/update path (which would re-create the order — the #1132 bug). Route
+    // it through the lifecycle relay, which propagates the cancel to the order's
+    // destination(s) via OrderStatusWriteback. OL owns no canonical status here —
+    // it forwards the source's fact to the participants it already synced to.
+    if (eventType === 'cancelled') {
+      return this.handleSourceCancellation(connectionId, externalOrderId);
+    }
+
     const orderSource = await this.integrationsService.getCapabilityAdapter<OrderSourcePort>(
       connectionId,
       'OrderSource'
@@ -215,6 +231,14 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
       return [];
     }
+
+    // Cancellation-observe hook (#1146): capture the prior business status from
+    // the PRE-persist `existing` snapshot, before persistOrder overwrites it.
+    // Defensive string read — mirrors the `OrderRecord.paymentStatus` getter
+    // idiom; an absent/garbled prior status reads as non-cancelled (allowed to
+    // fire once on a first-seen already-cancelled order — the restore is a
+    // harmless absolute-set).
+    const priorStatus = this.readSnapshotStatus(existing);
 
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
@@ -272,6 +296,40 @@ export class OrderIngestionService implements IOrderIngestionService {
       resolvedItems
     );
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+
+    // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
+    // a marketplace.offer.stockRestore job so the destination marketplace's
+    // stock is restored (e.g. Erli auto-decrements on purchase but does not
+    // restore on cancel — ADR-025 §4a). Transition-gated (priorStatus !==
+    // 'cancelled') so a re-poll within the watermark window doesn't re-fire;
+    // the dedupeKey makes any re-enqueue safe. Marketplace-agnostic — the worker
+    // handler narrows the source connection's adapter to OfferStockRestorer and
+    // no-ops if the capability is absent.
+    if (order.status === 'cancelled' && priorStatus !== 'cancelled') {
+      try {
+        await this.jobQueue.enqueue({
+          type: 'marketplace.offer.stockRestore',
+          connectionId,
+          payload: {
+            schemaVersion: 1,
+            internalOrderId,
+          },
+          options: {
+            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+          },
+        });
+      } catch (error) {
+        // The order is already persisted as `cancelled`, so the transition gate
+        // above won't re-fire on a re-poll — a swallowed enqueue failure would
+        // silently lose the restore. We don't rethrow (that would fail the whole
+        // order-sync and still couldn't re-fire the gate on retry), but we log at
+        // error so the missed restore is loud and actionable.
+        this.logger.error(
+          `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
+          (error as Error).stack,
+        );
+      }
+    }
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
@@ -332,6 +390,79 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return results;
+  }
+
+  /**
+   * Inbound source cancellation → destination(s) via the lifecycle relay (#1158).
+   * Resolves the existing internal order; if unknown (never ingested) there is
+   * nothing to cancel. Applies the same destination-echo guard as ingestion
+   * (ADR-017) so a re-read of an order OL itself created elsewhere doesn't
+   * propagate a spurious cancel. Returns an empty result set — a cancel is not
+   * an order-create, so there are no OrderSyncResults to report.
+   */
+  private async handleSourceCancellation(
+    connectionId: string,
+    externalOrderId: string
+  ): Promise<never[]> {
+    const internalOrderId = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.Order,
+      externalOrderId,
+      connectionId
+    );
+    if (!internalOrderId) {
+      this.logger.warn(
+        `Cancellation for unknown order: external ${externalOrderId} on connection ${connectionId} ` +
+          `has no internal mapping — nothing to cancel`
+      );
+      return [];
+    }
+
+    const existing = await this.orderRecordService.getOrderRecord(internalOrderId);
+    if (existing && existing.sourceConnectionId !== connectionId) {
+      // Destination-echo guard (ADR-017): a cancel re-read from a connection OL
+      // pushed the order INTO is not the authoritative source's cancel — skip.
+      this.logger.debug(
+        `Skipping destination-echo cancellation of order ${internalOrderId}: external id ` +
+          `${externalOrderId} on connection ${connectionId} maps to an order originating from ` +
+          `${existing.sourceConnectionId}`
+      );
+      return [];
+    }
+
+    const result = await this.orderLifecycleRelay.relay({
+      internalOrderId,
+      originConnectionId: connectionId,
+      event: { type: 'cancelled' },
+    });
+
+    const summary =
+      result.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets';
+    const message = `Cancellation relayed for order ${internalOrderId}: ${summary}`;
+    // Surface any non-`applied` target (e.g. a destination that already shipped,
+    // so the cancel was rejected) at warn — the cancel is never silently dropped.
+    //
+    // Known residual (#1160): a cancel that arrives *before* the order's
+    // create/sync job has run finds no targets here, and the later create then
+    // provisions the order as active. Fully closing that out-of-order race needs
+    // the deferred monotonic / relay-log machinery (ADR-027 guardrails) tracked
+    // with the bidirectional slices — out of scope for this unidirectional slice.
+    if (result.targets.some((t) => t.outcome !== 'applied')) {
+      this.logger.warn(message);
+    } else {
+      this.logger.log(message);
+    }
+    return [];
+  }
+
+  /**
+   * Defensive read of an order record's prior business status from its snapshot
+   * (#1146). Returns `undefined` when there is no prior record or the stored
+   * value isn't a string — both treated as non-cancelled by the caller. Pure
+   * read; binds only to the snapshot's `status` key, not its full JSON layout.
+   */
+  private readSnapshotStatus(existing: OrderRecord | null): string | undefined {
+    const value = existing?.orderSnapshot?.status;
+    return typeof value === 'string' ? value : undefined;
   }
 
   private async resolveCustomerId(

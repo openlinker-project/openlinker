@@ -34,6 +34,7 @@ import { InpostIntegrationModule } from '@openlinker/integrations-inpost';
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommerce';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
+import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -43,4 +44,7 @@ export const apiPlugins: PluginEntry[] = [
   DpdIntegrationModule,
   WooCommerceIntegrationModule,
   ErliIntegrationModule,
+  // #753: Subiekt nexo invoicing adapter — registered so the host can resolve
+  // the 'Invoicing' capability for subiekt connections.
+  SubiektIntegrationModule,
 ];

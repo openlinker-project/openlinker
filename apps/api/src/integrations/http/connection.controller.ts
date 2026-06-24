@@ -62,7 +62,10 @@ export class ConnectionController {
     private readonly webhookSecretService: IWebhookSecretService
   ) {}
 
-  private async toResponse(connection: Connection): Promise<ConnectionResponseDto> {
+  private async toResponse(
+    connection: Connection,
+    user?: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
@@ -80,7 +83,7 @@ export class ConnectionController {
       );
       supported = [];
     }
-    return ConnectionResponseDto.fromDomain(connection, supported);
+    return ConnectionResponseDto.fromDomain(connection, supported, user?.role);
   }
 
   @Roles('admin')
@@ -94,9 +97,12 @@ export class ConnectionController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async create(@Body() dto: CreateConnectionDto): Promise<ConnectionResponseDto> {
+  async create(
+    @Body() dto: CreateConnectionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
-    return this.toResponse(connection);
+    return this.toResponse(connection, user);
   }
 
   @Get()
@@ -106,13 +112,16 @@ export class ConnectionController {
     description: 'List of connections',
     type: [ConnectionResponseDto],
   })
-  async list(@Query() filtersDto: ConnectionFiltersDto): Promise<ConnectionResponseDto[]> {
+  async list(
+    @Query() filtersDto: ConnectionFiltersDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto[]> {
     const filters: ConnectionFilters = {
       ...(filtersDto.platformType && { platformType: filtersDto.platformType }),
       ...(filtersDto.status && { status: filtersDto.status }),
     };
     const connections = await this.connectionService.list(filters);
-    return Promise.all(connections.map((connection) => this.toResponse(connection)));
+    return Promise.all(connections.map((connection) => this.toResponse(connection, user)));
   }
 
   @Get(':id')
@@ -123,9 +132,12 @@ export class ConnectionController {
     type: ConnectionResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  async get(@Param('id') id: string): Promise<ConnectionResponseDto> {
+  async get(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.get(id);
-    return this.toResponse(connection);
+    return this.toResponse(connection, user);
   }
 
   @Roles('admin')
@@ -140,7 +152,8 @@ export class ConnectionController {
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async update(
     @Param('id') id: string,
-    @Body() dto: UpdateConnectionDto
+    @Body() dto: UpdateConnectionDto,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     const patch: ConnectionUpdate = {
       ...(dto.name !== undefined && { name: dto.name }),
@@ -152,9 +165,10 @@ export class ConnectionController {
       }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return this.toResponse(connection);
+    return this.toResponse(connection, user);
   }
 
+  @Roles('admin')
   @Get(':id/diagnostics')
   @ApiOperation({ summary: 'Get connection diagnostics and activity summary' })
   @ApiResponse({
@@ -162,6 +176,7 @@ export class ConnectionController {
     description: 'Connection diagnostics with recent sync job activity',
     type: ConnectionDiagnosticsResponseDto,
   })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async getDiagnostics(@Param('id') id: string): Promise<ConnectionDiagnosticsResponseDto> {
     const connection = await this.connectionService.get(id);
@@ -282,8 +297,11 @@ export class ConnectionController {
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  async disable(@Param('id') id: string): Promise<ConnectionResponseDto> {
+  async disable(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.disable(id);
-    return this.toResponse(connection);
+    return this.toResponse(connection, user);
   }
 }

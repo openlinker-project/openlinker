@@ -20,6 +20,9 @@ import type {
   OrderFulfillmentUpdater,
   OrderStatus,
   MappingOption,
+  OrderStatusWriteback,
+  OrderLifecycleEvent,
+  OrderWritebackResult,
 } from '@openlinker/core/orders';
 import type {
   FulfillmentStatusReader,
@@ -91,6 +94,7 @@ export class PrestashopOrderProcessorManagerAdapter
     OrderProcessorManagerPort,
     DestinationOptionsReader,
     OrderFulfillmentUpdater,
+    OrderStatusWriteback,
     FulfillmentStatusReader
 {
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
@@ -745,25 +749,12 @@ export class PrestashopOrderProcessorManagerAdapter
       }
 
       // A. State transition LAST — the single irreversible side-effect.
-      //    `sendmail: true` → `?sendmail=1` fires PS's order-state customer email.
-      //    Skipped when already in the target state → idempotent (no duplicate
-      //    "shipped" email on re-notify).
-      if (Number(order.current_state) !== targetStateId) {
-        await this.httpClient.createResource(
-          'order_histories',
-          { id_order: externalOrderId, id_order_state: targetStateId },
-          { sendEmail: true }
-        );
-        this.logger.log(
-          `PrestaShop order ${externalOrderId} → state ${targetStateId} (status='${status}') ` +
-            `via order_histories+sendmail (connection: ${this.connection.id})`
-        );
-      } else {
-        this.logger.debug(
-          `PrestaShop order ${externalOrderId} already in state ${targetStateId} — ` +
-            `skipping order_histories (connection: ${this.connection.id})`
-        );
-      }
+      await this.applyOrderStateTransition(
+        externalOrderId,
+        Number(order.current_state),
+        targetStateId,
+        status
+      );
     } catch (error) {
       if (
         error instanceof PrestashopResourceNotFoundException ||
@@ -781,6 +772,99 @@ export class PrestashopOrderProcessorManagerAdapter
         undefined,
         undefined,
         this.connection.id
+      );
+    }
+  }
+
+  /**
+   * `OrderStatusWriteback` (#1158 / ADR-027): the single event-as-data writeback
+   * the lifecycle relay dispatches through. Delegates to the same internals as
+   * `updateFulfillment` (state transition + tracking + state-email), mapping each
+   * neutral lifecycle event onto PrestaShop's order state. `OrderFulfillmentUpdater`
+   * is retained for OL-driven order provisioning, outside the relay path.
+   *
+   * The outcome is reported via `OrderWritebackResult` (never thrown): a
+   * `cancelled` event against an order PrestaShop has already shipped/delivered is
+   * `rejected` — the shop is authoritative for its own live state, so we surface
+   * the conflict rather than force a regressive transition.
+   */
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    try {
+      if (event.type === 'dispatched') {
+        await this.updateFulfillment({
+          externalOrderId: event.externalOrderId,
+          status: 'shipped',
+          trackingNumber: event.trackingNumber,
+        });
+        return { outcome: 'applied' };
+      }
+
+      // event.type === 'cancelled' — refuse if the shop already shipped/delivered.
+      // One read here; the cancel carries no tracking, so we reuse the fetched
+      // state for the transition instead of re-reading via updateFulfillment.
+      const order = await this.httpClient.getResource<PrestashopOrder>(
+        'orders',
+        event.externalOrderId
+      );
+      const currentStateId = Number(order.current_state);
+      const [shippedStateId, deliveredStateId, cancelledStateId] = await Promise.all([
+        this.resolveStateId('shipped'),
+        this.resolveStateId('delivered'),
+        this.resolveStateId('cancelled'),
+      ]);
+      if (currentStateId === shippedStateId || currentStateId === deliveredStateId) {
+        this.logger.warn(
+          `PrestaShop order ${event.externalOrderId} already in state ${currentStateId} ` +
+            `(shipped/delivered) — refusing cancel writeback (connection: ${this.connection.id})`
+        );
+        return { outcome: 'rejected', detail: 'order already shipped' };
+      }
+
+      await this.applyOrderStateTransition(
+        event.externalOrderId,
+        currentStateId,
+        cancelledStateId,
+        'cancelled'
+      );
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `OrderStatusWriteback '${event.type}' failed for PrestaShop order ` +
+          `${event.externalOrderId}: ${detail} (connection: ${this.connection.id})`,
+        error
+      );
+      return { outcome: 'rejected', detail };
+    }
+  }
+
+  /**
+   * Apply a PrestaShop order-state transition via `order_histories` (+ the
+   * `sendmail=1` customer email). Idempotent — skips when the order is already in
+   * the target state, so a re-notify never fires a duplicate state email. Shared
+   * by `updateFulfillment` (dispatch / provisioning) and the `OrderStatusWriteback`
+   * cancel path so the latter doesn't re-fetch the order it already read.
+   */
+  private async applyOrderStateTransition(
+    externalOrderId: string,
+    currentStateId: number,
+    targetStateId: number,
+    status: OrderStatus
+  ): Promise<void> {
+    if (currentStateId !== targetStateId) {
+      await this.httpClient.createResource(
+        'order_histories',
+        { id_order: externalOrderId, id_order_state: targetStateId },
+        { sendEmail: true }
+      );
+      this.logger.log(
+        `PrestaShop order ${externalOrderId} → state ${targetStateId} (status='${status}') ` +
+          `via order_histories+sendmail (connection: ${this.connection.id})`
+      );
+    } else {
+      this.logger.debug(
+        `PrestaShop order ${externalOrderId} already in state ${targetStateId} — ` +
+          `skipping order_histories (connection: ${this.connection.id})`
       );
     }
   }

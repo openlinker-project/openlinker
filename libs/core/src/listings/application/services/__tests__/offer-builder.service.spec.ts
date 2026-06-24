@@ -27,12 +27,12 @@ import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/e
 
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
   let attributeProjection: jest.Mocked<IAttributeProjectionService>;
-  let productMaster: { getProduct: jest.Mock };
+  let productMaster: { getProduct: jest.Mock; resolveCategoriesForBatchByEan: jest.Mock };
 
   const emptyProjection: AttributeProjectionResult = {
     parameters: [],
@@ -61,7 +61,10 @@ describe('OfferBuilderService', () => {
   };
 
   beforeEach(async () => {
-    productsService = { getVariant: jest.fn().mockResolvedValue(defaultVariant) };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue(defaultVariant),
+      getVariantsByProductId: jest.fn().mockResolvedValue([defaultVariant]),
+    };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
     };
@@ -75,6 +78,11 @@ describe('OfferBuilderService', () => {
         currency: 'PLN',
         images: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
       }),
+      // Present so the resolved destination reads as an `EanCategoryMatcher`
+      // (owns taxonomy) — the builder then requires a resolved category, which
+      // is the precondition these tests assert (#1096). A borrows destination
+      // omits this and the category becomes optional.
+      resolveCategoriesForBatchByEan: jest.fn(),
     };
     integrationsService = {
       getCapabilityAdapter: jest
@@ -217,6 +225,159 @@ describe('OfferBuilderService', () => {
           stock: 1,
         })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
+    });
+
+    it('does NOT require a category for a borrows destination and threads source-shop categories (#1096)', async () => {
+      // Destination resolves as a borrows taxonomy: no EanCategoryMatcher /
+      // CategoryBrowser → category optional, resolved server-side at submit.
+      integrationsService.getCapabilityAdapter.mockImplementation((_connId: string, capability: string) =>
+        Promise.resolve(
+          capability === 'OfferManager'
+            ? ({ updateOfferQuantity: jest.fn() } as unknown as OfferManagerPort)
+            : (productMaster as unknown as OfferManagerPort)
+        )
+      );
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['12', '34'],
+      });
+      categoryResolution.resolveCategory.mockResolvedValue({
+        destinationCategoryId: null,
+        provenance: 'borrows',
+        method: 'manual',
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(command.overrides?.categoryId).toBeUndefined();
+      expect(command.sourceCategories).toEqual([{ id: '12' }, { id: '34' }]);
+    });
+  });
+
+  describe('source-shop features & category path (#1096 F2/F3)', () => {
+    it('threads product features as sourceAttributes with slugged ids (F2)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        features: [
+          { name: 'Material', value: 'Ceramic' },
+          { name: 'Country of Origin', value: 'PL' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toEqual([
+        { id: 'material', name: 'Material', value: 'Ceramic' },
+        { id: 'country-of-origin', name: 'Country of Origin', value: 'PL' },
+      ]);
+    });
+
+    it('drops features with empty name or value and omits sourceAttributes when none survive (F2)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        features: [
+          { name: '', value: 'x' },
+          { name: 'Material', value: '' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toBeUndefined();
+    });
+
+    it('omits sourceAttributes when the product carries no features (F2)', async () => {
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceAttributes).toBeUndefined();
+    });
+
+    it('prefers the full category breadcrumb over bare ids for sourceCategories (F3)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['34'],
+        categoryBreadcrumb: [
+          { id: '12', name: 'Home & Garden' },
+          { id: '34', name: 'Mugs' },
+        ],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceCategories).toEqual([
+        { id: '12', name: 'Home & Garden' },
+        { id: '34', name: 'Mugs' },
+      ]);
+    });
+
+    it('falls back to bare category ids when no breadcrumb is present (F3)', async () => {
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['12', '34'],
+      });
+
+      const command = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { categoryId: 'explicit-cat' },
+      });
+
+      expect(command.sourceCategories).toEqual([{ id: '12' }, { id: '34' }]);
     });
   });
 
@@ -623,6 +784,104 @@ describe('OfferBuilderService', () => {
         })
       ).rejects.toBeInstanceOf(OfferBuilderValidationException);
       expect(attributeProjection.project).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('variant grouping (#1065)', () => {
+    const siblingVariant = {
+      id: 'ol_variant_sibling',
+      productId: 'ol_product_456',
+    } as unknown as ProductVariant;
+
+    function multiVariant(attributes: Record<string, string> | null): void {
+      productsService.getVariant.mockResolvedValue({
+        ...(defaultVariant as unknown as Record<string, unknown>),
+        attributes,
+      } as unknown as ProductVariant);
+      productsService.getVariantsByProductId.mockResolvedValue([
+        defaultVariant,
+        siblingVariant,
+      ]);
+    }
+
+    it('should populate variantGroup when the product has more than one variant', async () => {
+      multiVariant({ Color: 'Red', Size: 'M' });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toEqual({
+        groupId: 'ol_product_456',
+        attributes: [
+          { name: 'Color', value: 'Red' },
+          { name: 'Size', value: 'M' },
+        ],
+      });
+    });
+
+    it('should leave variantGroup absent when the product has a single variant', async () => {
+      // beforeEach default already returns one sibling.
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toBeUndefined();
+    });
+
+    it('should populate the group ref with empty attributes when variant attributes are null', async () => {
+      multiVariant(null);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toEqual({ groupId: 'ol_product_456', attributes: [] });
+    });
+
+    it('should drop empty attribute names/values and sort the survivors by name', async () => {
+      multiVariant({ Size: 'M', Color: 'Red', '': 'x', Empty: '' });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup?.attributes).toEqual([
+        { name: 'Color', value: 'Red' },
+        { name: 'Size', value: 'M' },
+      ]);
+    });
+
+    it('should give sibling variants the same groupId when built independently', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([defaultVariant, siblingVariant]);
+      productsService.getVariant
+        .mockResolvedValueOnce(defaultVariant)
+        .mockResolvedValueOnce({
+          ...(siblingVariant as unknown as Record<string, unknown>),
+          ean: '5901234123457',
+        } as unknown as ProductVariant);
+
+      const first = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+      const second = await service.buildCreateOfferCommand({
+        internalVariantId: 'ol_variant_sibling',
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(first.variantGroup?.groupId).toBe('ol_product_456');
+      expect(second.variantGroup?.groupId).toBe('ol_product_456');
     });
   });
 });

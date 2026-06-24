@@ -42,7 +42,8 @@ export class UserResponseDto {
     dto.username = user.username;
     dto.email = user.email;
     dto.role = user.role;
-    dto.permissions = [...ROLE_PERMISSIONS[user.role]];
+    // ?? [] guards against DB role values that violate the UserRole type contract at runtime
+    dto.permissions = [...(ROLE_PERMISSIONS[user.role] ?? [])];
     return dto;
   }
 }

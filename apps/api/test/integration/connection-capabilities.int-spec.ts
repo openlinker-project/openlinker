@@ -55,10 +55,12 @@ describe('Connection Capabilities Integration', () => {
     const created = await createConnection(dto);
 
     expect(created.supportedCapabilities.sort()).toEqual([
+      'CategoryProvisioner',
       'InventoryMaster',
       'OrderProcessorManager',
       'OrderSource',
       'ProductMaster',
+      'ProductPublisher',
     ]);
     expect(created.enabledCapabilities.sort()).toEqual(created.supportedCapabilities.sort());
   });
@@ -104,10 +106,12 @@ describe('Connection Capabilities Integration', () => {
 
     expect(updated.body.enabledCapabilities).toEqual(['ProductMaster']);
     expect(updated.body.supportedCapabilities.sort()).toEqual([
+      'CategoryProvisioner',
       'InventoryMaster',
       'OrderProcessorManager',
       'OrderSource',
       'ProductMaster',
+      'ProductPublisher',
     ]);
   });
 

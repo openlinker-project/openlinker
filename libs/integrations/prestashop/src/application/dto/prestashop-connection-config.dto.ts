@@ -29,7 +29,12 @@ import {
 // Sibling type in same package — relative path. The barrel re-exports
 // these, but reaching for the self-package alias from inside the package
 // itself creates a cycle through the compiled `dist/`.
-import { ResponseFormat, ResponseFormatValues } from '../../domain/types/prestashop-config.types';
+import {
+  InpostPsModuleType,
+  InpostPsModuleTypeValues,
+  ResponseFormat,
+  ResponseFormatValues,
+} from '../../domain/types/prestashop-config.types';
 
 /**
  * PrestaShop Connection Config DTO
@@ -97,4 +102,7 @@ export class PrestashopConnectionConfigDto {
   @IsOptional()
   @IsBoolean()
   webhooksConfigured?: boolean;
+  @IsOptional()
+  @IsIn(InpostPsModuleTypeValues as readonly string[])
+  inpostPsModuleType?: InpostPsModuleType;
 }
