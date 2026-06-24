@@ -31,15 +31,17 @@ describe('toBridgeBuyer', () => {
   });
 
   it('maps address countryIso2 -> countryCode', () => {
-    expect(toBridgeBuyer(buyer(null)).address.countryCode).toBe('PL');
+    expect(toBridgeBuyer(buyer(null)).address?.countryCode).toBe('PL');
   });
 
-  it('maps line1/line2/city/postalCode 1:1', () => {
-    const { address } = toBridgeBuyer(buyer(null));
-    expect(address.line1).toBe('ul. Przykładowa 1');
-    expect(address.line2).toBe('lok. 5');
-    expect(address.city).toBe('Warszawa');
-    expect(address.postalCode).toBe('00-001');
+  it('maps neutral address onto the bridge Polish AddressDto fields', () => {
+    const address = toBridgeBuyer(buyer(null)).address;
+    // line1 (street + number) -> ulica; line2 -> nrLokalu; city -> miejscowosc;
+    // postalCode -> kodPocztowy.
+    expect(address?.ulica).toBe('ul. Przykładowa 1');
+    expect(address?.nrLokalu).toBe('lok. 5');
+    expect(address?.miejscowosc).toBe('Warszawa');
+    expect(address?.kodPocztowy).toBe('00-001');
   });
 
   it("sets isCompany from buyer.type === 'company'", () => {

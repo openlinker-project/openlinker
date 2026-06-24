@@ -66,7 +66,8 @@ describe('SubiektInvoicingAdapter', () => {
       expect(record.status).toBe('issued');
       expect(record.connectionId).toBe('conn-1');
       expect(record.orderId).toBe('ol_order_1');
-      expect(record.providerInvoiceId).toBe('SUB-MOCK-1');
+      // The fake mints a numeric Subiekt id (100_000 + n); the adapter stringifies.
+      expect(record.providerInvoiceId).toBe('100001');
       expect(record.providerInvoiceNumber).toBe('FV-MOCK-001');
       expect(record.id).toBeTruthy();
       expect(record.createdAt).toBeInstanceOf(Date);
@@ -184,15 +185,17 @@ describe('SubiektInvoicingAdapter', () => {
         command({ buyer: buyer({ scheme: 'pl-nip', value: '1234567890' }), documentType: 'receipt' }),
       );
       expect(record.documentType).toBe('receipt');
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'paragon' }));
+      // Bridge-native document type: receipt -> 'PA' (paragon).
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'PA' }));
     });
 
-    it("honours an explicit documentType 'invoice' through issueInvoice (maps to faktura)", async () => {
+    it("honours an explicit documentType 'invoice' through issueInvoice (maps to FV)", async () => {
       const { adapter, bridge } = makeAdapter();
       const spy = jest.spyOn(bridge, 'issueInvoice');
       const record = await adapter.issueInvoice(command({ documentType: 'invoice' }));
       expect(record.documentType).toBe('invoice');
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'faktura' }));
+      // Bridge-native document type: invoice -> 'FV' (faktura).
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FV' }));
     });
   });
 
@@ -200,7 +203,8 @@ describe('SubiektInvoicingAdapter', () => {
     it('returns { providerCustomerId } from the bridge', async () => {
       const { adapter } = makeAdapter();
       const result = await adapter.upsertCustomer({ connectionId: 'conn-1', buyer: buyer(null) });
-      expect(result.providerCustomerId).toBe('KH-MOCK-1');
+      // The fake mints a numeric customer id (200_000 + n); the adapter stringifies.
+      expect(result.providerCustomerId).toBe('200001');
     });
 
     it('translates bridge errors the same way as issueInvoice', async () => {

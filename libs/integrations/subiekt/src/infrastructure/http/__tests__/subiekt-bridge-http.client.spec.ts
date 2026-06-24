@@ -12,18 +12,29 @@ import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../../br
 import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
 import { SubiektBridgeHttpClient } from '../subiekt-bridge-http.client';
-import { sampleIssueInvoiceRequest } from '../../../testing/subiekt-bridge-contract.suite';
+import {
+  sampleIssueInvoiceRequest,
+  sampleUpsertCustomerRequest,
+} from '../../../testing/subiekt-bridge-contract.suite';
 
 const BASE = 'http://192.168.1.10:5000';
 
-function okResponse(body: unknown): Response {
+/**
+ * A 2xx response wrapping `data` in the real bridge `{ success, data, error }`
+ * envelope (the client unwraps it).
+ */
+function okResponse(data: unknown): Response {
   return {
     status: 200,
     headers: { get: (): string | null => null },
-    json: (): Promise<unknown> => Promise.resolve(body),
+    json: (): Promise<unknown> => Promise.resolve({ success: true, data, error: null }),
   } as unknown as Response;
 }
 
+/**
+ * A non-2xx response. `body` is sent verbatim so a test can supply either an
+ * enveloped error (`{ error: { reason } }`) or a bare `{ reason }`.
+ */
 function errorResponse(status: number, body: unknown, location?: string): Response {
   return {
     status,
@@ -33,6 +44,11 @@ function errorResponse(status: number, body: unknown, location?: string): Respon
     },
     json: (): Promise<unknown> => Promise.resolve(body),
   } as unknown as Response;
+}
+
+/** A bridge enveloped error body for the given reason. */
+function envelopeError(reason: string): unknown {
+  return { success: false, data: null, error: { code: 'bad_request', reason, correlationId: null } };
 }
 
 function fetchError(code: string): Error {
@@ -93,26 +109,39 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('issueInvoice', () => {
-    it('returns a typed response on 2xx', async () => {
+    it('returns a typed response on 2xx (unwrapping the envelope)', async () => {
       fetchMock.mockResolvedValue(
         okResponse({
-          providerInvoiceId: 'SUB-1',
-          providerInvoiceNumber: 'FV-001',
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
           state: 'issued',
-          regulatoryStatus: 'sent',
+          regulatoryStatus: 'pending',
           pdfUrl: null,
         }),
       );
       const client = new SubiektBridgeHttpClient(BASE);
       const res = await client.issueInvoice(sampleIssueInvoiceRequest());
-      expect(res.providerInvoiceId).toBe('SUB-1');
+      expect(res.providerInvoiceId).toBe(100355);
       expect(res.state).toBe('issued');
+    });
+
+    it('throws SubiektRejectedError on a 2xx success:false envelope', async () => {
+      // A success:false envelope returned with a 200 (the bridge's validation path).
+      fetchMock.mockResolvedValue({
+        status: 200,
+        headers: { get: (): string | null => null },
+        json: (): Promise<unknown> => Promise.resolve(envelopeError('NazwaSkrocona jest wymagana.')),
+      } as unknown as Response);
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toThrow(
+        'NazwaSkrocona jest wymagana.',
+      );
     });
 
     it('places idempotencyKey on the request body before fetch', async () => {
       fetchMock.mockResolvedValue(
         okResponse({
-          providerInvoiceId: 'SUB-1',
+          providerInvoiceId: 100355,
           providerInvoiceNumber: 'FV-001',
           state: 'issued',
           regulatoryStatus: 'sent',
@@ -128,12 +157,15 @@ describe('SubiektBridgeHttpClient', () => {
       expect(body.idempotencyKey).toBe('idem-1');
     });
 
-    it('throws SubiektRejectedError on 4xx with a {reason} body', async () => {
-      fetchMock.mockResolvedValue(errorResponse(400, { reason: 'invalid NIP' }));
+    it('throws SubiektRejectedError on 4xx with an enveloped {error.reason} body', async () => {
+      fetchMock.mockResolvedValue(errorResponse(400, envelopeError('invalid NIP')));
       const client = new SubiektBridgeHttpClient(BASE);
-      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toBeInstanceOf(
-        SubiektRejectedError,
-      );
+      const err = await client
+        .issueInvoice(sampleIssueInvoiceRequest())
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektRejectedError);
+      expect((err as SubiektRejectedError).reason).toBe('invalid NIP');
     });
 
     it('throws SubiektBridgeAuthError (NOT a rejection) on 401', async () => {
@@ -252,21 +284,29 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('getInvoiceStatus', () => {
-    it('issues a GET to the templated /api/invoices/{id}/status path', async () => {
-      fetchMock.mockResolvedValue(okResponse({ state: 'issued', regulatoryStatus: 'sent' }));
+    it('issues a GET to the templated /api/invoices/{id}/status path and derives state', async () => {
+      // Real status `data`: Polish document status + KSeF regulatoryStatus, no `state`.
+      fetchMock.mockResolvedValue(
+        okResponse({ status: 'zatwierdzony', regulatoryStatus: 'pending' }),
+      );
       const client = new SubiektBridgeHttpClient(BASE);
-      await client.getInvoiceStatus({ providerInvoiceId: 'SUB-1' });
+      const status = await client.getInvoiceStatus({ providerInvoiceId: '100355' });
       const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
-      expect(url).toBe(`${BASE}/api/invoices/SUB-1/status`);
+      expect(url).toBe(`${BASE}/api/invoices/100355/status`);
       expect(init.method).toBe('GET');
+      // The client derives `state: 'issued'` for a document that reads back.
+      expect(status.state).toBe('issued');
+      expect(status.regulatoryStatus).toBe('pending');
     });
   });
 
   describe('token handling', () => {
     it('attaches the bridge token header when provided', async () => {
-      fetchMock.mockResolvedValue(okResponse({ providerCustomerId: 'KH-1' }));
+      fetchMock.mockResolvedValue(
+        okResponse({ id: 101169, numer: '73', nazwaSkrocona: 'Test', nip: '1234567890' }),
+      );
       const client = new SubiektBridgeHttpClient(BASE, { token: 'tok-123' });
-      await client.upsertCustomer({ buyer: sampleIssueInvoiceRequest().buyer });
+      await client.upsertCustomer(sampleUpsertCustomerRequest());
       const firstCall = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
       const headers = firstCall[1].headers;
       expect(headers.authorization).toBe('Bearer tok-123');

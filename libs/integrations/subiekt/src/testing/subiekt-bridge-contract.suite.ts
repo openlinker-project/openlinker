@@ -19,36 +19,66 @@ import { BridgeRegulatoryStatusValues } from '../bridge/subiekt-bridge.types';
 import type {
   BridgeBuyer,
   BridgeIssueInvoiceRequest,
+  BridgeUpsertCustomerRequest,
 } from '../bridge/subiekt-bridge.types';
 
-/** A representative bridge buyer for contract / adapter tests. */
+/**
+ * A representative bridge buyer for contract / adapter tests — shaped EXACTLY
+ * like the real bridge inline `BuyerDto` (Polish address fields, `nip`,
+ * `isCompany`).
+ */
 export function sampleBridgeBuyer(overrides: Partial<BridgeBuyer> = {}): BridgeBuyer {
   return {
     name: 'Przykład Sp. z o.o.',
     nip: '1234567890',
     isCompany: true,
     address: {
-      line1: 'ul. Przykładowa 1',
-      line2: null,
-      city: 'Warszawa',
-      postalCode: '00-001',
+      ulica: 'Przykładowa 1',
+      nrLokalu: null,
+      kodPocztowy: '00-001',
+      miejscowosc: 'Warszawa',
       countryCode: 'PL',
     },
     ...overrides,
   };
 }
 
-/** A representative issue-invoice request for contract / adapter tests. */
+/**
+ * A representative TOP-LEVEL upsert-customer request — shaped EXACTLY like the
+ * real bridge `CreateFirmaRequestDto` (nazwaSkrocona/nip/typ/address).
+ */
+export function sampleUpsertCustomerRequest(
+  overrides: Partial<BridgeUpsertCustomerRequest> = {},
+): BridgeUpsertCustomerRequest {
+  return {
+    nazwaSkrocona: 'Przykład Sp. z o.o.',
+    nip: '1234567890',
+    typ: 'firma',
+    address: {
+      ulica: 'Przykładowa 1',
+      kodPocztowy: '00-001',
+      miejscowosc: 'Warszawa',
+      countryCode: 'PL',
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * A representative issue-invoice request for contract / adapter tests — shaped
+ * EXACTLY like the real bridge `CreateInvoiceRequestDto` (documentType 'FV'/'PA',
+ * inline `buyer`, Polish line fields).
+ */
 export function sampleIssueInvoiceRequest(
   overrides: Partial<BridgeIssueInvoiceRequest> = {},
 ): BridgeIssueInvoiceRequest {
   return {
+    documentType: 'FV',
+    currency: 'PLN',
     orderId: 'ol_order_sample',
     idempotencyKey: 'idem-sample',
-    documentType: 'invoice',
-    currency: 'PLN',
     buyer: sampleBridgeBuyer(),
-    lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+    lines: [{ ilosc: 1, cenaBrutto: 123.0, stawkaVAT: '23', name: 'Widget' }],
     ...overrides,
   };
 }
@@ -68,20 +98,22 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
     it('should issue a document with a provider id, number and a known regulatory status', async () => {
       const res = await client.issueInvoice(sampleIssueInvoiceRequest());
       expect(res.providerInvoiceId).toBeTruthy();
+      expect(typeof res.providerInvoiceId).toBe('number');
       expect(res.providerInvoiceNumber).toBeTruthy();
       expect(res.state).toBe('issued');
       expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
     });
 
-    it('should upsert a customer and return a provider customer id', async () => {
-      const res = await client.upsertCustomer({ buyer: sampleBridgeBuyer() });
-      expect(res.providerCustomerId).toBeTruthy();
+    it('should upsert a customer and return the customer id', async () => {
+      const res = await client.upsertCustomer(sampleUpsertCustomerRequest());
+      expect(res.id).toBeTruthy();
+      expect(typeof res.id).toBe('number');
     });
 
     it('should read back the state of a just-issued document', async () => {
       const issued = await client.issueInvoice(sampleIssueInvoiceRequest());
       const status = await client.getInvoiceStatus({
-        providerInvoiceId: issued.providerInvoiceId,
+        providerInvoiceId: String(issued.providerInvoiceId),
       });
       // `regulatoryStatus` may legitimately advance on a real bridge (KSeF is
       // async), so assert membership rather than equality — but the document is

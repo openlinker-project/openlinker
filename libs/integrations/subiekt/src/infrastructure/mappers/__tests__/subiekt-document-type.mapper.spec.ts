@@ -61,12 +61,12 @@ describe('deriveNeutralDocumentType', () => {
 });
 
 describe('toBridgeDocumentType', () => {
-  it("maps 'invoice' -> 'faktura'", () => {
-    expect(toBridgeDocumentType('invoice')).toBe('faktura');
+  it("maps 'invoice' -> 'FV'", () => {
+    expect(toBridgeDocumentType('invoice')).toBe('FV');
   });
 
-  it("maps 'receipt' -> 'paragon'", () => {
-    expect(toBridgeDocumentType('receipt')).toBe('paragon');
+  it("maps 'receipt' -> 'PA'", () => {
+    expect(toBridgeDocumentType('receipt')).toBe('PA');
   });
 
   it('throws SubiektUnsupportedDocumentTypeError for an unsupported neutral type', () => {

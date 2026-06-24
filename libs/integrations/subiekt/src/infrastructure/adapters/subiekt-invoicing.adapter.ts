@@ -49,6 +49,7 @@ import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/sub
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { deriveNeutralDocumentType, toBridgeDocumentType } from '../mappers/subiekt-document-type.mapper';
 import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
+import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mapper';
 import { toBridgeLines } from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
 
@@ -89,12 +90,14 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
 
     try {
       const response = await this.bridge.issueInvoice({
+        documentType: bridgeDocumentType,
+        currency: cmd.currency,
         orderId: cmd.orderId,
         // Place idempotencyKey on the request BEFORE the call so fiscal dedup
         // holds on every error branch.
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-        documentType: bridgeDocumentType,
-        currency: cmd.currency,
+        // Self-sufficient mode: the buyer is carried INLINE (no kontrahentId);
+        // the bridge auto-upserts it and bills it in one unit of work.
         buyer: toBridgeBuyer(cmd.buyer),
         lines: toBridgeLines(cmd.lines),
       });
@@ -116,7 +119,9 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
         // NEUTRAL document type — never the bridge-native faktura/paragon.
         neutralDocumentType,
         'issued',
-        response.providerInvoiceId,
+        // The bridge returns a numeric Subiekt document id; the neutral
+        // InvoiceRecord carries provider ids as strings.
+        String(response.providerInvoiceId),
         response.providerInvoiceNumber,
         toNeutralRegulatoryStatus(response.regulatoryStatus),
         // clearanceReference — populated by a future RegulatoryTransmitter.
@@ -201,10 +206,10 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
   /** Create-or-update the buyer as a Subiekt customer (kontrahent). */
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     try {
-      const response = await this.bridge.upsertCustomer({
-        buyer: toBridgeBuyer(cmd.buyer),
-      });
-      return { providerCustomerId: response.providerCustomerId };
+      // The bridge's upsert body is TOP-LEVEL (nazwaSkrocona/nip/typ/...), NOT
+      // wrapped in a `buyer`. It echoes back the numeric customer `id`.
+      const response = await this.bridge.upsertCustomer(toBridgeUpsertCustomerRequest(cmd.buyer));
+      return { providerCustomerId: String(response.id) };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }

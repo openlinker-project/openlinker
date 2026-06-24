@@ -41,6 +41,8 @@ import type {
   BridgeInvoiceStatusResponse,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeRegulatoryStatus,
+  BridgeResponseEnvelope,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from '../../bridge/subiekt-bridge.types';
@@ -92,6 +94,16 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
     `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
   health: '/health',
 } as const;
+
+/**
+ * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
+ * superset of what we project): the KSeF `regulatoryStatus` plus a Polish
+ * document `status`. We only read `regulatoryStatus`; the rest is ignored.
+ */
+interface BridgeInvoiceStatusData {
+  regulatoryStatus: BridgeRegulatoryStatus;
+  status?: string;
+}
 
 /** Options for the HTTP client. */
 export interface SubiektBridgeHttpClientOptions {
@@ -155,9 +167,16 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   }
 
   async getInvoiceStatus(req: BridgeInvoiceStatusRequest): Promise<BridgeInvoiceStatusResponse> {
-    return this.getJson<BridgeInvoiceStatusResponse>(
+    // The status endpoint's `data` carries `regulatoryStatus` and a Polish
+    // document `status` (e.g. "zatwierdzony") but NO `state` field. A document
+    // that reads back at all has been issued, so derive `state: 'issued'`.
+    const data = await this.getJson<BridgeInvoiceStatusData>(
       SUBIEKT_BRIDGE_ENDPOINTS.invoiceStatus(req.providerInvoiceId),
     );
+    return {
+      state: 'issued',
+      regulatoryStatus: data.regulatoryStatus ?? 'none',
+    };
   }
 
   /**
@@ -274,13 +293,40 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       throw new SubiektRejectedError(reason);
     }
 
-    return (await response.json()) as T;
+    // 2xx — the bridge wraps EVERY response in `{ success, data, error }`. Unwrap
+    // it: a `success: false` envelope (e.g. a 200/422 validation result) is a
+    // terminal business rejection carrying `error.reason`; otherwise return `data`.
+    const envelope = (await response.json()) as BridgeResponseEnvelope<T>;
+    if (!envelope.success || envelope.data === null) {
+      const reason =
+        envelope.error?.reason !== undefined && envelope.error.reason.length > 0
+          ? envelope.error.reason
+          : `HTTP ${response.status}`;
+      throw new SubiektRejectedError(reason);
+    }
+    return envelope.data;
   }
 
+  /**
+   * Read a human reason from a non-2xx response. The bridge returns its error
+   * inside the envelope's `error.reason`; fall back to a bare top-level `reason`
+   * and finally to the status code.
+   */
   private async readRejectionReason(response: Response): Promise<string> {
     try {
       const parsed: unknown = await response.json();
       if (typeof parsed === 'object' && parsed !== null) {
+        // Enveloped error: { success, data, error: { code, reason } }.
+        const envelopeError = (parsed as { error?: { reason?: unknown } }).error;
+        if (
+          envelopeError !== undefined &&
+          envelopeError !== null &&
+          typeof envelopeError.reason === 'string' &&
+          envelopeError.reason.length > 0
+        ) {
+          return envelopeError.reason;
+        }
+        // Legacy / bare `{ reason }` fallback.
         const reason = (parsed as { reason?: unknown }).reason;
         if (typeof reason === 'string' && reason.length > 0) {
           return reason;
