@@ -10,9 +10,9 @@ import { KsefSessionCryptoException } from '../../../domain/exceptions/ksef-sess
 function cert(overrides: Partial<PublicKeyCertificate> = {}): PublicKeyCertificate {
   return {
     certificatePem: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
-    usage: 'SymmetricKeyEncryption',
+    usage: ['SymmetricKeyEncryption'],
     validFrom: new Date('2026-01-01T00:00:00Z'),
-    validUntil: new Date('2027-01-01T00:00:00Z'),
+    validTo: new Date('2027-01-01T00:00:00Z'),
     certificateHash: 'abc123',
     ...overrides,
   };
@@ -39,7 +39,7 @@ describe('validateMfPublicKeyCertificate', () => {
   });
 
   it('should reject an expired cert', () => {
-    const expired = cert({ validUntil: new Date('2026-05-01T00:00:00Z') });
+    const expired = cert({ validTo: new Date('2026-05-01T00:00:00Z') });
     expect(() => validateMfPublicKeyCertificate(expired, 'SymmetricKeyEncryption', now)).toThrow(
       KsefSessionCryptoException,
     );
