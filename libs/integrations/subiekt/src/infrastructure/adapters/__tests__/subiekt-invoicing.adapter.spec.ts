@@ -122,9 +122,10 @@ describe('SubiektInvoicingAdapter', () => {
     it('translates seedFailure(subiekt-rejected) -> SubiektInvoiceRejectedError (terminal)', async () => {
       const { adapter, bridge } = makeAdapter();
       bridge.seedFailure('subiekt-rejected', { reason: 'invalid NIP' });
-      await expect(adapter.issueInvoice(command())).rejects.toBeInstanceOf(
-        SubiektInvoiceRejectedError,
-      );
+      const caught = await adapter.issueInvoice(command()).catch((e: unknown) => e);
+      expect(caught).toBeInstanceOf(SubiektInvoiceRejectedError);
+      // #1200 neutral discriminator: a terminal rejection => no document => safe.
+      expect(caught).toMatchObject({ failureMode: 'rejected' });
     });
 
     it("translates seed({state:'failed'}) -> SubiektInvoiceRejectedError (terminal)", async () => {
@@ -149,6 +150,8 @@ describe('SubiektInvoicingAdapter', () => {
       await expect(adapter.issueInvoice(command())).rejects.toMatchObject({
         retryability: 'indeterminate',
         retryable: false,
+        // #1200: an indeterminate transport failure => document may exist => in-doubt.
+        failureMode: 'in-doubt',
       });
     });
 

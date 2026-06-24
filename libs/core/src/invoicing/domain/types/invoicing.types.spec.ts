@@ -9,6 +9,7 @@
 import {
   BuyerTypeValues,
   DocumentTypeValues,
+  InvoiceFailureModeValues,
   InvoiceStatusValues,
   RegulatoryStatusValues,
 } from './invoicing.types';
@@ -26,7 +27,12 @@ describe('invoicing.types', () => {
   });
 
   it('exposes the issuance lifecycle states', () => {
-    expect([...InvoiceStatusValues]).toEqual(['pending', 'issued', 'failed']);
+    // `issuing` (#1200) is the in-flight CAS-claim state between pending and terminal.
+    expect([...InvoiceStatusValues]).toEqual(['pending', 'issuing', 'issued', 'failed']);
+  });
+
+  it('exposes the neutral failure-mode discriminator (#1200)', () => {
+    expect([...InvoiceFailureModeValues]).toEqual(['rejected', 'in-doubt']);
   });
 
   it('exposes the neutral CTC clearance lifecycle', () => {

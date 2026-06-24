@@ -63,6 +63,8 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.errorMessage === undefined ? null : overrides.errorMessage,
     overrides.createdAt ?? new Date('2026-06-22T10:00:00.000Z'),
     overrides.updatedAt ?? new Date('2026-06-22T10:00:00.000Z'),
+    overrides.failureMode === undefined ? null : overrides.failureMode,
+    overrides.leaseExpiresAt === undefined ? null : overrides.leaseExpiresAt,
   );
 }
 
@@ -99,8 +101,14 @@ describe('InvoiceService', () => {
       findByOrderId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
+      claimForIssue: jest.fn(),
       findMany: jest.fn(),
     };
+    // Default: every claim succeeds (returns a record with the live lease). Tests
+    // that exercise a contended/lost claim override this per-case.
+    repo.claimForIssue.mockImplementation((id: string) =>
+      Promise.resolve(makeRecord({ id, status: 'issuing' })),
+    );
     adapter = {
       issueInvoice: jest.fn(),
       getInvoice: jest.fn(),
@@ -152,7 +160,10 @@ describe('InvoiceService', () => {
         clearanceReference: 'KSEF-XYZ',
         pdfUrl: 'https://prov/inv.pdf',
         issuedAt: adapterResult.issuedAt,
+        // A successful issue clears the failure mode + releases the lease (#1200).
         errorMessage: null,
+        failureMode: null,
+        leaseExpiresAt: null,
       });
       expect(result).toBe(finalRecord);
     });
@@ -229,10 +240,30 @@ describe('InvoiceService', () => {
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
 
       await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      // A plain Error carries no neutral failureMode, so it collapses to the
+      // fiscal-safe 'in-doubt' (#1200) and the lease is released.
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
         status: 'failed',
         errorMessage: 'provider rejected: invalid tax rate',
+        failureMode: 'in-doubt',
+        leaseExpiresAt: null,
       });
+    });
+
+    it("(d2) failureMode discriminator: a 'rejected'-marked throwable persists failureMode 'rejected'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      const rejection = Object.assign(new Error('provider rejected: invalid tax rate'), {
+        failureMode: 'rejected' as const,
+      });
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ status: 'failed', failureMode: 'rejected' }),
+      );
     });
 
     it('(e) unreachable transport: adapter throws -> failed + rethrow (per-design propagation)', async () => {
@@ -259,8 +290,13 @@ describe('InvoiceService', () => {
       expect(adapter.issueInvoice).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'credit-note' }));
     });
 
-    it('(h) retry-after-failure: failed hit -> NOT returned, NO second create, re-call adapter, updateOutcome(hit.id, issued + errorMessage:null)', async () => {
-      const failedHit = makeRecord({ id: 'failed-rec', status: 'failed', errorMessage: 'stale boom' });
+    it("(h) retry-after-terminal-rejection: a 'rejected' failed hit IS re-attempted (claim, re-call adapter, updateOutcome issued + errorMessage:null)", async () => {
+      const failedHit = makeRecord({
+        id: 'failed-rec',
+        status: 'failed',
+        failureMode: 'rejected',
+        errorMessage: 'stale boom',
+      });
       repo.findByIdempotencyKey.mockResolvedValue(failedHit);
       adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'failed-rec', status: 'issued' }));
@@ -268,6 +304,7 @@ describe('InvoiceService', () => {
       await service.issueInvoice(makeCmd());
 
       expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.claimForIssue).toHaveBeenCalledWith('failed-rec', expect.any(Date));
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         'failed-rec',
@@ -275,7 +312,7 @@ describe('InvoiceService', () => {
       );
     });
 
-    it('(h2) pending hit is returned to the re-attempt path (re-call adapter on the existing row)', async () => {
+    it('(h2) pending hit (no live lease) is re-attempted via an atomic claim, then issued on the existing row', async () => {
       const pendingHit = makeRecord({ id: 'pending-rec', status: 'pending' });
       repo.findByIdempotencyKey.mockResolvedValue(pendingHit);
       adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
@@ -284,6 +321,7 @@ describe('InvoiceService', () => {
       await service.issueInvoice(makeCmd());
 
       expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.claimForIssue).toHaveBeenCalledWith('pending-rec', expect.any(Date));
       expect(repo.updateOutcome).toHaveBeenCalledWith('pending-rec', expect.objectContaining({ status: 'issued' }));
     });
 
@@ -299,14 +337,103 @@ describe('InvoiceService', () => {
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
 
-    it('(j) failed-row retry always re-attempts (R2/R3 regression anchor)', async () => {
-      const failedHit = makeRecord({ id: 'f', status: 'failed', errorMessage: 'prior terminal rejection' });
-      repo.findByIdempotencyKey.mockResolvedValue(failedHit);
+    it('(j) R3: an in-doubt failed hit is NOT re-attempted — surfaced for manual reconciliation, NO provider call', async () => {
+      const inDoubtHit = makeRecord({
+        id: 'f',
+        status: 'failed',
+        failureMode: 'in-doubt',
+        errorMessage: 'transport timeout — document may exist',
+      });
+      repo.findByIdempotencyKey.mockResolvedValue(inDoubtHit);
+
+      const result = await service.issueInvoice(makeCmd());
+
+      // Fiscal-safety invariant: a document MAY already exist, so the SVC must NOT
+      // re-cross the boundary. It returns the stuck row untouched.
+      expect(result).toBe(inDoubtHit);
+      expect(repo.claimForIssue).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+    });
+
+    it('(j2) R3: a failed hit with NO recorded failureMode is treated as in-doubt — NOT re-attempted', async () => {
+      const unknownModeHit = makeRecord({ id: 'f', status: 'failed', failureMode: null });
+      repo.findByIdempotencyKey.mockResolvedValue(unknownModeHit);
+
+      const result = await service.issueInvoice(makeCmd());
+
+      expect(result).toBe(unknownModeHit);
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('(l) R2/R3 pending: a row under a LIVE issuing lease is NOT re-attempted (no claim, no provider call)', async () => {
+      const liveLeaseHit = makeRecord({
+        id: 'in-flight',
+        status: 'issuing',
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      });
+      repo.findByIdempotencyKey.mockResolvedValue(liveLeaseHit);
+
+      const result = await service.issueInvoice(makeCmd());
+
+      // An original attempt is still in flight; never race a second provider call.
+      expect(result).toBe(liveLeaseHit);
+      expect(repo.claimForIssue).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('(l2) R2: an EXPIRED issuing lease is re-claimable — claim then re-attempt', async () => {
+      const expiredLeaseHit = makeRecord({
+        id: 'stale',
+        status: 'issuing',
+        leaseExpiresAt: new Date(Date.now() - 60_000),
+      });
+      repo.findByIdempotencyKey.mockResolvedValue(expiredLeaseHit);
       adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
-      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'f', status: 'issued' }));
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'stale', status: 'issued' }));
 
       await service.issueInvoice(makeCmd());
 
+      expect(repo.claimForIssue).toHaveBeenCalledWith('stale', expect.any(Date));
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('(m) R2 single-flight: a LOST claim (claimForIssue -> null) backs off WITHOUT calling the provider', async () => {
+      const reattemptable = makeRecord({ id: 'contended', status: 'pending' });
+      repo.findByIdempotencyKey.mockResolvedValue(reattemptable);
+      // The CAS lost to a concurrent same-key retry: null = slot held / terminal.
+      repo.claimForIssue.mockResolvedValue(null);
+      // findById re-reads the current row to return to the caller.
+      const currentRow = makeRecord({ id: 'contended', status: 'issuing' });
+      repo.findById.mockResolvedValue(currentRow);
+
+      const result = await service.issueInvoice(makeCmd());
+
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      expect(result).toBe(currentRow);
+    });
+
+    it('(m2) R2 concurrency: of two same-key attempts on one re-attemptable row, EXACTLY ONE crosses the provider boundary', async () => {
+      const reattemptable = makeRecord({ id: 'race', status: 'pending' });
+      repo.findByIdempotencyKey.mockResolvedValue(reattemptable);
+
+      // Simulate the atomic CAS: only the FIRST claimer wins; the rest get null.
+      let claimed = false;
+      repo.claimForIssue.mockImplementation((id: string) => {
+        if (claimed) {
+          return Promise.resolve(null);
+        }
+        claimed = true;
+        return Promise.resolve(makeRecord({ id, status: 'issuing' }));
+      });
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'race', status: 'issued' }));
+      repo.findById.mockResolvedValue(makeRecord({ id: 'race', status: 'issuing' }));
+
+      await Promise.all([service.issueInvoice(makeCmd()), service.issueInvoice(makeCmd())]);
+
+      // The provider boundary is crossed exactly once despite two concurrent retries.
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
 

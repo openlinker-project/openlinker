@@ -19,7 +19,11 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
+import {
+  InvoiceFailureMode,
+  InvoiceStatus,
+  RegulatoryStatus,
+} from '../../../domain/types/invoicing.types';
 
 @Entity('invoice_records')
 @Index('IDX_invoice_records_order_connection', ['orderId', 'connectionId'])
@@ -78,6 +82,21 @@ export class InvoiceRecordOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
+
+  /**
+   * Neutral failure discriminator (#1200) — `null` unless `status = 'failed'`.
+   * `rejected` (terminal, no document) is re-attemptable; `in-doubt` is not.
+   */
+  @Column({ type: 'text', nullable: true })
+  failureMode!: InvoiceFailureMode | null;
+
+  /**
+   * Lease expiry for the `issuing` CAS claim (#1200) — `null` unless this row
+   * currently holds the in-flight slot. Backs the atomic `claimForIssue` guard
+   * that lets exactly one concurrent same-key retry cross the provider boundary.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  leaseExpiresAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

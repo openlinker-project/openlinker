@@ -87,6 +87,52 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   /**
+   * Atomic compare-and-swap claim of the in-flight issuance slot (#1200). A
+   * SINGLE guarded UPDATE flips the row to `issuing` with a fresh lease ONLY when
+   * no live attempt holds it — i.e. the row is `pending`/`failed`, OR it is
+   * `issuing` with an EXPIRED lease. Postgres serialises the row-level write, so
+   * of two concurrent same-key retries exactly one matches the WHERE and updates;
+   * the loser's `affected` is 0 and it must back off WITHOUT a provider call.
+   *
+   * An `issued` row never matches (no `issued` in the allowed-status set), so a
+   * terminal document is never re-claimed. Returns the claimed row on a win,
+   * `null` on a loss; throws `InvoiceRecordNotFoundException` when the id is
+   * absent (distinguished from a contended loss by a follow-up existence read).
+   */
+  async claimForIssue(id: string, leaseExpiresAt: Date): Promise<InvoiceRecord | null> {
+    const now = new Date();
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(InvoiceRecordOrmEntity)
+      .set({ status: 'issuing', leaseExpiresAt })
+      .where('id = :id', { id })
+      .andWhere(
+        // Claimable iff NOT currently held by a live attempt and NOT terminal:
+        //   - pending / failed (no live lease by definition), OR
+        //   - issuing with an expired lease (a crashed prior attempt).
+        `(status IN ('pending', 'failed') OR (status = 'issuing' AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)))`,
+        { now },
+      )
+      .execute();
+
+    if (result.affected && result.affected > 0) {
+      // Claim won. Re-read through the entity mapper so the caller gets a fully
+      // hydrated domain record (the UPDATE's raw row is not entity-shaped).
+      const claimed = await this.repository.findOne({ where: { id } });
+      return claimed ? this.toDomain(claimed) : null;
+    }
+
+    // No row updated: either the id does not exist, or the slot is held by a live
+    // attempt / already terminal. Disambiguate so the contract can throw
+    // not-found vs. signal a contended-loss (`null`).
+    const exists = await this.repository.findOne({ where: { id }, select: { id: true } });
+    if (!exists) {
+      throw new InvoiceRecordNotFoundException(id);
+    }
+    return null;
+  }
+
+  /**
    * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
    * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
    * bounds are inclusive and apply to `inv.issuedAt`. Ordered newest-first by
@@ -137,6 +183,9 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.pdfUrl = input.pdfUrl ?? null;
     entity.issuedAt = input.issuedAt ?? null;
     entity.errorMessage = input.errorMessage ?? null;
+    entity.failureMode = input.failureMode ?? null;
+    // A freshly-created `pending` row holds no in-flight lease (#1200).
+    entity.leaseExpiresAt = null;
     return entity;
   }
 
@@ -158,6 +207,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.errorMessage,
       entity.createdAt,
       entity.updatedAt,
+      entity.failureMode,
+      entity.leaseExpiresAt,
     );
   }
 }
