@@ -7,5 +7,6 @@
  */
 export type { Product, ProductVariant, ProductVariantSummary } from './api/products.types';
 export { useProductQuery } from './hooks/use-product-query';
+export { useVariantQuery } from './hooks/use-variant-query';
 export { useProductsQuery } from './hooks/use-products-query';
 export { useProductsBatchQuery } from './hooks/use-products-batch-query';

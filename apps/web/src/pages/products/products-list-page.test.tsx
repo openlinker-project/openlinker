@@ -15,6 +15,16 @@ vi.mock('react-router-dom', async (): Promise<typeof ReactRouterDom> => {
   };
 });
 
+// A single active OfferManager (Allegro) connection so the capability-gated
+// "Create offers" CTA renders with the marketplace-named label (#1096).
+const allegroConnection = {
+  id: 'conn_allegro',
+  name: 'My Allegro',
+  status: 'active',
+  platformType: 'allegro',
+  supportedCapabilities: ['OfferManager'],
+} as const;
+
 const sampleProducts: PaginatedProducts = {
   items: [
     {
@@ -204,6 +214,7 @@ describe('ProductsListPage', () => {
   it('should not show the bulk action bar when no rows are selected', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
@@ -217,6 +228,7 @@ describe('ProductsListPage', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
@@ -234,6 +246,7 @@ describe('ProductsListPage', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
@@ -260,6 +273,7 @@ describe('ProductsListPage', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
@@ -279,6 +293,7 @@ describe('ProductsListPage', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
@@ -297,5 +312,54 @@ describe('ProductsListPage', () => {
     expect(navArg.startsWith('/listings/bulk-create/wizard?productIds=')).toBe(true);
     expect(decodeURIComponent(navArg)).toContain('ol_product_abc123');
     expect(decodeURIComponent(navArg)).toContain('ol_product_def456');
+    // Exactly one OfferManager connection ⇒ it is preselected in the URL (#1096).
+    expect(decodeURIComponent(navArg)).toContain('connectionId=conn_allegro');
+  });
+
+  // ── Capability-gated entry point (#1096) ───────────────────────────
+
+  it('hides the create-offers action when no OfferManager connection exists', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+
+    // The bar still shows (Clear) but the create CTA is absent.
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+  });
+
+  it('opens the marketplace picker with 2+ OfferManager connections', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const erli = {
+      id: 'conn_erli',
+      name: 'My Erli',
+      status: 'active',
+      platformType: 'erli',
+      supportedCapabilities: ['OfferManager'],
+    };
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection, erli]) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+
+    // Generic label (no single marketplace name) with 2+ connections.
+    const cta = await screen.findByRole('button', { name: 'Create offers (1)' });
+    await user.click(cta);
+
+    // The picker modal appears; no navigation yet.
+    expect(await screen.findByText('Where should these list?')).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

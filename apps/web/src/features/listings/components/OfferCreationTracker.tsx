@@ -160,6 +160,19 @@ export function OfferCreationTracker({
         </p>
       ) : null}
 
+      {record.status === 'reused' ? (
+        <p className="offer-creation-tracker__body">
+          Offer already existed on the marketplace — reused the existing listing
+          {record.externalOfferId ? (
+            <>
+              {' '}· external id{' '}
+              <span className="mono-text">{record.externalOfferId}</span>
+            </>
+          ) : null}
+          .
+        </p>
+      ) : null}
+
       {record.status === 'draft' ? (
         <>
           <p className="offer-creation-tracker__body">

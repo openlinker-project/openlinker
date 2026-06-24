@@ -192,14 +192,24 @@ export class ErliOfferManagerAdapter
     const externalOfferId = this.resolveErliProductId(cmd);
     const body = this.buildCreateBody(cmd);
     try {
-      // POST is non-idempotent by default in the client; the deterministic
-      // seller-keyed id makes this an upsert, so opt into retry-safety (D3).
-      // `cmd.idempotencyKey` is intentionally not forwarded — the resource id
-      // (a POST to /products/{id} upserts) IS the dedup key, so a separate key
-      // would add nothing on this transport.
+      // `POST /products/{id}` is create-only and seller-keyed by the resource id
+      // (the OL variant id). It is NOT a silent upsert — a duplicate id 409s
+      // ("unique key duplication", verified against the Shop API). The id IS the
+      // dedup key, so `cmd.idempotencyKey` is intentionally not forwarded; opt
+      // into client retry-safety, and treat the 409 below as idempotent success.
       await this.httpClient.post(this.productPath(externalOfferId), body, { idempotent: true });
     } catch (error) {
       if (error instanceof ErliApiException) {
+        // 409 = the seller-keyed product already exists (a retry, a client
+        // transport-retry after a server-side success, or a re-submitted batch).
+        // The offer IS created, so this is an idempotent success, not a failure.
+        if (error.statusCode === 409) {
+          this.logger.debug(
+            `Erli offer already exists (409); treating as idempotent success ` +
+              `[connectionId=${this.connectionId}, externalOfferId=${externalOfferId}]`,
+          );
+          return { externalOfferId, status: 'draft', alreadyExisted: true };
+        }
         throw this.toCreateRejected(error);
       }
       // Auth / network / rate-limit propagate to the runner + classifiers.
@@ -493,52 +503,64 @@ export class ErliOfferManagerAdapter
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
-    // #985: reuse OL's already-resolved Allegro ids (source:"allegro").
+    // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
+    // shop's own categories (`source:"shop"`), else omit — Erli's API makes
+    // category optional, so an uncategorised offer is valid rather than a hard
+    // rejection (ADR-025 §3 relaxed; the offer can be categorised later in Erli).
     const externalCategories = buildExternalCategories(cmd);
     if (externalCategories.length > 0) {
       body.externalCategories = externalCategories;
-    } else {
-      // ADR-025 §3: OL builds no Erli-native taxonomy in v1 — a product without
-      // resolved Allegro taxonomy cannot list on Erli. Fail closed with a clear,
-      // terminal rejection (OfferCreationExecutionService derives business_failure
-      // from OfferCreateRejectedException) rather than silently listing it
-      // untaxonomised (spec #978 §6).
-      // statusCode 0 = preflight rejection (no API call made), per the
-      // OfferCreateRejectedException contract — matches the real-API path's
-      // `error.statusCode ?? 0`.
-      throw new OfferCreateRejectedException(this.adapterKey, 0, [
-        {
-          field: 'category',
-          code: 'NO_ALLEGRO_TAXONOMY',
-          message:
-            'No Allegro category resolved for this product; Erli v1 requires Allegro-ID taxonomy reuse (ADR-025 §3).',
-        },
-      ]);
     }
-    const { attributes: externalAttributes, droppedParamIds } = buildExternalAttributes(cmd);
+    // Parameter reuse (#985) — Allegro-id params, source:"allegro". Returns the
+    // attribute array plus the ids dropped in v1 (range-only/empty) for logging.
+    const { attributes: paramAttributes, droppedParamIds } = buildExternalAttributes(cmd);
     if (droppedParamIds.length > 0) {
       this.logger.debug(
         `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
       );
     }
+
+    // #986/#1065: explicit multi-variant grouping. A sibling's distinguishing
+    // axes become shop-source `externalAttributes` entries, and the group
+    // references them by **index** — Erli's verified wire shape. There is NO
+    // top-level `attributes` field (the API rejects one) and the group's own
+    // `attributes` (required, minItems 1) must be index integers, not name/value
+    // pairs. `groupId` is BODY-ONLY (it is the parent product id, never
+    // path-validated). A sibling with no distinguishing axes lists ungrouped.
+    const g = cmd.variantGroup;
+    const grouped = g !== undefined && g.groupId.length > 0 && g.attributes.length > 0;
+    const groupAttributes: ErliExternalAttribute[] = grouped
+      ? g.attributes.map((axis, j) => ({
+          source: 'shop' as const,
+          id: axis.name,
+          name: axis.name,
+          type: 'string' as const,
+          values: [axis.value],
+          index: paramAttributes.length + j,
+        }))
+      : [];
+
+    // #1096 F2: master-shop product features → shop-source `externalAttributes`.
+    // MERGE ORDER (critical): features are APPENDED after the variant-group axes,
+    // so the group's index refs (which point at the axes that come before) stay
+    // valid. Each feature's `index` = its absolute position in the final array.
+    const featureAttributes: ErliExternalAttribute[] = buildShopAttributes(
+      cmd,
+      paramAttributes.length + groupAttributes.length
+    );
+
+    const externalAttributes = [...paramAttributes, ...groupAttributes, ...featureAttributes];
     if (externalAttributes.length > 0) {
       body.externalAttributes = externalAttributes;
     }
-    // #986/#1065: explicit multi-variant grouping. Present only when core
-    // populated the neutral `cmd.variantGroup` (OfferBuilderService); single/
-    // simple products omit it and list ungrouped. `groupId` is BODY-ONLY —
-    // never path-validated (it is the parent product id, not a variant id).
-    const g = cmd.variantGroup;
-    if (g && g.groupId.length > 0) {
-      body.externalVariantGroup = { id: g.groupId };
-      if (g.attributes.length > 0) {
-        // Neutral OfferVariantAttribute and wire ErliVariantAttribute are
-        // structurally identical (`{ name, value }`). Copy into a fresh array so
-        // the outbound body never aliases the core command's array — a future
-        // body-mutation step can't reach back and mutate cmd.variantGroup
-        // (PR1068-HEX-01).
-        body.attributes = [...g.attributes];
-      }
+    if (grouped) {
+      body.externalVariantGroup = {
+        id: g.groupId,
+        source: 'integration',
+        // Group references ONLY the variant-group axes (NOT the appended
+        // features) — their indexes are unchanged by appending features.
+        attributes: groupAttributes.map((a) => a.index as number),
+      };
     }
     return body;
   }
@@ -720,13 +742,25 @@ function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusRea
 }
 
 /**
- * Map the OL-resolved Allegro category id (`overrides.categoryId`) into the
- * single-element `source:"allegro"` category list. Empty when absent (#985).
+ * Build Erli's `externalCategories` from the command's taxonomy, preferring the
+ * OL-resolved Allegro id (#985) and falling back to the master shop's own
+ * categories (#1096 / ADR-025 §3 — Erli accepts `source:"shop"`, so a product
+ * with no Allegro taxonomy still lists, categorised by the shop's tree). Empty
+ * when neither is present, in which case the offer lists uncategorised.
  */
 function buildExternalCategories(cmd: CreateOfferCommand): ErliExternalCategory[] {
-  const categoryId = cmd.overrides?.categoryId;
-  if (typeof categoryId === 'string' && categoryId.length > 0) {
-    return [{ source: 'allegro', id: categoryId }];
+  const allegroId = cmd.overrides?.categoryId;
+  if (typeof allegroId === 'string' && allegroId.length > 0) {
+    return [{ source: 'allegro', breadcrumb: [{ id: allegroId }] }];
+  }
+  const shop = (cmd.sourceCategories ?? []).filter((c) => c.id.length > 0);
+  if (shop.length > 0) {
+    return [
+      {
+        source: 'shop',
+        breadcrumb: shop.map((c) => (c.name ? { id: c.id, name: c.name } : { id: c.id })),
+      },
+    ];
   }
   return [];
 }
@@ -765,6 +799,45 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
+}
+
+/**
+ * Build shop-source `externalAttributes` from the command's master-derived
+ * product features (#1096 F2 / ADR-025 §3). Each feature becomes a
+ * `{ source:'shop', id, name, type:'string', values:[value], index }` entry.
+ * `id` falls back to the feature `name` when the core slug is absent (an entry
+ * with neither name nor value is skipped). `index` is the entry's ABSOLUTE
+ * position in the final `externalAttributes` array — the caller passes
+ * `startIndex` (the count of all entries that precede the feature block) so the
+ * variant-group index refs that point at the earlier blocks stay valid. The
+ * value is coerced to a single-element `string[]` per the verified wire shape.
+ */
+function buildShopAttributes(
+  cmd: CreateOfferCommand,
+  startIndex: number
+): ErliExternalAttribute[] {
+  const attributes: ErliExternalAttribute[] = [];
+  let i = 0;
+  for (const feature of cmd.sourceAttributes ?? []) {
+    if (feature.name.length === 0 || feature.value.length === 0) {
+      continue;
+    }
+    const id = feature.id && feature.id.length > 0 ? feature.id : feature.name;
+    const entry: ErliExternalAttribute = {
+      source: 'shop',
+      id,
+      name: feature.name,
+      type: 'string',
+      values: [feature.value],
+      index: startIndex + i,
+    };
+    if (feature.unit !== undefined && feature.unit.length > 0) {
+      entry.unit = feature.unit;
+    }
+    attributes.push(entry);
+    i += 1;
+  }
+  return attributes;
 }
 
 function flattenDescription(input: string | OfferDescriptionUpdate): string {

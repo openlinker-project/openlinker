@@ -108,7 +108,7 @@ describe('mapErliOrderToIncomingOrder', () => {
 
     expect(result.items[0].price).toBe(50);
     expect(result.items[0].quantity).toBe(2);
-    expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: 'erli-prod-aaa' });
+    expect(result.items[0].productRef).toEqual({ type: 'offer', externalId: 'erli-prod-aaa' });
     expect(result.items[0].id).toBe('1');
   });
 
