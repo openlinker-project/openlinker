@@ -237,6 +237,11 @@ export function createMockApiClient(
         .mockRejectedValue(
           new ApiError('No invoice for order', 404, { message: 'No invoice for order' }),
         ),
+      // #758 — empty paginated list default so the /invoices list page (and any
+      // other `invoicing.list` caller) does not hit `undefined` once `list` is
+      // added to the InvoicingApi interface. Placed before the spread so an
+      // explicit `overrides.invoicing.list` still wins.
+      list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],

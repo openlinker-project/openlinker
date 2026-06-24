@@ -81,3 +81,33 @@ export interface CapabilityErrorBody {
   error?: string;
   message?: string;
 }
+
+/**
+ * `GET /invoices` query filters (#758 list page). Mirrors the #1119 list
+ * endpoint query params and the shape of `WebhookDeliveryFilters`. No tax-id
+ * filter — deliberately deferred in #1119 (the projection has no tax-id
+ * column). `issuedFrom` / `issuedTo` are ISO 8601 instant strings (the page
+ * widens the date-only URL params to UTC bounds before querying).
+ */
+export interface InvoiceFilters {
+  status?: InvoiceStatus;
+  connectionId?: string;
+  regulatoryStatus?: RegulatoryStatus;
+  issuedFrom?: string;
+  issuedTo?: string;
+}
+
+/** `GET /invoices` pagination params (#758). `limit` 1–100 (default 20 on the
+ *  backend), `offset` ≥ 0. */
+export interface InvoicePagination {
+  limit?: number;
+  offset?: number;
+}
+
+/** `GET /invoices` response envelope (#758). Mirrors `PaginatedWebhookDeliveries`. */
+export interface PaginatedInvoices {
+  items: InvoiceRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}

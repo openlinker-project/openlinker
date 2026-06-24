@@ -12,6 +12,7 @@
 export { OrderInvoicePanel } from './components/order-invoice-panel';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
+export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export type {
   InvoiceRecord,
@@ -19,4 +20,7 @@ export type {
   RegulatoryStatus,
   DocumentType,
   IssueInvoiceInput,
+  InvoiceFilters,
+  InvoicePagination,
+  PaginatedInvoices,
 } from './api/invoicing.types';
