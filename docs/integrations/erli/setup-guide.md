@@ -210,6 +210,13 @@ cache lag), a freshly created offer's live marketplace status becomes authoritat
 only after offer-status reconciliation runs (see the
 [runbook](./runbook.md#scheduler-env-flags-worker)).
 
+**On the Erli side**, the published offers appear in your seller panel under
+**Moje produkty**. Each OpenLinker-created offer carries its OpenLinker **variant
+id** as the external id (**ID zewn.** = `ol_variant_…`), alongside the Erli-assigned
+**ID ERLI**, the stock (Szt.) OpenLinker pushed, and the price:
+
+![OL-created offers in the Erli seller panel (Moje produkty)](../../assets/erli/21-erli-panel-offer-listing.png)
+
 ---
 
 ## 7. Stock sync
@@ -256,10 +263,16 @@ the PrestaShop destination, with the line items, customer, and totals:
 
 ![Ingested Erli order detail in OpenLinker](../../assets/erli/24-ol-order-detail.png)
 
-The same order is visible on the **Erli side** in the seller panel
-("Zarządzaj sprzedażą"):
+The same order is visible on the **Erli side** in the seller panel. The dashboard
+("Zarządzaj sprzedażą") shows it in the **Zamówienia do zrealizowania** (orders to
+fulfil) count:
 
 ![Erli seller-panel dashboard for the connected shop](../../assets/erli/25-erli-panel-dashboard.png)
+
+…and it appears in the Erli **Zamówienia** (orders) list — here the same order
+(`260618x10002`) under **Do realizacji**:
+
+![The ingested order in the Erli seller-panel orders list](../../assets/erli/26-erli-panel-orders.png)
 
 > **Customer identity.** Erli orders carry a buyer **email** (no buyer id).
 > OpenLinker resolves the internal customer from that email so the order can be
