@@ -17,5 +17,16 @@ export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/invoice-record-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
+export { IInvoiceService } from './application/services/invoice.service.interface';
+export { InvoiceService } from './application/services/invoice.service';
+// Order -> command composer (#1118) + its PII-clean pre-issue errors, surfaced
+// so the #1119 HTTP controller can compose the command server-side and map
+// these to 400 (#1119).
+export {
+  toIssueInvoiceCommand,
+  OrderToIssueInvoiceCommandInput,
+} from './application/mappers/order-to-issue-invoice-command.mapper';
+export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
+export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';

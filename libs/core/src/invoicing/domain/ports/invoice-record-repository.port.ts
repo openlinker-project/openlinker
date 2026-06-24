@@ -11,6 +11,9 @@ import type { InvoiceRecord } from '../entities/invoice-record.entity';
 import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
+  InvoiceRecordFilters,
+  InvoiceRecordPagination,
+  PaginatedInvoiceRecords,
 } from '../types/invoicing.types';
 
 export interface InvoiceRecordRepositoryPort {
@@ -35,4 +38,15 @@ export interface InvoiceRecordRepositoryPort {
    * `InvoiceRecordNotFoundException` when the id does not exist.
    */
   updateOutcome(id: string, patch: InvoiceOutcomePatch): Promise<InvoiceRecord>;
+
+  /**
+   * Read-only paginated list (#1119). Backs ONLY the AC-6 list endpoint;
+   * ordered newest-first (`createdAt` DESC). The POST re-issue gate is served by
+   * `findByOrderId` (the single-row order primitive), NOT this list query, so
+   * the filter surface stays scoped to AC-6.
+   */
+  findMany(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords>;
 }
