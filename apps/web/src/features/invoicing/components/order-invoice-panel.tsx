@@ -87,6 +87,10 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const { showToast } = useToast();
   const connectionsQuery = useConnectionsQuery();
   const [documentType, setDocumentType] = useState<string>('invoice');
+  // Optional buyer NIP for a B2B (company) invoice. Empty ⇒ B2C/retail document
+  // (no tax id sent). The Order snapshot carries no scheme-tagged tax id, so the
+  // operator supplies it here; presence drives the B2B/B2C axis server-side.
+  const [buyerNip, setBuyerNip] = useState<string>('');
   // Operator-picked invoicing connection (only meaningful when >1 candidate).
   const [pickedConnectionId, setPickedConnectionId] = useState<string | null>(null);
 
@@ -185,8 +189,18 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
     if (!invoicingConnection) {
       return;
     }
+    const trimmedNip = buyerNip.trim();
     issueMutation.mutate(
-      { connectionId: invoicingConnection.id, orderId: order.internalOrderId, documentType },
+      {
+        connectionId: invoicingConnection.id,
+        orderId: order.internalOrderId,
+        documentType,
+        // Presence drives B2B (company) vs B2C (private) server-side. Subiekt
+        // interprets the `pl-nip` scheme as the buyer NIP.
+        ...(trimmedNip.length > 0
+          ? { buyerTaxId: { scheme: 'pl-nip', value: trimmedNip } }
+          : {}),
+      },
       {
         onSuccess: () => {
           showToast({
@@ -284,6 +298,20 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             value={documentType}
             onChange={setDocumentType}
             disabled={issueMutation.isPending}
+          />
+          <label className="order-invoice-panel__nip-label" htmlFor="invoice-buyer-nip">
+            {t('invoice.buyerNip.label', 'Buyer NIP (optional, B2B)')}
+          </label>
+          <input
+            id="invoice-buyer-nip"
+            className="input"
+            type="text"
+            inputMode="numeric"
+            value={buyerNip}
+            onChange={(event) => setBuyerNip(event.target.value)}
+            disabled={issueMutation.isPending}
+            placeholder="np. 9521471103"
+            aria-label={t('invoice.buyerNip.label', 'Buyer NIP (optional, B2B)')}
           />
           <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending}>
             {displayStatus === 'failed'
