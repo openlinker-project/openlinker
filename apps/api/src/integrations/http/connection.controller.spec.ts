@@ -21,6 +21,7 @@ import {
 } from '@openlinker/core/integrations';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
@@ -40,6 +41,8 @@ describe('ConnectionController', () => {
     undefined,
     ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager', 'OfferManager']
   );
+
+  const mockAdminUser: AuthenticatedUser = { id: 'user-1', username: 'admin', role: 'admin' };
 
   const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
     new SyncJob(
@@ -133,7 +136,7 @@ describe('ConnectionController', () => {
         credentialsRef: 'db:cred_123',
       };
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, mockAdminUser);
 
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.id).toBe('connection-123');
@@ -146,7 +149,7 @@ describe('ConnectionController', () => {
     it('should return list of connection DTOs', async () => {
       service.list.mockResolvedValue([mockConnection]);
 
-      const result = await controller.list({});
+      const result = await controller.list({}, mockAdminUser);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toBeInstanceOf(ConnectionResponseDto);
@@ -156,7 +159,7 @@ describe('ConnectionController', () => {
     it('should pass filters to service', async () => {
       service.list.mockResolvedValue([mockConnection]);
 
-      await controller.list({ platformType: 'prestashop' });
+      await controller.list({ platformType: 'prestashop' }, mockAdminUser);
 
       expect(service.list).toHaveBeenCalledWith({
         platformType: 'prestashop',
@@ -168,7 +171,7 @@ describe('ConnectionController', () => {
     it('should return connection DTO', async () => {
       service.get.mockResolvedValue(mockConnection);
 
-      const result = await controller.get('connection-123');
+      const result = await controller.get('connection-123', mockAdminUser);
 
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.id).toBe('connection-123');
@@ -195,7 +198,7 @@ describe('ConnectionController', () => {
       service.update.mockResolvedValue(updatedConnection);
 
       const dto = { name: 'Updated Name' };
-      const result = await controller.update('connection-123', dto);
+      const result = await controller.update('connection-123', dto, mockAdminUser);
 
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.name).toBe('Updated Name');
@@ -208,7 +211,7 @@ describe('ConnectionController', () => {
       service.update.mockResolvedValue(mockConnection);
 
       const dto = { status: 'disabled' as const };
-      await controller.update('connection-123', dto);
+      await controller.update('connection-123', dto, mockAdminUser);
 
       expect(service.update).toHaveBeenCalledWith('connection-123', {
         status: 'disabled',
@@ -234,7 +237,7 @@ describe('ConnectionController', () => {
 
       service.disable.mockResolvedValue(disabledConnection);
 
-      const result = await controller.disable('connection-123');
+      const result = await controller.disable('connection-123', mockAdminUser);
 
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.status).toBe('disabled');

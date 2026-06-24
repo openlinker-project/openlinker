@@ -82,7 +82,7 @@ describe('BulkCreateWizardPage', () => {
 
     // The wizard's Page title is rendered once products load.
     expect(
-      await screen.findByRole('heading', { name: /Bulk Allegro offer creation/ }),
+      await screen.findByRole('heading', { name: /Bulk marketplace offer creation/ }),
     ).toBeInTheDocument();
   });
 });

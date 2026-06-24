@@ -130,6 +130,9 @@ importers:
       '@openlinker/integrations-prestashop':
         specifier: workspace:*
         version: link:../../libs/integrations/prestashop
+      '@openlinker/integrations-subiekt':
+        specifier: workspace:*
+        version: link:../../libs/integrations/subiekt
       '@openlinker/integrations-woocommerce':
         specifier: workspace:*
         version: link:../../libs/integrations/woocommerce
@@ -387,6 +390,9 @@ importers:
       '@openlinker/integrations-prestashop':
         specifier: workspace:*
         version: link:../../libs/integrations/prestashop
+      '@openlinker/integrations-subiekt':
+        specifier: workspace:*
+        version: link:../../libs/integrations/subiekt
       '@openlinker/integrations-woocommerce':
         specifier: workspace:*
         version: link:../../libs/integrations/woocommerce
@@ -846,6 +852,12 @@ importers:
       '@openlinker/shared':
         specifier: workspace:*
         version: link:../../shared
+      class-transformer:
+        specifier: 0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: 0.14.1
+        version: 0.14.1
     devDependencies:
       '@types/jest':
         specifier: 29.5.12

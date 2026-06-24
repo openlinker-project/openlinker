@@ -10,6 +10,21 @@ import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkReviewStep } from './bulk-review-step';
 import type { BulkRowBlocker, BulkWizardRow, PricingPolicy, StockPolicy } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
+import type { Connection } from '../../../connections';
+
+// Allegro connection — no per-row platform section (these tests predate #1096).
+const connection: Connection = {
+  id: 'conn_1',
+  name: 'My Allegro',
+  platformType: 'allegro',
+  status: 'active',
+  config: {},
+  credentialsBacked: true,
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
 
 // jsdom has no matchMedia; force desktop (table, not card view) for the DataTable.
 beforeAll(() => {
@@ -75,6 +90,12 @@ function makeRow(
   };
 }
 
+// Allegro's migrated platform blocker chip (#1096) — supplied so the
+// add-product-params tests render the chip generically through the contribution.
+const ALLEGRO_CHIPS = [
+  { id: 'allegro:needs-product-parameters', tone: 'warning' as const, label: 'add product params' },
+];
+
 function renderReview(
   rows: BulkWizardRow[],
   pricingPolicy: PricingPolicy = { mode: 'use-master' },
@@ -84,12 +105,14 @@ function renderReview(
   return renderWithProviders(
     <BulkReviewStep
       rows={rows}
-      connectionId="conn_1"
+      connection={connection}
       pricingPolicy={pricingPolicy}
       stockPolicy={stockPolicy}
       currency="PLN"
       publishImmediately
       paramsResolving={paramsResolving}
+      platformBlockerChips={ALLEGRO_CHIPS}
+      canBrowseCategories={true}
       onUpdateRow={() => undefined}
       onApproveAll={() => undefined}
       onBack={() => undefined}
@@ -139,12 +162,14 @@ describe('BulkReviewStep', () => {
     rerender(
       <BulkReviewStep
         rows={[makeRow('a', [], { masterPrice: 12, masterStock: 5 })]}
-        connectionId="conn_1"
+        connection={connection}
         pricingPolicy={{ mode: 'use-master' }}
         stockPolicy={{ mode: 'use-master' }}
         currency="PLN"
         publishImmediately
         paramsResolving={false}
+        platformBlockerChips={ALLEGRO_CHIPS}
+        canBrowseCategories={true}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}
@@ -162,32 +187,36 @@ describe('BulkReviewStep', () => {
     expect(screen.getByRole('button', { name: /Approve all/ })).toBeEnabled();
   });
 
-  // #810 — needs-product-parameters blocker surfacing
+  // #810/#1096 — Allegro's migrated platform blocker rendered via the contribution.
   it('renders the add-product-params chip and a remediation hint', () => {
-    renderReview([makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 })]);
+    renderReview([
+      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+    ]);
     expect(screen.getByText('add product params')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/Edit/);
-    expect(screen.getByRole('status')).toHaveTextContent(/product parameters/);
+    expect(screen.getByRole('status')).toHaveTextContent(/attention/);
   });
 
   it('singularises the hint for one affected row and pluralises for many', () => {
     const { rerender } = renderReview([
-      makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+      makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
     ]);
     expect(screen.getByRole('status')).toHaveTextContent(/1\s+row needs/);
 
     rerender(
       <BulkReviewStep
         rows={[
-          makeRow('a', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
-          makeRow('b', ['needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+          makeRow('a', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
+          makeRow('b', ['allegro:needs-product-parameters'], { masterPrice: 12, masterStock: 5 }),
         ]}
-        connectionId="conn_1"
+        connection={connection}
         pricingPolicy={{ mode: 'use-master' }}
         stockPolicy={{ mode: 'use-master' }}
         currency="PLN"
         publishImmediately
         paramsResolving={false}
+        platformBlockerChips={ALLEGRO_CHIPS}
+        canBrowseCategories={true}
         onUpdateRow={() => undefined}
         onApproveAll={() => undefined}
         onBack={() => undefined}

@@ -62,7 +62,11 @@ export function BulkBatchProgressTable({
         id: 'offerOrError',
         header: 'Offer / failure',
         cell: (record) => {
-          if (record.status === 'active' || record.status === 'draft') {
+          if (
+            record.status === 'active' ||
+            record.status === 'draft' ||
+            record.status === 'reused'
+          ) {
             if (!record.externalOfferId) {
               return <span className="dim">—</span>;
             }
@@ -242,6 +246,8 @@ function RecordStatusBadge({ status }: { status: OfferCreationStatus }): ReactEl
       return <StatusBadge tone="success" withDot>draft</StatusBadge>;
     case 'active':
       return <StatusBadge tone="success" withDot>succeeded</StatusBadge>;
+    case 'reused':
+      return <StatusBadge tone="success" withDot>already existed</StatusBadge>;
     case 'failed':
       return <StatusBadge tone="error" withDot>failed</StatusBadge>;
   }

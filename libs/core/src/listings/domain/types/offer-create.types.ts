@@ -13,6 +13,36 @@
 import type { OfferParameter } from './offer-parameter.types';
 
 /**
+ * A source-shop category reference carried through from the master catalog
+ * (#1096). Platform-neutral: a destination that accepts shop-native taxonomy
+ * (Erli `source:"shop"`, ADR-025 §3) maps these to its wire shape when no
+ * marketplace category was resolved; destinations that require a resolved
+ * marketplace category (Allegro) ignore them. `name` is best-effort (the master
+ * may expose only ids).
+ */
+export interface SourceCategoryRef {
+  id: string;
+  name?: string;
+}
+
+/**
+ * A source-shop product attribute (product *feature*) carried through from the
+ * master catalog (#1096, F2). Platform-neutral: a destination that accepts
+ * shop-native attributes (Erli `externalAttributes` `source:"shop"`, ADR-025 §3)
+ * maps these to its wire shape; destinations that require a resolved marketplace
+ * parameter (Allegro) ignore them. Distinct from `OfferParameter` (resolved,
+ * marketplace-scoped parameters) and from `OfferVariantAttribute` (a variant's
+ * distinguishing grouping axis). `id` is a stable slug of the feature name; `name`
+ * is the human label; `unit` is best-effort (the master may expose only name/value).
+ */
+export interface SourceAttribute {
+  id?: string;
+  name: string;
+  value: string;
+  unit?: string;
+}
+
+/**
  * Overrides for fields that can optionally be customized per-offer.
  * Any field omitted here falls back to a value derived by the core builder
  * service from the OL variant (e.g. variant.name, variant.description).
@@ -164,6 +194,24 @@ export interface CreateOfferCommand {
    * pre-resolution alongside `variantBarcode` / `productCardId`.
    */
   variantGroup?: OfferVariantGroup;
+  /**
+   * Source-shop category references (master-derived), platform-neutral (#1096).
+   * Threaded by `OfferBuilderService` from the master product's categories. A
+   * destination that accepts shop-native taxonomy (Erli `source:"shop"`) uses
+   * these as a fallback when no marketplace category was resolved; adapters that
+   * require a resolved marketplace category (Allegro) ignore them. Absent/empty ⇒
+   * the product carried no source categories.
+   */
+  sourceCategories?: SourceCategoryRef[];
+  /**
+   * Source-shop product attributes (master-derived product features),
+   * platform-neutral (#1096, F2). Threaded by `OfferBuilderService` from the
+   * master product's features. A destination that accepts shop-native attributes
+   * (Erli `externalAttributes` `source:"shop"`) emits these; adapters that require
+   * a resolved marketplace parameter (Allegro) ignore them. Absent/empty ⇒ the
+   * product carried no features.
+   */
+  sourceAttributes?: SourceAttribute[];
 }
 
 /**
@@ -215,4 +263,11 @@ export interface CreateOfferResult {
    * with validation issues). Omitted when empty.
    */
   validationErrors?: CreateOfferValidationError[];
+  /**
+   * True when the adapter resolved the create idempotently because the offer
+   * already existed on the platform (#1096) — e.g. Erli's seller-keyed 409. The
+   * execution service records this as `reused` (a success) rather than `draft`,
+   * so the UI distinguishes a re-run from a fresh create. Omitted ⇒ fresh create.
+   */
+  alreadyExisted?: boolean;
 }

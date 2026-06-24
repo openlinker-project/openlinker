@@ -38,7 +38,6 @@ import {
   ShopPublishResponseDto,
 } from './dto/shop-publish-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('listings')
 @Controller('listings/connections/:connectionId/shop-publish')
@@ -50,6 +49,7 @@ export class ShopPublishController {
     private readonly query: IListingCreationQueryService,
   ) {}
 
+  @Roles('admin')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -105,6 +105,7 @@ export class ShopPublishController {
       externalProductId: record.externalProductId,
       bulkBatchId: record.bulkBatchId,
       errors: record.errors,
+      warnings: record.warnings,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

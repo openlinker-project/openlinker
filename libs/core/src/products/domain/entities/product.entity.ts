@@ -36,4 +36,20 @@ export interface Product {
   weight?: number;
   /** Master-derived (external category IDs), not persisted on the products table. */
   categories?: string[];
+  /**
+   * Master-derived full category path (root→leaf), each node carrying the
+   * source-shop category id + name (#1096, F3). A richer companion to the bare
+   * `categories` ids: a destination that accepts shop-native taxonomy (Erli
+   * `source:"shop"`) emits this as a breadcrumb. Absent/unset ⇒ the master could
+   * not resolve a path (falls back to the bare-id `categories`). Not persisted on
+   * the products table.
+   */
+  categoryBreadcrumb?: { id: string; name: string }[];
+  /**
+   * Master-derived product features (e.g. `{ name: 'Material', value: 'Ceramic' }`),
+   * distinct from variant-distinguishing attributes (#1096, F2). A destination
+   * that accepts shop-native attributes (Erli `source:"shop"` `externalAttributes`)
+   * emits these. Absent/empty ⇒ no features. Not persisted on the products table.
+   */
+  features?: { name: string; value: string }[];
 }

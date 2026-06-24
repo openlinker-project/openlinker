@@ -9,6 +9,7 @@ import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { usePermission } from '../../../shared/auth/use-permission';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -22,6 +23,9 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
   const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
   const plugin = usePlatform(connection.platformType);
   const PluginActions = plugin?.ConnectionActions;
+
+  const canWrite = usePermission('connections:write');
+  const canSync = usePermission('sync:write');
 
   const isDisabled = connection.status === 'disabled';
 
@@ -65,36 +69,40 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
       ) : null}
 
       <div className="action-list">
-        <div className="action-list__item">
-          <div>
-            <strong>Test connection</strong>
-            <p className="muted-text">
-              Probe the integration using a cheap authenticated call. Verifies the base URL and
-              stored credentials.
-            </p>
+        {canWrite ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Test connection</strong>
+              <p className="muted-text">
+                Probe the integration using a cheap authenticated call. Verifies the base URL and
+                stored credentials.
+              </p>
+            </div>
+            <Button
+              tone="secondary"
+              disabled={testConnection.isPending}
+              onClick={() => void handleTest()}
+            >
+              {testConnection.isPending ? 'Testing...' : 'Test connection'}
+            </Button>
           </div>
-          <Button
-            tone="secondary"
-            disabled={testConnection.isPending}
-            onClick={() => void handleTest()}
-          >
-            {testConnection.isPending ? 'Testing...' : 'Test connection'}
-          </Button>
-        </div>
+        ) : null}
 
-        <div className="action-list__item">
-          <div>
-            <strong>Edit connection</strong>
-            <p className="muted-text">Update name, config, or adapter settings.</p>
+        {canWrite ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Edit connection</strong>
+              <p className="muted-text">Update name, config, or adapter settings.</p>
+            </div>
+            <Link className="button button--secondary" to={`/connections/${connection.id}/edit`}>
+              Edit
+            </Link>
           </div>
-          <Link className="button button--secondary" to={`/connections/${connection.id}/edit`}>
-            Edit
-          </Link>
-        </div>
+        ) : null}
 
-        {PluginActions ? <PluginActions connection={connection} /> : null}
+        {canWrite && PluginActions ? <PluginActions connection={connection} /> : null}
 
-        {!isDisabled ? (
+        {canSync && !isDisabled ? (
           <div className="action-list__item">
             <div>
               <strong>Trigger sync</strong>
@@ -112,7 +120,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {isDisabled ? null : (
+        {canWrite && !isDisabled ? (
           <div className="action-list__item">
             <div>
               <strong>Disable connection</strong>
@@ -126,7 +134,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
               {disableConnection.isPending ? 'Disabling...' : 'Disable'}
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
 
       <TriggerSyncDialog

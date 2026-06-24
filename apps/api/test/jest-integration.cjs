@@ -61,6 +61,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/woocommerce/src/$1',
     ),
+    '^@openlinker/integrations-subiekt$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/subiekt/src/index.ts',
+    ),
+    '^@openlinker/integrations-subiekt/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/subiekt/src/$1',
+    ),
     '^@openlinker/integrations-erli$': path.resolve(
       __dirname,
       '../../../libs/integrations/erli/src/index.ts',

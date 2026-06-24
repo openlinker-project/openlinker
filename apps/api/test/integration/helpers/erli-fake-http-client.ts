@@ -78,6 +78,18 @@ export class ErliFakeHttpClient implements IErliHttpClient {
   }
 
   /**
+   * Register a sticky GET body keyed by the LITERAL request path (#998). Unlike
+   * `setProduct`/`enqueueGet` (which key by the offer `products/{id}` convention
+   * via the private `pathFor`), the OrderSource adapter requests `/inbox` (inbox
+   * listing) and `/orders/{id}` (order resource) — paths the offer-convention
+   * keying cannot address. Use this to script those raw paths. The offer methods
+   * are deliberately left untouched so the #991 offers int-spec stays green.
+   */
+  setRawGet(path: string, body: unknown): void {
+    this.stickyByPath.set(path, body);
+  }
+
+  /**
    * Arm a one-shot rejection for the NEXT request (any method). Throws the same
    * typed `ErliApiException` the real client raises for a deterministic 4xx, so
    * the adapter's failure-mapping branches are exercised.

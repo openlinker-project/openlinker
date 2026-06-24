@@ -14,8 +14,8 @@ import {
 import { FakeSubiektBridgeAdapter } from '../fake-subiekt-bridge.adapter';
 import {
   runSubiektBridgeContractTests,
-  sampleBridgeBuyer,
   sampleIssueInvoiceRequest,
+  sampleUpsertCustomerRequest,
 } from '../subiekt-bridge-contract.suite';
 
 describe('FakeSubiektBridgeAdapter', () => {
@@ -45,10 +45,10 @@ describe('FakeSubiektBridgeAdapter', () => {
 
     it('should reject with SubiektRejectedError carrying the reason when seeded', async () => {
       fake.seedFailure('subiekt-rejected', { reason: 'invalid NIP' });
-      await expect(fake.upsertCustomer({ buyer: sampleBridgeBuyer() })).rejects.toThrow(
+      await expect(fake.upsertCustomer(sampleUpsertCustomerRequest())).rejects.toThrow(
         'invalid NIP',
       );
-      await expect(fake.upsertCustomer({ buyer: sampleBridgeBuyer() })).rejects.toBeInstanceOf(
+      await expect(fake.upsertCustomer(sampleUpsertCustomerRequest())).rejects.toBeInstanceOf(
         SubiektRejectedError,
       );
     });

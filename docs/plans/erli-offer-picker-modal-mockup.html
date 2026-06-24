@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Create offers — marketplace picker modal (mockup, #1096)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /*
+    Mockup for #1096 — the marketplace-picker modal shown from the Products
+    page when 2+ OfferManager connections exist. (With exactly one, the button
+    reads "Create {Marketplace} offers (N)" and skips this modal — see the dim
+    backdrop button.) Visual language adopted from the OpenLinker admin system
+    (apps/web/src/index.css; Radix Dialog wrapper). Static spec, not code.
+  */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #fff; --bg-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+    --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+    --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --accent: oklch(68% 0.18 50); --accent-hover: oklch(62% 0.19 50); --accent-soft: oklch(96% 0.04 60);
+    --accent-soft-strong: oklch(40% 0.16 50); --accent-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+    --ok: oklch(62% 0.13 150);
+    --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+    --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem; --space-6:2rem;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans); color: var(--text-primary); background: var(--bg-canvas); -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--font-mono); }
+
+  /* ---- dimmed backdrop: products list (context) ---- */
+  .backdrop { padding: var(--space-6); filter: saturate(0.9); }
+  .bd-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--space-4); }
+  .bd-title { font-size: 1.1rem; font-weight: 700; color: var(--text-secondary); }
+  .bd-btn { font: inherit; font-weight: 600; font-size:.85rem; border:1px solid var(--accent); background: var(--accent); color: var(--text-on-primary); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-4); }
+  .bd-table { border:1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: clip; background: var(--bg-surface); }
+  .bd-row { display:grid; grid-template-columns: 28px 1fr 120px 90px; gap: var(--space-3); align-items:center; padding: var(--space-3) var(--space-4); border-bottom:1px solid var(--border-subtle); font-size:.85rem; color: var(--text-secondary); }
+  .bd-row:last-child { border-bottom:0; }
+  .bd-row.head { background: var(--bg-shell); color: var(--text-muted); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
+  .cb { width:16px; height:16px; border-radius:4px; border:1.5px solid var(--border-strong); display:grid; place-items:center; }
+  .cb.on { background: var(--accent); border-color: var(--accent); color: var(--text-on-primary); font-size:.7rem; font-weight:700; }
+  .bd-row .nm { color: var(--text-primary); font-weight:500; }
+
+  /* ---- scrim + modal ---- */
+  .scrim { position: fixed; inset: 0; background: rgb(15 18 26 / 0.42); display: grid; place-items: center; padding: var(--space-5); }
+  .modal { width: 100%; max-width: 460px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); overflow: clip; }
+  .modal__head { padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+  .eyebrow { font-size: .68rem; letter-spacing:.12em; text-transform:uppercase; color: var(--text-muted); font-weight:600; margin:0 0 var(--space-2); }
+  .modal__head h2 { margin:0; font-size: 1.1rem; font-weight: 700; letter-spacing:-0.01em; }
+  .modal__head p { margin: var(--space-2) 0 0; font-size:.875rem; color: var(--text-secondary); }
+  .modal__body { padding: var(--space-4) var(--space-5); display:flex; flex-direction: column; gap: var(--space-3); }
+
+  .opt { display:flex; align-items:center; gap: var(--space-3); width:100%; text-align:left; appearance:none; cursor:pointer; font:inherit;
+         background: var(--bg-surface); border:1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+  .opt:hover { background: var(--bg-surface-hover); }
+  .opt[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); background: var(--accent-soft); }
+  .opt:focus-visible { outline:none; box-shadow: 0 0 0 3px var(--accent-ring); }
+  .radio { width:18px; height:18px; border-radius:999px; border:1.5px solid var(--border-strong); flex:none; display:grid; place-items:center; }
+  .opt[aria-pressed='true'] .radio { border-color: var(--accent); }
+  .opt[aria-pressed='true'] .radio::after { content:''; width:9px; height:9px; border-radius:999px; background: var(--accent); }
+  .opt .meta { display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
+  .opt .nm { font-weight:600; font-size:.92rem; display:flex; align-items:center; gap: var(--space-2); }
+  .opt .dot { width:7px; height:7px; border-radius:999px; background: var(--ok); flex:none; }
+  .opt .sub { font-size:.74rem; color: var(--text-muted); }
+  .opt .badge { font-size:.68rem; letter-spacing:.04em; text-transform:uppercase; font-weight:600; color: var(--text-secondary); background: var(--bg-muted); border:1px solid var(--border-default); border-radius:999px; padding: 2px var(--space-2); flex:none; }
+
+  .modal__foot { display:flex; align-items:center; justify-content:flex-end; gap: var(--space-2); padding: var(--space-4) var(--space-5); border-top:1px solid var(--border-subtle); background: var(--bg-shell); }
+  .btn { appearance:none; font:inherit; font-weight:600; cursor:pointer; border-radius: var(--radius-sm); padding: var(--space-3) var(--space-5); border:1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); }
+  .btn:hover { background: var(--bg-surface-hover); } .btn:focus-visible { outline:none; box-shadow: 0 0 0 3px var(--accent-ring); }
+  .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-primary); } .btn--primary:hover { background: var(--accent-hover); }
+
+  @media (prefers-reduced-motion: no-preference) { .opt, .btn { transition: background .15s ease, box-shadow .15s ease, border-color .15s ease; } }
+</style>
+</head>
+<body>
+  <!-- context: Products list with 6 rows selected, dimmed behind the scrim -->
+  <div class="backdrop" aria-hidden="true">
+    <div class="bd-head">
+      <span class="bd-title">Products</span>
+      <button class="bd-btn">Create offers (6)</button>
+    </div>
+    <div class="bd-table">
+      <div class="bd-row head"><span></span><span>Product</span><span>SKU</span><span>Stock</span></div>
+      <div class="bd-row"><span class="cb on">✓</span><span class="nm">Aurora watch — steel</span><span class="mono">SKU-AUR-01</span><span>12</span></div>
+      <div class="bd-row"><span class="cb on">✓</span><span class="nm">Aurora watch — rose</span><span class="mono">SKU-AUR-02</span><span>4</span></div>
+      <div class="bd-row"><span class="cb on">✓</span><span class="nm">Nimbus backpack 20L</span><span class="mono">SKU-NMB-20</span><span>30</span></div>
+      <div class="bd-row"><span class="cb on">✓</span><span class="nm">Vela desk lamp</span><span class="mono">SKU-VLA-LMP</span><span>8</span></div>
+      <div class="bd-row"><span class="cb on">✓</span><span class="nm">Corso leather wallet</span><span class="mono">SKU-CRS-WL</span><span>21</span></div>
+    </div>
+  </div>
+
+  <!-- the picker modal (Radix Dialog wrapper in real app) -->
+  <div class="scrim" role="presentation">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt" aria-describedby="md">
+      <div class="modal__head">
+        <p class="eyebrow">Create offers</p>
+        <h2 id="mt">Where should these list?</h2>
+        <p id="md">Creating offers for <strong>6 products</strong>. Pick the marketplace connection to create them on.</p>
+      </div>
+      <div class="modal__body" role="radiogroup" aria-label="Marketplace connection">
+        <button type="button" class="opt" aria-pressed="false">
+          <span class="radio" aria-hidden="true"></span>
+          <span class="meta">
+            <span class="nm"><span class="dot"></span> My Allegro</span>
+            <span class="sub mono">allegro.publicapi.v1</span>
+          </span>
+          <span class="badge">OfferManager</span>
+        </button>
+        <button type="button" class="opt" aria-pressed="true">
+          <span class="radio" aria-hidden="true"></span>
+          <span class="meta">
+            <span class="nm"><span class="dot"></span> My Erli</span>
+            <span class="sub mono">erli.shopapi.v1</span>
+          </span>
+          <span class="badge">OfferManager</span>
+        </button>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn">Cancel</button>
+        <button type="button" class="btn btn--primary">Continue →</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

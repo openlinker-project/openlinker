@@ -92,6 +92,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     externalProductId: string,
     status: ListingCreationStatus,
     errors?: ListingCreationError[] | null,
+    warnings?: string[] | null,
   ): Promise<ListingCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
@@ -101,6 +102,9 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     entity.status = status;
     if (errors !== undefined) {
       entity.errors = errors;
+    }
+    if (warnings !== undefined) {
+      entity.warnings = warnings;
     }
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
@@ -114,6 +118,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
     entity.externalProductId = input.externalProductId ?? null;
     entity.errors = input.errors ?? null;
     entity.bulkBatchId = input.bulkBatchId ?? null;
+    entity.warnings = input.warnings ?? null;
     return entity;
   }
 
@@ -128,6 +133,7 @@ export class ListingCreationRecordRepository implements ListingCreationRecordRep
       entity.createdAt,
       entity.updatedAt,
       entity.bulkBatchId,
+      entity.warnings,
     );
   }
 }

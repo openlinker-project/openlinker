@@ -40,8 +40,8 @@ export class NotifyDispatchedResponseDto {
   @ApiProperty({
     enum: ['ok', 'failed', 'absent'],
     description:
-      'Source mark-sent outcome (capability A). `absent` when the order has no source connection ' +
-      'or the source adapter does not implement `OrderDispatchNotifier`.',
+      'Source mark-sent outcome. `absent` when the order has no source connection ' +
+      'or the source adapter does not implement `OrderStatusWriteback`.',
   })
   source!: 'ok' | 'failed' | 'absent';
 

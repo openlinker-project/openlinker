@@ -54,6 +54,13 @@ export class ListingCreationRecordOrmEntity {
   errors!: ListingCreationError[] | null;
 
   /**
+   * Non-fatal warnings reported by the adapter on a successful publish (#1131).
+   * Null when the adapter reported no warnings. Never set on failed records.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  warnings!: string[] | null;
+
+  /**
    * Parent bulk-batch this publish belongs to (#1044). Null for single
    * publishes. No FK enforced at the schema level (matches `connectionId` and
    * the `offer_creation_records.bulkBatchId` precedent); application code

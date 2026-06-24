@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
+import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
+import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
 import type {
@@ -42,6 +44,8 @@ interface BulkWizardProps {
   products: Product[];
   /** Connection name displayed in the confirm modal once config is known. */
   resolveConnectionName: (connectionId: string) => string;
+  /** Connection preselected from the entry-point picker / URL (#1096). */
+  preselectedConnectionId?: string;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -51,13 +55,19 @@ const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
   { id: 'confirm', label: 'Confirm' },
 ];
 
+/** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
+const EMPTY_CATEGORY_IDS: readonly string[] = [];
+
 export function BulkWizard({
   products,
   resolveConnectionName,
+  preselectedConnectionId,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const mutation = useBulkSubmitMutation();
+  const platforms = usePlatforms();
+  const connectionsQuery = useConnectionsQuery();
 
   // Mint a stable idempotency key once per wizard mount. Retries from the
   // confirm step submit reuse it; remount mints a fresh one.
@@ -94,10 +104,45 @@ export function BulkWizard({
     return Array.from(set);
   }, [rows]);
 
+  // Resolve the batch connection's platform (single connection per batch) so we
+  // can render platform-declared blocker chips and run its row validator (#1096).
+  const batchConnection = useMemo(
+    () => (connectionsQuery.data ?? []).find((c) => c.id === config?.connectionId) ?? null,
+    [connectionsQuery.data, config?.connectionId],
+  );
+  const batchPlatform = useMemo(
+    () => platforms.find((p) => p.platformType === batchConnection?.platformType) ?? null,
+    [platforms, batchConnection],
+  );
+
+  // Only fetch the per-category required-product-param schema (an Allegro #810
+  // concern) when the resolved platform's validator actually reads it (#1096).
+  // Erli's validator ignores `needsProductParameters`, so it opts out and the
+  // host issues zero category-param queries for an Erli batch. The gate is a
+  // declared flag, not a `platformType` check — the host stays neutral.
+  const categoryIdsForParamSchema = batchPlatform?.offerValidation?.needsCategoryParameterSchema
+    ? noCardCategoryIds
+    : EMPTY_CATEGORY_IDS;
   const { requiredByCategory, isResolving: paramsResolving } = useBulkRequiredProductParams(
     config?.connectionId,
-    noCardCategoryIds,
+    categoryIdsForParamSchema,
   );
+
+  const platformValidate = useMemo<
+    ((input: OfferRowValidationInput) => string[]) | undefined
+  >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
+  const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
+
+  // Category-resolution provenance from declared capabilities (never platformType):
+  // a destination that can't pre-flight EAN-match `borrows` its taxonomy and
+  // resolves the category server-side at submit (#1096 / ADR-025 §3), so a
+  // pre-flight non-match must not block it; one without a browsable category tree
+  // needs manual Allegro-id entry in the edit modal rather than the tree picker.
+  const destinationResolvesCategoryAtSubmit = batchConnection
+    ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
+    : false;
+  const destinationBrowsesCategories =
+    batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false;
 
   // Reconcile the `needs-product-parameters` blocker whenever a category's
   // schema resolves (it loads after the operator picks the category, so it
@@ -112,14 +157,20 @@ export function BulkWizard({
       let changed = false;
       const next = prev.map((row) => {
         if (!row.primaryVariant) return row;
-        const blockers = recomputeRowBlockers(row, config, requiredByCategory);
+        const blockers = recomputeRowBlockers(
+          row,
+          config,
+          requiredByCategory,
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+        );
         if (sameBlockers(blockers, row.blockers)) return row;
         changed = true;
         return { ...row, blockers };
       });
       return changed ? next : prev;
     });
-  }, [config, step, requiredByCategory]);
+  }, [config, step, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
 
   const handleConfigProceed = useCallback((next: BulkWizardConfig) => {
     setConfig(next);
@@ -150,12 +201,18 @@ export function BulkWizard({
           const updated: BulkWizardRow = { ...row, override, editFormValues };
           return {
             ...updated,
-            blockers: recomputeRowBlockers(updated, config, requiredByCategory),
+            blockers: recomputeRowBlockers(
+              updated,
+              config,
+              requiredByCategory,
+              platformValidate,
+              destinationResolvesCategoryAtSubmit,
+            ),
           };
         }),
       );
     },
-    [config, requiredByCategory],
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
 
   const handleSubmit = useCallback(
@@ -223,7 +280,9 @@ export function BulkWizard({
           publishImmediately,
           generateDescription: config.generateDescription,
           overrides: {
-            platformParams: { deliveryPolicyId: config.deliveryPolicyId },
+            // Generic per-platform knobs (Allegro deliveryPolicyId, Erli
+            // dispatchTime, …) — the config section populated these (#1096).
+            platformParams: config.platformParams,
           },
         },
         perProductOverrides,
@@ -252,10 +311,12 @@ export function BulkWizard({
     (r) => r.primaryVariant !== null && r.blockers.length === 0,
   ).length;
 
+  const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
+
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title="Bulk Allegro offer creation"
+      title="Bulk marketplace offer creation"
       description={`Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'}.`}
     >
       <div className="bulk-wizard">
@@ -278,6 +339,7 @@ export function BulkWizard({
           {step === 'config' && (
             <BulkConfigStep
               initial={config ?? {}}
+              preselectedConnectionId={preselectedConnectionId}
               onProceed={handleConfigProceed}
               onCancel={() => { void navigate(-1); }}
             />
@@ -289,18 +351,22 @@ export function BulkWizard({
               pricingPolicy={config.pricingPolicy}
               stockPolicy={config.stockPolicy}
               currency={config.currency}
+              platformValidate={platformValidate}
+              destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
               onComplete={handleResolveComplete}
             />
           )}
           {step === 'review' && config && (
             <BulkReviewStep
               rows={rows}
-              connectionId={config.connectionId}
+              connection={batchConnection}
               pricingPolicy={config.pricingPolicy}
               stockPolicy={config.stockPolicy}
               currency={config.currency}
               publishImmediately={config.publishImmediately}
               paramsResolving={paramsResolving}
+              platformBlockerChips={platformBlockerChips}
+              canBrowseCategories={destinationBrowsesCategories}
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}
@@ -314,6 +380,7 @@ export function BulkWizard({
             onOpenChange={setConfirmOpen}
             rowCount={readyCount}
             connectionName={resolveConnectionName(config.connectionId)}
+            marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             errorMessage={mutation.error ? mutation.error.message : null}
