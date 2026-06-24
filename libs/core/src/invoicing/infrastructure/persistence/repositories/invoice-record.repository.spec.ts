@@ -249,7 +249,7 @@ describe('InvoiceRecordRepository', () => {
       // must only re-claim a TERMINAL-`rejected` failed row — never an in-doubt
       // one — so an in-doubt failure can never be re-issued even via a direct
       // claimForIssue call that bypasses the service gate.
-      const claimSql = updateQb.andWhere.mock.calls[0][0] as string;
+      const claimSql = (updateQb.andWhere.mock.calls as unknown[][])[0][0] as string;
       expect(claimSql).toContain(`"failureMode" = 'rejected'`);
       expect(claimSql).not.toMatch(/status IN \('pending', 'failed'\)/);
       // No separate re-read on the happy path.
