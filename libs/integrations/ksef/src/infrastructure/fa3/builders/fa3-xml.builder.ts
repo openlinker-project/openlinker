@@ -26,6 +26,7 @@ import {
   FA3_NAMESPACE,
   FA3_RODZAJ_FAKTURY_VAT,
   FA3_SCHEMA_VERSION,
+  FA3_SYSTEM_CODE,
   FA3_WYBOR_NIE,
   FA3_WYBOR_TAK,
   type Fa3BuilderInput,
@@ -142,7 +143,7 @@ function aggregateTotals(lines: Fa3Line[]): { bands: XmlNodeObject; grandTotal: 
 function headerNode(input: Fa3BuilderInput): XmlNodeObject {
   return {
     KodFormularza: {
-      [`${XML_ATTR_PREFIX}kodSystemowy`]: 'FA (3)',
+      [`${XML_ATTR_PREFIX}kodSystemowy`]: FA3_SYSTEM_CODE,
       [`${XML_ATTR_PREFIX}wersjaSchemy`]: FA3_SCHEMA_VERSION,
       '#text': FA3_FORM_CODE,
     },

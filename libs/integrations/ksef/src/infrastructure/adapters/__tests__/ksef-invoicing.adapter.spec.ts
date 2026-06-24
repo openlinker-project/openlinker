@@ -98,7 +98,7 @@ function seedHappyPath(http: FakeKsefHttpClient, sessionStatusCode = 200): void 
       status: 200,
       headers: {},
     })
-    .seed('GET', `/sessions/online/${SESSION_REF}`, {
+    .seed('GET', `/sessions/${SESSION_REF}`, {
       data: { status: { code: sessionStatusCode } },
       status: 200,
       headers: {},
@@ -124,7 +124,7 @@ describe('KsefInvoicingAdapter', () => {
 
       const record = await adapter(http).issueInvoice(command());
 
-      expect(record.providerInvoiceId).toBe(INVOICE_REF);
+      expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.clearanceReference).toBeNull();
       expect(record.status).toBe('issued');
@@ -137,7 +137,7 @@ describe('KsefInvoicingAdapter', () => {
         'POST /sessions/online',
         `POST /sessions/online/${SESSION_REF}/invoices`,
         `POST /sessions/online/${SESSION_REF}/close`,
-        `GET /sessions/online/${SESSION_REF}`,
+        `GET /sessions/${SESSION_REF}`,
       ]);
     });
 
