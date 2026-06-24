@@ -41,11 +41,15 @@ You configure these **in your Erli seller panel**, before touching OpenLinker.
 (Custom API integration) → **Wygeneruj nowy klucz** (Generate new key). The key is
 shown once — copy it straight into OpenLinker's connection form (§3).
 
-> **Note — no seller-panel screenshot in this guide.** The Erli seller-panel
-> login is gated by a Google reCAPTCHA challenge, so we could not script a clean
-> capture of the API-key screen for this guide. The navigation path above is the
-> authoritative route (confirmed against Erli's own API docs and integration
-> guides); follow it manually in your own panel.
+![Erli seller panel — Metoda integracji → Własna integracja API → Klucze API](./assets/erli/20-erli-panel-apikey.png)
+
+*(The Erli sandbox panel, "Metoda integracji" screen. Pick **Własna integracja API**,
+then under **Klucze API** click **Wygeneruj nowy klucz** to mint the Shop API key. The
+key value is **redacted** in this screenshot.)*
+
+> **Heads-up.** Choosing an API integration method disables manual product adding
+> in the Erli panel (note at the bottom of that screen) — products/offers are then
+> managed via the API (i.e. by OpenLinker).
 
 **There is no Erli API to create test orders.** An order only enters the system
 when a **buyer places it** on the Erli marketplace (or Erli support seeds one in
@@ -211,6 +215,11 @@ Opening the ingested order shows its **source = the Erli connection** (`My erli`
 *(Verified live: order `ol_order_0b951671…` ingested from the Erli sandbox via
 the poll — source connection `My erli`, `recordStatus = ready`, status
 PROCESSING / PAID.)*
+
+The same order is visible on the **Erli side** in the seller panel
+("Zarządzaj sprzedażą" → *Zamówienia do zrealizowania: 1*):
+
+![Erli seller-panel dashboard for the connected sandbox shop](./assets/erli/25-erli-panel-dashboard.png)
 
 > **Downstream fulfilment.** Ingestion (the OrderSource half) is independent of
 > creating the order on a destination shop. The latter requires resolved customer
