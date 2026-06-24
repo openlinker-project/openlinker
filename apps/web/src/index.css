@@ -8678,6 +8678,117 @@ html[data-density='compact'] .status-badge {
   }
 }
 
+/* ── Order invoice panel (#757) ────────────────────────────────────────── */
+
+/* Mirrors .order-shipment-panel: inherits .detail-section grid, same surface
+ * chrome. Token-only — never raw hex. */
+.order-invoice-panel {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.order-invoice-panel__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Title takes the row, badges wrap to the right; on narrow widths they wrap
+ * under the title rather than truncating. */
+.order-invoice-panel__header .detail-section__title {
+  margin-right: auto;
+}
+
+.order-invoice-panel__body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.order-invoice-panel__doctype {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.order-invoice-panel__notice {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* Invoicing-connection picker (shown only when >1 active+enabled invoicing
+ * connection exists — see order-invoice-panel.tsx). */
+.order-invoice-panel__connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.order-invoice-panel__connection-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.order-invoice-panel__error {
+  margin: 0;
+}
+
+/* Action row: document-type select + Issue/Retry button. Wraps on narrow
+ * widths and stacks to full-width tap targets on mobile. */
+.order-invoice-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.order-invoice-panel__skeleton {
+  min-height: 88px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: order-invoice-panel-shimmer 1.4s ease-in-out infinite;
+}
+
+.order-invoice-panel--loading {
+  background: var(--bg-surface);
+}
+
+@keyframes order-invoice-panel-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (max-width: 767px) {
+  .order-invoice-panel__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .order-invoice-panel__actions > .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-invoice-panel__skeleton {
+    animation: none;
+    background: var(--bg-surface-muted);
+  }
+}
+
 /* ── Shipment action buttons (#769) ────────────────────────────────────── */
 
 .shipment-action-buttons {
