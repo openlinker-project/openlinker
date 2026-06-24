@@ -54,17 +54,10 @@ import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage } from '../lib/issue-error-message';
 import { InvoiceStatusBadge, type InvoiceDisplayStatus } from './invoice-status-badge';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
-import { DocumentTypeSelect } from './document-type-select';
+import { DocumentTypeSelect, DOCUMENT_TYPE_LABEL_FALLBACK } from './document-type-select';
 import { InvoicePdfLink } from './invoice-pdf-link';
 
 const INVOICING_CAPABILITY = 'Invoicing';
-
-/** EN fallbacks for the issued-state document-type line (PL via t()). Unknown
- *  adapter-supplied types fall back to the raw string (open-world). */
-const DOCUMENT_TYPE_LABEL_FALLBACK: Record<string, string> = {
-  invoice: 'Invoice (faktura)',
-  receipt: 'Receipt (paragon)',
-};
 
 interface OrderInvoicePanelProps {
   order: OrderRecord;
@@ -255,10 +248,18 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       {!requiresConnectionPick && !invoiceQuery.isLoading && !invoiceQuery.isError && displayStatus === 'issued' && invoice ? (
         // Read-only — no POST action (re-issue backend-blocked, plan §1.1/§0.A).
         <div className="order-invoice-panel__body">
-          <InvoicePdfLink
-            invoiceNumber={invoice.providerInvoiceNumber}
-            pdfUrl={invoice.pdfUrl}
-          />
+          {/* `providerInvoiceNumber` is `string | null` on the DTO — an issued
+              row can lack the provider number (race / projection lag). Fall back
+              to the em-dash convention rather than rendering a blank line
+              (mirrors the list page's invoiceNumber cell). */}
+          {invoice.providerInvoiceNumber ? (
+            <InvoicePdfLink
+              invoiceNumber={invoice.providerInvoiceNumber}
+              pdfUrl={invoice.pdfUrl}
+            />
+          ) : (
+            <span className="text-muted">—</span>
+          )}
           <p className="order-invoice-panel__doctype">
             {t('invoice.documentType.label', 'Document type')}:{' '}
             {t(

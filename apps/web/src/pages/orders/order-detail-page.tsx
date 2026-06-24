@@ -31,6 +31,7 @@ import { useOrderShipmentsQuery } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
+import { OrderInvoicePanel } from '../../features/invoicing';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
@@ -280,6 +281,7 @@ export function OrderDetailPage(): ReactElement {
             sourcePlatformType={sourcePlatformType}
           />
           <OrderShipmentPanel order={order} />
+          <OrderInvoicePanel order={order} />
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
       </div>

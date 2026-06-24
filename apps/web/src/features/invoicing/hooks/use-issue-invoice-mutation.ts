@@ -24,15 +24,21 @@ export function useIssueInvoiceMutation(): UseMutationResult<
     mutationFn: (input) => apiClient.invoicing.issue(input),
     onSuccess: async (record, input) => {
       // Seed the cache so the panel flips to the returned status without waiting
-      // on a refetch, then invalidate to reconcile against the server (e.g. a
-      // pending row whose poll will pick up the eventual issued/failed).
+      // on a refetch.
       queryClient.setQueryData(
         invoicingQueryKeys.forOrder(input.orderId, input.connectionId),
         record,
       );
-      await queryClient.invalidateQueries({
-        queryKey: invoicingQueryKeys.forOrder(input.orderId, input.connectionId),
-      });
+      // Only invalidate (force a refetch) when the returned row is still
+      // `pending` — the poll then reconciles it to the eventual issued/failed.
+      // A terminal `issued`/`failed` response is already authoritative, so an
+      // unconditional invalidate there would discard the just-seeded value and
+      // fire a redundant GET on every successful issue (defeating the seed).
+      if (record.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: invoicingQueryKeys.forOrder(input.orderId, input.connectionId),
+        });
+      }
     },
   });
 }

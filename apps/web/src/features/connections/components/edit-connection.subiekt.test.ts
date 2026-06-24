@@ -81,17 +81,33 @@ describe('mergeStructuredIntoConfig — Subiekt (#759)', () => {
       expect('capabilities' in out).toBe(false);
     });
 
-    it('round-trips ON then OFF — second write persists false (ordering trap)', () => {
+    it('round-trips ON then OFF — second write DROPS the key (off is absence, not {key:false})', () => {
       const on = mergeStructuredIntoConfig(
         {},
         { subiektCapabilities: { 'regulatory-transmission-tracking': true } },
       );
       expect(on.capabilities).toEqual({ 'regulatory-transmission-tracking': true });
 
+      // Toggling the only capability OFF persists ABSENCE — an all-off
+      // connection carries no `capabilities` blob, so a presence-checking BE
+      // reader cannot misread a lingering `{ key: false }` as enabled.
       const off = mergeStructuredIntoConfig(on, {
         subiektCapabilities: { 'regulatory-transmission-tracking': false },
       });
-      expect(off.capabilities).toEqual({ 'regulatory-transmission-tracking': false });
+      expect('capabilities' in off).toBe(false);
+    });
+
+    it('persists only the enabled toggles when the record mixes true and false', () => {
+      const out = mergeStructuredIntoConfig(
+        {},
+        {
+          subiektCapabilities: {
+            'regulatory-transmission-tracking': true,
+            'some-other-toggle': false,
+          },
+        },
+      );
+      expect(out.capabilities).toEqual({ 'regulatory-transmission-tracking': true });
     });
   });
 

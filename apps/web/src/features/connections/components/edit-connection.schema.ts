@@ -372,14 +372,19 @@ export function mergeStructuredIntoConfig(
     }
   }
   // #759 — Subiekt capability toggles: whole-object under `config.capabilities`
-  // (clone of the `sellerDefaults` seam). Drop the key when the record is
-  // empty/undefined so an all-off connection carries no `capabilities` blob.
+  // (clone of the `sellerDefaults` seam). Persist ONLY the enabled (`true`)
+  // toggles and drop the key entirely when none are on, so an all-off
+  // connection carries no `capabilities` blob — an explicitly-off toggle is
+  // absence, not a persisted `{ key: false }` (which a presence-checking BE
+  // reader could otherwise misread as enabled).
   if (structured.subiektCapabilities !== undefined) {
-    const entries = Object.entries(structured.subiektCapabilities);
-    if (entries.length === 0) {
+    const enabled = Object.fromEntries(
+      Object.entries(structured.subiektCapabilities).filter(([, on]) => on === true),
+    );
+    if (Object.keys(enabled).length === 0) {
       delete next.capabilities;
     } else {
-      next.capabilities = { ...structured.subiektCapabilities };
+      next.capabilities = enabled;
     }
   }
   return next;

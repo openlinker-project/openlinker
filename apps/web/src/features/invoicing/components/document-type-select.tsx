@@ -15,7 +15,11 @@ import { useTranslation } from '../../../shared/i18n';
 /** Operator-selectable document types in v1 (subset of `DocumentTypeValues`). */
 const OPTIONS = ['invoice', 'receipt'] as const;
 
-const LABEL_FALLBACK: Record<(typeof OPTIONS)[number], string> = {
+/** EN fallbacks for the well-known document types (PL via `t()`). Exported as
+ *  the single source of truth so the issued-state line in `OrderInvoicePanel`
+ *  reuses the same labels instead of re-declaring them. Unknown adapter-supplied
+ *  types fall back to the raw string (open-world). */
+export const DOCUMENT_TYPE_LABEL_FALLBACK: Record<string, string> = {
   invoice: 'Invoice (faktura)',
   receipt: 'Receipt (paragon)',
 };
@@ -41,7 +45,7 @@ export function DocumentTypeSelect({
     >
       {OPTIONS.map((option) => (
         <option key={option} value={option}>
-          {t(`invoice.documentType.${option}`, LABEL_FALLBACK[option])}
+          {t(`invoice.documentType.${option}`, DOCUMENT_TYPE_LABEL_FALLBACK[option])}
         </option>
       ))}
     </Select>

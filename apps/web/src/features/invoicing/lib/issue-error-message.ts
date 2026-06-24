@@ -47,10 +47,15 @@ export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
     return t('invoice.error.capabilityDisabled', 'Invoicing is not enabled for this connection.');
   }
   if (error instanceof ApiError) {
-    if (error.status === 422) {
-      return error.message;
-    }
-    if (error.status === 400) {
+    // Branches 2 + 3 (the ONLY two that echo the server message): a sanitised
+    // provider rejection (422, controller correlationId string) and a
+    // non-capability buyer-profile/price-treatment 400 (PII-clean mapper text).
+    // The capability-disabled 400 is already handled above (fixed copy, no echo),
+    // so reaching this with status 400 means a non-capability 400. SECURITY: this
+    // assumes every non-capability 400 message is server-sanitised — the
+    // discriminator is name-based, so an unmodeled 400 shape would echo whatever
+    // the BE sent. Keep this in lockstep with the controller's 400 vocabulary.
+    if (error.status === 422 || error.status === 400) {
       return error.message;
     }
     if (error.status === 409) {
