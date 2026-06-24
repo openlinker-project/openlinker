@@ -46,6 +46,7 @@ import { dpdPlugin } from './dpd';
 import { erliPlugin } from './erli';
 import { inpostPlugin } from './inpost';
 import { prestashopPlugin } from './prestashop';
+import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
@@ -55,6 +56,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   inpostPlugin,
   woocommercePlugin,
   erliPlugin,
+  subiektPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);
