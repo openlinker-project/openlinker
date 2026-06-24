@@ -13,6 +13,7 @@ export { erliBulkConfigIsComplete } from './components/erli/erli-offer-fields.sc
 export { ErliBulkRowSection } from './components/erli/erli-bulk-row-section';
 export { erliOfferValidation } from './components/erli/erli-offer-validation';
 export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-config-section';
+export { allegroBulkConfigIsComplete } from './components/allegro/allegro-bulk-config.schema';
 export { allegroOfferValidation } from './components/allegro/allegro-offer-validation';
 export { WoocommercePublishWizard } from './components/WoocommercePublishWizard';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It

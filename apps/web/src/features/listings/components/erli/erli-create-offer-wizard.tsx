@@ -278,12 +278,12 @@ export function ErliCreateOfferWizard({
     .filter((m): m is string => typeof m === 'string');
 
   return (
-    <div className="allegro-create-offer-wizard">
-      <header className="allegro-create-offer-wizard__header">
-        <h2 className="allegro-create-offer-wizard__title">
+    <div className="create-offer-wizard">
+      <header className="create-offer-wizard__header">
+        <h2 className="create-offer-wizard__title">
           {t('listings.erli.offer.title', 'Create Erli offer')}
         </h2>
-        <p className="allegro-create-offer-wizard__subtitle">
+        <p className="create-offer-wizard__subtitle">
           {t('listings.erli.offer.publishingTo', 'Publishing to')}{' '}
           <strong>{connection.name}</strong>{' '}
           <span className="mono-text muted-text">({connection.platformType})</span>

@@ -102,13 +102,3 @@ export function AllegroBulkConfigSection({
     </div>
   );
 }
-
-/** Pure completeness predicate the host ANDs into its `canProceed` gate. */
-export function allegroBulkConfigIsComplete(values: {
-  platformParams: Record<string, unknown>;
-}): boolean {
-  return (
-    typeof values.platformParams.deliveryPolicyId === 'string' &&
-    values.platformParams.deliveryPolicyId !== ''
-  );
-}

@@ -11,7 +11,11 @@
 import { lazy } from 'react';
 
 import { createAllegroApi, type AllegroApi } from '../../features/allegro';
-import { AllegroCreateOfferWizard, allegroOfferValidation } from '../../features/listings';
+import {
+  AllegroCreateOfferWizard,
+  allegroBulkConfigIsComplete,
+  allegroOfferValidation,
+} from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { allegroCallbackRoute } from './allegro-callback.route';
@@ -24,14 +28,6 @@ import { extractAllegroContentPublishErrors } from './extract-content-publish-er
 const AllegroBulkConfigSectionLazy = lazy(() =>
   import('../../features/listings').then((m) => ({ default: m.AllegroBulkConfigSection })),
 );
-
-/** Pure completeness predicate — must NOT pull the lazy chunk (runs in `canProceed`). */
-function allegroBulkConfigIsComplete(values: {
-  platformParams: Record<string, unknown>;
-}): boolean {
-  const id = values.platformParams.deliveryPolicyId;
-  return typeof id === 'string' && id !== '';
-}
 
 declare module '../../app/api/api-client' {
   interface PluginApiNamespaces {
