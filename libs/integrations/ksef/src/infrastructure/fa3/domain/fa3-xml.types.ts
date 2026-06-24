@@ -24,6 +24,14 @@ export const FA3_NAMESPACE = 'http://crd.gov.pl/wzor/2025/06/25/13775/';
 /** `KodFormularza` element value. */
 export const FA3_FORM_CODE = 'FA';
 
+/**
+ * `KodFormularza/@kodSystemowy` — the Ministry-of-Finance *system code* for the
+ * FA(3) form. This literal token is what KSeF expects in both the XML header
+ * attribute and `OpenOnlineSessionRequest.formCode.systemCode`. It is NOT the
+ * schema namespace URL (a common confusion the session-open request must avoid).
+ */
+export const FA3_SYSTEM_CODE = 'FA (3)';
+
 /** `KodFormularza/@wersjaSchemy` + `WariantFormularza`-pinned schema version. */
 export const FA3_SCHEMA_VERSION = '1-0E';
 

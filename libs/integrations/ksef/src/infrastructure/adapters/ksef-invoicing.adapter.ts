@@ -56,10 +56,11 @@ import type { IFa3XmlBuilder } from '../fa3/builders/fa3-xml-builder.port';
 import type { SellerProfile } from '../fa3/domain/fa3-xml.types';
 import {
   FA3_FORM_CODE,
-  FA3_NAMESPACE,
   FA3_SCHEMA_VERSION,
+  FA3_SYSTEM_CODE,
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
+import { encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import {
   KSEF_SESSION_CLOSED_ZERO_VALID,
@@ -118,10 +119,12 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     await this.assertSessionAccepted(sessionRef);
 
     this.logger.log(
-      `KSeF document submitted (connection ${this.connectionId}, invoice ref ${invoiceReference})`,
+      `KSeF document submitted (connection ${this.connectionId}, session ref ${sessionRef}, invoice ref ${invoiceReference})`,
     );
 
     // 4. Neutral result. KSeF number is async (C6 reconciles) → clearanceReference null.
+    //    providerInvoiceId packs BOTH the session ref and the invoice ref — the
+    //    status/UPO read (C6) needs both for GET /sessions/{sref}/invoices/{iref}.
     return new InvoiceRecord(
       '', // persistence id is assigned by the core InvoiceService (#1118), not here.
       cmd.connectionId,
@@ -129,7 +132,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       'ksef',
       this.resolveDocumentType(cmd.documentType),
       'issued',
-      invoiceReference,
+      encodeProviderInvoiceId(sessionRef, invoiceReference),
       null,
       'submitted',
       null,
@@ -187,7 +190,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   private async openOnlineSession(context: SessionCryptoContext): Promise<string> {
     const body: OpenOnlineSessionRequest = {
       formCode: {
-        systemCode: FA3_NAMESPACE,
+        systemCode: FA3_SYSTEM_CODE,
         schemaVersion: FA3_SCHEMA_VERSION,
         value: FA3_FORM_CODE,
       },
@@ -244,8 +247,10 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   }
 
   private async assertSessionAccepted(sessionRef: string): Promise<void> {
+    // Session status is GET /sessions/{ref} (NOT /sessions/online/{ref}, which has
+    // no GET in the KSeF v2 spec — only POST for open + sub-resources).
     const response = await this.httpClient.get<OnlineSessionStatusResponse>(
-      `/sessions/online/${encodeURIComponent(sessionRef)}`,
+      `/sessions/${encodeURIComponent(sessionRef)}`,
     );
     const code = response.data.status?.code;
     if (code === KSEF_SESSION_CLOSED_ZERO_VALID) {
