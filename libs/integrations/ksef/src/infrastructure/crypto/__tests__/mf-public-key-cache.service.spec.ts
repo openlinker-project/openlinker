@@ -1,6 +1,10 @@
 /**
  * MF public-key cache service specs — fetch/filter/select/validate + caching.
  *
+ * Wire shape reconciled to the spec `PublicKeyCertificate`: the endpoint returns
+ * a flat ARRAY; each entry has `certificate` (DER base64), `certificateId`,
+ * `publicKeyId`, `validFrom`/`validTo`, and `usage` as an ARRAY of operations.
+ *
  * @module libs/integrations/ksef/src/infrastructure/crypto
  */
 import { MfPublicKeyCacheService } from '../mf-public-key-cache.service';
@@ -26,36 +30,49 @@ function inMemoryCache(): CachePort & { store: Map<string, unknown> } {
   };
 }
 
+interface WireCert {
+  certificate: string;
+  certificateId?: string;
+  publicKeyId?: string;
+  usage: string[];
+  validFrom: string;
+  validTo: string;
+}
+
+/** A flat ARRAY of certificate entries (the spec response shape). */
 function certResponse(): {
-  data: {
-    certificates: Array<{ certificate: string; usage: string; validFrom: string; validUntil: string }>;
-  };
+  data: WireCert[];
   status: number;
   headers: Record<string, string>;
 } {
   return {
-    data: {
-      certificates: [
-        {
-          certificate: 'PEM-SYM-OLD',
-          usage: 'SymmetricKeyEncryption',
-          validFrom: '2026-01-01T00:00:00Z',
-          validUntil: '2026-02-01T00:00:00Z',
-        },
-        {
-          certificate: 'PEM-SYM-NEW',
-          usage: 'SymmetricKeyEncryption',
-          validFrom: '2026-05-01T00:00:00Z',
-          validUntil: '2027-05-01T00:00:00Z',
-        },
-        {
-          certificate: 'PEM-TOKEN',
-          usage: 'KsefTokenEncryption',
-          validFrom: '2026-05-01T00:00:00Z',
-          validUntil: '2027-05-01T00:00:00Z',
-        },
-      ],
-    },
+    data: [
+      {
+        certificate: 'REVMLVNZTS1PTEQ=',
+        certificateId: 'CID-SYM-OLD',
+        publicKeyId: 'PKID-SYM-OLD' + 'a'.repeat(32),
+        usage: ['SymmetricKeyEncryption'],
+        validFrom: '2026-01-01T00:00:00Z',
+        validTo: '2026-02-01T00:00:00Z',
+      },
+      {
+        certificate: 'REVMLVNZTS1ORVc=',
+        certificateId: 'CID-SYM-NEW',
+        publicKeyId: 'PKID-SYM-NEW' + 'b'.repeat(32),
+        usage: ['SymmetricKeyEncryption'],
+        validFrom: '2026-05-01T00:00:00Z',
+        validTo: '2027-05-01T00:00:00Z',
+      },
+      {
+        certificate: 'REVMLVRPS0VO',
+        certificateId: 'CID-TOKEN',
+        publicKeyId: 'PKID-TOKEN' + 'c'.repeat(34),
+        // A cert valid for both operations — usage membership, not equality.
+        usage: ['KsefTokenEncryption', 'SymmetricKeyEncryption'],
+        validFrom: '2025-01-01T00:00:00Z',
+        validTo: '2027-05-01T00:00:00Z',
+      },
+    ],
     status: 200,
     headers: {},
   };
@@ -69,32 +86,33 @@ describe('MfPublicKeyCacheService', () => {
     http.seed('GET', PATH, certResponse());
   });
 
-  it('should select the latest valid cert matching the requested usage', async () => {
+  it('should select the latest valid cert whose usage array includes the requested usage', async () => {
     const service = new MfPublicKeyCacheService('conn-1', http);
     const cert = await service.fetchAndCachePublicKey('SymmetricKeyEncryption');
-    expect(cert.certificatePem).toBe('PEM-SYM-NEW');
-    expect(cert.usage).toBe('SymmetricKeyEncryption');
+    // PKID-SYM-NEW has the latest validFrom among the symmetric-capable certs.
+    expect(cert.publicKeyId).toBe('PKID-SYM-NEW' + 'b'.repeat(32));
+    expect(cert.usage).toContain('SymmetricKeyEncryption');
+    expect(cert.certificatePem).toContain('BEGIN CERTIFICATE');
     expect(cert.certificateHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('should return the token-encryption cert for the token usage', async () => {
+  it('should match a cert that lists the usage among several operations', async () => {
     const service = new MfPublicKeyCacheService('conn-1', http);
     const cert = await service.fetchAndCachePublicKey('KsefTokenEncryption');
-    expect(cert.certificatePem).toBe('PEM-TOKEN');
+    expect(cert.publicKeyId).toBe('PKID-TOKEN' + 'c'.repeat(34));
+    expect(cert.usage).toContain('KsefTokenEncryption');
   });
 
   it('should throw when no valid cert exists for the usage', async () => {
     const onlyExpired = {
-      data: {
-        certificates: [
-          {
-            certificate: 'PEM-EXPIRED',
-            usage: 'SymmetricKeyEncryption',
-            validFrom: '2000-01-01T00:00:00Z',
-            validUntil: '2000-02-01T00:00:00Z',
-          },
-        ],
-      },
+      data: [
+        {
+          certificate: 'RVhQSVJFRA==',
+          usage: ['SymmetricKeyEncryption'],
+          validFrom: '2000-01-01T00:00:00Z',
+          validTo: '2000-02-01T00:00:00Z',
+        },
+      ] as WireCert[],
       status: 200,
       headers: {},
     };
@@ -127,13 +145,12 @@ describe('MfPublicKeyCacheService', () => {
     it('should drop a cached-but-now-stale cert and refetch (rotation)', async () => {
       const cache = inMemoryCache();
       const key = 'ksef:mf-public-key:conn-1:SymmetricKeyEncryption';
-      // Pre-seed the cache with a cert whose window has already closed: a rotated
-      // cert the previous run cached before the MF rotated it early.
+      // Pre-seed the cache with a cert whose window has already closed.
       cache.store.set(key, {
         certificatePem: 'PEM-ROTATED-OUT',
-        usage: 'SymmetricKeyEncryption',
+        usage: ['SymmetricKeyEncryption'],
         validFrom: '2000-01-01T00:00:00Z',
-        validUntil: '2000-02-01T00:00:00Z',
+        validTo: '2000-02-01T00:00:00Z',
         certificateHash: 'stale-hash',
       });
 
@@ -142,25 +159,24 @@ describe('MfPublicKeyCacheService', () => {
 
       // The stale entry was validated, found expired, dropped, and the live
       // (currently-valid) cert fetched + re-cached in its place.
-      expect(cert.certificatePem).toBe('PEM-SYM-NEW');
+      expect(cert.publicKeyId).toBe('PKID-SYM-NEW' + 'b'.repeat(32));
       expect(http.calls.filter((c) => c.path === PATH)).toHaveLength(1);
-      expect(cache.store.get(key)).toMatchObject({ certificatePem: 'PEM-SYM-NEW' });
+      expect(cache.store.get(key)).toMatchObject({ publicKeyId: 'PKID-SYM-NEW' + 'b'.repeat(32) });
     });
 
     it('should not cache a freshly-fetched cert already inside its refresh margin', async () => {
       // A cert valid only 1 minute from now sits inside the 5-minute refresh
       // margin: usable for this call but not worth caching (next call refetches).
       const nearExpiry = {
-        data: {
-          certificates: [
-            {
-              certificate: 'PEM-NEAR-EXPIRY',
-              usage: 'SymmetricKeyEncryption',
-              validFrom: new Date(Date.now() - 60_000).toISOString(),
-              validUntil: new Date(Date.now() + 60_000).toISOString(),
-            },
-          ],
-        },
+        data: [
+          {
+            certificate: 'TkVBUi1FWFBJUlk=',
+            publicKeyId: 'PKID-NEAR' + 'd'.repeat(35),
+            usage: ['SymmetricKeyEncryption'],
+            validFrom: new Date(Date.now() - 60_000).toISOString(),
+            validTo: new Date(Date.now() + 60_000).toISOString(),
+          },
+        ] as WireCert[],
         status: 200,
         headers: {},
       };
@@ -171,7 +187,7 @@ describe('MfPublicKeyCacheService', () => {
 
       const cert = await service.fetchAndCachePublicKey('SymmetricKeyEncryption');
 
-      expect(cert.certificatePem).toBe('PEM-NEAR-EXPIRY');
+      expect(cert.publicKeyId).toBe('PKID-NEAR' + 'd'.repeat(35));
       expect(cache.store.size).toBe(0);
     });
 
