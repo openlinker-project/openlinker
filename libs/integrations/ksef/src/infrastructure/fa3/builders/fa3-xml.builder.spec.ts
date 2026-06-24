@@ -17,6 +17,7 @@ import {
   type SellerProfile,
 } from '../domain/fa3-xml.types';
 import { buildFa3Xml } from './fa3-xml.builder';
+import { validateFa3Xml } from '../validators/fa3-xsd.validator';
 
 const seller: SellerProfile = {
   nip: '1234567890',
@@ -46,7 +47,6 @@ function b2bInput(): Fa3BuilderInput {
     issueDate: '2026-06-23',
     invoiceNumber: 'FV/2026/06/0001',
     generatedAt: '2026-06-23T10:15:30Z',
-    orderReference: 'ol_order_123',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
   };
 }
@@ -81,8 +81,27 @@ describe('buildFa3Xml', () => {
     expect(xml).toMatch(/<Podmiot2>.*<NIP>9876543210<\/NIP>.*<\/Podmiot2>/s);
   });
 
-  it('should echo the order reference into Adnotacje', () => {
-    expect(buildFa3Xml(b2bInput())).toMatch(/<Adnotacje>.*ol_order_123.*<\/Adnotacje>/s);
+  it('should emit RodzajFaktury=VAT for a plain sales invoice', () => {
+    expect(buildFa3Xml(b2bInput())).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+  });
+
+  it('should emit the required Adnotacje children with "nothing special" defaults', () => {
+    const xml = buildFa3Xml(b2bInput());
+    // The five TWybor1_2 flags default to "2" (no).
+    expect(xml).toMatch(/<Adnotacje>[^]*<P_16>2<\/P_16>[^]*<\/Adnotacje>/);
+    expect(xml).toContain('<P_17>2</P_17>');
+    expect(xml).toContain('<P_18>2</P_18>');
+    expect(xml).toContain('<P_18A>2</P_18A>');
+    expect(xml).toContain('<P_23>2</P_23>');
+    // Each choice group takes its negative branch (TWybor1 = "1").
+    expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
+    expect(xml).toContain('<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu>');
+    expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+  });
+
+  it('should emit Fa children in schema order (P_15 → Adnotacje → RodzajFaktury → FaWiersz)', () => {
+    const xml = buildFa3Xml(b2bInput());
+    expect(xml).toMatch(/<P_15>[^]*<Adnotacje>[^]*<\/Adnotacje>[^]*<RodzajFaktury>[^]*<FaWiersz/);
   });
 
   it('should emit P_1 (issue date) and P_2 (invoice number)', () => {
@@ -127,5 +146,81 @@ describe('buildFa3Xml', () => {
     const input = b2bInput();
     input.buyer = { kind: 'none' };
     expect(buildFa3Xml(input)).toContain('BrakID');
+  });
+
+  describe('KOR (correction)', () => {
+    function korInput(originalKsefNumber: string | null): Fa3BuilderInput {
+      return {
+        ...b2bInput(),
+        invoiceNumber: 'KOR/2026/06/0001',
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'Customer returned 1 unit',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0042',
+          originalKsefNumber,
+          correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+    }
+
+    it('should produce a KOR document that passes the structural FA(3) validator', () => {
+      // The KOR body must still satisfy the hardened required-section rule set
+      // (Naglowek + FA(3) form code, Podmiot1, Fa with KodWaluty/P_1/P_2/
+      // RodzajFaktury/Adnotacje and >=1 FaWiersz).
+      expect(() => validateFa3Xml(buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01')))).not.toThrow();
+    });
+
+    it('should emit RodzajFaktury=KOR with reason and TypKorekty', () => {
+      const xml = buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01'));
+      expect(xml).toContain('<RodzajFaktury>KOR</RodzajFaktury>');
+      expect(xml).toContain('<TypKorekty>2</TypKorekty>');
+      expect(xml).toContain('<PrzyczynaKorekty>Customer returned 1 unit</PrzyczynaKorekty>');
+    });
+
+    it('should populate DaneFaKorygowanej/NrKSeF when the original was a KSeF invoice', () => {
+      const xml = buildFa3Xml(korInput('1111111111-20260501-ABCDEF-01'));
+      expect(xml).toMatch(
+        /<DaneFaKorygowanej>.*<DataWystFaKorygowanej>2026-05-01<\/DataWystFaKorygowanej>.*<NrFaKorygowanej>FV\/2026\/05\/0042<\/NrFaKorygowanej>.*<NrKSeF>1111111111-20260501-ABCDEF-01<\/NrKSeF>.*<\/DaneFaKorygowanej>/s,
+      );
+      expect(xml).not.toContain('<NrKSeFN>');
+    });
+
+    it('should emit NrKSeFN=1 (not NrKSeF) when the original was NOT a KSeF invoice', () => {
+      const xml = buildFa3Xml(korInput(null));
+      expect(xml).toContain('<NrKSeFN>1</NrKSeFN>');
+      expect(xml).not.toContain('<NrKSeF>');
+    });
+
+    it('should emit the corrected-party snapshots Podmiot1K / Podmiot2K', () => {
+      const xml = buildFa3Xml(korInput(null));
+      expect(xml).toContain('<Podmiot1K>');
+      expect(xml).toContain('<Podmiot2K>');
+    });
+
+    it('should emit before rows flagged StanPrzed=1 plus after rows without it', () => {
+      const xml = buildFa3Xml(korInput(null));
+      // One "before" (StanPrzed) row + one "after" row.
+      expect(xml.match(/<FaWiersz/g)?.length).toBe(2);
+      expect(xml.match(/<StanPrzed>1<\/StanPrzed>/g)?.length).toBe(1);
+      // Before row carries the original quantity 2; after row the corrected 1.
+      expect(xml).toMatch(/<StanPrzed>1<\/StanPrzed>/);
+    });
+
+    it('should aggregate P_15 from the corrected (after) lines, not the original', () => {
+      const xml = buildFa3Xml(korInput(null));
+      // After state = 1 * 123.00.
+      expect(xml).toContain('<P_15>123.00</P_15>');
+    });
+
+    it('should emit RodzajFaktury=VAT (not KOR) for a plain (non-correction) invoice', () => {
+      // RodzajFaktury is XSD-required on every FA(3); a plain invoice is `VAT`,
+      // and carries none of the KOR-only correction metadata.
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
+      expect(xml).not.toContain('<DaneFaKorygowanej>');
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
+    });
   });
 });

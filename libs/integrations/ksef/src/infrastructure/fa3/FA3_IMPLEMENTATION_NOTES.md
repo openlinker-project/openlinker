@@ -89,11 +89,43 @@ the skeleton). Unsupported currency throws `UnsupportedCurrencyException`.
 The adapter logs structural facts only (connectionId, orderId, lineCount) via
 the shared `Logger`. It NEVER logs buyer names, tax ids, or the raw XML.
 
+## Correction invoices (KOR — #1151 / C7)
+
+A correcting document (`documentType` `corrected`/`credit-note` carrying a neutral
+`IssueInvoiceCommand.correction`) builds a `RodzajFaktury=KOR` FA(3) through the
+same pure builder + the same C5 session-send flow:
+
+| FA(3) field | Source | Notes |
+|---|---|---|
+| `RodzajFaktury` | constant `KOR` | plain correction; `KOR_ZAL`/`KOR_ROZ` deferred |
+| `TypKorekty` | `2` (default) | line-item correction — the return/refund case |
+| `PrzyczynaKorekty` | `correction.reason` | free-text, entity-escaped |
+| `DaneFaKorygowanej/DataWystFaKorygowanej` | `correction.originalIssueDate` | original issue date |
+| `DaneFaKorygowanej/NrFaKorygowanej` | `correction.originalDocumentNumber` | original number |
+| `DaneFaKorygowanej/NrKSeF` | `correction.originalClearanceReference` | when the original was a KSeF invoice |
+| `DaneFaKorygowanej/NrKSeFN` = `1` | — | when `originalClearanceReference` is `null` (non-KSeF original) |
+| `Podmiot1K` / `Podmiot2K` | seller / buyer snapshot | OL does not track party changes → mirrors the originals |
+| `FaWiersz` (before) | command top-level `lines` | each flagged `StanPrzed=1` |
+| `FaWiersz` (after) | `correction.correctedLines` | corrected state; drives `P_13/P_14/P_15` |
+
+The neutral→FA(3) seam is `mapCorrection` in `fa3-builder-input.mapper.ts`; the
+`originalClearanceReference` (the opaque authority reference) is the only linkage
+to the original — no KSeF string crosses into core.
+
+> **PROVISIONAL (reconcile vs live KSeF 2.0 / FA(3) v1-0E docs — same posture as
+> C4/C5):** the KOR element *names/placement* (`RodzajFaktury`, `TypKorekty`,
+> `DaneFaKorygowanej`, `Podmiot1K`/`Podmiot2K`, `StanPrzed`) follow the published
+> FA(3) before/after model but are validated only against the **placeholder** XSD
+> (well-formedness + structural rules). Confirm exact cardinality/ordering and the
+> before/after-vs-signed-difference choice against the authoritative crd.gov.pl
+> schema before submission. `KOR_ZAL`/`KOR_ROZ` (advance/settlement corrections)
+> are a deferred follow-up.
+
 ## Known limitations / deferred work
 
 - ⏸ Authoritative XSD from crd.gov.pl + MF example-pack compliance (C3+).
 - ⏸ KSeF submission + clearance status (C3+).
-- ⏸ Corrective / credit-note document builders (future `IFa3XmlBuilder` variant).
+- ⏸ `KOR_ZAL` / `KOR_ROZ` advance/settlement-correction document types (#1151 follow-up).
 - ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
