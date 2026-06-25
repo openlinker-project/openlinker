@@ -54,15 +54,28 @@ describe('KsefHttpClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
   });
 
-  it('should NOT inject a bearer on the unauthenticated /auth and cert endpoints', async () => {
+  it('should NOT inject a bearer when skipAuth is set (unauthenticated bootstrap calls)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { challenge: 'c', timestamp: 't' }));
     const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
 
-    await client.post('/auth/challenge', undefined, { idempotent: true });
+    await client.post('/auth/challenge', undefined, { idempotent: true, skipAuth: true });
 
     expect(lifecycle.authenticate).not.toHaveBeenCalled();
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it('should run the handshake + inject a bearer for an /auth path without skipAuth', async () => {
+    // Path-prefix inference is gone: a future authenticated /auth/* sub-resource
+    // must NOT be silently bypassed — it goes through the normal auth path.
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+
+    await client.get('/auth/sessions');
+
+    expect(lifecycle.authenticate).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
   });
 
   it('should refresh once and retry on a reactive 401, then succeed', async () => {
@@ -169,16 +182,15 @@ describe('KsefHttpClient', () => {
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefNetworkException);
     });
 
-    it('should treat a 403 like a 401 and attempt a single refresh', async () => {
-      fetchMock
-        .mockResolvedValueOnce(jsonResponse(403, { error: 'forbidden' }))
-        .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    it('should fail fast on a 403 as a non-retryable KsefApiException without refreshing', async () => {
+      // 403 is an authorization decision, not an expired token — refreshing
+      // can never change the outcome, so the client must not refresh+retry.
+      fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
       const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
 
-      const res = await client.get('/sessions/online');
-
-      expect(lifecycle.refresh).toHaveBeenCalledTimes(1);
-      expect(res.data).toEqual({ ok: true });
+      await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
+      expect(lifecycle.refresh).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -198,6 +210,27 @@ describe('KsefHttpClient', () => {
 
       expect(res.data).toEqual({ ok: true });
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('should carry the parsed Retry-After delay on the 429 KsefApiException when retries are exhausted', async () => {
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: 'slow down' }), {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '2' },
+        }),
+      );
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, {
+        maxRetries: 0,
+        initialDelayMs: 1,
+        maxDelayMs: 1,
+        backoffMultiplier: 1,
+      });
+
+      await expect(client.get('/sessions/online')).rejects.toMatchObject({
+        name: 'KsefApiException',
+        statusCode: 429,
+        retryAfterMs: 2000,
+      });
     });
 
     it('should retry an idempotent GET on a transient 503 then succeed', async () => {

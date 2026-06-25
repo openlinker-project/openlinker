@@ -29,6 +29,11 @@ export function validateMfPublicKeyCertificate(
   usage: KsefCertificateUsage,
   now: Date = new Date(),
 ): void {
+  // TODO(security): before go-live, production MUST add full chain-of-trust
+  // verification here — pin the MF root CA and check the cert chains to it, plus
+  // OCSP/CRL revocation. Today this gate only enforces the validity window +
+  // declared usage (C3 scope; see crypto README). This function is the single
+  // seam to add the pinning/revocation checks.
   if (!cert.usage.includes(usage)) {
     throw new KsefSessionCryptoException(
       `MF cert usage mismatch: expected ${usage}, got [${cert.usage.join(', ')}] (cert ${cert.certificateHash})`,

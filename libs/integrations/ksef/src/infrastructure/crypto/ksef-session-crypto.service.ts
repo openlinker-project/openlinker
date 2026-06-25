@@ -70,9 +70,17 @@ export class KsefSessionCryptoService {
     };
   }
 
-  /** Encrypt a document body with the session's AES key + IV. */
+  /**
+   * Encrypt a document body with the session's AES key and a FRESH per-document
+   * IV. The wrapped symmetric key is reused across the batch, but the IV must be
+   * unique per encryption — CBC IV reuse under the same key leaks plaintext
+   * structure. The IV travels alongside the ciphertext in the `EncryptedDocument`
+   * envelope (and is read back by `decryptDocument`), so it need not be the
+   * session IV.
+   */
   encryptDocument(plaintext: string, context: SessionCryptoContext): EncryptedDocument {
-    const { key, iv } = context.symmetricKey;
+    const { key } = context.symmetricKey;
+    const iv = this.generateIv();
     return {
       algorithm: KSEF_AES_ALGORITHM,
       ciphertext: encryptAesCbc(plaintext, key, iv),
@@ -89,7 +97,7 @@ export class KsefSessionCryptoService {
     try {
       return {
         key: new Uint8Array(randomBytes(KSEF_AES_KEY_BYTES)),
-        iv: new Uint8Array(randomBytes(KSEF_AES_IV_BYTES)),
+        iv: this.generateIv(),
       };
     } catch (err) {
       throw new KsefSessionCryptoException(
@@ -98,5 +106,9 @@ export class KsefSessionCryptoService {
         err as Error,
       );
     }
+  }
+
+  private generateIv(): Uint8Array {
+    return new Uint8Array(randomBytes(KSEF_AES_IV_BYTES));
   }
 }
