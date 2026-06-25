@@ -32,6 +32,7 @@ import { ErliConnectionCredentialsShapeValidatorAdapter } from './infrastructure
 import { ErliConnectionTesterAdapter } from './infrastructure/adapters/erli-connection-tester.adapter';
 import { ErliEmailNormalizerAdapter } from './infrastructure/adapters/erli-email-normalizer.adapter';
 import { ErliRetryClassifierAdapter } from './infrastructure/adapters/erli-retry-classifier.adapter';
+import { ErliInboundWebhookDecoderAdapter } from './infrastructure/adapters/erli-inbound-webhook-decoder.adapter';
 import { ErliWebhookEventTranslator } from './infrastructure/adapters/erli-webhook-event-translator.adapter';
 import { buildErliSchedulerTasks } from './infrastructure/scheduler/erli-scheduler-tasks';
 
@@ -93,12 +94,19 @@ export function createErliPlugin(): AdapterPlugin {
       for (const task of buildErliSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }
-      // Inbound webhook scaffolding (#996, ADR-015). The translator decodes
-      // Erli's id-only order webhooks into a neutral CanonicalInboundEvent the
-      // core routing policy maps to marketplace.order.sync. PROVISIONAL (#992):
-      // the host's fail-closed OL-HMAC default rejects 100% of real Erli
-      // webhooks until the native InboundWebhookDecoderPort lands, so this is
-      // fail-safe scaffolding — the #993 inbox poll is the authoritative path.
+      // Inbound webhook path (#996, #1081, ADR-015 / ADR-021).
+      // Decoder (provider-keyed by platformType): authenticates + decodes real
+      // Erli deliveries so they are no longer rejected by the host's fail-closed
+      // OL-HMAC default (#1081). PROVISIONAL (#992): header name + body shape
+      // isolated in erli-webhook.types.ts — single reconciliation point when
+      // sandbox confirms. The inbox poll (#993) remains the authoritative path.
+      host.inboundWebhookDecoderRegistry.register(
+        erliAdapterManifest.platformType,
+        new ErliInboundWebhookDecoderAdapter(),
+      );
+      // Translator (adapterKey-keyed): maps the decoded envelope to a neutral
+      // CanonicalInboundEvent that the core routing policy dispatches to
+      // marketplace.order.sync.
       host.webhookEventTranslatorRegistry.register(
         ERLI_ADAPTER_KEY,
         new ErliWebhookEventTranslator(),
