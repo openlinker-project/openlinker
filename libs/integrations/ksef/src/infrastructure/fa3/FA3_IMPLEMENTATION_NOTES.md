@@ -91,6 +91,9 @@ the shared `Logger`. It NEVER logs buyer names, tax ids, or the raw XML.
 
 ## Known limitations / deferred work
 
+- ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —
+  the `FA3_TAX_RATE_MAP` keys in `fa3-tax-rate.mapper.ts` are provisional and
+  MUST be settled before C3 submission (see the OPEN note under P_12 mapping).
 - ⏸ Authoritative XSD from crd.gov.pl + MF example-pack compliance (C3+).
 - ⏸ KSeF submission + clearance status (C3+).
 - ⏸ Corrective / credit-note document builders (future `IFa3XmlBuilder` variant).

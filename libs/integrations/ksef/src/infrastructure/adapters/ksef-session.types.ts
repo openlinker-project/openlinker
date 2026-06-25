@@ -59,7 +59,7 @@ export interface SendInvoiceResponse {
 }
 
 /**
- * Response from `GET /sessions/online/{referenceNumber}` (status read). `status.code`
+ * Response from `GET /sessions/{referenceNumber}` (status read). `status.code`
  * is the KSeF-native session status; `445` is the zero-valid-invoices terminal
  * failure. The KSeF number is assigned asynchronously and is NOT present at
  * submit time — clearance is reconciled later (#1150 / C6).

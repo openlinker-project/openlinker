@@ -13,6 +13,7 @@ import type {
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
 import { KsefSessionException } from '../../../domain/exceptions/ksef-session.exception';
+import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KSEF_SESSION_CLOSED_ZERO_VALID } from '../ksef-session.types';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
@@ -164,6 +165,25 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http, KSEF_SESSION_CLOSED_ZERO_VALID);
 
       await expect(adapter(http).issueInvoice(command())).rejects.toBeInstanceOf(KsefSessionException);
+    });
+
+    it('should terminally reject an unsupported document type before any network call', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueInvoice(command({ documentType: 'proforma' })),
+      ).rejects.toBeInstanceOf(KsefUnsupportedDocumentTypeException);
+      // Rejected up front — no session is opened.
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should issue when documentType is a supported type', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const record = await adapter(http).issueInvoice(command({ documentType: 'corrected' }));
+      expect(record.documentType).toBe('corrected');
     });
 
     it('should still close the session when submit fails', async () => {

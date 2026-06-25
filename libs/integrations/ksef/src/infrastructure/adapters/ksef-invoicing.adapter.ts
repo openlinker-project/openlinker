@@ -62,6 +62,7 @@ import {
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
 import { encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
+import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ksef-unsupported-document-type.exception';
 import {
   KSEF_SESSION_CLOSED_ZERO_VALID,
   type OnlineSessionStatusResponse,
@@ -88,6 +89,12 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
   ) {}
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecordType> {
+    // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
+    // the subset getSupportedDocumentTypes advertises. Reject anything else up
+    // front with a terminal exception so the service marks the record failed
+    // rather than the adapter emitting a wrong document downstream.
+    this.assertDocumentTypeSupported(cmd.documentType);
+
     const issuedAt = this.now();
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
@@ -100,6 +107,8 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
         seller: this.seller,
         issueDate: this.toIsoDate(issuedAt),
         generatedAt: issuedAt.toISOString(),
+        // TODO(#1150): replace the orderId placeholder with a real sequential
+        // FA(3) invoice-number source before prod.
         invoiceNumber: cmd.orderId,
       }),
     );
@@ -108,10 +117,29 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     const cryptoContext = await this.sessionCrypto.initializeSession(issuedAt);
     const sessionRef = await this.openOnlineSession(cryptoContext);
     let invoiceReference: string;
+    let submitError: unknown;
     try {
       invoiceReference = await this.submitInvoice(sessionRef, xml, cryptoContext);
+    } catch (error) {
+      // Track the in-flight submit error so the finally-block close can't mask
+      // it: on a failed submit a subsequent close failure is logged + swallowed,
+      // preserving the original (more actionable) submit error.
+      submitError = error;
+      throw error;
     } finally {
-      await this.closeSession(sessionRef);
+      try {
+        await this.closeSession(sessionRef);
+      } catch (closeError) {
+        if (submitError === undefined) {
+          // Submit succeeded — a close failure is the real (and only) error, so
+          // surface it rather than silently dropping it.
+          throw closeError;
+        }
+        this.logger.warn(
+          `KSeF session close failed after a failed submit (session ref ${sessionRef}); ` +
+            `keeping the original submit error. Close error: ${this.describeError(closeError)}`,
+        );
+      }
     }
 
     // 3. KSeF rejects-with-zero-valid is reported on the session status, not the
@@ -260,11 +288,34 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
         sessionRef,
       );
     }
+    // Any non-445 code immediately post-close is intentionally treated as
+    // "submitted, reconcile later": the KSeF number is assigned asynchronously,
+    // so the cleared status (and a count-based accept gate) is C6's concern, not
+    // this synchronous issuance path's.
+  }
+
+  /**
+   * Reject a requested document type the adapter does not advertise. An absent /
+   * empty type defaults to a plain invoice (supported) and passes; any explicit
+   * type outside SUPPORTED_DOCUMENT_TYPES raises a terminal exception.
+   */
+  private assertDocumentTypeSupported(documentType?: string): void {
+    if (!documentType || documentType.length === 0) {
+      return;
+    }
+    if (!SUPPORTED_DOCUMENT_TYPES.includes(documentType as DocumentType)) {
+      throw new KsefUnsupportedDocumentTypeException(documentType, SUPPORTED_DOCUMENT_TYPES);
+    }
   }
 
   private resolveDocumentType(documentType?: string): string {
-    // The command's neutral type passes through; KSeF defaults to a plain invoice.
+    // Validated by assertDocumentTypeSupported at the top of issueInvoice; an
+    // absent type defaults to a plain invoice.
     return documentType && documentType.length > 0 ? documentType : 'invoice';
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private toIsoDate(date: Date): string {
