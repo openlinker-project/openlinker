@@ -81,9 +81,10 @@ Full detail lives in the bridge repo's `docs/DEPLOYMENT.md`. The essentials:
    # → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable", …}
    ```
 
-> _[SCREENSHOT — bridge console: `Now listening on https://…:5005` + `Sfera: zalogowano`.]_
->
-> _[SCREENSHOT — `/health` returning `sferaSession: valid`, `subiekt: reachable`.]_
+> A healthy bridge prints `Now listening on: https://…:5005` and a Sfera login line
+> (`Sfera: zalogowano`) on start, and `/health` returns
+> `{"status":"ok","sferaSession":"valid","subiekt":"reachable"}`. OpenLinker's
+> **Test connection** (Part B) exercises this same `/health` probe end-to-end.
 
 ---
 
@@ -190,7 +191,9 @@ panel flips to **Issued** with the document number, type, and KSeF badge:
 2. **In Subiekt nexo** — open **Dokumenty → Sprzedaży** and find the number (e.g.
    `FS …/CENTRALA/2026`). Line items, VAT and the buyer match.
 
-   > _[SCREENSHOT — the issued faktura open in Subiekt nexo: lines, VAT, buyer.]_
+   ![Subiekt nexo — Dokumenty sprzedaży listing the issued documents (FS 170, FS 171, PA 9)](../../assets/subiekt/70-subiekt-documents-list.png)
+
+   ![Subiekt nexo — the issued faktura open (lines, VAT, buyer)](../../assets/subiekt/71-subiekt-fs170.png)
 
 3. **KSeF** — the badge moves from `pending` to `accepted` as the regulatory reconcile job
    refreshes it (demo/trial environments report a non-authoritative status).
