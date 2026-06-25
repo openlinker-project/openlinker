@@ -10,19 +10,25 @@
  */
 
 /**
- * FA(3) `P_12` tax-rate codes — the complete set of 9 values.
+ * FA(3) `P_12` tax-rate codes — the complete set of 10 `TStawkaPodatku` tokens
+ * the builder supports today. These are the exact enumeration values from the
+ * vendored FA(3) v1-0E XSD `TStawkaPodatku` restriction — there is NO bare `np`
+ * token; KSeF splits "not applicable / outside scope" into two distinct tokens
+ * (`np I` and `np II`) that map to two distinct net-base elements (P_13_8 vs
+ * P_13_9). Emitting a bare `np` is rejected by the schema.
  *
- * | Value    | Meaning                                             |
- * |----------|-----------------------------------------------------|
- * | `23`     | Standard rate 23%                                   |
- * | `8`      | Reduced rate 8%                                     |
- * | `5`      | Reduced rate 5%                                     |
- * | `0 KR`   | 0% — domestic (krajowa) zero-rate                   |
- * | `0 WDT`  | 0% — intra-EU supply of goods (WDT)                 |
- * | `0 EX`   | 0% — export                                         |
- * | `zw`     | Exempt (zwolnione)                                  |
- * | `oo`     | Reverse charge / outside scope (odwrotne obciążenie)|
- * | `np`     | Not applicable (nie podlega)                        |
+ * | Value    | Meaning                                                   |
+ * |----------|-----------------------------------------------------------|
+ * | `23`     | Standard rate 23%                                         |
+ * | `8`      | Reduced rate 8%                                           |
+ * | `5`      | Reduced rate 5%                                           |
+ * | `0 KR`   | 0% — domestic (krajowa) zero-rate                         |
+ * | `0 WDT`  | 0% — intra-EU supply of goods (WDT)                       |
+ * | `0 EX`   | 0% — export                                               |
+ * | `zw`     | Exempt (zwolnione)                                        |
+ * | `oo`     | Reverse charge (odwrotne obciążenie)                     |
+ * | `np I`   | Outside PL territory, general (XSD P_13_8)                |
+ * | `np II`  | Services under art. 100(1)(4) — taxed in buyer's EU state (XSD P_13_9) |
  */
 export const Fa3P12Values = [
   '23',
@@ -33,7 +39,8 @@ export const Fa3P12Values = [
   '0 EX',
   'zw',
   'oo',
-  'np',
+  'np I',
+  'np II',
 ] as const;
 export type Fa3P12Value = (typeof Fa3P12Values)[number];
 

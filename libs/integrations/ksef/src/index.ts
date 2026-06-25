@@ -39,8 +39,10 @@ export {
 } from './domain/types/ksef-connection.types';
 
 // Domain exceptions. The HTTP client + interface stay package-private; these
-// typed exceptions are the public surface — they feed the host RetryClassifier /
-// AuthFailureClassifier the KSeF adapters register in C3 (ADR-008).
+// typed exceptions are the public surface — they feed the `KsefRetryClassifier`
+// the plugin registers in `register(host)` (so terminal KSeF failures are
+// non-retryable). An AuthFailureClassifier (reauth on 401, ADR-008) is a future
+// hook and is not registered yet.
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
@@ -52,6 +54,8 @@ export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-cry
 export { KsefSessionException } from './domain/exceptions/ksef-session.exception';
 // Unsupported requested document type — a terminal input error (#1149 / C5).
 export { KsefUnsupportedDocumentTypeException } from './domain/exceptions/ksef-unsupported-document-type.exception';
+// documentType <-> correction command-shape mismatch — a terminal input error (#1151 / C7).
+export { KsefInvalidCorrectionException } from './domain/exceptions/ksef-invalid-correction.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic

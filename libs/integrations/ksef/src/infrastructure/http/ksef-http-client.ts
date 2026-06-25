@@ -250,7 +250,14 @@ export class KsefHttpClient implements IKsefHttpClient {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        await this.handleError(response.status, errorBody, url.toString(), responseHeaders, traceId);
+        await this.handleError(
+          response.status,
+          errorBody,
+          url.toString(),
+          responseHeaders,
+          traceId,
+          options?.noReactiveRefresh ?? false,
+        );
       }
 
       if (expectBinary) {
@@ -305,8 +312,21 @@ export class KsefHttpClient implements IKsefHttpClient {
     url: string,
     headers: Record<string, string>,
     traceId: string,
+    noReactiveRefresh: boolean,
   ): Promise<never> {
     if (statusCode === 401) {
+      if (noReactiveRefresh) {
+        // The handshake's own poll/redeem calls set this: a 401 here must NOT
+        // re-enter the reactive-refresh path (which re-runs the handshake) — it
+        // means the short-lived authentication token was itself rejected, a
+        // terminal credential failure.
+        this.logger.error(`[${traceId}] KSeF auth-handshake call rejected (${statusCode})`);
+        throw new KsefAuthenticationException(
+          `KSeF authentication failed (${statusCode}) for ${url}`,
+          statusCode,
+          url,
+        );
+      }
       const outcome = await this.refreshOnUnauthorized(traceId);
       if (outcome.ok) {
         throw new TokenRefreshedSignal();

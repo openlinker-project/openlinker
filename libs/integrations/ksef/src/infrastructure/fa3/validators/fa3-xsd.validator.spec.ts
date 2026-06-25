@@ -68,6 +68,38 @@ describe('validateFa3Xml', () => {
     }
   });
 
+  it('should reject a P_12 value outside the TStawkaPodatku token set', () => {
+    // A stale bare `np` (KSeF only knows `np I` / `np II`) must be caught.
+    const bad = builtDoc().replace(/<P_12>[^<]*<\/P_12>/, '<P_12>np</P_12>') as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/FaWiersz/P_12');
+    }
+  });
+
+  it('should reject a KodWaluty outside the supported currency set', () => {
+    const bad = builtDoc().replace('<KodWaluty>PLN</KodWaluty>', '<KodWaluty>XYZ</KodWaluty>') as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/KodWaluty');
+    }
+  });
+
+  it('should accept the np II token (a valid TStawkaPodatku value)', () => {
+    // Swapping the P_12 value for a valid token keeps the document otherwise
+    // valid; the token guard must NOT reject `np II`.
+    const doc = builtDoc().replace(/<P_12>[^<]*<\/P_12>/, '<P_12>np II</P_12>') as RawFa3Xml;
+    expect(() => validateFa3Xml(doc)).not.toThrow();
+  });
+
   it('should not embed the raw XML in the exception message', () => {
     const bad = '<Faktura>SECRET_BUYER_NAME</Faktura>' as RawFa3Xml;
     try {

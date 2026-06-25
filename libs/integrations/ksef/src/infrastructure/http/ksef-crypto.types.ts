@@ -45,6 +45,13 @@ export interface PublicKeyCertificate {
  * session via `crypto.randomBytes`. Held in memory only for the session
  * lifetime; never persisted.
  *
+ * IV REUSE WARNING: `iv` is the SESSION-declared IV submitted once in the
+ * open-session `EncryptionInfo.initializationVector`. It is **NOT** the IV used
+ * to encrypt any document — `encryptDocument` generates a FRESH per-document IV
+ * (carried in `EncryptedDocument.iv`) precisely to avoid CBC IV-reuse under the
+ * shared session key. Never feed this `iv` into `encryptAesCbc`; doing so would
+ * reuse one IV across every document in the session (a plaintext-structure leak).
+ *
  * SECURITY: `key` and `iv` bytes must never be logged.
  */
 export interface SymmetricKey {

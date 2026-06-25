@@ -234,6 +234,66 @@ describe('buildFa3Xml', () => {
       expect(xml).toContain('<P_14_1>-23.00</P_14_1>');
     });
 
+    it('should sign each band difference independently and net P_15 to their signed sum', () => {
+      // A multi-band correction where: the 23% band increases, the 8% band
+      // decreases, and an exempt (zw) band is present only in the "before" state
+      // (so it reverses to a negative difference and must still surface).
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        invoiceNumber: 'KOR/2026/06/0002',
+        lines: [
+          { name: 'A', quantity: 1, unitPriceGross: 123.0, p12: '23' }, // before 23%: gross 123
+          { name: 'B', quantity: 2, unitPriceGross: 108.0, p12: '8' }, // before 8%: gross 216
+          { name: 'C', quantity: 1, unitPriceGross: 100.0, p12: 'zw' }, // before zw: gross 100 (gone after)
+        ],
+        correction: {
+          typKorekty: '2',
+          reason: 'Mixed adjustment',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0043',
+          originalKsefNumber: null,
+          correctedLines: [
+            { name: 'A', quantity: 2, unitPriceGross: 123.0, p12: '23' }, // after 23%: gross 246 (increase)
+            { name: 'B', quantity: 1, unitPriceGross: 108.0, p12: '8' }, // after 8%: gross 108 (decrease)
+          ],
+        },
+      };
+      const xml = buildFa3Xml(input);
+      // 23% net: before 123/1.23=100.00, after 246/1.23=200.00 → diff +100.00; vat diff +23.00.
+      expect(xml).toContain('<P_13_1>100.00</P_13_1>');
+      expect(xml).toContain('<P_14_1>23.00</P_14_1>');
+      // 8% net: before 216/1.08=200.00, after 108/1.08=100.00 → diff −100.00; vat diff −8.00.
+      expect(xml).toContain('<P_13_2>-100.00</P_13_2>');
+      expect(xml).toContain('<P_14_2>-8.00</P_14_2>');
+      // zw present only before (net 100.00) → reverses to −100.00.
+      expect(xml).toContain('<P_13_7>-100.00</P_13_7>');
+      // P_15 = signed sum of gross diffs: (246−123) + (108−216) + (0−100) = −85.00.
+      expect(xml).toContain('<P_15>-85.00</P_15>');
+    });
+
+    it('should emit a band that nets to zero as 0.00 (never -0.00)', () => {
+      // before 23% gross 123; after 23% gross 123 → the band difference is exactly
+      // zero. TKwotowy rejects `-0.00`, so a band that cancels must render `0.00`.
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        invoiceNumber: 'KOR/2026/06/0003',
+        lines: [{ name: 'A', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'No-op correction',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0044',
+          originalKsefNumber: null,
+          correctedLines: [{ name: 'A', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_13_1>0.00</P_13_1>');
+      expect(xml).toContain('<P_14_1>0.00</P_14_1>');
+      expect(xml).toContain('<P_15>0.00</P_15>');
+      expect(xml).not.toContain('-0.00');
+    });
+
     it('should emit RodzajFaktury=VAT (not KOR) for a plain (non-correction) invoice', () => {
       // RodzajFaktury is XSD-required on every FA(3); a plain invoice is `VAT`,
       // and carries none of the KOR-only correction metadata.
@@ -296,9 +356,15 @@ describe('buildFa3Xml', () => {
       expect(xml).not.toMatch(/<P_14_/);
     });
 
-    it('should map not-subject (np) to P_13_8 with NO P_14', () => {
-      const xml = singleLineXml('np');
+    it('should map outside-territory (np I) to P_13_8 with NO P_14', () => {
+      const xml = singleLineXml('np I');
       expect(xml).toContain('<P_13_8>100.00</P_13_8>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map art.100(1)(4) services (np II) to P_13_9 with NO P_14', () => {
+      const xml = singleLineXml('np II');
+      expect(xml).toContain('<P_13_9>100.00</P_13_9>');
       expect(xml).not.toMatch(/<P_14_/);
     });
 
@@ -308,12 +374,13 @@ describe('buildFa3Xml', () => {
       expect(xml).not.toMatch(/<P_14_/);
     });
 
-    it('should never emit a non-existent synthetic band (e.g. P_13_9 / P_14_6)', () => {
-      // P_13_9 / P_14_6 are bands the builder does not populate; the old index
-      // scheme accidentally emitted slots like these.
-      const xml = singleLineXml('np');
-      expect(xml).not.toMatch(/<P_13_9>/);
+    it('should never emit a non-existent synthetic VAT band (e.g. P_14_6)', () => {
+      // P_14_6 is a slot the old index scheme accidentally emitted; a net-only
+      // band (np I) must carry its P_13_x without any synthetic P_14.
+      const xml = singleLineXml('np I');
       expect(xml).not.toMatch(/<P_14_6>/);
+      // An np I line must NOT bleed into the np II element.
+      expect(xml).not.toMatch(/<P_13_9>/);
     });
 
     it('should emit P_11 as the line NET, not the gross', () => {

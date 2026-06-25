@@ -25,6 +25,12 @@ import {
 } from '../../../domain/exceptions/fa3-validation.exception';
 import { FA3_NAMESPACE, FA3_ROOT_ELEMENT, FA3_SCHEMA_VERSION } from '../domain/fa3-xml.types';
 import type { RawFa3Xml } from '../domain/fa3-xml.types';
+import {
+  Fa3KodWalutyValues,
+  Fa3P12Values,
+  type Fa3KodWaluty,
+  type Fa3P12Value,
+} from '../domain/fa3-schema.types';
 
 /**
  * Structurally validate an FA(3) document. Returns normally on success; throws
@@ -105,6 +111,32 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     }
     if (!/<FaWiersz[\s/>]/.test(xml)) {
       issues.push({ path: `${root}/Fa/FaWiersz`, message: 'Fa must contain at least one FaWiersz line' });
+    }
+  }
+
+  // 3. Token allow-list guards. The XSD restricts `P_12` to the TStawkaPodatku
+  //    enum and `KodWaluty` to the currency set; a value outside the supported
+  //    token sets (e.g. a stale bare `np`, or an unmapped currency) would be
+  //    rejected by KSeF at clearance. Catch it here, cheaply, at build time —
+  //    every occurrence is checked so a single bad line surfaces.
+  const p12Allowed = new Set<string>(Fa3P12Values as ReadonlyArray<Fa3P12Value>);
+  for (const match of xml.matchAll(/<P_12>([^<]*)<\/P_12>/g)) {
+    const value = match[1];
+    if (!p12Allowed.has(value)) {
+      issues.push({
+        path: `${root}/Fa/FaWiersz/P_12`,
+        message: `P_12 "${value}" is not a valid TStawkaPodatku token`,
+      });
+    }
+  }
+  const currencyAllowed = new Set<string>(Fa3KodWalutyValues as ReadonlyArray<Fa3KodWaluty>);
+  for (const match of xml.matchAll(/<KodWaluty>([^<]*)<\/KodWaluty>/g)) {
+    const value = match[1];
+    if (!currencyAllowed.has(value)) {
+      issues.push({
+        path: `${root}/Fa/KodWaluty`,
+        message: `KodWaluty "${value}" is not a supported currency code`,
+      });
     }
   }
 

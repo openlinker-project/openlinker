@@ -1,7 +1,7 @@
 /**
  * FA(3) Tax-Rate Mapper — Unit Specs
  *
- * Pins the complete `P_12` mapping contract: all 9 values resolve and an
+ * Pins the complete `P_12` mapping contract: all 10 values resolve and an
  * unknown / empty code throws `UnmappedTaxRateException`.
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
@@ -20,7 +20,8 @@ describe('resolveP12', () => {
     ['0-ex', '0 EX'],
     ['exempt', 'zw'],
     ['reverse-charge', 'oo'],
-    ['not-applicable', 'np'],
+    ['np-i', 'np I'],
+    ['np-ii', 'np II'],
   ];
 
   it.each(cases)('should map neutral "%s" to P_12 "%s"', (neutral, expected) => {

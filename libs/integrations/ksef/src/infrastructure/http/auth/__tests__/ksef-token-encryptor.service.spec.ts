@@ -25,17 +25,15 @@ describe('KsefTokenEncryptor', () => {
     certificateHash: createHash('sha256').update(publicPem).digest('hex'),
   };
 
-  it('should produce an init request whose ciphertext unwraps to token|timestamp', async () => {
+  it('should produce an init request whose ciphertext unwraps to token|timestampMs', async () => {
     const fetchSpy = jest.fn().mockResolvedValue(cert);
     const cache = { fetchAndCachePublicKey: fetchSpy } as unknown as MfPublicKeyCacheService;
     const encryptor = new KsefTokenEncryptor(cache);
 
-    const result = await encryptor.buildInitRequest(
-      'TKN-123',
-      '1234567890',
-      'CH-NONCE',
-      '2026-06-23T12:00:00Z',
-    );
+    // The handshake passes the timestamp as an epoch-ms STRING (MF reference uses
+    // ToUnixTimeMilliseconds()), not an ISO string — assert that wire contract.
+    const timestampMs = '1782561600000';
+    const result = await encryptor.buildInitRequest('TKN-123', '1234567890', 'CH-NONCE', timestampMs);
 
     expect(fetchSpy).toHaveBeenCalledWith('KsefTokenEncryption');
     expect(result.challenge).toBe('CH-NONCE');
@@ -43,7 +41,7 @@ describe('KsefTokenEncryptor', () => {
     expect(result.publicKeyId).toBe(cert.publicKeyId);
     const wrapped = new Uint8Array(Buffer.from(result.encryptedToken, 'base64'));
     const recovered = Buffer.from(unwrapKeyWithRsa(wrapped, privatePem)).toString('utf8');
-    expect(recovered).toBe('TKN-123|2026-06-23T12:00:00Z');
+    expect(recovered).toBe(`TKN-123|${timestampMs}`);
   });
 
   it('should omit publicKeyId when the cert carries none', async () => {

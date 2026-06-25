@@ -17,6 +17,7 @@ import { KsefTokenEncryptor } from '../ksef-token-encryptor.service';
 import type { MfPublicKeyCacheService } from '../../../crypto/mf-public-key-cache.service';
 import { FakeKsefHttpClient } from '../../../../testing/fake-ksef-http-client';
 import { KsefAuthenticationException } from '../../../../domain/exceptions/ksef-authentication.exception';
+import { KsefHttpClient, type KsefTokenLifecycle } from '../../ksef-http-client';
 import type { KsefHttpResponse } from '../../ksef-http-client.types';
 import type { InitTokenAuthenticationRequest } from '../../ksef-auth.types';
 
@@ -203,6 +204,66 @@ describe('KsefAuthHandshakeService', () => {
     http.seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'not-a-date' }));
     const service = new KsefAuthHandshakeService('conn-1', http, encryptorStub());
     await expect(service.authenticate(MATERIAL)).rejects.toBeInstanceOf(KsefAuthenticationException);
+  });
+
+  it('should NOT trigger a second /auth/challenge when /auth/token/redeem returns 401 (AU1)', async () => {
+    // Wire the REAL KsefHttpClient (so the reactive-401 path is live) with a
+    // lifecycle whose refresh re-runs the handshake — the recursion the
+    // noReactiveRefresh flag must prevent. redeem returns 401; the handshake must
+    // fail terminally without re-entering /auth/challenge.
+    const fetchMock = jest.fn() as jest.MockedFunction<typeof fetch>;
+    const realFetch = global.fetch;
+    global.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      const jsonResponse = (status: number, body: unknown): Response =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      // challenge → ksef-token → poll(200) → redeem(401). The challenge is seeded
+      // for exactly ONE response; a nested re-handshake would request it again and
+      // (since it's not re-seeded) change the call count below.
+      fetchMock.mockImplementation((input: unknown) => {
+        const url = String(input);
+        if (url.endsWith('/auth/challenge')) {
+          return Promise.resolve(jsonResponse(200, { challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }));
+        }
+        if (url.endsWith('/auth/ksef-token')) {
+          return Promise.resolve(jsonResponse(200, initResult('REF-401')));
+        }
+        if (url.endsWith('/auth/REF-401')) {
+          return Promise.resolve(jsonResponse(200, status(200)));
+        }
+        if (url.endsWith('/auth/token/redeem')) {
+          return Promise.resolve(jsonResponse(401, { error: 'authenticationToken rejected' }));
+        }
+        return Promise.resolve(jsonResponse(404, { error: `unexpected ${url}` }));
+      });
+
+      const lifecycle: KsefTokenLifecycle = {
+        // refresh re-runs the handshake — exactly the nested-handshake path AU1
+        // guards against. If reactive refresh fired on the redeem 401, this would
+        // be invoked and hit /auth/challenge a second time.
+        authenticate: jest.fn(),
+        refresh: jest.fn(),
+      };
+      const httpClient = new KsefHttpClient(
+        'conn-1',
+        'https://api-test.ksef.mf.gov.pl/v2',
+        lifecycle,
+      );
+      const service = new KsefAuthHandshakeService('conn-1', httpClient, encryptorStub());
+      (lifecycle.refresh as jest.Mock).mockImplementation(() => service.authenticate(MATERIAL));
+
+      await expect(service.authenticate(MATERIAL)).rejects.toBeInstanceOf(KsefAuthenticationException);
+
+      const challengeCalls = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith('/auth/challenge'));
+      expect(challengeCalls).toHaveLength(1);
+      expect(lifecycle.refresh).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = realFetch;
+    }
   });
 
   it('should treat status code 200 as ready and redeem', async () => {

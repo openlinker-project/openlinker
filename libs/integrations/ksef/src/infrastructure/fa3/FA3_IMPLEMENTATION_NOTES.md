@@ -43,19 +43,25 @@ RawFa3Xml (validated)
 | `Fa` | `KodWaluty`, P_13/P_14/P_15 aggregates, `Adnotacje` (order ref) |
 | `FaWiersz` (×N) | One per line: name, quantity, unit price gross, `P_12` |
 
-## P_12 tax-rate mapping (all 9 values)
+## P_12 tax-rate mapping (all 10 values)
 
-| Neutral code(s) | FA(3) `P_12` | Meaning |
-|---|---|---|
-| `23` | `23` | Standard rate 23% |
-| `8` | `8` | Reduced rate 8% |
-| `5` | `5` | Reduced rate 5% |
-| `0-kr` | `0 KR` | 0% domestic |
-| `0-wdt` | `0 WDT` | 0% intra-EU supply (WDT) |
-| `0-ex` | `0 EX` | 0% export |
-| `exempt`, `zw` | `zw` | Exempt |
-| `reverse-charge`, `oo` | `oo` | Reverse charge / outside scope |
-| `not-applicable`, `np` | `np` | Not applicable |
+| Neutral code(s) | FA(3) `P_12` | Net band | Meaning |
+|---|---|---|---|
+| `23` | `23` | P_13_1 (+P_14_1) | Standard rate 23% |
+| `8` | `8` | P_13_2 (+P_14_2) | Reduced rate 8% |
+| `5` | `5` | P_13_3 (+P_14_3) | Reduced rate 5% |
+| `0-kr` | `0 KR` | P_13_6_1 | 0% domestic |
+| `0-wdt` | `0 WDT` | P_13_6_2 | 0% intra-EU supply (WDT) |
+| `0-ex` | `0 EX` | P_13_6_3 | 0% export |
+| `exempt`, `zw` | `zw` | P_13_7 | Exempt |
+| `reverse-charge`, `oo` | `oo` | P_13_10 | Reverse charge (odwrotne obciążenie) |
+| `np-i` | `np I` | P_13_8 | Outside PL territory, general |
+| `np-ii` | `np II` | P_13_9 | art. 100(1)(4) services taxed in buyer's EU state |
+
+> **NOTE:** KSeF's `TStawkaPodatku` has NO bare `np` token — it splits
+> "not applicable / outside scope" into two distinct tokens (`np I`, `np II`)
+> that map to two distinct net-base elements (P_13_8 vs P_13_9). Emitting a
+> bare `np` is rejected by the schema.
 
 Unknown codes throw `UnmappedTaxRateException` (no silent default).
 

@@ -76,6 +76,7 @@ import { KsefNetworkException } from '../../domain/exceptions/ksef-network.excep
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ksef-unsupported-document-type.exception';
+import { KsefInvalidCorrectionException } from '../../domain/exceptions/ksef-invalid-correction.exception';
 import {
   KSEF_NUMBER_PATTERN,
   KSEF_STATUS_SUCCESS,
@@ -110,6 +111,11 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     // front with a terminal exception so the service marks the record failed
     // rather than the adapter emitting a wrong document downstream.
     this.assertDocumentTypeSupported(cmd.documentType);
+    // The FA(3) builder keys KOR emission off `correction !== undefined`, NOT the
+    // document type — so an inconsistent command (corrected type without a
+    // correction, or a correction without the corrected type) would silently emit
+    // the wrong document. Assert the two agree, terminally, before any build/send.
+    this.assertCorrectionConsistency(cmd);
 
     const issuedAt = this.now();
     this.logger.log(
@@ -123,8 +129,10 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
         seller: this.seller,
         issueDate: this.toIsoDate(issuedAt),
         generatedAt: issuedAt.toISOString(),
-        // TODO(#1150): replace the orderId placeholder with a real sequential
-        // FA(3) invoice-number source before prod.
+        // TODO: replace the orderId placeholder with a real per-seller sequential
+        // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
+        // order id) before prod. Owned by the core InvoiceService numbering
+        // follow-up (#1118), not the C6 clearance-read (#1150).
         invoiceNumber: cmd.orderId,
       }),
     );
@@ -444,11 +452,21 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       `/sessions/${encodeURIComponent(sessionRef)}`,
     );
     const { status, successfulInvoiceCount, failedInvoiceCount } = response.data;
-    // Zero-valid terminal failure: a session that KSeF has *processed* (status 200)
-    // yet cleared *zero* invoices is the terminal failure for this synchronous path
-    // — there is nothing to reconcile later. `noSuccesses` already folds an absent
-    // count to 0, so the failed-count / strict-zero qualifiers were redundant (when
-    // noSuccesses holds, successfulInvoiceCount === 0 always coalesces true).
+    // Zero-valid terminal failure: a session that KSeF has *processed* yet cleared
+    // *zero* invoices is the terminal failure for this synchronous path — there is
+    // nothing to reconcile later. `noSuccesses` already folds an absent count to 0,
+    // so the failed-count / strict-zero qualifiers were redundant (when noSuccesses
+    // holds, successfulInvoiceCount === 0 always coalesces true).
+    //
+    // ASSUMPTION (TODO confirm before prod): we gate "processed" on the session
+    // status code === KSEF_STATUS_SUCCESS (200). The KSeF v2 OpenAPI documents 200
+    // as the success/terminal code on the analogous auth-session status, but does
+    // NOT publish a dedicated online-document-session status-code catalogue, so we
+    // cannot definitively confirm the session-PROCESSED terminal code differs from
+    // the per-invoice 200. If a distinct session-PROCESSED code surfaces in the
+    // CIRFMF catalogue, introduce a `KSEF_SESSION_PROCESSED` constant and gate on
+    // it here instead of reusing `KSEF_STATUS_SUCCESS`. We deliberately do NOT
+    // guess a new number.
     const processed = status?.code === KSEF_STATUS_SUCCESS;
     const noSuccesses = (successfulInvoiceCount ?? 0) === 0;
     if (processed && noSuccesses) {
@@ -475,6 +493,29 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     }
     if (!SUPPORTED_DOCUMENT_TYPES.includes(documentType as DocumentType)) {
       throw new KsefUnsupportedDocumentTypeException(documentType, SUPPORTED_DOCUMENT_TYPES);
+    }
+  }
+
+  /**
+   * Assert the command is internally consistent about being a correction. The
+   * builder emits KOR iff `cmd.correction` is present; the neutral document type
+   * must agree, or one side silently wins (a "corrected" type with no correction
+   * emits a plain invoice; a correction with a non-corrected type emits a KOR for
+   * a type the caller didn't ask for). Both mismatches are terminal.
+   */
+  private assertCorrectionConsistency(cmd: IssueInvoiceCommand): void {
+    const isCorrected = cmd.documentType === 'corrected';
+    const hasCorrection = cmd.correction !== undefined;
+    if (isCorrected && !hasCorrection) {
+      throw new KsefInvalidCorrectionException(
+        "documentType is 'corrected' but no correction payload was supplied",
+      );
+    }
+    if (hasCorrection && !isCorrected) {
+      throw new KsefInvalidCorrectionException(
+        "a correction payload was supplied but documentType is not 'corrected'" +
+          ` (got ${cmd.documentType ?? 'undefined'})`,
+      );
     }
   }
 

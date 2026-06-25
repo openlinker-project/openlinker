@@ -7,7 +7,7 @@
  * `UnmappedTaxRateException` — never a silent default — so a mis-keyed rate
  * surfaces loudly at build time rather than emitting a wrong fiscal value.
  *
- * `FA3_TAX_RATE_MAP` is the working mapping table covering all 9 `P_12` values.
+ * `FA3_TAX_RATE_MAP` is the working mapping table covering all 10 `P_12` values.
  * The canonical neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) is
  * still being settled upstream; the keys below are the provisional contract
  * documented in FA3_IMPLEMENTATION_NOTES.md and MUST be reconciled before C3
@@ -19,7 +19,7 @@ import { UnmappedTaxRateException } from '../../../domain/exceptions/fa3-builder
 import type { Fa3P12Value } from './fa3-schema.types';
 
 /**
- * Neutral tax-rate code → FA(3) `P_12`. Covers every one of the 9 `P_12`
+ * Neutral tax-rate code → FA(3) `P_12`. Covers every one of the 10 `P_12`
  * values. Both the bare-percent forms (`23`) and the explicit zero-rate /
  * special-regime codes are accepted.
  */
@@ -34,8 +34,11 @@ export const FA3_TAX_RATE_MAP: Readonly<Record<string, Fa3P12Value>> = {
   zw: 'zw',
   'reverse-charge': 'oo',
   oo: 'oo',
-  'not-applicable': 'np',
-  np: 'np',
+  // KSeF has no bare `np` — "not applicable / outside scope" is two distinct
+  // tokens: `np I` (general supply outside PL territory → P_13_8) and `np II`
+  // (art. 100(1)(4) services taxed in the buyer's EU state → P_13_9).
+  'np-i': 'np I',
+  'np-ii': 'np II',
 };
 
 /**

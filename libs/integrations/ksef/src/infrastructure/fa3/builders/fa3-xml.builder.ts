@@ -53,8 +53,8 @@ const QUANTITY_SCALE = 6;
  * specific `P_13_x` net-base element, and positive-rate bands additionally carry
  * a `P_14_x` VAT-amount element. The XSD declares the bands in this order
  * (P_13_1, P_13_2, P_13_3, then the standalone P_13_6_1/6_2/6_3, P_13_7, P_13_8,
- * P_13_10, …); `BAND_EMIT_ORDER` below pins the emit order independently of the
- * `P_12` enum order so the document is always XSD-ordered.
+ * P_13_9, P_13_10, …); `BAND_EMIT_ORDER` below pins the emit order independently
+ * of the `P_12` enum order so the document is always XSD-ordered.
  *
  * Legal mapping (verified against the vendored FA(3) v1-0E XSD annotations):
  * - `23`/`8`/`5`         → standard / reduced-1 / reduced-2 (net + VAT)
@@ -62,7 +62,8 @@ const QUANTITY_SCALE = 6;
  * - `0 WDT`              → intra-EU supply 0% (P_13_6_2, net only)
  * - `0 EX`               → export 0% (P_13_6_3, net only)
  * - `zw`                 → exempt (P_13_7, net only)
- * - `np`                 → supply outside PL territory (P_13_8, net only)
+ * - `np I`               → supply outside PL territory, general (P_13_8, net only)
+ * - `np II`              → art. 100(1)(4) services taxed in buyer's EU state (P_13_9, net only)
  * - `oo`                 → domestic reverse charge (P_13_10, net only)
  */
 const VAT_BANDS: Readonly<Record<Fa3P12Value, { net: string; vat?: string; rate: number }>> = {
@@ -73,7 +74,8 @@ const VAT_BANDS: Readonly<Record<Fa3P12Value, { net: string; vat?: string; rate:
   '0 WDT': { net: 'P_13_6_2', rate: 0 },
   '0 EX': { net: 'P_13_6_3', rate: 0 },
   zw: { net: 'P_13_7', rate: 0 },
-  np: { net: 'P_13_8', rate: 0 },
+  'np I': { net: 'P_13_8', rate: 0 },
+  'np II': { net: 'P_13_9', rate: 0 },
   oo: { net: 'P_13_10', rate: 0 },
 };
 
@@ -92,7 +94,8 @@ const BAND_EMIT_ORDER: ReadonlyArray<Fa3P12Value> = [
   '0 WDT',
   '0 EX',
   'zw',
-  'np',
+  'np I',
+  'np II',
   'oo',
 ];
 

@@ -182,6 +182,25 @@ describe('KsefHttpClient', () => {
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefNetworkException);
     });
 
+    it('should throw KsefAuthenticationException WITHOUT reactive refresh when noReactiveRefresh is set', async () => {
+      // A 401 on a handshake-internal call (poll/redeem) must NOT re-enter the
+      // reactive-refresh path — which would re-run the handshake (nested). With
+      // noReactiveRefresh it fails terminally and the refresh callback is untouched.
+      fetchMock.mockResolvedValue(jsonResponse(401, { error: 'token rejected' }));
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+
+      await expect(
+        client.post('/auth/token/redeem', undefined, {
+          skipAuth: true,
+          headers: { Authorization: 'Bearer AUTH-TKN' },
+          noReactiveRefresh: true,
+        }),
+      ).rejects.toBeInstanceOf(KsefAuthenticationException);
+      expect(lifecycle.refresh).not.toHaveBeenCalled();
+      expect(lifecycle.authenticate).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('should fail fast on a 403 as a non-retryable KsefApiException without refreshing', async () => {
       // 403 is an authorization decision, not an expired token — refreshing
       // can never change the outcome, so the client must not refresh+retry.

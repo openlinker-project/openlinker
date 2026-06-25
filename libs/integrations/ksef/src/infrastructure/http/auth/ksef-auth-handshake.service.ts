@@ -105,8 +105,17 @@ export class KsefAuthHandshakeService {
     const response = await this.httpClient.post<AuthChallenge>('/auth/challenge', undefined, {
       idempotent: true,
       skipAuth: true,
+      // A 401 anywhere inside the handshake must NOT trigger reactive refresh
+      // (which would re-run this very handshake — a nested re-handshake).
+      noReactiveRefresh: true,
     });
-    if (!response.data.challenge || !response.data.timestamp) {
+    // Require the nonce plus *some* usable timestamp: a truthy ISO `timestamp`
+    // OR a finite epoch-ms `timestampMs`. `authenticate` derives the epoch-ms
+    // (`timestampMs ?? Date.parse(timestamp)`), so a response carrying only
+    // `timestampMs` is complete and must not be rejected here.
+    const hasTimestamp =
+      !!response.data.timestamp || Number.isFinite(response.data.timestampMs);
+    if (!response.data.challenge || !hasTimestamp) {
       throw new KsefAuthenticationException('KSeF /auth/challenge returned an incomplete challenge');
     }
     return response.data;
@@ -120,7 +129,7 @@ export class KsefAuthHandshakeService {
     const response = await this.httpClient.post<AuthInitResult>(
       '/auth/ksef-token',
       { ...initRequest },
-      { idempotent: true, skipAuth: true },
+      { idempotent: true, skipAuth: true, noReactiveRefresh: true },
     );
     if (!response.data.referenceNumber || !response.data.authenticationToken?.token) {
       throw new KsefAuthenticationException(
@@ -143,7 +152,13 @@ export class KsefAuthHandshakeService {
     let delay = POLL_INITIAL_DELAY_MS;
     // The poll carries the short-lived authentication token explicitly, so skip
     // the client's lazy handshake + access-token injection.
-    const auth = { headers: { Authorization: `Bearer ${authToken}` }, skipAuth: true };
+    const auth = {
+      headers: { Authorization: `Bearer ${authToken}` },
+      skipAuth: true,
+      // A 401 on the poll means the short-lived authenticationToken was rejected —
+      // a terminal handshake failure, NOT a trigger to re-enter reactive refresh.
+      noReactiveRefresh: true,
+    };
 
     let attempt = 0;
     while (Date.now() < deadline && attempt < POLL_MAX_ATTEMPTS) {
@@ -180,6 +195,9 @@ export class KsefAuthHandshakeService {
       idempotent: true,
       skipAuth: true,
       headers: { Authorization: `Bearer ${authToken}` },
+      // A 401 on redeem means the authenticationToken was rejected — terminal,
+      // never a reactive-refresh trigger (which would nest a re-handshake).
+      noReactiveRefresh: true,
     });
     return response.data;
   }

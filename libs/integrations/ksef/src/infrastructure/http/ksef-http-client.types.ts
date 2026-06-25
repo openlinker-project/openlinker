@@ -43,6 +43,15 @@ export interface KsefHttpRequestOptions {
    * authenticated `/auth/*` sub-resource isn't silently bypassed.
    */
   skipAuth?: boolean;
+  /**
+   * Suppress the reactive-refresh path for a 401 on THIS call: instead of
+   * invoking the refresh callback (which re-runs the handshake), a 401 throws
+   * `KsefAuthenticationException` terminally. Set on the handshake's own
+   * poll/redeem calls so a 401 there cannot re-enter the handshake — which would
+   * nest a re-handshake inside the handshake (infinite recursion / wrong error).
+   * Defaults to false (the normal reactive-refresh-on-401 behaviour).
+   */
+  noReactiveRefresh?: boolean;
 }
 
 /** Parsed JSON response: data plus status + lowercased response headers. */

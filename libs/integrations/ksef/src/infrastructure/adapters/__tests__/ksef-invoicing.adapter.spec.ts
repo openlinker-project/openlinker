@@ -17,6 +17,7 @@ import { KsefSessionException } from '../../../domain/exceptions/ksef-session.ex
 import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
+import { KsefInvalidCorrectionException } from '../../../domain/exceptions/ksef-invalid-correction.exception';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -212,8 +213,42 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const record = await adapter(http).issueInvoice(command({ documentType: 'corrected' }));
-      expect(record.documentType).toBe('corrected');
+      // 'invoice' is supported and needs no correction payload.
+      const record = await adapter(http).issueInvoice(command({ documentType: 'invoice' }));
+      expect(record.documentType).toBe('invoice');
+    });
+
+    it('should terminally reject documentType:corrected with no correction payload', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueInvoice(command({ documentType: 'corrected' })),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      // Rejected up front — no session is opened.
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should terminally reject a correction payload without documentType:corrected', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueInvoice(
+          command({
+            // documentType omitted (defaults to a plain invoice) but a correction
+            // payload is supplied → inconsistent command.
+            correction: {
+              originalClearanceReference: '1111111111-20260501-ABCDEF-01',
+              originalDocumentNumber: 'FV/2026/05/0042',
+              originalIssueDate: '2026-05-01',
+              reason: 'Customer returned 1 unit',
+              correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      expect(http.calls).toHaveLength(0);
     });
 
     it('should still close the session when submit fails', async () => {
@@ -226,6 +261,41 @@ describe('KsefInvoicingAdapter', () => {
       await expect(adapter(http).issueInvoice(command())).rejects.toBeDefined();
       const paths = http.calls.map((c) => `${c.method} ${c.path}`);
       expect(paths).toContain(`POST /sessions/online/${SESSION_REF}/close`);
+    });
+
+    it('should propagate the SUBMIT error (not the close error) when both submit and close fail', async () => {
+      const http = new FakeKsefHttpClient();
+      // Open succeeds; neither invoices POST nor close is seeded → both reject.
+      // The submit failure is the actionable one and must win over the close failure.
+      http.seed('POST', '/sessions/online', {
+        data: { referenceNumber: SESSION_REF },
+        status: 201,
+        headers: {},
+      });
+
+      await expect(adapter(http).issueInvoice(command())).rejects.toThrow(
+        new RegExp(`/sessions/online/${SESSION_REF}/invoices`),
+      );
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      // The close was still attempted (best-effort) even though it also failed.
+      expect(paths).toContain(`POST /sessions/online/${SESSION_REF}/close`);
+    });
+
+    it('should propagate the CLOSE error when submit succeeds but close fails', async () => {
+      const http = new FakeKsefHttpClient();
+      // Open + submit succeed; close is not seeded → close rejects. With a
+      // successful submit, the close failure is the real (and only) error.
+      http
+        .seed('POST', '/sessions/online', { data: { referenceNumber: SESSION_REF }, status: 201, headers: {} })
+        .seed('POST', `/sessions/online/${SESSION_REF}/invoices`, {
+          data: { referenceNumber: INVOICE_REF },
+          status: 202,
+          headers: {},
+        });
+
+      await expect(adapter(http).issueInvoice(command())).rejects.toThrow(
+        new RegExp(`/sessions/online/${SESSION_REF}/close`),
+      );
     });
 
     it('should return a neutral result carrying no ksef/upo/fa strings', async () => {
