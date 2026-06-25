@@ -137,6 +137,29 @@ The new connection shows up with the **Invoicing** capability:
 
 ---
 
+## Part B2 — Configure the connection (settings & triggers)
+
+Open the connection and click **Edit** (or **Connections → My Subiekt → Edit**) to reach
+the settings. Everything you set in the wizard is editable here, plus:
+
+![Subiekt connection settings — bridge URL, invoice trigger, KSeF toggle, rotate token](../../assets/subiekt/80-subiekt-connection-settings.png)
+
+- **Invoice trigger** — how issuance is kicked off:
+  - **Manual** — you issue from the order screen (Part D). Default.
+  - **Auto on order paid** — OpenLinker enqueues issuance automatically when an order
+    becomes paid.
+  - **Auto on order shipped** — same, on the shipped transition.
+- **Show KSeF status badge** — surface the bridge-reported regulatory (KSeF) status on
+  orders for this connection.
+- **Rotate bridge token** — replace the stored Bearer token without restarting the API
+  (e.g. after rotating `Auth__ApiKey` on the bridge). The token is write-only — stored
+  encrypted, never shown back.
+- **Adapter key** — `subiekt.invoicing.v1` (inferred from the platform; rarely changed).
+
+Click **Save changes**.
+
+---
+
 ## Part C — Get an order (PrestaShop example)
 
 OpenLinker issues invoices for orders it has ingested. Any order source works; this example
@@ -165,20 +188,22 @@ OpenLinker ingests the order on its next PrestaShop poll (or webhook). It appear
 
 ## Part D — Issue the invoice
 
-Open the order in OpenLinker. The **Invoice** panel shows **Not issued** with an **Issue
-invoice** button. For a **B2B faktura**, enter the buyer **NIP**; leave it blank for a
-**B2C paragon**.
+Open the order in OpenLinker. The **Invoice** panel shows **Not issued** with a
+**document-type** dropdown and an **Issue invoice** button. Pick the document type —
+**Invoice (faktura)** for B2B (with the buyer NIP) or **Receipt (paragon)** for B2C — then
+issue. (If more than one Invoicing connection is active, the panel also shows a connection
+picker; pick the right Subiekt connection so the document isn't issued against the wrong
+one.)
 
-![Order detail — Invoice panel, not issued](../../assets/subiekt/62-ol-order-not-issued.png)
+![Order detail — Invoice panel, not issued, with the document-type dropdown + Issue button](../../assets/subiekt/62-ol-order-not-issued.png)
 
 Click **Issue invoice**. OpenLinker calls the bridge, Subiekt issues the document, and the
 panel flips to **Issued** with the document number, type, and KSeF badge:
 
 ![Order detail — invoice issued (FS …, KSeF submitted)](../../assets/subiekt/60-ol-order-invoice-panel-issued.png)
 
-> **Auto-issue (optional).** Set the connection's **trigger model** to *Auto on order paid*
-> (or *shipped*) and OpenLinker enqueues issuance automatically when an order reaches that
-> state — idempotently (one document per order; a repeat event never duplicates it).
+To issue **without clicking** per order, use an automatic trigger — see
+[Part E](#part-e--automatic-issuance-retry--idempotency).
 
 ### Verify
 
@@ -197,6 +222,42 @@ panel flips to **Issued** with the document number, type, and KSeF badge:
 
 3. **KSeF** — the badge moves from `pending` to `accepted` as the regulatory reconcile job
    refreshes it (demo/trial environments report a non-authoritative status).
+
+---
+
+## Part E — Automatic issuance, retry & idempotency
+
+**Auto-issue.** Instead of clicking per order, set the connection's **Invoice trigger**
+([Part B2](#part-b2--configure-the-connection-settings--triggers)) to **Auto on order
+paid** (or **shipped**). When an ingested order reaches that state, OpenLinker enqueues
+issuance automatically — no operator action. The result shows on the order's Invoice panel
+and on `/invoices` exactly as a manual issue does.
+
+**Idempotency.** Issuance is keyed `invoice:{connectionId}:{orderId}`. A repeated trigger
+event — or an operator who clicks twice — never creates a second document; OpenLinker
+returns the existing one. An explicit attempt to re-issue an already-issued order is
+rejected with **409 Conflict** ("Invoice already issued for order"). This is the guarantee
+that makes auto-issue safe to leave on.
+
+**Retry a failure.** If issuance fails (e.g. the bridge was briefly unreachable, or the
+buyer NIP was malformed), the document shows **Failed** on the order panel and on
+`/invoices`, and the panel offers a **Retry** button. Fix the cause (e.g. correct the NIP)
+and retry — the same idempotency key applies, so a retry that actually succeeded upstream
+won't duplicate. The `/invoices` list lets you filter by **Failed** to find everything
+needing attention.
+
+## Part F — Invoice PDF & KSeF status
+
+**PDF.** When the bridge returns a document PDF URL, the issued Invoice panel and the
+`/invoices` row expose an **invoice PDF** link (a signed, time-limited URL the bridge
+renders from Subiekt). If the bridge doesn't return one, the number degrades to copy-text —
+no broken link.
+
+**KSeF (e-faktura).** With **Show KSeF status badge** enabled on the connection, issued
+documents carry a regulatory badge — `pending → submitted → accepted` (or `rejected`).
+OpenLinker refreshes it asynchronously via the regulatory-status reconcile job; you don't
+poll manually. On a demo/trial database the status is reported by the bridge but is **not**
+an authoritative government clearance — see the [runbook](./runbook.md#ksef--e-faktura).
 
 ---
 
