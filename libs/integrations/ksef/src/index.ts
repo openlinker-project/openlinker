@@ -50,6 +50,8 @@ export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-cry
 // Online-session business-failure (e.g. status 445) — surfaced to the host
 // classifier / core InvoiceService as a terminal failure (#1149 / C5).
 export { KsefSessionException } from './domain/exceptions/ksef-session.exception';
+// Unsupported requested document type — a terminal input error (#1149 / C5).
+export { KsefUnsupportedDocumentTypeException } from './domain/exceptions/ksef-unsupported-document-type.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic
