@@ -39,6 +39,14 @@ export const NIP_PATTERN = /^\d{10}$/;
 export const EU_VAT_PATTERN = /^([A-Z]{2})([A-Za-z0-9]+)$/;
 
 /**
+ * Generic country-prefixed identifier: a 2-letter (ISO 3166-1 alpha-2) country
+ * prefix followed by an alphanumeric national-id body. Structurally identical to
+ * {@link EU_VAT_PATTERN} but named for the non-EU foreign branch, where the body
+ * is a national id rather than an EU VAT number.
+ */
+export const COUNTRY_PREFIXED_ID_PATTERN = EU_VAT_PATTERN;
+
+/**
  * Resolve a neutral buyer `TaxIdentifier` (or `null` for B2C) to the FA(3)
  * `Podmiot2` choice.
  *
@@ -77,7 +85,7 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
 
   // Any other foreign scheme → <KodKraju> + <NrID>. The value carries an
   // ISO 3166-1 alpha-2 country prefix; the remainder is the national id.
-  const foreign = EU_VAT_PATTERN.exec(value);
+  const foreign = COUNTRY_PREFIXED_ID_PATTERN.exec(value);
   if (!foreign) {
     throw new InvalidBuyerIdentificationException(
       taxId.scheme,

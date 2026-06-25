@@ -42,4 +42,14 @@ describe('resolveBuyerIdentity', () => {
     const taxId: TaxIdentifier = { scheme: 'pl-nip', value: '123' };
     expect(() => resolveBuyerIdentity(taxId)).toThrow(InvalidBuyerIdentificationException);
   });
+
+  it('should throw on an EU-VAT missing its country prefix', () => {
+    const taxId: TaxIdentifier = { scheme: 'eu-vat', value: '123456789' };
+    expect(() => resolveBuyerIdentity(taxId)).toThrow(InvalidBuyerIdentificationException);
+  });
+
+  it('should throw on a foreign identifier missing its country prefix', () => {
+    const taxId: TaxIdentifier = { scheme: 'us-ein', value: '123456' };
+    expect(() => resolveBuyerIdentity(taxId)).toThrow(InvalidBuyerIdentificationException);
+  });
 });

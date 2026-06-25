@@ -68,7 +68,8 @@ export interface RsaWrappedKey {
 
 /**
  * AES-256-CBC-encrypted document payload. `iv` accompanies the ciphertext
- * because each session uses its own random IV (CBC IV-reuse is unsafe).
+ * because each document is encrypted under a fresh random IV (the symmetric key
+ * is reused per session, but CBC IV-reuse under the same key is unsafe).
  */
 export interface EncryptedDocument {
   /** Always `aes-256-cbc` (see `KSEF_AES_ALGORITHM`); carried for self-describing payloads. */

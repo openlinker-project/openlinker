@@ -14,7 +14,7 @@
  *   pnpm --filter @openlinker/integrations-ksef test ksef-auth-handshake.int-spec
  *
  * What it proves end-to-end (no mocks): the real handshake fetches the MF
- * token-encryption public key, RSA-OAEP-wraps (token | challenge timestamp),
+ * token-encryption public key, RSA-OAEP-wraps (token | challenge timestamp-ms),
  * submits, polls the async reference to completion, redeems, and parses a real
  * access-token `exp` — and a subsequent authenticated GET succeeds with the
  * bearer the handshake produced.

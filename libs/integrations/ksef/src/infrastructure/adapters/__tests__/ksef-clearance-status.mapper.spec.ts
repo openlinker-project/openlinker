@@ -1,18 +1,20 @@
 /**
  * Specs for the pure KSeF status-code → neutral RegulatoryStatus mapping table
- * (#1150 / C6). Exercises the full range logic: 100/150 (processing) → submitted,
- * 200 (Success) → accepted, any other deterministic business code (e.g. 400) →
- * rejected (terminal), and the 5xx transient band → the `null` retry sentinel.
+ * (#1150 / C6). Exercises the explicit known-code map against the real catalogue:
+ * 100/150 (processing) → submitted, 200 (Success) → accepted, 400/440/445
+ * (validation / business rejection / zero-valid) → rejected (terminal), 550
+ * (processing error) → the `null` transient retry sentinel, and the
+ * unknown-code default (keep polling, never auto-reject).
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
+import { Logger } from '@openlinker/shared/logging';
 import { mapKsefStatusToRegulatoryStatus } from '../ksef-clearance-status.mapper';
 
 describe('mapKsefStatusToRegulatoryStatus', () => {
   it.each([
     [100, 'submitted'],
     [150, 'submitted'],
-    [199, 'submitted'],
     [200, 'accepted'],
   ])('should map KSeF status %i → %s', (code, expected) => {
     expect(mapKsefStatusToRegulatoryStatus(code)).toBe(expected);
@@ -20,14 +22,24 @@ describe('mapKsefStatusToRegulatoryStatus', () => {
 
   it.each([
     [400, 'rejected'],
-    [404, 'rejected'],
-    [410, 'rejected'],
+    [440, 'rejected'],
     [445, 'rejected'],
-  ])('should map deterministic business code %i → rejected (terminal)', (code, expected) => {
+  ])('should map known business-rejection code %i → rejected (terminal)', (code, expected) => {
     expect(mapKsefStatusToRegulatoryStatus(code)).toBe(expected);
   });
 
-  it.each([500, 502, 503, 599])('should map 5xx (%i) → null transient sentinel', (code) => {
-    expect(mapKsefStatusToRegulatoryStatus(code)).toBeNull();
+  it('should map the processing-error code (550) → null transient sentinel', () => {
+    expect(mapKsefStatusToRegulatoryStatus(550)).toBeNull();
+  });
+
+  it('should NOT auto-reject an unknown code — keep polling (submitted) and warn', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = mapKsefStatusToRegulatoryStatus(999);
+
+    expect(result).toBe('submitted');
+    expect(result).not.toBe('rejected');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
