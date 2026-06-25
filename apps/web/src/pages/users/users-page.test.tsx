@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
@@ -166,7 +166,7 @@ describe('UsersPage', () => {
     expect(reactivateUser).toHaveBeenCalledWith('u1');
   });
 
-  it('should call delete API when Delete clicked', async () => {
+  it('should call delete API when Delete clicked and confirmed in dialog', async () => {
     const deleteUser = vi.fn().mockResolvedValue(undefined);
     const mockApi = createMockApiClient({
       users: {
@@ -179,7 +179,12 @@ describe('UsersPage', () => {
     });
     renderWithProviders(<UsersPage />, { apiClient: mockApi });
 
+    // First click opens the ConfirmDialog
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    // Confirm inside the dialog to trigger the actual API call
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     expect(deleteUser).toHaveBeenCalledWith('u1');
   });

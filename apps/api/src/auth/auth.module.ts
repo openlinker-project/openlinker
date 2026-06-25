@@ -16,6 +16,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
+import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
 import { AuthController } from './auth.controller';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -49,6 +50,7 @@ import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
   controllers: [AuthController],
   providers: [
     AuthService,
+    { provide: AUTH_SERVICE_TOKEN, useExisting: AuthService },
     BootstrapAdminService,
     JwtStrategy,
     PasswordResetService,

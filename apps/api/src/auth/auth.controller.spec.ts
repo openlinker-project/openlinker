@@ -13,7 +13,8 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
+import type { IAuthService } from './auth.service.interface';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import {
@@ -45,16 +46,16 @@ const makeMockResponse = (): jest.Mocked<Pick<Response, 'cookie' | 'clearCookie'
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<AuthService>;
+  let authService: jest.Mocked<IAuthService>;
   let passwordResetService: jest.Mocked<IPasswordResetService>;
   let refreshTokenService: jest.Mocked<IRefreshTokenService>;
 
   beforeEach(async () => {
-    const mockAuthService = {
+    const mockAuthService: jest.Mocked<IAuthService> = {
       validateUser: jest.fn(),
       login: jest.fn(),
       getMe: jest.fn(),
-    } as unknown as jest.Mocked<AuthService>;
+    };
     const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
       requestReset: jest.fn(),
       resetPassword: jest.fn(),
@@ -68,14 +69,14 @@ describe('AuthController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: mockAuthService },
+        { provide: AUTH_SERVICE_TOKEN, useValue: mockAuthService },
         { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
         { provide: REFRESH_TOKEN_SERVICE_TOKEN, useValue: mockRefreshTokenService },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get(AuthService);
+    authService = module.get(AUTH_SERVICE_TOKEN);
     passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
     refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
   });

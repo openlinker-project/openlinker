@@ -8,6 +8,8 @@
 import type { User } from '@openlinker/core/users';
 import type { LoginResponseDto } from './dto/login-response.dto';
 
+export const AUTH_SERVICE_TOKEN = Symbol('IAuthService');
+
 export interface IAuthService {
   validateUser(username: string, password: string): Promise<User | null>;
   login(user: User): LoginResponseDto;

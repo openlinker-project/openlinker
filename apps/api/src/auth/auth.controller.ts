@@ -37,7 +37,7 @@ import {
   UserAlreadyExistsException,
   WeakPasswordException,
 } from '@openlinker/core/users';
-import { AuthService } from './auth.service';
+import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -74,7 +74,8 @@ function readCookie(req: Request, name: string): string | null {
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
+    @Inject(AUTH_SERVICE_TOKEN)
+    private readonly authService: IAuthService,
     @Inject(PASSWORD_RESET_SERVICE_TOKEN)
     private readonly passwordResetService: IPasswordResetService,
     @Inject(REFRESH_TOKEN_SERVICE_TOKEN)

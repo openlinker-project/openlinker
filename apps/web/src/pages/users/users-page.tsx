@@ -264,7 +264,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         </div>
       ),
     },
-  ], [updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending, deleteMutation.isPending]);
+  ], [updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending]);
 
   function renderAllContent(): ReactElement {
     if (usersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;
