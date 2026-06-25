@@ -28,5 +28,13 @@ export { useProductMasterConnections } from './hooks/use-product-master-connecti
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 
+export {
+  INVOICE_TRIGGER_MODEL_VALUES,
+  INVOICE_TRIGGER_MODEL_LABELS,
+} from './types/invoice-trigger-model.types';
+export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
+
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
+export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
+export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';

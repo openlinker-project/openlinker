@@ -8,8 +8,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty } from 'class-validator';
-import { UserRoleValues } from '@openlinker/core/users';
-import { UserRole } from '@openlinker/core/users';
+import { UserRoleValues, type UserRole } from '@openlinker/core/users';
 
 export class ApproveUserDto {
   @ApiProperty({ description: 'Role to assign', enum: UserRoleValues, example: 'viewer' })

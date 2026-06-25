@@ -227,6 +227,25 @@ export function createMockApiClient(
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.inventory,
     } as ApiClient['inventory'],
+    invoicing: {
+      // #757 — 404 default ⇒ "not-issued" with no network round-trip. NOTE: the
+      // default mock connection carries `Invoicing` in neither
+      // `enabledCapabilities` nor `supportedCapabilities`, so invoice tests must
+      // inject an active connection with `enabledCapabilities: ['Invoicing', …]`
+      // via `overrides.connections.list` to render the panel.
+      getForOrder: vi
+        .fn()
+        .mockRejectedValue(
+          new ApiError('No invoice for order', 404, { message: 'No invoice for order' }),
+        ),
+      // #758 — empty paginated list default so the /invoices list page (and any
+      // other `invoicing.list` caller) does not hit `undefined` once `list` is
+      // added to the InvoicingApi interface. Placed before the spread so an
+      // explicit `overrides.invoicing.list` still wins.
+      list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      issue: vi.fn().mockResolvedValue(null),
+      ...overrides.invoicing,
+    } as ApiClient['invoicing'],
     orders: {
       list: vi.fn().mockResolvedValue({
         items: [],

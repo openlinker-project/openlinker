@@ -7,6 +7,8 @@ import { UserManagementService } from './user-management.service';
 import {
   User,
   UserNotFoundException,
+  UserNotActiveException,
+  UserNotDeactivatedException,
   UserNotPendingException,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
@@ -98,6 +100,20 @@ describe('UserManagementService', () => {
 
       expect(repo.updateStatus).toHaveBeenCalledWith('u1', 'deactivated');
     });
+
+    it('should throw UserNotActiveException when user is pending', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'pending'));
+
+      await expect(service.deactivateUser('u1')).rejects.toThrow(UserNotActiveException);
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should throw UserNotActiveException when user is already deactivated', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'deactivated'));
+
+      await expect(service.deactivateUser('u1')).rejects.toThrow(UserNotActiveException);
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe('reactivateUser', () => {
@@ -107,6 +123,20 @@ describe('UserManagementService', () => {
       await service.reactivateUser('u1');
 
       expect(repo.updateStatus).toHaveBeenCalledWith('u1', 'active');
+    });
+
+    it('should throw UserNotDeactivatedException when user is active', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'active'));
+
+      await expect(service.reactivateUser('u1')).rejects.toThrow(UserNotDeactivatedException);
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should throw UserNotDeactivatedException when user is pending', async () => {
+      repo.findById.mockResolvedValue(makeUser('u1', 'pending'));
+
+      await expect(service.reactivateUser('u1')).rejects.toThrow(UserNotDeactivatedException);
+      expect(repo.updateStatus).not.toHaveBeenCalled();
     });
   });
 

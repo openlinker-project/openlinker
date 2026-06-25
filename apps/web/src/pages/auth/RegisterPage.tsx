@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { RegisterForm } from '../../features/users/components/register-form';
+import { RegisterForm } from '../../features/users';
 
 export function RegisterPage(): ReactElement {
   return (

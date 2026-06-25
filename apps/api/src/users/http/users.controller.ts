@@ -30,15 +30,19 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserNotFoundException, UserNotPendingException } from '@openlinker/core/users';
-import type { UserStatus } from '@openlinker/core/users';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  UserNotFoundException,
+  UserNotActiveException,
+  UserNotDeactivatedException,
+  UserNotPendingException,
+} from '@openlinker/core/users';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
+import { ListUsersQueryDto } from '../dto/list-users-query.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
 import { UserListResponseDto } from '../dto/user-list-response.dto';
-import { IUserManagementService } from '../user-management.service.interface';
-import { USER_MANAGEMENT_SERVICE_TOKEN } from '../user-management.service.interface';
+import { IUserManagementService, USER_MANAGEMENT_SERVICE_TOKEN } from '../user-management.service.interface';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -52,24 +56,12 @@ export class UsersController {
   @Get()
   @Roles('admin')
   @ApiOperation({ summary: 'List all users (admin only)' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'active', 'deactivated'] })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'User list', type: UserListResponseDto })
-  async listUsers(
-    @Query('status') status?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string
-  ): Promise<UserListResponseDto> {
-    const validStatuses: UserStatus[] = ['pending', 'active', 'deactivated'];
-    const statusFilter = validStatuses.includes(status as UserStatus)
-      ? (status as UserStatus)
-      : undefined;
-
+  async listUsers(@Query() query: ListUsersQueryDto): Promise<UserListResponseDto> {
     const result = await this.userManagement.listUsers({
-      status: statusFilter,
-      page: page !== undefined ? parseInt(page, 10) : undefined,
-      pageSize: pageSize !== undefined ? parseInt(pageSize, 10) : undefined,
+      status: query.status,
+      page: query.page,
+      pageSize: query.pageSize,
     });
     return UserListResponseDto.fromDomain(result);
   }
@@ -139,12 +131,16 @@ export class UsersController {
   @ApiOperation({ summary: 'Deactivate a user — they can no longer log in (admin only)' })
   @ApiResponse({ status: 204, description: 'User deactivated' })
   @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'User is not active' })
   async deactivateUser(@Param('id') id: string): Promise<void> {
     try {
       await this.userManagement.deactivateUser(id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof UserNotActiveException) {
+        throw new ConflictException(error.message);
       }
       throw error;
     }
@@ -156,12 +152,16 @@ export class UsersController {
   @ApiOperation({ summary: 'Reactivate a deactivated user (admin only)' })
   @ApiResponse({ status: 204, description: 'User reactivated' })
   @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'User is not deactivated' })
   async reactivateUser(@Param('id') id: string): Promise<void> {
     try {
       await this.userManagement.reactivateUser(id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof UserNotDeactivatedException) {
+        throw new ConflictException(error.message);
       }
       throw error;
     }

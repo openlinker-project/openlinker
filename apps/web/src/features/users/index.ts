@@ -1,3 +1,4 @@
+export { RegisterForm } from './components/register-form';
 export { createUsersApi } from './api/users.api';
 export type { UsersApi } from './api/users.api';
 export type { UserSummary, UserListResponse, UserListFilters, UserStatus, UserRole, ApproveUserInput } from './api/users.types';

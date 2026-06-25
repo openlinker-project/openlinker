@@ -37,6 +37,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/customers', label: 'Customers', countKey: 'customers' },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
+      { to: '/invoices', label: 'Invoices' },
     ],
   },
   {
@@ -77,7 +78,6 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     label: 'Planned',
     items: [
       { label: 'Automations', reason: 'Coming in a future release' },
-      { label: 'Invoices', reason: 'Coming in a future release' },
     ],
   },
 ];

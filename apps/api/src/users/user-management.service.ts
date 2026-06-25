@@ -12,6 +12,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
   UserNotFoundException,
+  UserNotActiveException,
+  UserNotDeactivatedException,
   UserNotPendingException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
@@ -61,13 +63,19 @@ export class UserManagementService implements IUserManagementService {
   }
 
   async deactivateUser(userId: string): Promise<void> {
-    await this.requireUser(userId);
+    const user = await this.requireUser(userId);
+    if (user.status !== 'active') {
+      throw new UserNotActiveException(userId);
+    }
     await this.userRepository.updateStatus(userId, 'deactivated');
     this.logger.log(`User deactivated: ${userId}`);
   }
 
   async reactivateUser(userId: string): Promise<void> {
-    await this.requireUser(userId);
+    const user = await this.requireUser(userId);
+    if (user.status !== 'deactivated') {
+      throw new UserNotDeactivatedException(userId);
+    }
     await this.userRepository.updateStatus(userId, 'active');
     this.logger.log(`User reactivated: ${userId}`);
   }

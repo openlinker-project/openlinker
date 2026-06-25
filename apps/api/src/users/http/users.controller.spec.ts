@@ -11,7 +11,13 @@ import {
   USER_MANAGEMENT_SERVICE_TOKEN,
   type IUserManagementService,
 } from '../user-management.service.interface';
-import { User, UserNotFoundException, UserNotPendingException } from '@openlinker/core/users';
+import {
+  User,
+  UserNotFoundException,
+  UserNotActiveException,
+  UserNotDeactivatedException,
+  UserNotPendingException,
+} from '@openlinker/core/users';
 
 const makeUser = (id: string, status: 'pending' | 'active' | 'deactivated' = 'active'): User =>
   new User(id, `user-${id}`, `${id}@test.com`, 'hash', 'viewer', status, new Date(), new Date());
@@ -43,7 +49,7 @@ describe('UsersController', () => {
     it('should return mapped user list for a valid status filter', async () => {
       service.listUsers.mockResolvedValue({ users: [makeUser('u1')], total: 1 });
 
-      const result = await controller.listUsers('active', undefined, undefined);
+      const result = await controller.listUsers({ status: 'active' });
 
       expect(service.listUsers).toHaveBeenCalledWith({
         status: 'active',
@@ -54,10 +60,10 @@ describe('UsersController', () => {
       expect(result.users).toHaveLength(1);
     });
 
-    it('should drop unknown status values and pass undefined', async () => {
+    it('should pass page and pageSize when provided', async () => {
       service.listUsers.mockResolvedValue({ users: [], total: 0 });
 
-      await controller.listUsers('bogus', '0', '10');
+      await controller.listUsers({ status: undefined, page: 0, pageSize: 10 });
 
       expect(service.listUsers).toHaveBeenCalledWith({
         status: undefined,
@@ -126,6 +132,28 @@ describe('UsersController', () => {
       await controller.deactivateUser('u1');
 
       expect(service.deactivateUser).toHaveBeenCalledWith('u1');
+    });
+
+    it('should throw ConflictException when user is not active', async () => {
+      service.deactivateUser.mockRejectedValue(new UserNotActiveException('u1'));
+
+      await expect(controller.deactivateUser('u1')).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('reactivateUser', () => {
+    it('should call service.reactivateUser with id', async () => {
+      service.reactivateUser.mockResolvedValue(undefined);
+
+      await controller.reactivateUser('u1');
+
+      expect(service.reactivateUser).toHaveBeenCalledWith('u1');
+    });
+
+    it('should throw ConflictException when user is not deactivated', async () => {
+      service.reactivateUser.mockRejectedValue(new UserNotDeactivatedException('u1'));
+
+      await expect(controller.reactivateUser('u1')).rejects.toThrow(ConflictException);
     });
   });
 
