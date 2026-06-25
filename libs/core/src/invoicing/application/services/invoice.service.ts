@@ -63,12 +63,37 @@ const MAX_ERROR_MESSAGE_LENGTH = 500;
  * original call is still in flight → a SECOND provider call → a double-issued
  * fiscal document. Today the Subiekt adapter caps its per-request `timeoutMs` at
  * 120 s at config validation (subiekt-adapter.factory.ts), so 5 min leaves a
- * comfortable 2.5× margin. If any provider's max round-trip (incl. transport
- * retries) is ever allowed to approach this bound, raise the lease (or assert
- * `maxProviderTimeout < ISSUING_LEASE_MS` at config validation) — the margin must
- * be by construction, not by coincidence.
+ * comfortable 2.5× margin. The margin is now enforced BY CONSTRUCTION rather than
+ * by comment: `MAX_SUPPORTED_PROVIDER_TIMEOUT_MS` records the ceiling every
+ * provider adapter must keep its round-trip under, and the module-load assertion
+ * below fails fast if the lease is ever lowered to (or below) that ceiling.
+ *
+ * @internal Exported only so the invariant is unit-testable; NOT on the
+ * invoicing barrel (the barrel re-exports `InvoiceService` by name).
  */
-const ISSUING_LEASE_MS = 5 * 60 * 1000;
+export const ISSUING_LEASE_MS = 5 * 60 * 1000;
+
+/**
+ * Hard ceiling, in milliseconds, on any single provider round-trip the system
+ * supports (incl. transport retries) — the Subiekt config validation enforces
+ * its 120 s `timeoutMs` cap to honour this. The CAS lease (`ISSUING_LEASE_MS`)
+ * MUST strictly exceed this so an expired lease can never be re-claimed while an
+ * original provider call is still in flight (the fiscal double-issue guard).
+ *
+ * @internal Exported only for the unit test that pins the invariant.
+ */
+export const MAX_SUPPORTED_PROVIDER_TIMEOUT_MS = 120 * 1000;
+
+// Enforce the fiscal-safety margin BY CONSTRUCTION (not by comment): fail loud at
+// module load if anyone lowers the lease below the supported provider-timeout
+// ceiling, which would reopen the double-issue race the lease exists to close.
+if (ISSUING_LEASE_MS <= MAX_SUPPORTED_PROVIDER_TIMEOUT_MS) {
+  throw new Error(
+    `Fiscal-safety invariant violated: ISSUING_LEASE_MS (${ISSUING_LEASE_MS}ms) must strictly exceed ` +
+      `MAX_SUPPORTED_PROVIDER_TIMEOUT_MS (${MAX_SUPPORTED_PROVIDER_TIMEOUT_MS}ms) so an expired CAS lease ` +
+      `can never be re-claimed mid-flight and double-issue a fiscal document.`,
+  );
+}
 
 /**
  * Neutral shape the SVC reads STRUCTURALLY off a caught adapter throwable to

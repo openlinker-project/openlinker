@@ -18,7 +18,11 @@ import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import type { IssueInvoiceCommand } from '../../domain/types/invoicing.types';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
-import { InvoiceService } from './invoice.service';
+import {
+  InvoiceService,
+  ISSUING_LEASE_MS,
+  MAX_SUPPORTED_PROVIDER_TIMEOUT_MS,
+} from './invoice.service';
 
 const CONNECTION = 'conn-1';
 const ORDER = 'order-1';
@@ -472,6 +476,17 @@ describe('InvoiceService', () => {
       const result = await service.getInvoice({ orderId: ORDER, connectionId: CONNECTION });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('fiscal-safety lease invariant (#1200)', () => {
+    it('keeps the CAS lease strictly above the max supported provider timeout (enforced by construction, not by comment)', () => {
+      // If this ever fails, an expired lease could be re-claimed while the
+      // original provider call is still in flight → a double-issued fiscal
+      // document. The module-load guard in invoice.service.ts throws on the same
+      // condition; this test pins the contract so a regression is caught in unit
+      // tests too, not only at boot.
+      expect(ISSUING_LEASE_MS).toBeGreaterThan(MAX_SUPPORTED_PROVIDER_TIMEOUT_MS);
     });
   });
 });
