@@ -140,16 +140,26 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       responseFormat
     );
 
-    // Unwrap single resource response
-    // PrestaShop JSON API returns: { product: { ... } } for single resources
-    // We need to unwrap it to return just the product object
+    // Unwrap single resource response.
+    // After the parser strips the `prestashop` wrapper, a single resource is
+    // `{ <singular>: { ... } }` — e.g. `{ product: {...} }`, `{ address: {...} }`,
+    // `{ country: {...} }`. The singular element name is NOT reliably the plural
+    // minus a trailing 's': irregular -es plurals (`addresses` → `address`,
+    // `countries` → `country`) and compound plurals (`order_histories` →
+    // `order_history`) all break `slice(0, -1)`, which would leave the envelope
+    // un-unwrapped and return `{ address: {...} }` instead of the inner object.
+    // Robust rule: when the parsed object has exactly one top-level key whose
+    // value is an object, that key is the resource wrapper — unwrap it. This is
+    // language-agnostic and covers every singular form. Already-flat responses
+    // (and multi-key shapes) fall through to "return as-is".
     const parsedObj = parsed as Record<string, unknown>;
-    const itemKey = resource.slice(0, -1); // e.g., 'product' (singular from 'products')
-
-    // Check if parsed object has the resource key (e.g., 'product')
-    if (parsedObj[itemKey] && typeof parsedObj[itemKey] === 'object') {
-      // Unwrap: return the inner object (e.g., parsed.product)
-      return parsedObj[itemKey] as T;
+    const topLevelKeys = Object.keys(parsedObj);
+    if (topLevelKeys.length === 1) {
+      const onlyKey = topLevelKeys[0];
+      const inner = parsedObj[onlyKey];
+      if (inner !== null && typeof inner === 'object') {
+        return inner as T;
+      }
     }
 
     // If no unwrapping needed, return as-is
