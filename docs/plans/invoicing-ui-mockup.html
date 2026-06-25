@@ -1,0 +1,1350 @@
+<title>OpenLinker Invoicing — A1 Mockup</title>
+<style>
+/* ============================================================
+   OpenLinker design tokens — copied verbatim from
+   apps/web/src/index.css (light + dark). The redesign reshapes
+   the existing system; it invents no new palette or type.
+   ============================================================ */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+
+  --status-neutral: oklch(55% 0.008 80);
+  --status-neutral-soft: oklch(95% 0.005 80);
+  --status-neutral-border: oklch(85% 0.008 80);
+  --status-neutral-fg: oklch(38% 0.010 80);
+
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem; --space-8: 4rem;
+
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
+  --radius-xl: 14px; --radius-pill: 9999px;
+
+  --duration-fast: 120ms; --duration-normal: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-caps: 0.08em; --tracking-wide: 0.02em; --tracking-tight: -0.012em;
+}
+html[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(26% 0.06 85); --status-warning-border: oklch(36% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(66% 0.20 25); --status-error-soft: oklch(26% 0.08 25); --status-error-border: oklch(38% 0.12 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(68% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review: oklch(70% 0.15 290); --status-review-soft: oklch(26% 0.07 290); --status-review-border: oklch(36% 0.10 290); --status-review-fg: oklch(86% 0.13 290);
+  --status-neutral: oklch(60% 0.012 270); --status-neutral-soft: oklch(24% 0.009 270); --status-neutral-border: oklch(34% 0.012 270); --status-neutral-fg: oklch(78% 0.010 270);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.30), 0 6px 16px rgb(0 0 0 / 0.40);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.tabular { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); }
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+
+/* ── Mockup chrome ─────────────────────────────────────────── */
+.chrome {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-default);
+}
+.chrome__brand { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; letter-spacing: var(--tracking-tight); }
+.chrome__dot { width: 10px; height: 10px; border-radius: var(--radius-pill); background: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-soft); }
+.chrome__tag { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); padding: 2px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-pill); }
+.chrome__spacer { flex: 1; }
+
+.segmented { display: inline-flex; background: var(--bg-surface-muted); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 3px; gap: 2px; }
+.segmented button {
+  font: inherit; font-size: 13px; font-weight: 500;
+  border: 0; background: transparent; color: var(--text-secondary);
+  padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.segmented button:hover { color: var(--text-primary); }
+.segmented button[aria-pressed='true'] { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+.icon-toggle {
+  font: inherit; font-size: 13px; cursor: pointer;
+  background: var(--bg-surface); color: var(--text-secondary);
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  padding: 6px 12px;
+}
+.icon-toggle:hover { background: var(--bg-surface-hover); }
+
+.stage { max-width: 1180px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+.view { display: none; }
+.view.is-active { display: block; }
+
+/* ── Annotation note ───────────────────────────────────────── */
+.note {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  font-size: 12.5px; color: var(--text-secondary);
+  background: var(--accent-primary-soft); border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.note b { color: var(--text-primary); font-weight: 600; }
+.note__k { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--accent-primary-active, var(--accent-primary)); }
+
+/* ── Status badge (mono + caps + dot) ──────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  padding: 3px 9px 3px 7px; border-radius: var(--radius-pill);
+  border: 1px solid; white-space: nowrap;
+}
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-pill); background: currentColor; flex: none; }
+.badge--neutral { color: var(--status-neutral-fg); background: var(--status-neutral-soft); border-color: var(--status-neutral-border); }
+.badge--warning { color: var(--status-warning-fg); background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.badge--success { color: var(--status-success-fg); background: var(--status-success-soft); border-color: var(--status-success-border); }
+.badge--error   { color: var(--status-error-fg);   background: var(--status-error-soft);   border-color: var(--status-error-border); }
+.badge--info    { color: var(--status-info-fg);    background: var(--status-info-soft);    border-color: var(--status-info-border); }
+.badge--review  { color: var(--status-review-fg);  background: var(--status-review-soft);  border-color: var(--status-review-border); }
+.badge--pulse::before { animation: pulse 1.6s var(--ease-out) infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.btn {
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-sm); padding: 8px 14px; border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.btn--primary { background: var(--accent-primary); color: var(--text-on-primary); }
+.btn--primary:hover { background: var(--accent-primary-hover); }
+.btn--secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-default); }
+.btn--secondary:hover { background: var(--bg-surface-hover); }
+.btn--ghost { background: transparent; color: var(--text-secondary); }
+.btn--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.btn--sm { font-size: 12px; padding: 5px 10px; }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Order-detail page (faithful to the real layout) ───────── */
+.op-eyebrow { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.op-title { margin: 4px 0 var(--space-5); font-size: 18px; letter-spacing: var(--tracking-tight); }
+.order-header { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.order-header__top { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.order-header__top h1 { margin: 0; font-size: 22px; letter-spacing: var(--tracking-tight); }
+.order-header__sub { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--text-muted); }
+.order-route { display: inline-flex; align-items: center; gap: 8px; }
+.order-route__dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--accent-primary); }
+.order-summary-line { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; flex-wrap: wrap; }
+.thumb { width: 24px; height: 24px; border-radius: var(--radius-sm); background: var(--bg-surface-muted); border: 1px solid var(--border-default); display: grid; place-items: center; font-size: 11px; color: var(--text-muted); flex: none; }
+.order-health { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin: var(--space-4) 0 var(--space-5); }
+.order-health__cell { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+.order-health__k { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.order-health__v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.order-health__hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.detail-section { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-4) var(--space-5); margin-bottom: var(--space-5); }
+.detail-section__title { margin: 0 0 var(--space-3); font-size: 13px; font-weight: 600; }
+.split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); align-items: start; }
+@media (max-width: 900px) { .split-grid { grid-template-columns: 1fr; } .order-health { grid-template-columns: 1fr; } }
+.stack { display: grid; gap: var(--space-5); }
+.stack .detail-section, .stack .panel { margin-bottom: 0; }
+.lineitems { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lineitems th { text-align: left; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-default); }
+.lineitems th.r, .lineitems td.r { text-align: right; }
+.lineitems td { padding: 8px; border-bottom: 1px solid var(--border-subtle); }
+.totals { margin-top: var(--space-3); display: grid; gap: 4px; max-width: 280px; margin-left: auto; font-size: 13px; }
+.totals__row { display: flex; justify-content: space-between; }
+.totals__row--total { border-top: 1px solid var(--border-default); padding-top: 6px; font-weight: 600; }
+.kvl { display: grid; grid-template-columns: max-content 1fr; gap: 8px var(--space-4); font-size: 13px; }
+.kvl dt { color: var(--text-muted); }
+.kvl dd { margin: 0; }
+.addr { line-height: 1.6; }
+/* In the order stack the invoice panel sits flush with sibling sections */
+.stack .panel__head { padding-top: var(--space-4); }
+
+/* ── Invoice panel (the redesigned OrderInvoicePanel) ──────── */
+.panel {
+  background: var(--bg-surface); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.panel__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-4) var(--space-3); }
+.panel__title { margin: 0; font-size: 13px; font-weight: 600; }
+.panel__provider { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+
+/* signature: dual-lifecycle rail */
+.rail { padding: 0 var(--space-4) var(--space-4); display: grid; gap: var(--space-3); }
+.rail__track { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: center; }
+.rail__lane-label { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); width: 56px; }
+.rail__steps { display: flex; align-items: center; }
+.rail__step { display: flex; align-items: center; gap: 6px; flex: 1; }
+.rail__node { width: 11px; height: 11px; border-radius: var(--radius-pill); border: 2px solid var(--border-strong); background: var(--bg-surface); flex: none; }
+.rail__line { height: 2px; flex: 1; background: var(--border-default); }
+.rail__caption { font-size: 10px; color: var(--text-disabled); white-space: nowrap; }
+.rail__step--done .rail__node { background: var(--status-success); border-color: var(--status-success); }
+.rail__step--done .rail__caption { color: var(--text-secondary); }
+.rail__step--done .rail__line { background: var(--status-success); }
+.rail__step--active .rail__node { border-color: var(--accent-primary); background: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-soft); }
+.rail__step--active .rail__caption { color: var(--text-primary); font-weight: 600; }
+.rail__step--error .rail__node { background: var(--status-error); border-color: var(--status-error); }
+.rail__step--error .rail__caption { color: var(--status-error-fg); font-weight: 600; }
+.rail--reg .rail__step--na .rail__node { border-style: dashed; }
+
+.panel__body { padding: var(--space-4); border-top: 1px solid var(--border-subtle); display: grid; gap: var(--space-3); }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: var(--space-2) var(--space-3); font-size: 13px; }
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; color: var(--text-primary); }
+.kv dd.mono { font-size: 12px; }
+.link { color: var(--text-link); text-decoration: none; font-weight: 500; }
+.link:hover { text-decoration: underline; }
+.link::after { content: ' ↗'; font-size: 0.85em; color: var(--text-muted); }
+.muted { color: var(--text-muted); }
+.dash { color: var(--text-disabled); }
+
+.panel__actions { padding: var(--space-4); border-top: 1px solid var(--border-subtle); display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--tracking-caps); font-family: var(--font-mono); }
+.select, .input {
+  font: inherit; font-size: 13px; color: var(--text-primary);
+  background: var(--bg-surface); border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); padding: 7px 10px; min-width: 150px;
+}
+.select:hover, .input:hover { border-color: var(--border-strong); }
+.spacer { flex: 1; }
+
+.inline-alert { display: flex; gap: var(--space-2); align-items: flex-start; font-size: 12.5px; border-radius: var(--radius-md); padding: var(--space-3); border: 1px solid; }
+.inline-alert--error { color: var(--status-error-fg); background: var(--status-error-soft); border-color: var(--status-error-border); }
+.inline-alert--warning { color: var(--status-warning-fg); background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.inline-alert__bar { width: 3px; border-radius: var(--radius-pill); background: currentColor; align-self: stretch; flex: none; }
+.notice { font-size: 12.5px; color: var(--text-muted); padding: var(--space-3) var(--space-4); }
+.skeleton { height: 14px; border-radius: var(--radius-xs); background: linear-gradient(90deg, var(--bg-surface-muted), var(--bg-surface-hover), var(--bg-surface-muted)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* panel state switcher */
+.state-bar { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.chip { font: inherit; font-size: 12px; cursor: pointer; padding: 5px 11px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); }
+.chip[aria-pressed='true'] { background: var(--text-primary); color: var(--bg-surface); border-color: var(--text-primary); }
+.chip:hover:not([aria-pressed='true']) { background: var(--bg-surface-hover); }
+
+/* ── List page ─────────────────────────────────────────────── */
+.page-head { margin-bottom: var(--space-5); }
+.page-head__eyebrow { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.page-head h1 { margin: 4px 0 4px; font-size: 24px; letter-spacing: var(--tracking-tight); }
+.page-head p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
+.toolbar { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--space-4); }
+.toolbar .field { gap: 3px; }
+.toolbar .spacer { flex: 1; min-width: 0; }
+
+.card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.table-wrap { overflow-x: auto; }
+table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dt thead th {
+  text-align: left; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted);
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface-muted); white-space: nowrap;
+}
+.dt tbody td { padding: 10px var(--space-4); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+.dt tbody tr { cursor: pointer; transition: background var(--duration-fast) var(--ease-out); }
+.dt tbody tr:hover { background: var(--bg-surface-hover); }
+.dt tbody tr:last-child td { border-bottom: 0; }
+.cell-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.cell-strong { font-weight: 500; }
+.cell-time { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.checkbox { width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer; }
+
+.pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); font-size: 12.5px; color: var(--text-muted); }
+.pager__nav { display: flex; gap: var(--space-2); }
+
+/* bulk action bar */
+.bulkbar { display: none; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--text-primary); color: var(--bg-surface); border-radius: var(--radius-md); margin-bottom: var(--space-3); }
+.bulkbar.is-on { display: flex; }
+.bulkbar__count { font-weight: 600; font-size: 13px; }
+.bulkbar .btn--secondary { background: transparent; color: var(--bg-surface); border-color: oklch(100% 0 0 / 0.25); }
+.bulkbar .btn--secondary:hover { background: oklch(100% 0 0 / 0.12); }
+
+/* feedback states */
+.feedback { display: grid; place-items: center; text-align: center; gap: var(--space-3); padding: var(--space-8) var(--space-5); }
+.feedback__glyph { width: 44px; height: 44px; border-radius: var(--radius-md); display: grid; place-items: center; background: var(--bg-surface-muted); border: 1px solid var(--border-default); color: var(--text-muted); font-size: 20px; }
+.feedback h3 { margin: 0; font-size: 15px; }
+.feedback p { margin: 0; max-width: 360px; color: var(--text-muted); font-size: 13px; }
+
+.list-state { display: none; }
+.list-state.is-active { display: block; }
+
+/* ── Invoice detail page (A2 + A3 timeline + A5 failure) ───── */
+.backlink { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); text-decoration: none; margin-bottom: var(--space-3); }
+.backlink:hover { color: var(--text-primary); }
+.detail-head { display: flex; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-5); }
+.detail-head__main { flex: 1; min-width: 0; }
+.detail-head__eyebrow { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.detail-head h1 { margin: 4px 0 6px; font-size: 22px; letter-spacing: var(--tracking-tight); font-family: var(--font-mono); }
+.detail-head__sub { font-size: 13px; color: var(--text-secondary); display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.detail-head__badges { display: flex; gap: var(--space-2); align-items: center; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-5); align-items: start; }
+@media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
+.detail-col { display: grid; gap: var(--space-5); }
+.section-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.section-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.section-card__head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.section-card__provider { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); border: 1px solid var(--border-default); border-radius: var(--radius-pill); padding: 2px 8px; }
+.section-card__body { padding: var(--space-4); }
+.kv-wide { display: grid; grid-template-columns: 140px 1fr; gap: var(--space-3) var(--space-4); font-size: 13px; }
+.kv-wide dt { color: var(--text-muted); }
+.kv-wide dd { margin: 0; }
+.copy-id { display: inline-flex; align-items: center; gap: 6px; }
+.copy-id button { font: inherit; font-size: 10px; cursor: pointer; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-muted); border-radius: var(--radius-xs); padding: 1px 6px; }
+.copy-id button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+
+/* UPO / FA(3) provider slot */
+.slot-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
+.slot-row:last-child { border-bottom: 0; }
+.slot-row__label { font-size: 13px; }
+.slot-row__hint { font-size: 11.5px; color: var(--text-muted); }
+.doc-preview { margin-top: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface-muted); height: 150px; display: grid; place-items: center; color: var(--text-disabled); font-size: 12px; position: relative; overflow: hidden; }
+.doc-preview__chip { position: absolute; top: 8px; left: 8px; font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-pill); padding: 2px 8px; }
+
+/* vertical timeline (A3) */
+.timeline { display: grid; gap: 0; padding: var(--space-2) var(--space-1); }
+.tl-item { display: grid; grid-template-columns: 22px 1fr; gap: var(--space-3); }
+.tl-rail { display: grid; justify-items: center; }
+.tl-node { width: 12px; height: 12px; border-radius: var(--radius-pill); border: 2px solid var(--border-strong); background: var(--bg-surface); margin-top: 2px; flex: none; }
+.tl-line { width: 2px; flex: 1; background: var(--border-default); min-height: 18px; }
+.tl-body { padding-bottom: var(--space-4); }
+.tl-title { font-size: 13px; font-weight: 500; }
+.tl-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tl-note { font-size: 12px; color: var(--text-muted); }
+.tl-item--done .tl-node { background: var(--status-success); border-color: var(--status-success); }
+.tl-item--done .tl-line { background: var(--status-success); }
+.tl-item--active .tl-node { border-color: var(--accent-primary); background: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-soft); }
+.tl-item--active .tl-title { font-weight: 600; }
+.tl-item--error .tl-node { background: var(--status-error); border-color: var(--status-error); }
+.tl-item--error .tl-title { color: var(--status-error-fg); }
+.tl-item--pending .tl-node { border-color: var(--status-warning); border-style: dashed; }
+.tl-item--pending .tl-title { color: var(--text-muted); }
+.tl-lane-head { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); margin: var(--space-2) 0 var(--space-1) 34px; }
+
+.action-stack { display: grid; gap: var(--space-2); }
+.action-stack .btn { justify-content: center; }
+.action-hint { font-size: 11.5px; color: var(--text-muted); text-align: center; }
+
+/* invoice contents (the document as written) */
+.parties { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
+@media (max-width: 560px) { .parties { grid-template-columns: 1fr; } }
+.party__label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); margin-bottom: 4px; }
+.party__name { font-weight: 600; font-size: 13px; }
+.party__line { font-size: 12.5px; color: var(--text-secondary); }
+.party__nip { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.inv-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; font-size: 12.5px; margin-bottom: var(--space-4); }
+.inv-meta div span { color: var(--text-muted); }
+.lines-inv th, .lines-inv td { white-space: nowrap; }
+.lines-inv td:nth-child(2) { white-space: normal; }
+.vat-breakdown { margin-top: var(--space-4); margin-left: auto; max-width: 380px; width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.vat-breakdown th, .vat-breakdown td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border-subtle); font-variant-numeric: tabular-nums; }
+.vat-breakdown th:first-child, .vat-breakdown td:first-child { text-align: left; }
+.vat-breakdown thead th { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.vat-breakdown tfoot td { font-weight: 600; border-top: 1px solid var(--border-default); border-bottom: 0; }
+.seam-tag { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--status-warning-fg); background: var(--status-warning-soft); border: 1px solid var(--status-warning-border); border-radius: var(--radius-pill); padding: 2px 8px; }
+
+/* caveat note (warning-toned) */
+.note--warn { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.note--warn .note__k { color: var(--status-warning-fg); }
+
+/* ── Connection setup wizard (Wave B) ──────────────────────── */
+.wizard { max-width: 660px; }
+.wizard__step { margin-bottom: var(--space-5); }
+.wizard__step-title { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; font-weight: 600; margin-bottom: var(--space-3); }
+.wizard__num { width: 20px; height: 20px; border-radius: var(--radius-pill); background: var(--accent-primary-soft); color: var(--accent-primary-active); border: 1px solid var(--accent-primary-border); display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; flex: none; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
+@media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
+.form-grid .field--full { grid-column: 1 / -1; }
+.field .input, .field .select { width: 100%; }
+.field__hint { font-size: 11px; color: var(--text-muted); }
+.field__lockhint { font-size: 11px; color: var(--text-muted); display: inline-flex; gap: 4px; align-items: center; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); }
+.toggle-row__text { font-size: 13px; }
+.toggle-row__text small { display: block; color: var(--text-muted); font-size: 11.5px; }
+.switch { width: 38px; height: 22px; border-radius: var(--radius-pill); background: var(--bg-strong); border: 1px solid var(--border-default); position: relative; cursor: pointer; flex: none; padding: 0; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-pill); background: var(--bg-surface); box-shadow: var(--shadow-sm); transition: left var(--duration-fast) var(--ease-out); }
+.switch[aria-checked='true'] { background: var(--accent-primary); border-color: var(--accent-primary); }
+.switch[aria-checked='true']::after { left: 18px; }
+.wizard__actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.wizard__actions .spacer { flex: 1; }
+.disabled-opt { color: var(--text-disabled); }
+
+/* ── Correction flow (Wave C, per-provider slot) ───────────── */
+.corr { max-width: 720px; }
+.corr__orig { display: flex; gap: var(--space-4); flex-wrap: wrap; font-size: 12.5px; color: var(--text-secondary); margin-bottom: var(--space-4); padding: var(--space-3); background: var(--bg-surface-muted); border-radius: var(--radius-md); }
+.corr__orig b { color: var(--text-primary); }
+.input--num { width: 84px; text-align: right; min-width: 0; }
+.corr-note { font-size: 12px; color: var(--text-muted); margin-top: var(--space-3); }
+.textarea { font: inherit; font-size: 13px; width: 100%; min-height: 64px; resize: vertical; color: var(--text-primary); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 8px 10px; }
+.textarea:hover { border-color: var(--border-strong); }
+
+/* ── Bulk confirm modal + result banner (Wave C) ───────────── */
+.modal-scrim { position: fixed; inset: 0; background: rgb(15 18 26 / 0.45); display: none; align-items: center; justify-content: center; padding: var(--space-4); z-index: 50; }
+.modal-scrim.is-open { display: flex; }
+.modal { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: 0 24px 48px rgb(15 18 26 / 0.22), 0 8px 16px rgb(15 18 26 / 0.12); max-width: 420px; width: 100%; overflow: hidden; }
+.modal__head { padding: var(--space-4) var(--space-4) 0; }
+.modal__head h3 { margin: 0; font-size: 15px; }
+.modal__body { padding: var(--space-3) var(--space-4); color: var(--text-secondary); font-size: 13px; }
+.modal__foot { display: flex; gap: var(--space-2); justify-content: flex-end; padding: var(--space-3) var(--space-4) var(--space-4); }
+.result-banner { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: 1px solid; margin-bottom: var(--space-3); font-size: 13px; }
+.result-banner--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.result-banner__dismiss { margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+.legend { margin-top: var(--space-6); font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); display: grid; gap: var(--space-2); }
+.legend code { font-family: var(--font-mono); background: var(--bg-surface-muted); padding: 1px 5px; border-radius: var(--radius-xs); font-size: 11px; }
+</style>
+
+<div class="chrome">
+  <span class="chrome__brand"><span class="chrome__dot"></span> OpenLinker</span>
+  <span class="chrome__tag">Invoicing · A1 redesign</span>
+  <div class="chrome__spacer"></div>
+  <div class="segmented" role="tablist" aria-label="Mockup view">
+    <button role="tab" aria-pressed="true" data-view="panel">Order panel</button>
+    <button role="tab" aria-pressed="false" data-view="list">Invoices list</button>
+    <button role="tab" aria-pressed="false" data-view="detail">Invoice detail</button>
+    <button role="tab" aria-pressed="false" data-view="setup">Connection setup</button>
+    <button role="tab" aria-pressed="false" data-view="correction">Correction</button>
+  </div>
+  <button class="icon-toggle" id="theme">Dark</button>
+</div>
+
+<div class="stage">
+
+  <!-- ================= VIEW 1: ORDER PANEL ================= -->
+  <section class="view is-active" data-view="panel">
+    <div class="note note--warn">
+      <span class="note__k">Not 1:1</span>
+      <span>This order page is <b>not a pixel-faithful copy</b> of OpenLinker's real order detail — it only sets the context. <b>Focus on the Invoice card</b> (and its placement); the surrounding sections are approximations.</span>
+    </div>
+    <div class="note">
+      <span class="note__k">A1 · panel in context</span>
+      <span>The <b>Invoice card sits in the right column, directly under Delivery</b> — its real place in the order-detail layout (full-width Pricing on top, then the Summary/Sync · Delivery/Invoice/Customer split). Switch the invoice state below to preview each case.</span>
+    </div>
+
+    <div class="state-bar" role="group" aria-label="Preview connection">
+      <button class="chip" aria-pressed="true"  data-pprov="ksef">KSeF</button>
+      <button class="chip" aria-pressed="false" data-pprov="subiekt">Subiekt</button>
+    </div>
+    <div class="state-bar" role="group" aria-label="Preview invoice state">
+      <button class="chip" aria-pressed="false" data-state="not-issued">Not issued</button>
+      <button class="chip" aria-pressed="true"  data-state="pending">Pending</button>
+      <button class="chip" aria-pressed="false" data-state="issuing">Issuing</button>
+      <button class="chip" aria-pressed="false" data-state="issued">Issued</button>
+      <button class="chip" aria-pressed="false" data-state="failed">Failed · rejected</button>
+      <button class="chip" aria-pressed="false" data-state="in-doubt">Failed · in-doubt</button>
+      <button class="chip" aria-pressed="false" data-state="needs-reauth">Needs re-auth</button>
+      <button class="chip" aria-pressed="false" data-state="multi">Multiple connections</button>
+    </div>
+
+    <a class="backlink" href="#" onclick="return false">← Orders</a>
+    <div class="op-eyebrow">Orders</div>
+    <h2 class="op-title">Order detail</h2>
+
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1>Order DIAYIGRWL</h1>
+        <span class="badge badge--neutral">Processing</span>
+        <span class="badge badge--success">Shipped</span>
+      </div>
+      <div class="order-header__sub">
+        <span class="mono">ol_order_0918…a6a</span>
+        <span class="order-route"><span class="order-route__dot"></span> presta <span aria-hidden="true">→</span> <span class="muted">PrestaShop</span></span>
+        <span>Placed <span class="mono tabular">Jun 25, 2026, 2:21 AM</span></span>
+      </div>
+      <div class="order-summary-line"><span class="thumb">O</span> <strong>1 item · 1 unit</strong> <span class="muted">—</span> <a class="link" href="#" onclick="return false">OL-MUG-LIN-300</a> <span class="muted">·</span> <span class="mono tabular">€56.00</span></div>
+    </header>
+
+    <div class="order-health" role="group" aria-label="Order health">
+      <div class="order-health__cell"><div class="order-health__k">Sync</div><div class="order-health__v">Synced</div><div class="order-health__hint">PrestaShop · order #171</div></div>
+      <div class="order-health__cell"><div class="order-health__k">Fulfillment</div><div class="order-health__v">Shipped</div><div class="order-health__hint">InPost · tracking active</div></div>
+      <div class="order-health__cell"><div class="order-health__k">Total</div><div class="order-health__v mono tabular">€56.00</div><div class="order-health__hint">1 item · source-priced</div></div>
+    </div>
+
+    <div class="detail-section">
+      <h3 class="detail-section__title">Pricing &amp; tax</h3>
+      <table class="lineitems">
+        <thead><tr><th>Product</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Total</th></tr></thead>
+        <tbody><tr>
+          <td><span style="display:inline-flex;gap:8px;align-items:center"><span class="thumb">O</span><span class="mono" style="font-size:12px">OL-MUG-LIN-300</span></span></td>
+          <td class="r tabular">1</td><td class="r mono tabular">€49.00</td><td class="r mono tabular">€49.00</td>
+        </tr></tbody>
+      </table>
+      <div class="totals">
+        <div class="totals__row"><span>Subtotal</span><span class="mono tabular">€49.00</span></div>
+        <div class="totals__row"><span>Shipping</span><span class="mono tabular">€7.00</span></div>
+        <div class="totals__row totals__row--total"><span>Total</span><span class="mono tabular">€56.00</span></div>
+      </div>
+    </div>
+
+    <div class="split-grid">
+      <div class="stack">
+        <div class="detail-section"><h3 class="detail-section__title">Summary</h3>
+          <dl class="kvl"><dt>Order #</dt><dd class="mono">DIAYIGRWL</dd><dt>Status</dt><dd>Processing</dd><dt>Source</dt><dd>presta</dd><dt>Placed</dt><dd>Jun 25, 2026, 2:21 AM</dd><dt>Received (OL)</dt><dd>Jun 25, 2026, 11:26 AM</dd></dl></div>
+        <div class="detail-section"><h3 class="detail-section__title">Sync status</h3>
+          <p class="muted" style="font-size:13px;margin:0">Synced to PrestaShop · order #171. Idempotent create — a retry won’t double-create.</p></div>
+      </div>
+      <div class="stack">
+        <div class="detail-section"><h3 class="detail-section__title">Delivery</h3>
+          <dl class="kvl"><dt>Ship to</dt><dd class="addr">Jan Kowalski<br>Testowa 21/2<br>11-234 Warszawa<br>PL</dd><dt>Carrier</dt><dd>InPost — Paczkomat</dd></dl></div>
+
+        <!-- INVOICE PANEL — right column, directly under Delivery (the corrected placement) -->
+        <div class="panel" id="panel"><!-- filled by JS --></div>
+
+        <div class="detail-section"><h3 class="detail-section__title">Customer</h3>
+          <dl class="kvl"><dt>Name</dt><dd>Jan Kowalski</dd><dt>Email</dt><dd class="mono" style="font-size:12px">jan.kowalski@example.pl</dd></dl></div>
+      </div>
+    </div>
+
+    <div class="detail-section"><h3 class="detail-section__title">Activity</h3>
+      <p class="muted" style="font-size:13px;margin:0">Order received · system · ingest — Jun 25, 2026, 11:26 AM</p></div>
+
+    <div class="legend">
+      <div><b>Placement.</b> The Invoice card lives in the right stack between <b>Delivery</b> and <b>Customer</b>, matching the live order-detail DOM — not a separate sidebar.</div>
+      <div><b>States.</b> <code>not-issued</code> → Issue. <code>pending</code> → pulsing dot, no action. <code>issued</code> → number + clearance + slot extras. <code>failed</code> → directive error + Retry. <code>multiple connections</code> → the picker chooses <b>where to issue</b> (pre-issuance only); once issued, the order locks to that connection and the picker is gone — no accidental duplicate on the wrong one.</div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW 2: INVOICES LIST ================= -->
+  <section class="view" data-view="list">
+    <div class="note">
+      <span class="note__k">A1 · list</span>
+      <span><b>/invoices</b> — every issued document across connections. Filters live in the URL; the table surfaces both lifecycles per row. Select rows to act in bulk. Toggle empty / error below to preview those states.</span>
+    </div>
+
+    <div class="state-bar" role="group" aria-label="Preview list state">
+      <button class="chip" aria-pressed="true"  data-list="data">With data</button>
+      <button class="chip" aria-pressed="false" data-list="empty">Empty</button>
+      <button class="chip" aria-pressed="false" data-list="error">Error</button>
+    </div>
+
+    <div class="page-head">
+      <div class="page-head__eyebrow">Invoicing</div>
+      <h1>Invoices</h1>
+      <p>Fiscal documents issued for your orders, with their marketplace clearance status.</p>
+    </div>
+
+    <div class="toolbar">
+      <div class="field"><label for="f-status">Status</label>
+        <select class="select" id="f-status"><option>All statuses</option><option>Pending</option><option>Issued</option><option>Failed</option></select></div>
+      <div class="field"><label for="f-reg">Clearance</label>
+        <select class="select" id="f-reg"><option>All clearance</option><option>Submitted</option><option>Cleared</option><option>Accepted</option><option>Rejected</option><option>Not applicable</option></select></div>
+      <div class="field"><label for="f-conn">Connection</label>
+        <select class="select" id="f-conn"><option>All connections</option><option>KSeF (production)</option><option>Subiekt nexo</option></select></div>
+      <div class="field"><label for="f-from">Issued from</label><input class="input" id="f-from" type="date"></div>
+      <div class="field"><label for="f-to">Issued to</label><input class="input" id="f-to" type="date"></div>
+      <div class="field"><label for="f-taxid">Buyer tax ID</label>
+        <select class="select" id="f-taxid" title="Needs buyer tax-id denormalized onto invoice records (#1202)"><option>Any</option><option>With tax ID</option><option>Without tax ID</option></select></div>
+      <div class="spacer"></div>
+      <button class="btn btn--ghost btn--sm" id="clear-filters">Clear filters</button>
+    </div>
+
+    <!-- DATA state -->
+    <div class="list-state is-active" data-list="data">
+      <div id="bulk-result"></div>
+      <div class="bulkbar" id="bulkbar">
+        <span class="bulkbar__count" id="bulk-count">2 selected</span>
+        <div class="spacer"></div>
+        <button class="btn btn--secondary btn--sm" id="bulk-retry">Retry issuing</button>
+        <button class="btn btn--secondary btn--sm" id="bulk-clear">Clear selection</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="dt">
+            <thead><tr>
+              <th style="width:36px"><input class="checkbox" type="checkbox" id="check-all" aria-label="Select all"></th>
+              <th>Order</th><th>Connection</th><th>Document</th><th>Number</th><th>Status</th><th>Clearance</th><th>Issued</th><th style="width:80px"></th>
+            </tr></thead>
+            <tbody id="rows"><!-- filled by JS --></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <span>Showing <span class="tabular">1–7</span> of <span class="tabular">143</span></span>
+          <div class="pager__nav">
+            <button class="btn btn--secondary btn--sm" disabled>Previous</button>
+            <button class="btn btn--secondary btn--sm">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EMPTY state -->
+    <div class="list-state" data-list="empty">
+      <div class="card"><div class="feedback">
+        <div class="feedback__glyph">⌷</div>
+        <h3>No invoices yet</h3>
+        <p>When you issue an invoice from an order, it shows up here. Open a shipped order to issue its first document.</p>
+        <button class="btn btn--primary btn--sm">Go to orders</button>
+      </div></div>
+    </div>
+
+    <!-- ERROR state -->
+    <div class="list-state" data-list="error">
+      <div class="card"><div class="feedback">
+        <div class="feedback__glyph" style="color:var(--status-error-fg)">!</div>
+        <h3>Couldn’t load invoices</h3>
+        <p>The request didn’t complete. Check your connection and try again — your filters are kept.</p>
+        <button class="btn btn--secondary btn--sm">Try again</button>
+      </div></div>
+    </div>
+
+    <div class="modal-scrim" id="bulk-modal" role="dialog" aria-modal="true" aria-label="Confirm retry">
+      <div class="modal">
+        <div class="modal__head"><h3>Retry issuing?</h3></div>
+        <div class="modal__body">This re-attempts issuing for the <b>rejected</b> invoices in your selection (<b><span id="bulk-modal-count">0</span></b> selected). Already-issued and <b>in-doubt</b> invoices are skipped — in-doubt ones need manual review first, so nothing is duplicated.</div>
+        <div class="modal__foot"><button class="btn btn--secondary btn--sm" onclick="closeBulkModal()">Cancel</button><button class="btn btn--primary btn--sm" onclick="confirmBulk()">Retry issuing</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW 3: INVOICE DETAIL ================= -->
+  <section class="view" data-view="detail">
+    <div class="note">
+      <span class="note__k">A2 · detail · A3 timeline · A5 failure</span>
+      <span><b>Invoice detail</b> (<code>/invoices/:id</code>). One neutral shell; the per-provider <code>invoiceDetailSection</code> slot changes the regulatory region. <b>KSeF</b> transmits to the authority itself → it owns the UPO + FA(3) document. <b>Subiekt</b> transmits to KSeF natively → OpenLinker only <b>reads</b> the status (needs #1230) and links the PDF Subiekt renders. Switch provider and state below.</span>
+    </div>
+
+    <div class="state-bar" role="group" aria-label="Preview provider">
+      <button class="chip" aria-pressed="true"  data-prov="ksef">KSeF</button>
+      <button class="chip" aria-pressed="false" data-prov="subiekt">Subiekt</button>
+    </div>
+    <div class="state-bar" role="group" aria-label="Preview detail state">
+      <button class="chip" aria-pressed="true"  data-detail="issued">Issued</button>
+      <button class="chip" aria-pressed="false" data-detail="pending">Pending</button>
+      <button class="chip" aria-pressed="false" data-detail="failed">Failed · rejected</button>
+      <button class="chip" aria-pressed="false" data-detail="in-doubt">Failed · in-doubt</button>
+    </div>
+    <div class="state-bar" role="group" aria-label="Preview page load state">
+      <button class="chip" aria-pressed="true"  data-detailpage="loaded">Loaded</button>
+      <button class="chip" aria-pressed="false" data-detailpage="loading">Loading</button>
+      <button class="chip" aria-pressed="false" data-detailpage="notfound">Not found</button>
+      <button class="chip" aria-pressed="false" data-detailpage="error">Error</button>
+    </div>
+
+    <a class="backlink" href="#" onclick="return false">← Invoices</a>
+    <div id="detail"><!-- filled by JS --></div>
+  </section>
+
+  <!-- ================= VIEW 4: CONNECTION SETUP ================= -->
+  <section class="view" data-view="setup">
+    <div class="note">
+      <span class="note__k">B · connection setup</span>
+      <span>Two separate invoicing connections behind the same <code>setupCard</code> + <code>StructuredConfigSection</code> + <code>CredentialsPanel</code> slots. To <b>connect</b> KSeF you only need an environment + auth (token) — that authorises your KSeF mailbox. The <b>seller details</b> print on invoices (the issuer block) and aren’t fetched from KSeF, so they’re collected separately and needed before your first issue. <b>Subiekt</b> is an <b>invoicing-only</b> connection (your store/warehouse stays PrestaShop, Allegro, …) and gets its seller details from Subiekt itself.</span>
+    </div>
+
+    <div class="state-bar" role="group" aria-label="Choose connection to set up">
+      <button class="chip" aria-pressed="true"  data-setupprov="ksef">KSeF</button>
+      <button class="chip" aria-pressed="false" data-setupprov="subiekt">Subiekt</button>
+    </div>
+
+    <a class="backlink" href="#" onclick="return false">← Connections</a>
+    <div class="op-eyebrow">Connections · New</div>
+    <h2 class="op-title" id="setup-title">Connect KSeF</h2>
+
+    <div class="detail-section"><div id="setup-wizard" class="wizard"><!-- filled by JS --></div></div>
+  </section>
+
+  <!-- ================= VIEW 5: CORRECTION ================= -->
+  <section class="view" data-view="correction">
+    <div class="note">
+      <span class="note__k">C · correction (per-provider slot)</span>
+      <span>Launched from <b>Issue correction</b> on an issued invoice. The form is a <b>per-provider slot</b> — KSeF emits a <b>KOR</b> (corrected line state + reason, linked to the original KSeF number); Subiekt issues a correcting document by <b>adjusted quantities</b> + reason. Different steps per integration, by design.</span>
+    </div>
+
+    <div class="state-bar" role="group" aria-label="Choose provider">
+      <button class="chip" aria-pressed="true"  data-corrprov="ksef">KSeF (KOR)</button>
+      <button class="chip" aria-pressed="false" data-corrprov="subiekt">Subiekt</button>
+    </div>
+
+    <div class="detail-section corr"><div id="corr"><!-- filled by JS --></div></div>
+  </section>
+</div>
+
+<script>
+/* ---------- view switch ---------- */
+const tabs = document.querySelectorAll('.segmented [data-view]');
+const views = document.querySelectorAll('.view[data-view]');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.setAttribute('aria-pressed', String(x === t)));
+  views.forEach(v => v.classList.toggle('is-active', v.dataset.view === t.dataset.view));
+}));
+
+/* ---------- theme ---------- */
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  themeBtn.textContent = dark ? 'Dark' : 'Light';
+});
+
+/* ---------- panel states ---------- */
+function railHTML(issuance, reg) {
+  // issuance lane: not-issued | pending | issued ; reg lane: na | submitted | cleared
+  const iSteps = [
+    { key: 'created', cap: 'Created' },
+    { key: 'pending', cap: 'Pending' },
+    { key: 'issued',  cap: 'Issued' },
+  ];
+  const rSteps = [
+    { key: 'submitted', cap: 'Submitted' },
+    { key: 'accepted',  cap: 'Accepted' },
+  ];
+  const iRank = { 'not-issued': 0, pending: 1, issuing: 1, issued: 2, failed: 1, 'in-doubt': 1 }[issuance];
+  const issuanceErrored = issuance === 'failed' || issuance === 'in-doubt';
+  // `isComplete` → the current step is a reached terminal (issued / accepted),
+  // so it renders green (done) not orange (active). Orange/active is reserved
+  // for steps that are genuinely in progress (pending / issuing / submitted).
+  const lane = (steps, rank, isError, errIdx, isComplete) => steps.map((s, idx) => {
+    let cls = '';
+    if (isError && idx === errIdx) cls = 'rail__step--error';
+    else if (idx < rank) cls = 'rail__step--done';
+    else if (idx === rank) cls = isComplete ? 'rail__step--done' : 'rail__step--active';
+    const line = idx < steps.length - 1 ? '<span class="rail__line"></span>' : '';
+    return `<span class="rail__step ${cls}"><span class="rail__node"></span><span class="rail__caption">${s.cap}</span>${line}</span>`;
+  }).join('');
+
+  const regRank = { na: -1, submitted: 0, cleared: 1, accepted: 1 }[reg];
+  const regLane = reg === 'na'
+    ? `<span class="rail__step rail__step--na"><span class="rail__node"></span><span class="rail__caption muted">Not applicable</span></span>`
+    : lane(rSteps, regRank, false, -1, reg === 'accepted' || reg === 'cleared');
+
+  return `
+    <div class="rail__track"><span class="rail__lane-label">Issuance</span>
+      <span class="rail__steps">${lane(iSteps, iRank, issuanceErrored, 1, issuance === 'issued')}</span></div>
+    <div class="rail__track rail--reg"><span class="rail__lane-label">Clearance</span>
+      <span class="rail__steps">${regLane}</span></div>`;
+}
+
+const slotKsef = `
+  <div class="kv">
+    <dt>KSeF number</dt><dd class="mono">5260001246-20260625-A1B2C3D4E5F6-7K</dd>
+    <dt>UPO</dt><dd><a class="link" href="#" onclick="return false">Download receipt</a></dd>
+  </div>`;
+
+/* Per-connection config the order panel reads. KSeF and Subiekt are SEPARATE
+   connections — different document types, numbers, clearance vocab, and
+   detail-slot extras. The card differs by connection, not just copy. */
+const pProv = {
+  ksef: {
+    name: 'KSeF', label: 'KSeF (production)', issuedNumber: 'FV/2026/06/0142',
+    clearanceKey: 'accepted', clearanceBadge: '<span class="badge badge--success">KSeF · accepted</span>',
+    docOptions: '<option>Invoice (faktura)</option>',
+    reject: 'The provider rejected the buyer’s tax ID. Check the NIP on the order’s customer, then retry. Nothing was issued.',
+    slot: `
+      <div class="kv">
+        <dt>KSeF number</dt><dd class="mono" style="font-size:12px">5260001246-20260625-A1B2…7K</dd>
+        <dt>UPO</dt><dd><a class="link" href="#" onclick="return false">Download receipt</a></dd>
+        <dt>FA(3)</dt><dd><a class="link" href="#" onclick="return false">View document</a></dd>
+      </div>`,
+  },
+  subiekt: {
+    name: 'Subiekt', label: 'Subiekt nexo', issuedNumber: 'FS 171/CENTRALA/2026',
+    clearanceKey: 'accepted', clearanceBadge: '<span class="badge badge--success">KSeF · accepted</span>',
+    docOptions: '<option>Invoice (faktura)</option><option>Receipt (paragon)</option>',
+    reject: 'Subiekt rejected the document. Check the order’s data, then retry. Nothing was issued.',
+    slot: `
+      <div class="kv">
+        <dt>KSeF status</dt><dd><span class="badge badge--success">KSeF · accepted</span> <span class="muted" style="font-size:11px">read from Subiekt</span></dd>
+        <dt>Invoice PDF</dt><dd><a class="link" href="#" onclick="return false">Download PDF</a></dd>
+      </div>
+      <p class="muted" style="font-size:11px;margin:6px 0 0">Clearance tracking lights up once the Subiekt status read ships (#1230). Until then a Subiekt invoice issues but shows no KSeF status here.</p>`,
+  },
+};
+
+const PANEL = {
+  'not-issued': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--neutral">Not issued</span></div>
+    <div class="rail">${railHTML('not-issued','na')}</div>
+    <div class="panel__actions">
+      <span class="muted" style="font-size:11.5px">Issues a structured VAT invoice (faktura).</span>
+      <div class="spacer"></div>
+      <button class="btn btn--primary">Issue invoice</button>
+    </div>`,
+  'pending': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--warning badge--pulse">Pending</span></div>
+    <div class="rail">${railHTML('pending','submitted')}</div>
+    <div class="panel__body"><div style="display:grid;gap:8px"><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:40%"></div></div></div>
+    <div class="notice">Issuing in progress on ${P.label}. This refreshes automatically when the provider responds.</div>`,
+  'issued': (P) => `
+    <div class="panel__head">
+      <div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div>
+      <span class="badge badge--success">Issued</span>
+    </div>
+    <div class="rail">${railHTML('issued', P.clearanceKey)}</div>
+    <div class="panel__body">
+      <div class="kv">
+        <dt>Number</dt><dd class="cell-strong"><a class="link" href="#" onclick="return false">${P.issuedNumber}</a></dd>
+        <dt>Document</dt><dd>Invoice</dd>
+        <dt>Clearance</dt><dd>${P.clearanceBadge}</dd>
+        <dt>Issued</dt><dd class="mono">2026-06-25 14:08</dd>
+        <dt>Invoiced via</dt><dd>${P.label} <span class="muted">· locked</span></dd>
+      </div>
+      ${P.slot}
+    </div>`,
+  'issuing': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--info badge--pulse">Issuing…</span></div>
+    <div class="rail">${railHTML('issuing','na')}</div>
+    <div class="notice">An issue attempt is in progress and this invoice is locked while it runs. It finishes or releases automatically — no action needed, and a second attempt can’t start until this one clears.</div>`,
+  'failed': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--error">Failed</span></div>
+    <div class="rail">${railHTML('failed','na')}</div>
+    <div class="panel__body">
+      <div class="inline-alert inline-alert--error"><span class="inline-alert__bar"></span>
+        <span><b>${P.reject}</b></span></div>
+    </div>
+    <div class="panel__actions">
+      <span class="muted" style="font-size:11.5px">Rejected — nothing was issued, so it’s safe to retry once the cause is fixed.</span>
+      <div class="spacer"></div>
+      <button class="btn btn--secondary">Retry</button>
+    </div>`,
+  'in-doubt': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--warning">Needs review</span></div>
+    <div class="rail">${railHTML('in-doubt','na')}</div>
+    <div class="panel__body">
+      <div class="inline-alert inline-alert--warning"><span class="inline-alert__bar"></span>
+        <div><b>We couldn’t confirm whether this invoice was issued.</b> The request to ${P.label} timed out or was interrupted, so a document may already exist there. <b>Don’t retry blindly</b> — open ${P.name}, check for an invoice on this order, then mark it resolved or re-issue.
+        <div style="margin-top:6px"><span class="mono" style="font-size:11px;color:var(--text-muted)">failureMode: in-doubt</span></div></div></div>
+    </div>
+    <div class="panel__actions">
+      <div class="spacer"></div>
+      <button class="btn btn--secondary">Check ${P.name}</button>
+      <button class="btn btn--secondary">Mark resolved</button>
+    </div>`,
+  'needs-reauth': (P) => `
+    <div class="panel__head"><div style="display:flex;align-items:center;gap:8px"><h3 class="panel__title">Invoice</h3><span class="panel__provider">${P.name}</span></div><span class="badge badge--warning">Connection</span></div>
+    <div class="panel__body">
+      <div class="inline-alert inline-alert--warning"><span class="inline-alert__bar"></span>
+        <div><b>${P.label} needs to reconnect.</b> Its access expired, so invoices can’t be issued until you re-authenticate this connection.</div></div>
+    </div>
+    <div class="panel__actions">
+      <div class="spacer"></div>
+      <button class="btn btn--primary">Re-authenticate</button>
+    </div>`,
+  'multi': () => `
+    <div class="panel__head"><h3 class="panel__title">Invoice</h3><span class="badge badge--neutral">Not issued</span></div>
+    <div class="notice">This order isn’t invoiced yet, and more than one connection can issue it. Choose where to issue — <b>once issued, the order locks to that connection</b> and this picker goes away. Nothing is sent until you choose and click Issue. <span class="muted">(The KSeF/Subiekt toggle above is ignored here — the picker chooses the connection.)</span></div>
+    <div class="panel__actions" style="padding-bottom:var(--space-2)">
+      <div class="field" style="flex:1"><label for="conn">Issue on connection</label>
+        <select class="select" id="conn" style="width:100%" onchange="pickConn(this.value)">
+          <option value="">Select a connection…</option>
+          <option value="ksef">KSeF (production)</option>
+          <option value="subiekt">Subiekt nexo</option>
+        </select></div>
+    </div>
+    <div id="multi-body" aria-live="polite"></div>`,
+};
+const panelEl = document.getElementById('panel');
+const stateChips = document.querySelectorAll('[data-state]');
+const pprovChips = document.querySelectorAll('[data-pprov]');
+let curPanelProv = 'ksef', curPanelState = 'pending';
+function renderPanel() {
+  panelEl.innerHTML = PANEL[curPanelState](pProv[curPanelProv]);
+  stateChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.state === curPanelState)));
+  pprovChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.pprov === curPanelProv)));
+}
+stateChips.forEach(c => c.addEventListener('click', () => { curPanelState = c.dataset.state; renderPanel(); }));
+pprovChips.forEach(c => c.addEventListener('click', () => { curPanelProv = c.dataset.pprov; renderPanel(); }));
+renderPanel();
+
+/* Multiple-connections flow — pre-issuance ONLY. The picker exists to choose
+   WHERE to issue; the order has no invoice yet on any connection. Once issued,
+   the panel switches to the regular issued state, bound + locked to that
+   connection (the "Invoiced via … · locked" row), and the picker is gone.
+   Knowing the order is already invoiced WITHOUT a connection requires the
+   order-snapshot invoice projection (#1224) — today's getInvoiceForOrder needs
+   a connectionId, which is what makes the naive picker confusing. */
+window.pickConn = function (v) {
+  const body = document.getElementById('multi-body');
+  if (!body) return;
+  if (!v) { body.innerHTML = ''; return; }
+  const P = pProv[v];
+  body.innerHTML = `
+    <div class="rail">${railHTML('not-issued', 'na')}</div>
+    <div class="panel__actions">
+      <p class="muted" style="font-size:11.5px;margin:0;width:100%">Will issue a VAT invoice on <b>${P.label}</b> — this choice locks once issued.</p>
+      <div class="spacer"></div>
+      <button class="btn btn--primary">Issue invoice</button>
+    </div>`;
+};
+
+/* ---------- list rows ---------- */
+const ROWS = [
+  { order:'ol_order_9f3c…a21', conn:'KSeF', doc:'Invoice', num:'FV/2026/06/0142', st:['success','Issued'], reg:['success','KSeF · accepted'], time:'2026-06-25 14:08' },
+  { order:'ol_order_77b1…c0e', conn:'KSeF', doc:'Invoice', num:'FV/2026/06/0141', st:['warning','Pending','pulse'], reg:['info','KSeF · submitted'], time:'2026-06-25 13:52' },
+  { order:'ol_order_4ad9…91f', conn:'Subiekt', doc:'Invoice', num:'FS 168/CENTRALA/2026', st:['success','Issued'], reg:['success','KSeF · accepted'], time:'2026-06-25 11:20' },
+  { order:'ol_order_2c8e…77a', conn:'KSeF', doc:'Invoice', num:'—', st:['error','Failed'], reg:['neutral','—'], time:'2026-06-25 10:04' },
+  { order:'ol_order_d4e7…b1a', conn:'Subiekt', doc:'Invoice', num:'FS 167/CENTRALA/2026', st:['warning','Needs review'], reg:['neutral','—'], time:'2026-06-25 09:30' },
+  { order:'ol_order_b5f0…d33', conn:'KSeF', doc:'Corrected', num:'KOR/2026/06/0012', st:['success','Issued'], reg:['error','KSeF · rejected'], time:'2026-06-24 18:41' },
+  { order:'ol_order_e1a2…4b8', conn:'KSeF', doc:'Invoice', num:'FV/2026/06/0140', st:['success','Issued'], reg:['success','KSeF · accepted'], time:'2026-06-24 16:15' },
+];
+function badge([tone,label,pulse]) {
+  if (label === '—') return '<span class="dash">—</span>';
+  return `<span class="badge badge--${tone} ${pulse?'badge--pulse':''}">${label}</span>`;
+}
+function rowAction(label) {
+  if (label === 'Failed') return '<button class="btn btn--ghost btn--sm">Retry</button>';
+  if (label === 'Needs review') return '<button class="btn btn--ghost btn--sm">Review</button>';
+  return '<button class="btn btn--ghost btn--sm">View</button>';
+}
+document.getElementById('rows').innerHTML = ROWS.map((r,i) => `
+  <tr>
+    <td><input class="checkbox row-check" type="checkbox" aria-label="Select ${r.num}"></td>
+    <td class="cell-id">${r.order}</td>
+    <td>${r.conn}</td>
+    <td>${r.doc}</td>
+    <td class="cell-strong mono" style="font-size:12px">${r.num === '—' ? '<span class="dash">—</span>' : r.num}</td>
+    <td>${badge(r.st)}</td>
+    <td>${badge(r.reg)}</td>
+    <td class="cell-time">${r.time}</td>
+    <td>${rowAction(r.st[1])}</td>
+  </tr>`).join('');
+
+/* selection → bulk bar */
+const bulkbar = document.getElementById('bulkbar');
+const bulkCount = document.getElementById('bulk-count');
+function refreshBulk() {
+  const n = document.querySelectorAll('.row-check:checked').length;
+  bulkbar.classList.toggle('is-on', n > 0);
+  bulkCount.textContent = n + ' selected';
+}
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'check-all') {
+    document.querySelectorAll('.row-check').forEach(c => { c.checked = e.target.checked; });
+  }
+  if (e.target.classList.contains('row-check') || e.target.id === 'check-all') refreshBulk();
+});
+
+/* bulk retry → confirm modal → result banner */
+const bulkModal = document.getElementById('bulk-modal');
+const bulkResult = document.getElementById('bulk-result');
+function selCount() { return document.querySelectorAll('.row-check:checked').length; }
+function clearSel() {
+  document.querySelectorAll('.row-check, #check-all').forEach((c) => { c.checked = false; });
+  refreshBulk();
+}
+function closeBulkModal() { bulkModal.classList.remove('is-open'); }
+function confirmBulk() {
+  const n = selCount();
+  closeBulkModal();
+  bulkResult.innerHTML = `<div class="result-banner result-banner--success"><span>Retried ${n} selected — issuing re-attempted. Already-issued invoices were skipped. Refresh to see updated statuses.</span><button class="btn btn--ghost btn--sm result-banner__dismiss" onclick="document.getElementById('bulk-result').innerHTML=''">Dismiss</button></div>`;
+  clearSel();
+}
+document.getElementById('bulk-retry').addEventListener('click', () => {
+  const n = selCount();
+  if (!n) return;
+  document.getElementById('bulk-modal-count').textContent = String(n);
+  bulkModal.classList.add('is-open');
+});
+document.getElementById('bulk-clear').addEventListener('click', clearSel);
+bulkModal.addEventListener('click', (e) => { if (e.target === bulkModal) closeBulkModal(); });
+
+/* list state switch */
+const listChips = document.querySelectorAll('[data-list]');
+const listStates = document.querySelectorAll('.list-state[data-list]');
+listChips.forEach(c => c.addEventListener('click', () => {
+  listChips.forEach(x => x.setAttribute('aria-pressed', String(x === c)));
+  listStates.forEach(s => s.classList.toggle('is-active', s.dataset.list === c.dataset.list));
+}));
+
+/* ---------- invoice detail (A2 / A3 / A5) ---------- */
+function tlItem(cls, title, time, note, last) {
+  return `<div class="tl-item tl-item--${cls}">
+    <div class="tl-rail"><span class="tl-node"></span>${last ? '' : '<span class="tl-line"></span>'}</div>
+    <div class="tl-body"><div class="tl-title">${title}</div>${time ? `<div class="tl-time">${time}</div>` : ''}${note ? `<div class="tl-note">${note}</div>` : ''}</div>
+  </div>`;
+}
+function copyId(v) { return `<span class="copy-id mono">${v}<button type="button">Copy</button></span>`; }
+
+/* The document as written — seller, recipient, goods, VAT. NOT carried by the
+   neutral InvoiceRecord projection; sourced from the order-snapshot invoice
+   projection (#1224) or the provider document (FA(3)/Subiekt). Hence the seam tag. */
+function invoiceContents() {
+  return `
+    <div class="parties">
+      <div><div class="party__label">Seller</div>
+        <div class="party__name">OpenLinker Demo Sp. z o.o.</div>
+        <div class="party__nip">NIP 526-000-12-46</div>
+        <div class="party__line">ul. Przykładowa 1, 00-001 Warszawa, PL</div></div>
+      <div><div class="party__label">Bill to</div>
+        <div class="party__name">Jan Kowalski</div>
+        <div class="party__line">Testowa 21/2, 11-234 Warszawa, PL</div>
+        <div class="party__line muted">Private buyer · no tax ID</div></div>
+    </div>
+    <div class="inv-meta">
+      <div><span>Issue date</span><br><span class="mono">2026-06-25</span></div>
+      <div><span>Sale date</span><br><span class="mono">2026-06-25</span></div>
+      <div><span>Currency</span><br><span class="mono">EUR</span></div>
+      <div><span>Payment</span><br>Online · paid</div>
+    </div>
+    <div class="table-wrap">
+      <table class="lineitems lines-inv">
+        <thead><tr><th>#</th><th>Description</th><th class="r">Qty</th><th class="r">Unit net</th><th class="r">VAT</th><th class="r">Net</th><th class="r">VAT amt</th><th class="r">Gross</th></tr></thead>
+        <tbody>
+          <tr><td class="tabular">1</td><td>Linen mug 300 ml <span class="mono muted" style="font-size:11px">OL-MUG-LIN-300</span></td><td class="r tabular">1</td><td class="r mono tabular">39.84</td><td class="r tabular">23%</td><td class="r mono tabular">39.84</td><td class="r mono tabular">9.16</td><td class="r mono tabular">49.00</td></tr>
+          <tr><td class="tabular">2</td><td>Delivery — InPost</td><td class="r tabular">1</td><td class="r mono tabular">5.69</td><td class="r tabular">23%</td><td class="r mono tabular">5.69</td><td class="r mono tabular">1.31</td><td class="r mono tabular">7.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <table class="vat-breakdown">
+      <thead><tr><th>VAT rate</th><th>Net</th><th>VAT</th><th>Gross</th></tr></thead>
+      <tbody><tr><td>23%</td><td class="mono">45.53</td><td class="mono">10.47</td><td class="mono">56.00</td></tr></tbody>
+      <tfoot><tr><td>Total (EUR)</td><td class="mono">45.53</td><td class="mono">10.47</td><td class="mono">56.00</td></tr></tfoot>
+    </table>`;
+}
+
+/* Per-provider regulatory slot (the invoiceDetailSection seam). KSeF transmits
+   directly → it owns the UPO + FA(3) document. Subiekt transmits to KSeF
+   natively → OpenLinker only READS the status (RegulatoryStatusReader, #1230)
+   and links Subiekt's PDF; no UPO/FA(3) from OL. */
+const REG_SLOT = {
+  ksef: {
+    title: 'Regulatory clearance', tag: 'KSeF · slot',
+    issued: `
+      <div class="slot-row"><div><div class="slot-row__label">Clearance status</div></div><span class="badge badge--success">KSeF · accepted</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF number</div><div class="slot-row__hint">Authority-assigned on clearance</div></div>${copyId('5260001246-20260625-A1B2C3D4E5F6-7K')}</div>
+      <div class="slot-row"><div><div class="slot-row__label">Official receipt (UPO)</div><div class="slot-row__hint">Proof of clearance</div></div><a class="link" href="#" onclick="return false">Download UPO</a></div>
+      <div class="slot-row"><div><div class="slot-row__label">FA(3) document</div><div class="slot-row__hint">Human-readable + source XML</div></div><span style="display:flex;gap:8px"><a class="link" href="#" onclick="return false">View</a><a class="link" href="#" onclick="return false">Download XML</a></span></div>
+      <div class="doc-preview"><span class="doc-preview__chip">FA(3) preview</span>Rendered invoice preview</div>`,
+    pending: `
+      <div class="slot-row"><div><div class="slot-row__label">Clearance status</div></div><span class="badge badge--info">KSeF · submitted</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF number</div><div class="slot-row__hint">Assigned after clearance</div></div><span class="dash">Pending</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">Official receipt (UPO)</div><div class="slot-row__hint">Available once cleared</div></div><span class="dash">—</span></div>`,
+  },
+  subiekt: {
+    title: 'Regulatory status', tag: 'Subiekt · slot · read-only',
+    issued: `
+      <p class="muted" style="font-size:12px;margin:0 0 var(--space-3)">Subiekt sent this to KSeF itself — OpenLinker reads the status, it doesn’t transmit. <span class="seam-tag">needs #1230</span></p>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF status</div><div class="slot-row__hint">Read from Subiekt</div></div><span class="badge badge--success">KSeF · accepted</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF number</div></div>${copyId('5260001246-20260625-77B1C0E2F0A9-3D')}</div>
+      <div class="slot-row"><div><div class="slot-row__label">Invoice PDF</div><div class="slot-row__hint">Rendered by Subiekt</div></div><a class="link" href="#" onclick="return false">Download PDF</a></div>`,
+    pending: `
+      <p class="muted" style="font-size:12px;margin:0 0 var(--space-3)">Subiekt submitted this to KSeF — OpenLinker polls for the result. <span class="seam-tag">needs #1230</span></p>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF status</div><div class="slot-row__hint">Last read just now</div></div><span class="badge badge--info">KSeF · submitted</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">KSeF number</div></div><span class="dash">Pending</span></div>
+      <div class="slot-row"><div><div class="slot-row__label">Invoice PDF</div><div class="slot-row__hint">Rendered by Subiekt</div></div><a class="link" href="#" onclick="return false">Download PDF</a></div>`,
+  },
+};
+
+const PROV = {
+  ksef:    { name: 'KSeF',    conn: 'KSeF (production)',     num: { issued: 'FV/2026/06/0142', pending: 'FV/2026/06/0141' }, pid: { issued: 'a1b2c3d4', pending: '77b1c0e2' }, accepted: 'Accepted',  clearanceNote: 'Submitted to KSeF',           correctionHint: 'This invoice is accepted in KSeF. To change it, issue a correction (KOR) — the original stays on record.', rejectTitle: 'The provider rejected the buyer’s tax ID (NIP).', rejectBody: 'Fix the NIP on the order’s customer, then retry.', rejectCode: 'buyer-tax-id-invalid' },
+  subiekt: { name: 'Subiekt', conn: 'Subiekt nexo', num: { issued: 'FS 171/CENTRALA/2026', pending: 'FS 170/CENTRALA/2026' }, pid: { issued: '171', pending: '170' }, accepted: 'Accepted', clearanceNote: 'Submitted to KSeF by Subiekt', correctionHint: 'Subiekt transmitted this to KSeF. Issue a correction in Subiekt (reason + adjusted lines); OpenLinker tracks the resulting status.', rejectTitle: 'Subiekt rejected the document.', rejectBody: 'Subiekt returned a validation error. Check the order’s data, then retry.', rejectCode: 'provider-rejected' },
+};
+
+function buildDetail(prov, state) {
+  const P = PROV[prov];
+  const reg = REG_SLOT[prov];
+  const problem = state === 'failed' || state === 'in-doubt'; // no confirmed document
+  const stBadge = {
+    issued: '<span class="badge badge--success">Issued</span>',
+    pending: '<span class="badge badge--warning badge--pulse">Pending</span>',
+    failed: '<span class="badge badge--error">Failed</span>',
+    'in-doubt': '<span class="badge badge--warning">Needs review</span>',
+  }[state];
+  const regBadge = state === 'issued'
+    ? '<span class="badge badge--success">KSeF · accepted</span>'
+    : state === 'pending' ? '<span class="badge badge--info">KSeF · submitted</span>' : '';
+  const num = problem ? '—' : P.num[state];
+
+  const document = `
+    <dt>Document type</dt><dd>Invoice${problem ? ' <span class="muted">(intended)</span>' : ''}</dd>
+    <dt>Status</dt><dd>${stBadge}</dd>
+    <dt>Provider number</dt><dd>${num === '—' ? '<span class="dash">— none confirmed</span>' : `<span class="cell-strong">${copyId(num)}</span>`}</dd>
+    ${problem ? '' : `<dt>Provider ID</dt><dd>${copyId(P.pid[state])}</dd>`}
+    <dt>${problem ? 'Last attempt' : 'Issued'}</dt><dd class="mono">2026-06-25 ${problem ? '10:04' : '14:08'}</dd>
+    <dt>Order</dt><dd><a class="link" href="#" onclick="return false">ol_order_…</a></dd>
+    <dt>Invoiced via</dt><dd>${P.conn} <span class="muted">· locked to this connection</span></dd>`;
+
+  const regulatory = problem ? '' : (state === 'issued' ? reg.issued : reg.pending);
+  const contents = problem ? '' : invoiceContents();
+
+  let failure = '';
+  if (state === 'failed') {
+    failure = `<div class="inline-alert inline-alert--error"><span class="inline-alert__bar"></span>
+      <div><b>${P.rejectTitle}</b> ${P.rejectBody} Nothing was issued, so there’s no document to correct.
+      <div style="margin-top:6px"><span class="mono" style="font-size:11px;color:var(--text-muted)">reason: ${P.rejectCode}</span></div></div></div>`;
+  } else if (state === 'in-doubt') {
+    failure = `<div class="inline-alert inline-alert--warning"><span class="inline-alert__bar"></span>
+      <div><b>We couldn’t confirm whether this invoice was issued.</b> The request to ${P.conn} timed out or was interrupted, so a document may already exist there. Open ${P.name} and check for an invoice on this order before re-issuing — a blind retry could create a duplicate.
+      <div style="margin-top:6px"><span class="mono" style="font-size:11px;color:var(--text-muted)">failureMode: in-doubt</span></div></div></div>`;
+  }
+
+  const timeline = state === 'failed'
+    ? `<div class="tl-lane-head">Issuance</div>${tlItem('done', 'Created', '2026-06-25 10:04')}${tlItem('error', 'Issuing failed', '2026-06-25 10:04', prov === 'subiekt' ? 'Subiekt rejected the request' : 'Provider rejected the request', true)}`
+    : state === 'in-doubt'
+      ? `<div class="tl-lane-head">Issuance</div>${tlItem('done', 'Created', '2026-06-25 10:04')}${tlItem('error', 'Outcome unknown', '2026-06-25 10:04', 'Request interrupted — may or may not have issued', true)}`
+    : state === 'pending'
+      ? `<div class="tl-lane-head">Issuance</div>${tlItem('done', 'Created', '2026-06-25 13:52')}${tlItem('done', 'Issued', '2026-06-25 13:52', '', true)}<div class="tl-lane-head">Clearance</div>${tlItem('active', P.clearanceNote, '2026-06-25 13:52', 'Awaiting the authority’s decision')}${tlItem('pending', 'Accepted', '', 'Not yet', true)}`
+      : `<div class="tl-lane-head">Issuance</div>${tlItem('done', 'Created', '2026-06-25 14:07')}${tlItem('done', 'Issued', '2026-06-25 14:08', 'Provider number ' + num)}<div class="tl-lane-head">Clearance</div>${tlItem('done', P.clearanceNote, '2026-06-25 14:08')}${tlItem('done', P.accepted, '2026-06-25 14:09', 'KSeF number assigned', true)}`;
+
+  const actions = state === 'failed'
+    ? `<button class="btn btn--secondary">View order customer</button><button class="btn btn--primary">Retry</button><div class="action-hint">Rejected — nothing was issued, so retry is safe once the cause is fixed.</div>`
+    : state === 'in-doubt'
+      ? `<button class="btn btn--secondary">Check ${P.name}</button><button class="btn btn--secondary">Mark resolved</button><div class="action-hint">No blind retry — confirm in ${P.name} first to avoid a duplicate document.</div>`
+    : state === 'pending'
+      ? `<button class="btn btn--secondary">Refresh status</button><div class="action-hint">Clearance is in progress. This page refreshes automatically when KSeF responds.</div>`
+      : `<button class="btn btn--secondary">Download PDF</button><button class="btn btn--primary">Issue correction</button><div class="action-hint">${P.correctionHint}</div>`;
+
+  const h1 = state === 'failed' ? 'Invoice — not issued'
+    : state === 'in-doubt' ? 'Invoice — outcome unknown'
+    : num;
+
+  return {
+    h1,
+    badges: stBadge + (regBadge ? ' ' + regBadge : ''),
+    contents, document, regulatory, regTitle: reg.title, regTag: reg.tag, failure, timeline, actions,
+  };
+}
+
+let curProv = 'ksef', curState = 'issued', curPageState = 'loaded';
+const detailEl = document.getElementById('detail');
+const detailChips = document.querySelectorAll('[data-detail]');
+const provChips = document.querySelectorAll('[data-prov]');
+const pageChips = document.querySelectorAll('[data-detailpage]');
+function detailFeedback(kind) {
+  if (kind === 'loading') {
+    return `<div class="section-card"><div class="section-card__body"><div style="display:grid;gap:10px;max-width:420px"><div class="skeleton" style="width:50%;height:22px"></div><div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:72%"></div></div></div></div>`;
+  }
+  if (kind === 'notfound') {
+    return `<div class="card"><div class="feedback"><div class="feedback__glyph">⌀</div><h3>Invoice not found</h3><p>No invoice exists at this address — it may live on a different connection, or the link is stale.</p><button class="btn btn--secondary btn--sm">Back to invoices</button></div></div>`;
+  }
+  return `<div class="card"><div class="feedback"><div class="feedback__glyph" style="color:var(--status-error-fg)">!</div><h3>Couldn’t load this invoice</h3><p>The request didn’t complete. Check your connection and try again.</p><button class="btn btn--secondary btn--sm">Try again</button></div></div>`;
+}
+function renderDetail() {
+  detailChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.detail === curState)));
+  provChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.prov === curProv)));
+  pageChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.detailpage === curPageState)));
+  if (curPageState !== 'loaded') {
+    detailEl.innerHTML = detailFeedback(curPageState);
+    return;
+  }
+  const P = PROV[curProv];
+  const d = buildDetail(curProv, curState);
+  detailEl.innerHTML = `
+    <div class="detail-head">
+      <div class="detail-head__main">
+        <div class="detail-head__eyebrow">Invoice · ${P.name}</div>
+        <h1>${d.h1}</h1>
+        <div class="detail-head__sub"><span>Order <a class="link" href="#" onclick="return false">ol_order…</a></span><span>·</span><span>${P.conn}</span></div>
+      </div>
+      <div class="detail-head__badges">${d.badges}</div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-col">
+        ${d.failure ? `<div class="section-card"><div class="section-card__head"><h3>What went wrong</h3></div><div class="section-card__body">${d.failure}</div></div>` : ''}
+        ${d.contents ? `<div class="section-card"><div class="section-card__head"><h3>Invoice contents</h3><span class="seam-tag" title="Not on the InvoiceRecord projection — needs the order-snapshot invoice projection (#1224) or the provider document">needs backend seam</span></div><div class="section-card__body">${d.contents}</div></div>` : ''}
+        <div class="section-card"><div class="section-card__head"><h3>Document</h3><span class="section-card__provider">projection</span></div>
+          <div class="section-card__body"><dl class="kv-wide">${d.document}</dl></div></div>
+        ${d.regulatory ? `<div class="section-card"><div class="section-card__head"><h3>${d.regTitle}</h3><span class="section-card__provider">${d.regTag}</span></div><div class="section-card__body">${d.regulatory}</div></div>` : ''}
+      </div>
+      <div class="detail-col">
+        <div class="section-card"><div class="section-card__head"><h3>Lifecycle</h3></div>
+          <div class="section-card__body"><div class="timeline">${d.timeline}</div></div></div>
+        <div class="section-card"><div class="section-card__head"><h3>Actions</h3></div>
+          <div class="section-card__body"><div class="action-stack">${d.actions}</div></div></div>
+      </div>
+    </div>`;
+  detailChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.detail === curState)));
+  provChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.prov === curProv)));
+}
+detailChips.forEach(c => c.addEventListener('click', () => { curState = c.dataset.detail; renderDetail(); }));
+provChips.forEach(c => c.addEventListener('click', () => { curProv = c.dataset.prov; renderDetail(); }));
+pageChips.forEach(c => c.addEventListener('click', () => { curPageState = c.dataset.detailpage; renderDetail(); }));
+renderDetail();
+
+/* ---------- connection setup wizards (Wave B) ---------- */
+const SETUP = {
+  ksef: `
+    <div class="wizard__step">
+      <div class="wizard__step-title"><span class="wizard__num">1</span> Connection &amp; access <span class="muted" style="font-weight:400;font-size:11px">· required to connect</span></div>
+      <div class="form-grid">
+        <div class="field field--full"><label for="ks-name">Connection name</label><input class="input" id="ks-name" placeholder="KSeF (production)"><span class="field__hint">A label you’ll recognise in the connections list.</span></div>
+        <div class="field"><label for="ks-env">KSeF environment</label>
+          <select class="select" id="ks-env"><option>Production</option><option>Demo</option><option>Test</option></select></div>
+        <div class="field"><label for="ks-auth">Auth method</label>
+          <select class="select" id="ks-auth"><option>API token</option><option class="disabled-opt" disabled>Qualified seal (coming soon)</option></select></div>
+        <div class="field field--full"><label for="ks-token">KSeF token</label><input class="input" id="ks-token" type="password" placeholder="••••••••••••">
+          <span class="field__lockhint">Authorises access to your company’s KSeF mailbox. Stored encrypted — shown only once.</span></div>
+        <div class="field field--full"><label for="ks-trigger">Issue invoices</label>
+          <select class="select" id="ks-trigger"><option>Manually — I’ll issue from each order</option><option>Automatically when the order is paid</option><option>Automatically when the order ships</option></select>
+          <span class="field__hint">When OpenLinker should issue — the same per-connection trigger every invoicing connection has.</span></div>
+      </div>
+    </div>
+    <div class="wizard__step">
+      <div class="wizard__step-title"><span class="wizard__num">2</span> Seller details <span class="seam-tag">needed before you issue</span></div>
+      <div class="note" style="margin:0 0 var(--space-3)"><span class="note__k">why</span><span>These print on every invoice (the issuer block). OpenLinker <b>doesn’t fetch them from KSeF</b> — KSeF only clears the invoices you send it. Connect now and add these before your first issue.</span></div>
+      <div class="form-grid">
+        <div class="field"><label for="ks-nip">Tax ID (NIP)</label><input class="input" id="ks-nip" placeholder="526-000-12-46"></div>
+        <div class="field"><label for="ks-legal">Legal name</label><input class="input" id="ks-legal" placeholder="OpenLinker Demo Sp. z o.o."></div>
+        <div class="field field--full"><label for="ks-l1">Address line 1</label><input class="input" id="ks-l1" placeholder="ul. Przykładowa 1"></div>
+        <div class="field field--full"><label for="ks-l2">Address line 2 <span class="muted">(optional)</span></label><input class="input" id="ks-l2"></div>
+        <div class="field"><label for="ks-city">City</label><input class="input" id="ks-city" placeholder="Warszawa"></div>
+        <div class="field"><label for="ks-zip">Postal code</label><input class="input" id="ks-zip" placeholder="00-001"></div>
+        <div class="field field--full"><label for="ks-country">Country</label><select class="select" id="ks-country"><option>PL — Poland</option><option>DE — Germany</option><option>CZ — Czechia</option></select></div>
+      </div>
+    </div>
+    <div class="wizard__actions">
+      <span class="spacer"></span>
+      <button class="btn btn--secondary">Test connection</button>
+      <button class="btn btn--primary">Create connection</button>
+    </div>`,
+  subiekt: `
+    <div class="wizard__step">
+      <div class="wizard__step-title"><span class="wizard__num">1</span> Connection</div>
+      <div class="form-grid">
+        <div class="field field--full"><label for="sb-name">Connection name</label><input class="input" id="sb-name" placeholder="Subiekt nexo"><span class="field__hint">A label you’ll recognise in the connections list.</span></div>
+        <div class="field field--full"><label for="sb-url">Subiekt service URL</label><input class="input" id="sb-url" placeholder="https://192.168.1.50:5005"><span class="field__hint">The address OpenLinker reaches your Subiekt at. Use HTTPS off your local network.</span></div>
+        <div class="field field--full"><label for="sb-token">Access token <span class="muted">(optional)</span></label><input class="input" id="sb-token" type="password" placeholder="••••••••••••"><span class="field__lockhint">Optional on a trusted local network; required otherwise. Stored encrypted.</span></div>
+      </div>
+    </div>
+    <div class="wizard__step" style="margin-top: var(--space-5)">
+      <div class="wizard__step-title"><span class="wizard__num">2</span> Invoicing behaviour</div>
+      <div class="form-grid">
+        <div class="field field--full"><label for="sb-trigger">Issue invoices</label>
+          <select class="select" id="sb-trigger"><option>Manually — I’ll issue from each order</option><option>Automatically when the order is paid</option><option>Automatically when the order ships</option></select>
+          <span class="field__hint">When OpenLinker should ask Subiekt to issue an invoice.</span></div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row__text">Show KSeF clearance status<small>Surface the KSeF status Subiekt reports, on invoices and the list.</small></div>
+        <button class="switch" role="switch" aria-checked="true" aria-label="Show KSeF clearance status" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked')==='true'?'false':'true')"></button>
+      </div>
+      <p class="field__hint" style="margin-top:var(--space-2)">Seller details (your company, tax ID, address) come from Subiekt itself — nothing to enter here. Subiekt also transmits the invoice to KSeF; OpenLinker reads the status.</p>
+    </div>
+    <div class="wizard__actions">
+      <span class="spacer"></span>
+      <button class="btn btn--secondary">Test connection</button>
+      <button class="btn btn--primary">Create connection</button>
+    </div>`,
+};
+const setupWizard = document.getElementById('setup-wizard');
+const setupTitle = document.getElementById('setup-title');
+const setupChips = document.querySelectorAll('[data-setupprov]');
+function renderSetup(prov) {
+  setupWizard.innerHTML = SETUP[prov];
+  setupTitle.textContent = prov === 'ksef' ? 'Connect KSeF' : 'Connect Subiekt';
+  setupChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.setupprov === prov)));
+}
+setupChips.forEach(c => c.addEventListener('click', () => renderSetup(c.dataset.setupprov)));
+renderSetup('ksef');
+
+/* ---------- correction flow (Wave C, per-provider slot) ---------- */
+const CORRECTION = {
+  ksef: `
+    <div class="section-card__head" style="border:0;padding:0 0 var(--space-3)"><h3>Issue correction (KOR)</h3><span class="section-card__provider">KSeF · slot</span></div>
+    <div class="corr__orig"><span>Correcting <b>FV/2026/06/0142</b></span><span>KSeF <b class="mono">5260…7K</b></span><span>Issued <b class="mono">2026-06-25</b></span></div>
+    <div class="field" style="margin-bottom:var(--space-4)"><label for="kor-reason">Reason for correction</label><textarea class="textarea" id="kor-reason" placeholder="e.g. Customer returned 1 unit"></textarea></div>
+    <div class="table-wrap"><table class="lineitems">
+      <thead><tr><th>Description</th><th class="r">Orig qty</th><th class="r">Orig net</th><th class="r">Corrected qty</th><th class="r">Corrected net</th></tr></thead>
+      <tbody>
+        <tr><td>Linen mug 300 ml</td><td class="r tabular">1</td><td class="r mono tabular">39.84</td><td class="r"><input class="input input--num" value="0" aria-label="Corrected qty, line 1"></td><td class="r"><input class="input input--num" value="0.00" aria-label="Corrected net, line 1"></td></tr>
+        <tr><td>Delivery — InPost</td><td class="r tabular">1</td><td class="r mono tabular">5.69</td><td class="r"><input class="input input--num" value="1" aria-label="Corrected qty, line 2"></td><td class="r"><input class="input input--num" value="5.69" aria-label="Corrected net, line 2"></td></tr>
+      </tbody>
+    </table></div>
+    <p class="corr-note">The KOR records the <b>difference</b> vs the original (after − before) and links the original KSeF number. The original invoice stays on record.</p>
+    <div class="wizard__actions"><span class="spacer"></span><button class="btn btn--secondary">Cancel</button><button class="btn btn--primary">Issue correction</button></div>`,
+  subiekt: `
+    <div class="section-card__head" style="border:0;padding:0 0 var(--space-3)"><h3>Issue correction</h3><span class="section-card__provider">Subiekt · slot</span></div>
+    <div class="corr__orig"><span>Correcting <b>FS 171/CENTRALA/2026</b></span><span>KSeF <b class="mono">5260…3D</b></span><span>Issued <b class="mono">2026-06-25</b></span></div>
+    <div class="field" style="margin-bottom:var(--space-4)"><label for="sk-reason">Reason for correction</label><textarea class="textarea" id="sk-reason" placeholder="e.g. Partial return of the order"></textarea></div>
+    <div class="table-wrap"><table class="lineitems">
+      <thead><tr><th>Lp</th><th>Description</th><th class="r">Orig qty</th><th class="r">Orig net</th><th class="r">New qty</th><th class="r">New net</th></tr></thead>
+      <tbody>
+        <tr><td class="tabular">1</td><td>Linen mug 300 ml</td><td class="r tabular">1</td><td class="r mono tabular">39.84</td><td class="r"><input class="input input--num" value="1" aria-label="New qty, line 1"></td><td class="r"><input class="input input--num" value="34.84" aria-label="New net, line 1"></td></tr>
+        <tr><td class="tabular">2</td><td>Delivery — InPost</td><td class="r tabular">1</td><td class="r mono tabular">5.69</td><td class="r"><input class="input input--num" value="1" aria-label="New qty, line 2"></td><td class="r"><input class="input input--num" value="5.69" aria-label="New net, line 2"></td></tr>
+      </tbody>
+    </table></div>
+    <p class="corr-note">A correcting invoice (faktura korygująca) can adjust <b>quantity and/or price</b> per line — e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.</p>
+    <div class="wizard__actions"><span class="spacer"></span><button class="btn btn--secondary">Cancel</button><button class="btn btn--primary">Issue correction</button></div>`,
+};
+const corrEl = document.getElementById('corr');
+const corrChips = document.querySelectorAll('[data-corrprov]');
+function renderCorr(prov) {
+  corrEl.innerHTML = CORRECTION[prov];
+  corrChips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.corrprov === prov)));
+}
+corrChips.forEach(c => c.addEventListener('click', () => renderCorr(c.dataset.corrprov)));
+renderCorr('ksef');
+</script>
