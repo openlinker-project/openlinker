@@ -29,6 +29,8 @@ import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handl
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
+import { InvoicingIssueHandler } from './invoicing-issue.handler';
+import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -53,7 +55,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
-    private readonly shopProductPublishHandler: ShopProductPublishHandler
+    private readonly shopProductPublishHandler: ShopProductPublishHandler,
+    private readonly invoicingIssueHandler: InvoicingIssueHandler,
+    private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler
   ) {}
 
   onModuleInit(): void {
@@ -125,5 +129,13 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register shop product publish handler (#1042, ADR-024)
     this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler);
+
+    // Register invoicing issue handler (OL #1120 — auto-issue trigger)
+    this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler);
+    // Register KSeF regulatory-status reconciliation handler (#1121)
+    this.handlerRegistry.register(
+      'invoicing.regulatoryStatus.reconcile',
+      this.regulatoryStatusReconcileHandler
+    );
   }
 }

@@ -69,6 +69,25 @@ export interface RegulatoryClearanceResult {
   clearanceReference?: string | null;
 }
 
+/**
+ * Terminal regulatory statuses — once a record reaches one of these the
+ * reconciliation job (#1121) stops polling it. `not-applicable` (receipts not
+ * sent to a CTC authority) is terminal-from-birth and never polled. Single
+ * source of truth for the non-terminal selection predicate; mirrored in the
+ * repository query and the `IDX_invoice_records_reconcile` partial index.
+ */
+export const TerminalRegulatoryStatusValues = [
+  'accepted',
+  'rejected',
+  'not-applicable',
+] as const;
+export type TerminalRegulatoryStatus = (typeof TerminalRegulatoryStatusValues)[number];
+
+/** True when `status` is a terminal regulatory status (no longer polled). */
+export function isTerminalRegulatoryStatus(status: RegulatoryStatus): boolean {
+  return (TerminalRegulatoryStatusValues as readonly string[]).includes(status);
+}
+
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];
