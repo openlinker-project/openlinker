@@ -50,8 +50,8 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (44 total):
- *   - 34 authenticated children (under `coreChildren`, counting per-children-node
+ * Today's breakdown (45 total):
+ *   - 35 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers/inventory expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     and `/users` user-management page (#1125))

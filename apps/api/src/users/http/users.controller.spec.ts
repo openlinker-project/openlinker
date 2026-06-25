@@ -3,7 +3,7 @@
  *
  * @module apps/api/src/users/http
  */
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { UsersController } from './users.controller';
@@ -13,14 +13,23 @@ import {
 } from '../user-management.service.interface';
 import {
   User,
+  CannotSelfModifyException,
+  LastAdminException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 
 const makeUser = (id: string, status: 'pending' | 'active' | 'deactivated' = 'active'): User =>
   new User(id, `user-${id}`, `${id}@test.com`, 'hash', 'viewer', status, new Date(), new Date());
+
+const makeActor = (id = 'actor-1'): AuthenticatedUser => ({
+  id,
+  username: 'admin',
+  role: 'admin',
+});
 
 const makeService = (): jest.Mocked<IUserManagementService> => ({
   listUsers: jest.fn(),
@@ -116,28 +125,60 @@ describe('UsersController', () => {
   });
 
   describe('updateRole', () => {
-    it('should call service.updateRole with id and role', async () => {
+    it('should pass actorId from the authenticated user', async () => {
       service.updateRole.mockResolvedValue(undefined);
+      const actor = makeActor('actor-1');
 
-      await controller.updateRole('u1', { role: 'admin' });
+      await controller.updateRole('u2', { role: 'admin' }, actor);
 
-      expect(service.updateRole).toHaveBeenCalledWith('u1', 'admin');
+      expect(service.updateRole).toHaveBeenCalledWith('u2', 'admin', 'actor-1');
+    });
+
+    it('should throw ForbiddenException on CannotSelfModifyException', async () => {
+      service.updateRole.mockRejectedValue(new CannotSelfModifyException());
+
+      await expect(controller.updateRole('actor-1', { role: 'viewer' }, makeActor('actor-1'))).rejects.toThrow(
+        ForbiddenException
+      );
+    });
+
+    it('should throw ForbiddenException on LastAdminException', async () => {
+      service.updateRole.mockRejectedValue(new LastAdminException());
+
+      await expect(controller.updateRole('u2', { role: 'viewer' }, makeActor())).rejects.toThrow(
+        ForbiddenException
+      );
     });
   });
 
   describe('deactivateUser', () => {
-    it('should call service.deactivateUser with id', async () => {
+    it('should pass actorId from the authenticated user', async () => {
       service.deactivateUser.mockResolvedValue(undefined);
+      const actor = makeActor('actor-1');
 
-      await controller.deactivateUser('u1');
+      await controller.deactivateUser('u2', actor);
 
-      expect(service.deactivateUser).toHaveBeenCalledWith('u1');
+      expect(service.deactivateUser).toHaveBeenCalledWith('u2', 'actor-1');
+    });
+
+    it('should throw ForbiddenException on CannotSelfModifyException', async () => {
+      service.deactivateUser.mockRejectedValue(new CannotSelfModifyException());
+
+      await expect(controller.deactivateUser('actor-1', makeActor('actor-1'))).rejects.toThrow(
+        ForbiddenException
+      );
+    });
+
+    it('should throw ForbiddenException on LastAdminException', async () => {
+      service.deactivateUser.mockRejectedValue(new LastAdminException());
+
+      await expect(controller.deactivateUser('u2', makeActor())).rejects.toThrow(ForbiddenException);
     });
 
     it('should throw ConflictException when user is not active', async () => {
       service.deactivateUser.mockRejectedValue(new UserNotActiveException('u1'));
 
-      await expect(controller.deactivateUser('u1')).rejects.toThrow(ConflictException);
+      await expect(controller.deactivateUser('u1', makeActor())).rejects.toThrow(ConflictException);
     });
   });
 
@@ -158,18 +199,33 @@ describe('UsersController', () => {
   });
 
   describe('deleteUser', () => {
-    it('should call service.deleteUser with id', async () => {
+    it('should pass actorId from the authenticated user', async () => {
       service.deleteUser.mockResolvedValue(undefined);
+      const actor = makeActor('actor-1');
 
-      await controller.deleteUser('u1');
+      await controller.deleteUser('u2', actor);
 
-      expect(service.deleteUser).toHaveBeenCalledWith('u1');
+      expect(service.deleteUser).toHaveBeenCalledWith('u2', 'actor-1');
+    });
+
+    it('should throw ForbiddenException on CannotSelfModifyException', async () => {
+      service.deleteUser.mockRejectedValue(new CannotSelfModifyException());
+
+      await expect(controller.deleteUser('actor-1', makeActor('actor-1'))).rejects.toThrow(
+        ForbiddenException
+      );
+    });
+
+    it('should throw ForbiddenException on LastAdminException', async () => {
+      service.deleteUser.mockRejectedValue(new LastAdminException());
+
+      await expect(controller.deleteUser('u2', makeActor())).rejects.toThrow(ForbiddenException);
     });
 
     it('should throw NotFoundException when user does not exist', async () => {
       service.deleteUser.mockRejectedValue(new UserNotFoundException('ghost'));
 
-      await expect(controller.deleteUser('ghost')).rejects.toThrow(NotFoundException);
+      await expect(controller.deleteUser('ghost', makeActor())).rejects.toThrow(NotFoundException);
     });
   });
 });

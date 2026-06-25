@@ -61,6 +61,10 @@ export class UserRepository implements UserRepositoryPort {
     return { users: entities.map((e) => this.toDomain(e)), total };
   }
 
+  async countByRole(role: UserRole): Promise<number> {
+    return this.ormRepository.count({ where: { role } });
+  }
+
   async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
     await this.ormRepository.update({ id: userId }, { passwordHash });
   }

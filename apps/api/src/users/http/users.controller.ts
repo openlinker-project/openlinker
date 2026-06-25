@@ -20,6 +20,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -32,11 +33,15 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  CannotSelfModifyException,
+  LastAdminException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
@@ -113,13 +118,21 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Change a user's role (admin only)" })
   @ApiResponse({ status: 204, description: 'Role updated' })
+  @ApiResponse({ status: 403, description: 'Cannot modify own account or last admin' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<void> {
+  async updateRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<void> {
     try {
-      await this.userManagement.updateRole(id, dto.role);
+      await this.userManagement.updateRole(id, dto.role, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
+        throw new ForbiddenException(error.message);
       }
       throw error;
     }
@@ -130,14 +143,21 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Deactivate a user — they can no longer log in (admin only)' })
   @ApiResponse({ status: 204, description: 'User deactivated' })
+  @ApiResponse({ status: 403, description: 'Cannot deactivate own account or last admin' })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 409, description: 'User is not active' })
-  async deactivateUser(@Param('id') id: string): Promise<void> {
+  async deactivateUser(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<void> {
     try {
-      await this.userManagement.deactivateUser(id);
+      await this.userManagement.deactivateUser(id, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
+        throw new ForbiddenException(error.message);
       }
       if (error instanceof UserNotActiveException) {
         throw new ConflictException(error.message);
@@ -172,13 +192,20 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Permanently delete a user (admin only)' })
   @ApiResponse({ status: 204, description: 'User deleted' })
+  @ApiResponse({ status: 403, description: 'Cannot delete own account or last admin' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async deleteUser(@Param('id') id: string): Promise<void> {
+  async deleteUser(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<void> {
     try {
-      await this.userManagement.deleteUser(id);
+      await this.userManagement.deleteUser(id, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
+        throw new ForbiddenException(error.message);
       }
       throw error;
     }

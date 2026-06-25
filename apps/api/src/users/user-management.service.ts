@@ -5,12 +5,19 @@
  * approving pending registrations with role assignment, rejecting/deleting
  * pending users, role changes, and deactivate/reactivate lifecycle transitions.
  *
+ * Self-protection: an admin cannot deactivate, demote (updateRole to non-admin),
+ * or delete their own account (CannotSelfModifyException).
+ * Last-admin guard: operations that would remove or deactivate the sole admin
+ * are rejected (LastAdminException).
+ *
  * @module apps/api/src/users
  * @implements {IUserManagementService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
+  CannotSelfModifyException,
+  LastAdminException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
@@ -56,16 +63,28 @@ export class UserManagementService implements IUserManagementService {
     this.logger.log(`Pending user rejected and deleted: ${userId}`);
   }
 
-  async updateRole(userId: string, role: UserRole): Promise<void> {
-    await this.requireUser(userId);
+  async updateRole(userId: string, role: UserRole, actorId: string): Promise<void> {
+    if (userId === actorId) {
+      throw new CannotSelfModifyException();
+    }
+    const user = await this.requireUser(userId);
+    if (user.role === 'admin' && role !== 'admin') {
+      await this.guardLastAdmin();
+    }
     await this.userRepository.updateRole(userId, role);
     this.logger.log(`User role updated: ${userId} → ${role}`);
   }
 
-  async deactivateUser(userId: string): Promise<void> {
+  async deactivateUser(userId: string, actorId: string): Promise<void> {
+    if (userId === actorId) {
+      throw new CannotSelfModifyException();
+    }
     const user = await this.requireUser(userId);
     if (user.status !== 'active') {
       throw new UserNotActiveException(userId);
+    }
+    if (user.role === 'admin') {
+      await this.guardLastAdmin();
     }
     await this.userRepository.updateStatus(userId, 'deactivated');
     this.logger.log(`User deactivated: ${userId}`);
@@ -80,8 +99,14 @@ export class UserManagementService implements IUserManagementService {
     this.logger.log(`User reactivated: ${userId}`);
   }
 
-  async deleteUser(userId: string): Promise<void> {
-    await this.requireUser(userId);
+  async deleteUser(userId: string, actorId: string): Promise<void> {
+    if (userId === actorId) {
+      throw new CannotSelfModifyException();
+    }
+    const user = await this.requireUser(userId);
+    if (user.role === 'admin') {
+      await this.guardLastAdmin();
+    }
     await this.userRepository.deleteById(userId);
     this.logger.log(`User deleted: ${userId}`);
   }
@@ -92,5 +117,12 @@ export class UserManagementService implements IUserManagementService {
       throw new UserNotFoundException(userId);
     }
     return user;
+  }
+
+  private async guardLastAdmin(): Promise<void> {
+    const adminCount = await this.userRepository.countByRole('admin');
+    if (adminCount <= 1) {
+      throw new LastAdminException();
+    }
   }
 }

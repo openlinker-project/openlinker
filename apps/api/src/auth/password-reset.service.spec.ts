@@ -31,6 +31,7 @@ function makeMocks() {
     updateStatus: jest.fn(),
     updateRole: jest.fn(),
     approveUser: jest.fn(),
+    countByRole: jest.fn(),
     deleteById: jest.fn(),
   };
   const tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort> = {

@@ -18,6 +18,8 @@ export { UserAlreadyExistsException } from './domain/exceptions/user-already-exi
 export { UserNotPendingException } from './domain/exceptions/user-not-pending.exception';
 export { UserNotActiveException } from './domain/exceptions/user-not-active.exception';
 export { UserNotDeactivatedException } from './domain/exceptions/user-not-deactivated.exception';
+export { CannotSelfModifyException } from './domain/exceptions/cannot-self-modify.exception';
+export { LastAdminException } from './domain/exceptions/last-admin.exception';
 export { RegistrationDisabledException } from './domain/exceptions/registration-disabled.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
 export { WeakPasswordException } from './domain/exceptions/weak-password.exception';

@@ -35,6 +35,7 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   updateStatus: jest.fn(),
   updateRole: jest.fn(),
   approveUser: jest.fn(),
+  countByRole: jest.fn(),
   deleteById: jest.fn(),
 });
 
