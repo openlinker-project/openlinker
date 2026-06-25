@@ -56,6 +56,21 @@ export interface ErliWebhookBody {
 }
 
 /**
+ * Request header Erli sends on each delivery carrying the access token for
+ * signature verification (#992-PROVISIONAL — exact header unconfirmed).
+ * Isolated here so #992 confirmation is a one-line edit; the decoder reads
+ * only this constant.
+ */
+export const ERLI_WEBHOOK_ACCESS_TOKEN_HEADER = 'x-access-token';
+
+/**
+ * Body field carrying the Erli event-type discriminator (#992-PROVISIONAL).
+ * Currently modelled as the `type` field; may differ from the inbox feed's
+ * `status` field — #992 confirms or reconciles.
+ */
+export const ERLI_WEBHOOK_EVENT_TYPE_FIELD = 'type';
+
+/**
  * Webhook registration (#996), verified against the live Erli Shop API (#992).
  * `PUT /hooks/{hookName}` registers a callback `{ url, accessToken }`; the
  * `accessToken` is the shared secret Erli echoes back on each delivery for
