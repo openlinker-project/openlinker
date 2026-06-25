@@ -3,10 +3,10 @@
  *
  * @module apps/api/src/users
  */
-import { NotFoundException } from '@nestjs/common';
 import { UserManagementService } from './user-management.service';
 import {
   User,
+  UserNotFoundException,
   UserNotPendingException,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
@@ -66,10 +66,10 @@ describe('UserManagementService', () => {
       expect(repo.updateStatus).not.toHaveBeenCalled();
     });
 
-    it('should throw NotFoundException for an unknown user', async () => {
+    it('should throw UserNotFoundException for an unknown user', async () => {
       repo.findById.mockResolvedValue(null);
 
-      await expect(service.approveUser('ghost', 'viewer')).rejects.toThrow(NotFoundException);
+      await expect(service.approveUser('ghost', 'viewer')).rejects.toThrow(UserNotFoundException);
     });
   });
 
@@ -119,10 +119,10 @@ describe('UserManagementService', () => {
       expect(repo.deleteById).toHaveBeenCalledWith('u1');
     });
 
-    it('should throw NotFoundException for unknown user', async () => {
+    it('should throw UserNotFoundException for unknown user', async () => {
       repo.findById.mockResolvedValue(null);
 
-      await expect(service.deleteUser('ghost')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteUser('ghost')).rejects.toThrow(UserNotFoundException);
     });
   });
 });

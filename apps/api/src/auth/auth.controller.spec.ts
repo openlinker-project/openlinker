@@ -28,6 +28,8 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import type { IRegistrationService } from './registration.service.interface';
+import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import { REFRESH_COOKIE_NAME } from './auth.cookies';
 
 const makeUser = (): User =>
@@ -65,6 +67,9 @@ describe('AuthController', () => {
       rotate: jest.fn(),
       revoke: jest.fn(),
     };
+    const mockRegistrationService: jest.Mocked<IRegistrationService> = {
+      register: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
@@ -72,6 +77,7 @@ describe('AuthController', () => {
         { provide: AUTH_SERVICE_TOKEN, useValue: mockAuthService },
         { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
         { provide: REFRESH_TOKEN_SERVICE_TOKEN, useValue: mockRefreshTokenService },
+        { provide: REGISTRATION_SERVICE_TOKEN, useValue: mockRegistrationService },
       ],
     }).compile();
 
