@@ -12,8 +12,14 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import type { OfferCreator, OfferFieldUpdater, OfferManagerPort } from '@openlinker/core/listings';
-import type { OrderSourcePort } from '@openlinker/core/orders';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
+import type {
+  OfferCreator,
+  OfferFieldUpdater,
+  OfferManagerPort,
+  OfferStockRestorer,
+} from '@openlinker/core/listings';
+import type { OrderSourcePort, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { CachePort } from '@openlinker/shared';
 // eslint-disable-next-line no-restricted-imports -- local relative import is intentional here; barrel path would create a runtime cycle
 import type { IErliHttpClient } from '../../infrastructure/http/erli-http-client.interface';
@@ -22,8 +28,8 @@ import type { RetryConfig } from '../../infrastructure/http/erli-http-client.typ
 
 /** Per-connection Erli capability adapters resolved by `createAdapters` (#984/#993). */
 export interface ErliAdapters {
-  offerManager: OfferManagerPort & OfferCreator & OfferFieldUpdater;
-  orderSource: OrderSourcePort;
+  offerManager: OfferManagerPort & OfferCreator & OfferFieldUpdater & OfferStockRestorer;
+  orderSource: OrderSourcePort & OrderStatusWriteback;
 }
 
 export interface IErliAdapterFactory {
@@ -33,13 +39,17 @@ export interface IErliAdapterFactory {
    * behaviour without churning this signature or the plugin's dispatch call site
    * (mirrors the Allegro precedent). `cache` is the host-provided distributed
    * cache (`host.cache`) the offer adapter uses for the #1066 frozen-stock flag;
-   * optional — absent means the adapter fails open (pushes stock).
+   * optional — absent means the adapter fails open (pushes stock). `inventoryQuery`
+   * is the master-inventory read service for the #1198 `OrderStatusWriteback`
+   * `cancelled` stock-restore path; optional — absent means that path reports
+   * `unsupported`.
    */
   createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
     cache?: CachePort,
+    inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters>;
 
   /**

@@ -16,6 +16,8 @@
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
 import { isOrderStatusWriteback, type OrderFeedInput } from '@openlinker/core/orders';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
+import type { OfferManagerPort, OfferStockRestorer } from '@openlinker/core/listings';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import type { ErliHttpResponse } from '../../http/erli-http-client.types';
@@ -385,12 +387,92 @@ describe('ErliOrderSourceAdapter', () => {
       expect(isOrderStatusWriteback(adapter)).toBe(true);
     });
 
-    it('reports unsupported for a cancelled event (Erli has no cancel writeback verb)', async () => {
-      const result = await adapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+    // #1198: `cancelled` now triggers stock-restore instead of unconditional
+    // `unsupported`. The nested describe below covers the full test matrix.
+    describe('cancelled — stock-restore (#1198)', () => {
+      // A valid OL internal variant id (32 lower-hex chars after the prefix).
+      const OFFER_ID = 'ol_variant_aabbccdd11223344aabbccdd11223344';
 
-      expect(result.outcome).toBe('unsupported');
-      expect(client.patch).not.toHaveBeenCalled();
-      expect(client.post).not.toHaveBeenCalled();
+      let offerManager: { restoreStockOnCancellation: jest.Mock; updateOfferQuantity: jest.Mock };
+      let inventoryQuery: { getAvailabilityByVariantIds: jest.Mock };
+      let wiredAdapter: ErliOrderSourceAdapter;
+
+      beforeEach(() => {
+        offerManager = {
+          restoreStockOnCancellation: jest.fn().mockResolvedValue(undefined),
+          updateOfferQuantity: jest.fn(),
+        };
+        inventoryQuery = {
+          getAvailabilityByVariantIds: jest.fn().mockResolvedValue([
+            { productVariantId: OFFER_ID, totalAvailable: 5, locationCount: 1 },
+          ]),
+        };
+        wiredAdapter = new ErliOrderSourceAdapter(
+          CONNECTION_ID,
+          client,
+          offerManager as unknown as OfferManagerPort & OfferStockRestorer,
+          inventoryQuery as unknown as IInventoryQueryService,
+        );
+        // Happy-path order: one item whose externalId doubles as the variant id.
+        client.get.mockResolvedValue(
+          ok(
+            buildErliOrder({
+              items: [
+                { id: 1, externalId: OFFER_ID, quantity: 2, unitPrice: 5000, name: 'Widget', sku: 'SKU-A' },
+              ],
+            }),
+          ),
+        );
+      });
+
+      it('should return applied and restore stock using master-authoritative quantity', async () => {
+        const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('applied');
+        expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith([OFFER_ID]);
+        expect(offerManager.restoreStockOnCancellation).toHaveBeenCalledWith([
+          { externalOfferId: OFFER_ID, quantity: 5 },
+        ]);
+      });
+
+      it('should restore to zero when master-inventory reports zero stock', async () => {
+        inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+          { productVariantId: OFFER_ID, totalAvailable: 0, locationCount: 1 },
+        ]);
+
+        await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(offerManager.restoreStockOnCancellation).toHaveBeenCalledWith([
+          { externalOfferId: OFFER_ID, quantity: 0 },
+        ]);
+      });
+
+      it('should report rejected when the order fetch fails', async () => {
+        client.get.mockRejectedValue(new ErliApiException('upstream error', 503));
+
+        const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('rejected');
+        expect(result.detail).toContain('Failed to fetch Erli order');
+        expect(offerManager.restoreStockOnCancellation).not.toHaveBeenCalled();
+      });
+
+      it('should report rejected when restoreStockOnCancellation throws', async () => {
+        offerManager.restoreStockOnCancellation.mockRejectedValue(new Error('write failed'));
+
+        const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('rejected');
+      });
+
+      it('should report unsupported when the adapter is not wired (no offerManager or inventoryQuery)', async () => {
+        // `adapter` from the outer beforeEach has no offerManager/inventoryQuery.
+        const result = await adapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('unsupported');
+        expect(client.patch).not.toHaveBeenCalled();
+        expect(client.post).not.toHaveBeenCalled();
+      });
     });
 
     it('reports unsupported (no PATCH, no POST) when the #992 writeback gate is OFF by default (#1086)', async () => {

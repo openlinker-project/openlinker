@@ -276,8 +276,9 @@ describe('createErliPlugin', () => {
 });
 
 describe('ErliIntegrationModule', () => {
-  it('should construct a DynamicModule via createNestAdapterModule when the package is loaded', () => {
-    expect(ErliIntegrationModule.module).toBeDefined();
-    expect(ErliIntegrationModule.imports?.length).toBeGreaterThan(0);
+  it('should be a NestJS @Module class with declared imports', () => {
+    const imports: unknown[] = Reflect.getMetadata('imports', ErliIntegrationModule);
+    expect(Array.isArray(imports)).toBe(true);
+    expect(imports.length).toBeGreaterThan(0);
   });
 });
