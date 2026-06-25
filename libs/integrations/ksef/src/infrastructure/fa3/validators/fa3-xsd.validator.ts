@@ -33,8 +33,8 @@ import type { RawFa3Xml } from '../domain/fa3-xml.types';
  * Scope (see SCHEMA_VALIDATION_STATUS.md): XML well-formedness (via
  * `fast-xml-parser`'s `XMLValidator`) plus a hand-written structural rule set
  * derived from the FA(3) v1-0E XSD — root + namespace, `Naglowek` (with the
- * KodFormularza identity attributes) + `WariantFormularza`, `Podmiot1`
- * identification, and the `Fa` body's required children (`KodWaluty`, `P_1`,
+ * KodFormularza identity attributes) + `WariantFormularza`, `Podmiot1` and
+ * `Podmiot2` identification, and the `Fa` body's required children (`KodWaluty`, `P_1`,
  * `P_2`, `RodzajFaktury`, `Adnotacje`, and ≥1 `FaWiersz`). Full XSD-engine
  * validation is deliberately deferred to C3+.
  */
@@ -85,6 +85,13 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     issues.push({
       path: `${root}/Podmiot1/DaneIdentyfikacyjne`,
       message: 'missing Podmiot1/DaneIdentyfikacyjne section',
+    });
+  }
+  // Podmiot2 (buyer) identification — mandatory in the XSD, same as Podmiot1.
+  if (!/<Podmiot2[\s/>][^]*?<DaneIdentyfikacyjne[\s/>]/.test(xml)) {
+    issues.push({
+      path: `${root}/Podmiot2/DaneIdentyfikacyjne`,
+      message: 'missing Podmiot2/DaneIdentyfikacyjne section',
     });
   }
   // Fa body + its required children.

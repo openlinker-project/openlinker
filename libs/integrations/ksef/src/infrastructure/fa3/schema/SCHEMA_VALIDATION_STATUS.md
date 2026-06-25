@@ -48,9 +48,22 @@ builder emitting XSD-valid structure.
 - Source: Ministry of Finance (`crd.gov.pl`), wzór `2025/06/25/13775`, schema
   version `1-0E` (FA(3)).
 - SHA-256: `b646b6b525f51adf1bb2545f111fc8ca6e7aa6dd2f98948f1667d3695c06d958`
-- Note: the schema `xsd:import`s the MF shared types
-  `StrukturyDanych_v10-0E.xsd` (the `etd:` namespace — `TWybor1`, `TWybor1_2`,
-  `TNrNIP`, etc.), which is not vendored here; the structural rule set does not
-  depend on resolving that import.
+- The schema `xsd:import`s the MF shared types
+  [`StrukturyDanych_v10-0E.xsd`](./StrukturyDanych_v10-0E.xsd) (the `etd:`
+  namespace — `TWybor1`, `TWybor1_2`, address/identity complex types, etc.).
+  That shared schema is **now vendored next to the FA(3) XSD** and the import's
+  `schemaLocation` is rewritten to the local relative path
+  (`StrukturyDanych_v10-0E.xsd`), so the import resolves offline — the future
+  real-XSD-engine conformance pass (step 3 above) no longer needs network
+  access to fetch it.
+
+### Vendored shared-types XSD provenance (`StrukturyDanych_v10-0E.xsd`)
+
+- Source: Ministry of Finance (`crd.gov.pl`), `xml/schematy/dziedzinowe/mf/2022/01/05/eD/DefinicjeTypy/StrukturyDanych_v10-0E.xsd`
+  (the `etd:` shared definitions imported by the FA(3) schema).
+- SHA-256: `1137ce6e3c11c2b9ef3f05e4e72d6dcd6b4fa94908ea558f2ba15de0259bb2aa`
+- The original remote `schemaLocation` in `schemat_fa3_v1-0e.xsd` was rewritten
+  from the absolute `crd.gov.pl` URL to this local relative filename so the two
+  vendored schemas form a self-contained, offline-resolvable pair.
 
 Tracking issue: #1148 (FA(3) XML builder); submission/authority follow-up: C3+.
