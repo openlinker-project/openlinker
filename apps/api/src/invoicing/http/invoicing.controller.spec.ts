@@ -709,7 +709,7 @@ describe('InvoicingController', () => {
         getInvoice: jest.fn(),
         upsertCustomer: jest.fn(),
         getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
-        getUpo: jest.fn().mockResolvedValue(document),
+        getRegulatoryDocument: jest.fn().mockResolvedValue(document),
       } as InvoicingPort;
       integrationsMock.getCapabilityAdapter.mockResolvedValue(adapter);
 

@@ -299,7 +299,7 @@ export class KsefInvoicingAdapter
   }
 
   /**
-   * `RegulatoryDocumentReader.getUpo` (#1224 / C15) — fetch the UPO confirmation
+   * `RegulatoryDocumentReader.getRegulatoryDocument` (#1224 / C15) — fetch the UPO confirmation
    * document for a cleared invoice as neutral bytes. Decodes the composite
    * `providerInvoiceId` into the session + invoice references and reads the
    * session-scoped UPO endpoint (`GET /sessions/{sessionRef}/invoices/{invoiceRef}/upo`)
@@ -310,7 +310,7 @@ export class KsefInvoicingAdapter
    * transport exception the controller maps (404/409/502); core sees only neutral
    * bytes, never a KSeF/UPO wire detail.
    */
-  async getUpo(record: InvoiceRecordType): Promise<RegulatoryDocument> {
+  async getRegulatoryDocument(record: InvoiceRecordType): Promise<RegulatoryDocument> {
     const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);
     const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
       invoiceRef,

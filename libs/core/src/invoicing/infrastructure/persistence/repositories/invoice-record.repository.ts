@@ -72,7 +72,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   async findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null> {
     const entity = await this.repository.findOne({
       where: { orderId },
-      order: { createdAt: 'DESC' },
+      // `id` is the tiebreaker so two records sharing a createdAt resolve deterministically.
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
     return entity ? this.toDomain(entity) : null;
   }

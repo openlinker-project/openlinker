@@ -15,15 +15,15 @@ const baseInvoicingPort: InvoicingPort = {
 };
 
 describe('isRegulatoryDocumentReader', () => {
-  it('should return false when the adapter does not implement getUpo', () => {
+  it('should return false when the adapter does not implement getRegulatoryDocument', () => {
     expect(isRegulatoryDocumentReader(baseInvoicingPort)).toBe(false);
   });
 
-  it('should narrow to the reader when the adapter implements getUpo', () => {
+  it('should narrow to the reader when the adapter implements getRegulatoryDocument', () => {
     const document: RegulatoryDocument = { content: new Uint8Array([1, 2, 3]), contentType: 'application/pdf' };
     const adapter: InvoicingPort = {
       ...baseInvoicingPort,
-      getUpo: jest.fn().mockResolvedValue(document),
+      getRegulatoryDocument: jest.fn().mockResolvedValue(document),
     } as InvoicingPort;
 
     expect(isRegulatoryDocumentReader(adapter)).toBe(true);

@@ -600,7 +600,7 @@ describe('KsefInvoicingAdapter', () => {
         headers: { 'content-type': 'application/xml' },
       });
 
-      const result = await adapter(http).getUpo(record());
+      const result = await adapter(http).getRegulatoryDocument(record());
 
       expect(result.content).toBe(bytes);
       expect(result.contentType).toBe('application/xml');
@@ -616,13 +616,13 @@ describe('KsefInvoicingAdapter', () => {
         headers: {},
       });
 
-      const result = await adapter(http).getUpo(record());
+      const result = await adapter(http).getRegulatoryDocument(record());
 
       expect(result.contentType).toBe('application/xml');
     });
 
     it('should throw when the record carries no composite invoice reference', async () => {
-      await expect(adapter(new FakeKsefHttpClient()).getUpo(record(null))).rejects.toBeInstanceOf(
+      await expect(adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(null))).rejects.toBeInstanceOf(
         KsefSessionException,
       );
     });

@@ -48,6 +48,7 @@ import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-respons
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
+import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -271,12 +272,7 @@ export class OrdersController {
    * (`regulatoryStatus === 'accepted'`) — its presence gates the FE download
    * action. No regime/provider vocabulary crosses here.
    */
-  private toInvoiceProjection(record: InvoiceRecord): {
-    invoiceId: string;
-    regulatoryStatus: string;
-    clearanceReference: string | null;
-    upoReference: string | null;
-  } {
+  private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
     const upoAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,

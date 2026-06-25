@@ -36,17 +36,18 @@ export interface RegulatoryDocument {
 
 export interface RegulatoryDocumentReader {
   /**
-   * Retrieve the authority's confirmation document for an already-cleared record.
-   * The adapter resolves its provider references from the record; callers gate on
-   * the record being cleared before invoking (a not-yet-available document is a
-   * caller-side 409, not a thrown adapter error).
+   * Retrieve the authority's confirmation document for an already-cleared record
+   * (e.g. the UPO on the PL/KSeF regime). The adapter resolves its provider
+   * references from the record; callers gate on the record being cleared before
+   * invoking (a not-yet-available document is a caller-side 409, not a thrown
+   * adapter error).
    */
-  getUpo(record: InvoiceRecord): Promise<RegulatoryDocument>;
+  getRegulatoryDocument(record: InvoiceRecord): Promise<RegulatoryDocument>;
 }
 
 export function isRegulatoryDocumentReader(
   adapter: InvoicingPort,
 ): adapter is InvoicingPort & RegulatoryDocumentReader {
   const candidate = adapter as Partial<RegulatoryDocumentReader>;
-  return typeof candidate.getUpo === 'function';
+  return typeof candidate.getRegulatoryDocument === 'function';
 }

@@ -577,7 +577,9 @@ export class InvoicingController {
     // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
     // runs FIRST so a thrown error still routes through the exception layer
     // before any byte is written; `res.*` only ever runs on success.
-    const document = await adapter.getUpo(record);
+    const document = await adapter.getRegulatoryDocument(record);
+    // The adapter guarantees a non-empty contentType (defaults to application/xml
+    // when the provider omits it), so the header below is always well-formed.
     const ext = extensionForContentType(document.contentType);
     res.setHeader('Content-Type', document.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="ol-upo-${invoiceId}.${ext}"`);

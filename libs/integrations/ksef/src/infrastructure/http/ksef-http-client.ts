@@ -58,6 +58,14 @@ const DEFAULT_RETRY_CONFIG: KsefRetryConfig = {
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Hard ceiling on a binary response body (UPO confirmation documents). Caps both
+ * the advertised `Content-Length` and the actually-read byte length so a missing
+ * or mendacious header can't drive an unbounded `arrayBuffer()` read into memory.
+ * 10 MB comfortably exceeds any real UPO (XML/PDF) while bounding the blast radius.
+ */
+const MAX_BINARY_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+/**
  * Lazily runs the handshake (first authenticated request) and rotates the token
  * (proactive + reactive). Both callbacks are wired by the factory.
  */
@@ -274,7 +282,24 @@ export class KsefHttpClient implements IKsefHttpClient {
       }
 
       if (expectBinary) {
+        const advertised = Number(responseHeaders['content-length']);
+        if (Number.isFinite(advertised) && advertised > MAX_BINARY_RESPONSE_BYTES) {
+          throw new KsefApiException(
+            `KSeF binary response too large: ${advertised} bytes exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
+            response.status,
+            undefined,
+            url.toString(),
+          );
+        }
         const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > MAX_BINARY_RESPONSE_BYTES) {
+          throw new KsefApiException(
+            `KSeF binary response too large: ${bytes.byteLength} bytes exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
+            response.status,
+            undefined,
+            url.toString(),
+          );
+        }
         return { data: bytes as unknown as T, status: response.status, headers: responseHeaders };
       }
 
