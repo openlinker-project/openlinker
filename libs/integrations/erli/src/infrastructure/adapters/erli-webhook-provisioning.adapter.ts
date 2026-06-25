@@ -81,10 +81,12 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
 
     const httpClient = await this.factory.createHttpClient(connection, this.credentialsResolver);
     const url = `${callbackBaseUrl.replace(/\/$/, '')}/webhooks/erli/${connectionId}`;
-    const body: ErliHookRegistrationBody = { url, accessToken: secret };
 
     try {
       for (const hookName of ErliWebhookEventTypeValues) {
+        // Erli's HookSave requires `hookName` in the body (not just the path) and
+        // rejects unknown properties — so the body repeats the path hook name.
+        const body: ErliHookRegistrationBody = { hookName, url, accessToken: secret };
         // PUT is idempotent — re-registering a hook overwrites its config.
         await httpClient.put(erliHookPath(hookName), body, { idempotent: true });
       }
