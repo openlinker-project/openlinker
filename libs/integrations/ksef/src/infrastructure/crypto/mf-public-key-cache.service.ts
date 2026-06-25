@@ -159,7 +159,11 @@ export class MfPublicKeyCacheService {
     usage: KsefCertificateUsage,
     now: Date,
   ): Promise<PublicKeyCertificate> {
-    const response = await this.httpClient.get<MfCertificatesResponse>(MF_CERTIFICATES_PATH);
+    // The MF public-key certificate endpoint is unauthenticated — it bootstraps
+    // the handshake before any token exists, so skip bearer injection.
+    const response = await this.httpClient.get<MfCertificatesResponse>(MF_CERTIFICATES_PATH, {
+      skipAuth: true,
+    });
     const entries = Array.isArray(response.data) ? response.data : [];
     const matching = entries
       .filter((entry) => (entry.usage ?? []).includes(usage))
@@ -207,7 +211,22 @@ export class MfPublicKeyCacheService {
     if (certificate.includes('-----BEGIN')) {
       return certificate;
     }
-    const lines = certificate.replace(/\s+/g, '').match(/.{1,64}/g) ?? [certificate];
+    const compact = certificate.replace(/\s+/g, '');
+    if (!this.isValidBase64(compact)) {
+      throw new KsefSessionCryptoException(
+        'MF certificate payload is not valid base64-DER',
+        'CERT_BAD_ENCODING',
+      );
+    }
+    const lines = compact.match(/.{1,64}/g) ?? [compact];
     return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`;
+  }
+
+  /** A non-empty, length-aligned base64 string (standard alphabet, padded). */
+  private isValidBase64(value: string): boolean {
+    if (value.length === 0 || value.length % 4 !== 0) {
+      return false;
+    }
+    return /^[A-Za-z0-9+/]+={0,2}$/.test(value);
   }
 }
