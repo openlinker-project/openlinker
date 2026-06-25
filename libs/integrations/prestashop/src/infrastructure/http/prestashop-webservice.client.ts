@@ -38,7 +38,12 @@ const IRREGULAR_RESOURCE_SINGULARS: Readonly<Record<string, string>> = {
   order_histories: 'order_history',
 };
 
-/** PrestaShop singular element name for a WS resource (handles irregular plurals). */
+/**
+ * PrestaShop singular element name for a WS resource (handles irregular plurals).
+ * WRITES ONLY — used to BUILD the request envelope (`{ prestashop: { <singular>: data } }`)
+ * and to unwrap write responses. Reads (`getResource`) don't use this: they strip the
+ * envelope by single-key shape, which is robust to every irregular singular without a map.
+ */
 function singularizeResource(resource: string): string {
   return IRREGULAR_RESOURCE_SINGULARS[resource] ?? resource.slice(0, -1);
 }

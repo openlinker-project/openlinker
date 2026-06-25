@@ -335,6 +335,7 @@ describe('PrestashopOrderSourceAdapter', () => {
             ? Promise.reject(address)
             : Promise.resolve({ id, ...address });
         }
+        // Country value is irrelevant to pickup-point resolution; any ISO is fine here.
         if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
         return Promise.resolve({});
       });
