@@ -14,8 +14,9 @@ import type {
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
 import { KsefSessionException } from '../../../domain/exceptions/ksef-session.exception';
-import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
+import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -179,6 +180,25 @@ describe('KsefInvoicingAdapter', () => {
       await expect(adapter(http).issueInvoice(command())).rejects.toBeInstanceOf(KsefSessionException);
     });
 
+    it('should terminally reject an unsupported document type before any network call', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueInvoice(command({ documentType: 'proforma' })),
+      ).rejects.toBeInstanceOf(KsefUnsupportedDocumentTypeException);
+      // Rejected up front — no session is opened.
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should issue when documentType is a supported type', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const record = await adapter(http).issueInvoice(command({ documentType: 'corrected' }));
+      expect(record.documentType).toBe('corrected');
+    });
+
     it('should still close the session when submit fails', async () => {
       const http = new FakeKsefHttpClient();
       // Open succeeds; invoices POST is not seeded → submit rejects.
@@ -273,9 +293,9 @@ describe('KsefInvoicingAdapter', () => {
       expect(result.clearanceReference).toBeNull();
     });
 
-    it('should return rejected (terminal) on a deterministic business code (400)', async () => {
+    it('should return rejected (terminal) on a known business-rejection code (440)', async () => {
       const http = new FakeKsefHttpClient();
-      http.seed('GET', STATUS_PATH, { data: { status: { code: 400 } }, status: 200, headers: {} });
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 440 } }, status: 200, headers: {} });
 
       const result = await adapter(http).getClearanceStatus(record());
 
@@ -349,12 +369,12 @@ describe('KsefInvoicingAdapter', () => {
       );
     });
 
-    it('should throw a transient KsefApiException on a 5xx status code', async () => {
+    it('should throw a retryable KsefNetworkException on a transient processing code (550)', async () => {
       const http = new FakeKsefHttpClient();
-      http.seed('GET', STATUS_PATH, { data: { status: { code: 500 } }, status: 200, headers: {} });
+      http.seed('GET', STATUS_PATH, { data: { status: { code: 550 } }, status: 200, headers: {} });
 
       await expect(adapter(http).getClearanceStatus(record())).rejects.toBeInstanceOf(
-        KsefApiException,
+        KsefNetworkException,
       );
     });
 
