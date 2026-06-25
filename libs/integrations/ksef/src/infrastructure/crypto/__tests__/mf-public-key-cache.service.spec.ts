@@ -124,6 +124,28 @@ describe('MfPublicKeyCacheService', () => {
     );
   });
 
+  it('should throw CERT_BAD_ENCODING when the certificate payload is not valid base64', async () => {
+    const badEncoding = {
+      data: [
+        {
+          certificate: 'not valid base64 !!!',
+          usage: ['SymmetricKeyEncryption'],
+          validFrom: new Date(Date.now() - 60_000).toISOString(),
+          validTo: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      ] as WireCert[],
+      status: 200,
+      headers: {},
+    };
+    http.clear();
+    http.seed('GET', PATH, badEncoding);
+    const service = new MfPublicKeyCacheService('conn-1', http);
+    await expect(service.fetchAndCachePublicKey('SymmetricKeyEncryption')).rejects.toMatchObject({
+      name: 'KsefSessionCryptoException',
+      errorCode: 'CERT_BAD_ENCODING',
+    });
+  });
+
   it('should serve a cached cert on the second call without refetching', async () => {
     const cache = inMemoryCache();
     const service = new MfPublicKeyCacheService('conn-1', http, cache);

@@ -14,11 +14,14 @@
  *  - Reactive 401: the `refresh` callback is invoked once; a tagged
  *    `RefreshOnUnauthorizedOutcome` distinguishes credential rejection
  *    (→ `KsefAuthenticationException`, non-retryable) from network failure
- *    (→ `KsefNetworkException`, retryable).
- *  - Auth + public-key endpoints are unauthenticated: callers pass
- *    `options.headers` to override, but the client also detects the `/auth/` and
- *    `/security/public-key-certificates` prefixes and skips bearer injection so
- *    the handshake can bootstrap before any token exists.
+ *    (→ `KsefNetworkException`, retryable). `403` is an authorization decision
+ *    — never refreshed — and fails fast as a non-retryable `KsefApiException`.
+ *  - Unauthenticated calls (the auth challenge/ksef-token bootstrap and the
+ *    public-key-certificate fetch) pass `options.skipAuth` so the client skips
+ *    the lazy handshake + bearer injection. Auth calls that carry their own
+ *    short-lived token (poll/redeem/refresh) also set `skipAuth` and supply an
+ *    explicit `Authorization` header. Explicit per-call flag rather than
+ *    path-prefix inference.
  *
  * SECURITY: never logs the access/refresh token, the Authorization header, or
  * request/response bodies that may carry credential-derived material. Logs carry
@@ -53,9 +56,6 @@ const DEFAULT_RETRY_CONFIG: KsefRetryConfig = {
 };
 
 const REQUEST_TIMEOUT_MS = 30_000;
-
-/** Unauthenticated endpoint prefixes — bearer header is skipped (bootstrap). */
-const UNAUTHENTICATED_PREFIXES = ['/auth/', '/security/public-key-certificates'];
 
 /**
  * Lazily runs the handshake (first authenticated request) and rotates the token
@@ -198,7 +198,7 @@ export class KsefHttpClient implements IKsefHttpClient {
   ): Promise<KsefHttpResponse<T>> {
     const traceId = randomUUID();
     const startTime = Date.now();
-    const requiresAuth = !this.isUnauthenticated(path);
+    const requiresAuth = !options?.skipAuth;
 
     if (requiresAuth) {
       await this.ensureFreshToken(traceId);
@@ -293,9 +293,11 @@ export class KsefHttpClient implements IKsefHttpClient {
   }
 
   /**
-   * Map an HTTP failure to the right domain exception. On `401` attempts a
-   * single reactive refresh, then signals a retry (success) / throws auth or
-   * network exception (per the tagged refresh outcome).
+   * Map an HTTP failure to the right domain exception. Only `401` (token
+   * expired/rejected) attempts a single reactive refresh, then signals a retry
+   * (success) / throws auth or network exception (per the tagged refresh
+   * outcome). `403` is an authorization decision — refreshing the token can
+   * never change it — so it fails fast as a non-retryable KsefApiException.
    */
   private async handleError(
     statusCode: number,
@@ -304,7 +306,7 @@ export class KsefHttpClient implements IKsefHttpClient {
     headers: Record<string, string>,
     traceId: string,
   ): Promise<never> {
-    if (statusCode === 401 || statusCode === 403) {
+    if (statusCode === 401) {
       const outcome = await this.refreshOnUnauthorized(traceId);
       if (outcome.ok) {
         throw new TokenRefreshedSignal();
@@ -325,25 +327,41 @@ export class KsefHttpClient implements IKsefHttpClient {
     }
 
     if (statusCode === 429) {
-      const retryAfterMs = headers['retry-after'] ? parseInt(headers['retry-after'], 10) * 1000 : undefined;
-      throw new KsefApiException(`KSeF rate limit exceeded: ${url}`, 429, retryAfterMs ? String(retryAfterMs) : undefined, url);
+      const retryAfterMs = this.parseRetryAfterHeader(headers['retry-after']);
+      throw new KsefApiException(`KSeF rate limit exceeded: ${url}`, 429, body, url, retryAfterMs);
     }
 
-    // 4xx (other than auth) and 5xx: KsefApiException carries diagnostics-only body.
+    // 403 (authorization denied) + other 4xx + 5xx: KsefApiException carries
+    // diagnostics-only body. 403 is non-retryable (the retry loop fails fast on
+    // any sub-500 status that isn't 429).
     this.logger.error(`[${traceId}] KSeF API error (${statusCode}) ${url}`);
     throw new KsefApiException(`KSeF API error (${statusCode}): ${url}`, statusCode, body, url);
   }
 
-  private parseRetryAfter(error: KsefApiException): number | undefined {
-    if (error.statusCode !== 429 || !error.responseBody) {
+  /**
+   * Parse the `Retry-After` header — either delta-seconds (`"120"`) or an
+   * HTTP-date (`"Wed, 21 Oct 2026 07:28:00 GMT"`) — into a millisecond delay.
+   */
+  private parseRetryAfterHeader(headerValue: string | undefined): number | undefined {
+    if (!headerValue) {
       return undefined;
     }
-    const parsed = Number(error.responseBody);
-    return Number.isFinite(parsed) ? parsed : undefined;
+    const seconds = Number(headerValue);
+    if (Number.isFinite(seconds)) {
+      return Math.max(0, seconds * 1000);
+    }
+    const dateMs = Date.parse(headerValue);
+    if (Number.isFinite(dateMs)) {
+      return Math.max(0, dateMs - Date.now());
+    }
+    return undefined;
   }
 
-  private isUnauthenticated(path: string): boolean {
-    return UNAUTHENTICATED_PREFIXES.some((prefix) => path.startsWith(prefix));
+  private parseRetryAfter(error: KsefApiException): number | undefined {
+    if (error.statusCode !== 429) {
+      return undefined;
+    }
+    return error.retryAfterMs;
   }
 
   private getAccessTokenOrThrow(): string {

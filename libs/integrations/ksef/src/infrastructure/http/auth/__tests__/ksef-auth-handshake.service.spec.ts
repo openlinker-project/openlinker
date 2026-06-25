@@ -89,7 +89,7 @@ describe('KsefAuthHandshakeService', () => {
     const http = new FakeKsefHttpClient();
     const expSeconds = Math.floor((Date.now() + 3_600_000) / 1000);
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-1')))
       .seed('GET', '/auth/REF-1', ok(status(200)))
       .seed('POST', '/auth/token/redeem', ok(tokens(expSeconds)));
@@ -105,7 +105,7 @@ describe('KsefAuthHandshakeService', () => {
     const http = new FakeKsefHttpClient();
     const expSeconds = Math.floor((Date.now() + 3_600_000) / 1000);
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-A')))
       .seed('GET', '/auth/REF-A', ok(status(200)))
       .seed('POST', '/auth/token/redeem', ok(tokens(expSeconds)));
@@ -124,7 +124,7 @@ describe('KsefAuthHandshakeService', () => {
   it('should throw KsefAuthenticationException when the reference reports a terminal failure code', async () => {
     const http = new FakeKsefHttpClient();
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-2')))
       .seed('GET', '/auth/REF-2', ok(status(450)));
 
@@ -142,7 +142,7 @@ describe('KsefAuthHandshakeService', () => {
   it('should throw when the submit returns no referenceNumber / authenticationToken', async () => {
     const http = new FakeKsefHttpClient();
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok({ referenceNumber: '', authenticationToken: { token: '', validUntil: '' } }));
     const service = new KsefAuthHandshakeService('conn-1', http, encryptorStub());
     await expect(service.authenticate(MATERIAL)).rejects.toBeInstanceOf(KsefAuthenticationException);
@@ -151,7 +151,7 @@ describe('KsefAuthHandshakeService', () => {
   it('should throw when redeem yields no access/refresh token', async () => {
     const http = new FakeKsefHttpClient();
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-3')))
       .seed('GET', '/auth/REF-3', ok(status(200)))
       .seed('POST', '/auth/token/redeem', ok({}));
@@ -159,11 +159,13 @@ describe('KsefAuthHandshakeService', () => {
     await expect(service.authenticate(MATERIAL)).rejects.toBeInstanceOf(KsefAuthenticationException);
   });
 
-  it('should build the init request bound to the challenge + timestamp before submitting', async () => {
+  it('should build the init request bound to the challenge + epoch-ms timestamp before submitting', async () => {
     const http = new FakeKsefHttpClient();
     const expSeconds = Math.floor((Date.now() + 3_600_000) / 1000);
+    const timestamp = '2026-06-23T12:00:00.000Z';
+    const timestampMs = Date.parse(timestamp);
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH-9', timestamp: 'TS-42' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH-9', timestamp }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-4')))
       .seed('GET', '/auth/REF-4', ok(status(200)))
       .seed('POST', '/auth/token/redeem', ok(tokens(expSeconds)));
@@ -173,16 +175,41 @@ describe('KsefAuthHandshakeService', () => {
     const service = new KsefAuthHandshakeService('conn-1', http, encryptor);
     await service.authenticate(MATERIAL);
 
-    // token, contextNip, challenge, challengeTimestamp — the challenge + timestamp
-    // bind the ciphertext to this challenge window (replay defence).
-    expect(spy).toHaveBeenCalledWith('TKN', '1234567890', 'CH-9', 'TS-42');
+    // token, contextNip, challenge, challengeTimestampMs — the challenge +
+    // epoch-ms timestamp bind the ciphertext to this challenge window (replay
+    // defence). MF reference encodes the timestamp as Unix milliseconds.
+    expect(spy).toHaveBeenCalledWith('TKN', '1234567890', 'CH-9', String(timestampMs));
+  });
+
+  it('should prefer the server-supplied timestampMs over parsing the ISO timestamp', async () => {
+    const http = new FakeKsefHttpClient();
+    const expSeconds = Math.floor((Date.now() + 3_600_000) / 1000);
+    http
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH-9', timestamp: '2026-06-23T12:00:00.000Z', timestampMs: 1_750_680_000_000 }))
+      .seed('POST', '/auth/ksef-token', ok(initResult('REF-6')))
+      .seed('GET', '/auth/REF-6', ok(status(200)))
+      .seed('POST', '/auth/token/redeem', ok(tokens(expSeconds)));
+
+    const encryptor = encryptorStub();
+    const spy = jest.spyOn(encryptor, 'buildInitRequest');
+    const service = new KsefAuthHandshakeService('conn-1', http, encryptor);
+    await service.authenticate(MATERIAL);
+
+    expect(spy).toHaveBeenCalledWith('TKN', '1234567890', 'CH-9', '1750680000000');
+  });
+
+  it('should throw KsefAuthenticationException when the challenge timestamp is unparseable', async () => {
+    const http = new FakeKsefHttpClient();
+    http.seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'not-a-date' }));
+    const service = new KsefAuthHandshakeService('conn-1', http, encryptorStub());
+    await expect(service.authenticate(MATERIAL)).rejects.toBeInstanceOf(KsefAuthenticationException);
   });
 
   it('should treat status code 200 as ready and redeem', async () => {
     const http = new FakeKsefHttpClient();
     const expSeconds = Math.floor((Date.now() + 3_600_000) / 1000);
     http
-      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: 'ts' }))
+      .seed('POST', '/auth/challenge', ok({ challenge: 'CH', timestamp: '2026-06-23T12:00:00.000Z' }))
       .seed('POST', '/auth/ksef-token', ok(initResult('REF-5')))
       .seed('GET', '/auth/REF-5', ok(status(200)))
       .seed('POST', '/auth/token/redeem', ok(tokens(expSeconds)));
