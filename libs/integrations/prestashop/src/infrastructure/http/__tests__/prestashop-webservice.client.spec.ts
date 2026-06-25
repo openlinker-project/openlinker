@@ -196,6 +196,61 @@ describe('PrestashopWebserviceClient', () => {
         PrestashopApiException
       );
     });
+
+    // Irregular -es plurals (`addresses` → `address`, `countries` → `country`)
+    // must unwrap to the inner object. The old `slice(0, -1)` computed
+    // `addresse` / `countrie`, which never matched, returning the envelope.
+    it('should unwrap the addresses resource (irregular -es plural)', async () => {
+      const mockResponse = {
+        prestashop: {
+          address: { id: '11', firstname: 'Jan', id_country: '14' },
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.getResource<{ id: string; firstname: string }>('addresses', '11');
+
+      expect(result).toEqual({ id: '11', firstname: 'Jan', id_country: '14' });
+    });
+
+    it('should unwrap the countries resource (irregular -es plural)', async () => {
+      const mockResponse = {
+        prestashop: {
+          country: { id: '14', iso_code: 'PL' },
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.getResource<{ iso_code: string }>('countries', '14');
+
+      expect(result.iso_code).toBe('PL');
+    });
+
+    it('should still unwrap the regular products resource', async () => {
+      const mockResponse = {
+        prestashop: { product: { id: '1', name: 'Test Product' } },
+      };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.getResource<{ id: string; name: string }>('products', '1');
+
+      expect(result).toEqual({ id: '1', name: 'Test Product' });
+    });
   });
 
   describe('listResources', () => {
