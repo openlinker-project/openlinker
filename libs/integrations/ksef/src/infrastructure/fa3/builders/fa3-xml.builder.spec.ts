@@ -223,4 +223,118 @@ describe('buildFa3Xml', () => {
       expect(xml).not.toContain('<PrzyczynaKorekty>');
     });
   });
+
+  describe('VAT-band → P_13/P_14 element mapping', () => {
+    function singleLineXml(p12: Fa3BuilderInput['lines'][number]['p12']): string {
+      const input = b2bInput();
+      input.lines = [{ name: 'Item', quantity: 1, unitPriceGross: 100, p12 }];
+      return buildFa3Xml(input);
+    }
+
+    it('should map 23% to P_13_1 (net) + P_14_1 (vat)', () => {
+      const xml = singleLineXml('23');
+      // net = 100 / 1.23 = 81.30; vat = 18.70.
+      expect(xml).toContain('<P_13_1>81.30</P_13_1>');
+      expect(xml).toContain('<P_14_1>18.70</P_14_1>');
+    });
+
+    it('should map 8% to P_13_2 (net) + P_14_2 (vat)', () => {
+      const xml = singleLineXml('8');
+      // net = 100 / 1.08 = 92.59; vat = 7.41.
+      expect(xml).toContain('<P_13_2>92.59</P_13_2>');
+      expect(xml).toContain('<P_14_2>7.41</P_14_2>');
+    });
+
+    it('should map 5% to P_13_3 (net) + P_14_3 (vat)', () => {
+      const xml = singleLineXml('5');
+      // net = 100 / 1.05 = 95.24; vat = 4.76.
+      expect(xml).toContain('<P_13_3>95.24</P_13_3>');
+      expect(xml).toContain('<P_14_3>4.76</P_14_3>');
+    });
+
+    it('should map domestic 0% (0 KR) to P_13_6_1 with NO P_14', () => {
+      const xml = singleLineXml('0 KR');
+      expect(xml).toContain('<P_13_6_1>100.00</P_13_6_1>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map intra-EU 0% (0 WDT) to P_13_6_2 with NO P_14', () => {
+      const xml = singleLineXml('0 WDT');
+      expect(xml).toContain('<P_13_6_2>100.00</P_13_6_2>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map export 0% (0 EX) to P_13_6_3 with NO P_14', () => {
+      const xml = singleLineXml('0 EX');
+      expect(xml).toContain('<P_13_6_3>100.00</P_13_6_3>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map exempt (zw) to P_13_7 with NO P_14', () => {
+      const xml = singleLineXml('zw');
+      expect(xml).toContain('<P_13_7>100.00</P_13_7>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map not-subject (np) to P_13_8 with NO P_14', () => {
+      const xml = singleLineXml('np');
+      expect(xml).toContain('<P_13_8>100.00</P_13_8>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should map reverse-charge (oo) to P_13_10 with NO P_14', () => {
+      const xml = singleLineXml('oo');
+      expect(xml).toContain('<P_13_10>100.00</P_13_10>');
+      expect(xml).not.toMatch(/<P_14_/);
+    });
+
+    it('should never emit a non-existent synthetic band (e.g. P_13_9 / P_14_6)', () => {
+      // P_13_9 / P_14_6 are bands the builder does not populate; the old index
+      // scheme accidentally emitted slots like these.
+      const xml = singleLineXml('np');
+      expect(xml).not.toMatch(/<P_13_9>/);
+      expect(xml).not.toMatch(/<P_14_6>/);
+    });
+
+    it('should emit P_11 as the line NET, not the gross', () => {
+      const xml = singleLineXml('23');
+      // gross 100 → net 81.30. The line must carry net, not 100.00.
+      expect(xml).toContain('<P_11>81.30</P_11>');
+      expect(xml).not.toContain('<P_11>100.00</P_11>');
+    });
+
+    it('should keep line P_11 net consistent with the band P_13 net (no drift)', () => {
+      const input = b2bInput();
+      input.lines = [
+        { name: 'A', quantity: 1, unitPriceGross: 100, p12: '23' },
+        { name: 'B', quantity: 1, unitPriceGross: 100, p12: '23' },
+      ];
+      const xml = buildFa3Xml(input);
+      // Each line net = 81.30; band aggregate = 162.60.
+      expect(xml.match(/<P_11>81\.30<\/P_11>/g)?.length).toBe(2);
+      expect(xml).toContain('<P_13_1>162.60</P_13_1>');
+    });
+  });
+
+  describe('P_8B quantity formatting', () => {
+    function qtyXml(quantity: number): string {
+      const input = b2bInput();
+      input.lines = [{ name: 'Item', quantity, unitPriceGross: 10, p12: '23' }];
+      return buildFa3Xml(input);
+    }
+
+    it('should render an integer quantity without trailing zeros', () => {
+      expect(qtyXml(2)).toContain('<P_8B>2</P_8B>');
+    });
+
+    it('should render a fractional quantity to its significant decimals', () => {
+      expect(qtyXml(1.5)).toContain('<P_8B>1.5</P_8B>');
+    });
+
+    it('should not use exponential notation for a large quantity', () => {
+      const xml = qtyXml(1234567890);
+      expect(xml).toContain('<P_8B>1234567890</P_8B>');
+      expect(xml).not.toMatch(/<P_8B>[^<]*e[+-]/i);
+    });
+  });
 });

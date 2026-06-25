@@ -3,9 +3,11 @@
  *
  * Runs the shared `runKsefHttpClientContract` suite against the in-memory fake
  * (no network) and covers each seeded failure mode plus the deterministic
- * KSeF-number / UPO derivation. The real `KsefHttpClient` runs the SAME contract
- * behind an env-gate (see `ksef-client-contract.suite.ts` header) so fake and
- * real can't drift.
+ * KSeF-number / UPO derivation. The intent is for the real `KsefHttpClient` to
+ * run the SAME contract behind an env-gate (see `ksef-client-contract.suite.ts`
+ * header) so fake and real can't drift; that real-client spec is a tracked
+ * follow-up and is not wired up yet, so the fake is the suite's only consumer
+ * today.
  *
  * @module libs/integrations/ksef/src/testing
  */
@@ -131,19 +133,6 @@ describe('FakeKsefClient', () => {
       expect(inv.data.status.code).toBe(FAKE_KSEF_STATUS.REJECTED);
     });
 
-    it('should surface 400 (rejected) via seedStatus', async () => {
-      const client = new FakeKsefClient();
-      client.seedStatus(FAKE_KSEF_STATUS.REJECTED);
-      const { sessionRef } = await openSubmitClose(client);
-
-      expect(await statusCode(client, sessionRef)).toBe(FAKE_KSEF_STATUS.REJECTED);
-    });
-
-    it('should reject seedStatus for an unsupported code', () => {
-      const client = new FakeKsefClient();
-      expect(() => client.seedStatus(999)).toThrow();
-    });
-
     it('should never expose a UPO for a rejected session', async () => {
       const client = new FakeKsefClient();
       client.seedRejection();
@@ -186,6 +175,11 @@ describe('FakeKsefClient', () => {
       );
       expect(res.data.status.code).toBe(FAKE_KSEF_STATUS.SUCCESS);
     });
+  });
+
+  it('should reject a sellerNip that fails the KsefNumber NIP-segment pattern', () => {
+    expect(() => new FakeKsefClient({ sellerNip: '0123456789' })).toThrow();
+    expect(() => new FakeKsefClient({ sellerNip: '5265877635' })).not.toThrow();
   });
 
   it('should reset all state on clear()', async () => {

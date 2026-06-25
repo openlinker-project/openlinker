@@ -1,11 +1,16 @@
 /**
  * KSeF HTTP Client Contract Suite (#1153 / C9)
  *
- * A shared, transport-level behavioural contract that BOTH the in-memory
- * `FakeKsefClient` and the real `KsefHttpClient` must satisfy, so the fake used
- * across core's invoicing integration tests can't silently drift from the wire
- * behaviour C5/C6 depend on. The suite exercises the online-session document
- * flow through the `IKsefHttpClient` surface (`get` / `post`) and asserts:
+ * A shared, transport-level behavioural contract that the in-memory
+ * `FakeKsefClient` must satisfy, written so the real `KsefHttpClient` can be held
+ * to the SAME definition once an env-gated real-client spec is wired up. The
+ * fake is the only consumer today; binding the real client behind a live-sandbox
+ * creds gate is a tracked follow-up (it needs the full auth/token lifecycle and
+ * a sandbox that clears asynchronously, so it can't seed terminal failures
+ * deterministically). Until then the suite guards the fake against silent drift
+ * from the wire behaviour C5/C6 depend on; it does not yet PROVE fake↔real
+ * parity. The suite exercises the online-session document flow through the
+ * `IKsefHttpClient` surface (`get` / `post`) and asserts:
  *
  *   1. STATUS TRANSITION — a freshly-submitted invoice reads in-progress
  *      (100/150) on early polls then `200` (Success) on a later poll; the
@@ -16,8 +21,10 @@
  *      session status with `successfulInvoiceCount === 0`, and a per-invoice
  *      rejection reads `400` (consistent with the C6 clearance-status mapper).
  *   4. 5xx CLASSIFICATION — a transient `5xx` on an idempotent read either
- *      recovers (the client retried) or surfaces as a thrown transport error —
- *      never a silent success.
+ *      recovers (the client retried) or surfaces as a thrown `KsefApiException`
+ *      carrying the server status (>= 500) — never a silent success. This is the
+ *      real client's behaviour too: a 5xx is a `KsefApiException`, while
+ *      `KsefNetworkException` is reserved for genuine DNS/TLS/timeout failures.
  *
  * ROUTES (reconciled #1147–#1151): open/send/close stay under `/sessions/online`;
  * session status is `GET /sessions/{ref}`, per-invoice status is
@@ -30,15 +37,15 @@
  * runKsefHttpClientContract(() => new FakeKsefClient(), { supportsSeededFailures: true });
  * ```
  *
- * USAGE — real client (env-gated): the real `KsefHttpClient` runs the SAME suite
- * behind a credentials gate so the two views can't diverge. A thin
- * `ksef-client-contract.real.int-spec.ts` (C-level follow-up) constructs the real
- * client from `process.env.KSEF_TEST_*` and calls this runner with
- * `{ supportsSeededFailures: false }`; when the env vars are absent the spec
- * `describe.skip`s itself so CI without sandbox creds stays green. The fake-side
- * spec (`fake-ksef-client.spec.ts`) always runs (no network), guaranteeing the
- * contract is enforced on every `pnpm test`; the real side enforces it whenever
- * sandbox creds are present.
+ * USAGE — real client (follow-up, not yet wired): the intent is for the real
+ * `KsefHttpClient` to run the SAME suite behind a credentials gate so the two
+ * views can't diverge. A thin `ksef-client-contract.real.int-spec.ts` would
+ * construct the real client from `process.env.KSEF_TEST_*`, call this runner with
+ * `{ supportsSeededFailures: false }`, and `describe.skip` itself when the env
+ * vars are absent so CI without sandbox creds stays green. That spec does not
+ * exist yet (tracked follow-up). Today the fake-side spec
+ * (`fake-ksef-client.spec.ts`) is the suite's only consumer; it always runs (no
+ * network), so the contract is enforced on every `pnpm test` for the fake.
  *
  * @module libs/integrations/ksef/src/testing
  * @see {@link FakeKsefClient}
@@ -50,11 +57,12 @@ import type {
   InvoiceStatusResponse,
 } from '../infrastructure/adapters/ksef-session.types';
 import { FAKE_KSEF_STATUS } from './fake-ksef-client';
+import { KsefApiException } from '../domain/exceptions/ksef-api.exception';
 
 /** A seedable client exposes the failure-mode helpers the fake provides. */
 interface SeedableKsefClient extends IKsefHttpClient {
   forceZeroValid(): unknown;
-  seedStatus(code: number): unknown;
+  seedRejection(): unknown;
   seedTransient(status?: number, times?: number): unknown;
   clear?(): void;
 }
@@ -187,7 +195,9 @@ export function runKsefHttpClientContract(
       // Fresh session, no status polls → not yet accepted.
       const { sessionRef, invoiceRef } = await openSubmitClose(client);
       const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(invoiceRef)}/upo`;
-      await expect(client.get(upoPath)).rejects.toBeDefined();
+      // A pre-acceptance UPO fetch is a deterministic 404 → the shared
+      // non-network transport error, never a silent success.
+      await expect(client.get(upoPath)).rejects.toBeInstanceOf(KsefApiException);
     });
 
     if (opts.supportsSeededFailures) {
@@ -211,7 +221,7 @@ export function runKsefHttpClientContract(
 
       it('should surface a per-invoice rejection as a terminal 400', async () => {
         const seedable = client as SeedableKsefClient;
-        seedable.seedStatus(FAKE_KSEF_STATUS.REJECTED);
+        seedable.seedRejection();
         const { sessionRef, invoiceRef } = await openSubmitClose(client);
 
         // Rejection is sticky from the first read — no in-progress phase.
@@ -226,8 +236,17 @@ export function runKsefHttpClientContract(
         seedable.seedTransient(503, 1);
         const { sessionRef } = await openSubmitClose(client);
 
-        // The fake emits the 5xx once; a caller-side retry (the next read) recovers.
-        await expect(readStatusCode(client, sessionRef)).rejects.toBeDefined();
+        // The fake emits the 5xx once; a caller-side retry (the next read)
+        // recovers. The 5xx surfaces as the shared transport error carrying the
+        // server status — matching the real `KsefHttpClient`, which throws a
+        // `KsefApiException` (statusCode >= 500) for a 5xx, NOT the network
+        // exception (that is reserved for genuine DNS/TLS/timeout failures).
+        const transient = await readStatusCode(client, sessionRef).then(
+          () => null,
+          (e: unknown) => e,
+        );
+        expect(transient).toBeInstanceOf(KsefApiException);
+        expect((transient as KsefApiException).statusCode).toBeGreaterThanOrEqual(500);
 
         // After the transient burst, the session resumes its normal lifecycle.
         let accepted = false;
