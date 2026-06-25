@@ -5,8 +5,9 @@
  * bundle the HTTP client injects + rotates. Sequence (ksef-token flow), all
  * reconciled to the authoritative spec:
  *
- *   1. POST /auth/challenge            → { challenge, timestamp }
- *   2. encrypt (token|timestamp)       → RSA-OAEP under MF token-enc key;
+ *   1. POST /auth/challenge            → { challenge, timestamp, timestampMs? }
+ *   2. encrypt (token|timestampMs)     → RSA-OAEP under MF token-enc key
+ *      (timestamp as epoch ms — MF reference uses ToUnixTimeMilliseconds());
  *      build InitTokenAuthenticationRequest { challenge, contextIdentifier,
  *      encryptedToken, publicKeyId? }
  *   3. POST /auth/ksef-token           → { referenceNumber, authenticationToken }
@@ -54,8 +55,13 @@ export interface KsefTokenAuthMaterial {
   contextNip: string;
 }
 
-/** Polling parameters for the async session-issuance step. */
-const POLL_MAX_ATTEMPTS = 60;
+/**
+ * Polling parameters for the async session-issuance step. The wall-clock
+ * `POLL_DEADLINE_MS` is the binding limit; `POLL_MAX_ATTEMPTS` is only a runaway
+ * safety cap. At capped 5s backoff a 300s deadline is ~60 polls, so 200 leaves
+ * generous headroom while still bounding a pathological zero-delay loop.
+ */
+const POLL_MAX_ATTEMPTS = 200;
 const POLL_INITIAL_DELAY_MS = 500;
 const POLL_MAX_DELAY_MS = 5_000;
 const POLL_DEADLINE_MS = 300_000;
@@ -76,11 +82,17 @@ export class KsefAuthHandshakeService {
     this.logger.log(`KSeF auth handshake started (connection ${this.connectionId})`);
 
     const challenge = await this.requestChallenge();
+    const tsMs = challenge.timestampMs ?? Date.parse(challenge.timestamp);
+    if (!Number.isFinite(tsMs)) {
+      throw new KsefAuthenticationException(
+        `KSeF /auth/challenge returned an unparseable timestamp (${challenge.timestamp})`,
+      );
+    }
     const initRequest = await this.tokenEncryptor.buildInitRequest(
       material.token,
       material.contextNip,
       challenge.challenge,
-      challenge.timestamp,
+      String(tsMs),
     );
     const init = await this.submitKsefToken(initRequest);
     const authToken = init.authenticationToken.token;
@@ -92,6 +104,7 @@ export class KsefAuthHandshakeService {
   private async requestChallenge(): Promise<AuthChallenge> {
     const response = await this.httpClient.post<AuthChallenge>('/auth/challenge', undefined, {
       idempotent: true,
+      skipAuth: true,
     });
     if (!response.data.challenge || !response.data.timestamp) {
       throw new KsefAuthenticationException('KSeF /auth/challenge returned an incomplete challenge');
@@ -107,7 +120,7 @@ export class KsefAuthHandshakeService {
     const response = await this.httpClient.post<AuthInitResult>(
       '/auth/ksef-token',
       { ...initRequest },
-      { idempotent: true },
+      { idempotent: true, skipAuth: true },
     );
     if (!response.data.referenceNumber || !response.data.authenticationToken?.token) {
       throw new KsefAuthenticationException(
@@ -119,20 +132,21 @@ export class KsefAuthHandshakeService {
 
   /**
    * Poll the async operation-status endpoint until `status.code === 200`
-   * (success), with exponential backoff capped at `POLL_MAX_DELAY_MS` and a hard
-   * `POLL_DEADLINE_MS` wall. The poll is authenticated with the submit step's
-   * `authenticationToken`. Code `100` is still-in-progress; any other terminal
-   * code throws.
+   * (success), with exponential backoff capped at `POLL_MAX_DELAY_MS`. The
+   * binding limit is the `POLL_DEADLINE_MS` wall clock (`while Date.now() <
+   * deadline`); `POLL_MAX_ATTEMPTS` is only a runaway safety cap. The poll is
+   * authenticated with the submit step's `authenticationToken`. Code `100` is
+   * still-in-progress; any other terminal code throws.
    */
   private async pollUntilReady(referenceNumber: string, authToken: string): Promise<void> {
     const deadline = Date.now() + POLL_DEADLINE_MS;
     let delay = POLL_INITIAL_DELAY_MS;
-    const auth = { headers: { Authorization: `Bearer ${authToken}` } };
+    // The poll carries the short-lived authentication token explicitly, so skip
+    // the client's lazy handshake + access-token injection.
+    const auth = { headers: { Authorization: `Bearer ${authToken}` }, skipAuth: true };
 
-    for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-      if (Date.now() > deadline) {
-        break;
-      }
+    let attempt = 0;
+    while (Date.now() < deadline && attempt < POLL_MAX_ATTEMPTS) {
       const response = await this.httpClient.get<AuthOperationStatus>(
         `/auth/${encodeURIComponent(referenceNumber)}`,
         auth,
@@ -151,6 +165,7 @@ export class KsefAuthHandshakeService {
       );
       await this.sleep(delay);
       delay = Math.min(delay * 2, POLL_MAX_DELAY_MS);
+      attempt++;
     }
 
     throw new KsefAuthenticationException(
@@ -163,6 +178,7 @@ export class KsefAuthHandshakeService {
     // authenticationToken as Bearer.
     const response = await this.httpClient.post<AuthTokensResult>('/auth/token/redeem', undefined, {
       idempotent: true,
+      skipAuth: true,
       headers: { Authorization: `Bearer ${authToken}` },
     });
     return response.data;

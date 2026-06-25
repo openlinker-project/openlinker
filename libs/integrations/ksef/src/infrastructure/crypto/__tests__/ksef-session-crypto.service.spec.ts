@@ -53,6 +53,20 @@ describe('KsefSessionCryptoService', () => {
     expect(svc.decryptDocument(encrypted, ctx)).toBe(plaintext);
   });
 
+  it('should use a fresh IV per document (no CBC IV reuse under the session key)', async () => {
+    const svc = service();
+    const ctx = await svc.initializeSession();
+    const a = svc.encryptDocument('<Faktura>A</Faktura>', ctx);
+    const b = svc.encryptDocument('<Faktura>A</Faktura>', ctx);
+
+    // Distinct IVs → identical plaintext encrypts to distinct ciphertext.
+    expect(Array.from(a.iv)).not.toEqual(Array.from(b.iv));
+    expect(Array.from(a.ciphertext)).not.toEqual(Array.from(b.ciphertext));
+    // Each document still decrypts with its own carried IV.
+    expect(svc.decryptDocument(a, ctx)).toBe('<Faktura>A</Faktura>');
+    expect(svc.decryptDocument(b, ctx)).toBe('<Faktura>A</Faktura>');
+  });
+
   it('should bound the session expiry by the cert validity', async () => {
     const now = new Date('2026-12-31T23:50:00Z');
     const ctx = await service().initializeSession(now);
