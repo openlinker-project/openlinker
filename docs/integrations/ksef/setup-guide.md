@@ -154,19 +154,29 @@ The `providerInvoiceId` opaquely packs both the session and invoice references
 
 ### Status mapping
 
-The KSeF numeric status code maps onto the neutral `RegulatoryStatus`:
+The KSeF numeric status code maps onto the neutral `RegulatoryStatus`. These are
+KSeF **processing body-codes** (returned inside a status response), **not** HTTP
+status codes — so there is no range-banding (`5xx` etc.); each code is matched
+explicitly. Only `400` / `440` / `445` are treated as terminal-rejected, and
+unknown codes are deliberately non-terminal (keep polling):
 
 | KSeF `status.code` | Meaning | Neutral `regulatoryStatus` |
 |---|---|---|
 | `100`, `150` | Processing / in progress | `submitted` |
 | `200` | Success (KSeF number assigned) | `accepted` |
-| `400` (and other terminal business codes) | Rejected | `rejected` |
-| `5xx` | Transient server error | *(not reported — the job retries)* |
+| `400`, `440`, `445` | Validation / business rejection / session closed with zero valid invoices | `rejected` |
+| `550` | Transient processing error | *(not reported — null sentinel; the reconciliation job retries)* |
+| any other / unknown | Unrecognised code | `submitted` (keep polling; logs a warning) |
 
 `RegulatoryStatusValues`: `not-applicable | submitted | cleared | accepted | rejected`.
 KSeF performs validation + clearance in one act, so a `200` maps straight to the
 terminal-positive `accepted` (the `cleared` intermediate is reserved for regimes
 that split the two).
+
+> **Note — two distinct `100` codes.** The auth-poll handshake (above) uses
+> `status.code === 200` for success and `100` for in-progress. That auth `100`
+> (in-progress) is a **different code space** from the clearance `100`
+> (processing → `submitted`) in this table — don't conflate them.
 
 ### UPO
 
