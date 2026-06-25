@@ -7,9 +7,15 @@
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters/__tests__
  */
-import { BuyerProfile, InvoiceRecord, isRegulatoryStatusReader } from '@openlinker/core/invoicing';
+import {
+  BuyerProfile,
+  InvoiceRecord,
+  isCorrectionIssuer,
+  isRegulatoryStatusReader,
+} from '@openlinker/core/invoicing';
 import type {
   BuyerAddress,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   TaxIdentifier,
 } from '@openlinker/core/invoicing';
@@ -42,6 +48,19 @@ function command(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceComm
     buyer: buyer({ scheme: 'pl-nip', value: '1234567890' }),
     currency: 'PLN',
     lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+    ...overrides,
+  };
+}
+
+function correctionCommand(
+  overrides: Partial<IssueCorrectionCommand> = {},
+): IssueCorrectionCommand {
+  return {
+    connectionId: 'conn-1',
+    orderId: 'ol_order_1',
+    originalProviderInvoiceId: '100001',
+    reason: 'Zwrot towaru',
+    lines: [{ originalLineNumber: 1, newQuantity: 2, newUnitPriceGross: 99.0 }],
     ...overrides,
   };
 }
@@ -245,61 +264,107 @@ describe('SubiektInvoicingAdapter', () => {
   });
 
   describe('correction documents (#1229)', () => {
-    it('routes a credit-note through the bridge correction endpoint, not the issue endpoint', async () => {
+    it('is detected as a CorrectionIssuer', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isCorrectionIssuer(adapter)).toBe(true);
+    });
+
+    it('rejects a correction doctype on the plain issueInvoice path (corrections use issueCorrection)', async () => {
+      const { adapter } = makeAdapter();
+      await expect(
+        adapter.issueInvoice(command({ documentType: 'credit-note' })),
+      ).rejects.toBeInstanceOf(SubiektUnsupportedDocumentTypeError);
+    });
+
+    it('issues a quantity-only correction via the bridge correction endpoint', async () => {
       const { adapter, bridge } = makeAdapter();
-      const issueSpy = jest.spyOn(bridge, 'issueInvoice');
       const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
-      const record = await adapter.issueInvoice(command({ documentType: 'credit-note' }));
-      expect(correctionSpy).toHaveBeenCalledTimes(1);
-      expect(issueSpy).not.toHaveBeenCalled();
-      // Bridge-native correction document type: FK (faktura korygująca).
-      expect(correctionSpy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FK' }));
+      const record = await adapter.issueCorrection(
+        correctionCommand({ lines: [{ originalLineNumber: 1, newQuantity: 5 }] }),
+      );
+      // origId path arg parsed from originalProviderInvoiceId; body carries only nowaIlosc.
+      expect(correctionSpy).toHaveBeenCalledWith(100001, {
+        przyczyna: 'Zwrot towaru',
+        lines: [{ lp: 1, nowaIlosc: 5 }],
+      });
       expect(record.status).toBe('issued');
-      // Preserves the caller's neutral correction doctype.
-      expect(record.documentType).toBe('credit-note');
       // Distinct correction id space (300_000+).
       expect(record.providerInvoiceId).toBe('300001');
       expect(record.providerInvoiceNumber).toBe('FK-MOCK-001');
     });
 
-    it("routes a 'corrected' doctype through the correction endpoint too", async () => {
+    it('issues a price-only correction (nowaCena from newUnitPriceGross, no nowaIlosc)', async () => {
       const { adapter, bridge } = makeAdapter();
       const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
-      const record = await adapter.issueInvoice(command({ documentType: 'corrected' }));
-      expect(correctionSpy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FK' }));
-      expect(record.documentType).toBe('corrected');
-    });
-
-    it('passes the command idempotencyKey to the correction endpoint', async () => {
-      const { adapter, bridge } = makeAdapter();
-      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
-      await adapter.issueInvoice(command({ documentType: 'credit-note', idempotencyKey: 'idem-kor' }));
-      expect(correctionSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'idem-kor' }),
+      await adapter.issueCorrection(
+        correctionCommand({ lines: [{ originalLineNumber: 2, newUnitPriceGross: 80.5 }] }),
       );
+      expect(correctionSpy).toHaveBeenCalledWith(100001, {
+        przyczyna: 'Zwrot towaru',
+        lines: [{ lp: 2, nowaCena: 80.5 }],
+      });
     });
 
-    it('maps the bridge regulatoryStatus on a correction onto the neutral value', async () => {
+    it('issues a correction with BOTH quantity and price changes on a line', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      await adapter.issueCorrection(
+        correctionCommand({
+          lines: [{ originalLineNumber: 1, newQuantity: 3, newUnitPriceGross: 12.0 }],
+        }),
+      );
+      expect(correctionSpy).toHaveBeenCalledWith(100001, {
+        przyczyna: 'Zwrot towaru',
+        lines: [{ lp: 1, nowaIlosc: 3, nowaCena: 12.0 }],
+      });
+    });
+
+    it('rejects a non-positive-integer originalProviderInvoiceId without a bridge call', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      await expect(
+        adapter.issueCorrection(correctionCommand({ originalProviderInvoiceId: 'not-a-number' })),
+      ).rejects.toBeInstanceOf(SubiektInvoiceRejectedError);
+      expect(correctionSpy).not.toHaveBeenCalled();
+    });
+
+    it('echoes the command idempotencyKey onto the returned record', async () => {
       const { adapter } = makeAdapter();
-      // The fake returns regulatoryStatus 'sent' -> neutral 'submitted'.
-      const record = await adapter.issueInvoice(command({ documentType: 'credit-note' }));
+      const record = await adapter.issueCorrection(correctionCommand({ idempotencyKey: 'idem-kor' }));
+      expect(record.idempotencyKey).toBe('idem-kor');
+    });
+
+    it("defaults documentType to 'corrected' when the command omits it, honours an explicit one", async () => {
+      const { adapter } = makeAdapter();
+      const def = await adapter.issueCorrection(correctionCommand());
+      expect(def.documentType).toBe('corrected');
+      const explicit = await adapter.issueCorrection(
+        correctionCommand({ documentType: 'credit-note' }),
+      );
+      expect(explicit.documentType).toBe('credit-note');
+    });
+
+    it("defaults regulatoryStatus to 'submitted' (the korekta response carries none)", async () => {
+      const { adapter } = makeAdapter();
+      const record = await adapter.issueCorrection(correctionCommand());
       expect(record.regulatoryStatus).toBe('submitted');
+      expect(record.pdfUrl).toBeNull();
     });
 
     it("translates a failed correction (state:'failed') -> SubiektInvoiceRejectedError", async () => {
       const { adapter, bridge } = makeAdapter();
       bridge.seed({ state: 'failed' });
-      await expect(
-        adapter.issueInvoice(command({ documentType: 'credit-note' })),
-      ).rejects.toBeInstanceOf(SubiektInvoiceRejectedError);
+      await expect(adapter.issueCorrection(correctionCommand())).rejects.toBeInstanceOf(
+        SubiektInvoiceRejectedError,
+      );
     });
 
     it('translates a correction transport failure -> SubiektBridgeTransportError', async () => {
       const { adapter, bridge } = makeAdapter();
       bridge.seedFailure('bridge-unreachable');
-      await expect(
-        adapter.issueInvoice(command({ documentType: 'credit-note' })),
-      ).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+      await expect(adapter.issueCorrection(correctionCommand())).rejects.toBeInstanceOf(
+        SubiektBridgeTransportError,
+      );
     });
   });
 

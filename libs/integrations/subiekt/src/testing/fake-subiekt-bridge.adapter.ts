@@ -29,9 +29,10 @@ import {
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
-  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeKorektaRequest,
+  BridgeKorektaResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from '../bridge/subiekt-bridge.types';
@@ -68,23 +69,33 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     return Promise.resolve(response);
   }
 
-  issueCorrection(_req: BridgeIssueCorrectionRequest): Promise<BridgeIssueInvoiceResponse> {
+  issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse> {
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
     }
     this.issueCounter += 1;
-    const response: BridgeIssueInvoiceResponse = {
+    // `seed({ state })` exercises the failed-correction branch; `seed({
+    // regulatoryStatus })` only affects the status read-back below.
+    const state = this.issueOverride?.state ?? 'issued';
+    const response: BridgeKorektaResponse = {
       // Distinct id space (300_000+) so a correction never collides with the
       // original it corrects; still a numeric Subiekt document id.
       providerInvoiceId: 300_000 + this.issueCounter,
       providerInvoiceNumber: `FK-MOCK-${String(this.issueCounter).padStart(3, '0')}`,
-      state: 'issued',
-      regulatoryStatus: 'sent',
-      pdfUrl: null,
-      ...this.issueOverride,
+      korygowanyId: origId,
+      przyczyna: req.przyczyna ?? null,
+      state,
     };
-    this.issuedById.set(String(response.providerInvoiceId), response);
+    // Remember a status-shaped entry so a subsequent status read-back resolves
+    // (the korekta response itself carries no regulatoryStatus).
+    this.issuedById.set(String(response.providerInvoiceId), {
+      providerInvoiceId: response.providerInvoiceId,
+      providerInvoiceNumber: response.providerInvoiceNumber,
+      state,
+      regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
+      pdfUrl: null,
+    });
     return Promise.resolve(response);
   }
 

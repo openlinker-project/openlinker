@@ -76,7 +76,9 @@ function buildStatefulFetch(): jest.Mock {
       return okEnvelope(200, minted);
     }
 
-    if (method === 'POST' && path === '/api/invoices/corrections') {
+    const correctionMatch = /^\/api\/invoices\/(\d+)\/corrections$/.exec(path);
+    if (method === 'POST' && correctionMatch) {
+      const origId = Number(correctionMatch[1]);
       counter += 1;
       const minted: MintedInvoice = {
         providerInvoiceId: 300_000 + counter,
@@ -85,8 +87,16 @@ function buildStatefulFetch(): jest.Mock {
         regulatoryStatus: 'sent',
         pdfUrl: null,
       };
+      // Remember it (status-shaped) so a later status read-back resolves; the
+      // korekta `data` payload itself carries NO regulatoryStatus / pdfUrl.
       issued.set(String(minted.providerInvoiceId), minted);
-      return okEnvelope(200, minted);
+      return okEnvelope(200, {
+        providerInvoiceId: minted.providerInvoiceId,
+        providerInvoiceNumber: minted.providerInvoiceNumber,
+        korygowanyId: origId,
+        przyczyna: 'Zwrot towaru',
+        state: 'issued',
+      });
     }
 
     if (method === 'POST' && path === '/api/customers/upsert') {

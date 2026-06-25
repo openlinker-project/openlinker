@@ -28,9 +28,11 @@
 import { randomUUID } from 'crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
+  CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
   InvoicingPort,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   RegulatoryClearanceResult,
   RegulatoryStatusReader,
@@ -51,13 +53,11 @@ import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/sub
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import {
   deriveNeutralDocumentType,
-  isCorrectionDocumentType,
-  toBridgeCorrectionDocumentType,
   toBridgeDocumentType,
 } from '../mappers/subiekt-document-type.mapper';
 import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
 import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mapper';
-import { toBridgeLines } from '../mappers/subiekt-line.mapper';
+import { toBridgeKorektaLine, toBridgeLines } from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
 
 /** Provider identifier stamped onto returned `InvoiceRecord`s. */
@@ -65,8 +65,8 @@ export const SUBIEKT_PROVIDER_TYPE = 'subiekt';
 
 /**
  * Neutral document types this provider issues. `credit-note` / `corrected` (#1229)
- * are issued through the bridge correction endpoint (faktura korygująca); the rest
- * through the plain issue path.
+ * are issued through the dedicated `CorrectionIssuer.issueCorrection` capability
+ * (faktura korygująca); the rest through the plain `issueInvoice` path.
  */
 const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
   'invoice',
@@ -74,6 +74,9 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
   'credit-note',
   'corrected',
 ];
+
+/** Default neutral document type stamped on a correction record when the caller omits one. */
+const DEFAULT_CORRECTION_DOCUMENT_TYPE = 'corrected';
 
 /**
  * Read the retryability phase from a caught unreachable error, defaulting to the
@@ -84,7 +87,9 @@ function readRetryability(error: SubiektBridgeUnreachableError): SubiektTranspor
   return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
 }
 
-export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusReader {
+export class SubiektInvoicingAdapter
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+{
   constructor(
     private readonly bridge: SubiektBridgeClient,
     private readonly connectionId: string,
@@ -95,19 +100,16 @@ export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusR
    * Issue a fiscal document. Derives the neutral doctype (NIP rule) when absent,
    * maps neutral -> bridge-native, passes `idempotencyKey`, and on success builds
    * a transient issued `InvoiceRecord`. A correction doctype (`credit-note` /
-   * `corrected`, #1229) is routed to the bridge correction endpoint instead.
+   * `corrected`, #1229) is NOT issuable here — `toBridgeDocumentType` throws
+   * `SubiektUnsupportedDocumentTypeError` for it; corrections go through the
+   * dedicated `issueCorrection` capability.
    */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
     // OWN the NIP -> faktura/paragon mechanic: derive the NEUTRAL doctype then
     // map it to the bridge-native string. Core never sees faktura/paragon/NIP.
+    // A correction doctype here is a clean rejection (corrections use the
+    // dedicated capability, not the plain issue path, #1229).
     const neutralDocumentType = deriveNeutralDocumentType(cmd.buyer, cmd.documentType);
-
-    // A correction document (faktura korygująca) goes through the dedicated
-    // correction endpoint — never the plain issue path (#1229).
-    if (isCorrectionDocumentType(neutralDocumentType)) {
-      return this.issueCorrection(cmd, neutralDocumentType);
-    }
-
     const bridgeDocumentType = toBridgeDocumentType(neutralDocumentType);
 
     const idempotencyKey = cmd.idempotencyKey;
@@ -164,38 +166,39 @@ export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusR
   }
 
   /**
-   * Issue a correction document (faktura korygująca) for an order, against its
-   * already-issued original (#1229). The neutral command carries only `orderId`,
-   * not the original provider id, so the bridge resolves the original from
-   * `orderId` (`originalProviderInvoiceId` is left for the future-id-carrying
-   * caller). Maps neutral correction doctype -> bridge-native `FK`, places the
-   * `idempotencyKey` BEFORE the call (fiscal dedup), and on success builds a
-   * transient issued `InvoiceRecord` carrying the ORIGINAL neutral correction
-   * doctype (`credit-note` / `corrected`).
+   * Issue a correction document (faktura korygująca) against an already-issued
+   * original (#1229). Maps the neutral `IssueCorrectionCommand` to the real bridge
+   * korekta contract (`POST /api/invoices/{origId}/corrections`): the corrected
+   * original is identified by its numeric id (parsed from
+   * `originalProviderInvoiceId`), the body carries `przyczyna` + the per-line
+   * `{ lp, nowaIlosc?, nowaCena? }` korekta lines. Places the `idempotencyKey`
+   * BEFORE the call is irrelevant here — the korekta body has no idempotency field
+   * (gap below); we still echo it onto the returned record.
    *
-   * EXTERNAL DEPENDENCY: the live bridge correction endpoint is
-   * openlinker-subiekt#6 — not yet implemented. The adapter codes against the
-   * frozen `SubiektBridgeClient.issueCorrection` contract; the fake models it.
+   * The korekta response carries NO `regulatoryStatus` — the KSeF status of a
+   * correction is read back later via `RegulatoryStatusReader` (#1230), so we
+   * default the record's `regulatoryStatus` to the non-terminal `'submitted'`.
+   *
+   * A non-positive-integer `originalProviderInvoiceId` is a terminal, fiscal-safe
+   * rejection (we cannot route the correction) — `SubiektInvoiceRejectedError`.
    */
-  private async issueCorrection(
-    cmd: IssueInvoiceCommand,
-    neutralDocumentType: DocumentType,
-  ): Promise<InvoiceRecord> {
-    const bridgeDocumentType = toBridgeCorrectionDocumentType(neutralDocumentType);
-    const idempotencyKey = cmd.idempotencyKey;
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+    const origId = Number(cmd.originalProviderInvoiceId);
+    if (!Number.isInteger(origId) || origId <= 0) {
+      throw new SubiektInvoiceRejectedError(
+        `originalProviderInvoiceId is not a positive integer Subiekt document id: ${String(
+          cmd.originalProviderInvoiceId,
+        )}`,
+      );
+    }
 
-    // TODO(core): the correction reason (przyczyna korekty) and the original provider
-    // invoice id can't reach Subiekt today — the neutral IssueInvoiceCommand carries
-    // neither; surfacing them needs a neutral-command extension (the bridge already
-    // resolves the original from orderId).
+    const idempotencyKey = cmd.idempotencyKey;
+    const documentType = cmd.documentType ?? DEFAULT_CORRECTION_DOCUMENT_TYPE;
+
     try {
-      const response = await this.bridge.issueCorrection({
-        documentType: bridgeDocumentType,
-        currency: cmd.currency,
-        orderId: cmd.orderId,
-        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-        buyer: toBridgeBuyer(cmd.buyer),
-        lines: toBridgeLines(cmd.lines),
+      const response = await this.bridge.issueCorrection(origId, {
+        ...(cmd.reason !== undefined ? { przyczyna: cmd.reason } : {}),
+        lines: cmd.lines.map(toBridgeKorektaLine),
       });
 
       if (response.state === 'failed') {
@@ -206,20 +209,25 @@ export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusR
 
       const now = new Date();
       return new InvoiceRecord(
+        // Transient id — the core InvoiceService persists and may overwrite it.
         randomUUID(),
         this.connectionId,
         cmd.orderId,
         SUBIEKT_PROVIDER_TYPE,
-        // Preserve the caller's neutral correction doctype (credit-note/corrected).
-        neutralDocumentType,
+        documentType,
         'issued',
         String(response.providerInvoiceId),
         response.providerInvoiceNumber,
-        toNeutralRegulatoryStatus(response.regulatoryStatus),
+        // The korekta response carries no regulatory status; default to the
+        // non-terminal 'submitted' so the #1230 reconcile refreshes it later.
+        'submitted',
+        // clearanceReference — populated by a later RegulatoryStatusReader read.
         null,
         idempotencyKey ?? null,
-        response.pdfUrl,
+        // The korekta response carries no pdfUrl.
+        null,
         now,
+        // errorMessage
         null,
         now,
         now,

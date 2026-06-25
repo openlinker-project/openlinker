@@ -39,9 +39,10 @@ import {
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
-  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeKorektaRequest,
+  BridgeKorektaResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
   BridgeUpsertCustomerRequest,
@@ -90,10 +91,10 @@ function classifyRetryability(code: string | undefined): SubiektTransportRetryab
 export const SUBIEKT_BRIDGE_ENDPOINTS = {
   issueInvoice: '/api/invoices',
   /**
-   * Correction (faktura korygująca) endpoint. EXTERNAL DEPENDENCY: the .NET route
-   * is openlinker-subiekt#6 — not yet implemented on the live bridge.
+   * Correction (faktura korygująca) endpoint, templated by the ORIGINAL document's
+   * numeric id. The REAL bridge route is `POST /api/invoices/{origId}/corrections`.
    */
-  issueCorrection: '/api/invoices/corrections',
+  issueCorrection: (origId: number): string => `/api/invoices/${origId}/corrections`,
   upsertCustomer: '/api/customers/upsert',
   /** Templated by `providerInvoiceId`. */
   invoiceStatus: (providerInvoiceId: string): string =>
@@ -165,9 +166,9 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     );
   }
 
-  async issueCorrection(req: BridgeIssueCorrectionRequest): Promise<BridgeIssueInvoiceResponse> {
-    return this.postJson<BridgeIssueInvoiceResponse>(
-      SUBIEKT_BRIDGE_ENDPOINTS.issueCorrection,
+  async issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse> {
+    return this.postJson<BridgeKorektaResponse>(
+      SUBIEKT_BRIDGE_ENDPOINTS.issueCorrection(origId),
       req,
     );
   }

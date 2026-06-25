@@ -44,11 +44,12 @@ export const BridgeInvoiceStateValues = ['issued', 'failed'] as const;
 export type BridgeInvoiceState = (typeof BridgeInvoiceStateValues)[number];
 
 /**
- * Bridge-native document type. `FV` = faktura, `PA` = paragon, `FK` = faktura
- * korygująca (the correction document). `FK` is only ever sent on the dedicated
- * correction endpoint (`issueCorrection`), never on the plain issue path.
+ * Bridge-native document type. `FV` = faktura, `PA` = paragon. The correction
+ * document (faktura korygująca) is NOT a `documentType` value on the wire — the
+ * correction endpoint (`POST /api/invoices/{origId}/corrections`) is identified by
+ * its route + body shape (`BridgeKorektaRequest`), not by a doctype discriminator.
  */
-export const BridgeDocumentTypeValues = ['FV', 'PA', 'FK'] as const;
+export const BridgeDocumentTypeValues = ['FV', 'PA'] as const;
 export type BridgeDocumentType = (typeof BridgeDocumentTypeValues)[number];
 
 /**
@@ -129,39 +130,43 @@ export interface BridgeIssueInvoiceResponse {
 }
 
 /**
- * Issue-CORRECTION request — the bridge's `CreateCorrectionRequestDto`
- * (EXTERNAL DEPENDENCY: the .NET endpoint is openlinker-subiekt#6, NOT yet
- * implemented). Issues a faktura korygująca (`documentType: 'FK'`) against an
- * already-issued original document.
- *
- * The original is resolved by the bridge from EITHER `originalProviderInvoiceId`
- * (the numeric Subiekt document id of the original, as a string) WHEN the caller
- * has it, OR `orderId` (the order whose original document is corrected) — the
- * neutral OL command carries `orderId` but not the provider id, so the bridge
- * MUST accept the `orderId`-only form and resolve the original itself.
- *
- * `reason` is the free-text correction reason (`przyczyna korekty`); `lines` are
- * the corrected lines (post-correction values). The buyer is carried INLINE
- * (same self-sufficient mode as the issue path). `idempotencyKey` makes a retried
- * correction return the SAME document.
+ * One corrected line on a correction request — the bridge's korekta line shape.
+ * `lp` is the 1-based position of the original line being corrected; `nowaIlosc`
+ * is the new quantity, `nowaCena` the new GROSS unit price. At least one of
+ * `nowaIlosc`/`nowaCena` must be present (a line that changes neither is a no-op).
  */
-export interface BridgeIssueCorrectionRequest {
-  /** Always `'FK'` (faktura korygująca) for a correction — narrowed from the full union. */
-  documentType: 'FK';
-  currency: string;
-  orderId?: string;
-  idempotencyKey?: string;
-  /** ISO-8601 issue date; the bridge defaults to "now" when omitted. */
-  issueDate?: string;
-  /**
-   * Numeric Subiekt document id of the ORIGINAL document (as a string), when the
-   * caller has it. Omit to have the bridge resolve the original from `orderId`.
-   */
-  originalProviderInvoiceId?: string;
+export interface BridgeKorektaLine {
+  lp: number;
+  nowaIlosc?: number;
+  nowaCena?: number;
+}
+
+/**
+ * Issue-CORRECTION (faktura korygująca) request body — the REAL bridge contract:
+ * `POST /api/invoices/{origId}/corrections`. The corrected original is identified
+ * by the `{origId}` path segment (a positive integer), NOT in the body. The body
+ * carries an optional free-text `przyczyna` (correction reason) and the `lines`
+ * to correct.
+ */
+export interface BridgeKorektaRequest {
   /** Free-text correction reason (`przyczyna korekty`). */
-  reason?: string;
-  buyer?: BridgeBuyer;
-  lines: BridgeLine[];
+  przyczyna?: string;
+  lines: BridgeKorektaLine[];
+}
+
+/**
+ * Issue-CORRECTION response — the `data` payload of the bridge's `ResponseEnvelope`
+ * for `POST /api/invoices/{origId}/corrections`. Distinct from the issue-invoice
+ * response: it carries `korygowanyId` (the corrected original's numeric id) and a
+ * nullable `przyczyna`, and it carries NEITHER a `regulatoryStatus` NOR a `pdfUrl`
+ * (a correction's KSeF status is read back later via the status endpoint).
+ */
+export interface BridgeKorektaResponse {
+  providerInvoiceId: number;
+  providerInvoiceNumber: string;
+  korygowanyId: number;
+  przyczyna: string | null;
+  state: BridgeInvoiceState;
 }
 
 /**

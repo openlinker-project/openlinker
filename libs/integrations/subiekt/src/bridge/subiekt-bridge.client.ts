@@ -14,9 +14,10 @@
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
-  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeKorektaRequest,
+  BridgeKorektaResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from './subiekt-bridge.types';
@@ -27,11 +28,11 @@ export interface SubiektBridgeClient {
 
   /**
    * Issue a correction document (faktura korygująca) against an already-issued
-   * original. Returns the same issued-document shape as `issueInvoice` and shares
-   * its failure modes. EXTERNAL DEPENDENCY: the live .NET endpoint is
-   * openlinker-subiekt#6 (not yet implemented).
+   * original, identified by its numeric `origId`. Returns the korekta-specific
+   * response shape and shares `issueInvoice`'s failure modes. The REAL bridge
+   * route is `POST /api/invoices/{origId}/corrections`.
    */
-  issueCorrection(req: BridgeIssueCorrectionRequest): Promise<BridgeIssueInvoiceResponse>;
+  issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse>;
 
   /** Create-or-update a customer (kontrahent) in Subiekt. */
   upsertCustomer(req: BridgeUpsertCustomerRequest): Promise<BridgeUpsertCustomerResponse>;

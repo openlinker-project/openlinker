@@ -18,8 +18,8 @@ import type { SubiektBridgeClient } from '../bridge/subiekt-bridge.client';
 import { BridgeRegulatoryStatusValues } from '../bridge/subiekt-bridge.types';
 import type {
   BridgeBuyer,
-  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
+  BridgeKorektaRequest,
   BridgeUpsertCustomerRequest,
 } from '../bridge/subiekt-bridge.types';
 
@@ -85,23 +85,17 @@ export function sampleIssueInvoiceRequest(
 }
 
 /**
- * A representative issue-CORRECTION request for contract / adapter tests — shaped
- * like the real bridge `CreateCorrectionRequestDto` (`documentType: 'FK'`, an
- * `originalProviderInvoiceId` reference, inline `buyer`, Polish line fields).
- * EXTERNAL DEPENDENCY: the live endpoint is openlinker-subiekt#6.
+ * A representative korekta (faktura korygująca) request BODY for contract /
+ * adapter tests — shaped like the REAL bridge `POST /api/invoices/{origId}/
+ * corrections` body (`przyczyna` + `{ lp, nowaIlosc?, nowaCena? }` lines). The
+ * corrected original's id is a PATH argument, not part of this body.
  */
-export function sampleIssueCorrectionRequest(
-  overrides: Partial<BridgeIssueCorrectionRequest> = {},
-): BridgeIssueCorrectionRequest {
+export function sampleKorektaRequest(
+  overrides: Partial<BridgeKorektaRequest> = {},
+): BridgeKorektaRequest {
   return {
-    documentType: 'FK',
-    currency: 'PLN',
-    orderId: 'ol_order_sample',
-    idempotencyKey: 'idem-correction-sample',
-    originalProviderInvoiceId: '100001',
-    reason: 'Zwrot towaru',
-    buyer: sampleBridgeBuyer(),
-    lines: [{ ilosc: 1, cenaBrutto: 123.0, stawkaVAT: '23', name: 'Widget' }],
+    przyczyna: 'Zwrot towaru',
+    lines: [{ lp: 1, nowaIlosc: 2, nowaCena: 99.0 }],
     ...overrides,
   };
 }
@@ -127,21 +121,23 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
     });
 
-    it('should issue a correction document with a provider id, number and a known regulatory status', async () => {
-      const res = await client.issueCorrection(sampleIssueCorrectionRequest());
+    it('should issue a correction document with a provider id, number and the corrected original id', async () => {
+      const res = await client.issueCorrection(100001, sampleKorektaRequest());
       expect(res.providerInvoiceId).toBeTruthy();
       expect(typeof res.providerInvoiceId).toBe('number');
       expect(res.providerInvoiceNumber).toBeTruthy();
       expect(res.state).toBe('issued');
-      expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
+      // The korekta response echoes the corrected original's id from the path.
+      expect(res.korygowanyId).toBe(100001);
     });
 
     it('should read back the state of a just-issued correction document', async () => {
-      const corrected = await client.issueCorrection(sampleIssueCorrectionRequest());
+      const corrected = await client.issueCorrection(100001, sampleKorektaRequest());
       const status = await client.getInvoiceStatus({
         providerInvoiceId: String(corrected.providerInvoiceId),
       });
       expect(status.state).toBe('issued');
+      // The KSeF status is read back here (the korekta response carries none).
       expect(BridgeRegulatoryStatusValues).toContain(status.regulatoryStatus);
     });
 
