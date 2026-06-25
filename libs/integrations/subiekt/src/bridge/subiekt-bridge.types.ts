@@ -146,8 +146,8 @@ export interface BridgeIssueInvoiceResponse {
  * correction return the SAME document.
  */
 export interface BridgeIssueCorrectionRequest {
-  /** Always `'FK'` (faktura korygująca) for a correction. */
-  documentType: BridgeDocumentType;
+  /** Always `'FK'` (faktura korygująca) for a correction — narrowed from the full union. */
+  documentType: 'FK';
   currency: string;
   orderId?: string;
   idempotencyKey?: string;

@@ -82,7 +82,7 @@ export function isCorrectionDocumentType(neutral: string): boolean {
  * Subiekt correction document.
  * @throws SubiektUnsupportedDocumentTypeError when `neutral` is not a correction type.
  */
-export function toBridgeCorrectionDocumentType(neutral: string): BridgeDocumentType {
+export function toBridgeCorrectionDocumentType(neutral: string): 'FK' {
   if (isCorrectionDocumentType(neutral)) {
     return 'FK';
   }

@@ -184,6 +184,10 @@ export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusR
     const bridgeDocumentType = toBridgeCorrectionDocumentType(neutralDocumentType);
     const idempotencyKey = cmd.idempotencyKey;
 
+    // TODO(core): the correction reason (przyczyna korekty) and the original provider
+    // invoice id can't reach Subiekt today — the neutral IssueInvoiceCommand carries
+    // neither; surfacing them needs a neutral-command extension (the bridge already
+    // resolves the original from orderId).
     try {
       const response = await this.bridge.issueCorrection({
         documentType: bridgeDocumentType,

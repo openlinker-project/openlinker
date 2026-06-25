@@ -385,6 +385,32 @@ describe('SubiektInvoicingAdapter', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
+    it('maps an unknown-to-bridge providerInvoiceId onto neutral not-applicable', async () => {
+      const { adapter } = makeAdapter();
+      // Non-null providerInvoiceId the fake never issued -> bridge reads back
+      // { state: 'failed', regulatoryStatus: 'none' } -> neutral 'not-applicable'.
+      const record = new InvoiceRecord(
+        'rec-unknown',
+        'conn-1',
+        'ol_order_1',
+        SUBIEKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        '999999',
+        'FV-UNKNOWN-1',
+        'submitted',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+      const result = await adapter.getClearanceStatus(record);
+      expect(result.regulatoryStatus).toBe('not-applicable');
+    });
+
     it('translates a transport failure during a status read', async () => {
       const { adapter, bridge } = makeAdapter();
       const issued = await adapter.issueInvoice(command());
