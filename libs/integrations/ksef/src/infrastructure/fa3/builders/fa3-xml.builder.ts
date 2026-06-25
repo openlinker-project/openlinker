@@ -39,31 +39,92 @@ import { serializeXml, XML_ATTR_PREFIX, type XmlNode, type XmlNodeObject } from 
 const MONEY_SCALE = 2;
 
 /**
- * FA(3) VAT bands carrying a net base (`P_13_x`) + VAT amount (`P_14_x`). Only
- * the positive-rate bands aggregate VAT; zero-rate / exempt / reverse-charge map
- * to their own net-only band. Each entry pins the `P_12` value to the band index
- * and the percentage used to split gross into net + VAT.
+ * Max fraction digits FA(3) renders a quantity (`P_8B`, type `TIlosci`) to.
+ * `TIlosci` = decimal, ≤22 total digits, ≤6 fraction digits (XSD line ~1245).
  */
-const VAT_BANDS: ReadonlyArray<{ p12: Fa3P12Value; index: number; rate: number }> = [
-  { p12: '23', index: 1, rate: 0.23 },
-  { p12: '8', index: 2, rate: 0.08 },
-  { p12: '5', index: 3, rate: 0.05 },
-  { p12: '0 KR', index: 6, rate: 0 },
-  { p12: '0 WDT', index: 5, rate: 0 },
-  { p12: '0 EX', index: 4, rate: 0 },
-  { p12: 'zw', index: 7, rate: 0 },
-  { p12: 'oo', index: 8, rate: 0 },
-  { p12: 'np', index: 9, rate: 0 },
+const QUANTITY_SCALE = 6;
+
+/**
+ * FA(3) VAT-band → target element(s) map, keyed by `P_12`. These are **fixed
+ * semantic bands** in the XSD (not free indices): each `P_12` value maps to a
+ * specific `P_13_x` net-base element, and positive-rate bands additionally carry
+ * a `P_14_x` VAT-amount element. The XSD declares the bands in this order
+ * (P_13_1, P_13_2, P_13_3, then the standalone P_13_6_1/6_2/6_3, P_13_7, P_13_8,
+ * P_13_10, …); `BAND_EMIT_ORDER` below pins the emit order independently of the
+ * `P_12` enum order so the document is always XSD-ordered.
+ *
+ * Legal mapping (verified against the vendored FA(3) v1-0E XSD annotations):
+ * - `23`/`8`/`5`         → standard / reduced-1 / reduced-2 (net + VAT)
+ * - `0 KR`               → domestic 0% (P_13_6_1, net only)
+ * - `0 WDT`              → intra-EU supply 0% (P_13_6_2, net only)
+ * - `0 EX`               → export 0% (P_13_6_3, net only)
+ * - `zw`                 → exempt (P_13_7, net only)
+ * - `np`                 → supply outside PL territory (P_13_8, net only)
+ * - `oo`                 → domestic reverse charge (P_13_10, net only)
+ */
+const VAT_BANDS: Readonly<Record<Fa3P12Value, { net: string; vat?: string; rate: number }>> = {
+  '23': { net: 'P_13_1', vat: 'P_14_1', rate: 0.23 },
+  '8': { net: 'P_13_2', vat: 'P_14_2', rate: 0.08 },
+  '5': { net: 'P_13_3', vat: 'P_14_3', rate: 0.05 },
+  '0 KR': { net: 'P_13_6_1', rate: 0 },
+  '0 WDT': { net: 'P_13_6_2', rate: 0 },
+  '0 EX': { net: 'P_13_6_3', rate: 0 },
+  zw: { net: 'P_13_7', rate: 0 },
+  np: { net: 'P_13_8', rate: 0 },
+  oo: { net: 'P_13_10', rate: 0 },
+};
+
+/**
+ * XSD-declared emit order of the net-base elements (P_13_1, P_13_2, P_13_3,
+ * P_13_6_1, P_13_6_2, P_13_6_3, P_13_7, P_13_8, P_13_9, P_13_10, P_13_11). We
+ * only populate the bands the builder supports today; the others stay absent
+ * (all `minOccurs="0"`). The list pins the relative order regardless of which
+ * bands a given invoice actually fills.
+ */
+const BAND_EMIT_ORDER: ReadonlyArray<Fa3P12Value> = [
+  '23',
+  '8',
+  '5',
+  '0 KR',
+  '0 WDT',
+  '0 EX',
+  'zw',
+  'np',
+  'oo',
 ];
 
-/** Round a number to 2dp and render as a fixed-decimal string. */
+/**
+ * Round a number to 2dp and render as a fixed-decimal string. Rounding is
+ * arithmetic half-up (`Math.round` on the cent-scaled value). NOTE: half-up at
+ * 2dp is provisional pending KSeF per-band rounding confirmation (whether VAT is
+ * rounded per-line or per-band, and the exact tie-break) — C3+ reconciliation.
+ */
 function money(value: number): string {
   return (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(MONEY_SCALE);
 }
 
-/** Render a line quantity (`P_8B`) — kept as the raw numeric string. */
+/**
+ * Per-line net (`P_11` = "wartość sprzedaży NETTO"). For a positive-rate band
+ * the gross line is divided out (`net = gross / (1 + rate)`); zero-rate / exempt
+ * / reverse-charge bands carry net = gross (no embedded VAT). This is the single
+ * source of per-line net so the line `P_11` and the band `P_13_x` aggregation
+ * can never drift.
+ */
+function lineNet(line: Fa3Line): number {
+  const band = VAT_BANDS[line.p12];
+  const gross = line.quantity * line.unitPriceGross;
+  return band.rate > 0 ? gross / (1 + band.rate) : gross;
+}
+
+/**
+ * Render a line quantity (`P_8B`, `TIlosci`). Fixed-decimal to avoid exponential
+ * notation for large quantities; trailing zeros (and a bare trailing dot) are
+ * trimmed so an integer quantity renders as `2`, not `2.000000`. Contract:
+ * decimal string, ≤6 fraction digits — matching `TIlosci`.
+ */
 function quantity(value: number): string {
-  return String(value);
+  const fixed = value.toFixed(QUANTITY_SCALE);
+  return fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
 }
 
 /** Seller / Podmiot1 address → FA(3) `Adres` element. */
@@ -98,42 +159,48 @@ function lineNode(line: Fa3Line, ordinal: number): XmlNodeObject {
     NrWierszaFa: ordinal,
     P_7: line.name,
     P_8B: quantity(line.quantity),
-    P_11: money(line.quantity * line.unitPriceGross),
+    // P_11 is the line's NET sale value — never the gross. Shared with the
+    // band aggregation via `lineNet` so the two can't diverge.
+    P_11: money(lineNet(line)),
     P_12: line.p12,
   };
 }
 
 /**
- * Aggregate per-line gross into FA(3) VAT-band totals. For positive-rate bands a
- * gross line is split into net (`P_13_x`) + VAT (`P_14_x`); zero/exempt bands
- * carry net only. Returns the populated band fields plus the `P_15` grand total.
+ * Aggregate per-line nets into FA(3) VAT-band totals. Each `P_12` maps to a
+ * fixed `P_13_x` net element (via `VAT_BANDS`); positive-rate bands additionally
+ * accumulate the VAT delta into their `P_14_x`. Bands are emitted in
+ * XSD-declared order (`BAND_EMIT_ORDER`) with each `P_13_x` immediately followed
+ * by its `P_14_x` when present, matching the schema's per-rate sequence. Returns
+ * the populated band fields plus the `P_15` grand total (sum of gross lines).
  */
 function aggregateTotals(lines: Fa3Line[]): { bands: XmlNodeObject; grandTotal: number } {
-  const netByBand = new Map<number, number>();
-  const vatByBand = new Map<number, number>();
+  const netByBand = new Map<Fa3P12Value, number>();
+  const vatByBand = new Map<Fa3P12Value, number>();
   let grandTotal = 0;
 
   for (const line of lines) {
-    const band = VAT_BANDS.find((b) => b.p12 === line.p12);
-    if (band === undefined) {
-      continue;
-    }
+    const band = VAT_BANDS[line.p12];
     const gross = line.quantity * line.unitPriceGross;
-    const net = band.rate > 0 ? gross / (1 + band.rate) : gross;
-    const vat = gross - net;
-    netByBand.set(band.index, (netByBand.get(band.index) ?? 0) + net);
-    if (band.rate > 0) {
-      vatByBand.set(band.index, (vatByBand.get(band.index) ?? 0) + vat);
+    const net = lineNet(line);
+    netByBand.set(line.p12, (netByBand.get(line.p12) ?? 0) + net);
+    if (band.vat !== undefined) {
+      vatByBand.set(line.p12, (vatByBand.get(line.p12) ?? 0) + (gross - net));
     }
     grandTotal += gross;
   }
 
   const bands: XmlNodeObject = {};
-  for (const [index, net] of netByBand) {
-    bands[`P_13_${index}`] = money(net);
-  }
-  for (const [index, vat] of vatByBand) {
-    bands[`P_14_${index}`] = money(vat);
+  for (const p12 of BAND_EMIT_ORDER) {
+    const net = netByBand.get(p12);
+    if (net === undefined) {
+      continue;
+    }
+    const target = VAT_BANDS[p12];
+    bands[target.net] = money(net);
+    if (target.vat !== undefined) {
+      bands[target.vat] = money(vatByBand.get(p12) ?? 0);
+    }
   }
   return { bands, grandTotal };
 }
