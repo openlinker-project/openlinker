@@ -1,5 +1,5 @@
 /**
- * InvoiceService — unit tests
+ * InvoiceService — unit tests (#1224 W1+W2)
  *
  * Mocks `InvoiceRecordRepositoryPort`, `IIntegrationsService`, and an
  * `InvoicingPort` adapter. `getCapabilityAdapter` resolves the adapter mock.
@@ -7,6 +7,7 @@
  * per-connection adapter resolution, issued/failed updateOutcome, Duplicate
  * create-race re-read) plus documentType pass-through, sanitization, and the
  * accepted-risk paths (R1 keyless, R2/R3 failed-row retry).
+ * W2: content snapshot tests — issued-document content captured at issue time.
  *
  * @module libs/core/src/invoicing/application/services
  */
@@ -16,7 +17,11 @@ import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
-import type { IssueInvoiceCommand } from '../../domain/types/invoicing.types';
+import type {
+  CreateInvoiceRecordInput,
+  IssueInvoiceCommand,
+  IssuedDocumentSeller,
+} from '../../domain/types/invoicing.types';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
 import {
   InvoiceService,
@@ -27,6 +32,13 @@ import {
 const CONNECTION = 'conn-1';
 const ORDER = 'order-1';
 const KEY = 'idem-key-1';
+
+// W2 SELLER constant used in content-snapshot tests.
+const SELLER: IssuedDocumentSeller = {
+  name: 'Acme Sp. z o.o.',
+  taxId: { scheme: 'pl-nip', value: '1234567890' },
+  address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
+};
 
 function makeBuyer(): BuyerProfile {
   return new BuyerProfile(
@@ -45,6 +57,32 @@ function makeCmd(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceComm
     currency: 'PLN',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 12.3, taxRate: '23' }],
     idempotencyKey: KEY,
+    ...overrides,
+  };
+}
+
+// W2 buyer() — private buyer with no tax id, multi-line order used in content-snapshot tests.
+function buyer(): BuyerProfile {
+  return new BuyerProfile(
+    'Jan Kowalski',
+    null,
+    { line1: 'ul. Kupna 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+    'private',
+  );
+}
+
+// W2 command() — multi-line order used in content-snapshot tests.
+function command(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceCommand {
+  return {
+    connectionId: 'conn-1',
+    orderId: 'ol_order_123',
+    buyer: buyer(),
+    currency: 'PLN',
+    lines: [
+      { name: 'Widget', quantity: 2, unitPriceGross: 123, taxRate: '23' },
+      { name: 'Gadget', quantity: 1, unitPriceGross: 50, taxRate: '23' },
+      { name: 'Book', quantity: 1, unitPriceGross: 105, taxRate: '5' },
+    ],
     ...overrides,
   };
 }
@@ -95,6 +133,29 @@ function makeIssuedFromAdapter(): InvoiceRecord {
   });
 }
 
+// W2 adapterRecord() — minimal issued record used in content-snapshot tests.
+function adapterRecord(): InvoiceRecord {
+  const issuedAt = new Date('2026-04-01T12:00:00Z');
+  return new InvoiceRecord(
+    '',
+    'conn-1',
+    'ol_order_123',
+    'ksef',
+    'invoice',
+    'issued',
+    'SESSION:INVOICE',
+    null,
+    'submitted',
+    null,
+    null,
+    null,
+    issuedAt,
+    null,
+    issuedAt,
+    issuedAt,
+  );
+}
+
 describe('InvoiceService', () => {
   let repo: jest.Mocked<InvoiceRecordRepositoryPort>;
   let integrations: jest.Mocked<IIntegrationsService>;
@@ -106,6 +167,7 @@ describe('InvoiceService', () => {
       create: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
+      findLatestByOrderId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
       claimForIssue: jest.fn(),
@@ -588,6 +650,68 @@ describe('InvoiceService', () => {
       // condition; this test pins the contract so a regression is caught in unit
       // tests too, not only at boot.
       expect(ISSUING_LEASE_MS).toBeGreaterThan(MAX_SUPPORTED_PROVIDER_TIMEOUT_MS);
+    });
+  });
+
+  // W2: content-snapshot tests — issued-document content captured at issue time.
+  describe('issueInvoice content snapshot (W2)', () => {
+    it('should resolve the Invoicing adapter for the connection', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
+      repo.create.mockImplementation((input) =>
+        Promise.resolve(new InvoiceRecord(
+          'rec-1', input.connectionId, input.orderId, input.providerType, input.documentType,
+          input.status, input.providerInvoiceId ?? null, input.providerInvoiceNumber ?? null,
+          input.regulatoryStatus ?? 'not-applicable', input.clearanceReference ?? null,
+          input.idempotencyKey, input.pdfUrl ?? null, input.issuedAt ?? null,
+          input.errorMessage ?? null, new Date(), new Date(), input.documentContent ?? null,
+        )),
+      );
+
+      await service.issueInvoice(command());
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'Invoicing');
+    });
+
+    it('should snapshot the issued-document content with computed VAT and the adapter seller', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
+      let persisted: CreateInvoiceRecordInput | undefined;
+      repo.create.mockImplementation((input) => {
+        persisted = input;
+        return Promise.resolve(adapterRecord());
+      });
+
+      await service.issueInvoice(command());
+
+      const snapshotContent = persisted?.documentContent;
+      expect(snapshotContent).toBeDefined();
+      expect(snapshotContent?.seller).toEqual(SELLER);
+      expect(snapshotContent?.buyer.name).toBe('Jan Kowalski');
+      expect(snapshotContent?.currency).toBe('PLN');
+      expect(snapshotContent?.issueDate).toBe('2026-04-01T12:00:00.000Z');
+
+      // Line 1: 2 * 123 = 246 gross @23% → net 200, vat 46.
+      expect(snapshotContent?.lines[0]).toEqual({
+        name: 'Widget', quantity: 2, unitNet: 100, taxRate: '23', net: 200, vat: 46, gross: 246,
+      });
+      // Totals across all three lines (net 340.65 + vat 60.35 = gross 401).
+      expect(snapshotContent?.totals).toEqual({ net: 340.65, vat: 60.35, gross: 401 });
+      // VAT breakdown grouped by rate (23% bucket = lines 1+2; 5% bucket = line 3).
+      const byRate = Object.fromEntries((snapshotContent?.vatBreakdown ?? []).map((b) => [b.rate, b]));
+      expect(byRate['23']).toEqual({ rate: '23', net: 240.65, vat: 55.35, gross: 296 });
+      expect(byRate['5']).toEqual({ rate: '5', net: 100, vat: 5, gross: 105 });
+    });
+
+    it('should persist seller:null when the adapter surfaces no seller block', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord() });
+      let persisted: CreateInvoiceRecordInput | undefined;
+      repo.create.mockImplementation((input) => {
+        persisted = input;
+        return Promise.resolve(adapterRecord());
+      });
+
+      await service.issueInvoice(command());
+
+      expect(persisted?.documentContent?.seller).toBeNull();
     });
   });
 });

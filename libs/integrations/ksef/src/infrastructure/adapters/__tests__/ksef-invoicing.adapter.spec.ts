@@ -154,7 +154,15 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const record = await adapter(http).issueInvoice(command());
+      const { record, seller } = await adapter(http).issueInvoice(command());
+
+      // The adapter surfaces the neutral seller block (scheme-tagged tax id) so
+      // the core InvoiceService can snapshot the issued-document content.
+      expect(seller).toEqual({
+        name: 'Acme Sp. z o.o.',
+        taxId: { scheme: 'pl-nip', value: '1234567890' },
+        address: SELLER.address,
+      });
 
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
       expect(record.regulatoryStatus).toBe('submitted');
@@ -214,7 +222,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
 
       // 'invoice' is supported and needs no correction payload.
-      const record = await adapter(http).issueInvoice(command({ documentType: 'invoice' }));
+      const { record } = await adapter(http).issueInvoice(command({ documentType: 'invoice' }));
       expect(record.documentType).toBe('invoice');
     });
 
@@ -302,7 +310,7 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const record = await adapter(http).issueInvoice(command());
+      const { record } = await adapter(http).issueInvoice(command());
       // providerType is the neutral open string 'ksef' (the only allowed mention,
       // and it lives on the provider-type axis, not a leaked status/number).
       const serialized = JSON.stringify({
@@ -323,7 +331,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
       const { builder, lastInput } = capturingBuilder();
 
-      const record = await adapter(http, builder).issueInvoice(
+      const { record } = await adapter(http, builder).issueInvoice(
         command({
           documentType: 'corrected',
           correction: {
@@ -549,10 +557,8 @@ describe('KsefInvoicingAdapter', () => {
   describe('submitForClearance (#1150 / C6)', () => {
     it('should echo the submitted status (no-op — clearance is folded into issue)', async () => {
       const http = new FakeKsefHttpClient();
-      const issued = await (async (): Promise<InvoiceRecord> => {
-        seedHappyPath(http);
-        return adapter(http).issueInvoice(command());
-      })();
+      seedHappyPath(http);
+      const { record: issued } = await adapter(http).issueInvoice(command());
 
       const result = await adapter(new FakeKsefHttpClient()).submitForClearance(issued);
 

@@ -205,6 +205,90 @@ export interface CorrectionReference {
 }
 
 /**
+ * Seller party captured on an issued-document snapshot. Country-agnostic: the
+ * tax identity is a scheme-tagged {@link TaxIdentifier} (the adapter resolves it
+ * from its own connection config, e.g. a PL adapter emits `{ scheme: 'pl-nip' }`)
+ * — never a bare NIP. Mirrors {@link BuyerProfile}'s neutral shape minus the
+ * B2B/B2C `type` axis (a seller is always the issuing party).
+ */
+export interface IssuedDocumentSeller {
+  name: string;
+  taxId: TaxIdentifier;
+  address: BuyerAddress;
+}
+
+/**
+ * Buyer party as captured on an issued-document snapshot. `taxId` is `null` for a
+ * B2C buyer with no tax identity. The address reuses the neutral {@link BuyerAddress}.
+ */
+export interface IssuedDocumentBuyer {
+  name: string;
+  taxId: TaxIdentifier | null;
+  address: BuyerAddress;
+}
+
+/**
+ * One issued-document line snapshot. `unitNet`/`net`/`vat`/`gross` are the
+ * computed money values (core's `number` idiom); `taxRate` is the neutral string
+ * code echoed from the command (the provider resolves it to its regime).
+ */
+export interface IssuedDocumentLine {
+  name: string;
+  quantity: number;
+  unitNet: number;
+  taxRate: string;
+  net: number;
+  vat: number;
+  gross: number;
+}
+
+/** One VAT-breakdown bucket, grouped by neutral `rate` code. */
+export interface VatBreakdownEntry {
+  rate: string;
+  net: number;
+  vat: number;
+  gross: number;
+}
+
+/** Document money totals (sum across all lines). */
+export interface DocumentTotals {
+  net: number;
+  vat: number;
+  gross: number;
+}
+
+/** Neutral payment descriptor on an issued document; `null` fields when unknown. */
+export interface IssuedDocumentPayment {
+  method: string | null;
+  paidAt: string | null;
+}
+
+/**
+ * Neutral snapshot of an issued document's CONTENT, taken at issue time (ADR-026).
+ * It is a non-authoritative projection backing the FE "Invoice contents" card —
+ * the provider owns the authoritative document. No country/regulatory vocabulary
+ * appears here: `seller`/`buyer` carry scheme-tagged tax ids, `lines`/`vatBreakdown`
+ * use the neutral `taxRate` string codes, `currency` is ISO 4217, dates are ISO 8601.
+ * `seller` is `null` when the issuing adapter does not surface a seller block (it
+ * degrades gracefully rather than blocking the snapshot).
+ */
+export interface IssuedDocumentContent {
+  seller: IssuedDocumentSeller | null;
+  buyer: IssuedDocumentBuyer;
+  lines: IssuedDocumentLine[];
+  vatBreakdown: VatBreakdownEntry[];
+  totals: DocumentTotals;
+  /** ISO 4217 currency code. */
+  currency: string;
+  /** ISO 8601 issue date; `null` when not yet known. */
+  issueDate: string | null;
+  /** ISO 8601 sale date; `null` when not provided. */
+  saleDate: string | null;
+  /** Payment descriptor; `null` when unknown. */
+  payment: IssuedDocumentPayment | null;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -259,6 +343,20 @@ export interface IssueCorrectionCommand {
   idempotencyKey?: string;
 }
 
+/**
+ * Result of {@link InvoicingPort.issueInvoice}. Wraps the neutral persisted
+ * projection (`record`) and an OPTIONAL `seller` block the adapter resolved from
+ * its own connection config (country-agnostic — the adapter maps its provider
+ * seller identity onto the neutral {@link IssuedDocumentSeller}). Adapters that do
+ * not surface a seller (e.g. a bridge that owns the document) omit it; the core
+ * content snapshot then persists `seller: null` and the content endpoint degrades
+ * gracefully.
+ */
+export interface IssueInvoiceResult {
+  record: InvoiceRecord;
+  seller?: IssuedDocumentSeller;
+}
+
 /** Query for an issued document by either internal order id or provider id. */
 export type GetInvoiceQuery = { orderId: string } | { providerInvoiceId: string };
 
@@ -311,6 +409,8 @@ export interface CreateInvoiceRecordInput {
    * presence flag set on the write path; defaults `false` when omitted.
    */
   hasBuyerTaxId?: boolean;
+  /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
+  documentContent?: IssuedDocumentContent | null;
 }
 
 /**
@@ -402,4 +502,6 @@ export interface InvoiceOutcomePatch {
    * the in-flight slot; cleared (`null`) on the terminal `issued`/`failed` patch.
    */
   leaseExpiresAt?: Date | null;
+  /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
+  documentContent?: IssuedDocumentContent | null;
 }

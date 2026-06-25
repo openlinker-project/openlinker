@@ -10,7 +10,10 @@
  * adapters; nothing from `libs/integrations` is imported. No `faktura`/`paragon`/
  * `NIP` vocabulary lives here.
  *
- * The accepted-risk contract (R1/R2/R3) is on {@link IInvoiceService}.
+ * The accepted-risk contract (R1/R2/R3) is on {@link IInvoiceService}. On a
+ * successful issue the service also snapshots the issued-document content (§7.3):
+ * seller from the adapter result, buyer/lines from the command, with per-line and
+ * VAT-breakdown money computed here (country-agnostic, neutral tax-rate codes only).
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IInvoiceService}
@@ -39,8 +42,12 @@ import type {
   InvoiceRecordFilters,
   InvoiceRecordPagination,
   IssueCorrectionCommand,
+  IssuedDocumentContent,
+  IssuedDocumentLine,
+  IssuedDocumentSeller,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
+  VatBreakdownEntry,
 } from '../../domain/types/invoicing.types';
 
 /**
@@ -129,6 +136,22 @@ interface NeutralFailureCarrier {
    * Read STRUCTURALLY (duck-typed) — core never value-imports the adapter class.
    */
   reason?: unknown;
+}
+
+/** Money is kept to 2 decimal places (the minor-unit precision of ISO-4217 currencies used here). */
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Resolve a neutral `taxRate` string code to a fractional rate. Numeric codes
+ * (`'23'`, `'8'`, `'0'`) are read as a percentage; non-numeric exemption codes
+ * (`zw`/`np`/…) carry no tax (0). The adapter owns the authoritative regime
+ * mapping; this is only for the non-authoritative content projection.
+ */
+function rateFraction(taxRate: string): number {
+  const parsed = Number.parseFloat(taxRate);
+  return Number.isFinite(parsed) ? parsed / 100 : 0;
 }
 
 @Injectable()
@@ -280,9 +303,9 @@ export class InvoiceService implements IInvoiceService {
       INVOICING_CAPABILITY,
     );
 
-    let issued: InvoiceRecord;
+    let issueResult: Awaited<ReturnType<InvoicingPort['issueInvoice']>>;
     try {
-      issued = await adapter.issueInvoice(cmd);
+      issueResult = await adapter.issueInvoice(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
       const failureMode = this.classifyFailure(error);
@@ -307,6 +330,9 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
+    const { record: issued, seller } = issueResult;
+    const documentContent = this.buildContent(cmd, issued, seller ?? null);
+
     const patch: InvoiceOutcomePatch = {
       status: 'issued',
       // Backfill the authoritative provider identity + document type from the
@@ -329,6 +355,8 @@ export class InvoiceService implements IInvoiceService {
       failureCode: null,
       failureReason: null,
       leaseExpiresAt: null,
+      // W2: snapshot the issued-document content at issue time.
+      documentContent,
     };
     return this.repo.updateOutcome(recordId, patch);
   }
@@ -515,5 +543,75 @@ export class InvoiceService implements IInvoiceService {
     }
     const marker = '…[truncated]';
     return raw.slice(0, MAX_ERROR_MESSAGE_LENGTH - marker.length) + marker;
+
+  /**
+   * Snapshot the issued-document content (§7.3) from the command + the adapter's
+   * neutral result. Per-line `net`/`vat`/`gross` are derived from the command's
+   * gross unit price + neutral tax-rate code; the VAT breakdown buckets lines by
+   * rate and the totals sum across lines. `seller` is `null` when the adapter did
+   * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
+   */
+  private buildContent(
+    cmd: IssueInvoiceCommand,
+    record: InvoiceRecord,
+    seller: IssuedDocumentSeller | null,
+  ): IssuedDocumentContent {
+    const lines = cmd.lines.map((line): IssuedDocumentLine => {
+      const fraction = rateFraction(line.taxRate);
+      const gross = round2(line.quantity * line.unitPriceGross);
+      const net = round2(gross / (1 + fraction));
+      const vat = round2(gross - net);
+      const unitNet = round2(line.unitPriceGross / (1 + fraction));
+      return {
+        name: line.name,
+        quantity: line.quantity,
+        unitNet,
+        taxRate: line.taxRate,
+        net,
+        vat,
+        gross,
+      };
+    });
+
+    const vatBreakdown = this.buildVatBreakdown(lines);
+    const totals = {
+      net: round2(lines.reduce((sum, l) => sum + l.net, 0)),
+      vat: round2(lines.reduce((sum, l) => sum + l.vat, 0)),
+      gross: round2(lines.reduce((sum, l) => sum + l.gross, 0)),
+    };
+
+    return {
+      seller,
+      buyer: {
+        name: cmd.buyer.name,
+        taxId: cmd.buyer.taxId,
+        address: cmd.buyer.address,
+      },
+      lines,
+      vatBreakdown,
+      totals,
+      currency: cmd.currency,
+      issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
+      saleDate: null,
+      payment: null,
+    };
+  }
+
+  /** Group lines by their neutral `taxRate` code, summing net/vat/gross per bucket. */
+  private buildVatBreakdown(lines: IssuedDocumentLine[]): VatBreakdownEntry[] {
+    const byRate = new Map<string, VatBreakdownEntry>();
+    for (const line of lines) {
+      const bucket = byRate.get(line.taxRate) ?? {
+        rate: line.taxRate,
+        net: 0,
+        vat: 0,
+        gross: 0,
+      };
+      bucket.net = round2(bucket.net + line.net);
+      bucket.vat = round2(bucket.vat + line.vat);
+      bucket.gross = round2(bucket.gross + line.gross);
+      byRate.set(line.taxRate, bucket);
+    }
+    return [...byRate.values()];
   }
 }

@@ -23,6 +23,7 @@ export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
 export * from './domain/ports/invoice-record-repository.port';
+export * from './application/interfaces/invoice.service.interface';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';

@@ -171,6 +171,62 @@ describe('InvoiceRecordRepository', () => {
 
       await expect(repository.create(createInput)).rejects.toBe(other);
     });
+
+    it('round-trips the issued-document content snapshot', async () => {
+      const content = {
+        seller: null,
+        buyer: {
+          name: 'Jan',
+          taxId: null,
+          address: { line1: 'a', line2: null, city: 'c', postalCode: 'p', countryIso2: 'PL' },
+        },
+        lines: [{ name: 'Widget', quantity: 1, unitNet: 100, taxRate: '23', net: 100, vat: 23, gross: 123 }],
+        vatBreakdown: [{ rate: '23', net: 100, vat: 23, gross: 123 }],
+        totals: { net: 100, vat: 23, gross: 123 },
+        currency: 'PLN',
+        issueDate: null,
+        saleDate: null,
+        payment: null,
+      };
+      ormRepo.save.mockImplementation((entity) =>
+        Promise.resolve(ormRow({ documentContent: (entity as InvoiceRecordOrmEntity).documentContent })),
+      );
+
+      const result = await repository.create({ ...createInput, documentContent: content });
+
+      expect(result.documentContent).toEqual(content);
+    });
+  });
+
+  describe('findById', () => {
+    it('maps the documentContent column to the domain entity', async () => {
+      const content = {
+        seller: null,
+        buyer: {
+          name: 'Jan',
+          taxId: null,
+          address: { line1: 'a', line2: null, city: 'c', postalCode: 'p', countryIso2: 'PL' },
+        },
+        lines: [],
+        vatBreakdown: [],
+        totals: { net: 0, vat: 0, gross: 0 },
+        currency: 'PLN',
+        issueDate: null,
+        saleDate: null,
+        payment: null,
+      };
+      ormRepo.findOne.mockResolvedValue(ormRow({ documentContent: content }));
+
+      const result = await repository.findById('ol_invoice_1');
+
+      expect(ormRepo.findOne).toHaveBeenCalledWith({ where: { id: 'ol_invoice_1' } });
+      expect(result?.documentContent).toEqual(content);
+    });
+
+    it('returns null when absent', async () => {
+      ormRepo.findOne.mockResolvedValue(null);
+      expect(await repository.findById('missing')).toBeNull();
+    });
   });
 
   describe('findByOrderId', () => {

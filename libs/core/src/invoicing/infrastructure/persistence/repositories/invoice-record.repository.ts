@@ -283,6 +283,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
+    entity.documentContent = input.documentContent ?? null;
     return entity;
   }
 
@@ -309,6 +310,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.failureReason,
       entity.leaseExpiresAt,
       entity.hasBuyerTaxId,
+      entity.documentContent,
     );
   }
 }

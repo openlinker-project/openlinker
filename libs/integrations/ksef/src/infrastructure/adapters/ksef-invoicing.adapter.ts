@@ -55,6 +55,8 @@ import type {
   InvoiceRecord as InvoiceRecordType,
   InvoicingPort,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
+  IssuedDocumentSeller,
   RegulatoryDocument,
   RegulatoryDocumentReader,
   RegulatoryTransmitter,
@@ -111,7 +113,7 @@ export class KsefInvoicingAdapter
     private readonly now: () => Date = (): Date => new Date(),
   ) {}
 
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecordType> {
+  async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
     // the subset getSupportedDocumentTypes advertises. Reject anything else up
     // front with a terminal exception so the service marks the record failed
@@ -184,7 +186,10 @@ export class KsefInvoicingAdapter
     // 4. Neutral result. KSeF number is async (C6 reconciles) → clearanceReference null.
     //    providerInvoiceId packs BOTH the session ref and the invoice ref — the
     //    status/UPO read (C6) needs both for GET /sessions/{sref}/invoices/{iref}.
-    return new InvoiceRecord(
+    //    The result also carries the neutral seller block (resolved from the
+    //    connection's KsefSellerConfig) so the core InvoiceService can snapshot the
+    //    issued-document content without core ever seeing a NIP/KSeF wire detail.
+    const record = new InvoiceRecord(
       '', // persistence id is assigned by the core InvoiceService (#1118), not here.
       cmd.connectionId,
       cmd.orderId,
@@ -202,6 +207,21 @@ export class KsefInvoicingAdapter
       issuedAt,
       issuedAt,
     );
+    return { record, seller: this.toNeutralSeller() };
+  }
+
+  /**
+   * Map the adapter's PL seller config (Podmiot1: NIP + name + address) onto the
+   * neutral {@link IssuedDocumentSeller} the core content snapshot persists. The
+   * `pl-nip` scheme tag is the ONLY place the PL identifier system is named — it
+   * stays behind the adapter; core sees a scheme-tagged `TaxIdentifier`.
+   */
+  private toNeutralSeller(): IssuedDocumentSeller {
+    return {
+      name: this.seller.name,
+      taxId: { scheme: 'pl-nip', value: this.seller.nip },
+      address: this.seller.address,
+    };
   }
 
   /**

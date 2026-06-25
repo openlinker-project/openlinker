@@ -6,6 +6,13 @@
  * buyer/lines); maps domain/adapter exceptions to operator-readable HTTP codes
  * without ever leaking internal/PII diagnostics.
  *
+ * Also exposes the issued-document content snapshot
+ * (`GET /invoices/:invoiceId/content`, §7.3 W2).
+ *
+ * Route ordering: the two-segment `/:invoiceId/upo` + `/:invoiceId/content` routes
+ * are declared before the single-segment `/:invoiceId` so the more-specific
+ * sub-resource paths always match first.
+ *
  * THIN controller: reaches the orders context through `IOrderRecordService` and
  * the invoice projection through `IInvoiceService` — NEVER a repository port
  * (per architecture-overview.md § Cross-context dependencies in core).
@@ -79,6 +86,7 @@ import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
+import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
@@ -540,6 +548,31 @@ export class InvoicingController {
     };
   }
 
+  @Get('invoices/:invoiceId/content')
+  @ApiOperation({
+    summary: 'Get the issued-document content snapshot for an invoice',
+    description:
+      'Returns the neutral issued-document content (seller/buyer/lines/VAT/totals, §7.3) captured ' +
+      'at issue time. 404 when the invoice id is unknown; 409 when the invoice carries no content ' +
+      'snapshot yet (e.g. still pending, or issued by an adapter that did not capture content).',
+  })
+  @ApiResponse({ status: 200, description: 'Issued-document content', type: IssuedDocumentContentDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'No content snapshot available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getContent(@Param('invoiceId') invoiceId: string): Promise<IssuedDocumentContentDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!record.documentContent) {
+      throw new ConflictException(
+        `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`,
+      );
+    }
+    return IssuedDocumentContentDto.fromDomain(record.documentContent);
+  }
+
   @Get('invoices/:invoiceId/upo')
   @ApiOperation({
     summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
@@ -584,5 +617,26 @@ export class InvoicingController {
     res.setHeader('Content-Type', document.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="ol-upo-${invoiceId}.${ext}"`);
     res.send(Buffer.from(document.content));
+  }
+
+  // Declared last: the single-segment `:invoiceId` route must not shadow the more
+  // specific `/:invoiceId/upo` + `/:invoiceId/content` sub-resources above.
+  @Get(':invoiceId')
+  @ApiOperation({
+    summary: 'Get an invoice record by id',
+    description:
+      'Returns the neutral full invoice record (status, provider ids, clearance, timestamps). ' +
+      '404 when the invoice id is unknown. The rich issued-document content lives behind ' +
+      '`GET /invoices/:invoiceId/content`.',
+  })
+  @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getInvoice(@Param('invoiceId') invoiceId: string): Promise<InvoiceRecordResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    return InvoiceRecordResponseDto.fromDomain(record);
   }
 }

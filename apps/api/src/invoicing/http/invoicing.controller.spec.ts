@@ -17,15 +17,16 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import type { IInvoiceService, InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   INVOICE_SERVICE_TOKEN,
   INVOICE_RECORD_REPOSITORY_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
 } from '@openlinker/core/invoicing';
 import type {
+  IInvoiceService,
   InvoiceRecordRepositoryPort,
   InvoicingPort,
+  IssuedDocumentContent,
   RegulatoryDocument,
 } from '@openlinker/core/invoicing';
 import type { IOrderRecordService } from '@openlinker/core/orders';
@@ -41,8 +42,32 @@ import {
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { InvoicingController } from './invoicing.controller';
+import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
+
+// W2: SAMPLE_CONTENT and helpers used in content snapshot tests.
+// clearedRecord() is defined in the UPO describe block below; forward-declared here
+// for use by pendingRecord/recordWithContent at the top-level.
+const SAMPLE_CONTENT: IssuedDocumentContent = {
+  seller: {
+    name: 'Acme Sp. z o.o.',
+    taxId: { scheme: 'pl-nip', value: '1234567890' },
+    address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
+  },
+  buyer: {
+    name: 'Jan Kowalski',
+    taxId: null,
+    address: { line1: 'ul. Kupna 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+  },
+  lines: [{ name: 'Widget', quantity: 1, unitNet: 100, taxRate: '23', net: 100, vat: 23, gross: 123 }],
+  vatBreakdown: [{ rate: '23', net: 100, vat: 23, gross: 123 }],
+  totals: { net: 100, vat: 23, gross: 123 },
+  currency: 'PLN',
+  issueDate: '2026-04-01T12:00:00.000Z',
+  saleDate: null,
+  payment: null,
+};
 
 function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
   const base = {
@@ -78,13 +103,37 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
       return (
         base.status === 'issuing' &&
         base.leaseExpiresAt !== null &&
-        (base.leaseExpiresAt).getTime() > now.getTime()
+        (base.leaseExpiresAt as Date).getTime() > now.getTime()
       );
     },
     get isReattemptableFailure(): boolean {
       return base.status === 'failed' && base.failureMode === 'rejected';
     },
   } as InvoiceRecord;
+}
+
+function recordWithContent(content: IssuedDocumentContent | null): InvoiceRecord {
+  const issuedAt = new Date('2026-04-01T12:00:00Z');
+  const r = new InvoiceRecordClass(
+    'rec-inv-1',
+    'conn-ksef-1',
+    'ol_order_001',
+    'ksef',
+    'invoice',
+    'issued',
+    'SESSION:INVOICE',
+    null,
+    'accepted',
+    '5265877635-20250826-0100001AF629-AF',
+    null,
+    null,
+    issuedAt,
+    null,
+    issuedAt,
+    issuedAt,
+    content,
+  );
+  return r as unknown as InvoiceRecord;
 }
 
 function makeOrderRecord(snapshot?: Record<string, unknown>): OrderRecord {
@@ -132,11 +181,26 @@ describe('InvoicingController', () => {
       getOrderRecord: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
+    const mockRepo: jest.Mocked<InvoiceRecordRepositoryPort> = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      findByOrderId: jest.fn(),
+      findLatestByOrderId: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
+      updateOutcome: jest.fn(),
+    } as unknown as jest.Mocked<InvoiceRecordRepositoryPort>;
+
+    const mockIntegrations = {
+      getCapabilityAdapter: jest.fn(),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
     const moduleRef = await Test.createTestingModule({
       controllers: [InvoicingController],
       providers: [
         { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        { provide: INVOICE_RECORD_REPOSITORY_TOKEN, useValue: mockRepo },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
       ],
     }).compile();
 
@@ -752,6 +816,53 @@ describe('InvoicingController', () => {
       await expect(
         upoController.downloadUpo('rec-inv-1', mockResponse()),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('getInvoice', () => {
+    it('should return the record DTO (200)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
+
+      const dto = await controller.getInvoice('rec-inv-1');
+
+      expect(dto.id).toBe('rec-inv-1');
+      expect(dto.status).toBe('issued');
+      expect(dto.regulatoryStatus).toBe('accepted');
+      // Infrastructure-only fields are not surfaced.
+      expect(dto).not.toHaveProperty('errorMessage');
+      expect(dto).not.toHaveProperty('documentContent');
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      await expect(controller.getInvoice('nope')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getContent', () => {
+    it('should return the content snapshot DTO (200)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithContent(SAMPLE_CONTENT));
+
+      const dto = await controller.getContent('rec-inv-1');
+
+      expect(dto.currency).toBe('PLN');
+      expect(dto.seller?.taxId).toEqual({ scheme: 'pl-nip', value: '1234567890' });
+      expect(dto.totals).toEqual({ net: 100, vat: 23, gross: 123 });
+      expect(dto.lines).toHaveLength(1);
+      expect(dto.vatBreakdown).toEqual([{ rate: '23', net: 100, vat: 23, gross: 123 }]);
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      await expect(controller.getContent('nope')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should 409 when the invoice carries no content snapshot', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithContent(null));
+
+      await expect(controller.getContent('rec-inv-1')).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });
