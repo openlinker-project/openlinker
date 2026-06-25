@@ -10,6 +10,8 @@ import { BuyerProfile } from '@openlinker/core/invoicing';
 import type { BuyerAddress, TaxIdentifier } from '@openlinker/core/invoicing';
 import {
   deriveNeutralDocumentType,
+  isCorrectionDocumentType,
+  toBridgeCorrectionDocumentType,
   toBridgeDocumentType,
 } from '../subiekt-document-type.mapper';
 import { SubiektUnsupportedDocumentTypeError } from '../../../domain/exceptions/subiekt-unsupported-document-type.exception';
@@ -70,6 +72,37 @@ describe('toBridgeDocumentType', () => {
   });
 
   it('throws SubiektUnsupportedDocumentTypeError for an unsupported neutral type', () => {
+    expect(() => toBridgeDocumentType('proforma')).toThrow(SubiektUnsupportedDocumentTypeError);
+  });
+
+  it('rejects correction types on the plain issue path (they use the correction path)', () => {
     expect(() => toBridgeDocumentType('credit-note')).toThrow(SubiektUnsupportedDocumentTypeError);
+    expect(() => toBridgeDocumentType('corrected')).toThrow(SubiektUnsupportedDocumentTypeError);
+  });
+});
+
+describe('isCorrectionDocumentType', () => {
+  it('recognises the correction neutral document types', () => {
+    expect(isCorrectionDocumentType('credit-note')).toBe(true);
+    expect(isCorrectionDocumentType('corrected')).toBe(true);
+  });
+
+  it('does not treat plain issue types as corrections', () => {
+    expect(isCorrectionDocumentType('invoice')).toBe(false);
+    expect(isCorrectionDocumentType('receipt')).toBe(false);
+    expect(isCorrectionDocumentType('proforma')).toBe(false);
+  });
+});
+
+describe('toBridgeCorrectionDocumentType', () => {
+  it("maps both correction neutral types onto the bridge-native 'FK'", () => {
+    expect(toBridgeCorrectionDocumentType('credit-note')).toBe('FK');
+    expect(toBridgeCorrectionDocumentType('corrected')).toBe('FK');
+  });
+
+  it('throws SubiektUnsupportedDocumentTypeError for a non-correction type', () => {
+    expect(() => toBridgeCorrectionDocumentType('invoice')).toThrow(
+      SubiektUnsupportedDocumentTypeError,
+    );
   });
 });

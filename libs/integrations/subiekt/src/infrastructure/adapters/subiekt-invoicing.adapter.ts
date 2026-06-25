@@ -32,6 +32,8 @@ import type {
   GetInvoiceQuery,
   InvoicingPort,
   IssueInvoiceCommand,
+  RegulatoryClearanceResult,
+  RegulatoryStatusReader,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
@@ -47,7 +49,12 @@ import { SubiektInvoiceRejectedError } from '../../domain/exceptions/subiekt-inv
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/subiekt-unsupported-document-type.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
-import { deriveNeutralDocumentType, toBridgeDocumentType } from '../mappers/subiekt-document-type.mapper';
+import {
+  deriveNeutralDocumentType,
+  isCorrectionDocumentType,
+  toBridgeCorrectionDocumentType,
+  toBridgeDocumentType,
+} from '../mappers/subiekt-document-type.mapper';
 import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
 import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mapper';
 import { toBridgeLines } from '../mappers/subiekt-line.mapper';
@@ -56,8 +63,17 @@ import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.
 /** Provider identifier stamped onto returned `InvoiceRecord`s. */
 export const SUBIEKT_PROVIDER_TYPE = 'subiekt';
 
-/** Neutral document types this provider issues. */
-const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = ['invoice', 'receipt'];
+/**
+ * Neutral document types this provider issues. `credit-note` / `corrected` (#1229)
+ * are issued through the bridge correction endpoint (faktura korygująca); the rest
+ * through the plain issue path.
+ */
+const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
+  'invoice',
+  'receipt',
+  'credit-note',
+  'corrected',
+];
 
 /**
  * Read the retryability phase from a caught unreachable error, defaulting to the
@@ -68,7 +84,7 @@ function readRetryability(error: SubiektBridgeUnreachableError): SubiektTranspor
   return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
 }
 
-export class SubiektInvoicingAdapter implements InvoicingPort {
+export class SubiektInvoicingAdapter implements InvoicingPort, RegulatoryStatusReader {
   constructor(
     private readonly bridge: SubiektBridgeClient,
     private readonly connectionId: string,
@@ -78,12 +94,20 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
   /**
    * Issue a fiscal document. Derives the neutral doctype (NIP rule) when absent,
    * maps neutral -> bridge-native, passes `idempotencyKey`, and on success builds
-   * a transient issued `InvoiceRecord`.
+   * a transient issued `InvoiceRecord`. A correction doctype (`credit-note` /
+   * `corrected`, #1229) is routed to the bridge correction endpoint instead.
    */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
     // OWN the NIP -> faktura/paragon mechanic: derive the NEUTRAL doctype then
     // map it to the bridge-native string. Core never sees faktura/paragon/NIP.
     const neutralDocumentType = deriveNeutralDocumentType(cmd.buyer, cmd.documentType);
+
+    // A correction document (faktura korygująca) goes through the dedicated
+    // correction endpoint — never the plain issue path (#1229).
+    if (isCorrectionDocumentType(neutralDocumentType)) {
+      return this.issueCorrection(cmd, neutralDocumentType);
+    }
+
     const bridgeDocumentType = toBridgeDocumentType(neutralDocumentType);
 
     const idempotencyKey = cmd.idempotencyKey;
@@ -134,6 +158,102 @@ export class SubiektInvoicingAdapter implements InvoicingPort {
         now,
         now,
       );
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Issue a correction document (faktura korygująca) for an order, against its
+   * already-issued original (#1229). The neutral command carries only `orderId`,
+   * not the original provider id, so the bridge resolves the original from
+   * `orderId` (`originalProviderInvoiceId` is left for the future-id-carrying
+   * caller). Maps neutral correction doctype -> bridge-native `FK`, places the
+   * `idempotencyKey` BEFORE the call (fiscal dedup), and on success builds a
+   * transient issued `InvoiceRecord` carrying the ORIGINAL neutral correction
+   * doctype (`credit-note` / `corrected`).
+   *
+   * EXTERNAL DEPENDENCY: the live bridge correction endpoint is
+   * openlinker-subiekt#6 — not yet implemented. The adapter codes against the
+   * frozen `SubiektBridgeClient.issueCorrection` contract; the fake models it.
+   */
+  private async issueCorrection(
+    cmd: IssueInvoiceCommand,
+    neutralDocumentType: DocumentType,
+  ): Promise<InvoiceRecord> {
+    const bridgeDocumentType = toBridgeCorrectionDocumentType(neutralDocumentType);
+    const idempotencyKey = cmd.idempotencyKey;
+
+    try {
+      const response = await this.bridge.issueCorrection({
+        documentType: bridgeDocumentType,
+        currency: cmd.currency,
+        orderId: cmd.orderId,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        buyer: toBridgeBuyer(cmd.buyer),
+        lines: toBridgeLines(cmd.lines),
+      });
+
+      if (response.state === 'failed') {
+        throw new SubiektInvoiceRejectedError(
+          `Subiekt returned a failed correction issuance for order ${cmd.orderId}`,
+        );
+      }
+
+      const now = new Date();
+      return new InvoiceRecord(
+        randomUUID(),
+        this.connectionId,
+        cmd.orderId,
+        SUBIEKT_PROVIDER_TYPE,
+        // Preserve the caller's neutral correction doctype (credit-note/corrected).
+        neutralDocumentType,
+        'issued',
+        String(response.providerInvoiceId),
+        response.providerInvoiceNumber,
+        toNeutralRegulatoryStatus(response.regulatoryStatus),
+        null,
+        idempotencyKey ?? null,
+        response.pdfUrl,
+        now,
+        null,
+        now,
+        now,
+      );
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Read the live regulatory (KSeF) clearance status of an already-issued
+   * document (#1230). Subiekt transmits to KSeF natively at issuance; OL only
+   * READS the resulting status here (it implements `RegulatoryStatusReader`, NOT
+   * `RegulatoryTransmitter`). Resolves the neutral `RegulatoryClearanceResult`
+   * from the bridge status read keyed by the record's `providerInvoiceId`. A
+   * record with no `providerInvoiceId` cannot be read back — return
+   * `not-applicable` (no transport call). A transport failure throws (translated)
+   * for the caller to retry; a business verdict (incl. `rejected`) returns as data.
+   */
+  async getClearanceStatus(record: InvoiceRecord): Promise<RegulatoryClearanceResult> {
+    if (record.providerInvoiceId === null || record.providerInvoiceId.length === 0) {
+      this.logger.debug(
+        'Subiekt getClearanceStatus called for a record without a providerInvoiceId; returning not-applicable',
+        { connectionId: this.connectionId, recordId: record.id },
+      );
+      return { regulatoryStatus: 'not-applicable', clearanceReference: null };
+    }
+
+    try {
+      const status = await this.bridge.getInvoiceStatus({
+        providerInvoiceId: record.providerInvoiceId,
+      });
+      return {
+        regulatoryStatus: toNeutralRegulatoryStatus(status.regulatoryStatus),
+        // The bridge status read carries no authority reference today; preserve
+        // any reference already captured on the record.
+        clearanceReference: record.clearanceReference,
+      };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }

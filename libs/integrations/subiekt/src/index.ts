@@ -24,6 +24,7 @@ export type {
   BridgeLine,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeIssueCorrectionRequest,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
   BridgeInvoiceStatusRequest,

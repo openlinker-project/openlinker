@@ -39,6 +39,7 @@ import {
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
+  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
   BridgeRegulatoryStatus,
@@ -88,6 +89,11 @@ function classifyRetryability(code: string | undefined): SubiektTransportRetryab
  */
 export const SUBIEKT_BRIDGE_ENDPOINTS = {
   issueInvoice: '/api/invoices',
+  /**
+   * Correction (faktura korygująca) endpoint. EXTERNAL DEPENDENCY: the .NET route
+   * is openlinker-subiekt#6 — not yet implemented on the live bridge.
+   */
+  issueCorrection: '/api/invoices/corrections',
   upsertCustomer: '/api/customers/upsert',
   /** Templated by `providerInvoiceId`. */
   invoiceStatus: (providerInvoiceId: string): string =>
@@ -155,6 +161,13 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   async issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     return this.postJson<BridgeIssueInvoiceResponse>(
       SUBIEKT_BRIDGE_ENDPOINTS.issueInvoice,
+      req,
+    );
+  }
+
+  async issueCorrection(req: BridgeIssueCorrectionRequest): Promise<BridgeIssueInvoiceResponse> {
+    return this.postJson<BridgeIssueInvoiceResponse>(
+      SUBIEKT_BRIDGE_ENDPOINTS.issueCorrection,
       req,
     );
   }

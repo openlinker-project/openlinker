@@ -29,6 +29,7 @@ import {
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
+  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
   BridgeUpsertCustomerRequest,
@@ -58,6 +59,26 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       // Real bridge returns a numeric Subiekt document id.
       providerInvoiceId: 100_000 + this.issueCounter,
       providerInvoiceNumber: `FV-MOCK-${String(this.issueCounter).padStart(3, '0')}`,
+      state: 'issued',
+      regulatoryStatus: 'sent',
+      pdfUrl: null,
+      ...this.issueOverride,
+    };
+    this.issuedById.set(String(response.providerInvoiceId), response);
+    return Promise.resolve(response);
+  }
+
+  issueCorrection(_req: BridgeIssueCorrectionRequest): Promise<BridgeIssueInvoiceResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    this.issueCounter += 1;
+    const response: BridgeIssueInvoiceResponse = {
+      // Distinct id space (300_000+) so a correction never collides with the
+      // original it corrects; still a numeric Subiekt document id.
+      providerInvoiceId: 300_000 + this.issueCounter,
+      providerInvoiceNumber: `FK-MOCK-${String(this.issueCounter).padStart(3, '0')}`,
       state: 'issued',
       regulatoryStatus: 'sent',
       pdfUrl: null,

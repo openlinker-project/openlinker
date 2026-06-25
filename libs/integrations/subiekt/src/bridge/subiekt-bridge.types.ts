@@ -43,8 +43,12 @@ export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[numbe
 export const BridgeInvoiceStateValues = ['issued', 'failed'] as const;
 export type BridgeInvoiceState = (typeof BridgeInvoiceStateValues)[number];
 
-/** Bridge-native document type. `FV` = faktura, `PA` = paragon. */
-export const BridgeDocumentTypeValues = ['FV', 'PA'] as const;
+/**
+ * Bridge-native document type. `FV` = faktura, `PA` = paragon, `FK` = faktura
+ * korygująca (the correction document). `FK` is only ever sent on the dedicated
+ * correction endpoint (`issueCorrection`), never on the plain issue path.
+ */
+export const BridgeDocumentTypeValues = ['FV', 'PA', 'FK'] as const;
 export type BridgeDocumentType = (typeof BridgeDocumentTypeValues)[number];
 
 /**
@@ -122,6 +126,42 @@ export interface BridgeIssueInvoiceResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
+}
+
+/**
+ * Issue-CORRECTION request — the bridge's `CreateCorrectionRequestDto`
+ * (EXTERNAL DEPENDENCY: the .NET endpoint is openlinker-subiekt#6, NOT yet
+ * implemented). Issues a faktura korygująca (`documentType: 'FK'`) against an
+ * already-issued original document.
+ *
+ * The original is resolved by the bridge from EITHER `originalProviderInvoiceId`
+ * (the numeric Subiekt document id of the original, as a string) WHEN the caller
+ * has it, OR `orderId` (the order whose original document is corrected) — the
+ * neutral OL command carries `orderId` but not the provider id, so the bridge
+ * MUST accept the `orderId`-only form and resolve the original itself.
+ *
+ * `reason` is the free-text correction reason (`przyczyna korekty`); `lines` are
+ * the corrected lines (post-correction values). The buyer is carried INLINE
+ * (same self-sufficient mode as the issue path). `idempotencyKey` makes a retried
+ * correction return the SAME document.
+ */
+export interface BridgeIssueCorrectionRequest {
+  /** Always `'FK'` (faktura korygująca) for a correction. */
+  documentType: BridgeDocumentType;
+  currency: string;
+  orderId?: string;
+  idempotencyKey?: string;
+  /** ISO-8601 issue date; the bridge defaults to "now" when omitted. */
+  issueDate?: string;
+  /**
+   * Numeric Subiekt document id of the ORIGINAL document (as a string), when the
+   * caller has it. Omit to have the bridge resolve the original from `orderId`.
+   */
+  originalProviderInvoiceId?: string;
+  /** Free-text correction reason (`przyczyna korekty`). */
+  reason?: string;
+  buyer?: BridgeBuyer;
+  lines: BridgeLine[];
 }
 
 /**

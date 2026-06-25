@@ -18,6 +18,7 @@ import type { SubiektBridgeClient } from '../bridge/subiekt-bridge.client';
 import { BridgeRegulatoryStatusValues } from '../bridge/subiekt-bridge.types';
 import type {
   BridgeBuyer,
+  BridgeIssueCorrectionRequest,
   BridgeIssueInvoiceRequest,
   BridgeUpsertCustomerRequest,
 } from '../bridge/subiekt-bridge.types';
@@ -84,6 +85,28 @@ export function sampleIssueInvoiceRequest(
 }
 
 /**
+ * A representative issue-CORRECTION request for contract / adapter tests — shaped
+ * like the real bridge `CreateCorrectionRequestDto` (`documentType: 'FK'`, an
+ * `originalProviderInvoiceId` reference, inline `buyer`, Polish line fields).
+ * EXTERNAL DEPENDENCY: the live endpoint is openlinker-subiekt#6.
+ */
+export function sampleIssueCorrectionRequest(
+  overrides: Partial<BridgeIssueCorrectionRequest> = {},
+): BridgeIssueCorrectionRequest {
+  return {
+    documentType: 'FK',
+    currency: 'PLN',
+    orderId: 'ol_order_sample',
+    idempotencyKey: 'idem-correction-sample',
+    originalProviderInvoiceId: '100001',
+    reason: 'Zwrot towaru',
+    buyer: sampleBridgeBuyer(),
+    lines: [{ ilosc: 1, cenaBrutto: 123.0, stawkaVAT: '23', name: 'Widget' }],
+    ...overrides,
+  };
+}
+
+/**
  * Register the shared contract tests against a `SubiektBridgeClient` factory.
  * `makeClient` is called once per test so each case starts from a fresh client.
  */
@@ -102,6 +125,24 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       expect(res.providerInvoiceNumber).toBeTruthy();
       expect(res.state).toBe('issued');
       expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
+    });
+
+    it('should issue a correction document with a provider id, number and a known regulatory status', async () => {
+      const res = await client.issueCorrection(sampleIssueCorrectionRequest());
+      expect(res.providerInvoiceId).toBeTruthy();
+      expect(typeof res.providerInvoiceId).toBe('number');
+      expect(res.providerInvoiceNumber).toBeTruthy();
+      expect(res.state).toBe('issued');
+      expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
+    });
+
+    it('should read back the state of a just-issued correction document', async () => {
+      const corrected = await client.issueCorrection(sampleIssueCorrectionRequest());
+      const status = await client.getInvoiceStatus({
+        providerInvoiceId: String(corrected.providerInvoiceId),
+      });
+      expect(status.state).toBe('issued');
+      expect(BridgeRegulatoryStatusValues).toContain(status.regulatoryStatus);
     });
 
     it('should upsert a customer and return the customer id', async () => {

@@ -76,6 +76,19 @@ function buildStatefulFetch(): jest.Mock {
       return okEnvelope(200, minted);
     }
 
+    if (method === 'POST' && path === '/api/invoices/corrections') {
+      counter += 1;
+      const minted: MintedInvoice = {
+        providerInvoiceId: 300_000 + counter,
+        providerInvoiceNumber: `FK-${String(counter).padStart(3, '0')}`,
+        state: 'issued',
+        regulatoryStatus: 'sent',
+        pdfUrl: null,
+      };
+      issued.set(String(minted.providerInvoiceId), minted);
+      return okEnvelope(200, minted);
+    }
+
     if (method === 'POST' && path === '/api/customers/upsert') {
       counter += 1;
       const id = 200_000 + counter;

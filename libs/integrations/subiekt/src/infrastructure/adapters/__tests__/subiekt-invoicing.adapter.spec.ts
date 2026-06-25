@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters/__tests__
  */
-import { BuyerProfile } from '@openlinker/core/invoicing';
+import { BuyerProfile, InvoiceRecord, isRegulatoryStatusReader } from '@openlinker/core/invoicing';
 import type {
   BuyerAddress,
   IssueInvoiceCommand,
@@ -166,13 +166,10 @@ describe('SubiektInvoicingAdapter', () => {
       expect((caught as SubiektBridgeTransportError).cause).toBe(original);
     });
 
-    it('rejects an explicit documentType outside {invoice, receipt} with SubiektUnsupportedDocumentTypeError', async () => {
+    it('rejects an explicit unsupported, non-correction documentType with SubiektUnsupportedDocumentTypeError', async () => {
       const { adapter } = makeAdapter();
       await expect(
         adapter.issueInvoice(command({ documentType: 'proforma' })),
-      ).rejects.toBeInstanceOf(SubiektUnsupportedDocumentTypeError);
-      await expect(
-        adapter.issueInvoice(command({ documentType: 'credit-note' })),
       ).rejects.toBeInstanceOf(SubiektUnsupportedDocumentTypeError);
     });
 
@@ -236,9 +233,165 @@ describe('SubiektInvoicingAdapter', () => {
   });
 
   describe('getSupportedDocumentTypes', () => {
-    it("returns ['invoice','receipt']", () => {
+    it("returns ['invoice','receipt','credit-note','corrected']", () => {
       const { adapter } = makeAdapter();
-      expect(adapter.getSupportedDocumentTypes()).toEqual(['invoice', 'receipt']);
+      expect(adapter.getSupportedDocumentTypes()).toEqual([
+        'invoice',
+        'receipt',
+        'credit-note',
+        'corrected',
+      ]);
+    });
+  });
+
+  describe('correction documents (#1229)', () => {
+    it('routes a credit-note through the bridge correction endpoint, not the issue endpoint', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const issueSpy = jest.spyOn(bridge, 'issueInvoice');
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      const record = await adapter.issueInvoice(command({ documentType: 'credit-note' }));
+      expect(correctionSpy).toHaveBeenCalledTimes(1);
+      expect(issueSpy).not.toHaveBeenCalled();
+      // Bridge-native correction document type: FK (faktura korygująca).
+      expect(correctionSpy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FK' }));
+      expect(record.status).toBe('issued');
+      // Preserves the caller's neutral correction doctype.
+      expect(record.documentType).toBe('credit-note');
+      // Distinct correction id space (300_000+).
+      expect(record.providerInvoiceId).toBe('300001');
+      expect(record.providerInvoiceNumber).toBe('FK-MOCK-001');
+    });
+
+    it("routes a 'corrected' doctype through the correction endpoint too", async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      const record = await adapter.issueInvoice(command({ documentType: 'corrected' }));
+      expect(correctionSpy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FK' }));
+      expect(record.documentType).toBe('corrected');
+    });
+
+    it('passes the command idempotencyKey to the correction endpoint', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      await adapter.issueInvoice(command({ documentType: 'credit-note', idempotencyKey: 'idem-kor' }));
+      expect(correctionSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'idem-kor' }),
+      );
+    });
+
+    it('maps the bridge regulatoryStatus on a correction onto the neutral value', async () => {
+      const { adapter } = makeAdapter();
+      // The fake returns regulatoryStatus 'sent' -> neutral 'submitted'.
+      const record = await adapter.issueInvoice(command({ documentType: 'credit-note' }));
+      expect(record.regulatoryStatus).toBe('submitted');
+    });
+
+    it("translates a failed correction (state:'failed') -> SubiektInvoiceRejectedError", async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seed({ state: 'failed' });
+      await expect(
+        adapter.issueInvoice(command({ documentType: 'credit-note' })),
+      ).rejects.toBeInstanceOf(SubiektInvoiceRejectedError);
+    });
+
+    it('translates a correction transport failure -> SubiektBridgeTransportError', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(
+        adapter.issueInvoice(command({ documentType: 'credit-note' })),
+      ).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    });
+  });
+
+  describe('getClearanceStatus (#1230)', () => {
+    it('is detected as a RegulatoryStatusReader', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isRegulatoryStatusReader(adapter)).toBe(true);
+    });
+
+    it('reads the bridge status for an issued record and maps it to a neutral result', async () => {
+      const adapter = makeAdapter().adapter;
+      // Issue first so the fake remembers the document id (regulatoryStatus 'sent').
+      const issued = await adapter.issueInvoice(command());
+      const result = await adapter.getClearanceStatus(issued);
+      // 'sent' -> neutral 'submitted'.
+      expect(result.regulatoryStatus).toBe('submitted');
+    });
+
+    it('maps a terminal accepted bridge status onto the neutral accepted', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seed({ regulatoryStatus: 'accepted' });
+      const issued = await adapter.issueInvoice(command());
+      const result = await adapter.getClearanceStatus(issued);
+      expect(result.regulatoryStatus).toBe('accepted');
+    });
+
+    it('maps a terminal rejected bridge status onto the neutral rejected (data, not throw)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seed({ regulatoryStatus: 'rejected' });
+      const issued = await adapter.issueInvoice(command());
+      const result = await adapter.getClearanceStatus(issued);
+      expect(result.regulatoryStatus).toBe('rejected');
+    });
+
+    it('preserves an existing clearanceReference on the record', async () => {
+      const adapter = makeAdapter().adapter;
+      const issued = await adapter.issueInvoice(command());
+      const withRef = new InvoiceRecord(
+        issued.id,
+        issued.connectionId,
+        issued.orderId,
+        issued.providerType,
+        issued.documentType,
+        issued.status,
+        issued.providerInvoiceId,
+        issued.providerInvoiceNumber,
+        issued.regulatoryStatus,
+        'KSEF-REF-123',
+        issued.idempotencyKey,
+        issued.pdfUrl,
+        issued.issuedAt,
+        issued.errorMessage,
+        issued.createdAt,
+        issued.updatedAt,
+      );
+      const result = await adapter.getClearanceStatus(withRef);
+      expect(result.clearanceReference).toBe('KSEF-REF-123');
+    });
+
+    it('returns not-applicable without a bridge call when the record has no providerInvoiceId', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'getInvoiceStatus');
+      const record = new InvoiceRecord(
+        'rec-1',
+        'conn-1',
+        'ol_order_1',
+        SUBIEKT_PROVIDER_TYPE,
+        'invoice',
+        'pending',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+      const result = await adapter.getClearanceStatus(record);
+      expect(result.regulatoryStatus).toBe('not-applicable');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('translates a transport failure during a status read', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.getClearanceStatus(issued)).rejects.toBeInstanceOf(
+        SubiektBridgeTransportError,
+      );
     });
   });
 });
