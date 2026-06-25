@@ -57,7 +57,7 @@ For Erli orders to be **fulfilled** on PrestaShop, the destination shop must als
 > `https` image, and OpenLinker drops any non-`https`/non-public image URL when
 > building the offer. Make sure your master products carry public `https` images
 > (a PrestaShop dev store on `http://localhost` will not work). See
-> [Create an offer](#5-create-an-offer).
+> [Create an offer](#6-create-an-offer).
 
 ### 2. An Erli Shop API key
 
@@ -130,7 +130,7 @@ result confirms the key is valid and Erli is reachable.
 ## 5. Install webhooks
 
 Webhooks are the **low-latency trigger** for order events. They are optional for
-correctness — a scheduled inbox poll backstops them (see [Orders](#7-orders)) —
+correctness — a scheduled inbox poll backstops them (see [Orders](#10-orders)) —
 but recommended.
 
 1. Set `config.callbackBaseUrl` on the connection to a URL Erli can reach:
@@ -229,8 +229,8 @@ id** as the external id (**ID zewn.** = `ol_variant_…`), alongside the Erli-as
 
 ## 7. Stock sync
 
-Stock propagation is **event-driven from your master catalog** — there is no
-manual step:
+Stock propagation is **event-driven from your master catalog** — under normal
+operation there is no manual step:
 
 ```
 master inventory change  →  inventory.propagateToMarketplaces
@@ -239,18 +239,97 @@ master inventory change  →  inventory.propagateToMarketplaces
 ```
 
 When the master (e.g. PrestaShop) stock for a mapped product changes, the next
-master-inventory sync writes the new value and OpenLinker pushes it to the linked
-Erli offer automatically. The OpenLinker **Inventory** view reflects the new
-master quantity for the mapped variant:
+master-inventory sync writes the new value and OpenLinker pushes it to every
+linked Erli offer automatically. The OpenLinker **Inventory** view reflects the
+new master quantity for the mapped variant:
 
 ![OL inventory for the mapped variant](../../assets/erli/23-ol-stock-after-change.png)
 
-> Frozen-stock handling and the offer-status reconciliation scheduler are covered
-> in the [runbook](./runbook.md).
+### Triggering a stock sync manually
+
+Stock to Erli always originates from the **master** (PrestaShop) — Erli is a
+destination, not an inventory master. So to force a stock push without waiting for
+the scheduled cycle, trigger the master inventory sync **on the PrestaShop
+connection** (the one holding the `InventoryMaster` capability):
+
+1. Open the **PrestaShop** connection → **Actions** tab → **Trigger sync…**.
+2. Pick **Sync all inventory** (`master.inventory.syncAll`) — or **Sync inventory
+   by ID** (`master.inventory.syncByExternalId`) for one product — and click
+   **Trigger**.
+
+![Trigger-sync dialog on the PrestaShop connection — choose the job type, then Trigger](../../assets/erli/40-trigger-sync-dialog.png)
+
+OpenLinker re-reads master stock and propagates each change to the linked Erli
+offers (`marketplace.offerQuantity.update` → Erli `PATCH`). Watch progress under
+**Jobs & Logs**.
+
+> The **Erli** connection's own **Trigger sync** offers `marketplace.offers.sync`
+> (refresh offer mappings) and `marketplace.orders.poll` (pull orders) — **not**
+> stock, because stock is owned by the master. Frozen-stock handling and the
+> offer-status reconciliation scheduler are covered in the [runbook](./runbook.md).
 
 ---
 
-## 8. Orders
+## 8. Update an offer (price, title, description)
+
+Unlike stock, OpenLinker does **not** auto-propagate **price** from the master —
+price, title, and description are **operator-initiated** changes to the offer's
+content fields. OpenLinker sends them to Erli via `updateOfferFields`
+(`PATCH /products/{id}`, sparse), enqueued as a `marketplace.offer.updateFields`
+job (HTTP 202 — async, like every Erli write).
+
+**API (today):**
+
+```
+POST /listings/connections/{connectionId}/offers/{offerId}/fields
+{ "price": { "amount": "59.00", "currency": "PLN" },
+  "title": "…",
+  "description": { "sections": [ { "items": [ { "type": "TEXT", "content": "…" } ] } ] } }
+```
+
+At least one field is required; the response returns a `{ jobId }`.
+
+> **UI button is coming.** An **Edit offer** button on the listing-detail page
+> (price / title / description, with AI-assisted descriptions) is wired for other
+> platforms and tracked for Erli in **#1215** — until it ships, use the API above.
+
+> **Frozen fields.** If a field was edited directly in the Erli panel, Erli marks
+> it `frozen` and OpenLinker excludes it from the update (it won't overwrite a
+> seller's manual edit). See the [runbook](./runbook.md).
+
+---
+
+## 9. Bulk offer creation
+
+To list many products on Erli at once, use the **bulk** wizard instead of the
+single-offer flow. It's a four-step flow — **Config → Resolving → Review →
+Confirm** — with an Erli-specific dispatch-time section on the Config step:
+
+![Bulk offer creation — Config step (Erli dispatch time + pricing/stock policies)](../../assets/erli/41-bulk-wizard-config.png)
+
+1. Go to **Products**, select up to **100** products, and click **Bulk create**
+   (the action bar appears once rows are selected). This opens
+   `/listings/bulk-create/wizard`.
+2. **Config** — pick the Erli connection, a pricing policy (use master price /
+   markup / flat), a stock policy (use master / cap / flat), currency (PLN for
+   Erli), and toggles for **Generate AI description** and **Publish immediately**.
+   Erli's config section adds the **dispatch time** (its stand-in for Allegro's
+   policy step — Erli has no seller/delivery policies).
+3. **Resolving** — OpenLinker batch-resolves each product's category and stock and
+   flags **blockers** (e.g. missing image — Erli requires ≥1 public `https`
+   image). Only blocker-free rows can submit.
+4. **Review** — inspect each row; click a row to override price, stock, category,
+   or (Erli) a per-product **dispatch-time override**.
+5. **Confirm** — **Approve all & submit** enqueues the batch
+   (`POST /listings/bulk-create`); you land on the **batch progress** page
+   (`/listings/bulk-batches/{batchId}`) to watch each offer's creation.
+
+Each offer follows the same async path and public-`https`-image requirement as the
+single-offer flow ([§6](#6-create-an-offer)).
+
+---
+
+## 10. Orders
 
 Orders reach OpenLinker two ways, which converge idempotently on one order record:
 
