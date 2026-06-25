@@ -65,10 +65,16 @@ The concrete secret is **never stored on the connection row**. Credentials carry
 an opaque `secretRef`; the host's `CredentialsResolverPort` resolves the actual
 token / seal material at adapter construction.
 
-The handshake (token mode) is: request a challenge → submit the AES-key-encrypted
-token → poll the auth operation until `status.code === 200` → redeem the
-access + refresh tokens. The session symmetric key is RSA-OAEP(SHA-256) wrapped
-with the MF public-key certificate selected from `GET /security/public-key-certificates`.
+The handshake (token mode) is: request a **challenge** → **RSA-OAEP(SHA-256)-encrypt**
+the `(token|timestampMs)` blob under the MF **token-encryption** public key → submit it →
+**poll** the auth operation until `status.code === 200` → **redeem** the access + refresh
+tokens. (`timestampMs` is the challenge timestamp in epoch milliseconds.)
+
+The KSeF authorization token is **never** AES-encrypted. AES-256-CBC is used only for
+**document** encryption: a per-document AES-256-CBC session key is itself RSA-OAEP(SHA-256)
+wrapped with the MF certificate selected from `GET /security/public-key-certificates`. The
+two crypto paths — RSA-OAEP for the auth token, RSA-OAEP-wrapped AES for the document — are
+distinct.
 
 ### Obtaining credentials
 
@@ -76,26 +82,42 @@ with the MF public-key certificate selected from `GET /security/public-key-certi
    per the [official KSeF documentation](https://api-test.ksef.mf.gov.pl/docs/v2).
 2. Generate a KSeF authorization token (token mode) **or** provision a qualified
    seal certificate (seal mode) for the seller NIP.
-3. Store the secret in your configured credential store and record its reference
-   as the connection's `secretRef`.
+3. Via the wizard, paste the raw secret into the **write-only** `credentials.secret`
+   field. The platform persists it in the integration credentials store and assigns
+   the opaque `secretRef` (`db:<uuid>`) itself — you do **not** pre-provision a vault
+   reference. The secret value is never echoed back to the browser.
 
 ---
 
 ## Connection configuration
 
-Non-secret config persisted on the connection row (`KsefConnectionConfig`):
+Non-secret config persisted on the connection row (`KsefConnectionConfig`). What the
+**guided wizard** actually writes today is a flat shape — `env` + `sellerNip` +
+`contextIdentifier`:
 
-| Field | Required | Description |
-|---|---|---|
-| `env` | ✅ | `test` \| `demo` \| `prod`. |
-| `seller` | required before issuing | Seller identity (`Podmiot1`) stamped on every FA(3): `nip`, `name`, `address { line1, line2?, city, postalCode, countryIso2 }`. System config — **not** a credential and **not** per-invoice input. |
+| Field | Required | Collected by wizard | Description |
+|---|---|---|---|
+| `env` | ✅ | ✅ | `test` \| `demo` \| `prod`. The one field the C2 config-shape validator gates. |
+| `sellerNip` | optional (server gate is `env` only) | ✅ | Seller NIP (10 digits, stored normalised). Display + future scoping; not yet gated by the C2 validator. |
+| `contextIdentifier` | optional (≤64 chars) | ✅ | FE-additive scoping identifier the operator may supply. Not gated by the C2 config validator. |
+| `seller` | required before issuing | ❌ (see limitation) | Full seller profile (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`. System config — **not** a credential and **not** per-invoice input. The issuance path (`resolveSeller`) reads `config.seller.{nip,name,address}` and throws `KsefConfigException` if any of name / address is missing. |
+
+> **Known limitation — wizard does not yet collect the full seller profile.**
+> The guided wizard collects only `env`, `sellerNip`, and `contextIdentifier`. It does
+> **not** collect the seller **name** or **address**, and it does not write a nested
+> `config.seller` object. Because `resolveSeller` requires a well-formed
+> `config.seller.{nip,name,address}`, a connection created purely through the wizard
+> **cannot issue** until the full `config.seller` block is supplied out-of-band — e.g.
+> by pasting the raw config JSON (with the nested `seller` object) into the
+> edit-connection form. Closing this gap (collecting seller name + address in the
+> wizard and writing the nested `config.seller`) is a tracked follow-up.
 
 Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort`):
 
 | Field | Required | Description |
 |---|---|---|
 | `authType` | ✅ | `ksef-token` \| `qualified-seal`. |
-| `secretRef` | ✅ | Opaque reference to the secret in the credential store (never the secret value). |
+| `secretRef` | ✅ | Opaque reference to the secret in the credential store (never the secret value). Assigned by the platform — see [Obtaining credentials](#obtaining-credentials). |
 
 ---
 
@@ -123,6 +145,12 @@ GET /sessions/{sessionRef}/invoices/{invoiceRef}   → status.code + ksefNumber 
 
 The `providerInvoiceId` opaquely packs both the session and invoice references
 (`{sessionRef}:{invoiceRef}`) because the status/UPO reads are session-scoped.
+
+> `submitForClearance` is the explicit `RegulatoryTransmitter` entry point in the neutral
+> contract. For KSeF, submission is folded into `issueInvoice` (the online-session model
+> opens a session, submits, and closes in one act), so a separate `submitForClearance`
+> call is not part of the KSeF issuance path — clearance is driven by polling
+> `getClearanceStatus`.
 
 ### Status mapping
 
