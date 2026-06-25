@@ -102,30 +102,40 @@ same pure builder + the same C5 session-send flow:
 | `PrzyczynaKorekty` | `correction.reason` | free-text, entity-escaped |
 | `DaneFaKorygowanej/DataWystFaKorygowanej` | `correction.originalIssueDate` | original issue date |
 | `DaneFaKorygowanej/NrFaKorygowanej` | `correction.originalDocumentNumber` | original number |
-| `DaneFaKorygowanej/NrKSeF` | `correction.originalClearanceReference` | when the original was a KSeF invoice |
+| `DaneFaKorygowanej/NrKSeF` = `1` + `NrKSeFFaKorygowanej` | `correction.originalClearanceReference` | KSeF branch is a SEQUENCE — `NrKSeF` is a FLAG (`etd:TWybor1` = `1`), the number goes in `NrKSeFFaKorygowanej` (`tns:TNumerKSeF`). Emitted when the original was a KSeF invoice |
 | `DaneFaKorygowanej/NrKSeFN` = `1` | — | when `originalClearanceReference` is `null` (non-KSeF original) |
-| `Podmiot1K` / `Podmiot2K` | seller / buyer snapshot | OL does not track party changes → mirrors the originals |
+| `Podmiot1K` / `Podmiot2K` | — (omitted) | XSD nests them in the KOR sequence under `Fa` (siblings of `DaneFaKorygowanej`), both `minOccurs=0`, required only on a party change. OL never tracks party changes → omitted |
 | `FaWiersz` (before) | command top-level `lines` | each flagged `StanPrzed=1` |
-| `FaWiersz` (after) | `correction.correctedLines` | corrected state; drives `P_13/P_14/P_15` |
+| `FaWiersz` (after) | `correction.correctedLines` | corrected ("after") line state |
+| `P_13_x` / `P_14_x` / `P_15` | after-aggregate **minus** before-aggregate | FA(3) `Fa` annotation mandates the tax-base / tax / total-due fields carry the **difference** (after − before), so they may be negative (`TKwotowy` permits a leading `-`) |
 
 The neutral→FA(3) seam is `mapCorrection` in `fa3-builder-input.mapper.ts`; the
 `originalClearanceReference` (the opaque authority reference) is the only linkage
 to the original — no KSeF string crosses into core.
 
-> **PROVISIONAL (reconcile vs live KSeF 2.0 / FA(3) v1-0E docs — same posture as
-> C4/C5):** the KOR element *names/placement* (`RodzajFaktury`, `TypKorekty`,
-> `DaneFaKorygowanej`, `Podmiot1K`/`Podmiot2K`, `StanPrzed`) follow the published
-> FA(3) before/after model but are validated only against the **placeholder** XSD
-> (well-formedness + structural rules). Confirm exact cardinality/ordering and the
-> before/after-vs-signed-difference choice against the authoritative crd.gov.pl
-> schema before submission. `KOR_ZAL`/`KOR_ROZ` (advance/settlement corrections)
-> are a deferred follow-up.
+> **Reconciled against the vendored authoritative FA(3) v1-0E XSD (#1151
+> round-1 review):** the KOR element names/placement (`RodzajFaktury`,
+> `TypKorekty`, `DaneFaKorygowanej` with the `NrKSeF` flag + `NrKSeFFaKorygowanej`
+> pair, `StanPrzed`) and the signed-difference rule for `P_13_x`/`P_14_x`/`P_15`
+> are confirmed against the XSD (choice at lines ~2910-2928; `Fa` annotation at
+> ~2441). `Podmiot1K`/`Podmiot2K` are omitted (optional, party-change-only).
+> Validation remains *structural* (well-formedness + the hand-written rule set);
+> MF example-pack compliance + live KSeF clearance stay deferred to C3+.
+> `KOR_ZAL`/`KOR_ROZ` (advance/settlement corrections) are a deferred follow-up.
 
 ## Known limitations / deferred work
 
+- ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —
+  the `FA3_TAX_RATE_MAP` keys in `fa3-tax-rate.mapper.ts` are provisional and
+  MUST be settled before C3 submission (see the OPEN note under P_12 mapping).
 - ⏸ Authoritative XSD from crd.gov.pl + MF example-pack compliance (C3+).
 - ⏸ KSeF submission + clearance status (C3+).
 - ⏸ `KOR_ZAL` / `KOR_ROZ` advance/settlement-correction document types (#1151 follow-up).
+- ⏸ `TypKorekty` selection — currently hard-coded to `2` (line-item correction, the
+  return/refund case) in `mapCorrection`. The 1/2/3 period-shift variants
+  (`1` = effects in the period of the original, `3` = on terms set by separate
+  regulations) are not yet caller-selectable; the neutral `CorrectionReference`
+  carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
 - ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.

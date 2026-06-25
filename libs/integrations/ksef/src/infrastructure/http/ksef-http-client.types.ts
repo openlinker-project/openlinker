@@ -34,6 +34,15 @@ export interface KsefHttpRequestOptions {
    * operation is safe to repeat.
    */
   idempotent?: boolean;
+  /**
+   * Skip the lazy handshake + bearer injection for a genuinely-unauthenticated
+   * call (the auth challenge/ksef-token bootstrap and the public-key-certificate
+   * fetch), or for an auth call that supplies its own `Authorization` header
+   * (the poll/redeem/refresh, which carry the short-lived authentication token).
+   * Explicit per-call flag rather than path-prefix inference so a future
+   * authenticated `/auth/*` sub-resource isn't silently bypassed.
+   */
+  skipAuth?: boolean;
 }
 
 /** Parsed JSON response: data plus status + lowercased response headers. */

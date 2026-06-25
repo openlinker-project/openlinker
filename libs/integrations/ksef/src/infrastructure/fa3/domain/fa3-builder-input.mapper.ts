@@ -15,7 +15,7 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
  */
-import type { InvoiceLine, IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import type { CorrectionReference, InvoiceLine, IssueInvoiceCommand } from '@openlinker/core/invoicing';
 import type {
   Fa3BuilderInput,
   Fa3CorrectionContext,
@@ -62,7 +62,7 @@ export function mapToFa3BuilderInput(
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
     lines: cmd.lines.map(mapLine),
-    ...(cmd.correction !== undefined ? { correction: mapCorrection(cmd) } : {}),
+    ...(cmd.correction !== undefined ? { correction: mapCorrection(cmd.correction) } : {}),
   };
 }
 
@@ -77,17 +77,14 @@ function mapLine(line: InvoiceLine): Fa3Line {
 }
 
 /**
- * Map the neutral {@link IssueInvoiceCommand.correction} to a fully-mapped FA(3)
- * correction context. The neutral `originalClearanceReference` (the opaque
- * authority reference; `null` if never cleared) becomes the `NrKSeF`/`NrKSeFN`
- * choice. A return/refund corrects line items, so `TypKorekty` defaults to `2`.
+ * Map the neutral {@link CorrectionReference} to a fully-mapped FA(3) correction
+ * context. The caller narrows `cmd.correction !== undefined` and passes the
+ * already-narrowed descriptor, so no re-check is needed here. The neutral
+ * `originalClearanceReference` (the opaque authority reference; `null` if never
+ * cleared) becomes the `NrKSeF`/`NrKSeFN` choice. A return/refund corrects line
+ * items, so `TypKorekty` defaults to `2` (see FA3_IMPLEMENTATION_NOTES.md).
  */
-function mapCorrection(cmd: IssueInvoiceCommand): Fa3CorrectionContext {
-  // `cmd.correction` is present (the caller checked) — re-read it here for narrowing.
-  const correction = cmd.correction;
-  if (correction === undefined) {
-    throw new Error('mapCorrection called without a correction descriptor');
-  }
+function mapCorrection(correction: CorrectionReference): Fa3CorrectionContext {
   return {
     typKorekty: '2',
     reason: correction.reason,
