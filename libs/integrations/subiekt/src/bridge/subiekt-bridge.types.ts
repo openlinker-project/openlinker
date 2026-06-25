@@ -145,12 +145,16 @@ export interface BridgeKorektaLine {
  * Issue-CORRECTION (faktura korygująca) request body — the REAL bridge contract:
  * `POST /api/invoices/{origId}/corrections`. The corrected original is identified
  * by the `{origId}` path segment (a positive integer), NOT in the body. The body
- * carries an optional free-text `przyczyna` (correction reason) and the `lines`
- * to correct.
+ * carries an optional free-text `przyczyna` (correction reason), an optional
+ * `idempotencyKey` (so a retried correction returns the SAME document instead of
+ * issuing a duplicate korekta — the bridge honours it in lockstep, #1229), and
+ * the `lines` to correct.
  */
 export interface BridgeKorektaRequest {
   /** Free-text correction reason (`przyczyna korekty`). */
   przyczyna?: string;
+  /** Makes a retried correction return the SAME document (fiscal dedup). */
+  idempotencyKey?: string;
   lines: BridgeKorektaLine[];
 }
 

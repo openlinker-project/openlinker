@@ -15,6 +15,7 @@ import { FakeSubiektBridgeAdapter } from '../fake-subiekt-bridge.adapter';
 import {
   runSubiektBridgeContractTests,
   sampleIssueInvoiceRequest,
+  sampleKorektaRequest,
   sampleUpsertCustomerRequest,
 } from '../subiekt-bridge-contract.suite';
 
@@ -57,6 +58,14 @@ describe('FakeSubiektBridgeAdapter', () => {
       fake.seed({ regulatoryStatus: 'accepted' });
       const res = await fake.issueInvoice(sampleIssueInvoiceRequest());
       expect(res.regulatoryStatus).toBe('accepted');
+    });
+
+    it('should capture the korekta request body, including idempotencyKey (#1229)', async () => {
+      expect(fake.getLastKorektaRequest()).toBeNull();
+      await fake.issueCorrection(100001, sampleKorektaRequest({ idempotencyKey: 'idem-kor' }));
+      expect(fake.getLastKorektaRequest()?.idempotencyKey).toBe('idem-kor');
+      fake.clear();
+      expect(fake.getLastKorektaRequest()).toBeNull();
     });
 
     it('should return a failed status for an unknown provider invoice id', async () => {

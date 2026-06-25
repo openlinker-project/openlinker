@@ -49,6 +49,8 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
+  /** The most recent korekta request body (for passthrough assertions in tests). */
+  private lastKorektaRequest: BridgeKorektaRequest | null = null;
 
   issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     const failure = this.failureError();
@@ -70,6 +72,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   }
 
   issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse> {
+    this.lastKorektaRequest = req;
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
@@ -148,6 +151,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = issueResponse;
   }
 
+  /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
+  getLastKorektaRequest(): BridgeKorektaRequest | null {
+    return this.lastKorektaRequest;
+  }
+
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.issueCounter = 0;
@@ -155,6 +163,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.seededFailure = null;
     this.issueOverride = null;
     this.issuedById.clear();
+    this.lastKorektaRequest = null;
   }
 
   private failureError(): Error | null {

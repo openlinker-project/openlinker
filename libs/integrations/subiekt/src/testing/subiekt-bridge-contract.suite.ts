@@ -87,14 +87,16 @@ export function sampleIssueInvoiceRequest(
 /**
  * A representative korekta (faktura korygująca) request BODY for contract /
  * adapter tests — shaped like the REAL bridge `POST /api/invoices/{origId}/
- * corrections` body (`przyczyna` + `{ lp, nowaIlosc?, nowaCena? }` lines). The
- * corrected original's id is a PATH argument, not part of this body.
+ * corrections` body (`przyczyna` + `idempotencyKey` + `{ lp, nowaIlosc?,
+ * nowaCena? }` lines). The corrected original's id is a PATH argument, not part
+ * of this body.
  */
 export function sampleKorektaRequest(
   overrides: Partial<BridgeKorektaRequest> = {},
 ): BridgeKorektaRequest {
   return {
     przyczyna: 'Zwrot towaru',
+    idempotencyKey: 'idem-kor-sample',
     lines: [{ lp: 1, nowaIlosc: 2, nowaCena: 99.0 }],
     ...overrides,
   };
@@ -129,6 +131,9 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       expect(res.state).toBe('issued');
       // The korekta response echoes the corrected original's id from the path.
       expect(res.korygowanyId).toBe(100001);
+      // The request carried an idempotencyKey (fiscal dedup on retry, #1229).
+      const req = sampleKorektaRequest();
+      expect(req.idempotencyKey).toBe('idem-kor-sample');
     });
 
     it('should read back the state of a just-issued correction document', async () => {

@@ -72,9 +72,11 @@ function makeLogger(): LoggerPort {
 function makeAdapter(bridge = new FakeSubiektBridgeAdapter()): {
   adapter: SubiektInvoicingAdapter;
   bridge: FakeSubiektBridgeAdapter;
+  logger: LoggerPort;
 } {
-  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', makeLogger());
-  return { adapter, bridge };
+  const logger = makeLogger();
+  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger);
+  return { adapter, bridge, logger };
 }
 
 describe('SubiektInvoicingAdapter', () => {
@@ -334,6 +336,34 @@ describe('SubiektInvoicingAdapter', () => {
       expect(record.idempotencyKey).toBe('idem-kor');
     });
 
+    it('sends command.idempotencyKey on the korekta request body (#1229)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      await adapter.issueCorrection(correctionCommand({ idempotencyKey: 'idem-kor' }));
+      expect(correctionSpy).toHaveBeenCalledWith(
+        100001,
+        expect.objectContaining({ idempotencyKey: 'idem-kor' }),
+      );
+      // The fake also captures the raw body — assert passthrough end-to-end.
+      expect(bridge.getLastKorektaRequest()?.idempotencyKey).toBe('idem-kor');
+    });
+
+    it('omits idempotencyKey from the korekta body when the command has none', async () => {
+      const { adapter, bridge } = makeAdapter();
+      await adapter.issueCorrection(correctionCommand());
+      expect(bridge.getLastKorektaRequest()).not.toHaveProperty('idempotencyKey');
+    });
+
+    it('rejects an unsupported correction documentType with SubiektUnsupportedDocumentTypeError', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      await expect(
+        adapter.issueCorrection(correctionCommand({ documentType: 'invoice' })),
+      ).rejects.toBeInstanceOf(SubiektUnsupportedDocumentTypeError);
+      // Clamp happens before any bridge call.
+      expect(correctionSpy).not.toHaveBeenCalled();
+    });
+
     it("defaults documentType to 'corrected' when the command omits it, honours an explicit one", async () => {
       const { adapter } = makeAdapter();
       const def = await adapter.issueCorrection(correctionCommand());
@@ -450,8 +480,8 @@ describe('SubiektInvoicingAdapter', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
-    it('maps an unknown-to-bridge providerInvoiceId onto neutral not-applicable', async () => {
-      const { adapter } = makeAdapter();
+    it('maps an unknown-to-bridge providerInvoiceId onto neutral not-applicable and warns (#1229)', async () => {
+      const { adapter, logger } = makeAdapter();
       // Non-null providerInvoiceId the fake never issued -> bridge reads back
       // { state: 'failed', regulatoryStatus: 'none' } -> neutral 'not-applicable'.
       const record = new InvoiceRecord(
@@ -473,7 +503,21 @@ describe('SubiektInvoicingAdapter', () => {
         new Date(),
       );
       const result = await adapter.getClearanceStatus(record);
+      // The warn surfaces the genuinely-missing document but does NOT change the
+      // neutral result the caller acts on.
       expect(result.regulatoryStatus).toBe('not-applicable');
+      expect(result.clearanceReference).toBeNull();
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Subiekt bridge has no record for providerInvoiceId',
+        expect.objectContaining({ providerInvoiceId: '999999' }),
+      );
+    });
+
+    it('does NOT warn for a record the bridge knows (issued document)', async () => {
+      const { adapter, logger } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      await adapter.getClearanceStatus(issued);
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('translates a transport failure during a status read', async () => {

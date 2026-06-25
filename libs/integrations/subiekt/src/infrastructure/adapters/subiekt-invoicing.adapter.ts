@@ -79,6 +79,15 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
 const DEFAULT_CORRECTION_DOCUMENT_TYPE = 'corrected';
 
 /**
+ * Neutral document types the correction path accepts. A correction is always a
+ * `credit-note` / `corrected` (faktura korygująca); any other doctype is a
+ * terminal rejection — mirroring the issue path's NIP-doctype strictness. Typed
+ * as `readonly string[]` so the open-world (`string`) command doctype can be
+ * membership-tested without a cast.
+ */
+const SUPPORTED_CORRECTION_DOCUMENT_TYPES: readonly string[] = ['credit-note', 'corrected'];
+
+/**
  * Read the retryability phase from a caught unreachable error, defaulting to the
  * fiscal-safe `'indeterminate'` for a phase-less error (e.g. the in-memory fake).
  */
@@ -170,14 +179,19 @@ export class SubiektInvoicingAdapter
    * original (#1229). Maps the neutral `IssueCorrectionCommand` to the real bridge
    * korekta contract (`POST /api/invoices/{origId}/corrections`): the corrected
    * original is identified by its numeric id (parsed from
-   * `originalProviderInvoiceId`), the body carries `przyczyna` + the per-line
-   * `{ lp, nowaIlosc?, nowaCena? }` korekta lines. Places the `idempotencyKey`
-   * BEFORE the call is irrelevant here — the korekta body has no idempotency field
-   * (gap below); we still echo it onto the returned record.
+   * `originalProviderInvoiceId`), the body carries `przyczyna`, the
+   * `idempotencyKey` (so a retried correction returns the SAME document instead
+   * of issuing a duplicate korekta — the bridge honours it in lockstep, #1229),
+   * and the per-line `{ lp, nowaIlosc?, nowaCena? }` korekta lines. We also echo
+   * the key onto the returned record.
    *
    * The korekta response carries NO `regulatoryStatus` — the KSeF status of a
    * correction is read back later via `RegulatoryStatusReader` (#1230), so we
    * default the record's `regulatoryStatus` to the non-terminal `'submitted'`.
+   *
+   * `documentType` is clamped to `credit-note` / `corrected` (mirroring the issue
+   * path's strictness) — any other explicit doctype is a terminal
+   * `SubiektUnsupportedDocumentTypeError`; absent defaults to `'corrected'`.
    *
    * A non-positive-integer `originalProviderInvoiceId` is a terminal, fiscal-safe
    * rejection (we cannot route the correction) — `SubiektInvoiceRejectedError`.
@@ -194,10 +208,18 @@ export class SubiektInvoicingAdapter
 
     const idempotencyKey = cmd.idempotencyKey;
     const documentType = cmd.documentType ?? DEFAULT_CORRECTION_DOCUMENT_TYPE;
+    if (!SUPPORTED_CORRECTION_DOCUMENT_TYPES.includes(documentType)) {
+      // Clamp to the correction doctypes — a correction is never an invoice /
+      // receipt / proforma. Mirrors the issue path's doctype strictness.
+      throw new SubiektUnsupportedDocumentTypeError(documentType);
+    }
 
     try {
       const response = await this.bridge.issueCorrection(origId, {
         ...(cmd.reason !== undefined ? { przyczyna: cmd.reason } : {}),
+        // Place idempotencyKey on the request BEFORE the call so fiscal dedup
+        // holds: a retried correction returns the SAME document.
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         lines: cmd.lines.map(toBridgeKorektaLine),
       });
 
@@ -260,6 +282,17 @@ export class SubiektInvoicingAdapter
       const status = await this.bridge.getInvoiceStatus({
         providerInvoiceId: record.providerInvoiceId,
       });
+      if (status.state === 'failed' || status.regulatoryStatus === 'none') {
+        // The bridge has no live record for a providerInvoiceId we believe was
+        // issued — a genuinely-missing document. Surface it so the #1121
+        // reconcile doesn't silently drop it (the neutral result is still
+        // 'not-applicable' so the caller treats it as no-op data, not an error).
+        this.logger.warn('Subiekt bridge has no record for providerInvoiceId', {
+          connectionId: this.connectionId,
+          recordId: record.id,
+          providerInvoiceId: record.providerInvoiceId,
+        });
+      }
       return {
         regulatoryStatus: toNeutralRegulatoryStatus(status.regulatoryStatus),
         // The bridge status read carries no authority reference today; preserve
