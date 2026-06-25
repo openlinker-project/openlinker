@@ -33,6 +33,8 @@ const DEFAULT_VALUES: CreateConnectionFormValues = {
   adapterKey: '',
   configText: DEFAULT_CONFIG,
   credentialsRef: '',
+  credentialsJson: '',
+  enabledCapabilities: '',
   name: '',
   platformType: '',
 };
@@ -118,11 +120,47 @@ export function CreateConnectionForm(): ReactElement {
           </FormField>
 
           {requiresExternalAuthRedirect ? null : (
-            <FormField label="Credentials reference" name="credentialsRef" error={form.formState.errors.credentialsRef?.message}>
+            <FormField
+              label="Credentials reference"
+              name="credentialsRef"
+              error={form.formState.errors.credentialsRef?.message}
+              description="An existing db: reference. Leave blank if you supply a raw credentials JSON below."
+            >
               <Input
                 {...form.register('credentialsRef')}
                 placeholder="db:cred_123"
                 invalid={Boolean(form.formState.errors.credentialsRef)}
+              />
+            </FormField>
+          )}
+
+          {requiresExternalAuthRedirect ? null : (
+            <FormField
+              label="Credentials JSON"
+              name="credentialsJson"
+              error={form.formState.errors.credentialsJson?.message}
+              description="Raw credential payload (e.g. { &quot;bridgeToken&quot;: &quot;…&quot; } for Subiekt). Encrypted server-side. Use instead of a reference."
+            >
+              <Textarea
+                {...form.register('credentialsJson')}
+                rows={3}
+                placeholder='{ "bridgeToken": "dev-bridge-key-2026" }'
+                invalid={Boolean(form.formState.errors.credentialsJson)}
+              />
+            </FormField>
+          )}
+
+          {requiresExternalAuthRedirect ? null : (
+            <FormField
+              label="Enabled capabilities"
+              name="enabledCapabilities"
+              error={form.formState.errors.enabledCapabilities?.message}
+              description="Comma-separated (e.g. Invoicing). Leave blank to use the adapter's full supported set."
+            >
+              <Input
+                {...form.register('enabledCapabilities')}
+                placeholder="Invoicing"
+                invalid={Boolean(form.formState.errors.enabledCapabilities)}
               />
             </FormField>
           )}
