@@ -98,6 +98,19 @@ export class KsefHttpClient implements IKsefHttpClient {
     return this.request<T>('GET', path, undefined, options, true);
   }
 
+  async getExpectingBinary(
+    path: string,
+    options?: KsefHttpRequestOptions,
+  ): Promise<KsefBinaryResponse> {
+    const response = await this.request<Uint8Array>('GET', path, undefined, options, true, true);
+    return {
+      data: response.data,
+      contentType: response.headers['content-type'] ?? '',
+      status: response.status,
+      headers: response.headers,
+    };
+  }
+
   async post<T = unknown>(
     path: string,
     body?: Record<string, unknown> | string,

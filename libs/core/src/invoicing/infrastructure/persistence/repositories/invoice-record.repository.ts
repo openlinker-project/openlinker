@@ -69,6 +69,14 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null> {
+    const entity = await this.repository.findOne({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findByIdempotencyKey(
     connectionId: string,
     idempotencyKey: string,

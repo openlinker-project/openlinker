@@ -6,7 +6,7 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
-import { isRegulatoryTransmitter } from '@openlinker/core/invoicing';
+import { isRegulatoryDocumentReader, isRegulatoryTransmitter } from '@openlinker/core/invoicing';
 import type {
   BuyerProfile as BuyerProfileType,
   IssueInvoiceCommand,
@@ -558,6 +558,73 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(result.regulatoryStatus).toBe('submitted');
       expect(result.clearanceReference).toBeNull();
+    });
+  });
+
+  describe('getUpo (#1224 / C15)', () => {
+    const PROVIDER_INVOICE_ID = `${SESSION_REF}:${INVOICE_REF}`;
+    const UPO_PATH = `/sessions/${SESSION_REF}/invoices/${INVOICE_REF}/upo`;
+
+    function record(providerInvoiceId: string | null = PROVIDER_INVOICE_ID): InvoiceRecord {
+      return new InvoiceRecord(
+        'rec-1',
+        'conn-1',
+        'ol_order_123',
+        'ksef',
+        'invoice',
+        'issued',
+        providerInvoiceId,
+        null,
+        'accepted',
+        '5265877635-20250826-0100001AF629-AF',
+        null,
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        new Date('2026-06-23T10:00:00.000Z'),
+      );
+    }
+
+    it('should be true for the RegulatoryDocumentReader guard', () => {
+      expect(isRegulatoryDocumentReader(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+
+    it('should fetch the session-scoped UPO endpoint as binary and return neutral bytes', async () => {
+      const http = new FakeKsefHttpClient();
+      const bytes = new Uint8Array([60, 85, 80, 79, 62]);
+      http.seedBinaryGet(UPO_PATH, {
+        data: bytes,
+        contentType: 'application/xml',
+        status: 200,
+        headers: { 'content-type': 'application/xml' },
+      });
+
+      const result = await adapter(http).getUpo(record());
+
+      expect(result.content).toBe(bytes);
+      expect(result.contentType).toBe('application/xml');
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
+    });
+
+    it('should default the content type to application/xml when KSeF omits it', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seedBinaryGet(UPO_PATH, {
+        data: new Uint8Array([1]),
+        contentType: '',
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getUpo(record());
+
+      expect(result.contentType).toBe('application/xml');
+    });
+
+    it('should throw when the record carries no composite invoice reference', async () => {
+      await expect(adapter(new FakeKsefHttpClient()).getUpo(record(null))).rejects.toBeInstanceOf(
+        KsefSessionException,
+      );
     });
   });
 });

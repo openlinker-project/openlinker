@@ -1,13 +1,13 @@
 /**
- * InvoicingController unit tests (#1119)
+ * InvoicingController unit tests (#1119, #1224)
  *
- * Covers the three endpoints with the orders + invoice service seams mocked
- * (NO repository ports — the controller reaches both contexts through their
- * `I*Service` interfaces). Asserts the AC-5 re-issue gate (404/409), idempotency
- * pass-through, exception->HTTP mapping, and the DTO field-omission contract.
+ * Covers all endpoints: the issue/retry/list endpoints (orders + invoice service
+ * seams mocked — NO repository ports); and the UPO download endpoint (repository
+ * + integrations service mocked).
  *
  * @module apps/api/src/invoicing/http
  */
+import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import {
   ConflictException,
@@ -16,15 +16,30 @@ import {
   BadGatewayException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { IInvoiceService, InvoiceRecord } from '@openlinker/core/invoicing';
-import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import {
+  INVOICE_SERVICE_TOKEN,
+  INVOICE_RECORD_REPOSITORY_TOKEN,
+  InvoiceRecord as InvoiceRecordClass,
+} from '@openlinker/core/invoicing';
+import type {
+  InvoiceRecordRepositoryPort,
+  InvoicingPort,
+  RegulatoryDocument,
+} from '@openlinker/core/invoicing';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderRecord,
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
-import { AdapterNotFoundException, CapabilityNotSupportedException } from '@openlinker/core/integrations';
+import {
+  AdapterNotFoundException,
+  CapabilityNotSupportedException,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { InvoicingController } from './invoicing.controller';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
@@ -580,6 +595,163 @@ describe('InvoicingController', () => {
       expect(res.skipped).toBe(1);
       expect(res.results[0].reason).toContain('order');
       expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- UPO download endpoint tests (#1224) ----------------------------------------
+
+  describe('GET /invoices/:invoiceId/upo', () => {
+    let repository: jest.Mocked<InvoiceRecordRepositoryPort>;
+    let integrationsMock: jest.Mocked<IIntegrationsService>;
+    let upoController: InvoicingController;
+
+    function clearedRecord(): InvoiceRecordClass {
+      return new InvoiceRecordClass(
+        'rec-inv-1',
+        'conn-ksef-1',
+        'ol_order_001',
+        'ksef',
+        'invoice',
+        'issued',
+        'SESSION:INVOICE',
+        null,
+        'accepted',
+        '5265877635-20250826-0100001AF629-AF',
+        null,
+        null,
+        new Date('2026-04-01T12:00:00Z'),
+        null,
+        new Date('2026-04-01T12:00:00Z'),
+        new Date('2026-04-01T12:00:00Z'),
+      );
+    }
+
+    function pendingRecord(): InvoiceRecordClass {
+      const r = clearedRecord();
+      return new InvoiceRecordClass(
+        r.id,
+        r.connectionId,
+        r.orderId,
+        r.providerType,
+        r.documentType,
+        'issued',
+        r.providerInvoiceId,
+        r.providerInvoiceNumber,
+        'submitted',
+        null,
+        r.idempotencyKey,
+        r.pdfUrl,
+        r.issuedAt,
+        r.errorMessage,
+        r.createdAt,
+        r.updatedAt,
+      );
+    }
+
+    function mockResponse(): Response & {
+      headers: Record<string, string>;
+      body: Buffer | null;
+    } {
+      const headers: Record<string, string> = {};
+      let body: Buffer | null = null;
+      const res = {
+        headers,
+        get body(): Buffer | null {
+          return body;
+        },
+        setHeader(name: string, value: string): void {
+          headers[name] = value;
+        },
+        send(payload: Buffer): void {
+          body = payload;
+        },
+      };
+      return res as unknown as Response & { headers: Record<string, string>; body: Buffer | null };
+    }
+
+    beforeEach(async () => {
+      const mockRepo: jest.Mocked<InvoiceRecordRepositoryPort> = {
+        create: jest.fn(),
+        findById: jest.fn(),
+        findByOrderId: jest.fn(),
+        findLatestByOrderId: jest.fn(),
+        findByIdempotencyKey: jest.fn(),
+        updateOutcome: jest.fn(),
+      } as unknown as jest.Mocked<InvoiceRecordRepositoryPort>;
+
+      const mockIntegrations = {
+        getCapabilityAdapter: jest.fn(),
+      } as unknown as jest.Mocked<IIntegrationsService>;
+
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [InvoicingController],
+        providers: [
+          { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
+          { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+          { provide: INVOICE_RECORD_REPOSITORY_TOKEN, useValue: mockRepo },
+          { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
+        ],
+      }).compile();
+
+      upoController = module.get(InvoicingController);
+      repository = module.get(INVOICE_RECORD_REPOSITORY_TOKEN);
+      integrationsMock = module.get(INTEGRATIONS_SERVICE_TOKEN);
+    });
+
+    it('should stream the UPO bytes for a cleared invoice (200)', async () => {
+      repository.findById.mockResolvedValue(clearedRecord());
+      const document: RegulatoryDocument = {
+        content: new Uint8Array([1, 2, 3]),
+        contentType: 'application/xml',
+      };
+      const adapter: InvoicingPort = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
+        getUpo: jest.fn().mockResolvedValue(document),
+      } as InvoicingPort;
+      integrationsMock.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const res = mockResponse();
+      await upoController.downloadUpo('rec-inv-1', res);
+
+      expect(integrationsMock.getCapabilityAdapter).toHaveBeenCalledWith('conn-ksef-1', 'Invoicing');
+      expect(res.headers['Content-Type']).toBe('application/xml');
+      expect(res.headers['Content-Disposition']).toContain('ol-upo-rec-inv-1.xml');
+      expect(res.body).toEqual(Buffer.from([1, 2, 3]));
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(upoController.downloadUpo('nope', mockResponse())).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('should 409 when the invoice is not yet cleared', async () => {
+      repository.findById.mockResolvedValue(pendingRecord());
+
+      await expect(
+        upoController.downloadUpo('rec-inv-1', mockResponse()),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(integrationsMock.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should 409 when the provider exposes no confirmation document', async () => {
+      repository.findById.mockResolvedValue(clearedRecord());
+      const adapter: InvoicingPort = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
+      };
+      integrationsMock.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(
+        upoController.downloadUpo('rec-inv-1', mockResponse()),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

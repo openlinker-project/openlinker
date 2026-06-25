@@ -55,6 +55,8 @@ import type {
   InvoiceRecord as InvoiceRecordType,
   InvoicingPort,
   IssueInvoiceCommand,
+  RegulatoryDocument,
+  RegulatoryDocumentReader,
   RegulatoryTransmitter,
   UpsertCustomerCommand,
   UpsertCustomerResult,
@@ -91,7 +93,12 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
-export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitter {
+/** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
+const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
+
+export class KsefInvoicingAdapter
+  implements InvoicingPort, RegulatoryTransmitter, RegulatoryDocumentReader
+{
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
   constructor(
@@ -289,6 +296,34 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     }
 
     return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
+  }
+
+  /**
+   * `RegulatoryDocumentReader.getUpo` (#1224 / C15) — fetch the UPO confirmation
+   * document for a cleared invoice as neutral bytes. Decodes the composite
+   * `providerInvoiceId` into the session + invoice references and reads the
+   * session-scoped UPO endpoint (`GET /sessions/{sessionRef}/invoices/{invoiceRef}/upo`)
+   * as binary — the same authed path the clearance read uses, so no absolute-URL
+   * auth edge case. KSeF returns the UPO as XML (the official confirmation); the
+   * neutral `RegulatoryDocument` carries the provider-reported content type so the
+   * HTTP boundary streams it back verbatim. A `4xx`/`5xx` propagates as a thrown
+   * transport exception the controller maps (404/409/502); core sees only neutral
+   * bytes, never a KSeF/UPO wire detail.
+   */
+  async getUpo(record: InvoiceRecordType): Promise<RegulatoryDocument> {
+    const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);
+    const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
+      invoiceRef,
+    )}/upo`;
+    this.logger.log(
+      `Fetching UPO document (connection ${this.connectionId}, session ref ${sessionRef}, invoice ref ${invoiceRef})`,
+    );
+
+    const response = await this.httpClient.getExpectingBinary(upoPath);
+    return {
+      content: response.data,
+      contentType: response.contentType.length > 0 ? response.contentType : DEFAULT_UPO_CONTENT_TYPE,
+    };
   }
 
   /**

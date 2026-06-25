@@ -10,6 +10,11 @@
  * the invoice projection through `IInvoiceService` — NEVER a repository port
  * (per architecture-overview.md § Cross-context dependencies in core).
  *
+ * Also exposes the UPO download endpoint (#1224, epic #1142 C15): neutral by
+ * design (ADR-026) — resolves the connection's `Invoicing` adapter, narrows to
+ * the `RegulatoryDocumentReader` sub-capability, and streams back the document
+ * blob without any KSeF/regime vocabulary.
+ *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
  * we declare only `@Roles('admin')` + `@ApiBearerAuth()` — never a redundant
  * `@UseGuards(JwtAuthGuard)`.
@@ -30,24 +35,37 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  AdapterNotFoundException,
+  CapabilityNotSupportedException,
+  CapabilityNotEnabledException,
+} from '@openlinker/core/integrations';
+import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
+  INVOICE_RECORD_REPOSITORY_TOKEN,
+  InvoiceRecordRepositoryPort,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  isRegulatoryDocumentReader,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
   TaxIdentifier,
+  InvoicingPort,
 } from '@openlinker/core/invoicing';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
@@ -56,11 +74,6 @@ import {
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
-import {
-  AdapterNotFoundException,
-  CapabilityNotSupportedException,
-  CapabilityNotEnabledException,
-} from '@openlinker/core/integrations';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
@@ -70,6 +83,18 @@ import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
+
+/** MIME → download-filename extension; the UPO is labelled by its real content type. */
+const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
+  'application/pdf': 'pdf',
+  'application/xml': 'xml',
+  'text/xml': 'xml',
+};
+
+function extensionForContentType(contentType: string): string {
+  const mime = contentType.toLowerCase().split(';', 1)[0]?.trim() ?? '';
+  return EXTENSION_BY_CONTENT_TYPE[mime] ?? 'bin';
+}
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -83,6 +108,10 @@ export class InvoicingController {
     private readonly invoiceService: IInvoiceService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(INVOICE_RECORD_REPOSITORY_TOKEN)
+    private readonly invoiceRecordRepository: InvoiceRecordRepositoryPort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
 
   @Post('invoices')
@@ -509,5 +538,49 @@ export class InvoicingController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
+  }
+
+  @Get('invoices/:invoiceId/upo')
+  @ApiOperation({
+    summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
+    description:
+      'Returns the neutral confirmation document bytes (XML/PDF, provider-dependent) for an ' +
+      'issued + cleared invoice record. 404 when the invoice id is unknown; 409 when the document ' +
+      'is not yet available (record not cleared, or its provider cannot return a confirmation).',
+  })
+  @ApiProduces('application/xml', 'application/pdf')
+  @ApiResponse({ status: 200, description: 'UPO document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'UPO not yet available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async downloadUpo(@Param('invoiceId') invoiceId: string, @Res() res: Response): Promise<void> {
+    const record = await this.invoiceRecordRepository.findById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
+      throw new ConflictException(
+        `UPO is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+      );
+    }
+
+    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+      record.connectionId,
+      'Invoicing',
+    );
+    if (!isRegulatoryDocumentReader(adapter)) {
+      throw new ConflictException(
+        `Invoice ${invoiceId} provider does not expose a confirmation document`,
+      );
+    }
+
+    // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
+    // runs FIRST so a thrown error still routes through the exception layer
+    // before any byte is written; `res.*` only ever runs on success.
+    const document = await adapter.getUpo(record);
+    const ext = extensionForContentType(document.contentType);
+    res.setHeader('Content-Type', document.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="ol-upo-${invoiceId}.${ext}"`);
+    res.send(Buffer.from(document.content));
   }
 }
