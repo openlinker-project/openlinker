@@ -173,6 +173,22 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
     const pickupPoint = await this.resolvePickupPoint(prestashopOrder, config);
 
+    // The order JSON carries only address IDs, so the mapper cannot populate
+    // billing/shipping bodies. Hydrate them from the address resources so
+    // downstream consumers (e.g. invoicing buyer-profile derivation) have a
+    // real address, incl. the B2B `company` field.
+    const billingAddress =
+      (mapped.billingAddress as IncomingOrderAddress | undefined) ??
+      (await this.hydrateAddress(
+        prestashopOrder.id_address_invoice as string | number | undefined
+      ));
+    const shippingAddress =
+      (mapped.shippingAddress as IncomingOrderAddress | undefined) ??
+      (await this.hydrateAddress(
+        prestashopOrder.id_address_delivery
+      )) ??
+      billingAddress;
+
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
       const row = orderRows[index];
       const externalId =
@@ -217,8 +233,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       items,
       totals: mapped.totals,
-      shippingAddress: mapped.shippingAddress as IncomingOrderAddress | undefined,
-      billingAddress: mapped.billingAddress as IncomingOrderAddress | undefined,
+      shippingAddress,
+      billingAddress,
       placedAt: placedAtIso,
       createdAt: createdAtIso,
       updatedAt: updatedAtIso,
@@ -268,9 +284,69 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     return { id: raw.toUpperCase() };
   }
 
+  private readonly countryIso2Cache = new Map<string, string>();
+
+  /**
+   * Resolve a country's ISO-3166 alpha-2 code from its PrestaShop id_country,
+   * cached per adapter instance. Returns '' on failure (callers default).
+   */
+  private async resolveCountryIso2(idCountry: string | number | undefined): Promise<string> {
+    if (idCountry === undefined || idCountry === null) return '';
+    const key = String(idCountry);
+    const cached = this.countryIso2Cache.get(key);
+    if (cached !== undefined) return cached;
+    try {
+      const country = await this.httpClient.getResource<{ iso_code?: string }>('countries', key);
+      const iso = (country.iso_code ?? '').toUpperCase();
+      this.countryIso2Cache.set(key, iso);
+      return iso;
+    } catch (error) {
+      this.logger.warn(`Failed to resolve country ${key}: ${(error as Error).message}`);
+      this.countryIso2Cache.set(key, '');
+      return '';
+    }
+  }
+
+  /**
+   * Fetch a PrestaShop address resource by id and map it to the neutral
+   * IncomingOrderAddress (incl. the B2B `company` field). Returns undefined
+   * when the id is absent or the fetch fails.
+   */
+  private async hydrateAddress(
+    addressId: string | number | undefined
+  ): Promise<IncomingOrderAddress | undefined> {
+    if (!addressId) return undefined;
+    try {
+      const a = await this.httpClient.getResource<PrestashopAddress & { company?: string }>(
+        'addresses',
+        String(addressId)
+      );
+      return {
+        firstName: a.firstname,
+        lastName: a.lastname,
+        company: a.company,
+        address1: a.address1 ?? '',
+        address2: a.address2,
+        city: a.city ?? '',
+        postalCode: a.postcode ?? '',
+        country: await this.resolveCountryIso2(a.id_country),
+        phone: a.phone,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to hydrate address ${String(addressId)}: ${(error as Error).message}`
+      );
+      return undefined;
+    }
+  }
+
   private async fetchOrderRows(orderId: string | number): Promise<PrestashopOrderRow[]> {
     try {
-      return await this.httpClient.listResources<PrestashopOrderRow>('order_rows', {
+      // PrestaShop 9.x renamed the `order_rows` webservice resource to
+      // `order_details`; the row field shape (product_id/quantity/price/
+      // reference) is unchanged, so the existing PrestashopOrderRow mapping
+      // still applies.
+      return await this.httpClient.listResources<PrestashopOrderRow>('order_details', {
         custom: { id_order: orderId },
       });
     } catch (error) {

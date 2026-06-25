@@ -770,6 +770,62 @@ describe('OrderIngestionService', () => {
         expect.objectContaining({ parentEntityType: 'Order' })
       );
     });
+
+    it('should resolve customer via email when customerEmail is present but customerExternalId is absent (#1208/#995)', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerEmail: 'erli-buyer@example.com',
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      // Email-only source: the email is the connection-scoped buyer-identity key.
+      expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith({
+        externalBuyerId: 'erli-buyer@example.com',
+        email: 'erli-buyer@example.com',
+        sourceConnectionId: connectionId,
+      });
+      // The Customer mapping is NOT created directly — resolution goes through
+      // the identity resolver, which owns the Customer-mapping write.
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        'Customer',
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+      // The resolved internal customer id flows onto the persisted snapshot, so
+      // the destination order-create has a customerId (the bug fix).
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'ol_customer_test',
+        connectionId,
+        null
+      );
+    });
+
+    it('should return undefined customer when neither customerExternalId nor customerEmail is present', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({ ...baseIncoming });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(customerIdentityResolver.resolveCustomerIdentity).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        'Customer',
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        null,
+        connectionId,
+        null
+      );
+    });
   });
 
   describe('syncOrderFromMarketplace – item resolution', () => {

@@ -26,6 +26,7 @@ import { devUiRoute } from './dev-ui.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { inventoryRoute } from './inventory.route';
+import { invoicesRoute } from './invoices.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
 import { advancedNewConnectionRoute } from './advanced-new-connection.route';
@@ -56,6 +57,7 @@ export const coreChildren: RouteObject[] = [
   customersRoute,
   listingsRoute,
   shipmentsRoute,
+  invoicesRoute,
   connectionsRoute,
   adaptersRoute,
   newConnectionRoute,

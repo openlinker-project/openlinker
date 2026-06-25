@@ -501,23 +501,39 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     internalOrderId: string
   ): Promise<string | undefined> {
-    if (!incoming.customerExternalId) {
-      return undefined;
+    if (incoming.customerExternalId) {
+      if (incoming.customerEmail) {
+        const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
+          externalBuyerId: incoming.customerExternalId,
+          email: incoming.customerEmail,
+          sourceConnectionId: connectionId,
+        });
+        return resolution.internalCustomerId;
+      }
+      return this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Customer,
+        incoming.customerExternalId,
+        connectionId,
+        { parentEntityType: CORE_ENTITY_TYPE.Order, parentInternalId: internalOrderId }
+      );
     }
+
+    // Email-only source (#1208 / #995): marketplaces like Erli expose no buyer
+    // id — only the buyer email. The email IS the stable buyer identity, so key
+    // identity resolution on it (raw email as the connection-scoped buyer-id
+    // mapping key; the resolver normalizes + hashes internally for projection
+    // matching). Without this the unified Order would carry no customerId and
+    // the destination order-create (e.g. PrestaShop) fails closed.
     if (incoming.customerEmail) {
       const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
-        externalBuyerId: incoming.customerExternalId,
+        externalBuyerId: incoming.customerEmail,
         email: incoming.customerEmail,
         sourceConnectionId: connectionId,
       });
       return resolution.internalCustomerId;
     }
-    return this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.Customer,
-      incoming.customerExternalId,
-      connectionId,
-      { parentEntityType: CORE_ENTITY_TYPE.Order, parentInternalId: internalOrderId }
-    );
+
+    return undefined;
   }
 
   private buildUnifiedOrder(
