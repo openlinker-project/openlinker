@@ -98,6 +98,32 @@ describe('InvoiceRecordRepository', () => {
       expect(result.isIssued).toBe(false);
     });
 
+    it('maps the W1 failureCode/failureReason from a failed-create input onto the ORM row', async () => {
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      await repository.create({
+        ...createInput,
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'buyer-tax-id-invalid',
+        failureReason: 'The buyer tax identifier was rejected as invalid.',
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureCode).toBe('buyer-tax-id-invalid');
+      expect(saved.failureReason).toBe('The buyer tax identifier was rejected as invalid.');
+    });
+
+    it('defaults the W1 failureCode/failureReason to null on a pending create', async () => {
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      await repository.create(createInput);
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureCode).toBeNull();
+      expect(saved.failureReason).toBeNull();
+    });
+
     it('converts a unique-violation into DuplicateInvoiceRecordException', async () => {
       ormRepo.save.mockRejectedValue(
         new QueryFailedError(
@@ -191,20 +217,26 @@ describe('InvoiceRecordRepository', () => {
       ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
     });
 
-    it('persists the #1200 failureMode + lease fields when patched', async () => {
+    it('persists the #1200 failureMode + lease fields and the W1 failureCode/failureReason when patched', async () => {
       ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
       ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
 
       const result = await repository.updateOutcome('ol_invoice_1', {
         status: 'failed',
         failureMode: 'in-doubt',
+        failureCode: 'transport-timeout',
+        failureReason: 'The invoicing request timed out.',
         leaseExpiresAt: null,
       });
 
       const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
       expect(saved.failureMode).toBe('in-doubt');
+      expect(saved.failureCode).toBe('transport-timeout');
+      expect(saved.failureReason).toBe('The invoicing request timed out.');
       expect(saved.leaseExpiresAt).toBeNull();
       expect(result.failureMode).toBe('in-doubt');
+      expect(result.failureCode).toBe('transport-timeout');
+      expect(result.failureReason).toBe('The invoicing request timed out.');
     });
   });
 

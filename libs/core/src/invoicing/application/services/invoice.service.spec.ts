@@ -68,6 +68,8 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.createdAt ?? new Date('2026-06-22T10:00:00.000Z'),
     overrides.updatedAt ?? new Date('2026-06-22T10:00:00.000Z'),
     overrides.failureMode === undefined ? null : overrides.failureMode,
+    overrides.failureCode === undefined ? null : overrides.failureCode,
+    overrides.failureReason === undefined ? null : overrides.failureReason,
     overrides.leaseExpiresAt === undefined ? null : overrides.leaseExpiresAt,
   );
 }
@@ -164,9 +166,12 @@ describe('InvoiceService', () => {
         clearanceReference: 'KSEF-XYZ',
         pdfUrl: 'https://prov/inv.pdf',
         issuedAt: adapterResult.issuedAt,
-        // A successful issue clears the failure mode + releases the lease (#1200).
+        // A successful issue clears the failure mode/code/reason + releases the
+        // lease (#1200 / W1).
         errorMessage: null,
         failureMode: null,
+        failureCode: null,
+        failureReason: null,
         leaseExpiresAt: null,
       });
       expect(result).toBe(finalRecord);
@@ -245,11 +250,15 @@ describe('InvoiceService', () => {
 
       await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
       // A plain Error carries no neutral failureMode, so it collapses to the
-      // fiscal-safe 'in-doubt' (#1200) and the lease is released.
+      // fiscal-safe 'in-doubt' (#1200) and the lease is released. An in-doubt
+      // failure maps to the neutral 'transport-timeout' code (W1).
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
         status: 'failed',
         errorMessage: 'provider rejected: invalid tax rate',
         failureMode: 'in-doubt',
+        failureCode: 'transport-timeout',
+        failureReason:
+          'The invoicing request timed out; the document may or may not have been created.',
         leaseExpiresAt: null,
       });
     });
@@ -264,9 +273,40 @@ describe('InvoiceService', () => {
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
 
       await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      // A 'rejected' throwable whose reason text does NOT mention a tax id maps to
+      // the generic neutral 'provider-rejected' code (W1).
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         'rec-1',
-        expect.objectContaining({ status: 'failed', failureMode: 'rejected' }),
+        expect.objectContaining({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'provider-rejected',
+          failureReason: 'The invoicing provider rejected the request.',
+        }),
+      );
+    });
+
+    it("(d3) failureCode: a 'rejected' throwable whose reason mentions a tax id maps to 'buyer-tax-id-invalid'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      // Structural `reason` field (Subiekt's SubiektInvoiceRejectedError shape) —
+      // read duck-typed, never value-imported (#1200/W1).
+      const rejection = Object.assign(new Error('rejected'), {
+        failureMode: 'rejected' as const,
+        reason: 'Buyer tax id is malformed',
+      });
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'buyer-tax-id-invalid',
+          failureReason: 'The buyer tax identifier was rejected as invalid.',
+        }),
       );
     });
 

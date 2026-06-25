@@ -46,6 +46,8 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     issuedAt: NOW,
     errorMessage: 'internal diagnostic',
     failureMode: null,
+    failureCode: null,
+    failureReason: null,
     leaseExpiresAt: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -324,6 +326,36 @@ describe('InvoicingController', () => {
       expect(result).not.toHaveProperty('errorMessage');
       expect(result).not.toHaveProperty('idempotencyKey');
       expect(result.issuedAt).toBe(NOW.toISOString());
+      // W1: the failure-semantics fields are present (null on a success).
+      expect(result.failureMode).toBeNull();
+      expect(result.failureCode).toBeNull();
+      expect(result.failureReason).toBeNull();
+    });
+
+    it('surfaces the W1 failure semantics (failureMode/failureCode/failureReason) on the DTO while still omitting errorMessage', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(
+        makeInvoiceRecord({ status: 'failed' }),
+      );
+      invoiceService.issueInvoice.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'buyer-tax-id-invalid',
+          failureReason: 'The buyer tax identifier was rejected as invalid.',
+          errorMessage: 'raw provider PII-tainted message',
+        }),
+      );
+
+      // A prior `failed` row allows re-issue; the service returns a failed record
+      // again, and the DTO must carry the neutral failure semantics for the FE.
+      const result = await controller.issueInvoice(dto);
+
+      expect(result.failureMode).toBe('rejected');
+      expect(result.failureCode).toBe('buyer-tax-id-invalid');
+      expect(result.failureReason).toBe('The buyer tax identifier was rejected as invalid.');
+      // The PII-tainted internal diagnostic is NEVER exposed.
+      expect(result).not.toHaveProperty('errorMessage');
     });
   });
 

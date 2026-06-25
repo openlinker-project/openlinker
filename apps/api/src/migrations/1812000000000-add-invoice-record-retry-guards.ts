@@ -10,6 +10,15 @@
  *     lease. Set when an attempt claims the in-flight slot; `null` otherwise.
  *     Backs the atomic `claimForIssue` guard that lets exactly one concurrent
  *     same-key retry cross the provider boundary.
+ *   - `failureCode` (nullable varchar) + `failureReason` (nullable text) (W1):
+ *     the machine-readable failure code (closed neutral taxonomy) + a short,
+ *     PII-free reason. Both surface on the response DTO so the FE can tell a
+ *     re-attemptable `rejected` failure from an unsafe `in-doubt` one without
+ *     parsing the INTERNAL-ONLY `errorMessage`. `null` for non-`failed` rows.
+ *
+ * Column identifiers stay camelCase-quoted (matching `failureMode` /
+ * `leaseExpiresAt` above and the TypeORM-default column naming on the ORM entity);
+ * a snake_case name would break the entity↔column mapping.
  *
  * The `status` column gains a new logical value `issuing` (no DB enum — it is a
  * plain text column, so no type change is required). The partial-unique create
@@ -31,9 +40,21 @@ export class AddInvoiceRecordRetryGuards1812000000000 implements MigrationInterf
     await queryRunner.query(
       `ALTER TABLE "invoice_records" ADD COLUMN IF NOT EXISTS "leaseExpiresAt" TIMESTAMP`,
     );
+    await queryRunner.query(
+      `ALTER TABLE "invoice_records" ADD COLUMN IF NOT EXISTS "failureCode" character varying`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "invoice_records" ADD COLUMN IF NOT EXISTS "failureReason" text`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "invoice_records" DROP COLUMN IF EXISTS "failureReason"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "invoice_records" DROP COLUMN IF EXISTS "failureCode"`,
+    );
     await queryRunner.query(
       `ALTER TABLE "invoice_records" DROP COLUMN IF EXISTS "leaseExpiresAt"`,
     );

@@ -332,6 +332,10 @@ export class InvoicingController {
       providerInvoiceNumber: record.providerInvoiceNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
+      // W1 failure semantics (errorMessage stays omitted — PII).
+      failureMode: record.failureMode,
+      failureCode: record.failureCode,
+      failureReason: record.failureReason,
       pdfUrl: record.pdfUrl,
       issuedAt: record.issuedAt ? record.issuedAt.toISOString() : null,
       createdAt: record.createdAt.toISOString(),

@@ -19,7 +19,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import type { InvoiceFailureMode } from '../../../domain/types/invoicing.types';
+import type {
+  InvoiceFailureCode,
+  InvoiceFailureMode,
+} from '../../../domain/types/invoicing.types';
 import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
 @Entity('invoice_records')
@@ -86,6 +89,21 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   failureMode!: InvoiceFailureMode | null;
+
+  /**
+   * Neutral machine-readable failure code (W1) — `null` unless `status =
+   * 'failed'`. The closed {@link InvoiceFailureCode} taxonomy the FE switches on
+   * (never the PII-tainted `errorMessage`).
+   */
+  @Column({ type: 'varchar', nullable: true })
+  failureCode!: InvoiceFailureCode | null;
+
+  /**
+   * Short, PII-free failure summary (W1) — `null` unless `status = 'failed'`.
+   * Safe to expose, unlike the INTERNAL-ONLY `errorMessage`.
+   */
+  @Column({ type: 'text', nullable: true })
+  failureReason!: string | null;
 
   /**
    * Lease expiry for the `issuing` CAS claim (#1200) — `null` unless this row

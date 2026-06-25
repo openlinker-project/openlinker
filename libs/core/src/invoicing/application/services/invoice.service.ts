@@ -31,6 +31,7 @@ import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplica
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import type {
   GetInvoiceByOrderQuery,
+  InvoiceFailureCode,
   InvoiceFailureMode,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
@@ -52,6 +53,21 @@ const INVOICING_CAPABILITY = 'Invoicing';
  * operator-facing diagnostic rather than an unbounded PII sink.
  */
 const MAX_ERROR_MESSAGE_LENGTH = 500;
+
+/**
+ * Max persisted length of the PII-free `failureReason` (W1). Far shorter than
+ * `errorMessage` because it is a sanitized, operator-facing one-liner that is
+ * SAFE to expose on the response DTO — it must never become a PII sink.
+ */
+const MAX_FAILURE_REASON_LENGTH = 200;
+
+/**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a buyer
+ * tax-identifier problem, so the FE can prompt the operator to fix the buyer
+ * data. Neutral vocabulary only (no country tax-system names per ADR-026):
+ * matches the generic "tax id" the adapter surfaces in its rejection reason.
+ */
+const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier'] as const;
 
 /**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed
@@ -104,6 +120,12 @@ if (ISSUING_LEASE_MS <= MAX_SUPPORTED_PROVIDER_TIMEOUT_MS) {
  */
 interface NeutralFailureCarrier {
   failureMode?: unknown;
+  /**
+   * Operator-readable rejection reason some adapters stamp on a TERMINAL
+   * `rejected` throwable (e.g. Subiekt's `SubiektInvoiceRejectedError.reason`).
+   * Read STRUCTURALLY (duck-typed) — core never value-imports the adapter class.
+   */
+  reason?: unknown;
 }
 
 @Injectable()
@@ -257,15 +279,20 @@ export class InvoiceService implements IInvoiceService {
     } catch (error) {
       const sanitized = this.sanitizeError(error);
       const failureMode = this.classifyFailure(error);
+      const failureCode = this.classifyFailureCode(error, failureMode);
+      const failureReason = this.deriveFailureReason(failureCode);
       // Log the BOUNDED diagnostic + record id only — never the raw (unbounded,
       // possibly buyer-echoing) provider message to an external sink.
       this.logger.warn(
-        `Invoice issuance failed for record ${recordId} (failureMode=${failureMode}): ${sanitized}`,
+        `Invoice issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );
       const patch: InvoiceOutcomePatch = {
         status: 'failed',
         errorMessage: sanitized,
         failureMode,
+        // W1: machine-readable code + PII-free reason for the response DTO.
+        failureCode,
+        failureReason,
         // Release the lease: the attempt is over (terminal rejection or in-doubt).
         leaseExpiresAt: null,
       };
@@ -288,10 +315,12 @@ export class InvoiceService implements IInvoiceService {
       clearanceReference: issued.clearanceReference,
       pdfUrl: issued.pdfUrl,
       issuedAt: issued.issuedAt,
-      // Clear any stale message + failure mode from a prior failed attempt, and
-      // release the `issuing` lease — the record is now terminal `issued`.
+      // Clear any stale message + failure mode/code/reason from a prior failed
+      // attempt, and release the `issuing` lease — the record is now `issued`.
       errorMessage: null,
       failureMode: null,
+      failureCode: null,
+      failureReason: null,
       leaseExpiresAt: null,
     };
     return this.repo.updateOutcome(recordId, patch);
@@ -312,6 +341,62 @@ export class InvoiceService implements IInvoiceService {
   private classifyFailure(error: unknown): InvoiceFailureMode {
     const mode = (error as NeutralFailureCarrier | null)?.failureMode;
     return mode === 'rejected' ? 'rejected' : 'in-doubt';
+  }
+
+  /**
+   * Derive the neutral, closed {@link InvoiceFailureCode} (W1) from the already-
+   * classified {@link InvoiceFailureMode} plus a STRUCTURAL read of the adapter
+   * throwable's `reason`/message — never value-importing an adapter error class.
+   *
+   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`
+   *     (operator-fixable); anything else → `provider-rejected`.
+   *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
+   *
+   * The mode is the source of truth for re-attemptability; the code is the FE-
+   * facing cause refinement. An unrecognised mode can never reach here (the only
+   * two values are exhaustively handled), so there is no need for a separate
+   * `provider-error` branch on the mode — it is the fiscal-safe code reserved for
+   * a future widening of the mode set.
+   */
+  private classifyFailureCode(
+    error: unknown,
+    failureMode: InvoiceFailureMode,
+  ): InvoiceFailureCode {
+    if (failureMode === 'in-doubt') {
+      return 'transport-timeout';
+    }
+    // failureMode === 'rejected': refine off the provider's neutral reason text.
+    const carrier = error as NeutralFailureCarrier | null;
+    const reasonText =
+      typeof carrier?.reason === 'string'
+        ? carrier.reason
+        : error instanceof Error
+          ? error.message
+          : '';
+    const haystack = reasonText.toLowerCase();
+    return TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))
+      ? 'buyer-tax-id-invalid'
+      : 'provider-rejected';
+  }
+
+  /**
+   * Map the neutral {@link InvoiceFailureCode} to a fixed, PII-free, operator-
+   * facing one-liner safe to expose on the response DTO. Deliberately NOT derived
+   * from the (possibly buyer-echoing) provider message — a constant per code — so
+   * `failureReason` can never leak PII. Bounded for defence in depth.
+   */
+  private deriveFailureReason(failureCode: InvoiceFailureCode): string {
+    const reasons: Record<InvoiceFailureCode, string> = {
+      'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
+      'provider-rejected': 'The invoicing provider rejected the request.',
+      'transport-timeout':
+        'The invoicing request timed out; the document may or may not have been created.',
+      'provider-error': 'The invoicing provider returned an unexpected error.',
+    };
+    const reason = reasons[failureCode];
+    return reason.length <= MAX_FAILURE_REASON_LENGTH
+      ? reason
+      : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
   }
 
   async getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null> {

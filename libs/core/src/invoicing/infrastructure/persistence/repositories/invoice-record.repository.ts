@@ -209,6 +209,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.issuedAt = input.issuedAt ?? null;
     entity.errorMessage = input.errorMessage ?? null;
     entity.failureMode = input.failureMode ?? null;
+    entity.failureCode = input.failureCode ?? null;
+    entity.failureReason = input.failureReason ?? null;
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
     return entity;
@@ -233,6 +235,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.createdAt,
       entity.updatedAt,
       entity.failureMode,
+      entity.failureCode,
+      entity.failureReason,
       entity.leaseExpiresAt,
     );
   }

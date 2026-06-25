@@ -11,6 +11,7 @@
  * @module libs/core/src/invoicing/domain/entities
  */
 import type {
+  InvoiceFailureCode,
   InvoiceFailureMode,
   InvoiceStatus,
   RegulatoryStatus,
@@ -45,6 +46,19 @@ export class InvoiceRecord {
      * surfaced for manual reconciliation). See {@link InvoiceFailureMode}.
      */
     public readonly failureMode: InvoiceFailureMode | null = null,
+    /**
+     * Neutral machine-readable failure code (W1) — `null` unless `status ===
+     * 'failed'`. Lets the FE drive a cause-specific affordance off the closed
+     * {@link InvoiceFailureCode} taxonomy without parsing the PII-tainted,
+     * never-exposed `errorMessage`.
+     */
+    public readonly failureCode: InvoiceFailureCode | null = null,
+    /**
+     * Short, PII-free human-readable failure summary (W1) — `null` unless
+     * `status === 'failed'`. Safe to expose to API callers, unlike the
+     * INTERNAL-ONLY `errorMessage`.
+     */
+    public readonly failureReason: string | null = null,
     /**
      * Lease expiry for the `issuing` CAS claim (#1200) — `null` unless this
      * record currently holds the in-flight slot. A claim is only contended while

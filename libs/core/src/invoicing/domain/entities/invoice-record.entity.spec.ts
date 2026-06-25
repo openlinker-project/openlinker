@@ -29,6 +29,8 @@ function makeRecord(
     now,
     now,
     extras.failureMode ?? null,
+    null,
+    null,
     extras.leaseExpiresAt ?? null,
   );
 }
