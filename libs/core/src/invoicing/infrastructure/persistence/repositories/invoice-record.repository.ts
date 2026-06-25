@@ -136,6 +136,16 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // order — KEYSET paging that lets the service walk the WHOLE non-terminal
     // frontier within one run even when the oldest rows never bump `updatedAt`
     // (#1121 plan decision #5, revised on #1206).
+    //
+    // Precision note: the column is Postgres `timestamp` (microsecond precision)
+    // but the cursor `updatedAt` round-trips through a JS `Date` (millisecond
+    // precision). Comparing/ordering on the raw column would let the cursor row's
+    // truncated-millisecond value stay strictly less than its own microsecond
+    // value, re-selecting the same row forever (the walk stalls on row 1). We
+    // therefore truncate `updatedAt` to milliseconds on BOTH the keyset
+    // comparison and the ORDER BY so the column's resolution matches the cursor's
+    // — the `id` tie-break still yields a fully deterministic total order.
+    const UPDATED_AT_MS = "date_trunc('milliseconds', record.updatedAt)";
     const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) =>
       qb
         .where('record.connectionId = :connectionId', { connectionId })
@@ -146,14 +156,15 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
 
     const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
     if (opts.cursor) {
-      // Row-value keyset comparison: (updatedAt, id) > (cursor.updatedAt, cursor.id).
+      // Row-value keyset comparison at millisecond resolution:
+      // (trunc(updatedAt), id) > (cursor.updatedAt, cursor.id).
       pageQb.andWhere(
-        '(record.updatedAt, record.id) > (:cursorUpdatedAt, :cursorId)',
+        `(${UPDATED_AT_MS}, record.id) > (:cursorUpdatedAt, :cursorId)`,
         { cursorUpdatedAt: opts.cursor.updatedAt, cursorId: opts.cursor.id },
       );
     }
     const entities = await pageQb
-      .orderBy('record.updatedAt', 'ASC')
+      .orderBy(UPDATED_AT_MS, 'ASC')
       .addOrderBy('record.id', 'ASC')
       .take(opts.limit)
       .getMany();
