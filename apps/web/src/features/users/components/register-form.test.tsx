@@ -2,7 +2,7 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { RegisterForm } from './RegisterForm';
+import { RegisterForm } from './register-form';
 
 describe('RegisterForm', () => {
   afterEach(cleanup);

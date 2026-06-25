@@ -8,9 +8,10 @@
  * @module apps/api/src/users
  * @implements {IUserManagementService}
  */
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
+  UserNotFoundException,
   UserNotPendingException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
@@ -80,7 +81,7 @@ export class UserManagementService implements IUserManagementService {
   private async requireUser(userId: string): Promise<User> {
     const user = await this.userRepository.findById(userId);
     if (!user) {
-      throw new NotFoundException(`User not found: ${userId}`);
+      throw new UserNotFoundException(userId);
     }
     return user;
   }

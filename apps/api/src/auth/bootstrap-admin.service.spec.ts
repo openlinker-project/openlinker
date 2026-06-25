@@ -7,7 +7,7 @@ import type { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import type { UserRepositoryPort } from '@openlinker/core/users';
-import { User } from '@openlinker/core/users';
+import { User, UserAlreadyExistsException } from '@openlinker/core/users';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 
 const makeUser = (username: string): User =>
@@ -144,8 +144,7 @@ describe('BootstrapAdminService', () => {
   it('treats unique-violation on save as a benign concurrent-boot race', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
-    const err = Object.assign(new Error('duplicate key'), { code: '23505' });
-    repo.save.mockRejectedValue(err);
+    repo.save.mockRejectedValue(new UserAlreadyExistsException('admin'));
 
     const service = new BootstrapAdminService(makeConfig(), repo);
     await expect(service.bootstrap()).resolves.toBeUndefined();

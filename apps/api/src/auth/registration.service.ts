@@ -10,11 +10,16 @@
  * @module apps/api/src/auth
  * @implements {IRegistrationService}
  */
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
-import { UserAlreadyExistsException, UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
+import {
+  RegistrationDisabledException,
+  UserAlreadyExistsException,
+  UserRepositoryPort,
+  USER_REPOSITORY_TOKEN,
+} from '@openlinker/core/users';
 import type { IRegistrationService } from './registration.service.interface';
 
 const BCRYPT_COST = 10;
@@ -32,7 +37,7 @@ export class RegistrationService implements IRegistrationService {
   async register(username: string, email: string, password: string): Promise<void> {
     const enabled = this.configService.get<string>('OL_REGISTRATION_ENABLED', 'false');
     if (enabled.trim().toLowerCase() !== 'true') {
-      throw new ForbiddenException('Registration is disabled for this installation');
+      throw new RegistrationDisabledException();
     }
 
     const [existingByUsername, existingByEmail] = await Promise.all([

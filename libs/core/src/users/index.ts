@@ -16,6 +16,7 @@ export type { RefreshTokenRepositoryPort } from './domain/ports/refresh-token-re
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
 export { UserAlreadyExistsException } from './domain/exceptions/user-already-exists.exception';
 export { UserNotPendingException } from './domain/exceptions/user-not-pending.exception';
+export { RegistrationDisabledException } from './domain/exceptions/registration-disabled.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
 export { WeakPasswordException } from './domain/exceptions/weak-password.exception';
 export { RefreshTokenReuseDetectedException } from './domain/exceptions/refresh-token-reuse-detected.exception';

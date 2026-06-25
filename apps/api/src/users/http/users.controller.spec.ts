@@ -11,7 +11,7 @@ import {
   USER_MANAGEMENT_SERVICE_TOKEN,
   type IUserManagementService,
 } from '../user-management.service.interface';
-import { User, UserNotPendingException } from '@openlinker/core/users';
+import { User, UserNotFoundException, UserNotPendingException } from '@openlinker/core/users';
 
 const makeUser = (id: string, status: 'pending' | 'active' | 'deactivated' = 'active'): User =>
   new User(id, `user-${id}`, `${id}@test.com`, 'hash', 'viewer', status, new Date(), new Date());
@@ -76,8 +76,8 @@ describe('UsersController', () => {
       expect(service.approveUser).toHaveBeenCalledWith('u1', 'admin');
     });
 
-    it('should throw NotFoundException when service throws NotFoundException', async () => {
-      service.approveUser.mockRejectedValue(new NotFoundException('User not found: u1'));
+    it('should throw NotFoundException when user does not exist', async () => {
+      service.approveUser.mockRejectedValue(new UserNotFoundException('u1'));
 
       await expect(controller.approveUser('u1', { role: 'viewer' })).rejects.toThrow(
         NotFoundException
@@ -139,7 +139,7 @@ describe('UsersController', () => {
     });
 
     it('should throw NotFoundException when user does not exist', async () => {
-      service.deleteUser.mockRejectedValue(new NotFoundException('User not found: ghost'));
+      service.deleteUser.mockRejectedValue(new UserNotFoundException('ghost'));
 
       await expect(controller.deleteUser('ghost')).rejects.toThrow(NotFoundException);
     });

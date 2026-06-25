@@ -55,10 +55,9 @@ const lazyRoutes = collectLazyRoutes([
  *     because grouped routes like orders/customers/inventory expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     and `/users` user-management page (#1125))
- *   - 2 guest routes (forgot-password, reset-password — login stays eager;
- *     register is also a guest route added in #1125)
- *   - 6 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
- *     woocommerce setup, erli setup)
+ *   - 3 guest routes (forgot-password, reset-password, register — login stays eager)
+ *   - 7 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *     woocommerce setup, erli setup, subiekt setup)
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)

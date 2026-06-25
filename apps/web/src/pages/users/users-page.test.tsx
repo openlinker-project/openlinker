@@ -112,4 +112,75 @@ describe('UsersPage', () => {
 
     expect(approveUser).toHaveBeenCalledWith('u1', { role: 'admin' });
   });
+
+  it('should call deactivate API when Deactivate clicked', async () => {
+    const deactivateUser = vi.fn().mockResolvedValue(undefined);
+    const mockApi = createMockApiClient({
+      users: {
+        list: vi.fn().mockResolvedValue({
+          users: [makeUser({ id: 'u1', username: 'alice', status: 'active' })],
+          total: 1,
+        }),
+        deactivate: deactivateUser,
+      },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
+
+    expect(deactivateUser).toHaveBeenCalledWith('u1');
+  });
+
+  it('should show error toast when deactivate fails', async () => {
+    const mockApi = createMockApiClient({
+      users: {
+        list: vi.fn().mockResolvedValue({
+          users: [makeUser({ id: 'u1', username: 'alice', status: 'active' })],
+          total: 1,
+        }),
+        deactivate: vi.fn().mockRejectedValue(new Error('Server error')),
+      },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
+
+    expect(await screen.findByText('Deactivation failed')).toBeInTheDocument();
+  });
+
+  it('should call reactivate API when Reactivate clicked', async () => {
+    const reactivateUser = vi.fn().mockResolvedValue(undefined);
+    const mockApi = createMockApiClient({
+      users: {
+        list: vi.fn().mockResolvedValue({
+          users: [makeUser({ id: 'u1', username: 'alice', status: 'deactivated' })],
+          total: 1,
+        }),
+        reactivate: reactivateUser,
+      },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reactivate' }));
+
+    expect(reactivateUser).toHaveBeenCalledWith('u1');
+  });
+
+  it('should call delete API when Delete clicked', async () => {
+    const deleteUser = vi.fn().mockResolvedValue(undefined);
+    const mockApi = createMockApiClient({
+      users: {
+        list: vi.fn().mockResolvedValue({
+          users: [makeUser({ id: 'u1', username: 'alice', status: 'active' })],
+          total: 1,
+        }),
+        delete: deleteUser,
+      },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    expect(deleteUser).toHaveBeenCalledWith('u1');
+  });
 });

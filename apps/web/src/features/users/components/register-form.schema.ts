@@ -17,4 +17,5 @@ export const registerFormSchema = z
     }
   });
 
-export type RegisterFormValues = z.infer<typeof registerFormSchema>;
+export type RegisterFormValues = z.input<typeof registerFormSchema>;
+export type RegisterFormSubmission = z.output<typeof registerFormSchema>;

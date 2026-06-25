@@ -32,6 +32,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { Request, Response } from 'express';
 import {
   InvalidPasswordResetTokenException,
+  RegistrationDisabledException,
   RefreshTokenReuseDetectedException,
   UserAlreadyExistsException,
   WeakPasswordException,
@@ -119,8 +120,8 @@ export class AuthController {
     try {
       await this.registrationService.register(dto.username, dto.email, dto.password);
     } catch (error) {
-      if (error instanceof ForbiddenException) {
-        throw error;
+      if (error instanceof RegistrationDisabledException) {
+        throw new ForbiddenException(error.message);
       }
       if (error instanceof UserAlreadyExistsException) {
         throw new ConflictException(error.message);

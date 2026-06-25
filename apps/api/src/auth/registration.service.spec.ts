@@ -3,10 +3,10 @@
  *
  * @module apps/api/src/auth
  */
-import { ForbiddenException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { RegistrationService } from './registration.service';
 import {
+  RegistrationDisabledException,
   UserAlreadyExistsException,
   User,
   type UserRepositoryPort,
@@ -36,12 +36,12 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
 });
 
 describe('RegistrationService', () => {
-  it('should throw ForbiddenException when registration is disabled', async () => {
+  it('should throw RegistrationDisabledException when registration is disabled', async () => {
     const repo = makeRepo();
     const service = new RegistrationService(repo, makeConfig('false'));
 
     await expect(service.register('alice', 'alice@test.com', 'pass123')).rejects.toThrow(
-      ForbiddenException
+      RegistrationDisabledException
     );
     expect(repo.save).not.toHaveBeenCalled();
   });

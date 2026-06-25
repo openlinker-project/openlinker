@@ -10,8 +10,9 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
+import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
 import type { UserRole } from '../../../domain/types/role.types';
 import { UserRoleValues } from '../../../domain/types/role.types';
@@ -90,8 +91,18 @@ export class UserRepository implements UserRepositoryPort {
       role: user.role,
       status: user.status,
     });
-    const saved = await this.ormRepository.save(entity);
-    return this.toDomain(saved);
+    try {
+      const saved = await this.ormRepository.save(entity);
+      return this.toDomain(saved);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error as QueryFailedError & { code?: string }).code === '23505'
+      ) {
+        throw new UserAlreadyExistsException(user.username);
+      }
+      throw error;
+    }
   }
 
   private toDomain(entity: UserOrmEntity): User {

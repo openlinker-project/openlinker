@@ -24,13 +24,14 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
   Param,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserNotPendingException } from '@openlinker/core/users';
+import { UserNotFoundException, UserNotPendingException } from '@openlinker/core/users';
 import type { UserStatus } from '@openlinker/core/users';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
@@ -84,6 +85,9 @@ export class UsersController {
     try {
       await this.userManagement.approveUser(id, dto.role);
     } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
       if (error instanceof UserNotPendingException) {
         throw new ConflictException(error.message);
       }
@@ -102,6 +106,9 @@ export class UsersController {
     try {
       await this.userManagement.rejectUser(id);
     } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
       if (error instanceof UserNotPendingException) {
         throw new ConflictException(error.message);
       }
@@ -116,7 +123,14 @@ export class UsersController {
   @ApiResponse({ status: 204, description: 'Role updated' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<void> {
-    await this.userManagement.updateRole(id, dto.role);
+    try {
+      await this.userManagement.updateRole(id, dto.role);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Post(':id/deactivate')
@@ -126,7 +140,14 @@ export class UsersController {
   @ApiResponse({ status: 204, description: 'User deactivated' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async deactivateUser(@Param('id') id: string): Promise<void> {
-    await this.userManagement.deactivateUser(id);
+    try {
+      await this.userManagement.deactivateUser(id);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Post(':id/reactivate')
@@ -136,7 +157,14 @@ export class UsersController {
   @ApiResponse({ status: 204, description: 'User reactivated' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async reactivateUser(@Param('id') id: string): Promise<void> {
-    await this.userManagement.reactivateUser(id);
+    try {
+      await this.userManagement.reactivateUser(id);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Delete(':id')
@@ -146,6 +174,13 @@ export class UsersController {
   @ApiResponse({ status: 204, description: 'User deleted' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async deleteUser(@Param('id') id: string): Promise<void> {
-    await this.userManagement.deleteUser(id);
+    try {
+      await this.userManagement.deleteUser(id);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 }

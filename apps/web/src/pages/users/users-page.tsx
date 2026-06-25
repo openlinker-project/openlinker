@@ -7,7 +7,7 @@
  * @module pages/users
  */
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shared/ui/tabs';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -16,6 +16,8 @@ import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
+import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
+import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
@@ -38,6 +40,7 @@ interface UsersPageProps {
 
 export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement {
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const { showToast } = useToast();
 
   const usersQuery = useUsersQuery({ status: undefined });
@@ -111,6 +114,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   async function handleDelete(userId: string): Promise<void> {
     try {
       await deleteMutation.mutateAsync(userId);
+      setPendingDeleteId(null);
       showToast({ tone: 'success', title: 'User deleted', description: 'The user has been removed.' });
     } catch {
       showToast({ tone: 'error', title: 'Deletion failed', description: 'Try again.' });
@@ -118,7 +122,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   }
 
   // Columns for the Pending tab: role picker inline with Approve, separate Reject
-  const pendingColumns: DataTableColumn<UserSummary>[] = [
+  const pendingColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
     {
       id: 'username',
       header: 'Username',
@@ -133,7 +137,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       id: 'requested',
       header: 'Requested',
       cell: (row) => (
-        <span className="mono-text tabular" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+        <span className="cell-meta mono-text tabular">
           {new Date(row.createdAt).toLocaleDateString()}
         </span>
       ),
@@ -143,7 +147,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       header: 'Assign role & approve',
       cell: (row) => (
         <div className="table-actions">
-          <select
+          <Select
             className="select--sm"
             aria-label="Role for approval"
             value={getRoleForPending(row.id)}
@@ -153,7 +157,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           >
             <option value="viewer">Viewer</option>
             <option value="admin">Admin</option>
-          </select>
+          </Select>
           <Button
             tone="primary"
             className="button--sm"
@@ -179,10 +183,10 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         </Button>
       ),
     },
-  ];
+  ], [pendingRoles, approveMutation.isPending, rejectMutation.isPending]);
 
   // Columns for the All users tab: status badge, inline role select (auto-save), member since, actions
-  const managedColumns: DataTableColumn<UserSummary>[] = [
+  const managedColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
     {
       id: 'username',
       header: 'Username',
@@ -204,7 +208,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       id: 'role',
       header: 'Role',
       cell: (row) => (
-        <select
+        <Select
           className="select--sm"
           aria-label="Change role"
           value={row.role}
@@ -213,14 +217,14 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         >
           <option value="viewer">Viewer</option>
           <option value="admin">Admin</option>
-        </select>
+        </Select>
       ),
     },
     {
       id: 'createdAt',
       header: 'Member since',
       cell: (row) => (
-        <span className="mono-text tabular" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+        <span className="cell-meta mono-text tabular">
           {new Date(row.createdAt).toLocaleDateString()}
         </span>
       ),
@@ -253,15 +257,14 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           <Button
             tone="danger"
             className="button--sm"
-            onClick={() => void handleDelete(row.id)}
-            disabled={deleteMutation.isPending}
+            onClick={() => setPendingDeleteId(row.id)}
           >
             Delete
           </Button>
         </div>
       ),
     },
-  ];
+  ], [updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending, deleteMutation.isPending]);
 
   function renderAllContent(): ReactElement {
     if (usersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;
@@ -342,6 +345,19 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         <TabsContent value="all">{renderAllContent()}</TabsContent>
         <TabsContent value="pending">{renderPendingContent()}</TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+        title="Delete user"
+        description="This will permanently delete the user account. This action cannot be undone."
+        tone="danger"
+        confirmLabel="Delete"
+        isConfirming={deleteMutation.isPending}
+        onConfirm={() => {
+          if (pendingDeleteId !== null) void handleDelete(pendingDeleteId);
+        }}
+      />
     </PageLayout>
   );
 }

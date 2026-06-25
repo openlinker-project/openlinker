@@ -8,3 +8,6 @@
  * @module libs/core/src/invoicing
  */
 export const INVOICE_RECORD_REPOSITORY_TOKEN = Symbol('InvoiceRecordRepositoryPort');
+
+/** Binding token for the {@link IInvoiceService} application service (ADR-026 "SVC"). */
+export const INVOICE_SERVICE_TOKEN = Symbol('IInvoiceService');

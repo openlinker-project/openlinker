@@ -13,9 +13,10 @@ import * as bcrypt from 'bcryptjs';
 import type { User } from '@openlinker/core/users';
 import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
+import type { IAuthService } from './auth.service.interface';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements IAuthService {
   constructor(
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepository: UserRepositoryPort,

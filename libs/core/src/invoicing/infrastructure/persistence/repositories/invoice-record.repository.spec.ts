@@ -11,6 +11,7 @@ import type { Repository } from 'typeorm';
 import { QueryFailedError } from 'typeorm';
 
 import { InvoiceRecordRepository } from './invoice-record.repository';
+import { InvoiceRecord } from '../../../domain/entities/invoice-record.entity';
 import { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 import { DuplicateInvoiceRecordException } from '../../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
@@ -57,10 +58,26 @@ describe('InvoiceRecordRepository', () => {
   let ormRepo: jest.Mocked<Repository<InvoiceRecordOrmEntity>>;
   let repository: InvoiceRecordRepository;
 
+  let qb: {
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    skip: jest.Mock;
+    take: jest.Mock;
+    getManyAndCount: jest.Mock;
+  };
+
   beforeEach(() => {
+    qb = {
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
     ormRepo = {
       findOne: jest.fn(),
       save: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
     } as unknown as jest.Mocked<Repository<InvoiceRecordOrmEntity>>;
     repository = new InvoiceRecordRepository(ormRepo);
   });
@@ -108,6 +125,7 @@ describe('InvoiceRecordRepository', () => {
 
       expect(ormRepo.findOne).toHaveBeenCalledWith({
         where: { orderId: 'ol_order_1', connectionId: 'conn_1' },
+        order: { createdAt: 'DESC' },
       });
       expect(result?.orderId).toBe('ol_order_1');
     });
@@ -144,11 +162,82 @@ describe('InvoiceRecordRepository', () => {
       expect(result.providerInvoiceId).toBe('FV/2026/01');
     });
 
+    it('backfills providerType and documentType from the patch onto the persisted row', async () => {
+      // The pending row was created with providerType '' and documentType '';
+      // a success patch carries the adapter's authoritative values.
+      ormRepo.findOne.mockResolvedValue(ormRow({ providerType: '', documentType: '' }));
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      const result = await repository.updateOutcome('ol_invoice_1', {
+        status: 'issued',
+        providerType: 'subiekt',
+        documentType: 'invoice',
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.providerType).toBe('subiekt');
+      expect(saved.documentType).toBe('invoice');
+      expect(result.providerType).toBe('subiekt');
+      expect(result.documentType).toBe('invoice');
+    });
+
     it('throws InvoiceRecordNotFoundException when the row is absent', async () => {
       ormRepo.findOne.mockResolvedValue(null);
       await expect(
         repository.updateOutcome('missing', { status: 'failed' }),
       ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
+    });
+  });
+
+  describe('findMany', () => {
+    const PAGE = { limit: 20, offset: 0 };
+
+    it('applies no filters when none are present', async () => {
+      await repository.findMany({}, PAGE);
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('applies status filter via andWhere', async () => {
+      await repository.findMany({ status: 'issued' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.status = :status', { status: 'issued' });
+    });
+
+    it('applies connectionId filter via andWhere', async () => {
+      await repository.findMany({ connectionId: 'conn_1' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.connectionId = :connectionId', {
+        connectionId: 'conn_1',
+      });
+    });
+
+    it('applies regulatoryStatus filter via andWhere', async () => {
+      await repository.findMany({ regulatoryStatus: 'cleared' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.regulatoryStatus = :regulatoryStatus', {
+        regulatoryStatus: 'cleared',
+      });
+    });
+
+    it('applies issuedFrom/issuedTo range against inv.issuedAt', async () => {
+      const from = new Date('2026-06-01T00:00:00.000Z');
+      const to = new Date('2026-06-30T00:00:00.000Z');
+      await repository.findMany({ issuedFrom: from, issuedTo: to }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt >= :issuedFrom', { issuedFrom: from });
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt <= :issuedTo', { issuedTo: to });
+    });
+
+    it('orders by inv.createdAt DESC and applies skip/take from pagination', async () => {
+      await repository.findMany({}, { limit: 25, offset: 50 });
+      expect(qb.orderBy).toHaveBeenCalledWith('inv.createdAt', 'DESC');
+      expect(qb.skip).toHaveBeenCalledWith(50);
+      expect(qb.take).toHaveBeenCalledWith(25);
+    });
+
+    it('returns { items, total } from getManyAndCount mapped via toDomain', async () => {
+      qb.getManyAndCount.mockResolvedValue([[ormRow(), ormRow({ id: 'ol_invoice_2' })], 7]);
+      const result = await repository.findMany({}, PAGE);
+      expect(result.total).toBe(7);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toBeInstanceOf(InvoiceRecord);
+      expect(result.items[1].id).toBe('ol_invoice_2');
     });
   });
 });

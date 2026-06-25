@@ -9647,3 +9647,9 @@ html[data-density='compact'] .status-badge {
 .shop-publish-batch__row:last-child {
   border-bottom: 0;
 }
+
+/* ── Users management (#1125) ────────────────────────────────────── */
+.cell-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}

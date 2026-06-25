@@ -38,6 +38,7 @@ export interface PrestashopProductWriteBody {
   id_category_default: string;
   associations?: {
     categories?: { category: Array<{ id: string }> };
+    product_features?: { product_feature: PrestashopFeatureAssociation[] };
   };
   meta_title?: PrestashopLangField;
   meta_description?: PrestashopLangField;
@@ -68,6 +69,38 @@ export interface PrestashopCategoryResponse {
   id: string | number;
   name: string | PrestashopLangField;
   id_parent: string | number;
+}
+
+/** Item from GET /api/product_features (list response). */
+export interface PrestashopFeatureListItem {
+  id: string | number;
+  name: string | PrestashopLangField;
+}
+
+/** Response from POST /api/product_features. */
+export interface PrestashopFeatureResponse {
+  id: string | number;
+  name: string | PrestashopLangField;
+}
+
+/** Item from GET /api/product_feature_values (list response). */
+export interface PrestashopFeatureValueListItem {
+  id: string | number;
+  id_feature: string | number;
+  value: string | PrestashopLangField;
+}
+
+/** Response from POST /api/product_feature_values. */
+export interface PrestashopFeatureValueResponse {
+  id: string | number;
+  id_feature: string | number;
+  value: string | PrestashopLangField;
+}
+
+/** Feature association entry written into `product.associations.product_features`. */
+export interface PrestashopFeatureAssociation {
+  id: string;
+  id_feature_value: string;
 }
 
 /** Item from GET /api/stock_availables (list response). */
