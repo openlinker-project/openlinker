@@ -7,8 +7,10 @@
  * session lifecycle as an in-memory state machine: open → submit → close →
  * status-poll (processing → success), with a deterministic 35-char KSeF number +
  * canned UPO pointer on acceptance. It satisfies the shared contract suite
- * (`ksef-client-contract.suite.ts`) so the fake and the real `KsefHttpClient`
- * can't drift on the behaviours both must honour.
+ * (`ksef-client-contract.suite.ts`), which encodes the behaviours the real
+ * `KsefHttpClient` must also honour. Binding the real client to the same suite
+ * (env-gated against a live sandbox) is a tracked follow-up — until it lands the
+ * suite guards the fake against drift but does not yet PROVE fake↔real parity.
  *
  * Routes modelled (paths relative, leading-slash tolerant — mirrors the real
  * client's `path.replace(/^\//, '')`):
@@ -123,6 +125,14 @@ const DEFAULT_SELLER_NIP = '5265877635';
 const FIXED_CLOCK = new Date('2026-01-15T10:00:00.000Z');
 /** Earliest year the authoritative KsefNumber date segment accepts. */
 const MIN_KSEF_YEAR = 2020;
+/**
+ * The NIP-segment sub-pattern of the authoritative KsefNumber pattern
+ * (`KSEF_NUMBER_PATTERN`): a 10-digit NIP whose first three digits avoid the
+ * forbidden leading-zero / `x00`-style combinations. A `sellerNip` that fails
+ * this would yield a KSeF number that never matches the pattern, so the
+ * constructor rejects it up front rather than failing opaquely on first poll.
+ */
+const KSEF_NIP_SEGMENT_PATTERN = /^[1-9](\d[1-9]|[1-9]\d)\d{7}$/;
 
 export class FakeKsefClient implements IKsefHttpClient {
   readonly calls: RecordedCall[] = [];
@@ -139,6 +149,12 @@ export class FakeKsefClient implements IKsefHttpClient {
 
   constructor(options: FakeKsefClientOptions = {}) {
     this.sellerNip = options.sellerNip ?? DEFAULT_SELLER_NIP;
+    if (!KSEF_NIP_SEGMENT_PATTERN.test(this.sellerNip)) {
+      throw new Error(
+        `FakeKsefClient: sellerNip "${this.sellerNip}" does not satisfy the KsefNumber ` +
+          `NIP-segment pattern; the derived KSeF number would never match KSEF_NUMBER_PATTERN.`,
+      );
+    }
     this.inProgressPolls = options.inProgressPolls ?? 1;
     this.now = options.now ?? ((): Date => FIXED_CLOCK);
   }
@@ -157,20 +173,6 @@ export class FakeKsefClient implements IKsefHttpClient {
    */
   forceZeroValid(): this {
     this.queuedFailure = { kind: 'zero-valid' };
-    return this;
-  }
-
-  /**
-   * Force a specific terminal status on the next session. `400` → per-invoice
-   * rejection. (Zero-valid is keyed on the session COUNTS, not a code; use
-   * {@link forceZeroValid}.)
-   */
-  seedStatus(code: number): this {
-    if (code === FAKE_KSEF_STATUS.REJECTED) {
-      this.queuedFailure = { kind: 'rejected' };
-    } else {
-      throw new Error(`FakeKsefClient.seedStatus: unsupported terminal code ${code}`);
-    }
     return this;
   }
 
