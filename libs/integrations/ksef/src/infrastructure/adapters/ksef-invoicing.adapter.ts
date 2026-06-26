@@ -49,8 +49,7 @@
 import { createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
 import type {
-  ClearanceResult,
-  ClearanceStatus,
+  RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
   InvoiceRecord as InvoiceRecordType,
@@ -234,7 +233,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
    * step, so this is a documented no-op that echoes the already-`submitted`
    * status; the live clearance outcome is read later via {@link getClearanceStatus}.
    */
-  submitForClearance(record: InvoiceRecordType): Promise<ClearanceResult> {
+  submitForClearance(record: InvoiceRecordType): Promise<RegulatoryClearanceResult> {
     return Promise.resolve({
       regulatoryStatus: record.regulatoryStatus === 'not-applicable' ? 'submitted' : record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
@@ -254,7 +253,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
    * transport exception (transient — the #1121 job retries); a terminal business
    * status is returned as a `rejected` read result, not thrown.
    */
-  async getClearanceStatus(reference: string | InvoiceRecordType): Promise<ClearanceStatus> {
+  async getClearanceStatus(reference: string | InvoiceRecordType): Promise<RegulatoryClearanceResult> {
     const { sessionRef, invoiceRef } = this.resolveInvoiceReference(reference);
     const statusPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
       invoiceRef,
@@ -309,7 +308,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     data: InvoiceStatusResponse,
     sessionRef: string,
     invoiceRef: string,
-  ): Promise<ClearanceStatus> {
+  ): Promise<RegulatoryClearanceResult> {
     const ksefNumber = data.ksefNumber;
     if (!ksefNumber || !KSEF_NUMBER_PATTERN.test(ksefNumber)) {
       throw new KsefSessionException(
