@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { normalizeNip } from './ksef-nip';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -178,6 +179,27 @@ export const editConnectionSchema = z.object({
   subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
   // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
   subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
+  // KSeF-only structured fields surfacing `config.env` / `config.sellerNip` /
+  // `config.contextIdentifier` (#1152). `ksefEnvironment` maps to the BE C2
+  // `KsefConnectionConfig.env` enum (the one config-validator-gated field);
+  // the other two are FE-additive context fields. All optional client-side so
+  // the operator can save incremental progress; the server is the strict gate.
+  ksefEnvironment: z.union([z.enum(['test', 'demo', 'prod']), z.literal('')]).optional(),
+  // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
+  // dashes/spaces the operator may paste, then enforce 10 digits. Without this
+  // parity a value saved with separators on create fails the edit-schema check.
+  sellerNip: z
+    .union([
+      z
+        .string()
+        .transform(normalizeNip)
+        .refine((v) => v === '' || /^\d{10}$/.test(v), {
+          message: 'Seller NIP must be 10 digits.',
+        }),
+      z.literal(''),
+    ])
+    .optional(),
+  contextIdentifier: z.union([z.string().trim().max(64), z.literal('')]).optional(),
 });
 
 export type EditConnectionFormValues = z.input<typeof editConnectionSchema>;
@@ -246,6 +268,12 @@ export interface StructuredConfigPatch {
    * Mirrors the `sellerDefaults` whole-object seam.
    */
   subiektCapabilities?: Record<string, boolean>;
+  /** KSeF environment — `config.env` (#1152). Empty string clears the key. */
+  ksefEnvironment?: string;
+  /** KSeF seller NIP — `config.sellerNip` (#1152). Empty string clears the key. */
+  sellerNip?: string;
+  /** KSeF context identifier — `config.contextIdentifier` (#1152). Empty clears. */
+  contextIdentifier?: string;
 }
 
 /**
@@ -385,6 +413,33 @@ export function mergeStructuredIntoConfig(
       delete next.capabilities;
     } else {
       next.capabilities = enabled;
+    }
+  }
+  // KSeF structured fields — map directly onto `config.{env,sellerNip,contextIdentifier}`.
+  // `env` is the wire key (matching the BE `KsefConnectionConfig.env`); the form
+  // field is named `ksefEnvironment` to avoid colliding with DPD's `environment`.
+  if (structured.ksefEnvironment !== undefined) {
+    if (structured.ksefEnvironment.length === 0) {
+      delete next.env;
+    } else {
+      next.env = structured.ksefEnvironment;
+    }
+  }
+  if (structured.sellerNip !== undefined) {
+    // Store digits-only, matching the create path's normalized value
+    // (`ksef-setup.schema.ts` strips `[\s-]` before persisting `config.sellerNip`).
+    const normalizedNip = normalizeNip(structured.sellerNip);
+    if (normalizedNip.length === 0) {
+      delete next.sellerNip;
+    } else {
+      next.sellerNip = normalizedNip;
+    }
+  }
+  if (structured.contextIdentifier !== undefined) {
+    if (structured.contextIdentifier.length === 0) {
+      delete next.contextIdentifier;
+    } else {
+      next.contextIdentifier = structured.contextIdentifier;
     }
   }
   return next;
