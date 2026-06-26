@@ -184,6 +184,7 @@ export class InvoicingController {
       'At most 100 ids per request. Returns a per-id outcome summary.',
   })
   @ApiResponse({ status: 200, description: 'Per-id retry summary', type: RetryInvoicesResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (empty array, non-UUID ids, or batch > 100)' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryInvoices(@Body() dto: RetryInvoicesRequestDto): Promise<RetryInvoicesResponseDto> {
     // De-duplicate ids while preserving first-seen order so a caller that repeats

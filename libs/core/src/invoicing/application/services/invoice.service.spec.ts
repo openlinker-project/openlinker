@@ -520,7 +520,7 @@ describe('InvoiceService', () => {
   });
 
   describe('getInvoiceById (#1245)', () => {
-    it('delegates to repo.findById and never touches the adapter', async () => {
+    it('should delegate to repo.findById and never touch the adapter', async () => {
       const record = makeRecord({ id: 'inv-1', status: 'failed' });
       repo.findById.mockResolvedValue(record);
 
@@ -531,7 +531,7 @@ describe('InvoiceService', () => {
       expect(result).toBe(record);
     });
 
-    it('returns null when no record holds the id', async () => {
+    it('should return null when no record holds the id', async () => {
       repo.findById.mockResolvedValue(null);
 
       expect(await service.getInvoiceById('missing')).toBeNull();
