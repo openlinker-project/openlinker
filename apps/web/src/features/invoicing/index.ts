@@ -3,9 +3,12 @@
  *
  * Public barrel for the invoicing feature. Cross-feature / page consumers
  * import only from here. Kept narrow (like `orders/index.ts`): the panel, the
- * query/mutation hooks, the query keys, and the transport types. The badges,
- * PDF link, document-type select, and `resolveIssueErrorMessage` stay internal
- * (tests deep-import them directly).
+ * query/mutation hooks, the query keys, the transport types, the shared display
+ * components (status badges, PDF link), and the runtime value arrays used for
+ * filter guards on the list page.
+ *
+ * `resolveIssueErrorMessage`, `DocumentTypeSelect`, and `DOCUMENT_TYPE_LABEL_FALLBACK`
+ * stay internal (only used by the panel itself or tests that deep-import them).
  *
  * Exception: `RegulatoryStatusBadge` is exported so per-provider
  * `invoiceDetailSection` slot components (e.g. `plugins/ksef`) can reuse
@@ -15,7 +18,10 @@
  */
 export { OrderInvoicePanel } from './components/order-invoice-panel';
 export { InvoiceTimeline } from './components/invoice-timeline';
+export { InvoiceStatusBadge } from './components/invoice-status-badge';
+export type { InvoiceDisplayStatus } from './components/invoice-status-badge';
 export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
+export { InvoicePdfLink } from './components/invoice-pdf-link';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
@@ -30,6 +36,7 @@ export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
+export { InvoiceStatusValues, RegulatoryStatusValues } from './api/invoicing.types';
 export type {
   InvoiceRecord,
   InvoiceStatus,

@@ -93,6 +93,7 @@ import type {
   OfferStockRestoreTarget,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
@@ -378,9 +379,13 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
     }
     const order = assertErliOrder(response.data);
 
-    // Collect unique offer IDs. Dedupe because an order might theoretically
-    // repeat the same externalId across items (e.g. split-line quantities).
-    const offerIds = [...new Set(order.items.map((item) => item.externalId))];
+    // Collect unique OL-managed offer IDs. Dedupe across items (split-line
+    // quantities) and filter to only `ol_variant_*` IDs — items whose
+    // `externalId` doesn't match the pattern were not created by OL (e.g.
+    // pre-existing Erli listings) and must be skipped rather than causing
+    // `productPath` to throw `ErliConfigException` for the whole restore.
+    const offerIds = [...new Set(order.items.map((item) => item.externalId))]
+      .filter((id) => ERLI_PRODUCT_ID_PATTERN.test(id));
     if (offerIds.length === 0) {
       return;
     }

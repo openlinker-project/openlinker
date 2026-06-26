@@ -473,6 +473,27 @@ describe('ErliOrderSourceAdapter', () => {
         expect(client.patch).not.toHaveBeenCalled();
         expect(client.post).not.toHaveBeenCalled();
       });
+
+      it('should return applied with no-op when no items match the OL variant id pattern', async () => {
+        // Items whose externalId is NOT an `ol_variant_*` ID (pre-existing Erli
+        // listings not created by OL). The filter must skip them rather than
+        // letting productPath throw ErliConfigException for the whole restore.
+        client.get.mockResolvedValue(
+          ok(
+            buildErliOrder({
+              items: [
+                { id: 1, externalId: 'non-ol-legacy-id', quantity: 1, unitPrice: 1000, name: 'Widget', sku: 'SKU-X' },
+              ],
+            }),
+          ),
+        );
+
+        const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('applied');
+        expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+        expect(offerManager.restoreStockOnCancellation).not.toHaveBeenCalled();
+      });
     });
 
     it('reports unsupported (no PATCH, no POST) when the #992 writeback gate is OFF by default (#1086)', async () => {
