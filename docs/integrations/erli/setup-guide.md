@@ -139,7 +139,7 @@ but recommended.
      a tunnel that exposes your local API (`:3000`) on a public `https` URL — e.g.
      `cloudflared tunnel --url http://localhost:3000` — and set `callbackBaseUrl`
      to the tunnel URL.
-2. On **Connection detail → Actions**, click **Install webhooks**.
+2. On **Connection detail → Actions**, click **Configure webhooks**.
 
 OpenLinker rotates a per-connection webhook secret and registers two hooks with
 Erli (`orderCreated`, `orderStatusChanged`). The callback URL is
