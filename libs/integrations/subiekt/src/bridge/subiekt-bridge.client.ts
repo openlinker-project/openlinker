@@ -30,7 +30,7 @@ export interface SubiektBridgeClient {
    * Issue a correction document (faktura korygująca) against an already-issued
    * original, identified by its numeric `origId`. Returns the korekta-specific
    * response shape and shares `issueInvoice`'s failure modes. The REAL bridge
-   * route is `POST /api/invoices/{origId}/corrections`.
+   * route is `POST /api/faktury/{origId}/korekta`.
    */
   issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse>;
 

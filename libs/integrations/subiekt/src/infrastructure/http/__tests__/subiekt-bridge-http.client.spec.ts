@@ -284,7 +284,7 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('getInvoiceStatus', () => {
-    it('issues a GET to the templated /api/invoices/{id}/status path and derives state', async () => {
+    it('issues a GET to the templated /api/faktury/{id}/status path and derives state', async () => {
       // Real status `data`: Polish document status + KSeF regulatoryStatus, no `state`.
       fetchMock.mockResolvedValue(
         okResponse({ status: 'zatwierdzony', regulatoryStatus: 'pending' }),
@@ -292,7 +292,7 @@ describe('SubiektBridgeHttpClient', () => {
       const client = new SubiektBridgeHttpClient(BASE);
       const status = await client.getInvoiceStatus({ providerInvoiceId: '100355' });
       const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
-      expect(url).toBe(`${BASE}/api/invoices/100355/status`);
+      expect(url).toBe(`${BASE}/api/faktury/100355/status`);
       expect(init.method).toBe('GET');
       // The client derives `state: 'issued'` for a document that reads back.
       expect(status.state).toBe('issued');

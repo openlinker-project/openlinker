@@ -86,8 +86,8 @@ export function sampleIssueInvoiceRequest(
 
 /**
  * A representative korekta (faktura korygująca) request BODY for contract /
- * adapter tests — shaped like the REAL bridge `POST /api/invoices/{origId}/
- * corrections` body (`przyczyna` + `idempotencyKey` + `{ lp, nowaIlosc?,
+ * adapter tests — shaped like the REAL bridge `POST /api/faktury/{origId}/
+ * korekta` body (`przyczyna` + `idempotencyKey` + `{ lp, nowaIlosc?,
  * nowaCena? }` lines). The corrected original's id is a PATH argument, not part
  * of this body.
  */
