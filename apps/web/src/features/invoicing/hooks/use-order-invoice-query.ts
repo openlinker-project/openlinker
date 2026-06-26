@@ -45,7 +45,9 @@ export function useOrderInvoiceQuery(
         throw error;
       }
     },
-    refetchInterval: (query) =>
-      query.state.data?.status === 'pending' ? INVOICE_POLL_MS : false,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === 'pending' || s === 'issuing' ? INVOICE_POLL_MS : false;
+    },
   });
 }

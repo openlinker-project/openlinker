@@ -10,17 +10,26 @@
  * @module apps/web/src/features/invoicing
  */
 export { OrderInvoicePanel } from './components/order-invoice-panel';
+export { InvoiceTimeline } from './components/invoice-timeline';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
+export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
+export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export type {
   InvoiceRecord,
   InvoiceStatus,
+  FailureMode,
+  FailureCode,
   RegulatoryStatus,
   DocumentType,
   IssueInvoiceInput,
   InvoiceFilters,
   InvoicePagination,
   PaginatedInvoices,
+  RetryInvoicesInput,
+  RetryInvoicesResult,
+  RetryInvoiceResult,
+  RetryOutcome,
 } from './api/invoicing.types';
