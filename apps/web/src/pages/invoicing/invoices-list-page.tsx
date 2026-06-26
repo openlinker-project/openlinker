@@ -285,7 +285,11 @@ export function InvoicesListPage(): ReactElement {
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
           <option value="">{t('invoice.filter.regulatory.all', 'All regulatory statuses')}</option>
-          {RegulatoryStatusValues.map((s) => (
+          {/* Drop `not-applicable` (absence of regulatory tracking — noise as a
+              filter) and `cleared` (reserved status no provider emits). */}
+          {RegulatoryStatusValues.filter(
+            (s) => s !== 'not-applicable' && s !== 'cleared',
+          ).map((s) => (
             <option key={s} value={s}>
               {t(`invoice.regulatory.${s}`, s)}
             </option>

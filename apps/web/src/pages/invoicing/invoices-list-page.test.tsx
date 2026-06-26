@@ -44,7 +44,7 @@ function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     status: 'issued',
     providerInvoiceId: 'pi_1',
     providerInvoiceNumber: 'FV/2026/001',
-    regulatoryStatus: 'cleared',
+    regulatoryStatus: 'accepted',
     clearanceReference: null,
     pdfUrl: 'https://example.com/invoice.pdf',
     failureMode: null,
@@ -108,9 +108,9 @@ describe('InvoicesListPage', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/invoice.pdf');
     expect(within(link).getByText('FV/2026/001')).toBeInTheDocument();
     // Status badge (issued) renders in both the desktop table cell and the
-    // mobile card-view meta; regulatory badge (KSeF: cleared) only in the table.
+    // mobile card-view meta; regulatory badge (KSeF: accepted) only in the table.
     expect(screen.getAllByText('Issued').length).toBeGreaterThan(0);
-    expect(screen.getByText('KSeF: cleared')).toBeInTheDocument();
+    expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
   });
 
   it('links each row to /invoices/:id (not /orders/:orderId)', async () => {
