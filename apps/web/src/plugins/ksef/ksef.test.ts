@@ -50,6 +50,9 @@ describe('ksefPlugin', () => {
       expect(ksefPlugin.platform?.StructuredConfigSection).toBeDefined();
       expect(ksefPlugin.platform?.CredentialsPanel).toBeDefined();
     });
+    it('contributes the invoice-detail section slot (B4 KSeF regulatory region)', () => {
+      expect(ksefPlugin.platform?.invoiceDetailSection).toBeDefined();
+    });
     it('does NOT contribute marketplace or async-pickup slots', () => {
       expect(ksefPlugin.platform?.supportsListingEdit).toBeUndefined();
       expect(ksefPlugin.platform?.pickupPointResolvesAsync).toBeUndefined();
