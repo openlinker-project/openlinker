@@ -8,6 +8,7 @@
  *   - `POST /invoices`
  *   - `POST /invoices/retry` (batch retry — W6 #1245)
  *   - `POST /invoices/:invoiceId/correct` (correction — #1241)
+ *   - `GET /invoices/:invoiceId/upo` (UPO blob — #1234)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -39,10 +40,22 @@ export interface InvoicingApi {
   retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
   /** `POST /invoices/:invoiceId/correct` — issue a correcting document (#1241). */
   issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
+  /**
+   * `GET /invoices/:invoiceId/upo` (#1234) — fetch the official UPO confirmation
+   * document for a cleared/accepted e-invoice as a Blob. Content type is
+   * provider-defined (PDF / XML); the caller derives the kind from `blob.type`.
+   * Capability-gated on `RegulatoryDocumentReader` server-side. Neutral: keyed
+   * on the internal `invoice.id`, never on platform type (ADR-026).
+   */
+  downloadUpo: (invoiceId: string) => Promise<Blob>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+interface ApiBlobRequest {
+  (path: string, init?: RequestInit): Promise<Blob>;
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
@@ -63,7 +76,7 @@ function buildQuery(filters?: InvoiceFilters, pagination?: InvoicePagination): s
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createInvoicingApi(request: ApiRequest): InvoicingApi {
+export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequest): InvoicingApi {
   return {
     getForOrder(orderId, connectionId): Promise<InvoiceRecord> {
       const params = new URLSearchParams({ connectionId });
@@ -91,12 +104,17 @@ export function createInvoicingApi(request: ApiRequest): InvoicingApi {
         body: JSON.stringify(input),
       });
     },
+<<<<<<< HEAD
     issueCorrection(invoiceId, input): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/correct`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
       });
+=======
+    downloadUpo(invoiceId): Promise<Blob> {
+      return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
+>>>>>>> 003bfc3d (feat(web): KSeF UPO preview + download in invoice-detail slot (B3/B5, #1221))
     },
   };
 }

@@ -25,6 +25,9 @@ export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
+export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
+export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
+export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export type {
   InvoiceRecord,

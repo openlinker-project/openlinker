@@ -9950,3 +9950,29 @@ html[data-density='compact'] .status-badge {
   justify-content: flex-end;
 }
 
+/* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
+ * Wider dialog hosting a sandboxed <iframe> render of the official UPO
+ * confirmation (PDF / XML). The frame fills the available height so the
+ * document is legible without a download round-trip.
+ * Namespaced under .ksef-upo-* so it doesn't collide with other dialogs.
+ */
+.dialog__content--wide {
+  width: min(920px, 94vw);
+  max-height: min(92vh, 880px);
+}
+
+.ksef-upo-preview__frame {
+  width: 100%;
+  height: min(70vh, 640px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+
+.ksef-upo-preview__unsupported {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+

@@ -245,6 +245,9 @@ export function createMockApiClient(
       issue: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
       issueCorrection: vi.fn().mockResolvedValue(null),
+      // #1234 — resolves to an empty PDF blob by default so tests that invoke the
+      // UPO preview/download path don't hit `undefined`.
+      downloadUpo: vi.fn().mockResolvedValue(new Blob([''], { type: 'application/pdf' })),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     orders: {
