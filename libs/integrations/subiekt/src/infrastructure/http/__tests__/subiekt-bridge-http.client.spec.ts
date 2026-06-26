@@ -285,7 +285,7 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('getInvoiceStatus', () => {
-    it('issues a GET to the templated /api/faktury/{id}/status path and derives state', async () => {
+    it('issues a GET to the templated /api/invoices/{id}/status path and derives state', async () => {
       // Real status `data`: Polish document status + KSeF regulatoryStatus, no `state`.
       fetchMock.mockResolvedValue(
         okResponse({ status: 'zatwierdzony', regulatoryStatus: 'pending' }),
@@ -293,7 +293,7 @@ describe('SubiektBridgeHttpClient', () => {
       const client = new SubiektBridgeHttpClient(BASE);
       const status = await client.getInvoiceStatus({ providerInvoiceId: '100355' });
       const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
-      expect(url).toBe(`${BASE}/api/faktury/100355/status`);
+      expect(url).toBe(`${BASE}/api/invoices/100355/status`);
       expect(init.method).toBe('GET');
       // The client derives `state: 'issued'` for a document that reads back.
       expect(status.state).toBe('issued');
@@ -302,7 +302,7 @@ describe('SubiektBridgeHttpClient', () => {
   });
 
   describe('issueCorrection', () => {
-    it('issues a POST to the templated /api/faktury/{origId}/korekta path and forwards the bridge data', async () => {
+    it('issues a POST to the templated /api/invoices/{origId}/corrections path and forwards the bridge data', async () => {
       fetchMock.mockResolvedValue(
         okResponse({
           providerInvoiceId: 300_001,
@@ -315,7 +315,7 @@ describe('SubiektBridgeHttpClient', () => {
       const client = new SubiektBridgeHttpClient(BASE);
       const res = await client.issueCorrection(100_355, sampleKorektaRequest());
       const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
-      expect(url).toBe(`${BASE}/api/faktury/100355/korekta`);
+      expect(url).toBe(`${BASE}/api/invoices/100355/corrections`);
       expect(init.method).toBe('POST');
       expect(res.providerInvoiceId).toBe(300_001);
       expect(res.korygowanyId).toBe(100_355);

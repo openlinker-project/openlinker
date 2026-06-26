@@ -81,27 +81,27 @@ function classifyRetryability(code: string | undefined): SubiektTransportRetryab
 
 /**
  * Bridge REST surface, reconciled against the live bridge's minimal-API routes
- * (`Subiekt.Bridge.Api/Endpoints/*`): the bridge exposes Polish-noun routes
+ * (`Subiekt.Bridge.Api/Endpoints/*`): the bridge exposes English-noun routes
  * under the `/api/*` prefix (which it guards with `X-Api-Key`); `/health` is
  * anonymous and stays outside the prefix. The configured bridge base URL must
  * NOT include `/api` — these paths carry it.
  */
 export const SUBIEKT_BRIDGE_ENDPOINTS = {
-  issueInvoice: '/api/faktury',
+  issueInvoice: '/api/invoices',
   /**
    * Correction (faktura korygująca) endpoint, templated by the ORIGINAL document's
-   * numeric id. The bridge route is `POST /api/faktury/{origId}/korekta`.
+   * numeric id. The bridge route is `POST /api/invoices/{origId}/corrections`.
    */
-  issueCorrection: (origId: number): string => `/api/faktury/${origId}/korekta`,
-  upsertCustomer: '/api/kontrahenci/upsert',
-  /** Templated by `providerInvoiceId`; the bridge route is `GET /api/faktury/{id}/status`. */
+  issueCorrection: (origId: number): string => `/api/invoices/${origId}/corrections`,
+  upsertCustomer: '/api/customers/upsert',
+  /** Templated by `providerInvoiceId`; the bridge route is `GET /api/invoices/{id}/status`. */
   invoiceStatus: (providerInvoiceId: string): string =>
-    `/api/faktury/${encodeURIComponent(providerInvoiceId)}/status`,
+    `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
   health: '/health',
 } as const;
 
 /**
- * The `data` payload the bridge's `GET /api/faktury/{id}/status` returns (a
+ * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
  * superset of what we project): the KSeF `regulatoryStatus` plus a Polish
  * document `status`. We only read `regulatoryStatus`; the rest is ignored.
  */

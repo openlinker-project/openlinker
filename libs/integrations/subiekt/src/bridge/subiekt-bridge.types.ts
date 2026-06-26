@@ -46,7 +46,7 @@ export type BridgeInvoiceState = (typeof BridgeInvoiceStateValues)[number];
 /**
  * Bridge-native document type. `FV` = faktura, `PA` = paragon. The correction
  * document (faktura korygująca) is NOT a `documentType` value on the wire — the
- * correction endpoint (`POST /api/faktury/{origId}/korekta`) is identified by
+ * correction endpoint (`POST /api/invoices/{origId}/corrections`) is identified by
  * its route + body shape (`BridgeKorektaRequest`), not by a doctype discriminator.
  */
 export const BridgeDocumentTypeValues = ['FV', 'PA'] as const;
@@ -143,7 +143,7 @@ export interface BridgeKorektaLine {
 
 /**
  * Issue-CORRECTION (faktura korygująca) request body — the REAL bridge contract:
- * `POST /api/faktury/{origId}/korekta`. The corrected original is identified
+ * `POST /api/invoices/{origId}/corrections`. The corrected original is identified
  * by the `{origId}` path segment (a positive integer), NOT in the body. The body
  * carries an optional free-text `przyczyna` (correction reason), an optional
  * `idempotencyKey` (so a retried correction returns the SAME document instead of
@@ -160,7 +160,7 @@ export interface BridgeKorektaRequest {
 
 /**
  * Issue-CORRECTION response — the `data` payload of the bridge's `ResponseEnvelope`
- * for `POST /api/faktury/{origId}/korekta`. Distinct from the issue-invoice
+ * for `POST /api/invoices/{origId}/corrections`. Distinct from the issue-invoice
  * response: it carries `korygowanyId` (the corrected original's numeric id) and a
  * nullable `przyczyna`, and it carries NEITHER a `regulatoryStatus` NOR a `pdfUrl`
  * (a correction's KSeF status is read back later via the status endpoint).
@@ -204,7 +204,7 @@ export interface BridgeInvoiceStatusRequest {
 
 /**
  * Status-read response — derived from the `data` payload of
- * `GET /api/faktury/{id}/status`. The bridge's status payload carries the KSeF
+ * `GET /api/invoices/{id}/status`. The bridge's status payload carries the KSeF
  * `regulatoryStatus` and a Polish document `status` (e.g. `"zatwierdzony"`) but no
  * `state` field; the HTTP client derives `state: 'issued'` for a document that
  * reads back, `'failed'` otherwise.

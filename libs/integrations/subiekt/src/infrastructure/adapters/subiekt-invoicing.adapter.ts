@@ -177,7 +177,7 @@ export class SubiektInvoicingAdapter
   /**
    * Issue a correction document (faktura korygująca) against an already-issued
    * original (#1229). Maps the neutral `IssueCorrectionCommand` to the real bridge
-   * korekta contract (`POST /api/faktury/{origId}/korekta`): the corrected
+   * korekta contract (`POST /api/invoices/{origId}/corrections`): the corrected
    * original is identified by its numeric id (parsed from
    * `originalProviderInvoiceId`), the body carries `przyczyna`, the
    * `idempotencyKey` (so a retried correction returns the SAME document instead

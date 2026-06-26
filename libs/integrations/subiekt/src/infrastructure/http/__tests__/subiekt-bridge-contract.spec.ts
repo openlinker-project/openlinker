@@ -63,7 +63,7 @@ function buildStatefulFetch(): jest.Mock {
     const method = init?.method ?? 'GET';
     const path = url.slice(BASE.length);
 
-    if (method === 'POST' && path === '/api/faktury') {
+    if (method === 'POST' && path === '/api/invoices') {
       counter += 1;
       const minted: MintedInvoice = {
         providerInvoiceId: 100_000 + counter,
@@ -76,7 +76,7 @@ function buildStatefulFetch(): jest.Mock {
       return okEnvelope(200, minted);
     }
 
-    const correctionMatch = /^\/api\/faktury\/(\d+)\/korekta$/.exec(path);
+    const correctionMatch = /^\/api\/invoices\/(\d+)\/corrections$/.exec(path);
     if (method === 'POST' && correctionMatch) {
       const origId = Number(correctionMatch[1]);
       counter += 1;
@@ -99,14 +99,14 @@ function buildStatefulFetch(): jest.Mock {
       });
     }
 
-    if (method === 'POST' && path === '/api/kontrahenci/upsert') {
+    if (method === 'POST' && path === '/api/customers/upsert') {
       counter += 1;
       const id = 200_000 + counter;
       return okEnvelope(200, { id, numer: String(id), nazwaSkrocona: 'Test', nip: '1234567890' });
     }
 
-    if (method === 'GET' && path.startsWith('/api/faktury/') && path.endsWith('/status')) {
-      const id = decodeURIComponent(path.slice('/api/faktury/'.length, -'/status'.length));
+    if (method === 'GET' && path.startsWith('/api/invoices/') && path.endsWith('/status')) {
+      const id = decodeURIComponent(path.slice('/api/invoices/'.length, -'/status'.length));
       const known = issued.get(id);
       if (!known) {
         return errorEnvelope(404, 'unknown invoice id');
