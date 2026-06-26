@@ -19,8 +19,8 @@ Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
 |---|---|---|
 | Bridge URL | `config.bridgeBaseUrl` | `https://<host>:5005` — **no** `/api` suffix. |
 | Bridge token | credential `bridgeToken` | == bridge `Auth__ApiKey`; sent as `Authorization: Bearer`. Stored encrypted. |
-| Request timeout | `config.invoicing.timeoutMs` | optional, 1000–120000 ms. |
-| Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped`. |
+| Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
+| Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
 ## Bridge configuration (Windows)
 
@@ -77,7 +77,7 @@ duplicate (HTTP 409 on an explicit re-issue of an already-issued order).
 
 ## KSeF / e-faktura
 
-The KSeF badge reflects the status the bridge reports (`pending → submitted → accepted` /
+The KSeF badge reflects the status the bridge reports (`pending → sent → accepted` /
 `rejected`), refreshed asynchronously by the regulatory-status reconcile job. On a
 demo/trial database the status is **not** an authoritative government clearance.
 

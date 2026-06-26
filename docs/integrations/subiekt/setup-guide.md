@@ -149,6 +149,7 @@ the settings. Everything you set in the wizard is editable here, plus:
   - **Auto on order paid** — OpenLinker enqueues issuance automatically when an order
     becomes paid.
   - **Auto on order shipped** — same, on the shipped transition.
+  - **Batched** — issuance is deferred and processed in scheduled batches.
 - **Show KSeF status badge** — surface the bridge-reported regulatory (KSeF) status on
   orders for this connection.
 - **Rotate bridge token** — replace the stored Bearer token without restarting the API
@@ -200,7 +201,7 @@ one.)
 Click **Issue invoice**. OpenLinker calls the bridge, Subiekt issues the document, and the
 panel flips to **Issued** with the document number, type, and KSeF badge:
 
-![Order detail — invoice issued (FS …, KSeF submitted)](../../assets/subiekt/60-ol-order-invoice-panel-issued.png)
+![Order detail — invoice issued (FS …, KSeF sent)](../../assets/subiekt/60-ol-order-invoice-panel-issued.png)
 
 To issue **without clicking** per order, use an automatic trigger — see
 [Part E](#part-e--automatic-issuance-retry--idempotency).
@@ -254,7 +255,7 @@ renders from Subiekt). If the bridge doesn't return one, the number degrades to 
 no broken link.
 
 **KSeF (e-faktura).** With **Show KSeF status badge** enabled on the connection, issued
-documents carry a regulatory badge — `pending → submitted → accepted` (or `rejected`).
+documents carry a regulatory badge — `pending → sent → accepted` (or `rejected`).
 OpenLinker refreshes it asynchronously via the regulatory-status reconcile job; you don't
 poll manually. On a demo/trial database the status is reported by the bridge but is **not**
 an authoritative government clearance — see the [runbook](./runbook.md#ksef--e-faktura).
