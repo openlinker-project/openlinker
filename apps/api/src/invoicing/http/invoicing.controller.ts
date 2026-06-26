@@ -181,7 +181,7 @@ export class InvoicingController {
       'document). Issued / issuing / pending / in-doubt / unknown ids are skipped ' +
       'server-side with a neutral per-id reason, never re-issued. Reuses the ' +
       'single-invoice issue/retry primitive per id (no parallel bulk pipeline). ' +
-      'Returns a per-id outcome summary.',
+      'At most 100 ids per request. Returns a per-id outcome summary.',
   })
   @ApiResponse({ status: 200, description: 'Per-id retry summary', type: RetryInvoicesResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
@@ -242,7 +242,10 @@ export class InvoicingController {
     }
 
     try {
-      const order = this.rehydrateOrder(record.orderId, orderRecord);
+      // Use the OrderRecord's own internalOrderId for the rehydration error
+      // message, matching the single-issue path's argument (record.orderId is the
+      // same value, but this keeps the two call sites consistent).
+      const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
       const command = toIssueInvoiceCommand({
         order,
         connectionId: record.connectionId,
