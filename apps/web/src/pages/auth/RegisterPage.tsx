@@ -1,3 +1,11 @@
+/**
+ * Register Page
+ *
+ * Guest page at /register. Wraps RegisterForm inside the guest-page layout
+ * (same shell used by the login/forgot-password pages).
+ *
+ * @module pages/auth
+ */
 import type { ReactElement } from 'react';
 import { RegisterForm } from '../../features/users';
 

@@ -1,3 +1,12 @@
+/**
+ * Register Form
+ *
+ * Self-service registration form for the /register guest page. Submits to
+ * POST /auth/register and shows a success screen when the server accepts the
+ * request (pending admin approval flow).
+ *
+ * @module features/users/components
+ */
 import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';

@@ -7,15 +7,15 @@
  * @module apps/api/src/users/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import type { User } from '@openlinker/core/users';
-import { UserRole, UserStatus } from '@openlinker/core/users';
+import { UserRoleValues, UserStatusValues } from '@openlinker/core/users';
+import type { User, UserRole, UserStatus } from '@openlinker/core/users';
 
 export class UserSummaryDto {
   @ApiProperty() id!: string;
   @ApiProperty() username!: string;
   @ApiProperty({ nullable: true, type: String }) email!: string | null;
-  @ApiProperty() role!: UserRole;
-  @ApiProperty() status!: UserStatus;
+  @ApiProperty({ enum: UserRoleValues }) role!: UserRole;
+  @ApiProperty({ enum: UserStatusValues }) status!: UserStatus;
   @ApiProperty() createdAt!: Date;
 
   static fromDomain(user: User): UserSummaryDto {
