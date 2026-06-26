@@ -31,6 +31,19 @@ export class SubiektBridgeTransportError extends Error {
   readonly retryability: SubiektTransportRetryability;
   readonly retryable: boolean;
 
+  /**
+   * Neutral failure discriminator the core `InvoiceService` reads STRUCTURALLY
+   * (#1200) to decide fiscal re-attemptability — core never value-imports this
+   * class. The transport retryability axis maps 1:1 onto the neutral mode:
+   *   - `'safe'`          -> `'rejected'`: the request PROVABLY never left the
+   *                          host (connect-refused / DNS-failure), so NO document
+   *                          was created — SAFE to re-attempt.
+   *   - `'indeterminate'` -> `'in-doubt'`: the POST MAY have been received and
+   *                          acted on (timeout / reset / unknown), so a document
+   *                          MAY exist — UNSAFE to auto-re-attempt.
+   */
+  readonly failureMode: 'rejected' | 'in-doubt';
+
   constructor(
     message: string,
     retryability: SubiektTransportRetryability,
@@ -43,6 +56,7 @@ export class SubiektBridgeTransportError extends Error {
     this.name = 'SubiektBridgeTransportError';
     this.retryability = retryability;
     this.retryable = retryability === 'safe';
+    this.failureMode = retryability === 'safe' ? 'rejected' : 'in-doubt';
     Error.captureStackTrace(this, this.constructor);
   }
 }

@@ -10,6 +10,13 @@
  */
 
 export class SubiektUnsupportedDocumentTypeError extends Error {
+  /**
+   * Neutral failure discriminator (#1200) read STRUCTURALLY by core. A
+   * deterministic caller-contract violation raised in the mapper before any
+   * request leaves the adapter — NO document was created, so SAFE to re-attempt.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(readonly documentType: string) {
     super(
       `Subiekt does not support document type "${documentType}". Supported: invoice, receipt.`,

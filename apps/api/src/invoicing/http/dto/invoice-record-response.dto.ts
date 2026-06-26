@@ -12,7 +12,17 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { InvoiceStatus, RegulatoryStatus } from '@openlinker/core/invoicing';
+import type {
+  InvoiceFailureCode,
+  InvoiceFailureMode,
+} from '@openlinker/core/invoicing';
+import {
+  InvoiceFailureCodeValues,
+  InvoiceFailureModeValues,
+  InvoiceStatus,
+  InvoiceStatusValues,
+  RegulatoryStatus,
+} from '@openlinker/core/invoicing';
 
 export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Internal invoice record id' })
@@ -30,7 +40,9 @@ export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Neutral document type (open-world)' })
   documentType!: string;
 
-  @ApiProperty({ description: 'Issuance lifecycle status', enum: ['pending', 'issued', 'failed'] })
+  // Reference the live const (not a hardcoded array) so the published enum can
+  // never drift from InvoiceStatus — `issuing` (#1200) is a serializable value.
+  @ApiProperty({ description: 'Issuance lifecycle status', enum: InvoiceStatusValues })
   status!: InvoiceStatus;
 
   @ApiProperty({ description: 'Provider-assigned document id', nullable: true })
@@ -47,6 +59,29 @@ export class InvoiceRecordResponseDto {
 
   @ApiProperty({ description: 'URL of the rendered document PDF', nullable: true })
   pdfUrl!: string | null;
+
+  // W1 failure semantics — let the FE tell a re-attemptable `rejected` failure
+  // (safe to retry) from an unsafe `in-doubt` one, and surface a cause-specific,
+  // PII-free reason. `errorMessage` stays OMITTED (internal-only, PII-tainted).
+  @ApiProperty({
+    description: 'Neutral failure discriminator; null unless status is failed',
+    enum: InvoiceFailureModeValues,
+    nullable: true,
+  })
+  failureMode!: InvoiceFailureMode | null;
+
+  @ApiProperty({
+    description: 'Neutral machine-readable failure code; null unless status is failed',
+    enum: InvoiceFailureCodeValues,
+    nullable: true,
+  })
+  failureCode!: InvoiceFailureCode | null;
+
+  @ApiProperty({
+    description: 'Short, PII-free failure summary; null unless status is failed',
+    nullable: true,
+  })
+  failureReason!: string | null;
 
   @ApiProperty({ description: 'When the document was issued (ISO 8601)', nullable: true })
   issuedAt!: string | null;

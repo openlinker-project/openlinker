@@ -11,6 +11,14 @@
  */
 
 export class SubiektInvoiceRejectedError extends Error {
+  /**
+   * Neutral failure discriminator the core `InvoiceService` reads STRUCTURALLY
+   * (#1200) to decide re-attemptability — core never value-imports this class.
+   * A rejection is TERMINAL: the provider definitely created NO document, so the
+   * row is SAFE to re-attempt.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(readonly reason: string) {
     super(`Subiekt rejected the invoice: ${reason}`);
     this.name = 'SubiektInvoiceRejectedError';

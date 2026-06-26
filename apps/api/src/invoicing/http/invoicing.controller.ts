@@ -65,6 +65,9 @@ import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dt
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
+import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
+import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
+import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -102,7 +105,8 @@ export class InvoicingController {
     // AC-5 re-issue gate. Read the order's CURRENT invoice projection on this
     // connection (single-row primitive — not the list query). Allow issuance
     // only when there is no record yet ("not issued") or the prior attempt
-    // `failed`; reject `issued` (already done) and `pending` (in progress).
+    // `failed`; reject `issued` (already done) and an in-progress attempt —
+    // `pending`, or `issuing` under a LIVE CAS lease (#1200) — as 409.
     const existing = await this.invoiceService.getInvoice({
       orderId: dto.orderId,
       connectionId: dto.connectionId,
@@ -111,7 +115,12 @@ export class InvoicingController {
       if (existing.status === 'issued') {
         throw new ConflictException(`Invoice already issued for order: ${dto.orderId}`);
       }
-      if (existing.status === 'pending') {
+      // `pending` (intent persisted, not yet claimed) and a LIVE `issuing` lease
+      // (an attempt currently crossing the provider boundary) are both "in
+      // progress". A re-issue must NOT be reported as a fresh 201 success while an
+      // original attempt is in flight (#1200) — surface 409 so the caller retries
+      // later. An EXPIRED `issuing` lease falls through: it is re-claimable below.
+      if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
         throw new ConflictException(`Invoice issuance already in progress for order: ${dto.orderId}`);
       }
     }
@@ -160,6 +169,117 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     return this.toDto(issued);
+  }
+
+  @Post('invoices/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Batch re-attempt failed invoice issuances',
+    description:
+      'Re-attempts ONLY records that are retry-eligible (status=failed AND ' +
+      'failureMode=rejected — a terminal rejection where the provider created no ' +
+      'document). Issued / issuing / pending / in-doubt / unknown ids are skipped ' +
+      'server-side with a neutral per-id reason, never re-issued. Reuses the ' +
+      'single-invoice issue/retry primitive per id (no parallel bulk pipeline). ' +
+      'At most 100 ids per request. Returns a per-id outcome summary.',
+  })
+  @ApiResponse({ status: 200, description: 'Per-id retry summary', type: RetryInvoicesResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (empty array, non-UUID ids, or batch > 100)' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryInvoices(@Body() dto: RetryInvoicesRequestDto): Promise<RetryInvoicesResponseDto> {
+    // De-duplicate ids while preserving first-seen order so a caller that repeats
+    // an id gets ONE outcome and the same id is never re-attempted twice in a
+    // single request (a second attempt could cross the provider boundary again).
+    const uniqueIds = [...new Set(dto.invoiceIds)];
+
+    const results: RetryInvoiceResultDto[] = [];
+    for (const invoiceId of uniqueIds) {
+      results.push(await this.retryOne(invoiceId));
+    }
+
+    const retried = results.filter((r) => r.outcome === 'retried').length;
+    return { retried, skipped: results.length - retried, results };
+  }
+
+  /**
+   * Re-attempt a SINGLE invoice record by id, reusing the exact issue/retry
+   * primitive the manual `POST /invoices` endpoint uses. Server-side eligibility
+   * gate (NEVER re-issues a non-eligible record):
+   *   - record not found                          -> skipped (not-found).
+   *   - NOT `isReattemptableFailure`              -> skipped (status/<failureMode>):
+   *     this excludes `issued`, `issuing`, `pending`, and `in-doubt` `failed` rows.
+   *   - eligible (`failed` + `rejected`)          -> rebuild the command from the
+   *     order snapshot (reusing the record's own idempotencyKey so the service
+   *     resumes THAT row, R2/R3) and call `issueInvoice`. A provider re-rejection
+   *     or rehydration failure is captured as `skipped` with a neutral reason — it
+   *     must NOT abort the rest of the batch, and the raw provider/PII text is
+   *     never returned.
+   *
+   * The buyer tax id is NOT recoverable from the `InvoiceRecord` projection (it is
+   * supplied per-request to the single endpoint and not persisted), so the rebuilt
+   * command derives the buyer from the order snapshot alone (`buyerTaxId: null`),
+   * matching a keyless re-issue through `POST /invoices`.
+   */
+  private async retryOne(invoiceId: string): Promise<RetryInvoiceResultDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      return { id: invoiceId, outcome: 'skipped', reason: 'Invoice record not found.' };
+    }
+    if (!record.isReattemptableFailure) {
+      return {
+        id: invoiceId,
+        outcome: 'skipped',
+        reason: `Not retry-eligible (status=${record.status}, failureMode=${record.failureMode ?? 'none'}).`,
+      };
+    }
+
+    const orderRecord = await this.orders.getOrderRecord(record.orderId);
+    if (!orderRecord) {
+      return {
+        id: invoiceId,
+        outcome: 'skipped',
+        reason: 'The order backing this invoice is no longer available.',
+      };
+    }
+
+    try {
+      // Use the OrderRecord's own internalOrderId for the rehydration error
+      // message, matching the single-issue path's argument (record.orderId is the
+      // same value, but this keeps the two call sites consistent).
+      const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
+      const command = toIssueInvoiceCommand({
+        order,
+        connectionId: record.connectionId,
+        // The projection does not persist the scheme-tagged buyer tax id; rebuild
+        // from the order snapshot alone (matches a keyless single re-issue).
+        buyerTaxId: null,
+        // Pass the record's neutral documentType through when it carried one
+        // (''/empty means "let the adapter derive it", as on the pending row).
+        documentType: record.documentType.length > 0 ? record.documentType : undefined,
+        // Reuse the record's OWN key so the service resumes THIS row rather than
+        // starting a fresh attempt (R2/R3, exactly-once dedup).
+        idempotencyKey: record.idempotencyKey ?? undefined,
+      });
+      await this.invoiceService.issueInvoice(command);
+      return { id: invoiceId, outcome: 'retried' };
+    } catch (error) {
+      // A re-rejection / rehydration failure for ONE id must not abort the batch.
+      // Log the bounded internal diagnostic with a correlation id; surface only a
+      // neutral, PII-free reason referencing that id.
+      const correlationId = `inv-retry-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      this.logger.warn(
+        `Batch retry failed for invoice ${invoiceId} (${correlationId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return {
+        id: invoiceId,
+        outcome: 'skipped',
+        reason: `Re-attempt failed; surfaced for manual review (correlationId: ${correlationId}).`,
+      };
+    }
   }
 
   @Get('orders/:orderId/invoice')
@@ -326,6 +446,10 @@ export class InvoicingController {
       providerInvoiceNumber: record.providerInvoiceNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
+      // W1 failure semantics (errorMessage stays omitted — PII).
+      failureMode: record.failureMode,
+      failureCode: record.failureCode,
+      failureReason: record.failureReason,
       pdfUrl: record.pdfUrl,
       issuedAt: record.issuedAt ? record.issuedAt.toISOString() : null,
       createdAt: record.createdAt.toISOString(),
