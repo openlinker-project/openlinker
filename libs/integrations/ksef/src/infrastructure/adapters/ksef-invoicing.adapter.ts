@@ -220,7 +220,10 @@ export class KsefInvoicingAdapter
     return {
       name: this.seller.name,
       taxId: { scheme: 'pl-nip', value: this.seller.nip },
-      address: this.seller.address,
+      address: {
+        ...this.seller.address,
+        line2: this.seller.address.line2 ?? null,
+      },
     };
   }
 

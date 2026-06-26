@@ -10,15 +10,18 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  BuyerAddress,
-  IssuedDocumentBuyer,
+import type {
   IssuedDocumentContent,
   IssuedDocumentLine,
   IssuedDocumentPayment,
   IssuedDocumentSeller,
-  TaxIdentifier,
   VatBreakdownEntry,
+} from '@openlinker/core/invoicing';
+import {
+  BuyerAddress,
+  DocumentTotals,
+  IssuedDocumentBuyer,
+  TaxIdentifier,
 } from '@openlinker/core/invoicing';
 
 class TaxIdentifierDto implements TaxIdentifier {
@@ -66,7 +69,7 @@ class VatBreakdownDto implements VatBreakdownEntry {
   @ApiProperty() gross!: number;
 }
 
-class TotalsDto {
+class TotalsDto implements DocumentTotals {
   @ApiProperty() net!: number;
   @ApiProperty() vat!: number;
   @ApiProperty() gross!: number;
@@ -95,7 +98,7 @@ export class IssuedDocumentContentDto {
   vatBreakdown!: VatBreakdownEntry[];
 
   @ApiProperty({ type: TotalsDto })
-  totals!: { net: number; vat: number; gross: number };
+  totals!: DocumentTotals;
 
   @ApiProperty({ description: 'ISO 4217 currency code.' })
   currency!: string;
