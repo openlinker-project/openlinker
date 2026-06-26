@@ -25,6 +25,23 @@ export interface PrestashopProduct {
   price?: string | number;
   weight?: string | number;
   active?: string | number;
+  /** Default leaf category id, used as the start of the F3 breadcrumb walk (#1096). */
+  id_category_default?: string | number;
+  associations?: {
+    // PrestaShop serializes associations in one of two shapes depending on the
+    // response format (see PrestashopProductMapper.unwrapAssociationEntries):
+    //   - XML: { product_features: { product_feature: [...] | {...} } }
+    //   - JSON (`output_format=JSON`): { product_features: [...] }
+    // Each feature entry references a feature group + value by id (#1096 F2).
+    product_features?:
+      | Array<{ id: string | number; id_feature_value: string | number }>
+      | {
+          product_feature?:
+            | Array<{ id: string | number; id_feature_value: string | number }>
+            | { id: string | number; id_feature_value: string | number };
+        };
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -73,6 +90,7 @@ export interface PrestashopOrder {
   id: string | number;
   reference?: string;
   id_customer?: string | number;
+  id_address_delivery?: string | number;
   current_state?: string | number;
   total_paid?: string | number;
   total_paid_tax_incl?: string | number;
@@ -165,6 +183,24 @@ export interface IPrestashopProductMapper {
    * @param langId - Preferred language ID (default: 1)
    */
   localizeField(field: unknown, langId?: number): string | undefined;
+
+  /**
+   * Extract a product's raw feature references (`{ featureId, featureValueId }[]`)
+   * from `associations.product_features` (#1096 F2). Accepts both the XML
+   * (`{ product_feature: [...] | {...} }`) and JSON (`[...]`) association shapes.
+   * Pure parsing only — resolving the ids to human names/values is the
+   * `PrestashopFeatureResolver`'s job (the mapper performs no I/O). Returns `[]`
+   * when the product carries no features.
+   */
+  extractFeatureRefs(prestashopProduct: PrestashopProduct): PrestashopFeatureRef[];
+}
+
+/** A product's reference to one feature group + value, by PrestaShop ids (#1096 F2). */
+export interface PrestashopFeatureRef {
+  /** `id_feature` — the feature group (e.g. "Material"). */
+  featureId: string;
+  /** `id_feature_value` — the value within the group (e.g. "Ceramic"). */
+  featureValueId: string;
 }
 
 /**

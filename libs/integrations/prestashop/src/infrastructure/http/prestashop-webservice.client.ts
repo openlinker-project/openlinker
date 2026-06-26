@@ -38,7 +38,12 @@ const IRREGULAR_RESOURCE_SINGULARS: Readonly<Record<string, string>> = {
   order_histories: 'order_history',
 };
 
-/** PrestaShop singular element name for a WS resource (handles irregular plurals). */
+/**
+ * PrestaShop singular element name for a WS resource (handles irregular plurals).
+ * WRITES ONLY — used to BUILD the request envelope (`{ prestashop: { <singular>: data } }`)
+ * and to unwrap write responses. Reads (`getResource`) don't use this: they strip the
+ * envelope by single-key shape, which is robust to every irregular singular without a map.
+ */
 function singularizeResource(resource: string): string {
   return IRREGULAR_RESOURCE_SINGULARS[resource] ?? resource.slice(0, -1);
 }
@@ -140,16 +145,26 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       responseFormat
     );
 
-    // Unwrap single resource response
-    // PrestaShop JSON API returns: { product: { ... } } for single resources
-    // We need to unwrap it to return just the product object
+    // Unwrap single resource response.
+    // After the parser strips the `prestashop` wrapper, a single resource is
+    // `{ <singular>: { ... } }` — e.g. `{ product: {...} }`, `{ address: {...} }`,
+    // `{ country: {...} }`. The singular element name is NOT reliably the plural
+    // minus a trailing 's': irregular -es plurals (`addresses` → `address`,
+    // `countries` → `country`) and compound plurals (`order_histories` →
+    // `order_history`) all break `slice(0, -1)`, which would leave the envelope
+    // un-unwrapped and return `{ address: {...} }` instead of the inner object.
+    // Robust rule: when the parsed object has exactly one top-level key whose
+    // value is an object, that key is the resource wrapper — unwrap it. This is
+    // language-agnostic and covers every singular form. Already-flat responses
+    // (and multi-key shapes) fall through to "return as-is".
     const parsedObj = parsed as Record<string, unknown>;
-    const itemKey = resource.slice(0, -1); // e.g., 'product' (singular from 'products')
-
-    // Check if parsed object has the resource key (e.g., 'product')
-    if (parsedObj[itemKey] && typeof parsedObj[itemKey] === 'object') {
-      // Unwrap: return the inner object (e.g., parsed.product)
-      return parsedObj[itemKey] as T;
+    const topLevelKeys = Object.keys(parsedObj);
+    if (topLevelKeys.length === 1) {
+      const onlyKey = topLevelKeys[0];
+      const inner = parsedObj[onlyKey];
+      if (inner !== null && typeof inner === 'object') {
+        return inner as T;
+      }
     }
 
     // If no unwrapping needed, return as-is
@@ -218,6 +233,90 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const url = `${this.baseUrl}${path}`;
     this.logger.debug(`Deleting resource: ${resource}/${id}`);
     await this.requestWithRetry(url, { method: 'DELETE' });
+  }
+
+  async uploadImage(
+    resourcePath: string,
+    imageBytes: Uint8Array,
+    mimeType: string,
+    filename = 'image',
+  ): Promise<{ id: string }> {
+    const url = `${this.baseUrl}/api/${resourcePath}`;
+    this.logger.debug(`Uploading image to ${resourcePath}`);
+
+    const form = new FormData();
+    form.append('image', new Blob([imageBytes], { type: mimeType }), filename);
+
+    const headers = new Headers({
+      Authorization: `Basic ${this.getBasicAuth()}`,
+      'Output-Format': 'JSON',
+    });
+
+    // Own AbortController — intentionally not using requestWithRetry because
+    // retrying a multipart POST creates duplicate image records on PS (#1164).
+    const controller = new AbortController();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
+    const configTimeoutMs = this.config.timeoutMs;
+    const timeoutMs: number = configTimeoutMs ?? 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: form,
+        signal: controller.signal,
+      });
+
+      const body = await response.text();
+
+      if (!response.ok) {
+        this.handleError(response.status, body, url);
+      }
+
+      const contentType = response.headers.get('content-type') ?? undefined;
+      const parsed = PrestashopResponseParser.parse(body, contentType, 'auto');
+      const obj = parsed as Record<string, unknown>;
+
+      // PS image upload response: { prestashop: { image: { id } } } or { image: { id } }
+      const inner =
+        (obj.prestashop as Record<string, unknown> | undefined)?.image ?? obj.image;
+      const imageData = inner as Record<string, unknown> | undefined;
+      const rawId = imageData?.id ?? imageData?.['@_id'];
+
+      if (rawId == null) {
+        throw new PrestashopApiException(
+          `Unexpected image upload response from ${url}: ${JSON.stringify(obj)}`,
+          undefined,
+          undefined,
+        );
+      }
+
+      return { id: String(rawId) };
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new PrestashopApiException(
+          `Image upload timeout after ${timeoutMs}ms: ${url}`,
+          undefined,
+          undefined,
+        );
+      }
+      if (
+        error instanceof PrestashopApiException ||
+        error instanceof PrestashopAuthenticationException ||
+        error instanceof PrestashopResourceNotFoundException
+      ) {
+        throw error;
+      }
+      const errorMessage: string = error instanceof Error ? error.message : String(error);
+      throw new PrestashopApiException(
+        `Network error during image upload: ${errorMessage}`,
+        undefined,
+        undefined,
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**

@@ -127,6 +127,33 @@ export interface IPrestashopWebserviceClient {
    * @throws PrestashopApiException for other API errors
    */
   deleteResource(resource: string, id: string | number): Promise<void>;
+
+  /**
+   * Upload an image to a PrestaShop resource (binary multipart POST).
+   *
+   * PrestaShop's image API (`/api/images/{resource}/{id}`) requires raw binary
+   * bytes as a `multipart/form-data` POST — unlike the structured XML API used
+   * by other resource operations. Callers are responsible for fetching the bytes
+   * first; this method only handles the upload transport.
+   *
+   * Not retried: retrying a multipart POST to the images endpoint creates
+   * duplicate image records on the PrestaShop side. Callers must treat
+   * per-image failures as best-effort.
+   *
+   * @param resourcePath - Relative images resource path (e.g., `'images/products/123'`)
+   * @param imageBytes   - Raw image bytes
+   * @param mimeType     - MIME type (e.g., `'image/jpeg'`)
+   * @param filename     - Optional filename hint (defaults to `'image'`)
+   * @returns Object containing the assigned PrestaShop image `id`
+   * @throws PrestashopAuthenticationException if authentication fails
+   * @throws PrestashopApiException for other API errors
+   */
+  uploadImage(
+    resourcePath: string,
+    imageBytes: Uint8Array,
+    mimeType: string,
+    filename?: string,
+  ): Promise<{ id: string }>;
 }
 
 

@@ -484,6 +484,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `OfferEventReader` | `listOfferEvents(input)` |
 | `OfferQuantityBatchUpdater` | `updateOfferQuantitiesBatch(cmd)` |
 | `OfferFieldUpdater` | `updateOfferFields(cmd)` |
+| `OfferStockRestorer` | `restoreStockOnCancellation(targets)` |
 | `CategoryBrowser` | `fetchCategories(parentId?)` |
 | `CategoryBarcodeMatcher` | `matchCategoryByBarcode(barcode)` |
 | `OfferCreator` | `createOffer(cmd)` |
@@ -1158,6 +1159,7 @@ graph LR
   listings --> integrations
   listings --> inventory
   listings --> mappings
+  listings --> orders
   listings --> products
   listings --> sync
   inventory --> identifier-mapping

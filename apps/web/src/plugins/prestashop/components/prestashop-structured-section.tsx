@@ -102,6 +102,23 @@ export function PrestashopStructuredSection({
         disabled={!configIsParseable}
         onChange={(value) => syncStructuredToJson('defaultCarrierId', value)}
       />
+
+      <FormField
+        label="InPost PS module type (optional)"
+        name="inpostPsModuleType"
+        error={form.formState.errors.inpostPsModuleType?.message}
+        description="Select the official InPost PrestaShop module installed on this shop. When set, OL reads the paczkomat locker code from the delivery address during order ingestion. Leave unset if InPost orders are not in use."
+      >
+        <Select
+          value={form.watch('inpostPsModuleType') ?? ''}
+          onChange={(event) => syncStructuredToJson('inpostPsModuleType', event.target.value)}
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.inpostPsModuleType)}
+        >
+          <option value="">None (disabled)</option>
+          <option value="official_inpost">Official InPost module (address2)</option>
+        </Select>
+      </FormField>
     </>
   );
 }

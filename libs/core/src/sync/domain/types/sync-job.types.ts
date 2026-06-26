@@ -23,6 +23,7 @@ export const JobTypeValues = [
   'marketplace.offer.create',
   'marketplace.offer.pollCreationStatus',
   'marketplace.offer.statusSync',
+  'marketplace.offer.stockRestore',
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
@@ -39,8 +40,15 @@ export const JobTypeValues = [
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
 
+  // Invoicing (core-owned; capability-scoped, executed by worker)
+  // KSeF regulatory-status reconciliation sweep (#1121).
+  'invoicing.regulatoryStatus.reconcile',
+
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
+
+  // Invoicing (core-owned policy; executed by worker — OL #1120)
+  'invoicing.issue',
 ] as const;
 
 /**

@@ -36,6 +36,7 @@ import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommer
 import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
+import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -49,4 +50,7 @@ export const workerPlugins: PluginEntry[] = [
   DpdIntegrationModule,
   ErliIntegrationModule,
   KsefIntegrationModule,
+  // #753: resolve the Subiekt 'Invoicing' capability when issuance is driven
+  // from the worker (mirrors WooCommerce/InPost dual registration).
+  SubiektIntegrationModule,
 ];

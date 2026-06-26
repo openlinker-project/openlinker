@@ -23,6 +23,7 @@ import type { IOrderSyncService } from '../../interfaces/order-sync.service.inte
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
+import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -43,6 +44,7 @@ describe('OrderIngestionService', () => {
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
   let orderLifecycleRelay: jest.Mocked<IOrderLifecycleRelayService>;
+  let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -116,6 +118,9 @@ describe('OrderIngestionService', () => {
     orderLifecycleRelay = {
       relay: jest.fn().mockResolvedValue({ targets: [] }),
     } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
+    autoIssueTrigger = {
+      onOrderTransition: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IAutoIssueTriggerService>;
 
     service = new OrderIngestionService(
       integrationsService,
@@ -128,8 +133,74 @@ describe('OrderIngestionService', () => {
       customerIdentityResolver,
       orderRecordService,
       customerProjectionUpdater,
-      orderLifecycleRelay
+      orderLifecycleRelay,
+      autoIssueTrigger
     );
+  });
+
+  describe('auto-issue trigger (OL #1120)', () => {
+    const externalOrderId = 'checkout-1';
+    const baseIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_test');
+      orderSource.getOrder.mockResolvedValue(baseIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+    });
+
+    it('calls onOrderTransition at the terminal path with the in-scope sourceEventId as the 3rd arg', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-42');
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+      const [order, srcConn, evt] = autoIssueTrigger.onOrderTransition.mock.calls[0];
+      expect(order).toEqual(expect.objectContaining({ id: 'ol_order_test' }));
+      expect(srcConn).toBe(connectionId);
+      expect(evt).toBe('evt-42');
+      // Fires only after destination status is settled.
+      expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        autoIssueTrigger.onOrderTransition.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('swallows a thrown onOrderTransition failure — order sync still returns results — with a PII-safe log', async () => {
+      const warnSpy = jest
+        .spyOn((service as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockRejectedValueOnce(
+        new Error('issuance exploded for buyer Jan Kowalski')
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-7');
+
+      expect(results).toEqual([]);
+      const logged = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).not.toContain('Jan Kowalski');
+      expect(logged).not.toContain('correlationId');
+      expect(logged).toContain('evt-7');
+      warnSpy.mockRestore();
+    });
+
+    it('a destination-echo re-read returns [] and does NOT call onOrderTransition', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValueOnce({
+        sourceConnectionId: 'other-connection',
+      } as never);
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
   });
 
   describe('syncFromMarketplace', () => {
@@ -533,6 +604,112 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('syncOrderFromSource – cancellation-observe hook (#1146)', () => {
+    const externalOrderId = 'checkout-cancel';
+    const internalOrderId = 'ol_order_cancel';
+    const dedupeKey = `marketplace:${connectionId}:stockRestore:${internalOrderId}`;
+
+    const cancelledIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'cancelled',
+      items: [],
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-02T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue(internalOrderId);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+    });
+
+    it('should enqueue a stockRestore job once when an order transitions to cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // Prior record has a non-cancelled status → transition fires.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey },
+      });
+    });
+
+    it('should enqueue once when a first-seen order is already cancelled (no prior record)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'marketplace.offer.stockRestore' })
+      );
+    });
+
+    it('should NOT enqueue on a re-poll of an already-cancelled order', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'cancelled' },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should NOT enqueue when the order status is not cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...cancelledIncoming, status: 'BOUGHT' });
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should not fail order sync when the stockRestore enqueue fails (loss is logged, not thrown)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).resolves.not.toThrow();
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      // Order is still persisted; only the restore was lost (and logged).
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+    });
+
+    it('should NOT enqueue on a destination-echo order (cross-origin early-return)', async () => {
+      orderSource.getOrder.mockResolvedValue(cancelledIncoming);
+      // Existing record originated from a DIFFERENT connection → early-return.
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'other-connection',
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+
+      const result = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(result).toEqual([]);
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+    });
+  });
+
   describe('syncOrderFromMarketplace – customer resolution', () => {
     const externalOrderId = 'checkout-1';
 
@@ -591,6 +768,62 @@ describe('OrderIngestionService', () => {
         'buyer-ext-2',
         connectionId,
         expect.objectContaining({ parentEntityType: 'Order' })
+      );
+    });
+
+    it('should resolve customer via email when customerEmail is present but customerExternalId is absent (#1208/#995)', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({
+        ...baseIncoming,
+        customerEmail: 'erli-buyer@example.com',
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      // Email-only source: the email is the connection-scoped buyer-identity key.
+      expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith({
+        externalBuyerId: 'erli-buyer@example.com',
+        email: 'erli-buyer@example.com',
+        sourceConnectionId: connectionId,
+      });
+      // The Customer mapping is NOT created directly — resolution goes through
+      // the identity resolver, which owns the Customer-mapping write.
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        'Customer',
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+      // The resolved internal customer id flows onto the persisted snapshot, so
+      // the destination order-create has a customerId (the bug fix).
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'ol_customer_test',
+        connectionId,
+        null
+      );
+    });
+
+    it('should return undefined customer when neither customerExternalId nor customerEmail is present', async () => {
+      orderSource.getOrder.mockResolvedValueOnce({ ...baseIncoming });
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(customerIdentityResolver.resolveCustomerIdentity).not.toHaveBeenCalled();
+      expect(identifierMapping.getOrCreateInternalId).not.toHaveBeenCalledWith(
+        'Customer',
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        null,
+        connectionId,
+        null
       );
     });
   });

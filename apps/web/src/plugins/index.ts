@@ -43,8 +43,10 @@ import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
+import { erliPlugin } from './erli';
 import { inpostPlugin } from './inpost';
 import { prestashopPlugin } from './prestashop';
+import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
@@ -53,6 +55,8 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   dpdPlugin,
   inpostPlugin,
   woocommercePlugin,
+  erliPlugin,
+  subiektPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);

@@ -19,7 +19,6 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import type { InventoryItemView } from '@openlinker/core/inventory';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
@@ -28,7 +27,6 @@ import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-respons
 import { GetInventoryAvailabilityQueryDto } from './dto/get-inventory-availability-query.dto';
 import { InventoryAvailabilityResponseDto } from './dto/inventory-availability-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('inventory')
 @Controller('inventory')

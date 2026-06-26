@@ -309,4 +309,297 @@ describe('PrestashopOrderSourceAdapter', () => {
       await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toBe(networkError);
     });
   });
+
+  describe('getOrder — pickupPoint resolution', () => {
+    const baseOrder: PrestashopOrder = {
+      id: '42',
+      reference: 'ORDER-042',
+      id_customer: '7',
+      id_address_delivery: '5',
+      current_state: '2',
+      total_paid: '99.99',
+      date_add: '2024-01-01 10:00:00',
+      date_upd: '2024-01-01 12:00:00',
+    };
+    const baseOrderRows: PrestashopOrderRow[] = [];
+
+    // Resource-keyed getResource mock. Since #<issue> the adapter also hydrates
+    // the buyer address (and its country) inside getOrder, so the call sequence
+    // is no longer "order then address" — these tests dispatch by (resource,id)
+    // instead of relying on call order.
+    const keyedGetResource = (address: Record<string, unknown> | Error): void => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(baseOrder);
+        if (resource === 'addresses') {
+          return address instanceof Error
+            ? Promise.reject(address)
+            : Promise.resolve({ id, ...address });
+        }
+        // Country value is irrelevant to pickup-point resolution; any ISO is fine here.
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
+        return Promise.resolve({});
+      });
+    };
+
+    it('should populate pickupPoint when inpostPsModuleType is official_inpost and address2 is a paczkomat code', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      keyedGetResource({ address2: 'POZ08A' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toEqual({ id: 'POZ08A' });
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('addresses', '5');
+    });
+
+    it('should leave pickupPoint undefined when inpostPsModuleType is none', async () => {
+      const noneConnection = createTestConnection({
+        config: { inpostPsModuleType: 'none' },
+      });
+      const noneAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        noneConnection
+      );
+      keyedGetResource({ address2: 'POZ08A' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await noneAdapter.getOrder({ externalOrderId: '42' });
+
+      // pickupPoint stays undefined because the module type is not official_inpost,
+      // even though the address itself is hydrated for the buyer profile.
+      expect(incoming.pickupPoint).toBeUndefined();
+    });
+
+    it('should leave pickupPoint undefined when inpostPsModuleType is absent', async () => {
+      keyedGetResource({ address2: 'POZ08A' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toBeUndefined();
+    });
+
+    it('should leave pickupPoint undefined when address2 does not match paczkomat format', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      keyedGetResource({ address2: 'Piętro 2' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toBeUndefined();
+    });
+
+    it('should leave pickupPoint undefined when address fetch fails', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      keyedGetResource(new PrestashopApiException('Not Found', 404));
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toBeUndefined();
+    });
+
+    it('should normalise paczkomat code to uppercase', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      keyedGetResource({ address2: 'poz08a' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toEqual({ id: 'POZ08A' });
+    });
+
+    it('should populate pickupPoint for a three-digit paczkomat code (WAW124)', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      keyedGetResource({ address2: 'WAW124' });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toEqual({ id: 'WAW124' });
+    });
+
+    it('should leave pickupPoint undefined when id_address_delivery is absent', async () => {
+      const inpostConnection = createTestConnection({
+        config: { inpostPsModuleType: 'official_inpost' },
+      });
+      const inpostAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        inpostConnection
+      );
+      const orderWithoutAddress: PrestashopOrder = { ...baseOrder, id_address_delivery: undefined };
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(orderWithoutAddress);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
+
+      const incoming = await inpostAdapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.pickupPoint).toBeUndefined();
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getOrder — order line items (PS9 order_details rename)', () => {
+    it('should fetch order rows from the order_details resource (renamed from order_rows in PS9)', async () => {
+      const prestashopOrder: PrestashopOrder = {
+        id: '42',
+        reference: 'ORDER-042',
+        id_customer: '7',
+        current_state: '2',
+        total_paid: '99.99',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith('order_details', {
+        custom: { id_order: '42' },
+      });
+    });
+  });
+
+  describe('getOrder — buyer address hydration', () => {
+    const orderWithAddresses: PrestashopOrder = {
+      id: '42',
+      reference: 'ORDER-042',
+      id_customer: '7',
+      id_address_invoice: '11',
+      id_address_delivery: '11',
+      current_state: '2',
+      total_paid: '99.99',
+      date_add: '2024-01-01 10:00:00',
+      date_upd: '2024-01-01 12:00:00',
+    };
+
+    it('should hydrate billing/shipping address from the addresses resource and resolve country ISO-2', async () => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithAddresses);
+        if (resource === 'addresses') {
+          return Promise.resolve({
+            id,
+            firstname: 'Jan',
+            lastname: 'Kowalski',
+            company: 'ACME Sp. z o.o.',
+            address1: 'ul. Testowa 1',
+            address2: 'm. 4',
+            city: 'Poznań',
+            postcode: '60-001',
+            phone: '+48123456789',
+            id_country: '14',
+          });
+        }
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'pl' });
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress).toEqual({
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        company: 'ACME Sp. z o.o.',
+        address1: 'ul. Testowa 1',
+        address2: 'm. 4',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+        phone: '+48123456789',
+      });
+      // Delivery uses the same address id (11) → shipping equals billing.
+      expect(incoming.shippingAddress).toEqual(incoming.billingAddress);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('addresses', '11');
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('countries', '14');
+    });
+
+    it('should leave country empty and still hydrate the address when the country fetch fails', async () => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithAddresses);
+        if (resource === 'addresses') {
+          return Promise.resolve({ id, address1: 'ul. Testowa 1', city: 'Poznań', postcode: '60-001', id_country: '14' });
+        }
+        if (resource === 'countries') return Promise.reject(new Error('boom'));
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress?.country).toBe('');
+      expect(incoming.billingAddress?.address1).toBe('ul. Testowa 1');
+    });
+
+    it('should leave addresses undefined when the order carries no address ids', async () => {
+      const orderNoAddr: PrestashopOrder = { ...orderWithAddresses };
+      delete orderNoAddr.id_address_invoice;
+      delete orderNoAddr.id_address_delivery;
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(orderNoAddr);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress).toBeUndefined();
+      expect(incoming.shippingAddress).toBeUndefined();
+      // Only the order itself is fetched — no address/country round-trips.
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fall back to billing address for shipping when delivery hydration fails', async () => {
+      const order: PrestashopOrder = { ...orderWithAddresses, id_address_invoice: '11', id_address_delivery: '22' };
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(order);
+        if (resource === 'addresses') {
+          if (id === '22') return Promise.reject(new Error('delivery 404'));
+          return Promise.resolve({ id, address1: 'Bill St 1', city: 'Warsaw', postcode: '00-001', id_country: '14' });
+        }
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.shippingAddress).toEqual(incoming.billingAddress);
+      expect(incoming.billingAddress?.address1).toBe('Bill St 1');
+    });
+  });
 });

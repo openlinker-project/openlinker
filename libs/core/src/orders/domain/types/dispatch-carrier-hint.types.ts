@@ -1,9 +1,9 @@
 /**
  * Dispatch Carrier Hint
  *
- * Neutral carrier reference passed to `OrderDispatchNotifier.notifyDispatched`
- * when attaching a waybill to the order source. The orchestration sources it
- * from the shipping processor connection's `platformType` (a stable carrier
+ * Neutral carrier reference carried on the `OrderStatusWriteback` `dispatched`
+ * event when attaching a waybill to the order source. The orchestration sources
+ * it from the shipping processor connection's `platformType` (a stable carrier
  * identity for an own-contract single-carrier integration, e.g. `'inpost'`);
  * the source adapter maps it to its own carrier vocabulary (#837 Q5).
  *

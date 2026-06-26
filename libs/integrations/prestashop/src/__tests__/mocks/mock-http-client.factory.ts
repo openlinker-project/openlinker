@@ -17,6 +17,7 @@ export function createMockHttpClient(
     createResource: jest.fn(),
     updateResource: jest.fn(),
     deleteResource: jest.fn(),
+    uploadImage: jest.fn(),
     ...overrides,
   } as jest.Mocked<IPrestashopWebserviceClient>;
 }

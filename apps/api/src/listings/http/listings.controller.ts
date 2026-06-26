@@ -86,7 +86,6 @@ import {
   findProductsByBarcodeResponseSchema,
 } from './dto/catalog-product.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('listings')
 @Controller('listings')
@@ -235,6 +234,7 @@ export class ListingsController {
     return MarketplaceOfferResponseDto.fromDomain(offer);
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/offers/:offerId/fields')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Connection ID' })
@@ -278,6 +278,7 @@ export class ListingsController {
     return { jobId };
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/sync/auto-match-variants')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID (e.g., Allegro)' })
@@ -310,6 +311,7 @@ export class ListingsController {
     return { jobId };
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/offers')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -377,6 +379,7 @@ export class ListingsController {
     return this.toOfferCreationStatusDto(record);
   }
 
+  @Roles('admin')
   @Get('connections/:connectionId/seller-policies')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -395,6 +398,7 @@ export class ListingsController {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
 
+  @Roles('admin')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -450,6 +454,7 @@ export class ListingsController {
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/categories/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -500,6 +505,7 @@ export class ListingsController {
     };
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/categories/resolve-batch')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -534,9 +540,10 @@ export class ListingsController {
       return { results: Object.fromEntries(results) };
     } catch (error) {
       if (error instanceof AdapterCapabilityNotSupportedException) {
-        // Connection is a marketplace but its adapter can't batch-resolve EANs
-        // (e.g. a future Shopify/WooCommerce adapter). Single-product flows can
-        // still use the per-row /categories/resolve route.
+        // The connection isn't an OfferManager marketplace at all (the up-front
+        // `getCapabilityAdapter('OfferManager')` gate). An adapter that simply
+        // can't batch-match EANs no longer reaches here — the service degrades
+        // it to per-variant `no-match` for manual category selection (ADR-025 §3).
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
@@ -554,6 +561,7 @@ export class ListingsController {
   // appears (e.g. a future bulk-prefill worker), promote to a service.
   // -----------------------------------------------------------------
 
+  @Roles('admin')
   @Post('connections/:connectionId/products/find-by-barcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -606,6 +614,7 @@ export class ListingsController {
     return { kind: 'no_match' };
   }
 
+  @Roles('admin')
   @Get('connections/:connectionId/products/:productId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })

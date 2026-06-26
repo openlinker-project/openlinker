@@ -26,6 +26,24 @@ export const ResponseFormatValues = ['auto', 'json', 'xml'] as const;
 export type ResponseFormat = (typeof ResponseFormatValues)[number];
 
 /**
+ * InPost PS module type values
+ *
+ * Runtime array of all valid `inpostPsModuleType` values. Used by
+ * `PrestashopConnectionConfigDto` to validate operator input via
+ * `@IsIn(InpostPsModuleTypeValues as readonly string[])`.
+ */
+export const InpostPsModuleTypeValues = ['official_inpost', 'none'] as const;
+
+/**
+ * InPost PS module type
+ *
+ * Which InPost-for-PrestaShop module is installed on the operator's shop.
+ * Controls whether OL attempts to auto-read paczkomat ID from the delivery
+ * address on PS direct orders (AC-5, #767).
+ */
+export type InpostPsModuleType = (typeof InpostPsModuleTypeValues)[number];
+
+/**
  * PrestaShop connection configuration
  *
  * Configuration stored in Connection.config for PrestaShop WebService integrations.
@@ -195,6 +213,19 @@ export interface PrestashopConnectionConfig {
    * this field plus the most recent `test_ping` webhook delivery.
    */
   webhooksConfigured?: boolean;
+
+  /**
+   * Which official InPost-for-PS module is installed on this shop's PrestaShop.
+   * Controls whether OL attempts to auto-read paczkomat ID from the order's
+   * delivery address on PS direct orders (AC-5, #767).
+   *
+   *   'official_inpost' — OL reads address2 of the delivery address; expects the
+   *                        official InPost PS module to have stored the locker code there.
+   *   'none'            — no auto-read; manual picker handles paczkomat selection.
+   *
+   * Absent / undefined is treated as 'none' by the adapter.
+   */
+  inpostPsModuleType?: InpostPsModuleType;
 }
 
 

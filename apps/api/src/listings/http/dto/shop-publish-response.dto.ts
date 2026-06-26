@@ -45,6 +45,9 @@ export class ListingCreationRecordResponseDto {
   @ApiPropertyOptional({ nullable: true, type: 'array', items: { type: 'object' } })
   errors!: ListingCreationError[] | null;
 
+  @ApiPropertyOptional({ nullable: true, type: 'array', items: { type: 'string' } })
+  warnings!: string[] | null;
+
   @ApiProperty()
   createdAt!: string;
 

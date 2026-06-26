@@ -44,6 +44,17 @@ export type ConnectionStatus = (typeof ConnectionStatusValues)[number];
  * stored here; use credentialsRef instead.
  */
 export interface ConnectionConfig {
+  /**
+   * Invoicing trigger configuration (OL #1120). Non-breaking documentation
+   * shape over the open index signature — the value is round-tripped verbatim
+   * by `ConnectionRepository`. `triggerModel` is read at transition time by
+   * `AutoIssueTriggerService` and coerced via `parseTriggerModel` (a missing or
+   * unrecognized value defaults to `manual`). Typed as `string` here to keep the
+   * identifier-mapping context decoupled from the invoicing enum.
+   */
+  invoicing?: {
+    triggerModel?: string;
+  };
   [key: string]: unknown;
 }
 

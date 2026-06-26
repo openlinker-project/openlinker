@@ -12,6 +12,7 @@
  * @module libs/core/src/invoicing/domain/types
  */
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
+import type { InvoiceRecord } from '../entities/invoice-record.entity';
 
 /**
  * Document type — OPEN-WORLD (regimes vary unbounded). Well-known neutral
@@ -47,6 +48,45 @@ export const RegulatoryStatusValues = [
   'rejected',
 ] as const;
 export type RegulatoryStatus = (typeof RegulatoryStatusValues)[number];
+
+/**
+ * Outcome of a regulatory clearance submit/read (#1143). Returned by both
+ * `RegulatoryTransmitter.submitForClearance` and `RegulatoryStatusReader.
+ * getClearanceStatus`, so it is named `…Result` (not `…Snapshot`, which would
+ * mislead as read-only). Maps 1:1 onto `InvoiceOutcomePatch`
+ * (`regulatoryStatus` + `clearanceReference`) so the future service/job persists
+ * it via `updateOutcome` with no translation. A business verdict (incl.
+ * `rejected`) is carried here as data; a transport/infra failure throws.
+ */
+export interface RegulatoryClearanceResult {
+  /** Neutral CTC clearance lifecycle the adapter mapped the regime's state onto. */
+  regulatoryStatus: RegulatoryStatus;
+  /**
+   * Authority-assigned reference (KSeF number, SDI id, …) when present — typically
+   * knowable only after the authority clears the document, so a read can surface
+   * a reference a prior submit could not. `null`/absent until assigned.
+   */
+  clearanceReference?: string | null;
+}
+
+/**
+ * Terminal regulatory statuses — once a record reaches one of these the
+ * reconciliation job (#1121) stops polling it. `not-applicable` (receipts not
+ * sent to a CTC authority) is terminal-from-birth and never polled. Single
+ * source of truth for the non-terminal selection predicate; mirrored in the
+ * repository query and the `IDX_invoice_records_reconcile` partial index.
+ */
+export const TerminalRegulatoryStatusValues = [
+  'accepted',
+  'rejected',
+  'not-applicable',
+] as const;
+export type TerminalRegulatoryStatus = (typeof TerminalRegulatoryStatusValues)[number];
+
+/** True when `status` is a terminal regulatory status (no longer polled). */
+export function isTerminalRegulatoryStatus(status: RegulatoryStatus): boolean {
+  return (TerminalRegulatoryStatusValues as readonly string[]).includes(status);
+}
 
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
@@ -135,6 +175,17 @@ export interface IssueInvoiceCommand {
 /** Query for an issued document by either internal order id or provider id. */
 export type GetInvoiceQuery = { orderId: string } | { providerInvoiceId: string };
 
+/**
+ * Connection-scoped query for OL's OWN `InvoiceRecord` projection (distinct from
+ * the provider-facing {@link GetInvoiceQuery}). The projection is keyed
+ * `(orderId, connectionId)` — the shape `InvoiceRecordRepositoryPort.findByOrderId`
+ * reads — so `IInvoiceService.getInvoice` answers from OL's store, never the adapter.
+ */
+export interface GetInvoiceByOrderQuery {
+  orderId: string;
+  connectionId: string;
+}
+
 /** Command to create-or-update the buyer as a customer in the provider. */
 export interface UpsertCustomerCommand {
   connectionId: string;
@@ -164,9 +215,61 @@ export interface CreateInvoiceRecordInput {
   errorMessage?: string | null;
 }
 
+/**
+ * Read-only filter set for {@link InvoiceRecordRepositoryPort.findMany} (#1119).
+ * Minimal — backs ONLY the AC-6 list filters that map to a real column. The
+ * POST re-issue gate does NOT widen this surface: it reads the order's single
+ * projection row via the existing `findByOrderId(orderId, connectionId)`
+ * primitive (surfaced as `IInvoiceService.getInvoice`), so `findMany` stays a
+ * pure AC-6 list query. No `hasTaxId`: the InvoiceRecord projection has no
+ * buyer/tax-id column (the buyer lives on the Order), so the AC-6
+ * "with/without tax id" sub-filter cannot be served without denormalizing
+ * `buyerTaxId` onto the projection + a migration + a backfill — out of #1119
+ * scope. It is therefore absent from this filter surface AND from the public
+ * `ListInvoicesQueryDto` (where `forbidNonWhitelisted` rejects `hasTaxId` with
+ * a 400 rather than accepting-and-ignoring it). Tracked as #1202; AC-6
+ * sign-off must NOT be claimed for this sub-filter until it ships.
+ */
+export interface InvoiceRecordFilters {
+  status?: InvoiceStatus;
+  connectionId?: string;
+  regulatoryStatus?: RegulatoryStatus;
+  /** Inclusive lower bound on `issuedAt`. */
+  issuedFrom?: Date;
+  /** Inclusive upper bound on `issuedAt`. */
+  issuedTo?: Date;
+}
+
+/** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
+export interface InvoiceRecordPagination {
+  limit: number;
+  offset: number;
+}
+
+/** Page of `InvoiceRecord`s plus the unpaginated match count. */
+export interface PaginatedInvoiceRecords {
+  items: InvoiceRecord[];
+  total: number;
+}
+
 /** Patch applied to an existing record after an issue / transmission attempt. */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
+  /**
+   * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
+   * The pending row is created with `providerType: ''` (the connection's
+   * declared provider is not yet known to the SVC); on a successful issue the
+   * service backfills this from the adapter result so the projection no longer
+   * misreports provider identity.
+   */
+  providerType?: string;
+  /**
+   * Authoritative document type. The pending row echoes the caller-supplied
+   * `documentType` (or `''` when the caller omits it for the adapter to derive);
+   * on a successful issue the service backfills the adapter-derived value so a
+   * keyless / no-documentType call's projection reflects the real document type.
+   */
+  documentType?: string;
   providerInvoiceId?: string | null;
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;

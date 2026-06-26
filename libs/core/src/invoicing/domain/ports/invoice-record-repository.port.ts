@@ -11,6 +11,9 @@ import type { InvoiceRecord } from '../entities/invoice-record.entity';
 import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
+  InvoiceRecordFilters,
+  InvoiceRecordPagination,
+  PaginatedInvoiceRecords,
 } from '../types/invoicing.types';
 
 export interface InvoiceRecordRepositoryPort {
@@ -35,4 +38,39 @@ export interface InvoiceRecordRepositoryPort {
    * `InvoiceRecordNotFoundException` when the id does not exist.
    */
   updateOutcome(id: string, patch: InvoiceOutcomePatch): Promise<InvoiceRecord>;
+
+  /**
+   * Read-only paginated list (#1119). Backs ONLY the AC-6 list endpoint;
+   * ordered newest-first (`createdAt` DESC). The POST re-issue gate is served by
+   * `findByOrderId` (the single-row order primitive), NOT this list query, so
+   * the filter surface stays scoped to AC-6.
+   */
+  findMany(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords>;
+
+  /**
+   * Select `issued` records on the connection whose regulatory status is
+   * NON-terminal (NOT in `TerminalRegulatoryStatusValues` — so receipts /
+   * `not-applicable` are excluded structurally). Ordered `updatedAt ASC, id ASC`
+   * (oldest-first, fully deterministic tie-break on `id`), capped at `opts.limit`.
+   *
+   * KEYSET PAGING (#1121 plan decision #5, revised on #1206): when `opts.cursor`
+   * is supplied the page is bounded to rows strictly AFTER it in
+   * `(updatedAt, id)` order — `(updatedAt, id) > (cursor.updatedAt, cursor.id)`.
+   * The service threads the last-seen `(updatedAt, id)` across pages within one
+   * run so the whole non-terminal frontier is visited even when the oldest rows
+   * never change `updatedAt` (a no-op read does NOT bump it). `total` is the full
+   * non-terminal count for the connection (cursor-independent) — for coverage
+   * logging only. The `IDX_invoice_records_reconcile` partial index keys
+   * `(updatedAt, id)` so the keyset seek stays index-only.
+   */
+  findIssuedNonTerminal(
+    connectionId: string,
+    opts: {
+      limit: number;
+      cursor?: { updatedAt: Date; id: string };
+    },
+  ): Promise<{ items: InvoiceRecord[]; total: number }>;
 }

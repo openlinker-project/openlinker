@@ -72,6 +72,7 @@ export {
   MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
+  MarketplaceOfferStockRestorePayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,
@@ -89,6 +90,11 @@ export {
   ShopProductPublishPayloadV2,
   ShopProductPublishPayload,
 } from './domain/types/shop-job-payloads.types';
+export type {
+  InvoicingIssuePayloadV1,
+  InvoicingIssueBuyerV1,
+} from './domain/types/invoicing-job-payloads.types';
+export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

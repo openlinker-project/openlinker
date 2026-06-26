@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
+import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -137,6 +138,10 @@ export const editConnectionSchema = z.object({
       z.literal(''),
     ])
     .optional(),
+  // PS-only structured field for the installed InPost PS module type (#767/#1155).
+  // Controls whether OL reads the paczkomat locker code from address2 on order
+  // ingestion. '' (empty string, select sentinel) = clear the key; 'official_inpost' = enabled.
+  inpostPsModuleType: z.union([z.literal('official_inpost'), z.literal('')]).optional(),
   configText: z
     .string()
     .trim()
@@ -153,6 +158,26 @@ export const editConnectionSchema = z.object({
   // #430 — Allegro-only structured fields. Always optional at the form
   // level; the BE DTO validates strict shape on PATCH.
   sellerDefaults: allegroSellerDefaultsSchema.optional(),
+  // #759 — Subiekt-only structured fields.
+  // Bridge URL → flat `config.subiektBridgeUrl`. URL-or-empty (empty unsets,
+  // delete-on-empty merge). Mirrors `storefrontBaseUrl` (http/https allowed).
+  subiektBridgeUrl: z
+    .union([
+      z
+        .url('Bridge URL must be a valid URL')
+        .refine(
+          (value) => value.startsWith('http://') || value.startsWith('https://'),
+          'Bridge URL must use http:// or https://',
+        ),
+      z.literal(''),
+    ])
+    .optional(),
+  // Invoice trigger model → NESTED `config.invoicing.triggerModel` (NOT flat).
+  // Empty allowed for unset. The 4 values mirror the live BE reader
+  // `getInvoiceTriggerModel` (see `types/invoice-trigger-model.types.ts`).
+  subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
+  // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
+  subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
 });
 
 export type EditConnectionFormValues = z.input<typeof editConnectionSchema>;
@@ -190,6 +215,12 @@ export interface StructuredConfigPatch {
    */
   unmanagedStockQuantity?: string;
   /**
+   * PS-only: which InPost PS module is installed (#767/#1155). Empty string is the
+   * select sentinel — clears the key from config (no locker-code read);
+   * 'official_inpost' enables address2 read.
+   */
+  inpostPsModuleType?: 'official_inpost' | '';
+  /**
    * #430 — Allegro seller defaults. The merge helper writes a fully
    * resolved object into `config.sellerDefaults` whenever `sellerDefaults`
    * is supplied; pass `null` to clear the key entirely (operator opting
@@ -197,6 +228,24 @@ export interface StructuredConfigPatch {
    * because the BE DTO requires the full nested shape on save.
    */
   sellerDefaults?: AllegroSellerDefaultsFormValues | null;
+  /**
+   * #759 — Subiekt bridge URL → flat `config.subiektBridgeUrl`. Empty string
+   * clears the key (delete-on-empty), mirroring `storefrontBaseUrl`.
+   */
+  subiektBridgeUrl?: string;
+  /**
+   * #759 — Subiekt invoice trigger model → NESTED `config.invoicing.triggerModel`
+   * (NOT a flat key — the live BE reader `getInvoiceTriggerModel` reads the
+   * nested path). Empty string clears the key and drops an emptied `invoicing`
+   * object; sibling `invoicing` keys are preserved. Mirrors `unmanagedStockQuantity`.
+   */
+  subiektTriggerModel?: string;
+  /**
+   * #759 — Subiekt capability toggles → whole-object `config.capabilities`
+   * (`Record<string, boolean>`). An empty/undefined record drops the key.
+   * Mirrors the `sellerDefaults` whole-object seam.
+   */
+  subiektCapabilities?: Record<string, boolean>;
 }
 
 /**
@@ -278,6 +327,13 @@ export function mergeStructuredIntoConfig(
       next.defaultCarrierId = Number.parseInt(structured.defaultCarrierId, 10);
     }
   }
+  if (structured.inpostPsModuleType !== undefined) {
+    if (structured.inpostPsModuleType === '') {
+      delete next.inpostPsModuleType;
+    } else {
+      next.inpostPsModuleType = structured.inpostPsModuleType;
+    }
+  }
   if (structured.sellerDefaults !== undefined) {
     if (structured.sellerDefaults === null) {
       delete next.sellerDefaults;
@@ -285,6 +341,50 @@ export function mergeStructuredIntoConfig(
       // Drop empty-string sub-fields so the BE DTO sees a clean shape (the
       // FE schema accepts `''` for incremental editing; the BE rejects it).
       next.sellerDefaults = pruneEmptySellerDefaults(structured.sellerDefaults);
+    }
+  }
+  // #759 — Subiekt bridge URL: flat, delete-on-empty (mirrors storefrontBaseUrl).
+  if (structured.subiektBridgeUrl !== undefined) {
+    if (structured.subiektBridgeUrl.length === 0) {
+      delete next.subiektBridgeUrl;
+    } else {
+      next.subiektBridgeUrl = structured.subiektBridgeUrl;
+    }
+  }
+  // #759 — Subiekt invoice trigger model: NESTED under `config.invoicing`
+  // (clone of the `inventory` block above). Preserve sibling invoicing keys;
+  // drop the `invoicing` object entirely when clearing leaves it empty. The
+  // BE reader `getInvoiceTriggerModel` reads exactly `config.invoicing.triggerModel`.
+  if (structured.subiektTriggerModel !== undefined) {
+    const invoicing: Record<string, unknown> =
+      typeof next.invoicing === 'object' && next.invoicing !== null
+        ? { ...(next.invoicing as Record<string, unknown>) }
+        : {};
+    if (structured.subiektTriggerModel.length === 0) {
+      delete invoicing.triggerModel;
+    } else {
+      invoicing.triggerModel = structured.subiektTriggerModel;
+    }
+    if (Object.keys(invoicing).length === 0) {
+      delete next.invoicing;
+    } else {
+      next.invoicing = invoicing;
+    }
+  }
+  // #759 — Subiekt capability toggles: whole-object under `config.capabilities`
+  // (clone of the `sellerDefaults` seam). Persist ONLY the enabled (`true`)
+  // toggles and drop the key entirely when none are on, so an all-off
+  // connection carries no `capabilities` blob — an explicitly-off toggle is
+  // absence, not a persisted `{ key: false }` (which a presence-checking BE
+  // reader could otherwise misread as enabled).
+  if (structured.subiektCapabilities !== undefined) {
+    const enabled = Object.fromEntries(
+      Object.entries(structured.subiektCapabilities).filter(([, on]) => on === true),
+    );
+    if (Object.keys(enabled).length === 0) {
+      delete next.capabilities;
+    } else {
+      next.capabilities = enabled;
     }
   }
   return next;

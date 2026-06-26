@@ -40,7 +40,6 @@ import {
   BulkShopPublishResponseDto,
 } from './dto/shop-publish-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('listings')
 @Controller('listings/bulk-shop-publish')
@@ -50,6 +49,7 @@ export class BulkShopPublishController {
     private readonly bulkSubmit: IBulkShopPublishSubmitService,
   ) {}
 
+  @Roles('admin')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -123,6 +123,7 @@ export class BulkShopPublishController {
         externalProductId: record.externalProductId,
         bulkBatchId: record.bulkBatchId,
         errors: record.errors,
+        warnings: record.warnings,
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
       })),

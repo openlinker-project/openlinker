@@ -18,10 +18,9 @@ export type { DestinationOptionsReader } from './domain/ports/capabilities/desti
 export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
 export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
 export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
-// Dispatch-notify sub-capabilities (#837): mark-sent on the source + post-create
-// fulfillment update on the destination.
-export type { OrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
-export { isOrderDispatchNotifier } from './domain/ports/capabilities/order-dispatch-notifier.capability';
+// Destination post-create fulfillment update (#858). Retained for order
+// provisioning (OL driving an order it created), outside the relay path;
+// the source-side dispatch notify folded into OrderStatusWriteback (#1168).
 export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
@@ -156,6 +155,10 @@ export { OrderDestinationNotFoundException } from './domain/exceptions/order-des
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
+export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
+
+// Typed-Order accessor for cross-context command composition (#1119).
+export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';

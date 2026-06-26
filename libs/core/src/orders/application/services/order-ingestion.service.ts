@@ -26,6 +26,10 @@ import {
 } from '@openlinker/core/sync';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
+  IAutoIssueTriggerService,
+  AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
+} from '@openlinker/core/invoicing';
+import {
   ICustomerIdentityResolverService,
   CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN,
   IOrderCustomerProjectionUpdaterService,
@@ -49,6 +53,7 @@ import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { Logger } from '@openlinker/shared/logging';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
@@ -81,7 +86,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     @Inject(ORDER_CUSTOMER_PROJECTION_UPDATER_SERVICE_TOKEN)
     private readonly customerProjectionUpdater: IOrderCustomerProjectionUpdaterService,
     @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
-    private readonly orderLifecycleRelay: IOrderLifecycleRelayService
+    private readonly orderLifecycleRelay: IOrderLifecycleRelayService,
+    // OL #1120: core policy composer that turns this transition into per-connection
+    // issuance jobs. One-way edge (F3) — this service is consumed via the token,
+    // never the reverse.
+    @Inject(AUTO_ISSUE_TRIGGER_SERVICE_TOKEN)
+    private readonly autoIssueTrigger: IAutoIssueTriggerService
   ) {}
 
   async ingestOrders(
@@ -231,6 +241,14 @@ export class OrderIngestionService implements IOrderIngestionService {
       return [];
     }
 
+    // Cancellation-observe hook (#1146): capture the prior business status from
+    // the PRE-persist `existing` snapshot, before persistOrder overwrites it.
+    // Defensive string read — mirrors the `OrderRecord.paymentStatus` getter
+    // idiom; an absent/garbled prior status reads as non-cancelled (allowed to
+    // fire once on a first-seen already-cancelled order — the restore is a
+    // harmless absolute-set).
+    const priorStatus = this.readSnapshotStatus(existing);
+
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
       connectionId,
@@ -288,6 +306,40 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
     await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
 
+    // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
+    // a marketplace.offer.stockRestore job so the destination marketplace's
+    // stock is restored (e.g. Erli auto-decrements on purchase but does not
+    // restore on cancel — ADR-025 §4a). Transition-gated (priorStatus !==
+    // 'cancelled') so a re-poll within the watermark window doesn't re-fire;
+    // the dedupeKey makes any re-enqueue safe. Marketplace-agnostic — the worker
+    // handler narrows the source connection's adapter to OfferStockRestorer and
+    // no-ops if the capability is absent.
+    if (order.status === 'cancelled' && priorStatus !== 'cancelled') {
+      try {
+        await this.jobQueue.enqueue({
+          type: 'marketplace.offer.stockRestore',
+          connectionId,
+          payload: {
+            schemaVersion: 1,
+            internalOrderId,
+          },
+          options: {
+            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+          },
+        });
+      } catch (error) {
+        // The order is already persisted as `cancelled`, so the transition gate
+        // above won't re-fire on a re-poll — a swallowed enqueue failure would
+        // silently lose the restore. We don't rethrow (that would fail the whole
+        // order-sync and still couldn't re-fire the gate on retry), but we log at
+        // error so the missed restore is loud and actionable.
+        this.logger.error(
+          `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
+          (error as Error).stack,
+        );
+      }
+    }
+
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
     // projections are non-authoritative and must never block order sync.
@@ -344,6 +396,28 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (settlement.status === 'rejected') {
         this.logger.warn('Failed to update order record sync status', settlement.reason);
       }
+    }
+
+    // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
+    // the end of the authoritative source poll, AFTER per-destination status is
+    // settled. The destination-echo early-return (`return []`) above is the
+    // INTENDED gate: issuance fires only on the real source ingestion, never on a
+    // destination re-read. Threads the in-scope `sourceEventId` as the trace token
+    // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
+    // never blocks order sync; the catch logs a PII-SAFE envelope only (F9/D11):
+    // `error.name` + `connectionId` + `order.id` + `sourceEventId` — never the raw
+    // error/message or any payload/buyer field.
+    try {
+      await this.autoIssueTrigger.onOrderTransition(order, connectionId, sourceEventId);
+    } catch (error) {
+      // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
+      // re-throw — so an enqueue/compose failure can never block the order
+      // pipeline. Log a PII-SAFE envelope only: error.name + connectionId +
+      // order.id + sourceEventId — never the raw error/message or any payload.
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
+      );
     }
 
     return results;
@@ -411,28 +485,55 @@ export class OrderIngestionService implements IOrderIngestionService {
     return [];
   }
 
+  /**
+   * Defensive read of an order record's prior business status from its snapshot
+   * (#1146). Returns `undefined` when there is no prior record or the stored
+   * value isn't a string — both treated as non-cancelled by the caller. Pure
+   * read; binds only to the snapshot's `status` key, not its full JSON layout.
+   */
+  private readSnapshotStatus(existing: OrderRecord | null): string | undefined {
+    const value = existing?.orderSnapshot?.status;
+    return typeof value === 'string' ? value : undefined;
+  }
+
   private async resolveCustomerId(
     incoming: IncomingOrder,
     connectionId: string,
     internalOrderId: string
   ): Promise<string | undefined> {
-    if (!incoming.customerExternalId) {
-      return undefined;
+    if (incoming.customerExternalId) {
+      if (incoming.customerEmail) {
+        const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
+          externalBuyerId: incoming.customerExternalId,
+          email: incoming.customerEmail,
+          sourceConnectionId: connectionId,
+        });
+        return resolution.internalCustomerId;
+      }
+      return this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Customer,
+        incoming.customerExternalId,
+        connectionId,
+        { parentEntityType: CORE_ENTITY_TYPE.Order, parentInternalId: internalOrderId }
+      );
     }
+
+    // Email-only source (#1208 / #995): marketplaces like Erli expose no buyer
+    // id — only the buyer email. The email IS the stable buyer identity, so key
+    // identity resolution on it (raw email as the connection-scoped buyer-id
+    // mapping key; the resolver normalizes + hashes internally for projection
+    // matching). Without this the unified Order would carry no customerId and
+    // the destination order-create (e.g. PrestaShop) fails closed.
     if (incoming.customerEmail) {
       const resolution = await this.customerIdentityResolver.resolveCustomerIdentity({
-        externalBuyerId: incoming.customerExternalId,
+        externalBuyerId: incoming.customerEmail,
         email: incoming.customerEmail,
         sourceConnectionId: connectionId,
       });
       return resolution.internalCustomerId;
     }
-    return this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.Customer,
-      incoming.customerExternalId,
-      connectionId,
-      { parentEntityType: CORE_ENTITY_TYPE.Order, parentInternalId: internalOrderId }
-    );
+
+    return undefined;
   }
 
   private buildUnifiedOrder(

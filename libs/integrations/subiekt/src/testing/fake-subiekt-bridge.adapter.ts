@@ -8,9 +8,12 @@
  * Windows-only and cannot be containerized, so the real dependency is
  * categorically un-runnable here (the textbook case for an in-memory fake).
  *
- * Returns deterministic mock data (`FV-MOCK-001`, …, `regulatoryStatus: 'sent'`)
- * and supports seeded failure modes + `seed`/`clear` helpers. Consumed only
- * from `*.spec.ts` via `@openlinker/integrations-subiekt/testing`.
+ * Returns deterministic mock data shaped EXACTLY like the real bridge `data`
+ * payloads (numeric `providerInvoiceId`/`id`, `FV-MOCK-001`, …,
+ * `regulatoryStatus: 'sent'`) and supports seeded failure modes + `seed`/`clear`
+ * helpers. Consumed only from `*.spec.ts` via
+ * `@openlinker/integrations-subiekt/testing`. Keeping the fake on the real shape
+ * is what stops it drifting from reality (the bug this reconciliation fixed).
  *
  * Fidelity caveat: a fake can pass while the real bridge fails. The shared
  * `runSubiektBridgeContractTests` suite is the seam that keeps both honest — it
@@ -38,8 +41,11 @@ type SeededFailure =
 
 export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private issueCounter = 0;
+  private customerCounter = 0;
   private seededFailure: SeededFailure | null = null;
   private issueOverride: Partial<BridgeIssueInvoiceResponse> | null = null;
+  // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
+  // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
 
   issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
@@ -49,14 +55,15 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     }
     this.issueCounter += 1;
     const response: BridgeIssueInvoiceResponse = {
-      providerInvoiceId: `SUB-MOCK-${this.issueCounter}`,
+      // Real bridge returns a numeric Subiekt document id.
+      providerInvoiceId: 100_000 + this.issueCounter,
       providerInvoiceNumber: `FV-MOCK-${String(this.issueCounter).padStart(3, '0')}`,
       state: 'issued',
       regulatoryStatus: 'sent',
       pdfUrl: null,
       ...this.issueOverride,
     };
-    this.issuedById.set(response.providerInvoiceId, response);
+    this.issuedById.set(String(response.providerInvoiceId), response);
     return Promise.resolve(response);
   }
 
@@ -65,7 +72,14 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     if (failure) {
       return Promise.reject(failure);
     }
-    return Promise.resolve({ providerCustomerId: 'KH-MOCK-1' });
+    this.customerCounter += 1;
+    const id = 200_000 + this.customerCounter;
+    return Promise.resolve({
+      id,
+      numer: String(id),
+      nazwaSkrocona: _req.nazwaSkrocona,
+      nip: _req.nip,
+    });
   }
 
   getInvoiceStatus(req: BridgeInvoiceStatusRequest): Promise<BridgeInvoiceStatusResponse> {
@@ -105,6 +119,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.issueCounter = 0;
+    this.customerCounter = 0;
     this.seededFailure = null;
     this.issueOverride = null;
     this.issuedById.clear();

@@ -18,6 +18,7 @@ import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handle
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './marketplace-offer-status-sync.handler';
+import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
@@ -28,6 +29,8 @@ import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handl
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
+import { InvoicingIssueHandler } from './invoicing-issue.handler';
+import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -42,6 +45,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
     private readonly marketplaceOfferStatusSyncHandler: MarketplaceOfferStatusSyncHandler,
+    private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
@@ -51,7 +55,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
-    private readonly shopProductPublishHandler: ShopProductPublishHandler
+    private readonly shopProductPublishHandler: ShopProductPublishHandler,
+    private readonly invoicingIssueHandler: InvoicingIssueHandler,
+    private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler
   ) {}
 
   onModuleInit(): void {
@@ -75,6 +81,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.statusSync',
       this.marketplaceOfferStatusSyncHandler
+    );
+    this.handlerRegistry.register(
+      'marketplace.offer.stockRestore',
+      this.marketplaceOfferStockRestoreHandler
     );
     this.handlerRegistry.register(
       'marketplace.shipment.statusSync',
@@ -119,5 +129,13 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register shop product publish handler (#1042, ADR-024)
     this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler);
+
+    // Register invoicing issue handler (OL #1120 — auto-issue trigger)
+    this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler);
+    // Register KSeF regulatory-status reconciliation handler (#1121)
+    this.handlerRegistry.register(
+      'invoicing.regulatoryStatus.reconcile',
+      this.regulatoryStatusReconcileHandler
+    );
   }
 }
