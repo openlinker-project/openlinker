@@ -370,6 +370,10 @@ export interface StructuredConfigPatch {
    * reads. Empty string clears that leaf; the merge helper drops an emptied
    * `address` / `seller` object so a hollow profile is never persisted. NIP is
    * normalised to digits only, matching the create path.
+   *
+   * The read-side counterpart is `readKsefSeller()` in `EditConnectionForm.tsx`,
+   * which hydrates from `config.seller.*` (with a legacy flat `config.sellerNip`
+   * fallback for connections saved before the nested shape was introduced).
    */
   sellerNip?: string;
   sellerName?: string;
