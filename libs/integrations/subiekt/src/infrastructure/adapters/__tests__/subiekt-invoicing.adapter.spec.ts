@@ -480,10 +480,14 @@ describe('SubiektInvoicingAdapter', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
-    it('maps an unknown-to-bridge providerInvoiceId onto neutral not-applicable and warns (#1229)', async () => {
+    it('[fake-only state] maps a fake { state: failed, regulatoryStatus: none } onto neutral not-applicable and warns (#1229)', async () => {
       const { adapter, logger } = makeAdapter();
-      // Non-null providerInvoiceId the fake never issued -> bridge reads back
-      // { state: 'failed', regulatoryStatus: 'none' } -> neutral 'not-applicable'.
+      // FAKE-ONLY path: a non-null providerInvoiceId the in-memory fake never
+      // issued reads back { state: 'failed', regulatoryStatus: 'none' } -> neutral
+      // 'not-applicable' + a warn. The REAL bridge does NOT model an unknown id
+      // this way — it returns a 4xx that the HTTP client surfaces as a thrown
+      // SubiektInvoiceRejectedError (see the next test). Both are valid: the fake
+      // exercises the soft-missing branch, the throw test the hard-rejection branch.
       const record = new InvoiceRecord(
         'rec-unknown',
         'conn-1',
@@ -526,6 +530,22 @@ describe('SubiektInvoicingAdapter', () => {
       bridge.seedFailure('bridge-unreachable');
       await expect(adapter.getClearanceStatus(issued)).rejects.toBeInstanceOf(
         SubiektBridgeTransportError,
+      );
+    });
+
+    it('[real-bridge semantics] propagates a SubiektInvoiceRejectedError from the status read (does not swallow to not-applicable)', async () => {
+      // The REAL SubiektBridgeHttpClient turns a bridge 4xx (e.g. an unknown
+      // document id) into a thrown SubiektInvoiceRejectedError. The adapter must
+      // PROPAGATE it (translateBridgeError passes it through) so the reconcile
+      // service treats it as a read error — it must NOT swallow it into a neutral
+      // 'not-applicable' the way the in-memory fake's soft-missing branch does.
+      const { adapter, bridge } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      jest
+        .spyOn(bridge, 'getInvoiceStatus')
+        .mockRejectedValueOnce(new SubiektInvoiceRejectedError('unknown document id'));
+      await expect(adapter.getClearanceStatus(issued)).rejects.toBeInstanceOf(
+        SubiektInvoiceRejectedError,
       );
     });
   });
