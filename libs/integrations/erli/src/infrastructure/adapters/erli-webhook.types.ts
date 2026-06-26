@@ -86,8 +86,15 @@ export function erliHookPath(hookName: ErliWebhookEventType): string {
   return `${ERLI_HOOKS_PATH}/${encodeURIComponent(hookName)}`;
 }
 
-/** Body for `PUT /hooks/{hookName}` (#996): callback URL + shared secret. */
+/**
+ * Body for `PUT /hooks/{hookName}` (#996): the hook name, callback URL + shared
+ * secret. Erli's `HookSave` schema requires `hookName` in the BODY (not only in
+ * the path) and rejects unknown properties (`additionalProperties: false`), so
+ * the body must repeat the path's hook name verbatim — omitting it yields a 400
+ * (confirmed against the live sandbox during the E2E verification run).
+ */
 export interface ErliHookRegistrationBody {
+  hookName: ErliWebhookEventType;
   url: string;
   accessToken: string;
 }

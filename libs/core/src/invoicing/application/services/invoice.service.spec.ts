@@ -100,6 +100,7 @@ describe('InvoiceService', () => {
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
       findMany: jest.fn(),
+      findIssuedNonTerminal: jest.fn(),
     };
     adapter = {
       issueInvoice: jest.fn(),

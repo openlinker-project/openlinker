@@ -69,16 +69,20 @@ describe('ErliWebhookProvisioningAdapter', () => {
 
     expect(webhookSecretService.rotate).toHaveBeenCalledWith('erli', CONNECTION_ID, 'actor-1');
     expect(httpClient.put).toHaveBeenCalledTimes(2);
-    const expectedBody = {
-      url: `http://host.docker.internal:3000/webhooks/erli/${CONNECTION_ID}`,
-      accessToken: SECRET,
-    };
-    expect(httpClient.put).toHaveBeenCalledWith('/hooks/orderCreated', expectedBody, {
-      idempotent: true,
-    });
-    expect(httpClient.put).toHaveBeenCalledWith('/hooks/orderStatusChanged', expectedBody, {
-      idempotent: true,
-    });
+    const url = `http://host.docker.internal:3000/webhooks/erli/${CONNECTION_ID}`;
+    // Erli's HookSave requires `hookName` in the BODY (not just the path) and
+    // rejects unknown properties — the body must repeat the path hook name or
+    // Erli returns 400 (regression: this was omitted and broke install live).
+    expect(httpClient.put).toHaveBeenCalledWith(
+      '/hooks/orderCreated',
+      { hookName: 'orderCreated', url, accessToken: SECRET },
+      { idempotent: true },
+    );
+    expect(httpClient.put).toHaveBeenCalledWith(
+      '/hooks/orderStatusChanged',
+      { hookName: 'orderStatusChanged', url, accessToken: SECRET },
+      { idempotent: true },
+    );
     expect(result).toEqual({ webhooksConfigured: true, testPingTriggered: false });
   });
 
