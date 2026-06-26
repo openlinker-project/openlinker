@@ -9653,3 +9653,215 @@ html[data-density='compact'] .status-badge {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* ── Invoicing redesign (#1240) ── */
+
+/* ─ Skeletons (shared shimmer for panel + detail page) ─ */
+.order-invoice-panel__skeleton,
+.invoice-detail__skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    100deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.order-invoice-panel__skeleton {
+  height: 14px;
+}
+@keyframes invoice-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .order-invoice-panel__skeleton,
+  .invoice-detail__skeleton {
+    animation: none;
+    background: var(--bg-surface-muted);
+  }
+}
+
+/* ─ Panel KV block ─ */
+.invoice-panel__body {
+  padding: var(--space-3) 0;
+}
+.invoice-panel__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-panel__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-panel__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+/* ─ Panel inline-alert (used for failed / in-doubt) ─ */
+.invoice-panel__inline-alert {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--bg-surface-muted);
+}
+.invoice-panel__inline-alert--error {
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.invoice-panel__inline-alert--warning {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.invoice-panel__inline-alert-bar {
+  flex-shrink: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  align-self: stretch;
+}
+
+/* ─ Invoice Timeline ─ */
+.invoice-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.invoice-timeline__lane {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+.invoice-timeline__lane-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2);
+}
+.invoice-tl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.invoice-tl-node {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  position: relative;
+}
+/* Connector line between nodes */
+.invoice-tl-node:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 20px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--border-subtle);
+}
+.invoice-tl-node__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 1px;
+}
+.invoice-tl-node__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.invoice-tl-node__sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-tl-node__ts {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Node state colors */
+.invoice-tl-bullet--done { color: var(--status-success); }
+.invoice-tl-bullet--active { color: var(--accent-primary); }
+.invoice-tl-bullet--error { color: var(--status-error); }
+.invoice-tl-bullet--warning { color: var(--status-warning); }
+.invoice-tl-bullet--locked { color: var(--status-info); }
+.invoice-tl-bullet--pending { color: var(--text-muted); }
+
+/* Locked (issuing) pulse dot */
+@keyframes invoice-tl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.invoice-tl-bullet--locked .invoice-tl-bullet__pulse {
+  animation: invoice-tl-pulse 1.5s ease-in-out infinite;
+}
+
+.invoice-tl-node--done .invoice-tl-node__label { color: var(--text-primary); }
+.invoice-tl-node--active .invoice-tl-node__label { color: var(--accent-primary); font-weight: 600; }
+.invoice-tl-node--error .invoice-tl-node__label { color: var(--status-error-fg); }
+.invoice-tl-node--warning .invoice-tl-node__label { color: var(--status-warning-fg); }
+.invoice-tl-node--locked .invoice-tl-node__label { color: var(--status-info-fg); }
+.invoice-tl-node--pending .invoice-tl-node__label { color: var(--text-muted); }
+
+/* ─ Invoice Detail Page ─ */
+.invoice-detail__skeleton {
+  height: 200px;
+}
+.invoice-detail__head-badges {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.invoice-detail__alert {
+  margin-bottom: var(--space-4);
+}
+.invoice-detail__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+@media (min-width: 1024px) {
+  .invoice-detail__grid {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+.invoice-detail__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.invoice-detail__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0;
+}
+
+/* ─ Invoice list retry banner ─ */
+.invoice-list__retry-banner {
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+

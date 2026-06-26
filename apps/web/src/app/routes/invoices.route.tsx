@@ -13,6 +13,10 @@ const invoicesListCrumb: RouteCrumbHandle = {
   crumb: { group: 'Operations', title: 'Invoices' },
 };
 
+const invoiceDetailCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Invoice' },
+};
+
 export const invoicesRoute: RouteObject = {
   path: 'invoices',
   children: [
@@ -22,6 +26,14 @@ export const invoicesRoute: RouteObject = {
       lazy: async () => {
         const { InvoicesListPage } = await import('../../pages/invoicing/invoices-list-page');
         return { Component: InvoicesListPage };
+      },
+    },
+    {
+      path: ':invoiceId',
+      handle: invoiceDetailCrumb,
+      lazy: async () => {
+        const { InvoiceDetailPage } = await import('../../pages/invoicing/invoice-detail-page');
+        return { Component: InvoiceDetailPage };
       },
     },
   ],

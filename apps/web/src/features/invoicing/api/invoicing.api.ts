@@ -1,12 +1,12 @@
 /**
- * Invoicing API Client (#757)
+ * Invoicing API Client (#757, redesign #1240)
  *
  * Thin API module for the invoicing feature, consuming the #1119 HTTP API:
  *   - `GET /orders/:orderId/invoice?connectionId=…`
  *   - `GET /invoices` (paginated list with filters — #758 list page)
+ *   - `GET /invoices/:invoiceId` (detail page — W2 #1231)
  *   - `POST /invoices`
- *
- * `list` (`GET /invoices`) is implemented for the #758 invoices list page.
+ *   - `POST /invoices/retry` (batch retry — W6 #1245)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -16,6 +16,8 @@ import type {
   InvoiceRecord,
   IssueInvoiceInput,
   PaginatedInvoices,
+  RetryInvoicesInput,
+  RetryInvoicesResult,
 } from './invoicing.types';
 
 export interface InvoicingApi {
@@ -23,10 +25,16 @@ export interface InvoicingApi {
    *  projection for an order + invoicing connection. 404 when no invoice row
    *  exists (mapped to `not-issued` by the query hook). */
   getForOrder: (orderId: string, connectionId: string) => Promise<InvoiceRecord>;
-  /** `GET /invoices` — paginated list with AC-6 filters (#758). */
+  /** `GET /invoices/{invoiceId}` — the single invoice by id (detail page, W2
+   *  #1231). 404 when no invoice exists at this id. */
+  getById: (invoiceId: string) => Promise<InvoiceRecord>;
+  /** `GET /invoices` — paginated list with AC-6 filters (#758) + tax-id (#1202). */
   list: (filters?: InvoiceFilters, pagination?: InvoicePagination) => Promise<PaginatedInvoices>;
   /** `POST /invoices` — manual issue (and failed-row retry). */
   issue: (input: IssueInvoiceInput) => Promise<InvoiceRecord>;
+  /** `POST /invoices/retry` — batch retry of failed+rejected records (W6 #1245).
+   *  The server gates eligibility; non-eligible ids are skipped per-id. */
+  retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
 }
 
 interface ApiRequest {
@@ -42,6 +50,7 @@ function buildQuery(filters?: InvoiceFilters, pagination?: InvoicePagination): s
   if (filters?.status) params.set('status', filters.status);
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.regulatoryStatus) params.set('regulatoryStatus', filters.regulatoryStatus);
+  if (filters?.taxId) params.set('taxId', filters.taxId);
   if (filters?.issuedFrom) params.set('issuedFrom', filters.issuedFrom);
   if (filters?.issuedTo) params.set('issuedTo', filters.issuedTo);
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
@@ -58,11 +67,21 @@ export function createInvoicingApi(request: ApiRequest): InvoicingApi {
         `/orders/${encodeURIComponent(orderId)}/invoice?${params.toString()}`,
       );
     },
+    getById(invoiceId): Promise<InvoiceRecord> {
+      return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}`);
+    },
     list(filters, pagination): Promise<PaginatedInvoices> {
       return request<PaginatedInvoices>(`/invoices${buildQuery(filters, pagination)}`);
     },
     issue(input): Promise<InvoiceRecord> {
       return request<InvoiceRecord>('/invoices', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
+    retry(input): Promise<RetryInvoicesResult> {
+      return request<RetryInvoicesResult>('/invoices/retry', {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
