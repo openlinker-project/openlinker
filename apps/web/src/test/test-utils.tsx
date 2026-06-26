@@ -241,8 +241,11 @@ export function createMockApiClient(
       // other `invoicing.list` caller) does not hit `undefined` once `list` is
       // added to the InvoicingApi interface. Placed before the spread so an
       // explicit `overrides.invoicing.list` still wins.
+      getById: vi.fn().mockResolvedValue(null),
       list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
+      retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
+      issueCorrection: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     orders: {

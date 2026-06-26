@@ -19,6 +19,7 @@ export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
+export { useIssueCorrectionMutation } from './hooks/use-issue-correction-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
@@ -30,6 +31,8 @@ export type {
   RegulatoryStatus,
   DocumentType,
   IssueInvoiceInput,
+  CorrectionLineInput,
+  IssueCorrectionInput,
   InvoiceFilters,
   InvoicePagination,
   PaginatedInvoices,

@@ -7,6 +7,7 @@
  *   - `GET /invoices/:invoiceId` (detail page — W2 #1231)
  *   - `POST /invoices`
  *   - `POST /invoices/retry` (batch retry — W6 #1245)
+ *   - `POST /invoices/:invoiceId/correct` (KOR correction — BE #1189)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -14,6 +15,7 @@ import type {
   InvoiceFilters,
   InvoicePagination,
   InvoiceRecord,
+  IssueCorrectionInput,
   IssueInvoiceInput,
   PaginatedInvoices,
   RetryInvoicesInput,
@@ -35,6 +37,10 @@ export interface InvoicingApi {
   /** `POST /invoices/retry` — batch retry of failed+rejected records (W6 #1245).
    *  The server gates eligibility; non-eligible ids are skipped per-id. */
   retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
+  /** `POST /invoices/:invoiceId/correct` — issue a KOR correction document
+   *  (BE #1189). The correction record is returned; status reconciliation
+   *  follows via the `RegulatoryTransmitter` poll cycle. */
+  issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
 }
 
 interface ApiRequest {
@@ -82,6 +88,13 @@ export function createInvoicingApi(request: ApiRequest): InvoicingApi {
     },
     retry(input): Promise<RetryInvoicesResult> {
       return request<RetryInvoicesResult>('/invoices/retry', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
+    issueCorrection(invoiceId, input): Promise<InvoiceRecord> {
+      return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/correct`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
