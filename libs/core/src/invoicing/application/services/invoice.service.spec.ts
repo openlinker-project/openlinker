@@ -715,7 +715,10 @@ describe('InvoiceService', () => {
     });
 
     it('should persist the adapter-supplied source document when present', async () => {
-      const sourceDocument = { contentType: 'application/xml', contentBase64: 'PEZha3R1cmE+' };
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PERvY3VtZW50PmZha2U8L0RvY3VtZW50Pg==',
+      };
       adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER, sourceDocument });
       let persisted: CreateInvoiceRecordInput | undefined;
       repository.create.mockImplementation((input) => {

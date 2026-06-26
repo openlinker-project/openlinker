@@ -198,7 +198,10 @@ describe('InvoiceRecordRepository', () => {
     });
 
     it('round-trips the persisted source document blob', async () => {
-      const sourceDocument = { contentType: 'application/xml', contentBase64: 'PEZha3R1cmE+' };
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PERvY3VtZW50PmZha2U8L0RvY3VtZW50Pg==',
+      };
       ormRepo.save.mockImplementation((entity) =>
         Promise.resolve(ormRow({ sourceDocument: (entity as InvoiceRecordOrmEntity).sourceDocument })),
       );

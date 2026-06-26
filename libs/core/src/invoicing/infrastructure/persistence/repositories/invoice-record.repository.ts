@@ -91,6 +91,11 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     if (!entity) {
       throw new InvoiceRecordNotFoundException(id);
     }
+    // sourceDocument is write-once (set at create). Guard against an untyped/cast
+    // patch slipping the key through Object.assign and clobbering the snapshot.
+    if ('sourceDocument' in patch) {
+      throw new Error('sourceDocument is write-once and cannot be patched via updateOutcome');
+    }
     Object.assign(entity, patch);
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
