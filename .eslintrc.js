@@ -148,6 +148,7 @@ module.exports = {
       //   - `Role` — declarative role gate on `NavContribution` (#610)
       //   - `ApiRequest`, `PluginApiNamespaces` — build-side `apiNamespaces` factory (#604/#605)
       //   - `CreateOfferRequest` — `OfferCreationWizardProps.initialValues` (#608)
+      //   - `InvoiceRecord` — `invoiceDetailSection` / `invoiceCorrectionFlow` slot props (#1240)
       // Each is a deliberate pinhole. Hoisting all of them into `shared/types/`
       // would invert the dependency direction and inflate `shared/` with
       // feature-private surface — keeping the exemption narrow + explicit
@@ -161,9 +162,9 @@ module.exports = {
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
                 importNamePattern:
-                  '^(?!Connection$|EditConnectionFormValues$|Role$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$).+',
+                  '^(?!Connection$|EditConnectionFormValues$|Role$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$).+',
                 message:
-                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, Role, ApiRequest, PluginApiNamespaces, CreateOfferRequest) from features/app. All other feature/app imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, Role, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },

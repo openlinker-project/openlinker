@@ -14,6 +14,7 @@ import { SubiektConfigException } from '../../../domain/exceptions/subiekt-confi
 import { SubiektBridgeHttpClient } from '../subiekt-bridge-http.client';
 import {
   sampleIssueInvoiceRequest,
+  sampleKorektaRequest,
   sampleUpsertCustomerRequest,
 } from '../../../testing/subiekt-bridge-contract.suite';
 
@@ -297,6 +298,28 @@ describe('SubiektBridgeHttpClient', () => {
       // The client derives `state: 'issued'` for a document that reads back.
       expect(status.state).toBe('issued');
       expect(status.regulatoryStatus).toBe('pending');
+    });
+  });
+
+  describe('issueCorrection', () => {
+    it('issues a POST to the templated /api/invoices/{origId}/corrections path and forwards the bridge data', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 300_001,
+          providerInvoiceNumber: 'FK-001',
+          korygowanyId: 100_355,
+          przyczyna: 'Zwrot towaru',
+          state: 'issued',
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueCorrection(100_355, sampleKorektaRequest());
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/invoices/100355/corrections`);
+      expect(init.method).toBe('POST');
+      expect(res.providerInvoiceId).toBe(300_001);
+      expect(res.korygowanyId).toBe(100_355);
+      expect(res.state).toBe('issued');
     });
   });
 

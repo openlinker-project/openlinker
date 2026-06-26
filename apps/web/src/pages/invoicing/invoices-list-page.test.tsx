@@ -1,12 +1,13 @@
 /**
- * InvoicesListPage — component tests (#758)
+ * InvoicesListPage — component tests (#758, #1240 A1+C2+C3)
  *
  * Mirrors the webhook deliveries page test: loading / error / empty / data
- * states + "filter drives query" assertions via a mocked api client
- * (`createMockApiClient({ invoicing: { list: listMock }, connections: { list: connMock } })`)
- * and `listMock.mock.calls.at(-1)?.[0]` matchers. The page reads filter +
- * pagination state from the URL, so each case renders with the appropriate
- * `route` (test-utils seeds the MemoryRouter from it).
+ * states + "filter drives query" assertions via a mocked api client.
+ *
+ * New #1240 assertions:
+ *   - rowHref is `/invoices/:id` (was `/orders/:orderId`)
+ *   - taxId filter drives the query
+ *   - BulkActionBar appears on row selection
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -43,9 +44,12 @@ function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     status: 'issued',
     providerInvoiceId: 'pi_1',
     providerInvoiceNumber: 'FV/2026/001',
-    regulatoryStatus: 'cleared',
+    regulatoryStatus: 'accepted',
     clearanceReference: null,
     pdfUrl: 'https://example.com/invoice.pdf',
+    failureMode: null,
+    failureCode: null,
+    failureReason: null,
     issuedAt: '2026-06-01T10:00:00.000Z',
     createdAt: '2026-06-01T10:00:00.000Z',
     updatedAt: '2026-06-01T10:00:00.000Z',
@@ -104,24 +108,25 @@ describe('InvoicesListPage', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/invoice.pdf');
     expect(within(link).getByText('FV/2026/001')).toBeInTheDocument();
     // Status badge (issued) renders in both the desktop table cell and the
-    // mobile card-view meta; regulatory badge (KSeF: cleared) only in the table.
+    // mobile card-view meta; regulatory badge (KSeF: accepted) only in the table.
     expect(screen.getAllByText('Issued').length).toBeGreaterThan(0);
-    expect(screen.getByText('KSeF: cleared')).toBeInTheDocument();
+    expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
   });
 
-  it('drives the query with status filter (and links each row to /orders/:orderId)', async () => {
+  it('links each row to /invoices/:id (not /orders/:orderId)', async () => {
     const user = userEvent.setup();
     const invoice = makeInvoice();
     const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [invoice], total: 1 }));
     renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
 
     await screen.findByText('order_1');
-    // Each row links to /orders/:orderId.
+    // Row href must point to the invoice detail page.
     const rowLink = screen
       .getAllByRole('link')
-      .find((a) => a.getAttribute('href') === '/orders/order_1');
+      .find((a) => a.getAttribute('href') === '/invoices/inv_1');
     expect(rowLink).toBeDefined();
 
+    // Status filter still drives the query.
     await user.selectOptions(
       screen.getByRole('combobox', { name: /filter by status/i }),
       'failed',
@@ -168,6 +173,22 @@ describe('InvoicesListPage', () => {
     });
   });
 
+  it('drives the query with the taxId filter (with/without)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('No invoices found');
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /filter by buyer tax id/i }),
+      'with',
+    );
+
+    await waitFor(() => {
+      expect(list.mock.calls.at(-1)?.[0]).toMatchObject({ taxId: 'with' });
+    });
+  });
+
   it('widens the issued date range to UTC bounds (issuedFrom T00:00:00.000Z / issuedTo T23:59:59.999Z) in the query', async () => {
     const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
     renderWithProviders(<InvoicesListPage />, {
@@ -188,7 +209,6 @@ describe('InvoicesListPage', () => {
     renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
 
     await screen.findByText('order_1');
-    // Page 1 of a single-page result: both bounds disabled, limit=20/offset=0.
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     expect(list.mock.calls.at(-1)?.[1]).toMatchObject({ limit: 20, offset: 0 });
@@ -239,5 +259,30 @@ describe('InvoicesListPage', () => {
     const filters = list.mock.calls.at(-1)?.[0];
     expect(filters?.status).toBeUndefined();
     expect(filters?.regulatoryStatus).toBeUndefined();
+  });
+
+  it('BulkActionBar appears after checking a row and hides when selection cleared', async () => {
+    const user = userEvent.setup();
+    const invoice = makeInvoice();
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [invoice], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('order_1');
+
+    const checkbox = screen.getByRole('checkbox', { name: /select invoice/i });
+    await user.click(checkbox);
+
+    // BulkActionBar renders when count > 0
+    expect(screen.getByRole('button', { name: /retry selected/i })).toBeInTheDocument();
+
+    // Clear selection: count returns to 0, bar is aria-hidden
+    await user.click(screen.getByRole('button', { name: /clear selection/i }));
+    await waitFor(() => {
+      // BulkActionBar sets aria-hidden when count=0; the button is still in
+      // DOM but the container is hidden (aria-hidden). Use the aria-hidden
+      // attribute on the wrapper to assert the bar is collapsed.
+      const bar = document.querySelector('.bulk-action-bar');
+      expect(bar?.getAttribute('aria-hidden')).toBe('true');
+    });
   });
 });

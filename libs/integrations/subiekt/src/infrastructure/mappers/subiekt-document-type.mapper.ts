@@ -8,10 +8,14 @@
  *      did not pass one: a `pl-nip` tax id with a non-empty value -> 'invoice',
  *      otherwise -> 'receipt'. An explicit `command.documentType` is honoured
  *      verbatim. NOTE: `isCompany` is NOT the trigger — NIP presence is.
- *   2. `toBridgeDocumentType` — map the neutral doctype to the bridge-native
- *      `documentType` string ('invoice'->'FV' [faktura], 'receipt'->'PA'
- *      [paragon]). Anything outside the supported set throws
- *      `SubiektUnsupportedDocumentTypeError`.
+ *   2. `toBridgeDocumentType` — map a NON-correction neutral doctype to the
+ *      bridge-native `documentType` string ('invoice'->'FV' [faktura],
+ *      'receipt'->'PA' [paragon]). Anything outside that set (including the
+ *      correction types `credit-note`/`corrected`) throws
+ *      `SubiektUnsupportedDocumentTypeError` — corrections go through the dedicated
+ *      correction capability (`CorrectionIssuer.issueCorrection`), never the plain
+ *      issue path, so a correction doctype reaching `issueInvoice` is a clean
+ *      rejection.
  *
  * @module libs/integrations/subiekt/src/infrastructure/mappers
  */
@@ -51,9 +55,10 @@ export function deriveNeutralDocumentType(
 }
 
 /**
- * Map a neutral document type to the bridge-native `documentType` (`FV`/`PA`).
+ * Map a NON-correction neutral document type to the bridge-native `documentType`
+ * (`FV`/`PA`).
  * @throws SubiektUnsupportedDocumentTypeError when `neutral` is outside
- *   `{invoice, receipt}`.
+ *   `{invoice, receipt}` (correction types included — they use the correction path).
  */
 export function toBridgeDocumentType(neutral: string): BridgeDocumentType {
   if (neutral === 'invoice' || neutral === 'receipt') {

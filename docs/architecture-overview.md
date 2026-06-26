@@ -258,6 +258,18 @@ The system is organized into the following core bounded contexts:
 - **Telemetry**: per-completion structured log `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`; publish / revert actions log `{ templateId, key, channel, version, actor }`.
 - **Worker registration (#737)**: `AiIntegrationModule.register()` is registered in `apps/worker/src/plugins.ts` so the bulk-flow `marketplace.offer.create` handler can call `ContentSuggestionService.suggestDescription()` per-job for AI-generated offer descriptions. `AI_COMPLETION_PORT_TOKEN` resolves through `PluginRegistryModule.forRoot({ plugins: workerPlugins })` in the worker's `AppModule`. The suggestion binding lives at `apps/worker/src/content/worker-content.module.ts` (mirrors `apps/api/src/content/content.module.ts`) — it cannot live in `libs/core/src/content/content.module.ts` because that would force core to value-import `@openlinker/integrations-ai`, reversing the core → integration dependency direction.
 
+### 14. Invoicing
+
+*See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for the country-agnostic design.*
+
+- **Responsibility**: Issue fiscal documents for orders, optionally submit them to a tax authority for clearance, and reconcile the authority-assigned identifier + receipt. **Country-agnostic by construction** — no `NIP`/`KSeF`/`FA`/`VAT`-specific vocabulary lives in `libs/core`; all national specifics are confined to the provider adapter package.
+- **Key Entities**: `InvoiceRecord` (neutral projection of an issued document), value types `DocumentType`, `InvoiceStatus` (`pending | issued | failed`), `RegulatoryStatus` (`not-applicable | submitted | cleared | accepted | rejected`).
+- **Location**: `libs/core/src/invoicing/`.
+- **Capability**: `InvoicingPort` (base — `issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) plus two composable sub-capabilities in `domain/ports/capabilities/`, each with a co-located `is*` guard:
+  - `RegulatoryStatusReader` — read the clearance status of a previously-submitted document.
+  - `RegulatoryTransmitter` (extends `RegulatoryStatusReader`) — submit a document for clearance + read its status. `getSupportedDocumentTypes()` is value-level discovery (which neutral types a provider can issue), distinct from the method-bearing sub-capability.
+- **First provider**: **KSeF** (Polish national e-invoicing), `@openlinker/integrations-ksef`, adapterKey `ksef.publicapi.v2`, registry capability `Invoicing`. The C2 plugin skeleton is wired (connection config + credentials validators registered; adapter dispatches `Invoicing` from the factory); the `KsefInvoicingAdapter` is a stub and all mutating methods throw until C4 ships the issuance mechanics. The target design: FA(3) `VAT` + `KOR` documents issued and cleared through the async submit→poll→UPO model, with the `RegulatoryTransmitter` sub-capability (guard `isRegulatoryTransmitter`) narrowed at call sites. See the [KSeF setup guide](./integrations/ksef/setup-guide.md) for the full target flow, current limitations, and compliance caveats.
+
 ---
 
 ## Capability Abstractions (Business Roles)

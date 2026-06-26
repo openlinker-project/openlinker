@@ -24,13 +24,12 @@ import {
   type ConnectionCredentialsShapeValidatorPort,
   InvalidCredentialsShapeException,
 } from '@openlinker/core/integrations';
-import { KSEF_BRAND } from '../../ksef.constants';
 import { KsefAuthTypeValues } from '../../domain/types/ksef-connection.types';
 
 export class KsefConnectionCredentialsShapeValidatorAdapter
   implements ConnectionCredentialsShapeValidatorPort
 {
-  constructor(private readonly pluginName: string = KSEF_BRAND) {}
+  constructor(private readonly pluginName: string = 'KSeF') {}
 
   validate(credentials: Record<string, unknown>): Promise<void> {
     const authType = credentials.authType;

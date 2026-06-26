@@ -1,11 +1,16 @@
 /**
- * OrderInvoicePanel — component tests (#757)
+ * OrderInvoicePanel — component tests (#757, redesign #1240)
  *
  * Drives the panel through a mocked API client. Asserts the capability +
  * operator-toggle gate, per-status rendering, the issue flow (payload shape +
  * success/error toasts), the security-critical PII-non-leak on the
  * capability-disabled toast, the document-type override, and the data-driven
  * regulatory badge gate.
+ *
+ * New #1240 assertions:
+ *   - in-doubt: NO Retry, shows Check/Mark-resolved
+ *   - issuing: NO action, locked notice
+ *   - failed+rejected: Retry present, canRetryInvoice gate
  */
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -58,6 +63,9 @@ function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
     regulatoryStatus: 'not-applicable',
     clearanceReference: null,
     pdfUrl: 'https://subiekt.example/inv/1.pdf',
+    failureMode: null,
+    failureCode: null,
+    failureReason: null,
     issuedAt: '2026-06-02T00:00:00.000Z',
     createdAt: '2026-06-02T00:00:00.000Z',
     updatedAt: '2026-06-02T00:00:00.000Z',
@@ -69,9 +77,6 @@ const notFound = (): ApiError =>
   new ApiError('No invoice for order', 404, { message: 'No invoice for order' });
 
 describe('OrderInvoicePanel — capability/toggle gate', () => {
-  /** The panel renders a loading skeleton (also `.order-invoice-panel`) until the
-   *  connections query settles, then collapses to `null` when the gate fails.
-   *  Wait for the skeleton to clear before asserting the panel is gone. */
   async function expectGatedOut(container: HTMLElement): Promise<void> {
     await waitFor(() =>
       expect(container.querySelector('.order-invoice-panel--loading')).toBeNull(),
@@ -116,8 +121,6 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([b, a]) }, invoicing: { getForOrder } }),
     });
-    // Picker is shown with a placeholder + both connections; no Issue action and
-    // no invoice GET is wired to an arbitrary connection until the operator picks.
     const picker = await screen.findByRole('combobox', { name: /invoicing connection/i });
     expect(picker).toHaveValue('');
     expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument();
@@ -136,7 +139,6 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     });
     const picker = await screen.findByRole('combobox', { name: /invoicing connection/i });
     await user.selectOptions(picker, 'conn_zzz');
-    // GET now fires against the PICKED connection (not the lowest-id [0]).
     await waitFor(() => expect(getForOrder).toHaveBeenCalledWith(ORDER_ID, 'conn_zzz'));
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
   });
@@ -172,15 +174,48 @@ describe('OrderInvoicePanel — display states', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('failed ⇒ error alert with generic copy + enabled Retry button', async () => {
+  it('failed (rejected) ⇒ error alert + enabled Retry button', async () => {
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
-        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice({ status: 'failed' })) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice({ status: 'failed', failureMode: 'rejected', failureCode: 'provider-rejected' })) },
       }),
     });
-    expect(await screen.findByText(/Issuing this invoice failed/i)).toBeInTheDocument();
+    // Both the failure copy and the retry hint contain "rejected"
+    const msgs = await screen.findAllByText(/rejected/i);
+    expect(msgs.length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /retry/i })).toBeEnabled();
+  });
+
+  it('failed (in-doubt) ⇒ warning alert, Check/Mark-resolved buttons, NO Retry', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({ status: 'failed', failureMode: 'in-doubt', failureCode: 'transport-timeout' }),
+          ),
+        },
+      }),
+    });
+    // Wait for the in-doubt branch to fully render first
+    expect(await screen.findByRole('button', { name: /check provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mark resolved/i })).toBeInTheDocument();
+    // In-doubt: no Retry button
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
+
+  it('issuing ⇒ no action button, locked notice', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice({ status: 'issuing' })) },
+      }),
+    });
+    // issuing: no Retry, no Issue
+    await waitFor(() => expect(screen.queryByRole('button', { name: /retry|issue invoice/i })).toBeNull());
+    // Locked notice present
+    expect(await screen.findByText(/in progress.*locked/i)).toBeInTheDocument();
   });
 });
 
@@ -234,7 +269,9 @@ describe('OrderInvoicePanel — regulatory badge (data gate)', () => {
         invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice({ regulatoryStatus: 'submitted' })) },
       }),
     });
-    expect(await screen.findByText(/KSeF: submitted/i)).toBeInTheDocument();
+    // Badge may render the label in an accessible title/span — findAllByText handles multiples
+    const badges = await screen.findAllByText(/KSeF: submitted/i);
+    expect(badges.length).toBeGreaterThan(0);
   });
 
   it('hides the regulatory badge when regulatoryStatus === "not-applicable"', async () => {

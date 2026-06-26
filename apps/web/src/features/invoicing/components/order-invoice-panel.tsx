@@ -1,44 +1,25 @@
 /**
- * Order Invoice Panel (#757)
+ * Order Invoice Panel (#757, redesign #1240 A1+A5)
  *
- * Order-detail panel for the invoicing lifecycle: status badge + invoice number
- * (+ scheme-guarded PDF link) + document type + regulatory (KSeF) badge +
- * status-gated Issue / Retry action and a document-type override.
+ * Redesigned dual-lifecycle panel for the invoicing lifecycle. States:
+ *   not-issued  → Issue button + DocumentTypeSelect
+ *   pending     → pulsing badge, skeleton, no action
+ *   issuing     → info pulse badge, locked notice, NO action
+ *   issued      → KV block + provider extras slot
+ *   failed      → error inline-alert (resolveFailureCopy) + Retry (only when canRetryInvoice)
+ *   in-doubt    → warning inline-alert + Check/Mark-resolved, NO Retry
+ *   needs-reauth → warning alert + Re-authenticate CTA
+ *   multi       → connection picker (existing logic preserved)
  *
- * Capability-gated globally: renders only when at least one connection is
- * `status === 'active'` AND has `Invoicing` in `enabledCapabilities` (the #759
- * operator-toggle field — plan §1.5). A supported-but-disabled connection is
- * correctly NOT selected, so the Issue button is never presented for it.
- *
- * MULTIPLE INVOICING CONNECTIONS: the invoice projection is keyed by
- * (orderId, invoicingConnectionId) and the invoicing connection is NOT
- * derivable from the order's `sourceConnectionId` (verified:
- * invoicing.controller.ts getInvoiceForOrder docstring). When exactly one
- * active+enabled invoicing connection exists we bind to it (the common
- * deployment). When MORE THAN ONE exists there is no safe default: silently
- * picking one (e.g. the lowest-id) risks querying the wrong connection — the
- * panel would render "Not issued" for an order whose invoice lives on another
- * connection and a one-click Issue would create a DUPLICATE on the wrong
- * connection. So with >1 match the operator MUST explicitly pick the invoicing
- * connection before any GET/POST is wired; no action is bound to an arbitrary
- * connection.
- *
- * AC-5 DESCOPE (must be carried in the PR description, not just here): a true
- * re-issue — a NEW invoice while the original stays in Subiekt — is blocked by
- * the #1119 backend. `POST /invoices` throws `ConflictException` (HTTP 409) when
- * an invoice for the order is already `issued` (verified: invoicing.controller.ts
- * issueInvoice). With no backend path to create a second invoice, the `issued`
- * state is READ-ONLY and the re-issue button + confirmation modal are deferred
- * to a follow-up that depends on a backend change (plan §0.A/§1.1). The POST
- * action therefore covers only not-issued (no row) and failed (server
- * re-attempts) as a single Issue / Retry button.
- *
- * First order-detail panel to adopt the `t()` i18n seam (deliberate divergence
- * from `OrderShipmentPanel`'s hardcoded English — plan §1.8).
+ * Fiscal-safety rules:
+ *   - NEVER render Retry for issuing/in-doubt/pending/issued
+ *   - canRetryInvoice() is the single gate (failed+rejected only)
+ *   - in-doubt shows "Check {provider}"/"Mark resolved" (no-op for Wave A)
  *
  * @module apps/web/src/features/invoicing/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { useConnectionsQuery, type Connection } from '../../connections';
 import { useTranslation } from '../../../shared/i18n';
@@ -47,15 +28,18 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { ApiError } from '../../../shared/api/api-error';
+import { usePlatform } from '../../../shared/plugins';
 
 import type { OrderRecord } from '../../orders';
 import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage } from '../lib/issue-error-message';
-import { InvoiceStatusBadge, type InvoiceDisplayStatus } from './invoice-status-badge';
+import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
+import { InvoiceStatusBadge } from './invoice-status-badge';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
 import { DocumentTypeSelect, DOCUMENT_TYPE_LABEL_FALLBACK } from './document-type-select';
 import { InvoicePdfLink } from './invoice-pdf-link';
+import { TimeDisplay } from '../../../shared/ui/time-display';
 
 const INVOICING_CAPABILITY = 'Invoicing';
 
@@ -64,9 +48,8 @@ interface OrderInvoicePanelProps {
 }
 
 /**
- * Resolve the candidate invoicing connections: active + enabled-capability
- * filter, sorted by `id` (deterministic order for the picker). Returns the full
- * match list; the panel auto-binds only when there is exactly one (plan §1.5).
+ * Resolve candidate invoicing connections: active + enabled-capability,
+ * sorted by id (deterministic). Returns the full match list.
  */
 function selectInvoicingConnections(connections: readonly Connection[]): Connection[] {
   return connections
@@ -75,24 +58,38 @@ function selectInvoicingConnections(connections: readonly Connection[]): Connect
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/**
+ * Resolve connections that need re-auth (needs_reauth or error) and have
+ * Invoicing in supportedCapabilities. Shown when the active gate fails but
+ * a connection is broken.
+ */
+function selectReauthConnections(connections: readonly Connection[]): Connection[] {
+  return connections.filter(
+    (c) =>
+      (c.status === 'needs_reauth' || c.status === 'error') &&
+      c.supportedCapabilities.includes(INVOICING_CAPABILITY),
+  );
+}
+
 export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactElement | null {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const connectionsQuery = useConnectionsQuery();
   const [documentType, setDocumentType] = useState<string>('invoice');
-  // Operator-picked invoicing connection (only meaningful when >1 candidate).
   const [pickedConnectionId, setPickedConnectionId] = useState<string | null>(null);
 
+  const allConnections = connectionsQuery.data ?? [];
+
   const invoicingConnections = useMemo(
-    () => selectInvoicingConnections(connectionsQuery.data ?? []),
-    [connectionsQuery.data],
+    () => selectInvoicingConnections(allConnections),
+    [allConnections],
   );
 
-  // Bind to the connection ONLY when it is unambiguous: exactly one candidate
-  // ⇒ auto-bind; more than one ⇒ require an explicit pick (no safe default —
-  // the invoice key is per-connection and not derivable from the order, so a
-  // silent pick risks a duplicate invoice on the wrong connection). Until the
-  // operator picks, no GET/POST is wired to any connection.
+  const reauthConnections = useMemo(
+    () => selectReauthConnections(allConnections),
+    [allConnections],
+  );
+
   const invoicingConnection =
     invoicingConnections.length === 1
       ? invoicingConnections[0]
@@ -102,8 +99,11 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId, invoicingConnectionId);
   const issueMutation = useIssueInvoiceMutation();
 
-  // Loading skeleton while connections settle (CLS-avoidance, mirrors the
-  // shipment panel).
+  // Per-provider plugin slot (resolved via platformType — ZERO literal strings here)
+  const platform = usePlatform(invoicingConnection?.platformType);
+  const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
+
+  // Loading skeleton while connections settle
   if (connectionsQuery.isLoading) {
     return (
       <section className="detail-section order-invoice-panel order-invoice-panel--loading">
@@ -115,20 +115,47 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
     );
   }
 
-  // Global capability + operator-toggle gate: no active+enabled invoicing
-  // connection AT ALL ⇒ render nothing. (When candidates exist but none is
-  // picked yet, `invoicingConnection` is null but we still render the picker
-  // below — so gate on the candidate count, not on the resolved connection.)
+  // needs-reauth gate: no active+enabled but a broken invoicing connection exists
+  if (invoicingConnections.length === 0 && reauthConnections.length > 0) {
+    const reauthConn = reauthConnections[0];
+    return (
+      <section className="detail-section order-invoice-panel">
+        <header className="order-invoice-panel__header">
+          <h3 className="detail-section__title">{t('invoice.panel.title', 'Invoice')}</h3>
+          <InvoiceStatusBadge status="not-issued" />
+        </header>
+        <div className="invoice-panel__body">
+          <Alert tone="warning">
+            <strong>
+              {t(
+                'invoice.panel.reauthTitle',
+                'Connection needs to reconnect.',
+              )}
+            </strong>{' '}
+            {t(
+              'invoice.panel.reauthBody',
+              'Its access expired, so invoices cannot be issued until you re-authenticate this connection.',
+            )}
+          </Alert>
+        </div>
+        <div className="order-invoice-panel__actions">
+          <div className="spacer" style={{ flex: 1 }} />
+          <Link className="button button--primary" to={`/connections/${reauthConn.id}`}>
+            {t('invoice.panel.reauth', 'Re-authenticate')}
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
+  // Global capability gate: no active+enabled invoicing connection at all
   if (invoicingConnections.length === 0) {
     return null;
   }
 
   const requiresConnectionPick = invoicingConnections.length > 1 && !invoicingConnection;
 
-  // Connection picker (shown whenever there is >1 candidate). Rendered as a
-  // small labelled <Select>; until a pick is made the rest of the panel
-  // (status/query/actions) is withheld so nothing is wired to an arbitrary
-  // connection.
+  // Multi-connection picker
   const connectionPicker =
     invoicingConnections.length > 1 ? (
       <div className="order-invoice-panel__connection">
@@ -153,31 +180,13 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       </div>
     ) : null;
 
-  // Derive the FE display state (plan §2.6): null → not-issued.
+  // Derive display state
   const invoice = invoiceQuery.data ?? null;
-  const displayStatus: InvoiceDisplayStatus = invoice ? invoice.status : 'not-issued';
-  const canIssue = displayStatus === 'not-issued' || displayStatus === 'failed';
-  // Regulatory (KSeF) badge gate (plan §1.6). The AC asks for a named-capability
-  // check, but no regulatory-transmission-tracking capability STRING is exported
-  // to the FE yet (`CORE_CAPABILITY_VALUES` has no Invoicing/KSeF entry). Interim
-  // equivalent (verified backend invariant): the backend only emits a
-  // non-`not-applicable` `regulatoryStatus` when the regulatory capability is
-  // active + enabled for the connection, so this data gate can never surface a
-  // badge for a connection where the capability is off.
-  // TODO(#757): swap for `connection.enabledCapabilities.includes(<RegulatoryCapName>)`
-  // once a capability string is named.
+  const displayStatus = deriveInvoiceDisplayStatus(invoice);
   const showRegulatoryBadge = Boolean(invoice && invoice.regulatoryStatus !== 'not-applicable');
 
-  // Issue flow: optimistic cache-seed + invalidate is owned by the mutation's
-  // onSuccess (use-issue-invoice-mutation). Here we surface the success toast and
-  // reconcile the one race the backend can return: a defensive 409 (the row was
-  // issued by another tab / a concurrent request) means our local view is stale,
-  // so we refetch to flip the panel to `issued` instead of leaving the operator
-  // on a dead Issue button.
   const handleIssue = (): void => {
-    if (!invoicingConnection) {
-      return;
-    }
+    if (!invoicingConnection) return;
     issueMutation.mutate(
       { connectionId: invoicingConnection.id, orderId: order.internalOrderId, documentType },
       {
@@ -185,7 +194,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           showToast({
             tone: 'success',
             title: t('invoice.action.issued', 'Invoice issued'),
-            description: t('invoice.action.issuedBody', 'The invoice was issued in Subiekt.'),
+            description: t('invoice.action.issuedBody', 'The invoice was issued.'),
           });
         },
         onError: (error) => {
@@ -194,7 +203,6 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
             description: resolveIssueErrorMessage(error, t),
           });
-          // Defensive already-issued / in-progress race → our view is stale.
           if (error instanceof ApiError && error.status === 409) {
             void invoiceQuery.refetch();
           }
@@ -207,32 +215,27 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
     <section className="detail-section order-invoice-panel">
       <header className="order-invoice-panel__header">
         <h3 className="detail-section__title">{t('invoice.panel.title', 'Invoice')}</h3>
-        <InvoiceStatusBadge status={displayStatus} />
-        {showRegulatoryBadge && invoice ? (
-          <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
-        ) : null}
+        <div className="order-invoice-panel__header-badges">
+          <InvoiceStatusBadge status={displayStatus} />
+          {showRegulatoryBadge && invoice ? (
+            <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
+          ) : null}
+        </div>
       </header>
 
       {connectionPicker}
 
-      {/* >1 candidate and no pick yet ⇒ withhold status/query/actions. The
-          invoice key is per-connection and not derivable from the order, so we
-          must not query or wire an Issue against an arbitrary connection. */}
       {requiresConnectionPick ? (
         <p className="order-invoice-panel__notice">
           {t(
             'invoice.panel.selectConnectionPrompt',
-            'Select the invoicing connection to view or issue this order’s invoice.',
+            'Select the invoicing connection to view or issue this order invoice.',
           )}
         </p>
       ) : null}
 
-      {/* Invoice-query states. A transient GET failure must NOT masquerade as
-          not-issued (which would wrongly present the Issue button) — surface a
-          retryable error instead. */}
-      {!requiresConnectionPick && invoiceQuery.isLoading ? (
-        <div className="order-invoice-panel__skeleton" aria-hidden="true" />
-      ) : invoiceQuery.isError ? (
+      {/* Invoice query error (not not-issued — must not masquerade as absent) */}
+      {!requiresConnectionPick && invoiceQuery.isError ? (
         <Alert tone="error" className="order-invoice-panel__error">
           {t('invoice.query.error', 'Could not load the invoice status.')}{' '}
           <Button
@@ -245,41 +248,178 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
         </Alert>
       ) : null}
 
-      {!requiresConnectionPick && !invoiceQuery.isLoading && !invoiceQuery.isError && displayStatus === 'issued' && invoice ? (
-        // Read-only — no POST action (re-issue backend-blocked, plan §1.1/§0.A).
-        <div className="order-invoice-panel__body">
-          {/* `providerInvoiceNumber` is `string | null` on the DTO — an issued
-              row can lack the provider number (race / projection lag). Fall back
-              to the em-dash convention rather than rendering a blank line
-              (mirrors the list page's invoiceNumber cell). */}
-          {invoice.providerInvoiceNumber ? (
-            <InvoicePdfLink
-              invoiceNumber={invoice.providerInvoiceNumber}
-              pdfUrl={invoice.pdfUrl}
-            />
-          ) : (
-            <span className="text-muted">—</span>
+      {/* Loading skeleton */}
+      {!requiresConnectionPick && !invoiceQuery.isError && invoiceQuery.isLoading ? (
+        <div className="order-invoice-panel__skeleton" aria-hidden="true" />
+      ) : null}
+
+      {/* ── Issuing: locked live-lease notice, NO action ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'issuing' ? (
+        <p className="order-invoice-panel__notice order-invoice-panel__notice--locked">
+          {t(
+            'invoice.issuing.body',
+            'An issue attempt is in progress and this invoice is locked while it runs. It finishes or releases automatically — no action needed.',
           )}
-          <p className="order-invoice-panel__doctype">
-            {t('invoice.documentType.label', 'Document type')}:{' '}
+        </p>
+      ) : null}
+
+      {/* ── Pending: skeleton + notice, no action ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'pending' ? (
+        <>
+          <div className="invoice-panel__body">
+            <div className="order-invoice-panel__skeleton" style={{ width: '60%' }} aria-hidden="true" />
+            <div className="order-invoice-panel__skeleton" style={{ width: '40%', marginTop: '6px' }} aria-hidden="true" />
+          </div>
+          <p className="order-invoice-panel__notice">
             {t(
-              `invoice.documentType.${invoice.documentType}`,
-              DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+              'invoice.pending.body',
+              'Issuing in progress. This refreshes automatically when the provider responds.',
             )}
           </p>
+        </>
+      ) : null}
+
+      {/* ── Issued: read-only KV + provider slot ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'issued' && invoice ? (
+        <div className="invoice-panel__body">
+          <dl className="invoice-panel__kv">
+            <dt>{t('invoice.field.number', 'Number')}</dt>
+            <dd>
+              {invoice.providerInvoiceNumber ? (
+                <InvoicePdfLink
+                  invoiceNumber={invoice.providerInvoiceNumber}
+                  pdfUrl={invoice.pdfUrl}
+                />
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+            </dd>
+            <dt>{t('invoice.field.document', 'Document')}</dt>
+            <dd>
+              {t(
+                `invoice.documentType.${invoice.documentType}`,
+                DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+              )}
+            </dd>
+            {showRegulatoryBadge ? (
+              <>
+                <dt>{t('invoice.field.clearance', 'Clearance')}</dt>
+                <dd>
+                  <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
+                </dd>
+              </>
+            ) : null}
+            <dt>{t('invoice.field.issued', 'Issued')}</dt>
+            <dd>
+              {invoice.issuedAt ? (
+                <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+            </dd>
+            <dt>{t('invoice.field.via', 'Invoiced via')}</dt>
+            <dd>
+              {invoicingConnection?.name ?? invoice.connectionId}{' '}
+              <span className="text-muted">
+                · {t('invoice.field.locked', 'locked')}
+              </span>
+            </dd>
+          </dl>
+
+          {/* Provider extras slot (e.g. KSeF UPO, Subiekt KSeF status) */}
+          {InvoiceDetailSection && invoicingConnection ? (
+            <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
+          ) : null}
         </div>
       ) : null}
 
-      {/* The DTO intentionally omits `errorMessage` (PII — see invoicing.types.ts);
-          issue-time failures surface the server message via toast (422/400). The
-          failed branch therefore shows fixed, operator-actionable copy. */}
-      {!requiresConnectionPick && !invoiceQuery.isLoading && !invoiceQuery.isError && displayStatus === 'failed' ? (
-        <Alert tone="error" className="order-invoice-panel__error">
-          {t('invoice.failed.body', 'Issuing this invoice failed. You can retry.')}
-        </Alert>
+      {/* ── Failed (rejected): directive error + Retry ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'failed' && invoice ? (
+        <>
+          <div className="invoice-panel__body">
+            <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
+              <span className="invoice-panel__inline-alert-bar" />
+              <span>
+                <strong>{resolveFailureCopy(invoice, t)}</strong>
+              </span>
+            </div>
+          </div>
+          {canRetryInvoice(invoice) ? (
+            <div className="order-invoice-panel__actions">
+              <span className="text-muted" style={{ fontSize: '11.5px' }}>
+                {t(
+                  'invoice.failed.retryHint',
+                  'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
+                )}
+              </span>
+              <div style={{ flex: 1 }} />
+              <Button
+                tone="secondary"
+                onClick={handleIssue}
+                disabled={issueMutation.isPending}
+              >
+                {t('invoice.action.retry', 'Retry')}
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      {!requiresConnectionPick && !invoiceQuery.isLoading && !invoiceQuery.isError && canIssue ? (
+      {/* ── In-doubt: warning + Check/Mark-resolved, NO Retry ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'in-doubt' && invoice ? (
+        <>
+          <div className="invoice-panel__body">
+            <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
+              <span className="invoice-panel__inline-alert-bar" />
+              <div>
+                <strong>
+                  {t(
+                    'invoice.inDoubt.title',
+                    'We could not confirm whether this invoice was issued.',
+                  )}
+                </strong>{' '}
+                {resolveFailureCopy(invoice, t)}
+              </div>
+            </div>
+          </div>
+          <div className="order-invoice-panel__actions">
+            <div style={{ flex: 1 }} />
+            <Button
+              tone="secondary"
+              onClick={() => {
+                showToast({
+                  tone: 'info',
+                  title: t('invoice.inDoubt.checkTitle', 'Check provider'),
+                  description: t(
+                    'invoice.inDoubt.checkBody',
+                    'Open the provider portal and verify whether an invoice exists for this order.',
+                  ),
+                });
+              }}
+            >
+              {t('invoice.inDoubt.check', 'Check provider')}
+            </Button>
+            <Button
+              tone="secondary"
+              onClick={() => {
+                showToast({
+                  tone: 'info',
+                  title: t('invoice.inDoubt.resolvedTitle', 'Marked resolved'),
+                  description: t(
+                    'invoice.inDoubt.resolvedBody',
+                    'Mark-resolved is a Wave B feature — no backend endpoint yet.',
+                  ),
+                });
+              }}
+            >
+              {t('invoice.inDoubt.resolve', 'Mark resolved')}
+            </Button>
+          </div>
+        </>
+      ) : null}
+
+      {/* ── Not issued: Issue button + DocumentTypeSelect ── */}
+      {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'not-issued' ? (
         <div className="order-invoice-panel__actions">
           <DocumentTypeSelect
             value={documentType}
@@ -287,9 +427,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             disabled={issueMutation.isPending}
           />
           <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending}>
-            {displayStatus === 'failed'
-              ? t('invoice.action.retry', 'Retry')
-              : t('invoice.action.issue', 'Issue invoice')}
+            {t('invoice.action.issue', 'Issue invoice')}
           </Button>
         </div>
       ) : null}
