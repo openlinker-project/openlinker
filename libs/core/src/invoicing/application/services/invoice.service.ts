@@ -27,8 +27,10 @@ import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-r
 import { INVOICE_RECORD_REPOSITORY_TOKEN } from '../../invoicing.tokens';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
+import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
+import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type {
   GetInvoiceByOrderQuery,
   InvoiceFailureCode,
@@ -36,6 +38,7 @@ import type {
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
 } from '../../domain/types/invoicing.types';
@@ -401,6 +404,79 @@ export class InvoiceService implements IInvoiceService {
     return reason.length <= MAX_FAILURE_REASON_LENGTH
       ? reason
       : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
+  }
+
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+    // Persist intent before the provider call: `pending` row so a crash leaves
+    // a durable trace. Corrections do not share the idempotency-gate / CAS-lease
+    // of issueInvoice — each correction is a distinct new fiscal document with
+    // its own record; the caller supplies an idempotencyKey for dedup if needed.
+    const pending = await this.repo.create({
+      connectionId: cmd.connectionId,
+      orderId: cmd.orderId,
+      providerType: '',
+      documentType: cmd.documentType ?? 'corrected',
+      status: 'pending',
+      idempotencyKey: cmd.idempotencyKey ?? null,
+    });
+
+    const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
+      cmd.connectionId,
+      INVOICING_CAPABILITY,
+    );
+
+    if (!isCorrectionIssuer(adapter)) {
+      // Adapter resolved but doesn't implement CorrectionIssuer: update the row
+      // to failed (in-doubt) and throw so the caller can surface the 422.
+      await this.repo.updateOutcome(pending.id, {
+        status: 'failed',
+        errorMessage: 'Provider does not support correction issuance.',
+        failureMode: 'rejected',
+        failureCode: 'provider-rejected',
+        failureReason: 'The invoicing provider does not support corrections.',
+        leaseExpiresAt: null,
+      });
+      throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
+    }
+
+    let issued: InvoiceRecord;
+    try {
+      issued = await adapter.issueCorrection(cmd);
+    } catch (error) {
+      const sanitized = this.sanitizeError(error);
+      const failureMode = this.classifyFailure(error);
+      const failureCode = this.classifyFailureCode(error, failureMode);
+      const failureReason = this.deriveFailureReason(failureCode);
+      this.logger.warn(
+        `Correction issuance failed for record ${pending.id} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
+      );
+      await this.repo.updateOutcome(pending.id, {
+        status: 'failed',
+        errorMessage: sanitized,
+        failureMode,
+        failureCode,
+        failureReason,
+        leaseExpiresAt: null,
+      });
+      throw error;
+    }
+
+    return this.repo.updateOutcome(pending.id, {
+      status: 'issued',
+      providerType: issued.providerType,
+      documentType: issued.documentType,
+      providerInvoiceId: issued.providerInvoiceId,
+      providerInvoiceNumber: issued.providerInvoiceNumber,
+      regulatoryStatus: issued.regulatoryStatus,
+      clearanceReference: issued.clearanceReference,
+      pdfUrl: issued.pdfUrl,
+      issuedAt: issued.issuedAt,
+      errorMessage: null,
+      failureMode: null,
+      failureCode: null,
+      failureReason: null,
+      leaseExpiresAt: null,
+    });
   }
 
   async getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null> {

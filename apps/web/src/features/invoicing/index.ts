@@ -16,7 +16,12 @@ export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
+export {
+  useIssueCorrectionMutation,
+  type IssueCorrectionVariables,
+} from './hooks/use-issue-correction-mutation';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
+export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
 export type {
   InvoiceRecord,
   InvoiceStatus,
@@ -32,4 +37,6 @@ export type {
   RetryInvoicesResult,
   RetryInvoiceResult,
   RetryOutcome,
+  CorrectionLineInput,
+  IssueCorrectionInput,
 } from './api/invoicing.types';
