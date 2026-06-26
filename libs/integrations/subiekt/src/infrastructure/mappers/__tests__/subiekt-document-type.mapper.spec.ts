@@ -70,6 +70,11 @@ describe('toBridgeDocumentType', () => {
   });
 
   it('throws SubiektUnsupportedDocumentTypeError for an unsupported neutral type', () => {
+    expect(() => toBridgeDocumentType('proforma')).toThrow(SubiektUnsupportedDocumentTypeError);
+  });
+
+  it('rejects correction types on the plain issue path (they use the correction capability)', () => {
     expect(() => toBridgeDocumentType('credit-note')).toThrow(SubiektUnsupportedDocumentTypeError);
+    expect(() => toBridgeDocumentType('corrected')).toThrow(SubiektUnsupportedDocumentTypeError);
   });
 });

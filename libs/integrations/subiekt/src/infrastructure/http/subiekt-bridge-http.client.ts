@@ -41,6 +41,8 @@ import type {
   BridgeInvoiceStatusResponse,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeKorektaRequest,
+  BridgeKorektaResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
   BridgeUpsertCustomerRequest,
@@ -78,18 +80,21 @@ function classifyRetryability(code: string | undefined): SubiektTransportRetryab
 }
 
 /**
- * Provisional bridge REST surface. The authoritative contract is owned by #752;
- * these are the adapter's reading of it and reconcilable when #752 lands.
- *
- * Paths match the bridge's REST contract (#752): invoicing routes live under
- * the `/api/*` prefix (which the bridge guards with `X-Api-Key`); `/health` is
+ * Bridge REST surface, reconciled against the live bridge's minimal-API routes
+ * (`Subiekt.Bridge.Api/Endpoints/*`): the bridge exposes English-noun routes
+ * under the `/api/*` prefix (which it guards with `X-Api-Key`); `/health` is
  * anonymous and stays outside the prefix. The configured bridge base URL must
  * NOT include `/api` — these paths carry it.
  */
 export const SUBIEKT_BRIDGE_ENDPOINTS = {
   issueInvoice: '/api/invoices',
+  /**
+   * Correction (faktura korygująca) endpoint, templated by the ORIGINAL document's
+   * numeric id. The bridge route is `POST /api/invoices/{origId}/corrections`.
+   */
+  issueCorrection: (origId: number): string => `/api/invoices/${origId}/corrections`,
   upsertCustomer: '/api/customers/upsert',
-  /** Templated by `providerInvoiceId`. */
+  /** Templated by `providerInvoiceId`; the bridge route is `GET /api/invoices/{id}/status`. */
   invoiceStatus: (providerInvoiceId: string): string =>
     `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
   health: '/health',
@@ -155,6 +160,13 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   async issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     return this.postJson<BridgeIssueInvoiceResponse>(
       SUBIEKT_BRIDGE_ENDPOINTS.issueInvoice,
+      req,
+    );
+  }
+
+  async issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse> {
+    return this.postJson<BridgeKorektaResponse>(
+      SUBIEKT_BRIDGE_ENDPOINTS.issueCorrection(origId),
       req,
     );
   }

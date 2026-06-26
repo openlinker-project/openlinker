@@ -21,13 +21,12 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
-import { KSEF_BRAND } from '../../ksef.constants';
 import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
 
 export class KsefConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
 {
-  constructor(private readonly pluginName: string = KSEF_BRAND) {}
+  constructor(private readonly pluginName: string = 'KSeF') {}
 
   validate(config: Record<string, unknown>): Promise<void> {
     const issues: FlatValidationIssue[] = [];
@@ -41,11 +40,6 @@ export class KsefConnectionConfigShapeValidatorAdapter
         message: `must be one of: ${KsefEnvironmentValues.join(', ')}`,
       });
     }
-
-    // NOTE: the optional `seller` config (Podmiot1) does not exist on
-    // `KsefConnectionConfig` until C5 (#1149) adds it. Its shape validation lands
-    // alongside that field, not here — validating a not-yet-defined field in C2
-    // would be speculative.
 
     if (issues.length > 0) {
       return Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues));

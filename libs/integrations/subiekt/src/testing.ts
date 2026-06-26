@@ -14,5 +14,6 @@ export {
   runSubiektBridgeContractTests,
   sampleBridgeBuyer,
   sampleIssueInvoiceRequest,
+  sampleKorektaRequest,
   sampleUpsertCustomerRequest,
 } from './testing/subiekt-bridge-contract.suite';

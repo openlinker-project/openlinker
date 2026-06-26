@@ -124,11 +124,40 @@ export interface InvoiceLine {
 }
 
 /**
+ * Neutral correction descriptor — present only when {@link IssueInvoiceCommand}
+ * issues a correcting document (`documentType` of `corrected` / `credit-note`).
+ *
+ * Country-agnostic (ADR-026): it references the original document by its neutral
+ * authority-assigned `originalClearanceReference` (the same opaque
+ * `clearanceReference` vocabulary the {@link RegulatoryStatus} lifecycle uses —
+ * `null` when the original was never cleared by an authority) plus the human
+ * `originalDocumentNumber` + `originalIssueDate`, and carries a free-text
+ * `reason`. No regime tax vocabulary appears here; the adapter maps these neutral
+ * fields onto its wire shape. The command's top-level `lines` carry the *original*
+ * ("before") line state; `correctedLines` carry the *post-correction* ("after")
+ * state — the adapter emits whichever before/after representation its regime needs.
+ */
+export interface CorrectionReference {
+  /** Authority-assigned reference of the original document; `null` if never cleared. */
+  originalClearanceReference: string | null;
+  /** Human-facing sequential number of the corrected original document. */
+  originalDocumentNumber: string;
+  /** Issue date of the corrected original, ISO 8601 calendar `YYYY-MM-DD`. */
+  originalIssueDate: string;
+  /** Free-text reason for the correction (return, refund, price adjustment, …). */
+  reason: string;
+  /** Post-correction ("after") line state; the top-level `lines` carry the original. */
+  correctedLines: InvoiceLine[];
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
  * `documentType` is caller-supplied (open-world); the adapter may derive it
- * when absent. `idempotencyKey` backs exactly-once issuance.
+ * when absent. `idempotencyKey` backs exactly-once issuance. `correction` is
+ * present only for a correcting document (see {@link CorrectionReference}); the
+ * caller (the returns/refund trigger) decides *when* — the port never does.
  */
 export interface IssueInvoiceCommand {
   connectionId: string;
@@ -138,6 +167,41 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Correction linkage + reason; present only for a correcting document. */
+  correction?: CorrectionReference;
+  idempotencyKey?: string;
+}
+
+/**
+ * One corrected line on a correction document. Identifies the original line by its
+ * position (`originalLineNumber`, 1-based) and carries the new values to apply.
+ * At least one of `newQuantity` / `newUnitPriceGross` must be present — a line that
+ * changes neither would be a no-op. `newUnitPriceGross` is the gross unit price
+ * (matches core's `number` money idiom and `InvoiceLine.unitPriceGross`).
+ */
+export interface CorrectionLine {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/**
+ * Command to issue a correction of an already-issued document (ADR-026). Like
+ * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
+ * port does not decide whether/when. `originalProviderInvoiceId` references the
+ * provider's id of the corrected original (the adapter interprets it). `lines`
+ * carry the post-correction values per original line; `reason` is the free-text
+ * correction reason. `documentType` is caller-supplied (open-world); the adapter
+ * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ */
+export interface IssueCorrectionCommand {
+  connectionId: string;
+  orderId: string;
+  originalProviderInvoiceId: string;
+  /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
+  documentType?: string;
+  reason?: string;
+  lines: CorrectionLine[];
   idempotencyKey?: string;
 }
 
