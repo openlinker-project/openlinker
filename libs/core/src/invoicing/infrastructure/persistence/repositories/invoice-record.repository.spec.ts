@@ -124,6 +124,32 @@ describe('InvoiceRecordRepository', () => {
       expect(saved.failureReason).toBeNull();
     });
 
+    it('persists hasBuyerTaxId from the input and maps it back (#1202)', async () => {
+      let savedEntity: InvoiceRecordOrmEntity | undefined;
+      ormRepo.save.mockImplementation((entity) => {
+        savedEntity = entity as InvoiceRecordOrmEntity;
+        return Promise.resolve(ormRow({ hasBuyerTaxId: savedEntity.hasBuyerTaxId }));
+      });
+
+      const result = await repository.create({ ...createInput, hasBuyerTaxId: true });
+
+      expect(savedEntity?.hasBuyerTaxId).toBe(true);
+      expect(result.hasBuyerTaxId).toBe(true);
+    });
+
+    it('defaults hasBuyerTaxId to false when the input omits it (#1202)', async () => {
+      let savedEntity: InvoiceRecordOrmEntity | undefined;
+      ormRepo.save.mockImplementation((entity) => {
+        savedEntity = entity as InvoiceRecordOrmEntity;
+        return Promise.resolve(ormRow({ hasBuyerTaxId: savedEntity.hasBuyerTaxId }));
+      });
+
+      const result = await repository.create(createInput);
+
+      expect(savedEntity?.hasBuyerTaxId).toBe(false);
+      expect(result.hasBuyerTaxId).toBe(false);
+    });
+
     it('converts a unique-violation into DuplicateInvoiceRecordException', async () => {
       ormRepo.save.mockRejectedValue(
         new QueryFailedError(
@@ -366,6 +392,20 @@ describe('InvoiceRecordRepository', () => {
       await repository.findMany({ issuedFrom: from, issuedTo: to }, PAGE);
       expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt >= :issuedFrom', { issuedFrom: from });
       expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt <= :issuedTo', { issuedTo: to });
+    });
+
+    it('maps taxId=with to hasBuyerTaxId = true (#1202)', async () => {
+      await repository.findMany({ taxId: 'with' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
+        hasBuyerTaxId: true,
+      });
+    });
+
+    it('maps taxId=without to hasBuyerTaxId = false (#1202)', async () => {
+      await repository.findMany({ taxId: 'without' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
+        hasBuyerTaxId: false,
+      });
     });
 
     it('orders by inv.createdAt DESC and applies skip/take from pagination', async () => {

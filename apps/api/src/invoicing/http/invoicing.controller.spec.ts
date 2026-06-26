@@ -418,6 +418,7 @@ describe('InvoicingController', () => {
         regulatoryStatus: 'cleared',
         issuedFrom: '2026-06-01T00:00:00.000Z',
         issuedTo: '2026-06-30T00:00:00.000Z',
+        taxId: 'with',
         limit: 10,
         offset: 5,
       });
@@ -428,16 +429,17 @@ describe('InvoicingController', () => {
           regulatoryStatus: 'cleared',
           issuedFrom: new Date('2026-06-01T00:00:00.000Z'),
           issuedTo: new Date('2026-06-30T00:00:00.000Z'),
+          taxId: 'with',
         },
         { limit: 10, offset: 5 },
       );
     });
 
-    it('does not forward a tax-id filter (AC-6 sub-filter deferred — not in the contract)', async () => {
+    it('forwards the taxId=without filter to listInvoices (#1202)', async () => {
       invoiceService.listInvoices.mockResolvedValue({ items: [], total: 0 });
-      await controller.listInvoices({ limit: 20, offset: 0 });
+      await controller.listInvoices({ taxId: 'without', limit: 20, offset: 0 });
       const filter = invoiceService.listInvoices.mock.calls[0][0] as Record<string, unknown>;
-      expect(filter).not.toHaveProperty('hasTaxId');
+      expect(filter.taxId).toBe('without');
     });
 
     it('returns { items, total, limit, offset } with DTOs omitting errorMessage + idempotencyKey', async () => {

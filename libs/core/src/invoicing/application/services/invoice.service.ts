@@ -168,6 +168,9 @@ export class InvoiceService implements IInvoiceService {
         documentType: cmd.documentType ?? '',
         status: 'pending',
         idempotencyKey: key ?? null,
+        // Neutral denormalized presence flag (#1202): captured at create time
+        // from the command's buyer so the taxId list filter needs no Order join.
+        hasBuyerTaxId: cmd.buyer.taxId !== null,
       });
     } catch (error) {
       // (5) Create-race: a concurrent same-key call won the dedup guard between

@@ -306,6 +306,11 @@ export interface CreateInvoiceRecordInput {
   failureCode?: InvoiceFailureCode | null;
   /** Short, PII-free failure summary (W1); `null` for a non-`failed` create. */
   failureReason?: string | null;
+  /**
+   * Whether the buyer carried a tax identifier at issue time (#1202). Neutral
+   * presence flag set on the write path; defaults `false` when omitted.
+   */
+  hasBuyerTaxId?: boolean;
 }
 
 /**
@@ -314,14 +319,10 @@ export interface CreateInvoiceRecordInput {
  * POST re-issue gate does NOT widen this surface: it reads the order's single
  * projection row via the existing `findByOrderId(orderId, connectionId)`
  * primitive (surfaced as `IInvoiceService.getInvoice`), so `findMany` stays a
- * pure AC-6 list query. No `hasTaxId`: the InvoiceRecord projection has no
- * buyer/tax-id column (the buyer lives on the Order), so the AC-6
- * "with/without tax id" sub-filter cannot be served without denormalizing
- * `buyerTaxId` onto the projection + a migration + a backfill — out of #1119
- * scope. It is therefore absent from this filter surface AND from the public
- * `ListInvoicesQueryDto` (where `forbidNonWhitelisted` rejects `hasTaxId` with
- * a 400 rather than accepting-and-ignoring it). Tracked as #1202; AC-6
- * sign-off must NOT be claimed for this sub-filter until it ships.
+ * pure AC-6 list query. The `taxId` filter (#1202) is served by the neutral
+ * denormalized `hasBuyerTaxId` column on the projection (set on the write path),
+ * NOT by joining to the Order: `'with'` → `hasBuyerTaxId = true`, `'without'` →
+ * `false`.
  */
 export interface InvoiceRecordFilters {
   status?: InvoiceStatus;
@@ -331,6 +332,12 @@ export interface InvoiceRecordFilters {
   issuedFrom?: Date;
   /** Inclusive upper bound on `issuedAt`. */
   issuedTo?: Date;
+  /**
+   * Filter by buyer-tax-id presence (#1202): `'with'` keeps rows where the buyer
+   * carried a tax id, `'without'` keeps rows where it did not. Neutral presence
+   * concept (not "nip"); maps to the denormalized `hasBuyerTaxId` column.
+   */
+  taxId?: 'with' | 'without';
 }
 
 /** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
