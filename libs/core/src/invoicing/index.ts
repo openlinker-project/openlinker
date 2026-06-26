@@ -20,6 +20,7 @@ export * from './domain/ports/invoicing.port';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
+export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/invoice-record-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';

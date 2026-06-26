@@ -19,6 +19,7 @@ import { BridgeRegulatoryStatusValues } from '../bridge/subiekt-bridge.types';
 import type {
   BridgeBuyer,
   BridgeIssueInvoiceRequest,
+  BridgeKorektaRequest,
   BridgeUpsertCustomerRequest,
 } from '../bridge/subiekt-bridge.types';
 
@@ -84,6 +85,24 @@ export function sampleIssueInvoiceRequest(
 }
 
 /**
+ * A representative korekta (faktura korygująca) request BODY for contract /
+ * adapter tests — shaped like the REAL bridge `POST /api/invoices/{origId}/
+ * corrections` body (`przyczyna` + `idempotencyKey` + `{ lp, nowaIlosc?,
+ * nowaCena? }` lines). The corrected original's id is a PATH argument, not part
+ * of this body.
+ */
+export function sampleKorektaRequest(
+  overrides: Partial<BridgeKorektaRequest> = {},
+): BridgeKorektaRequest {
+  return {
+    przyczyna: 'Zwrot towaru',
+    idempotencyKey: 'idem-kor-sample',
+    lines: [{ lp: 1, nowaIlosc: 2, nowaCena: 99.0 }],
+    ...overrides,
+  };
+}
+
+/**
  * Register the shared contract tests against a `SubiektBridgeClient` factory.
  * `makeClient` is called once per test so each case starts from a fresh client.
  */
@@ -102,6 +121,26 @@ export function runSubiektBridgeContractTests(makeClient: () => SubiektBridgeCli
       expect(res.providerInvoiceNumber).toBeTruthy();
       expect(res.state).toBe('issued');
       expect(BridgeRegulatoryStatusValues).toContain(res.regulatoryStatus);
+    });
+
+    it('should issue a correction document with a provider id, number and the corrected original id', async () => {
+      const res = await client.issueCorrection(100001, sampleKorektaRequest());
+      expect(res.providerInvoiceId).toBeTruthy();
+      expect(typeof res.providerInvoiceId).toBe('number');
+      expect(res.providerInvoiceNumber).toBeTruthy();
+      expect(res.state).toBe('issued');
+      // The korekta response echoes the corrected original's id from the path.
+      expect(res.korygowanyId).toBe(100001);
+    });
+
+    it('should read back the state of a just-issued correction document', async () => {
+      const corrected = await client.issueCorrection(100001, sampleKorektaRequest());
+      const status = await client.getInvoiceStatus({
+        providerInvoiceId: String(corrected.providerInvoiceId),
+      });
+      expect(status.state).toBe('issued');
+      // The KSeF status is read back here (the korekta response carries none).
+      expect(BridgeRegulatoryStatusValues).toContain(status.regulatoryStatus);
     });
 
     it('should upsert a customer and return the customer id', async () => {

@@ -31,6 +31,8 @@ import type {
   BridgeInvoiceStatusResponse,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
+  BridgeKorektaRequest,
+  BridgeKorektaResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from '../bridge/subiekt-bridge.types';
@@ -47,6 +49,8 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
+  /** The most recent korekta request body (for passthrough assertions in tests). */
+  private lastKorektaRequest: BridgeKorektaRequest | null = null;
 
   issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     const failure = this.failureError();
@@ -64,6 +68,37 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
+    return Promise.resolve(response);
+  }
+
+  issueCorrection(origId: number, req: BridgeKorektaRequest): Promise<BridgeKorektaResponse> {
+    this.lastKorektaRequest = req;
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    this.issueCounter += 1;
+    // `seed({ state })` exercises the failed-correction branch; `seed({
+    // regulatoryStatus })` only affects the status read-back below.
+    const state = this.issueOverride?.state ?? 'issued';
+    const response: BridgeKorektaResponse = {
+      // Distinct id space (300_000+) so a correction never collides with the
+      // original it corrects; still a numeric Subiekt document id.
+      providerInvoiceId: 300_000 + this.issueCounter,
+      providerInvoiceNumber: `FK-MOCK-${String(this.issueCounter).padStart(3, '0')}`,
+      korygowanyId: origId,
+      przyczyna: req.przyczyna ?? null,
+      state,
+    };
+    // Remember a status-shaped entry so a subsequent status read-back resolves
+    // (the korekta response itself carries no regulatoryStatus).
+    this.issuedById.set(String(response.providerInvoiceId), {
+      providerInvoiceId: response.providerInvoiceId,
+      providerInvoiceNumber: response.providerInvoiceNumber,
+      state,
+      regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
+      pdfUrl: null,
+    });
     return Promise.resolve(response);
   }
 
@@ -116,6 +151,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = issueResponse;
   }
 
+  /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
+  getLastKorektaRequest(): BridgeKorektaRequest | null {
+    return this.lastKorektaRequest;
+  }
+
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.issueCounter = 0;
@@ -123,6 +163,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.seededFailure = null;
     this.issueOverride = null;
     this.issuedById.clear();
+    this.lastKorektaRequest = null;
   }
 
   private failureError(): Error | null {
