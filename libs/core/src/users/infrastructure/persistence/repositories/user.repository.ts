@@ -13,7 +13,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
 import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
-import { LastAdminException } from '../../../domain/exceptions/last-admin.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
 import type { UserRole } from '../../../domain/types/role.types';
 import { UserRoleValues } from '../../../domain/types/role.types';
@@ -62,10 +61,6 @@ export class UserRepository implements UserRepositoryPort {
     return { users: entities.map((e) => this.toDomain(e)), total };
   }
 
-  async countByRole(role: UserRole): Promise<number> {
-    return this.ormRepository.count({ where: { role } });
-  }
-
   async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
     await this.ormRepository.update({ id: userId }, { passwordHash });
   }
@@ -112,7 +107,7 @@ export class UserRepository implements UserRepositoryPort {
     }
   }
 
-  async deactivateIfNotLastAdmin(userId: string): Promise<void> {
+  async deactivateAdminAtomically(userId: string): Promise<{ updated: boolean }> {
     const result = await this.ormRepository.query(
       `UPDATE users
          SET status = 'deactivated'
@@ -120,34 +115,28 @@ export class UserRepository implements UserRepositoryPort {
          AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
       [userId],
     ) as [unknown, number];
-    if (result[1] === 0) {
-      throw new LastAdminException();
-    }
+    return { updated: result[1] > 0 };
   }
 
-  async updateRoleIfNotLastAdmin(userId: string, role: UserRole): Promise<void> {
+  async updateAdminRoleAtomically(userId: string, role: UserRole): Promise<{ updated: boolean }> {
     const result = await this.ormRepository.query(
       `UPDATE users
          SET role = $2
        WHERE id = $1
-         AND (SELECT count(*) FROM users WHERE role = 'admin') > 1`,
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
       [userId, role],
     ) as [unknown, number];
-    if (result[1] === 0) {
-      throw new LastAdminException();
-    }
+    return { updated: result[1] > 0 };
   }
 
-  async deleteIfNotLastAdmin(userId: string): Promise<void> {
+  async deleteAdminAtomically(userId: string): Promise<{ deleted: boolean }> {
     const result = await this.ormRepository.query(
       `DELETE FROM users
        WHERE id = $1
-         AND (SELECT count(*) FROM users WHERE role = 'admin') > 1`,
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
       [userId],
     ) as [unknown, number];
-    if (result[1] === 0) {
-      throw new LastAdminException();
-    }
+    return { deleted: result[1] > 0 };
   }
 
   private toDomain(entity: UserOrmEntity): User {

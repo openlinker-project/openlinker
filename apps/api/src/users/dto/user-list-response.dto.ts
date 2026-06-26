@@ -7,8 +7,8 @@
  * @module apps/api/src/users/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRoleValues, UserStatusValues , UserRole, UserStatus } from '@openlinker/core/users';
-import type { User } from '@openlinker/core/users';
+import { UserRoleValues, UserStatusValues } from '@openlinker/core/users';
+import type { User, UserRole, UserStatus } from '@openlinker/core/users';
 
 export class UserSummaryDto {
   @ApiProperty() id!: string;

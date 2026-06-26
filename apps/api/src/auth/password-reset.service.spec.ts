@@ -31,11 +31,10 @@ function makeMocks() {
     updateStatus: jest.fn(),
     updateRole: jest.fn(),
     approveUser: jest.fn(),
-    countByRole: jest.fn(),
     deleteById: jest.fn(),
-    deactivateIfNotLastAdmin: jest.fn(),
-    updateRoleIfNotLastAdmin: jest.fn(),
-    deleteIfNotLastAdmin: jest.fn(),
+    deactivateAdminAtomically: jest.fn(),
+    updateAdminRoleAtomically: jest.fn(),
+    deleteAdminAtomically: jest.fn(),
   };
   const tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort> = {
     save: jest.fn(),

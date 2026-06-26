@@ -1,3 +1,11 @@
+/**
+ * Add user status column
+ *
+ * Adds a VARCHAR(20) NOT NULL DEFAULT 'active' status column to the users table,
+ * enabling pending-approval and deactivation lifecycle states.
+ *
+ * @module apps/api/src/migrations
+ */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddUserStatus1812000000000 implements MigrationInterface {

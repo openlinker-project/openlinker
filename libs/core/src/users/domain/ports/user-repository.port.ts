@@ -15,7 +15,6 @@ export interface UserRepositoryPort {
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   findAll(opts?: { status?: UserStatus; page?: number; pageSize?: number }): Promise<{ users: User[]; total: number }>;
-  countByRole(role: UserRole): Promise<number>;
   save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>): Promise<User>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
@@ -24,25 +23,21 @@ export interface UserRepositoryPort {
   deleteById(userId: string): Promise<void>;
 
   /**
-   * Atomically deactivates an admin user only when 2+ admins remain active.
-   * The admin-count check and status update occur in a single SQL statement,
-   * eliminating the check-then-act race that a separate guardLastAdmin() call
-   * would introduce. Throws LastAdminException when the conditional update
-   * matches 0 rows (i.e., this admin is the last active one).
+   * Atomically deactivates an admin only when 2+ active admins exist.
+   * Returns { updated: true } on success; { updated: false } when the user
+   * is the sole active admin (guard fired). The caller decides the meaning.
    */
-  deactivateIfNotLastAdmin(userId: string): Promise<void>;
+  deactivateAdminAtomically(userId: string): Promise<{ updated: boolean }>;
 
   /**
-   * Atomically demotes an admin to a non-admin role only when 2+ admins remain.
-   * See deactivateIfNotLastAdmin for the race-condition rationale.
-   * Throws LastAdminException if this admin is the only one.
+   * Atomically demotes an admin to a non-admin role only when 2+ active admins exist.
+   * Returns { updated: true } on success; { updated: false } when the guard fired.
    */
-  updateRoleIfNotLastAdmin(userId: string, role: UserRole): Promise<void>;
+  updateAdminRoleAtomically(userId: string, role: UserRole): Promise<{ updated: boolean }>;
 
   /**
-   * Atomically deletes an admin user only when 2+ admins exist.
-   * See deactivateIfNotLastAdmin for the race-condition rationale.
-   * Throws LastAdminException if this admin is the only one.
+   * Atomically deletes an admin only when 2+ active admins exist.
+   * Returns { deleted: true } on success; { deleted: false } when the guard fired.
    */
-  deleteIfNotLastAdmin(userId: string): Promise<void>;
+  deleteAdminAtomically(userId: string): Promise<{ deleted: boolean }>;
 }

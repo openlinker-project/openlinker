@@ -26,16 +26,15 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   findByEmail: jest.fn(),
   findById: jest.fn(),
   findAll: jest.fn(),
-  countByRole: jest.fn(),
   save: jest.fn(),
   updatePasswordHash: jest.fn(),
   updateStatus: jest.fn(),
   updateRole: jest.fn(),
   approveUser: jest.fn(),
   deleteById: jest.fn(),
-  deactivateIfNotLastAdmin: jest.fn(),
-  updateRoleIfNotLastAdmin: jest.fn(),
-  deleteIfNotLastAdmin: jest.fn(),
+  deactivateAdminAtomically: jest.fn(),
+  updateAdminRoleAtomically: jest.fn(),
+  deleteAdminAtomically: jest.fn(),
 });
 
 describe('UserManagementService', () => {
@@ -109,19 +108,19 @@ describe('UserManagementService', () => {
       expect(repo.findById).not.toHaveBeenCalled();
     });
 
-    it('should call updateRoleIfNotLastAdmin when demoting an admin', async () => {
+    it('should call updateAdminRoleAtomically when demoting an admin', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.updateRoleIfNotLastAdmin.mockResolvedValue(undefined);
+      repo.updateAdminRoleAtomically.mockResolvedValue({ updated: true });
 
       await service.updateRole('u2', 'viewer', 'u1');
 
-      expect(repo.updateRoleIfNotLastAdmin).toHaveBeenCalledWith('u2', 'viewer');
+      expect(repo.updateAdminRoleAtomically).toHaveBeenCalledWith('u2', 'viewer');
       expect(repo.updateRole).not.toHaveBeenCalled();
     });
 
-    it('should propagate LastAdminException from updateRoleIfNotLastAdmin', async () => {
+    it('should throw LastAdminException when updateAdminRoleAtomically returns updated=false', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.updateRoleIfNotLastAdmin.mockRejectedValue(new LastAdminException());
+      repo.updateAdminRoleAtomically.mockResolvedValue({ updated: false });
 
       await expect(service.updateRole('u2', 'viewer', 'u1')).rejects.toThrow(LastAdminException);
     });
@@ -132,7 +131,7 @@ describe('UserManagementService', () => {
 
       await service.updateRole('u2', 'admin', 'u1');
 
-      expect(repo.updateRoleIfNotLastAdmin).not.toHaveBeenCalled();
+      expect(repo.updateAdminRoleAtomically).not.toHaveBeenCalled();
       expect(repo.updateRole).toHaveBeenCalledWith('u2', 'admin');
     });
 
@@ -142,7 +141,7 @@ describe('UserManagementService', () => {
 
       await service.updateRole('u2', 'admin', 'u1');
 
-      expect(repo.updateRoleIfNotLastAdmin).not.toHaveBeenCalled();
+      expect(repo.updateAdminRoleAtomically).not.toHaveBeenCalled();
       expect(repo.updateRole).toHaveBeenCalledWith('u2', 'admin');
     });
   });
@@ -153,19 +152,19 @@ describe('UserManagementService', () => {
       expect(repo.findById).not.toHaveBeenCalled();
     });
 
-    it('should call deactivateIfNotLastAdmin when deactivating an admin', async () => {
+    it('should call deactivateAdminAtomically when deactivating an admin', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.deactivateIfNotLastAdmin.mockResolvedValue(undefined);
+      repo.deactivateAdminAtomically.mockResolvedValue({ updated: true });
 
       await service.deactivateUser('u2', 'u1');
 
-      expect(repo.deactivateIfNotLastAdmin).toHaveBeenCalledWith('u2');
+      expect(repo.deactivateAdminAtomically).toHaveBeenCalledWith('u2');
       expect(repo.updateStatus).not.toHaveBeenCalled();
     });
 
-    it('should propagate LastAdminException from deactivateIfNotLastAdmin', async () => {
+    it('should throw LastAdminException when deactivateAdminAtomically returns updated=false', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.deactivateIfNotLastAdmin.mockRejectedValue(new LastAdminException());
+      repo.deactivateAdminAtomically.mockResolvedValue({ updated: false });
 
       await expect(service.deactivateUser('u2', 'u1')).rejects.toThrow(LastAdminException);
     });
@@ -177,7 +176,7 @@ describe('UserManagementService', () => {
       await service.deactivateUser('u2', 'u1');
 
       expect(repo.updateStatus).toHaveBeenCalledWith('u2', 'deactivated');
-      expect(repo.deactivateIfNotLastAdmin).not.toHaveBeenCalled();
+      expect(repo.deactivateAdminAtomically).not.toHaveBeenCalled();
     });
 
     it('should throw UserNotActiveException when user is pending', async () => {
@@ -225,19 +224,19 @@ describe('UserManagementService', () => {
       expect(repo.findById).not.toHaveBeenCalled();
     });
 
-    it('should call deleteIfNotLastAdmin when deleting an admin', async () => {
+    it('should call deleteAdminAtomically when deleting an admin', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.deleteIfNotLastAdmin.mockResolvedValue(undefined);
+      repo.deleteAdminAtomically.mockResolvedValue({ deleted: true });
 
       await service.deleteUser('u2', 'u1');
 
-      expect(repo.deleteIfNotLastAdmin).toHaveBeenCalledWith('u2');
+      expect(repo.deleteAdminAtomically).toHaveBeenCalledWith('u2');
       expect(repo.deleteById).not.toHaveBeenCalled();
     });
 
-    it('should propagate LastAdminException from deleteIfNotLastAdmin', async () => {
+    it('should throw LastAdminException when deleteAdminAtomically returns deleted=false', async () => {
       repo.findById.mockResolvedValue(makeUser('u2', 'active', 'admin'));
-      repo.deleteIfNotLastAdmin.mockRejectedValue(new LastAdminException());
+      repo.deleteAdminAtomically.mockResolvedValue({ deleted: false });
 
       await expect(service.deleteUser('u2', 'u1')).rejects.toThrow(LastAdminException);
     });
@@ -249,7 +248,7 @@ describe('UserManagementService', () => {
       await service.deleteUser('u2', 'u1');
 
       expect(repo.deleteById).toHaveBeenCalledWith('u2');
-      expect(repo.deleteIfNotLastAdmin).not.toHaveBeenCalled();
+      expect(repo.deleteAdminAtomically).not.toHaveBeenCalled();
     });
 
     it('should throw UserNotFoundException for unknown user', async () => {

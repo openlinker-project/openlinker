@@ -17,6 +17,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CannotSelfModifyException,
+  LastAdminException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
@@ -68,9 +69,9 @@ export class UserManagementService implements IUserManagementService {
     }
     const user = await this.requireUser(userId);
     if (user.role === 'admin' && role !== 'admin') {
-      // Atomic: checks admin count and updates role in a single SQL statement to
-      // prevent concurrent demotions leaving zero admins (TOCTOU guard).
-      await this.userRepository.updateRoleIfNotLastAdmin(userId, role);
+      // Atomic: count check + role update in one statement (TOCTOU guard).
+      const { updated } = await this.userRepository.updateAdminRoleAtomically(userId, role);
+      if (!updated) throw new LastAdminException();
     } else {
       await this.userRepository.updateRole(userId, role);
     }
@@ -86,8 +87,9 @@ export class UserManagementService implements IUserManagementService {
       throw new UserNotActiveException(userId);
     }
     if (user.role === 'admin') {
-      // Atomic: checks active-admin count and deactivates in a single SQL statement.
-      await this.userRepository.deactivateIfNotLastAdmin(userId);
+      // Atomic: count check + deactivation in one statement (TOCTOU guard).
+      const { updated } = await this.userRepository.deactivateAdminAtomically(userId);
+      if (!updated) throw new LastAdminException();
     } else {
       await this.userRepository.updateStatus(userId, 'deactivated');
     }
@@ -109,8 +111,9 @@ export class UserManagementService implements IUserManagementService {
     }
     const user = await this.requireUser(userId);
     if (user.role === 'admin') {
-      // Atomic: checks admin count and deletes in a single SQL statement.
-      await this.userRepository.deleteIfNotLastAdmin(userId);
+      // Atomic: count check + delete in one statement (TOCTOU guard).
+      const { deleted } = await this.userRepository.deleteAdminAtomically(userId);
+      if (!deleted) throw new LastAdminException();
     } else {
       await this.userRepository.deleteById(userId);
     }
