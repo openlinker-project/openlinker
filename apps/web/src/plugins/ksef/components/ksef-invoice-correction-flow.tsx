@@ -137,7 +137,7 @@ export function KsefInvoiceCorrectionFlow({
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('ksef.correction.issued', 'Issued')}{' '}
+            {t('ksef.correction.issuedOn', 'Issued')}{' '}
             <strong className="mono-text">
               {invoice.issuedAt.slice(0, 10)}
             </strong>
