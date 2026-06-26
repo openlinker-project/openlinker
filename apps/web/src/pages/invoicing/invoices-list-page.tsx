@@ -214,7 +214,7 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       id: 'clearanceRef',
-      header: t('invoice.column.clearanceRef', 'KSeF no.'),
+      header: t('invoice.column.clearanceRef', 'Clearance ref.'),
       cell: (r) =>
         r.clearanceReference ? (
           <span className="mono-text" title={r.clearanceReference}>
