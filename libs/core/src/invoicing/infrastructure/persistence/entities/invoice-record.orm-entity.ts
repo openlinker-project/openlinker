@@ -2,10 +2,13 @@
  * Invoice Record ORM Entity
  *
  * TypeORM entity for the `invoice_records` table. The `regulatoryStatus` /
- * `clearanceReference` columns are nullable and unused until a future
- * `RegulatoryTransmitter` adapter populates them (ADR-026) — carried now so
- * adding transmission needs no migration. The partial-unique index on
- * `(connectionId, idempotencyKey)` is the durable exactly-once issue guard.
+ * `clearanceReference` columns are populated by the read-only
+ * `RegulatoryStatusReader` reconciliation sub-capability, which reads
+ * authoritative provider/CTC status (ADR-002 / ADR-026, #1121); a future
+ * `RegulatoryTransmitter` is the separate submit side. The partial-unique index
+ * on `(connectionId, idempotencyKey)` is the durable exactly-once issue guard;
+ * `IDX_invoice_records_reconcile` is the partial composite index that backs the
+ * reconciliation scan (issued + non-terminal, ordered `updatedAt ASC, id ASC`).
  *
  * @module libs/core/src/invoicing/infrastructure/persistence/entities
  * @see {@link InvoiceRecord} for the corresponding domain entity
@@ -38,6 +41,13 @@ import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing
 @Index('UQ_invoice_records_connection_idempotency', ['connectionId', 'idempotencyKey'], {
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
+})
+// Reconciliation scan (#1121): issued + non-terminal regulatory status, ordered
+// `updatedAt ASC, id ASC`, connection-scoped. Partial so terminal/receipt rows
+// (the bulk of the table over time) stay out of the index.
+@Index('IDX_invoice_records_reconcile', ['connectionId', 'updatedAt', 'id'], {
+  where:
+    '"status" = \'issued\' AND "regulatoryStatus" NOT IN (\'accepted\', \'rejected\', \'not-applicable\')',
 })
 export class InvoiceRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')

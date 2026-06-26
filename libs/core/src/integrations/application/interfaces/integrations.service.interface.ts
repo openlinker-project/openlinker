@@ -71,7 +71,19 @@ export interface IIntegrationsService {
     adapterKey?: string;
   }): Promise<AdapterMetadata>;
 
-  listCapabilityAdapters<T>(filters: { capability: string; platformType?: string }): Promise<
+  /**
+   * List connections whose adapter supports AND whose operator has enabled
+   * `capability`. When `lazy` is set, the per-entry `adapter` is constructed
+   * on-demand (first access) rather than eagerly for every connection — callers
+   * that consume only `.connection` (e.g. capability-scoped scheduler fan-out)
+   * then pay zero adapter-construction cost. The narrowing semantics and the
+   * returned connection set are identical in both modes (#1206).
+   */
+  listCapabilityAdapters<T>(filters: {
+    capability: string;
+    platformType?: string;
+    lazy?: boolean;
+  }): Promise<
     Array<{
       connectionId: string;
       connection: Connection;

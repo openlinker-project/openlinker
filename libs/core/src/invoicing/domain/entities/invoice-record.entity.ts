@@ -4,9 +4,12 @@
  * OL's projection of a fiscal document issued through a provider for an order
  * on an invoicing connection. Country-agnostic (ADR-026): carries a neutral
  * `documentType`, an issuance `status`, and the neutral regulatory-clearance
- * fields (`regulatoryStatus`/`clearanceReference`) a future `RegulatoryTransmitter`
- * adapter populates (KSeF/SDI/SII) — nullable until then. The provider owns the
- * authoritative document; this is a non-authoritative projection (debug/retry).
+ * fields (`regulatoryStatus`/`clearanceReference`) the read-only
+ * `RegulatoryStatusReader` reconciliation sub-capability populates by reading
+ * authoritative provider/CTC status (KSeF/SDI/SII, #1121) — nullable until first
+ * reconciled. A future `RegulatoryTransmitter` is the separate submit-side
+ * sub-capability. The provider owns the authoritative document; this is a
+ * non-authoritative projection (debug/retry).
  *
  * @module libs/core/src/invoicing/domain/entities
  */

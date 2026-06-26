@@ -7,7 +7,10 @@
  * it issues what the command describes and does not decide whether/when/which
  * document to issue — that policy lives above it in a future rules layer
  * (ADR-026). Regulatory transmission/clearance (KSeF/SDI/…) is a separate
- * ADR-002 sub-capability (`RegulatoryTransmitter`), added when the first such
+ * ADR-002 sub-capability. The READ side is `RegulatoryStatusReader` (#1121),
+ * read-only reconciliation that populates the neutral regulatory fields by
+ * reading authoritative provider/CTC status; the still-future SUBMIT side is
+ * `RegulatoryTransmitter`, added when the first transmitting
  * provider lands — not part of this base contract.
  *
  * @module libs/core/src/invoicing/domain/ports
@@ -34,8 +37,9 @@ export interface InvoicingPort {
   /**
    * Discovery: which neutral document types this provider can issue. Lets the
    * caller adapt without country/provider string-matching (Avalara GetMandates
-   * precedent). Value-level variance — distinct from the method-bearing
-   * `RegulatoryTransmitter` sub-capability.
+   * precedent). Value-level variance, distinct from the method-bearing
+   * regulatory sub-capabilities (`RegulatoryStatusReader` / future
+   * `RegulatoryTransmitter`).
    */
   getSupportedDocumentTypes(): DocumentType[];
 }
