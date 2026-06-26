@@ -54,8 +54,9 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     isIssued: true,
     ...overrides,
   };
-  // Mirror the real entity derivation (#1200) so the controller's AC-5 gate can
-  // call it: a live `issuing` lease is "in progress".
+  // Mirror the real entity derivations (#1200) so the controller's gates can call
+  // them: a live `issuing` lease is "in progress" (AC-5); `isReattemptableFailure`
+  // is the batch-retry eligibility gate (#1245).
   return {
     ...base,
     isLeaseLive(now: Date): boolean {
@@ -64,6 +65,9 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
         base.leaseExpiresAt !== null &&
         (base.leaseExpiresAt).getTime() > now.getTime()
       );
+    },
+    get isReattemptableFailure(): boolean {
+      return base.status === 'failed' && base.failureMode === 'rejected';
     },
   } as InvoiceRecord;
 }
@@ -106,6 +110,7 @@ describe('InvoicingController', () => {
     invoiceService = {
       issueInvoice: jest.fn(),
       getInvoice: jest.fn().mockResolvedValue(null),
+      getInvoiceById: jest.fn().mockResolvedValue(null),
       listInvoices: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
     orders = {
@@ -452,6 +457,127 @@ describe('InvoicingController', () => {
         limit: 20,
         offset: 0,
       });
+    });
+  });
+
+  describe('retryInvoices (#1245)', () => {
+    it('retries only failed+rejected records and reuses the record idempotencyKey', async () => {
+      const eligible = makeInvoiceRecord({
+        id: 'inv_fail',
+        status: 'failed',
+        failureMode: 'rejected',
+        idempotencyKey: 'key-fail',
+      });
+      invoiceService.getInvoiceById.mockResolvedValue(eligible);
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_fail'] });
+
+      expect(res.retried).toBe(1);
+      expect(res.skipped).toBe(0);
+      expect(res.results).toEqual([{ id: 'inv_fail', outcome: 'retried' }]);
+      // Reuses the record's OWN key so the service resumes THAT row (R2/R3). The
+      // command rebuilt from the order snapshot carries no scheme-tagged buyer tax
+      // id (the projection doesn't persist it) → buyer.taxId is null.
+      expect(invoiceService.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: 'key-fail',
+          buyer: expect.objectContaining({ taxId: null }),
+        }),
+      );
+    });
+
+    it('skips an issued record server-side (never re-issues a done document)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_1'] });
+
+      expect(res.retried).toBe(0);
+      expect(res.skipped).toBe(1);
+      expect(res.results[0].outcome).toBe('skipped');
+      expect(res.results[0].reason).toContain('status=issued');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('skips an in-doubt failed record (a document may exist — no blind retry)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ status: 'failed', failureMode: 'in-doubt' }),
+      );
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_1'] });
+
+      expect(res.skipped).toBe(1);
+      expect(res.results[0].reason).toContain('failureMode=in-doubt');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('skips issuing and pending records server-side', async () => {
+      invoiceService.getInvoiceById
+        .mockResolvedValueOnce(makeInvoiceRecord({ id: 'inv_issuing', status: 'issuing' }))
+        .mockResolvedValueOnce(makeInvoiceRecord({ id: 'inv_pending', status: 'pending' }));
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_issuing', 'inv_pending'] });
+
+      expect(res.retried).toBe(0);
+      expect(res.skipped).toBe(2);
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('skips an unknown id with a not-found reason', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      const res = await controller.retryInvoices({ invoiceIds: ['nope'] });
+
+      expect(res.skipped).toBe(1);
+      expect(res.results[0].reason).toContain('not found');
+    });
+
+    it('captures a provider re-rejection as skipped without aborting the rest of the batch', async () => {
+      const eligible = makeInvoiceRecord({ status: 'failed', failureMode: 'rejected' });
+      const ok = makeInvoiceRecord({ id: 'inv_ok', status: 'failed', failureMode: 'rejected' });
+      invoiceService.getInvoiceById
+        .mockResolvedValueOnce(eligible)
+        .mockResolvedValueOnce(ok);
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueInvoice
+        .mockRejectedValueOnce(new Error('provider rejected again'))
+        .mockResolvedValueOnce(makeInvoiceRecord({ status: 'issued' }));
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_1', 'inv_ok'] });
+
+      expect(res.retried).toBe(1);
+      expect(res.skipped).toBe(1);
+      // The neutral reason never echoes the raw provider message.
+      const failed = res.results.find((r) => r.id === 'inv_1');
+      expect(failed?.outcome).toBe('skipped');
+      expect(failed?.reason).not.toContain('provider rejected again');
+      expect(failed?.reason).toContain('correlationId');
+    });
+
+    it('de-duplicates repeated ids so an id is attempted at most once', async () => {
+      const eligible = makeInvoiceRecord({ status: 'failed', failureMode: 'rejected' });
+      invoiceService.getInvoiceById.mockResolvedValue(eligible);
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_1', 'inv_1'] });
+
+      expect(res.results).toHaveLength(1);
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips an eligible record whose backing order is no longer available', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ status: 'failed', failureMode: 'rejected' }),
+      );
+      orders.getOrderRecord.mockResolvedValue(null);
+
+      const res = await controller.retryInvoices({ invoiceIds: ['inv_1'] });
+
+      expect(res.skipped).toBe(1);
+      expect(res.results[0].reason).toContain('order');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
     });
   });
 });

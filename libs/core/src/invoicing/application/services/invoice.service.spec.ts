@@ -519,6 +519,25 @@ describe('InvoiceService', () => {
     });
   });
 
+  describe('getInvoiceById (#1245)', () => {
+    it('delegates to repo.findById and never touches the adapter', async () => {
+      const record = makeRecord({ id: 'inv-1', status: 'failed' });
+      repo.findById.mockResolvedValue(record);
+
+      const result = await service.getInvoiceById('inv-1');
+
+      expect(repo.findById).toHaveBeenCalledWith('inv-1');
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(result).toBe(record);
+    });
+
+    it('returns null when no record holds the id', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      expect(await service.getInvoiceById('missing')).toBeNull();
+    });
+  });
+
   describe('fiscal-safety lease invariant (#1200)', () => {
     it('keeps the CAS lease strictly above the max supported provider timeout (enforced by construction, not by comment)', () => {
       // If this ever fails, an expired lease could be re-claimed while the

@@ -79,6 +79,14 @@ export interface IInvoiceService {
   getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null>;
 
   /**
+   * Read OL's OWN `InvoiceRecord` projection by its primary id. Projection read —
+   * NEVER queries the provider/adapter. Returns `null` when no record exists.
+   * Backs the batch-retry endpoint's per-id eligibility check (#1245), which
+   * keys retry-eligibility on `InvoiceRecord.isReattemptableFailure`.
+   */
+  getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null>;
+
+  /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
    * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
    * the invoice projection through this service interface, NEVER the repository
