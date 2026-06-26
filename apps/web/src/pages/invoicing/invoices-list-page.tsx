@@ -213,6 +213,20 @@ export function InvoicesListPage(): ReactElement {
       hideBelow: 1024,
     },
     {
+      id: 'clearanceRef',
+      header: t('invoice.column.clearanceRef', 'KSeF no.'),
+      cell: (r) =>
+        r.clearanceReference ? (
+          <span className="mono-text" title={r.clearanceReference}>
+            {r.clearanceReference}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+      accessor: (r) => r.clearanceReference ?? '',
+      hideBelow: 1280,
+    },
+    {
       id: 'connection',
       header: t('invoice.column.connection', 'Connection'),
       cell: (r) => (
