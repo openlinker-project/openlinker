@@ -216,6 +216,25 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('(a4) should set hasBuyerTaxId=false on the pending row when the buyer tax id value is blank (#1202)', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      const blankTaxBuyer = new BuyerProfile(
+        'ACME Sp. z o.o.',
+        { scheme: 'pl-nip', value: '' },
+        { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+        'company',
+      );
+      await service.issueInvoice(makeCmd({ buyer: blankTaxBuyer }));
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerTaxId: false }),
+      );
+    });
+
     it('(b) idempotent replay (issued): returns the issued row as-is, adapter NEVER called, NO second create', async () => {
       const issued = makeRecord({ status: 'issued' });
       repo.findByIdempotencyKey.mockResolvedValue(issued);
