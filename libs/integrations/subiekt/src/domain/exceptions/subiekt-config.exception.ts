@@ -11,6 +11,13 @@
  */
 
 export class SubiektConfigException extends Error {
+  /**
+   * Neutral failure discriminator (#1200) read STRUCTURALLY by core. A
+   * deterministic config / SSRF-guard failure raised BEFORE any request leaves
+   * the client — NO document was created, so SAFE to re-attempt once fixed.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(
     message: string,
     readonly field: string,
