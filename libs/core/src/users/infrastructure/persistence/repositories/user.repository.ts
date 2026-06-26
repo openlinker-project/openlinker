@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
 import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
+import { LastAdminException } from '../../../domain/exceptions/last-admin.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
 import type { UserRole } from '../../../domain/types/role.types';
 import { UserRoleValues } from '../../../domain/types/role.types';
@@ -99,13 +100,53 @@ export class UserRepository implements UserRepositoryPort {
       const saved = await this.ormRepository.save(entity);
       return this.toDomain(saved);
     } catch (error) {
-      if (
-        error instanceof QueryFailedError &&
-        (error as QueryFailedError & { code?: string }).code === '23505'
-      ) {
-        throw new UserAlreadyExistsException(user.username);
+      if (error instanceof QueryFailedError) {
+        const pgErr = error as QueryFailedError & { code?: string; detail?: string };
+        if (pgErr.code === '23505') {
+          const detail = pgErr.detail ?? '';
+          const identifier = detail.includes('(email)') ? (user.email ?? 'email') : user.username;
+          throw new UserAlreadyExistsException(identifier);
+        }
       }
       throw error;
+    }
+  }
+
+  async deactivateIfNotLastAdmin(userId: string): Promise<void> {
+    const result = await this.ormRepository.query(
+      `UPDATE users
+         SET status = 'deactivated'
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
+      [userId],
+    ) as [unknown, number];
+    if (result[1] === 0) {
+      throw new LastAdminException();
+    }
+  }
+
+  async updateRoleIfNotLastAdmin(userId: string, role: UserRole): Promise<void> {
+    const result = await this.ormRepository.query(
+      `UPDATE users
+         SET role = $2
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin') > 1`,
+      [userId, role],
+    ) as [unknown, number];
+    if (result[1] === 0) {
+      throw new LastAdminException();
+    }
+  }
+
+  async deleteIfNotLastAdmin(userId: string): Promise<void> {
+    const result = await this.ormRepository.query(
+      `DELETE FROM users
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin') > 1`,
+      [userId],
+    ) as [unknown, number];
+    if (result[1] === 0) {
+      throw new LastAdminException();
     }
   }
 

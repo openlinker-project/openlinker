@@ -17,7 +17,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CannotSelfModifyException,
-  LastAdminException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
@@ -69,9 +68,12 @@ export class UserManagementService implements IUserManagementService {
     }
     const user = await this.requireUser(userId);
     if (user.role === 'admin' && role !== 'admin') {
-      await this.guardLastAdmin();
+      // Atomic: checks admin count and updates role in a single SQL statement to
+      // prevent concurrent demotions leaving zero admins (TOCTOU guard).
+      await this.userRepository.updateRoleIfNotLastAdmin(userId, role);
+    } else {
+      await this.userRepository.updateRole(userId, role);
     }
-    await this.userRepository.updateRole(userId, role);
     this.logger.log(`User role updated: ${userId} → ${role}`);
   }
 
@@ -84,9 +86,11 @@ export class UserManagementService implements IUserManagementService {
       throw new UserNotActiveException(userId);
     }
     if (user.role === 'admin') {
-      await this.guardLastAdmin();
+      // Atomic: checks active-admin count and deactivates in a single SQL statement.
+      await this.userRepository.deactivateIfNotLastAdmin(userId);
+    } else {
+      await this.userRepository.updateStatus(userId, 'deactivated');
     }
-    await this.userRepository.updateStatus(userId, 'deactivated');
     this.logger.log(`User deactivated: ${userId}`);
   }
 
@@ -105,9 +109,11 @@ export class UserManagementService implements IUserManagementService {
     }
     const user = await this.requireUser(userId);
     if (user.role === 'admin') {
-      await this.guardLastAdmin();
+      // Atomic: checks admin count and deletes in a single SQL statement.
+      await this.userRepository.deleteIfNotLastAdmin(userId);
+    } else {
+      await this.userRepository.deleteById(userId);
     }
-    await this.userRepository.deleteById(userId);
     this.logger.log(`User deleted: ${userId}`);
   }
 
@@ -117,12 +123,5 @@ export class UserManagementService implements IUserManagementService {
       throw new UserNotFoundException(userId);
     }
     return user;
-  }
-
-  private async guardLastAdmin(): Promise<void> {
-    const adminCount = await this.userRepository.countByRole('admin');
-    if (adminCount <= 1) {
-      throw new LastAdminException();
-    }
   }
 }

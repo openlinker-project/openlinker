@@ -10,7 +10,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { UserStatusValues } from '@openlinker/core/users';
-import type { UserStatus } from '@openlinker/core/users';
+import { UserStatus } from '@openlinker/core/users';
 
 export class ListUsersQueryDto {
   @ApiPropertyOptional({ enum: UserStatusValues, description: 'Filter by account status' })

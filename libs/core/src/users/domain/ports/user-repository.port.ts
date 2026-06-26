@@ -22,4 +22,27 @@ export interface UserRepositoryPort {
   updateRole(userId: string, role: UserRole): Promise<void>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   deleteById(userId: string): Promise<void>;
+
+  /**
+   * Atomically deactivates an admin user only when 2+ admins remain active.
+   * The admin-count check and status update occur in a single SQL statement,
+   * eliminating the check-then-act race that a separate guardLastAdmin() call
+   * would introduce. Throws LastAdminException when the conditional update
+   * matches 0 rows (i.e., this admin is the last active one).
+   */
+  deactivateIfNotLastAdmin(userId: string): Promise<void>;
+
+  /**
+   * Atomically demotes an admin to a non-admin role only when 2+ admins remain.
+   * See deactivateIfNotLastAdmin for the race-condition rationale.
+   * Throws LastAdminException if this admin is the only one.
+   */
+  updateRoleIfNotLastAdmin(userId: string, role: UserRole): Promise<void>;
+
+  /**
+   * Atomically deletes an admin user only when 2+ admins exist.
+   * See deactivateIfNotLastAdmin for the race-condition rationale.
+   * Throws LastAdminException if this admin is the only one.
+   */
+  deleteIfNotLastAdmin(userId: string): Promise<void>;
 }

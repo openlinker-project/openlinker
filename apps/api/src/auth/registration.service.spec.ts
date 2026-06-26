@@ -34,6 +34,9 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   approveUser: jest.fn(),
   countByRole: jest.fn(),
   deleteById: jest.fn(),
+  deactivateIfNotLastAdmin: jest.fn(),
+  updateRoleIfNotLastAdmin: jest.fn(),
+  deleteIfNotLastAdmin: jest.fn(),
 });
 
 describe('RegistrationService', () => {
