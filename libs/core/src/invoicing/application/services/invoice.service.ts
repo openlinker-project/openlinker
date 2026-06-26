@@ -404,6 +404,11 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findByOrderId(query.orderId, query.connectionId);
   }
 
+  async getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null> {
+    // Projection read of OL's OWN store by primary id — NEVER the provider/adapter.
+    return this.repo.findById(invoiceId);
+  }
+
   async listInvoices(
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
