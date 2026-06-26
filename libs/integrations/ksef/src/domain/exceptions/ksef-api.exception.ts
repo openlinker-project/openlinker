@@ -11,6 +11,10 @@
  * `responseBody` is diagnostics-only — it may echo back submitted data, so it
  * MUST NOT be logged above `debug`, and never carries credential material.
  *
+ * `retryAfterMs` carries the parsed `Retry-After` delay (in milliseconds) on a
+ * `429` so the client's rate-limit backoff can honour the server's hint without
+ * overloading `responseBody`.
+ *
  * @module libs/integrations/ksef/src/domain/exceptions
  */
 export class KsefApiException extends Error {
@@ -19,6 +23,7 @@ export class KsefApiException extends Error {
     public readonly statusCode?: number,
     public readonly responseBody?: string,
     public readonly url?: string,
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'KsefApiException';
