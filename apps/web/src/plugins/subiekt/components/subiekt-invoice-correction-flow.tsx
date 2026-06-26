@@ -138,7 +138,7 @@ export function SubiektInvoiceCorrectionFlow({
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('subiekt.correction.issued', 'Issued')}{' '}
+            {t('subiekt.correction.issuedLabel', 'Issued')}{' '}
             <strong className="mono-text">
               {invoice.issuedAt.slice(0, 10)}
             </strong>
