@@ -28,6 +28,7 @@ export {
 export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
 export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
+export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export type {
   InvoiceRecord,

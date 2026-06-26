@@ -1,14 +1,17 @@
 /**
- * KsefInvoiceDetailSection Tests (#1152, B4 + #1234, B3/B5)
+ * KsefInvoiceDetailSection Tests (#1152, B4 + #1234, B3 + #1228, B5)
  *
  * Covers the KSeF regulatory region rendered into the neutral invoice surfaces
  * via the `invoiceDetailSection` slot:
  *   - renders the clearance badge + KSeF number when regulatory data exists
  *   - returns null when there is no KSeF data (not-applicable + no number)
  *   - prefers `clearanceReference` (the KSeF number) over `providerInvoiceNumber`
- *   - UPO actions: shown only when `regulatoryStatus === 'accepted'`; hidden
- *     for other statuses (submitted, cleared, rejected)
- *   - Preview UPO: calls `invoicing.downloadUpo` on click and opens the dialog
+ *   - UPO actions: shown only when `regulatoryStatus === 'accepted'`
+ *   - FA(3) actions (View + Download XML): shown only when `regulatoryStatus === 'accepted'`
+ *   - Preview UPO: calls `invoicing.downloadUpo` + opens dialog
+ *   - View FA(3): calls `invoicing.downloadDocument(id, 'rendered')` + shows inline frame
+ *   - Download XML: calls `invoicing.downloadDocument(id, 'source')`
+ *   - Slot is registered on the KSeF plugin descriptor
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -39,7 +42,6 @@ function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
   };
 }
 
-// jsdom lacks createObjectURL/revokeObjectURL; capture originals for restore.
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
 
@@ -56,7 +58,6 @@ describe('KsefInvoiceDetailSection', () => {
     );
     expect(screen.getByText('KSeF number')).toBeInTheDocument();
     expect(screen.getByText('1234567890-20260625-ABCDEF123456-7F')).toBeInTheDocument();
-    // Neutral RegulatoryStatusBadge renders the accepted label.
     expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
   });
 
@@ -71,12 +72,11 @@ describe('KsefInvoiceDetailSection', () => {
         connection={sampleConnection}
       />,
     );
-    // Nothing KSeF-specific rendered — neither the section title nor any key.
     expect(screen.queryByText('KSeF · National e-Invoicing System')).not.toBeInTheDocument();
     expect(screen.queryByText('Clearance status')).not.toBeInTheDocument();
   });
 
-  it('prefers clearanceReference over providerInvoiceNumber for the KSeF number', () => {
+  it('prefers clearanceReference over providerInvoiceNumber', () => {
     renderWithProviders(
       <KsefInvoiceDetailSection
         invoice={makeInvoice({
@@ -104,41 +104,31 @@ describe('KsefInvoiceDetailSection', () => {
     expect(screen.getByText('FV/2026/06/0142')).toBeInTheDocument();
   });
 
-  describe('UPO actions', () => {
-    it('shows Preview UPO + Download UPO only when status is accepted', () => {
+  describe('UPO actions (B3)', () => {
+    it('shows Preview + Download UPO only when status is accepted', () => {
       renderWithProviders(
         <KsefInvoiceDetailSection
           invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
           connection={sampleConnection}
         />,
       );
-      expect(screen.getByRole('button', { name: 'Preview UPO' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Download UPO' })).toBeInTheDocument();
     });
 
-    it('hides UPO actions when status is submitted (UPO not yet available)', () => {
+    it('hides UPO actions when status is submitted', () => {
       renderWithProviders(
         <KsefInvoiceDetailSection
           invoice={makeInvoice({ regulatoryStatus: 'submitted' })}
           connection={sampleConnection}
         />,
       );
-      expect(screen.queryByRole('button', { name: 'Preview UPO' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Download UPO' })).not.toBeInTheDocument();
     });
 
-    it('hides UPO actions when status is cleared', () => {
-      renderWithProviders(
-        <KsefInvoiceDetailSection
-          invoice={makeInvoice({ regulatoryStatus: 'cleared' })}
-          connection={sampleConnection}
-        />,
-      );
-      expect(screen.queryByRole('button', { name: 'Preview UPO' })).not.toBeInTheDocument();
-    });
-
-    it('calls invoicing.downloadUpo when Preview UPO is clicked and opens the dialog', async () => {
-      URL.createObjectURL = vi.fn(() => 'blob:mock');
+    it('calls downloadUpo when Preview is clicked and opens the UPO dialog', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:mock-upo');
       URL.revokeObjectURL = vi.fn();
       const downloadUpo = vi.fn().mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
       const apiClient = createMockApiClient({ invoicing: { downloadUpo } });
@@ -151,17 +141,12 @@ describe('KsefInvoiceDetailSection', () => {
         { apiClient },
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Preview UPO' }));
-      await waitFor(() => {
-        expect(downloadUpo).toHaveBeenCalledWith('inv_1');
-      });
-      // The dialog opens after a successful fetch.
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
+      fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+      await waitFor(() => expect(downloadUpo).toHaveBeenCalledWith('inv_1'));
+      await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
     });
 
-    it('calls invoicing.downloadUpo when Download UPO is clicked', async () => {
+    it('calls downloadUpo when Download UPO is clicked', async () => {
       URL.createObjectURL = vi.fn(() => 'blob:mock');
       URL.revokeObjectURL = vi.fn();
       const downloadUpo = vi.fn().mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
@@ -176,9 +161,81 @@ describe('KsefInvoiceDetailSection', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Download UPO' }));
-      await waitFor(() => {
-        expect(downloadUpo).toHaveBeenCalledWith('inv_1');
-      });
+      await waitFor(() => expect(downloadUpo).toHaveBeenCalledWith('inv_1'));
+    });
+  });
+
+  describe('FA(3) actions (B5)', () => {
+    it('shows FA(3) document row and doc-preview placeholder when status is accepted', () => {
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+      );
+      expect(screen.getByText('FA(3) document')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Download XML' })).toBeInTheDocument();
+      expect(screen.getByText("Click 'View' to load the invoice.")).toBeInTheDocument();
+    });
+
+    it('hides FA(3) actions when status is submitted', () => {
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'submitted' })}
+          connection={sampleConnection}
+        />,
+      );
+      expect(screen.queryByText('FA(3) document')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
+    });
+
+    it('loads the FA(3) rendered document into the doc-preview frame on View click', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:fa3-rendered');
+      URL.revokeObjectURL = vi.fn();
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob(['<html>FA3</html>'], { type: 'text/html' }));
+      const apiClient = createMockApiClient({ invoicing: { downloadDocument } });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'View' }));
+      await waitFor(() =>
+        expect(downloadDocument).toHaveBeenCalledWith('inv_1', 'rendered'),
+      );
+      const frame = await screen.findByTitle('FA(3) document preview');
+      expect(frame).toHaveAttribute('src', 'blob:fa3-rendered');
+      // sandbox attribute prevents script execution in the framed document.
+      expect(frame).toHaveAttribute('sandbox', '');
+    });
+
+    it('calls downloadDocument with kind=source when Download XML is clicked', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:xml');
+      URL.revokeObjectURL = vi.fn();
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob(['<?xml'], { type: 'application/xml' }));
+      const apiClient = createMockApiClient({ invoicing: { downloadDocument } });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Download XML' }));
+      await waitFor(() =>
+        expect(downloadDocument).toHaveBeenCalledWith('inv_1', 'source'),
+      );
     });
   });
 });

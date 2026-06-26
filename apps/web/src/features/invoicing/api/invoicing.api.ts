@@ -9,6 +9,7 @@
  *   - `POST /invoices/retry` (batch retry — W6 #1245)
  *   - `POST /invoices/:invoiceId/correct` (correction — #1241)
  *   - `GET /invoices/:invoiceId/upo` (UPO blob — #1234)
+ *   - `GET /invoices/:invoiceId/document?kind=source|rendered` (FA(3) doc — W3 #1231)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -48,6 +49,13 @@ export interface InvoicingApi {
    * on the internal `invoice.id`, never on platform type (ADR-026).
    */
   downloadUpo: (invoiceId: string) => Promise<Blob>;
+  /**
+   * `GET /invoices/:invoiceId/document?kind=source|rendered` (W3 #1231) —
+   * fetch the issued FA(3) document. `kind=source` returns the original XML;
+   * `kind=rendered` returns a human-readable HTML rendering. Returns a Blob;
+   * content type is provider-defined.
+   */
+  downloadDocument: (invoiceId: string, kind: 'source' | 'rendered') => Promise<Blob>;
 }
 
 interface ApiRequest {
@@ -115,6 +123,9 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
     downloadUpo(invoiceId): Promise<Blob> {
       return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
 >>>>>>> 003bfc3d (feat(web): KSeF UPO preview + download in invoice-detail slot (B3/B5, #1221))
+    },
+    downloadDocument(invoiceId, kind): Promise<Blob> {
+      return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/document?kind=${kind}`);
     },
   };
 }
