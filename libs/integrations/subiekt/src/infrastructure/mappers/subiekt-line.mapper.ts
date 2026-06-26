@@ -19,8 +19,8 @@
  *
  * @module libs/integrations/subiekt/src/infrastructure/mappers
  */
-import type { InvoiceLine } from '@openlinker/core/invoicing';
-import type { BridgeLine } from '../../bridge/subiekt-bridge.types';
+import type { CorrectionLine, InvoiceLine } from '@openlinker/core/invoicing';
+import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.types';
 
 /** Polish standard VAT rate — used when the neutral line carries no rate. */
 const DEFAULT_PL_VAT_RATE = '23';
@@ -32,4 +32,18 @@ export function toBridgeLines(lines: InvoiceLine[]): BridgeLine[] {
     cenaBrutto: line.unitPriceGross,
     stawkaVAT: line.taxRate.trim().length > 0 ? line.taxRate.trim() : DEFAULT_PL_VAT_RATE,
   }));
+}
+
+/**
+ * Map a neutral `CorrectionLine` to the bridge-native korekta line. Only the
+ * fields the caller actually changed are emitted (`nowaIlosc` / `nowaCena`), so an
+ * absent field on the wire means "unchanged". `newUnitPriceGross` is a GROSS unit
+ * price -> `nowaCena`.
+ */
+export function toBridgeKorektaLine(line: CorrectionLine): BridgeKorektaLine {
+  return {
+    lp: line.originalLineNumber,
+    ...(line.newQuantity != null ? { nowaIlosc: line.newQuantity } : {}),
+    ...(line.newUnitPriceGross != null ? { nowaCena: line.newUnitPriceGross } : {}),
+  };
 }

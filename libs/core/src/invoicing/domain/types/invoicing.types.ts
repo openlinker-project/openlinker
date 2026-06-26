@@ -195,6 +195,39 @@ export interface IssueInvoiceCommand {
   idempotencyKey?: string;
 }
 
+/**
+ * One corrected line on a correction document. Identifies the original line by its
+ * position (`originalLineNumber`, 1-based) and carries the new values to apply.
+ * At least one of `newQuantity` / `newUnitPriceGross` must be present — a line that
+ * changes neither would be a no-op. `newUnitPriceGross` is the gross unit price
+ * (matches core's `number` money idiom and `InvoiceLine.unitPriceGross`).
+ */
+export interface CorrectionLine {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/**
+ * Command to issue a correction of an already-issued document (ADR-026). Like
+ * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
+ * port does not decide whether/when. `originalProviderInvoiceId` references the
+ * provider's id of the corrected original (the adapter interprets it). `lines`
+ * carry the post-correction values per original line; `reason` is the free-text
+ * correction reason. `documentType` is caller-supplied (open-world); the adapter
+ * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ */
+export interface IssueCorrectionCommand {
+  connectionId: string;
+  orderId: string;
+  originalProviderInvoiceId: string;
+  /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
+  documentType?: string;
+  reason?: string;
+  lines: CorrectionLine[];
+  idempotencyKey?: string;
+}
+
 /** Query for an issued document by either internal order id or provider id. */
 export type GetInvoiceQuery = { orderId: string } | { providerInvoiceId: string };
 

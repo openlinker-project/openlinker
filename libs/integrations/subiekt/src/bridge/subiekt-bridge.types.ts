@@ -43,7 +43,12 @@ export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[numbe
 export const BridgeInvoiceStateValues = ['issued', 'failed'] as const;
 export type BridgeInvoiceState = (typeof BridgeInvoiceStateValues)[number];
 
-/** Bridge-native document type. `FV` = faktura, `PA` = paragon. */
+/**
+ * Bridge-native document type. `FV` = faktura, `PA` = paragon. The correction
+ * document (faktura korygująca) is NOT a `documentType` value on the wire — the
+ * correction endpoint (`POST /api/invoices/{origId}/corrections`) is identified by
+ * its route + body shape (`BridgeKorektaRequest`), not by a doctype discriminator.
+ */
 export const BridgeDocumentTypeValues = ['FV', 'PA'] as const;
 export type BridgeDocumentType = (typeof BridgeDocumentTypeValues)[number];
 
@@ -122,6 +127,50 @@ export interface BridgeIssueInvoiceResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
+}
+
+/**
+ * One corrected line on a correction request — the bridge's korekta line shape.
+ * `lp` is the 1-based position of the original line being corrected; `nowaIlosc`
+ * is the new quantity, `nowaCena` the new GROSS unit price. At least one of
+ * `nowaIlosc`/`nowaCena` must be present (a line that changes neither is a no-op).
+ */
+export interface BridgeKorektaLine {
+  lp: number;
+  nowaIlosc?: number;
+  nowaCena?: number;
+}
+
+/**
+ * Issue-CORRECTION (faktura korygująca) request body — the REAL bridge contract:
+ * `POST /api/invoices/{origId}/corrections`. The corrected original is identified
+ * by the `{origId}` path segment (a positive integer), NOT in the body. The body
+ * carries an optional free-text `przyczyna` (correction reason), an optional
+ * `idempotencyKey` (so a retried correction returns the SAME document instead of
+ * issuing a duplicate korekta — the bridge honours it in lockstep, #1229), and
+ * the `lines` to correct.
+ */
+export interface BridgeKorektaRequest {
+  /** Free-text correction reason (`przyczyna korekty`). */
+  przyczyna?: string;
+  /** Makes a retried correction return the SAME document (fiscal dedup). */
+  idempotencyKey?: string;
+  lines: BridgeKorektaLine[];
+}
+
+/**
+ * Issue-CORRECTION response — the `data` payload of the bridge's `ResponseEnvelope`
+ * for `POST /api/invoices/{origId}/corrections`. Distinct from the issue-invoice
+ * response: it carries `korygowanyId` (the corrected original's numeric id) and a
+ * nullable `przyczyna`, and it carries NEITHER a `regulatoryStatus` NOR a `pdfUrl`
+ * (a correction's KSeF status is read back later via the status endpoint).
+ */
+export interface BridgeKorektaResponse {
+  providerInvoiceId: number;
+  providerInvoiceNumber: string;
+  korygowanyId: number;
+  przyczyna: string | null;
+  state: BridgeInvoiceState;
 }
 
 /**
