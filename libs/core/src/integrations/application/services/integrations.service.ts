@@ -140,7 +140,11 @@ export class IntegrationsService implements IIntegrationsService {
     return this.adapterRegistry.getAdapterMetadata(adapterKey);
   }
 
-  async listCapabilityAdapters<T>(filters: { capability: string; platformType?: string }): Promise<
+  async listCapabilityAdapters<T>(filters: {
+    capability: string;
+    platformType?: string;
+    lazy?: boolean;
+  }): Promise<
     Array<{
       connectionId: string;
       connection: Connection;
@@ -149,7 +153,7 @@ export class IntegrationsService implements IIntegrationsService {
     }>
   > {
     this.logger.debug(
-      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}`
+      `Listing ${filters.capability} adapters${filters.platformType ? ` (platform: ${filters.platformType})` : ''}${filters.lazy ? ' (lazy adapter construction)' : ''}`
     );
 
     // List all active connections (filter by platformType if provided)
@@ -189,22 +193,38 @@ export class IntegrationsService implements IIntegrationsService {
           // `adapterKey` is a plugin-author bug. `AdapterNotFoundException`
           // is caught by the outer try/catch (skip this connection); any
           // other configuration error continues to throw and abort the call.
-          this.logger.debug(
-            `Creating ${filters.capability} adapter for ${adapterKey} (connection: ${connection.id})`
-          );
-          const adapter = await this.factoryResolver.createCapabilityAdapter<T>(
-            adapterKey,
-            connection,
-            filters.capability,
-            this.identifierMapping,
-            this.credentialsResolver
-          );
-          results.push({
-            connectionId: connection.id,
-            connection,
-            adapter,
-            metadata,
-          });
+          //
+          // LAZY mode (#1206): the capability-narrowing predicate above is
+          // identical in both modes, so the SET of returned connections is
+          // unchanged. When `filters.lazy` is set, `adapter` becomes a memoized
+          // getter that defers `createCapabilityAdapter` (incl. credential
+          // resolution) until first access. Callers needing only `.connection`
+          // (the scheduler `connectionFilter` fan-out) never trigger any adapter
+          // construction; a caller that reads `.adapter` gets the same instance
+          // the eager path builds (returned as the memoized construction
+          // Promise). No current lazy caller reads `.adapter`.
+          if (filters.lazy) {
+            results.push(
+              this.buildLazyCapabilityEntry<T>(connection, metadata, adapterKey, filters.capability)
+            );
+          } else {
+            this.logger.debug(
+              `Creating ${filters.capability} adapter for ${adapterKey} (connection: ${connection.id})`
+            );
+            const adapter = await this.factoryResolver.createCapabilityAdapter<T>(
+              adapterKey,
+              connection,
+              filters.capability,
+              this.identifierMapping,
+              this.credentialsResolver
+            );
+            results.push({
+              connectionId: connection.id,
+              connection,
+              adapter,
+              metadata,
+            });
+          }
           this.logger.debug(
             `Connection ${connection.id} supports ${filters.capability} (adapter: ${adapterKey})`
           );
@@ -233,5 +253,58 @@ export class IntegrationsService implements IIntegrationsService {
     );
 
     return results;
+  }
+
+  /**
+   * Build a `listCapabilityAdapters` result entry whose `adapter` is constructed
+   * LAZILY (#1206). The connection has already passed the same capability
+   * narrowing as the eager path, so `connectionId`/`connection`/`metadata` are
+   * eagerly present and identical. `adapter` is a non-enumerable, MEMOIZED getter
+   * that calls `createCapabilityAdapter` only on first access and caches the
+   * result; subsequent reads return the same construction Promise. Callers that
+   * read only `.connection` never construct anything. (Construction is async, so
+   * the getter yields the in-flight `Promise<T>`; the field is typed `T` to keep
+   * the result shape identical to the eager path — no current lazy caller awaits
+   * `.adapter`, and the eager path remains the default for those that do.)
+   */
+  private buildLazyCapabilityEntry<T>(
+    connection: Connection,
+    metadata: AdapterMetadata,
+    adapterKey: string,
+    capability: string
+  ): { connectionId: string; connection: Connection; adapter: T; metadata: AdapterMetadata } {
+    let cached: Promise<T> | undefined;
+    const construct = (): Promise<T> => {
+      if (cached === undefined) {
+        this.logger.debug(
+          `Lazily creating ${capability} adapter for ${adapterKey} (connection: ${connection.id})`
+        );
+        cached = this.factoryResolver.createCapabilityAdapter<T>(
+          adapterKey,
+          connection,
+          capability,
+          this.identifierMapping,
+          this.credentialsResolver
+        );
+      }
+      return cached;
+    };
+
+    const entry = {
+      connectionId: connection.id,
+      connection,
+      metadata,
+    };
+    Object.defineProperty(entry, 'adapter', {
+      enumerable: true,
+      configurable: true,
+      get: () => construct() as unknown as T,
+    });
+    return entry as {
+      connectionId: string;
+      connection: Connection;
+      adapter: T;
+      metadata: AdapterMetadata;
+    };
   }
 }
