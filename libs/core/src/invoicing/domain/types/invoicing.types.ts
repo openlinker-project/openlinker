@@ -31,9 +31,63 @@ export const DocumentTypeValues = [
 ] as const;
 export type DocumentType = (typeof DocumentTypeValues)[number];
 
-/** Issuance lifecycle of an `InvoiceRecord` (distinct from payment — see ADR-026). */
-export const InvoiceStatusValues = ['pending', 'issued', 'failed'] as const;
+/**
+ * Issuance lifecycle of an `InvoiceRecord` (distinct from payment — see ADR-026).
+ *
+ * `issuing` (#1200) is the in-flight CLAIM state: a record an attempt has leased
+ * to cross the provider boundary. It sits between `pending` (intent persisted,
+ * not yet claimed) and the terminal `issued`/`failed`. A concurrent same-key
+ * retry that finds a record under a LIVE `issuing` lease must NOT re-cross the
+ * boundary — exactly one attempt may hold the slot (closes R2 + the `pending`
+ * half of R3). The lease has an expiry (`leaseExpiresAt`) so a crash mid-call
+ * does not orphan the record forever.
+ */
+export const InvoiceStatusValues = ['pending', 'issuing', 'issued', 'failed'] as const;
 export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
+
+/**
+ * Neutral failure discriminator (#1200) — the fiscal-safety pivot for re-attempt.
+ * Carried from the provider adapter into the neutral outcome WITHOUT core ever
+ * value-importing an adapter error subclass: the service reads it STRUCTURALLY
+ * off the caught throwable (see `InvoiceService.classifyFailure`).
+ *
+ *   - `rejected`: a TERMINAL provider rejection — the provider DEFINITELY did not
+ *     create a document (e.g. invalid tax data). A `failed` row of this kind is
+ *     SAFE to re-attempt: re-crossing the boundary cannot double-issue.
+ *   - `in-doubt`: a transient/indeterminate transport failure — the request MAY
+ *     have reached the provider and a document MAY have been created (timeout,
+ *     reset, unknown error). A `failed` row of this kind is UNSAFE to re-attempt:
+ *     it is surfaced for manual reconciliation, never auto-re-issued. This is the
+ *     FISCAL-SAFE DEFAULT: any failure whose mode the service cannot read
+ *     structurally is treated as `in-doubt`.
+ */
+export const InvoiceFailureModeValues = ['rejected', 'in-doubt'] as const;
+export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
+
+/**
+ * Closed neutral failure-code taxonomy (#1214 / W1) — the machine-readable
+ * companion to {@link InvoiceFailureMode}. The FE distinguishes failure causes
+ * off this code without parsing the free-text (PII-tainted) `errorMessage`,
+ * which is never exposed to API callers. PII-free by construction — the values
+ * are fixed neutral discriminators, never an echo of provider/buyer data. Closed
+ * (not open-world) because every value must map onto a deliberate FE affordance.
+ *
+ *   - `buyer-tax-id-invalid`: a TERMINAL `rejected` failure caused by an invalid
+ *     buyer tax identifier — the operator can fix the buyer data and re-issue.
+ *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
+ *     re-attempt once the underlying input is corrected).
+ *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
+ *     exist; NEVER auto-re-attempted, surfaced for manual reconciliation.
+ *   - `provider-error`: an unclassifiable failure (the fiscal-safe default code,
+ *     paired with the `in-doubt` mode).
+ */
+export const InvoiceFailureCodeValues = [
+  'buyer-tax-id-invalid',
+  'provider-rejected',
+  'transport-timeout',
+  'provider-error',
+] as const;
+export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
 
 /**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
@@ -246,6 +300,12 @@ export interface CreateInvoiceRecordInput {
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
+  /** Neutral failure discriminator (#1200); `null` for a non-`failed` create. */
+  failureMode?: InvoiceFailureMode | null;
+  /** Neutral machine-readable failure code (W1); `null` for a non-`failed` create. */
+  failureCode?: InvoiceFailureCode | null;
+  /** Short, PII-free failure summary (W1); `null` for a non-`failed` create. */
+  failureReason?: string | null;
 }
 
 /**
@@ -310,4 +370,29 @@ export interface InvoiceOutcomePatch {
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
+  /**
+   * Neutral failure discriminator (#1200). Set when patching a `failed` outcome
+   * so the read-gate can tell a re-attemptable terminal rejection (`rejected`)
+   * from an unsafe in-doubt transport failure (`in-doubt`). Cleared (`null`) on a
+   * successful `issued` patch alongside `errorMessage`.
+   */
+  failureMode?: InvoiceFailureMode | null;
+  /**
+   * Neutral machine-readable failure code (W1). Set alongside `failureMode` when
+   * patching a `failed` outcome so the FE can drive a cause-specific affordance
+   * without parsing `errorMessage`. Cleared (`null`) on a successful `issued`
+   * patch alongside `errorMessage` + `failureMode`.
+   */
+  failureCode?: InvoiceFailureCode | null;
+  /**
+   * Short, PII-free human-readable failure summary (W1). Set on a `failed` patch;
+   * cleared (`null`) on a successful `issued` patch. Distinct from the
+   * INTERNAL-ONLY, possibly-PII `errorMessage` — `failureReason` is safe to expose.
+   */
+  failureReason?: string | null;
+  /**
+   * Lease expiry for the `issuing` CAS claim (#1200). Set when an attempt claims
+   * the in-flight slot; cleared (`null`) on the terminal `issued`/`failed` patch.
+   */
+  leaseExpiresAt?: Date | null;
 }
