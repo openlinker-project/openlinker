@@ -1,7 +1,7 @@
 # Pre-implement Analysis: Erli Inbound Webhook Decoder
 
 **Plan**: `docs/plans/implementation-plan-erli-webhook-decoder.md`  
-**Issue**: #996 (decoder gap from PR #1081)  
+**Issue**: #996 (decoder gap from PR #1145)  
 **Gate run**: 2026-06-25
 
 ---

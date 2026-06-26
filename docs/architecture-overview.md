@@ -1138,16 +1138,18 @@ The rule applies only to imports from the bare top-level barrel `@openlinker/cor
 
 ### Current dependency map
 
-Audited 2026-05-15 from `libs/core/src/**`:
+Audited 2026-06-26 from `libs/core/src/**`:
 
 ```mermaid
 graph LR
   orders --> customers
   orders --> identifier-mapping
   orders --> integrations
+  orders --> invoicing
   orders --> mappings
   orders --> products
   orders --> sync
+  invoicing --> orders
   customers --> identifier-mapping
   customers --> integrations
   customers --> orders
@@ -1181,7 +1183,7 @@ graph LR
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
 
-The `orders ↔ customers` and `listings ↔ inventory` (the latter added for #824) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes (and at the NestJS module layer the back-edge — `inventory → listings` — is type/token-only, not a module import, so `ListingsModule` can import `InventoryModule` without a DI cycle). The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
+The `orders ↔ customers`, `listings ↔ inventory` (the latter added for #824), and `orders ↔ invoicing` (#1120) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The NestJS module-graph back-edges (`inventory → listings` type/token-only; `invoicing → orders` via the `@openlinker/core/orders/types` sub-barrel that omits `OrdersModule`) avoid DI cycles. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
 
 ### Enforcement
 

@@ -59,6 +59,11 @@
       "require": "./dist/orders/orm-entities.js",
       "default": "./dist/orders/orm-entities.js"
     },
+    "./orders/types": {
+      "types": "./dist/orders/types.d.ts",
+      "require": "./dist/orders/types.js",
+      "default": "./dist/orders/types.js"
+    },
     "./products": {
       "types": "./dist/products/index.d.ts",
       "require": "./dist/products/index.js",

@@ -3,7 +3,7 @@
 **Date**: 2026-06-25  
 **Status**: Ready for Review  
 **Estimated Effort**: 2–3 hours  
-**Issue**: #1081 (depends on #992 for real-shape confirmation)
+**Issue**: #1145 (depends on #992 for real-shape confirmation)
 
 ---
 
@@ -11,7 +11,7 @@
 
 **Objective**: Implement an Erli-native `InboundWebhookDecoderPort` that authenticates inbound Erli webhooks and decodes them into the host's neutral `InboundWebhookEnvelope`, then register it with `InboundWebhookDecoderRegistryService` so real Erli deliveries no longer get rejected by the OL-HMAC default decoder.
 
-**Context**: PR #1081 / issue #996 shipped `ErliWebhookEventTranslator` and `ErliWebhookProvisioningAdapter`. The provisioner registers the webhook URL + `accessToken` with Erli via `PUT /hooks/{hookName}`. The translator converts decoded events to `CanonicalInboundEvent`. But nothing implements `InboundWebhookDecoderPort` for the `'erli'` provider — so the host's fail-closed OL-HMAC default rejects 100% of real Erli deliveries, leaving the translator as dead code. The #993 inbox poll (`erli-orders-poll`) remains authoritative (ADR-025); webhooks are the low-latency optimisation this issue closes.
+**Context**: PR #1145 / issue #996 shipped `ErliWebhookEventTranslator` and `ErliWebhookProvisioningAdapter`. The provisioner registers the webhook URL + `accessToken` with Erli via `PUT /hooks/{hookName}`. The translator converts decoded events to `CanonicalInboundEvent`. But nothing implements `InboundWebhookDecoderPort` for the `'erli'` provider — so the host's fail-closed OL-HMAC default rejects 100% of real Erli deliveries, leaving the translator as dead code. The #993 inbox poll (`erli-orders-poll`) remains authoritative (ADR-025); webhooks are the low-latency optimisation this issue closes.
 
 **Classification**: Integration / Infrastructure (adapter implementation, no CORE changes)
 
@@ -162,7 +162,7 @@ Erli follows the same shape with `erliAdapterManifest.platformType` (`'erli'`).
 
 ```typescript
 /**
- * Erli Inbound Webhook Decoder Adapter (#1081, ADR-021)
+ * Erli Inbound Webhook Decoder Adapter (#1145, ADR-021)
  *
  * Authenticates + decodes Erli inbound order webhooks at the host ingress,
  * keyed by `provider = 'erli'`. The verify half checks the `accessToken` Erli
@@ -339,7 +339,7 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
      ```
   2. In `register(host)`, add after the translator registration (which is logically the downstream partner):
      ```typescript
-     // Inbound decoder (#1081, ADR-021): authenticates + decodes real Erli deliveries.
+     // Inbound decoder (#1145, ADR-021): authenticates + decodes real Erli deliveries.
      // Keyed by platformType ('erli') — the provider URL segment the host controller
      // uses to look up the right decoder before dedup. PROVISIONAL (#992): the
      // actual header name and body shape flip is isolated in erli-webhook.types.ts.
@@ -365,7 +365,7 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
 
 ```typescript
 /**
- * Unit tests for ErliInboundWebhookDecoderAdapter (#1081, ADR-021).
+ * Unit tests for ErliInboundWebhookDecoderAdapter (#1145, ADR-021).
  *
  * Fixtures use obviously-fake values (#992-PROVISIONAL wire shape).
  */

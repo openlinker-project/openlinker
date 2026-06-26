@@ -36,12 +36,10 @@ import {
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
 import type { Order } from '@openlinker/core/orders';
-// Deep leaf import (NOT the `@openlinker/core/orders` barrel): the barrel
-// re-exports `OrdersModule` as a runtime value, and `OrdersModule` imports
-// `InvoicingModule` (which provides THIS service) — pulling the barrel here for
-// a runtime value would close a module-load value-cycle. `payment-status.types`
-// is a dependency-free leaf, so importing it directly breaks that edge.
-import { PAYMENT_STATUS } from '../../../orders/domain/types/payment-status.types';
+// `@openlinker/core/orders/types` sub-barrel: exports dependency-free constants
+// without pulling in `OrdersModule`. Using the main barrel would close a CJS
+// cycle (OrdersModule imports InvoicingModule which provides this service).
+import { PAYMENT_STATUS } from '@openlinker/core/orders/types';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
