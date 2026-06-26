@@ -38,14 +38,22 @@ interface UseKsefFa3 {
   viewObjectUrl: string | null;
   isLoadingView: boolean;
   viewError: Error | null;
-  /** Fetch the rendered FA(3) and expose it as an object URL for inline display. */
-  loadView: (invoiceId: string) => Promise<void>;
+  /**
+   * Fetch the rendered FA(3) and expose it as an object URL for inline display.
+   * Returns the caught error on failure (also stored in `viewError`), or `null`
+   * on success — callers use the return value to avoid reading stale React state.
+   */
+  loadView: (invoiceId: string) => Promise<Error | null>;
   /** Clear the inline preview and revoke the object URL. */
   clearView: () => void;
   isDownloadingXml: boolean;
   xmlError: Error | null;
-  /** Fetch the source FA(3) XML and trigger a browser download. */
-  downloadXml: (invoiceId: string) => Promise<void>;
+  /**
+   * Fetch the source FA(3) XML and trigger a browser download.
+   * Returns the caught error on failure (also stored in `xmlError`), or `null`
+   * on success — callers use the return value to avoid reading stale React state.
+   */
+  downloadXml: (invoiceId: string) => Promise<Error | null>;
 }
 
 export function useKsefFa3(): UseKsefFa3 {
@@ -72,7 +80,7 @@ export function useKsefFa3(): UseKsefFa3 {
   }, [revoke]);
 
   const loadView = useCallback(
-    async (invoiceId: string): Promise<void> => {
+    async (invoiceId: string): Promise<Error | null> => {
       setIsLoadingView(true);
       setViewError(null);
       try {
@@ -81,8 +89,11 @@ export function useKsefFa3(): UseKsefFa3 {
         const url = URL.createObjectURL(blob);
         objectUrlRef.current = url;
         setViewObjectUrl(url);
+        return null;
       } catch (caught) {
-        setViewError(caught instanceof Error ? caught : new Error(String(caught)));
+        const err = caught instanceof Error ? caught : new Error(String(caught));
+        setViewError(err);
+        return err;
       } finally {
         setIsLoadingView(false);
       }
@@ -91,14 +102,17 @@ export function useKsefFa3(): UseKsefFa3 {
   );
 
   const downloadXml = useCallback(
-    async (invoiceId: string): Promise<void> => {
+    async (invoiceId: string): Promise<Error | null> => {
       setIsDownloadingXml(true);
       setXmlError(null);
       try {
         const blob = await apiClient.invoicing.downloadDocument(invoiceId, 'source');
         triggerBlobDownload(blob, xmlFilename(invoiceId));
+        return null;
       } catch (caught) {
-        setXmlError(caught instanceof Error ? caught : new Error(String(caught)));
+        const err = caught instanceof Error ? caught : new Error(String(caught));
+        setXmlError(err);
+        return err;
       } finally {
         setIsDownloadingXml(false);
       }

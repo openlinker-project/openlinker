@@ -96,26 +96,28 @@ export function KsefInvoiceDetailSection({
   }
 
   async function handleViewFa3(): Promise<void> {
-    await fa3.loadView(invoice.id);
-    if (fa3.viewError) {
+    // Use the returned error rather than reading fa3.viewError from the closure —
+    // that would be stale (React state hasn't re-rendered yet after the await).
+    const err = await fa3.loadView(invoice.id);
+    if (err) {
       showToast({
         tone: 'error',
         title: t('invoice.ksef.fa3ViewFailed', 'FA(3) preview failed'),
         description:
-          fa3.viewError.message ??
-          t('invoice.ksef.fa3ViewFailedDesc', 'Could not fetch the document.'),
+          err.message ?? t('invoice.ksef.fa3ViewFailedDesc', 'Could not fetch the document.'),
       });
     }
   }
 
   async function handleDownloadXml(): Promise<void> {
-    await fa3.downloadXml(invoice.id);
-    if (fa3.xmlError) {
+    // Same pattern: use the returned error, not the stale fa3.xmlError from closure.
+    const err = await fa3.downloadXml(invoice.id);
+    if (err) {
       showToast({
         tone: 'error',
         title: t('invoice.ksef.fa3XmlFailed', 'FA(3) XML download failed'),
         description:
-          fa3.xmlError.message ?? t('invoice.ksef.fa3XmlFailedDesc', 'Could not fetch the source document.'),
+          err.message ?? t('invoice.ksef.fa3XmlFailedDesc', 'Could not fetch the source document.'),
       });
     }
   }
@@ -282,7 +284,11 @@ export function KsefInvoiceDetailSection({
                 className="ksef-upo-preview__frame"
                 src={upoPreviewState.objectUrl}
                 title={t('invoice.ksef.upoFrameTitle', 'UPO confirmation preview')}
-                sandbox=""
+                // `allow-same-origin` is required for the browser's built-in PDF renderer
+                // (Chrome/Firefox) to display a blob: URL for PDF content. Without it
+                // sandbox="" blocks the PDF plugin and the frame renders blank.
+                // Scripts are still blocked — only `allow-same-origin` is granted.
+                sandbox={upoPreviewState.kind === 'pdf' ? 'allow-same-origin' : ''}
               />
             )}
             <DialogFooter>
