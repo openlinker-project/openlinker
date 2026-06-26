@@ -713,5 +713,32 @@ describe('InvoiceService', () => {
 
       expect(persisted?.documentContent?.seller).toBeNull();
     });
+
+    it('should persist the adapter-supplied source document when present', async () => {
+      const sourceDocument = { contentType: 'application/xml', contentBase64: 'PEZha3R1cmE+' };
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER, sourceDocument });
+      let persisted: CreateInvoiceRecordInput | undefined;
+      repository.create.mockImplementation((input) => {
+        persisted = input;
+        return Promise.resolve(adapterRecord());
+      });
+
+      await service.issueInvoice(command());
+
+      expect(persisted?.sourceDocument).toEqual(sourceDocument);
+    });
+
+    it('should persist sourceDocument:null when the adapter surfaces none', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
+      let persisted: CreateInvoiceRecordInput | undefined;
+      repository.create.mockImplementation((input) => {
+        persisted = input;
+        return Promise.resolve(adapterRecord());
+      });
+
+      await service.issueInvoice(command());
+
+      expect(persisted?.sourceDocument).toBeNull();
+    });
   });
 });

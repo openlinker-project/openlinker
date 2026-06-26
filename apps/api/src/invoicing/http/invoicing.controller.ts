@@ -45,7 +45,7 @@ import {
   Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -65,6 +65,8 @@ import {
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  RegulatoryDocumentKindValues,
+  UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
 } from '@openlinker/core/invoicing';
 import type {
@@ -73,6 +75,8 @@ import type {
   InvoiceRecordFilters,
   TaxIdentifier,
   InvoicingPort,
+  RegulatoryDocumentKind,
+  StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
@@ -97,6 +101,7 @@ const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
   'application/pdf': 'pdf',
   'application/xml': 'xml',
   'text/xml': 'xml',
+  'text/html': 'html',
 };
 
 function extensionForContentType(contentType: string): string {
@@ -573,6 +578,75 @@ export class InvoicingController {
     return IssuedDocumentContentDto.fromDomain(record.documentContent);
   }
 
+  @Get('invoices/:invoiceId/document')
+  @ApiOperation({
+    summary: 'Download a regulatory document for an invoice by neutral kind',
+    description:
+      'Returns the neutral document bytes for an issued invoice by `kind`: `source` (the persisted ' +
+      'machine-readable source document — PL/KSeF: the FA(3) XML — served from the snapshot), or ' +
+      '`rendered` (a human-readable rendering, when the provider produces one server-side). ' +
+      '`kind` defaults to `source`. 400 on an unknown kind; 404 when the invoice id is unknown; ' +
+      '409 when the requested document is not available (not issued, no snapshot, or the provider ' +
+      'cannot produce it).',
+  })
+  @ApiQuery({ name: 'kind', enum: ['source', 'rendered'], required: false })
+  @ApiProduces('application/xml', 'application/pdf', 'text/html')
+  @ApiResponse({ status: 200, description: 'Document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 400, description: 'Unknown document kind' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'Document not available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async downloadDocument(
+    @Param('invoiceId') invoiceId: string,
+    @Res() res: Response,
+    @Query('kind') kindParam?: string,
+  ): Promise<void> {
+    const kind = this.parseDocumentKind(kindParam);
+    const record = await this.invoiceRecordRepository.findById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+
+    if (kind === 'source') {
+      // The source document is core-persisted (snapshotted at issue) — served
+      // straight from the record, no provider round-trip.
+      if (!record.sourceDocument) {
+        throw new ConflictException(
+          `No source document is available for invoice ${invoiceId} (status ${record.status})`,
+        );
+      }
+      this.streamStoredDocument(res, invoiceId, kind, record.sourceDocument);
+      return;
+    }
+
+    // `rendered` (and any future provider-served kind) goes through the adapter.
+    if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
+      throw new ConflictException(
+        `Document is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+      );
+    }
+    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+      record.connectionId,
+      'Invoicing',
+    );
+    if (!isRegulatoryDocumentReader(adapter)) {
+      throw new ConflictException(
+        `Invoice ${invoiceId} provider does not expose downloadable documents`,
+      );
+    }
+    try {
+      const document = await adapter.getRegulatoryDocument(record, kind);
+      this.streamBinaryDocument(res, invoiceId, kind, document.contentType, Buffer.from(document.content));
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} provider cannot produce a '${kind}' document`,
+        );
+      }
+      throw error;
+    }
+  }
+
   @Get('invoices/:invoiceId/upo')
   @ApiOperation({
     summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
@@ -610,13 +684,8 @@ export class InvoicingController {
     // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
     // runs FIRST so a thrown error still routes through the exception layer
     // before any byte is written; `res.*` only ever runs on success.
-    const document = await adapter.getRegulatoryDocument(record);
-    // The adapter guarantees a non-empty contentType (defaults to application/xml
-    // when the provider omits it), so the header below is always well-formed.
-    const ext = extensionForContentType(document.contentType);
-    res.setHeader('Content-Type', document.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="ol-upo-${invoiceId}.${ext}"`);
-    res.send(Buffer.from(document.content));
+    const document = await adapter.getRegulatoryDocument(record, 'upo');
+    this.streamBinaryDocument(res, invoiceId, 'upo', document.contentType, Buffer.from(document.content));
   }
 
   // Declared last: the single-segment `:invoiceId` route must not shadow the more
@@ -638,5 +707,55 @@ export class InvoicingController {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
     return InvoiceRecordResponseDto.fromDomain(record);
+  }
+
+  /**
+   * Narrow the `?kind=` query to a provider-fetched `RegulatoryDocumentKind`,
+   * defaulting to `source`. `upo` has its own dedicated route, so the document
+   * endpoint accepts only `source` | `rendered`; anything else is a 400.
+   */
+  private parseDocumentKind(raw: string | undefined): Exclude<RegulatoryDocumentKind, 'upo'> {
+    const value = raw ?? 'source';
+    if (value === 'source' || value === 'rendered') {
+      return value;
+    }
+    throw new BadRequestException(
+      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.filter((k) => k !== 'upo').join(', ')}`,
+    );
+  }
+
+  /** Stream a core-persisted {@link StoredDocument} (base64-decoded) as an attachment. */
+  private streamStoredDocument(
+    res: Response,
+    invoiceId: string,
+    kind: RegulatoryDocumentKind,
+    document: StoredDocument,
+  ): void {
+    this.streamBinaryDocument(
+      res,
+      invoiceId,
+      kind,
+      document.contentType,
+      Buffer.from(document.contentBase64, 'base64'),
+    );
+  }
+
+  /**
+   * Set the binary download headers and send. `@Res()` disables Nest's JSON
+   * serializer; callers must run any throwing work BEFORE this so errors still
+   * route through the exception layer before a byte is written.
+   */
+  private streamBinaryDocument(
+    res: Response,
+    invoiceId: string,
+    kind: RegulatoryDocumentKind,
+    contentType: string,
+    body: Buffer,
+  ): void {
+    const safeContentType = contentType.length > 0 ? contentType : 'application/octet-stream';
+    const ext = extensionForContentType(safeContentType);
+    res.setHeader('Content-Type', safeContentType);
+    res.setHeader('Content-Disposition', `attachment; filename="ol-${kind}-${invoiceId}.${ext}"`);
+    res.send(body);
   }
 }

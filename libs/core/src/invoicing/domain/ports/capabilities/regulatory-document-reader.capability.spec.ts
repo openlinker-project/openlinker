@@ -3,9 +3,12 @@
  *
  * @module libs/core/src/invoicing/domain/ports/capabilities
  */
+import type { InvoiceRecord } from '../../entities/invoice-record.entity';
 import type { InvoicingPort } from '../invoicing.port';
 import type { RegulatoryDocument } from './regulatory-document-reader.capability';
 import { isRegulatoryDocumentReader } from './regulatory-document-reader.capability';
+
+const record = {} as InvoiceRecord;
 
 const baseInvoicingPort: InvoicingPort = {
   issueInvoice: jest.fn(),
@@ -27,5 +30,18 @@ describe('isRegulatoryDocumentReader', () => {
     } as InvoicingPort;
 
     expect(isRegulatoryDocumentReader(adapter)).toBe(true);
+  });
+
+  it('should let a narrowed reader be called without a kind (kind defaults to upo)', async () => {
+    const document: RegulatoryDocument = { content: new Uint8Array([9]), contentType: 'application/xml' };
+    const getRegulatoryDocument = jest.fn().mockResolvedValue(document);
+    const adapter: InvoicingPort = { ...baseInvoicingPort, getRegulatoryDocument } as InvoicingPort;
+
+    if (!isRegulatoryDocumentReader(adapter)) {
+      throw new Error('guard should have narrowed');
+    }
+    // No `kind` argument — the optional param defaults to `upo` at the implementation.
+    await expect(adapter.getRegulatoryDocument(record)).resolves.toBe(document);
+    expect(getRegulatoryDocument).toHaveBeenCalledWith(record);
   });
 });

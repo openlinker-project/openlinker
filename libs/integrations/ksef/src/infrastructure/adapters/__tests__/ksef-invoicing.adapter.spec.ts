@@ -6,7 +6,11 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
-import { isRegulatoryDocumentReader, isRegulatoryTransmitter } from '@openlinker/core/invoicing';
+import {
+  isRegulatoryDocumentReader,
+  isRegulatoryTransmitter,
+  UnsupportedRegulatoryDocumentKindError,
+} from '@openlinker/core/invoicing';
 import type {
   BuyerProfile as BuyerProfileType,
   IssueInvoiceCommand,
@@ -154,7 +158,7 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const { record, seller } = await adapter(http).issueInvoice(command());
+      const { record, seller, sourceDocument } = await adapter(http).issueInvoice(command());
 
       // The adapter surfaces the neutral seller block (scheme-tagged tax id) so
       // the core InvoiceService can snapshot the issued-document content.
@@ -162,6 +166,13 @@ describe('KsefInvoicingAdapter', () => {
         name: 'Acme Sp. z o.o.',
         taxId: { scheme: 'pl-nip', value: '1234567890' },
         address: SELLER.address,
+      });
+
+      // The built FA(3) XML rides back as a neutral base64 source document so core
+      // persists it for `GET .../document?kind=source` (#1224 W3).
+      expect(sourceDocument).toEqual({
+        contentType: 'application/xml',
+        contentBase64: Buffer.from('<Faktura>fake</Faktura>', 'utf-8').toString('base64'),
       });
 
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
@@ -631,6 +642,33 @@ describe('KsefInvoicingAdapter', () => {
       await expect(adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(null))).rejects.toBeInstanceOf(
         KsefSessionException,
       );
+    });
+
+    it('should fetch UPO when kind is explicitly upo (back-compat default)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seedBinaryGet(UPO_PATH, {
+        data: new Uint8Array([1]),
+        contentType: 'application/xml',
+        status: 200,
+        headers: { 'content-type': 'application/xml' },
+      });
+
+      const result = await adapter(http).getRegulatoryDocument(record(), 'upo');
+
+      expect(result.contentType).toBe('application/xml');
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
+    });
+
+    it('should reject a rendered-kind request with UnsupportedRegulatoryDocumentKindError', async () => {
+      await expect(
+        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'rendered'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+
+    it('should reject a source-kind request via the adapter (core serves it from the snapshot)', async () => {
+      await expect(
+        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'source'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
     });
   });
 });

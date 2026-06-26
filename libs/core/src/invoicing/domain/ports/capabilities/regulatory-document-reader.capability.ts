@@ -21,6 +21,7 @@
  * @module libs/core/src/invoicing/domain/ports/capabilities
  */
 import type { InvoiceRecord } from '../../entities/invoice-record.entity';
+import type { RegulatoryDocumentKind } from '../../types/invoicing.types';
 import type { InvoicingPort } from '../invoicing.port';
 
 /**
@@ -36,13 +37,23 @@ export interface RegulatoryDocument {
 
 export interface RegulatoryDocumentReader {
   /**
-   * Retrieve the authority's confirmation document for an already-cleared record
-   * (e.g. the UPO on the PL/KSeF regime). The adapter resolves its provider
-   * references from the record; callers gate on the record being cleared before
-   * invoking (a not-yet-available document is a caller-side 409, not a thrown
-   * adapter error).
+   * Retrieve a regulatory document for a record by neutral {@link RegulatoryDocumentKind}:
+   *  - `upo` — the authority's confirmation document (PL/KSeF: the UPO).
+   *  - `rendered` — a human-readable rendering (HTML/PDF) when the provider can
+   *    produce one server-side.
+   * (`source` — the persisted machine-readable source document — is served by the
+   * core service directly from the `InvoiceRecord.sourceDocument` snapshot, not via
+   * this adapter call.)
+   *
+   * The adapter resolves its provider references from the record; callers gate on
+   * the record being cleared before invoking. A document the provider cannot
+   * produce → a thrown {@link UnsupportedRegulatoryDocumentKindError} the caller
+   * maps to 409 (not a hard failure). `kind` defaults to `upo` for back-compat.
    */
-  getRegulatoryDocument(record: InvoiceRecord): Promise<RegulatoryDocument>;
+  getRegulatoryDocument(
+    record: InvoiceRecord,
+    kind?: RegulatoryDocumentKind,
+  ): Promise<RegulatoryDocument>;
 }
 
 export function isRegulatoryDocumentReader(

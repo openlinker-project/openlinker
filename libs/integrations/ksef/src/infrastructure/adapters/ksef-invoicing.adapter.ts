@@ -58,12 +58,14 @@ import type {
   IssueInvoiceResult,
   IssuedDocumentSeller,
   RegulatoryDocument,
+  RegulatoryDocumentKind,
   RegulatoryDocumentReader,
   RegulatoryTransmitter,
+  StoredDocument,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
@@ -207,7 +209,17 @@ export class KsefInvoicingAdapter
       issuedAt,
       issuedAt,
     );
-    return { record, seller: this.toNeutralSeller() };
+    // Persist the FA(3) source XML as a neutral opaque blob so the core service can
+    // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
+    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+  }
+
+  /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
+  private toSourceDocument(xml: string): StoredDocument {
+    return {
+      contentType: 'application/xml',
+      contentBase64: Buffer.from(xml, 'utf-8').toString('base64'),
+    };
   }
 
   /**
@@ -333,7 +345,17 @@ export class KsefInvoicingAdapter
    * transport exception the controller maps (404/409/502); core sees only neutral
    * bytes, never a KSeF/UPO wire detail.
    */
-  async getRegulatoryDocument(record: InvoiceRecordType): Promise<RegulatoryDocument> {
+  async getRegulatoryDocument(
+    record: InvoiceRecordType,
+    kind: RegulatoryDocumentKind = 'upo',
+  ): Promise<RegulatoryDocument> {
+    // `source` is the persisted FA(3) XML served by the core service from the
+    // record snapshot, never via this adapter. `rendered` (server-side HTML/PDF
+    // visualization) is not a KSeF API capability — integrators render the FA(3)
+    // XML client-side via the official XSLT. Both are soft 409s, not failures.
+    if (kind !== 'upo') {
+      throw new UnsupportedRegulatoryDocumentKindError(kind);
+    }
     const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);
     const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
       invoiceRef,

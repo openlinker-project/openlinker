@@ -19,6 +19,7 @@ import type {
   InvoiceStatus,
   IssuedDocumentContent,
   RegulatoryStatus,
+  StoredDocument,
 } from '../types/invoicing.types';
 
 export class InvoiceRecord {
@@ -82,6 +83,13 @@ export class InvoiceRecord {
      * content). Backs the FE "Invoice contents" card via `GET /invoices/:id/content`.
      */
     public readonly documentContent: IssuedDocumentContent | null = null,
+    /**
+     * Neutral persisted source document (the machine-readable document submitted
+     * to the authority — PL/KSeF: the FA(3) XML), captured at issue time; `null`
+     * until issued (or when the adapter surfaces no source document). Re-served by
+     * `GET /invoices/:id/document?kind=source`.
+     */
+    public readonly sourceDocument: StoredDocument | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

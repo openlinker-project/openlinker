@@ -196,6 +196,17 @@ describe('InvoiceRecordRepository', () => {
 
       expect(result.documentContent).toEqual(content);
     });
+
+    it('round-trips the persisted source document blob', async () => {
+      const sourceDocument = { contentType: 'application/xml', contentBase64: 'PEZha3R1cmE+' };
+      ormRepo.save.mockImplementation((entity) =>
+        Promise.resolve(ormRow({ sourceDocument: (entity as InvoiceRecordOrmEntity).sourceDocument })),
+      );
+
+      const result = await repository.create({ ...createInput, sourceDocument });
+
+      expect(result.sourceDocument).toEqual(sourceDocument);
+    });
   });
 
   describe('findById', () => {

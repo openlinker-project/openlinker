@@ -21,6 +21,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   INVOICE_RECORD_REPOSITORY_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
+  UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
@@ -28,6 +29,7 @@ import type {
   InvoicingPort,
   IssuedDocumentContent,
   RegulatoryDocument,
+  StoredDocument,
 } from '@openlinker/core/invoicing';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import {
@@ -132,6 +134,57 @@ function recordWithContent(content: IssuedDocumentContent | null): InvoiceRecord
     issuedAt,
     issuedAt,
     content,
+  );
+  return r as unknown as InvoiceRecord;
+}
+
+function makeOrderRecord(snapshot?: Record<string, unknown>): OrderRecord {
+  return new OrderRecord(
+    'ol_order_1',
+    'cust_1',
+    'conn_src',
+    null,
+    snapshot ?? {
+      id: 'ol_order_1',
+      status: 'processing',
+      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' }],
+      totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+      billingAddress: {
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '61-001',
+        country: 'PL',
+      },
+      createdAt: '2026-06-20T08:00:00.000Z',
+      updatedAt: '2026-06-21T09:30:00.000Z',
+const SAMPLE_SOURCE: StoredDocument = {
+  contentType: 'application/xml',
+  contentBase64: Buffer.from('<Document>fake</Document>', 'utf-8').toString('base64'),
+};
+
+function recordWithSource(source: StoredDocument | null): InvoiceRecord {
+  const issuedAt = new Date('2026-04-01T12:00:00Z');
+  const r = new InvoiceRecordClass(
+    'rec-inv-1',
+    'conn-ksef-1',
+    'ol_order_001',
+    'ksef',
+    'invoice',
+    'issued',
+    'SESSION:INVOICE',
+    null,
+    'accepted',
+    '5265877635-20250826-0100001AF629-AF',
+    null,
+    null,
+    issuedAt,
+    null,
+    issuedAt,
+    issuedAt,
+    null,
+    source,
   );
   return r as unknown as InvoiceRecord;
 }
@@ -863,6 +916,86 @@ describe('InvoicingController', () => {
       invoiceService.getInvoiceById.mockResolvedValue(recordWithContent(null));
 
       await expect(controller.getContent('rec-inv-1')).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('getDocument', () => {
+    it('should stream the persisted source XML for kind=source (200), no provider call', async () => {
+      repository.findById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
+
+      const res = mockResponse();
+      await controller.downloadDocument('rec-inv-1', res, 'source');
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(res.headers['Content-Type']).toBe('application/xml');
+      expect(res.headers['Content-Disposition']).toContain('ol-source-rec-inv-1.xml');
+      expect(res.body).toEqual(Buffer.from('<Document>fake</Document>', 'utf-8'));
+    });
+
+    it('should default kind to source when the query param is absent', async () => {
+      repository.findById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
+
+      const res = mockResponse();
+      await controller.downloadDocument('rec-inv-1', res, undefined);
+
+      expect(res.body).toEqual(Buffer.from('<Document>fake</Document>', 'utf-8'));
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.downloadDocument('nope', mockResponse(), 'source'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should 409 for kind=source when no source snapshot exists', async () => {
+      repository.findById.mockResolvedValue(recordWithSource(null));
+
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'source'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should 400 on an unknown kind', async () => {
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'bogus'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should 400 when kind=upo is passed (upo has its own dedicated route)', async () => {
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'upo'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should 409 for kind=rendered when the provider cannot produce it', async () => {
+      repository.findById.mockResolvedValue(clearedRecord());
+      const adapter: InvoicingPort = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
+        getRegulatoryDocument: jest
+          .fn()
+          .mockRejectedValue(new UnsupportedRegulatoryDocumentKindError('rendered')),
+      } as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should 409 for kind=rendered when the invoice is not yet cleared', async () => {
+      repository.findById.mockResolvedValue(pendingRecord());
+
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     });
   });
 });

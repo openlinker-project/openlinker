@@ -289,6 +289,30 @@ export interface IssuedDocumentContent {
 }
 
 /**
+ * Neutral document kind a {@link RegulatoryDocumentReader} can fetch for a record.
+ * Country-agnostic (ADR-026):
+ *  - `upo` — the tax authority's confirmation/receipt document (PL: UPO).
+ *  - `source` — the machine-readable source document submitted to the authority
+ *    (PL: the FA(3) XML), persisted at issue time.
+ *  - `rendered` — a human-readable rendering (HTML/PDF) of the source document,
+ *    when the provider can produce one server-side.
+ */
+export const RegulatoryDocumentKindValues = ['upo', 'source', 'rendered'] as const;
+export type RegulatoryDocumentKind = (typeof RegulatoryDocumentKindValues)[number];
+
+/**
+ * Neutral persisted document blob — provider-reported MIME type + base64-encoded
+ * bytes. Used to snapshot a document (e.g. the issued source XML) at issue time so
+ * it can be re-served later without a provider round-trip. jsonb-friendly (no raw
+ * `Uint8Array`); the interface layer decodes the base64 to bytes when streaming.
+ */
+export interface StoredDocument {
+  contentType: string;
+  /** Base64-encoded document bytes. */
+  contentBase64: string;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -355,6 +379,14 @@ export interface IssueCorrectionCommand {
 export interface IssueInvoiceResult {
   record: InvoiceRecord;
   seller?: IssuedDocumentSeller;
+  /**
+   * OPTIONAL machine-readable source document the adapter built and submitted to
+   * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque
+   * {@link StoredDocument} at issue time so `GET .../document?kind=source` can
+   * re-serve it without a provider round-trip. Adapters that do not expose a
+   * source document omit it.
+   */
+  sourceDocument?: StoredDocument;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -411,6 +443,8 @@ export interface CreateInvoiceRecordInput {
   hasBuyerTaxId?: boolean;
   /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
   documentContent?: IssuedDocumentContent | null;
+  /** Persisted machine-readable source document (e.g. FA(3) XML); `null` when not captured. */
+  sourceDocument?: StoredDocument | null;
 }
 
 /**
@@ -452,7 +486,11 @@ export interface PaginatedInvoiceRecords {
   total: number;
 }
 
-/** Patch applied to an existing record after an issue / transmission attempt. */
+/**
+ * Patch applied to an existing record after an issue / transmission attempt.
+ * `sourceDocument` is intentionally absent: it is snapshotted once at issue time
+ * (via {@link CreateInvoiceRecordInput}) and never patched afterwards (write-once).
+ */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
   /**

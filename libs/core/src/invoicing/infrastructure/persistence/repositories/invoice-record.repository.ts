@@ -284,6 +284,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.leaseExpiresAt = null;
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
     entity.documentContent = input.documentContent ?? null;
+    entity.sourceDocument = input.sourceDocument ?? null;
     return entity;
   }
 
@@ -311,6 +312,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.leaseExpiresAt,
       entity.hasBuyerTaxId,
       entity.documentContent,
+      entity.sourceDocument,
     );
   }
 }
