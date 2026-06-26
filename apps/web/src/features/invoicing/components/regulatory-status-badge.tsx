@@ -15,7 +15,11 @@ import type { RegulatoryStatus } from '../api/invoicing.types';
 const TONE: Record<RegulatoryStatus, StatusBadgeTone> = {
   'not-applicable': 'neutral',
   submitted: 'info',
-  cleared: 'success',
+  // `cleared` is a reserved split-clearance status no current provider emits;
+  // terminal regulatory success is `accepted`. Never render `cleared` as
+  // `success` — keep it a non-terminal `info` so an unconfirmed clearance can
+  // never read as done (matches the constraint documented in invoicing.types.ts).
+  cleared: 'info',
   accepted: 'success',
   rejected: 'error',
 };
@@ -23,7 +27,7 @@ const TONE: Record<RegulatoryStatus, StatusBadgeTone> = {
 const LABEL_FALLBACK: Record<RegulatoryStatus, string> = {
   'not-applicable': 'N/A',
   submitted: 'KSeF: submitted',
-  cleared: 'KSeF: cleared',
+  cleared: 'KSeF: clearing',
   accepted: 'KSeF: accepted',
   rejected: 'KSeF: rejected',
 };

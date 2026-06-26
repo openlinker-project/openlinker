@@ -45,6 +45,7 @@ import { RegulatoryStatusBadge } from '../../features/invoicing/components/regul
 import { InvoicePdfLink } from '../../features/invoicing/components/invoice-pdf-link';
 import { InvoiceTimeline } from '../../features/invoicing/components/invoice-timeline';
 import { DOCUMENT_TYPE_LABEL_FALLBACK } from '../../features/invoicing/components/document-type-select';
+import { resolveIssueErrorMessage } from '../../features/invoicing/lib/issue-error-message';
 
 export function InvoiceDetailPage(): ReactElement {
   const { invoiceId = '' } = useParams<{ invoiceId: string }>();
@@ -85,14 +86,10 @@ export function InvoiceDetailPage(): ReactElement {
           });
         },
         onError: (error) => {
-          const description =
-            error instanceof ApiError
-              ? error.message
-              : t('invoice.action.retryFailed.generic', 'An error occurred. Please try again.');
           showToast({
             tone: 'error',
             title: t('invoice.action.retryFailed', 'Retry failed'),
-            description,
+            description: resolveIssueErrorMessage(error, t),
           });
         },
       },
