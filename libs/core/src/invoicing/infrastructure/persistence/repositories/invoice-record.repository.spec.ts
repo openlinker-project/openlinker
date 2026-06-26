@@ -77,6 +77,9 @@ describe('InvoiceRecordRepository', () => {
     ormRepo = {
       findOne: jest.fn(),
       save: jest.fn(),
+      // `create` hydrates a RETURNING raw row into an entity (#1200 claimForIssue);
+      // the real impl copies fields, so a pass-through is faithful enough here.
+      create: jest.fn((raw) => raw as InvoiceRecordOrmEntity),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     } as unknown as jest.Mocked<Repository<InvoiceRecordOrmEntity>>;
     repository = new InvoiceRecordRepository(ormRepo);
@@ -93,6 +96,32 @@ describe('InvoiceRecordRepository', () => {
       expect(result.documentType).toBe('invoice');
       expect(result.regulatoryStatus).toBe('not-applicable');
       expect(result.isIssued).toBe(false);
+    });
+
+    it('maps the W1 failureCode/failureReason from a failed-create input onto the ORM row', async () => {
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      await repository.create({
+        ...createInput,
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'buyer-tax-id-invalid',
+        failureReason: 'The buyer tax identifier was rejected as invalid.',
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureCode).toBe('buyer-tax-id-invalid');
+      expect(saved.failureReason).toBe('The buyer tax identifier was rejected as invalid.');
+    });
+
+    it('defaults the W1 failureCode/failureReason to null on a pending create', async () => {
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      await repository.create(createInput);
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureCode).toBeNull();
+      expect(saved.failureReason).toBeNull();
     });
 
     it('converts a unique-violation into DuplicateInvoiceRecordException', async () => {
@@ -186,6 +215,121 @@ describe('InvoiceRecordRepository', () => {
       await expect(
         repository.updateOutcome('missing', { status: 'failed' }),
       ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
+    });
+
+    it('persists the #1200 failureMode + lease fields and the W1 failureCode/failureReason when patched', async () => {
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
+      ormRepo.save.mockImplementation((e) => Promise.resolve(e as InvoiceRecordOrmEntity));
+
+      const result = await repository.updateOutcome('ol_invoice_1', {
+        status: 'failed',
+        failureMode: 'in-doubt',
+        failureCode: 'transport-timeout',
+        failureReason: 'The invoicing request timed out.',
+        leaseExpiresAt: null,
+      });
+
+      const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
+      expect(saved.failureMode).toBe('in-doubt');
+      expect(saved.failureCode).toBe('transport-timeout');
+      expect(saved.failureReason).toBe('The invoicing request timed out.');
+      expect(saved.leaseExpiresAt).toBeNull();
+      expect(result.failureMode).toBe('in-doubt');
+      expect(result.failureCode).toBe('transport-timeout');
+      expect(result.failureReason).toBe('The invoicing request timed out.');
+    });
+  });
+
+  describe('claimForIssue (#1200 CAS)', () => {
+    let updateQb: {
+      update: jest.Mock;
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      returning: jest.Mock;
+      execute: jest.Mock;
+    };
+
+    beforeEach(() => {
+      updateQb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockReturnThis(),
+        execute: jest.fn(),
+      };
+      ormRepo.createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(updateQb) as unknown as typeof ormRepo.createQueryBuilder;
+    });
+
+    it('returns the claimed (issuing) record from the RETURNING row on a winning CAS (affected > 0)', async () => {
+      const lease = new Date('2026-06-25T12:05:00.000Z');
+      // Single-statement win: the row comes back via RETURNING (`raw`), NOT a
+      // follow-up read — closes the won-but-stale-re-read race (#1200).
+      updateQb.execute.mockResolvedValue({
+        affected: 1,
+        raw: [ormRow({ status: 'issuing', leaseExpiresAt: lease })],
+      });
+
+      const result = await repository.claimForIssue('ol_invoice_1', lease);
+
+      expect(updateQb.set).toHaveBeenCalledWith({ status: 'issuing', leaseExpiresAt: lease });
+      expect(updateQb.returning).toHaveBeenCalledWith('*');
+      // Fiscal guard at the persistence boundary (#1200): the claim predicate
+      // must only re-claim a TERMINAL-`rejected` failed row — never an in-doubt
+      // one — so an in-doubt failure can never be re-issued even via a direct
+      // claimForIssue call that bypasses the service gate.
+      const claimSql = (updateQb.andWhere.mock.calls as unknown[][])[0][0] as string;
+      expect(claimSql).toContain(`"failureMode" = 'rejected'`);
+      expect(claimSql).not.toMatch(/status IN \('pending', 'failed'\)/);
+      // No separate re-read on the happy path.
+      expect(ormRepo.findOne).not.toHaveBeenCalled();
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe('issuing');
+    });
+
+    it('falls back to a re-read when a win returns no RETURNING row, and NEVER downgrades a win to null', async () => {
+      // Driver that does not honour RETURNING: affected > 0 but empty raw. A WON
+      // claim must resolve to the row, never to a (false) contended-loss null.
+      updateQb.execute.mockResolvedValue({ affected: 1, raw: [] });
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
+
+      const result = await repository.claimForIssue('ol_invoice_1', new Date());
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe('issuing');
+    });
+
+    it('throws (does NOT return null) when a win cannot be read back at all', async () => {
+      // affected > 0 (we provably hold the lease) but the row is unreadable: fail
+      // loud rather than silently report a loss that would orphan the held row.
+      updateQb.execute.mockResolvedValue({ affected: 1, raw: [] });
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await expect(repository.claimForIssue('ol_invoice_1', new Date())).rejects.toBeInstanceOf(
+        InvoiceRecordNotFoundException,
+      );
+    });
+
+    it('returns null on a LOST CAS (affected 0) when the row still exists', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0, raw: [] });
+      // Existence disambiguation read finds the (contended) row.
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issuing' }));
+
+      const result = await repository.claimForIssue('ol_invoice_1', new Date());
+
+      expect(result).toBeNull();
+    });
+
+    it('throws InvoiceRecordNotFoundException when affected 0 and the row is absent', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0, raw: [] });
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await expect(repository.claimForIssue('missing', new Date())).rejects.toBeInstanceOf(
+        InvoiceRecordNotFoundException,
+      );
     });
   });
 

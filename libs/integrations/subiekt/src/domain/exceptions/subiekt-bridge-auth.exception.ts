@@ -17,6 +17,13 @@ export class SubiektBridgeAuthError extends Error {
   /** Bridge HTTP status that triggered this (401 or 403). */
   readonly status: number;
 
+  /**
+   * Neutral failure discriminator (#1200) read STRUCTURALLY by core. A 401/403 is
+   * rejected at the bridge BEFORE the request reaches Subiekt, so NO document was
+   * created — the row is SAFE to re-attempt once the credential is fixed.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(status: number) {
     super('Subiekt bridge authentication failed (check bridge token/credentials)');
     this.name = 'SubiektBridgeAuthError';
