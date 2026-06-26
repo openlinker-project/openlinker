@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { editConnectionSchema, mergeStructuredIntoConfig } from './edit-connection.schema';
+import { buildKsefSellerConfig } from './ksef-setup.schema';
+import type { KsefSellerProfileInput } from './ksef-seller-config';
 
 describe('mergeStructuredIntoConfig', () => {
   it('writes a new baseUrl into an empty config', () => {
@@ -317,5 +319,160 @@ describe('mergeStructuredIntoConfig — inpostPsModuleType (#767/#1155)', () => 
   it('does not create the key when empty string is patched into an empty config', () => {
     const result = mergeStructuredIntoConfig({}, { inpostPsModuleType: '' });
     expect('inpostPsModuleType' in result).toBe(false);
+  });
+});
+
+describe('mergeStructuredIntoConfig — KSeF seller profile (#1223)', () => {
+  it('assembles the nested config.seller shape resolveSeller reads', () => {
+    const result = mergeStructuredIntoConfig(
+      { env: 'prod' },
+      {
+        sellerNip: '12-3456789-0',
+        sellerName: 'ACME Sp. z o.o.',
+        sellerAddressLine1: 'ul. Przykładowa 1',
+        sellerCity: 'Warszawa',
+        sellerPostalCode: '00-001',
+        sellerCountryIso2: 'pl',
+      },
+    );
+    // NIP normalised to digits, country upper-cased, blank line2 omitted.
+    expect(result.seller).toEqual({
+      nip: '1234567890',
+      name: 'ACME Sp. z o.o.',
+      address: {
+        line1: 'ul. Przykładowa 1',
+        city: 'Warszawa',
+        postalCode: '00-001',
+        countryIso2: 'PL',
+      },
+    });
+    // No flat sellerNip — the canonical location is config.seller.nip.
+    expect(result.sellerNip).toBeUndefined();
+    expect(result.env).toBe('prod');
+  });
+
+  it('preserves untouched seller siblings on a single-field patch', () => {
+    const base = {
+      seller: {
+        nip: '1234567890',
+        name: 'ACME',
+        address: { line1: 'ul. A 1', city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+      },
+    };
+    const result = mergeStructuredIntoConfig(base, { sellerCity: 'Gdańsk' });
+    expect(result.seller).toEqual({
+      nip: '1234567890',
+      name: 'ACME',
+      address: { line1: 'ul. A 1', city: 'Gdańsk', postalCode: '30-001', countryIso2: 'PL' },
+    });
+  });
+
+  it('drops an emptied address object and an emptied seller object', () => {
+    const base = {
+      seller: { address: { city: 'Łódź' } },
+    };
+    const result = mergeStructuredIntoConfig(base, { sellerCity: '' });
+    expect('seller' in result).toBe(false);
+  });
+
+  it('does not touch config.seller when no seller sub-field is on the patch', () => {
+    const base = { seller: { nip: '1234567890' }, env: 'test' };
+    const result = mergeStructuredIntoConfig(base, { ksefEnvironment: 'demo' });
+    expect(result.seller).toEqual({ nip: '1234567890' });
+    expect(result.env).toBe('demo');
+  });
+});
+
+describe('KSeF seller assembly — create/edit parity (#1223)', () => {
+  // Feeds the identical flat seller input through the create path
+  // (buildKsefSellerConfig) and the edit path (mergeStructuredIntoConfig onto an
+  // empty config) and asserts both produce the same nested config.seller. Guards
+  // against the two flows' normalization/assembly drifting apart now that they
+  // share one source (ksef-seller-config).
+  const cases: Array<{ name: string; input: KsefSellerProfileInput }> = [
+    {
+      name: 'full profile with separators + lower-case country',
+      input: {
+        sellerNip: '12-3456789-0',
+        sellerName: '  ACME Sp. z o.o.  ',
+        sellerAddressLine1: ' ul. Przykładowa 1 ',
+        sellerAddressLine2: '',
+        sellerCity: 'Warszawa',
+        sellerPostalCode: '00-001',
+        sellerCountryIso2: 'pl',
+      },
+    },
+    {
+      name: 'NIP only, no address',
+      input: { sellerNip: '1234567890' },
+    },
+    {
+      name: 'name + partial address',
+      input: { sellerName: 'Solo', sellerCity: 'Kraków' },
+    },
+    {
+      name: 'lone country default (hollow profile)',
+      input: { sellerCountryIso2: 'PL' },
+    },
+    {
+      name: 'completely empty',
+      input: {},
+    },
+  ];
+
+  for (const { name, input } of cases) {
+    it(`produces identical config.seller via create and edit paths — ${name}`, () => {
+      const createSeller = buildKsefSellerConfig(input);
+      const editSeller = mergeStructuredIntoConfig({}, input).seller;
+      expect(editSeller).toEqual(createSeller);
+    });
+  }
+
+  it('does not write a hollow seller from a lone PL country default', () => {
+    expect(buildKsefSellerConfig({ sellerCountryIso2: 'PL' })).toBeUndefined();
+    expect('seller' in mergeStructuredIntoConfig({}, { sellerCountryIso2: 'PL' })).toBe(false);
+  });
+});
+
+describe('editConnectionSchema — KSeF postal code validation (#1223)', () => {
+  const base = {
+    name: 'KSeF main',
+    configText: '{"env":"prod"}',
+  };
+
+  it('rejects a malformed PL postal code', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      sellerPostalCode: '1234',
+      sellerCountryIso2: 'PL',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a well-formed PL postal code', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      sellerPostalCode: '00-001',
+      sellerCountryIso2: 'PL',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('allows an empty postal code for incremental save', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      sellerPostalCode: '',
+      sellerCountryIso2: 'PL',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('skips the PL format check for a non-PL country', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      sellerPostalCode: 'SW1A 1AA',
+      sellerCountryIso2: 'GB',
+    });
+    expect(result.success).toBe(true);
   });
 });
