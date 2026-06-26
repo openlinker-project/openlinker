@@ -37,6 +37,7 @@ function ormRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordO
       pdfUrl: null,
       issuedAt: null,
       errorMessage: null,
+      hasBuyerTaxId: false,
       createdAt: now,
       updatedAt: now,
     },
@@ -124,7 +125,7 @@ describe('InvoiceRecordRepository', () => {
       expect(saved.failureReason).toBeNull();
     });
 
-    it('persists hasBuyerTaxId from the input and maps it back (#1202)', async () => {
+    it('should persist hasBuyerTaxId=true and map it back when the input carries the flag (#1202)', async () => {
       let savedEntity: InvoiceRecordOrmEntity | undefined;
       ormRepo.save.mockImplementation((entity) => {
         savedEntity = entity as InvoiceRecordOrmEntity;
@@ -137,7 +138,7 @@ describe('InvoiceRecordRepository', () => {
       expect(result.hasBuyerTaxId).toBe(true);
     });
 
-    it('defaults hasBuyerTaxId to false when the input omits it (#1202)', async () => {
+    it('should default hasBuyerTaxId to false when the input omits the flag (#1202)', async () => {
       let savedEntity: InvoiceRecordOrmEntity | undefined;
       ormRepo.save.mockImplementation((entity) => {
         savedEntity = entity as InvoiceRecordOrmEntity;
@@ -394,14 +395,14 @@ describe('InvoiceRecordRepository', () => {
       expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt <= :issuedTo', { issuedTo: to });
     });
 
-    it('maps taxId=with to hasBuyerTaxId = true (#1202)', async () => {
+    it('should filter by hasBuyerTaxId = true when taxId=with is provided (#1202)', async () => {
       await repository.findMany({ taxId: 'with' }, PAGE);
       expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
         hasBuyerTaxId: true,
       });
     });
 
-    it('maps taxId=without to hasBuyerTaxId = false (#1202)', async () => {
+    it('should filter by hasBuyerTaxId = false when taxId=without is provided (#1202)', async () => {
       await repository.findMany({ taxId: 'without' }, PAGE);
       expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
         hasBuyerTaxId: false,

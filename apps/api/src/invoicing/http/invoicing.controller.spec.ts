@@ -435,7 +435,7 @@ describe('InvoicingController', () => {
       );
     });
 
-    it('forwards the taxId=without filter to listInvoices (#1202)', async () => {
+    it('should forward taxId=without to listInvoices when taxId filter is provided (#1202)', async () => {
       invoiceService.listInvoices.mockResolvedValue({ items: [], total: 0 });
       await controller.listInvoices({ taxId: 'without', limit: 20, offset: 0 });
       const filter = invoiceService.listInvoices.mock.calls[0][0] as Record<string, unknown>;

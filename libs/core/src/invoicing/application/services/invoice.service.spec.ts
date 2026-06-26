@@ -71,6 +71,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.failureCode === undefined ? null : overrides.failureCode,
     overrides.failureReason === undefined ? null : overrides.failureReason,
     overrides.leaseExpiresAt === undefined ? null : overrides.leaseExpiresAt,
+    overrides.hasBuyerTaxId,
   );
 }
 
@@ -196,7 +197,7 @@ describe('InvoiceService', () => {
       );
     });
 
-    it('(a3) sets hasBuyerTaxId=false on the pending row when the buyer has no tax id (#1202)', async () => {
+    it('(a3) should set hasBuyerTaxId=false on the pending row when the buyer has no tax id (#1202)', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
       adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
