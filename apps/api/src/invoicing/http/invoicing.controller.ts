@@ -326,10 +326,9 @@ export class InvoicingController {
     summary: 'List invoice records',
     description:
       'Paginated list with AC-6 filters: status, connection, regulatory status, ' +
-      'issued date range. The AC-6 "with/without tax id" sub-filter is NOT exposed ' +
-      'here: the persisted InvoiceRecord projection has no buyer/tax-id column (the ' +
-      'buyer lives on the Order), so it cannot be served without a schema migration ' +
-      'that is out of #1119 scope. Tracked as #1202; not silently "done".',
+      'issued date range, and buyer-tax-id presence (taxId=with|without, #1202). ' +
+      'The taxId filter is served by the neutral denormalized hasBuyerTaxId column ' +
+      'on the projection (set on the write path), so no Order join is needed.',
   })
   @ApiResponse({
     status: 200,
@@ -346,6 +345,7 @@ export class InvoicingController {
       regulatoryStatus: query.regulatoryStatus,
       issuedFrom: query.issuedFrom ? new Date(query.issuedFrom) : undefined,
       issuedTo: query.issuedTo ? new Date(query.issuedTo) : undefined,
+      taxId: query.taxId,
     };
     const page = await this.invoiceService.listInvoices(filter, { limit, offset });
     return {
