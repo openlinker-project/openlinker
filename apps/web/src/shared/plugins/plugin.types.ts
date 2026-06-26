@@ -33,6 +33,7 @@ import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { Role } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
+import type { InvoiceRecord } from '../../features/invoicing';
 import type { CreateOfferRequest } from '../../features/listings';
 import type { StructuredError } from '../types/structured-error.types';
 
@@ -328,6 +329,35 @@ export interface OfferValidationContribution {
 }
 
 /**
+ * Props the per-provider invoice detail section receives (#1240). Content-only
+ * — the host owns the surrounding card chrome and the capability gate; the slot
+ * renders the platform-specific regulatory region (KSeF: UPO + FA(3) + KSeF
+ * number; Subiekt: read-only KSeF status + PDF). Resolved via
+ * `usePlatform(connection.platformType)`. Absent ⇒ no provider region renders.
+ * Reused by the order panel, the list-row affordances, and the detail page.
+ */
+export interface InvoiceDetailSectionProps {
+  invoice: InvoiceRecord;
+  connection: Connection;
+}
+
+/**
+ * Props the per-provider correction flow receives (#1240, Wave C). Launched
+ * from "Issue correction" on an issued invoice. The form is per-provider by
+ * design (KSeF emits a KOR linked to the original KSeF number; Subiekt issues a
+ * correcting document by adjusted quantity + price) — "a form for everything is
+ * a form for nothing". Content-only; the host owns the Dialog chrome and closes
+ * it on `onClose`. Resolved via `usePlatform(connection.platformType)`. Absent
+ * ⇒ correction is unavailable for that provider.
+ */
+export interface InvoiceCorrectionFlowProps {
+  invoice: InvoiceRecord;
+  connection: Connection;
+  onClose: () => void;
+  onCorrectionIssued: (correctionInvoiceId: string) => void;
+}
+
+/**
  * Build-time contribution bag. Folded by the host at module load.
  */
 export interface BuildContribution {
@@ -443,6 +473,24 @@ export interface PlatformContribution {
    * blockers (price/stock/category) apply.
    */
   offerValidation?: OfferValidationContribution;
+  /**
+   * Invoicing: render the platform-specific regulatory region of an invoice
+   * (#1240). Content-only, resolved via `usePlatform(connection.platformType)`;
+   * the host owns the card chrome and gates on the connection's regulatory
+   * capability. KSeF (transmits directly) renders UPO + FA(3) + KSeF number;
+   * Subiekt (transmits to KSeF natively) renders a read-only KSeF status + PDF
+   * link. Reused by the order panel, list rows, and detail page. Absent ⇒ no
+   * provider region renders (the neutral shell stands alone). Mirrors the
+   * `bulkOfferRowSection` content-only precedent.
+   */
+  invoiceDetailSection?: ComponentType<InvoiceDetailSectionProps>;
+  /**
+   * Invoicing: render the platform-specific correction flow (#1240, Wave C).
+   * Launched from "Issue correction" on an issued invoice; per-provider steps
+   * by design. Resolved via `usePlatform(connection.platformType)`. Absent ⇒
+   * the correction affordance is hidden for that provider.
+   */
+  invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
 }
 
 /**
