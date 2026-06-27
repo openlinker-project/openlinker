@@ -36,6 +36,18 @@ export class AttributeMappingRepository implements AttributeMappingRepositoryPor
     return entities.map((e) => this.toDomain(e));
   }
 
+  async findByProvenance(destinationTaxonomyProvenance: string): Promise<AttributeMapping[]> {
+    // Borrowed-taxonomy reuse (#1045): every attribute mapping authored under this
+    // owner provenance, across destination connections. The projection service
+    // filters by source connection + category in memory, so a `borrows` destination
+    // (ERLI) reuses the owner's (Allegro's) attribute mappings with zero re-authoring.
+    const entities = await this.repo.find({
+      where: { destinationTaxonomyProvenance },
+      order: { sourceAttributeKey: 'ASC', id: 'ASC' },
+    });
+    return entities.map((e) => this.toDomain(e));
+  }
+
   async upsertMapping(
     destinationConnectionId: string,
     input: AttributeMappingInput
@@ -60,6 +72,7 @@ export class AttributeMappingRepository implements AttributeMappingRepositoryPor
       entity.sourceAttributeKey = input.sourceAttributeKey;
       entity.destinationParameterName = input.destinationParameterName;
       entity.destinationCategoryId = destinationCategoryId;
+      entity.destinationTaxonomyProvenance = input.destinationTaxonomyProvenance ?? 'allegro';
 
       // Clear existing value rows up front. The relation's cascade +
       // orphanedRowAction would otherwise re-insert the new set *before*
@@ -101,7 +114,8 @@ export class AttributeMappingRepository implements AttributeMappingRepositoryPor
       (entity.values ?? []).map(
         (v) =>
           new AttributeValueMapping(v.id, v.attributeMappingId, v.sourceValue, v.destinationValue)
-      )
+      ),
+      entity.destinationTaxonomyProvenance
     );
   }
 }

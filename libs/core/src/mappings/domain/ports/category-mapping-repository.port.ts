@@ -33,6 +33,25 @@ export interface CategoryMappingRepositoryPort {
   ): Promise<CategoryMapping | null>;
 
   /**
+   * Resolve a mapping for a source category against any destination connection
+   * that authored a row under the given owner taxonomy provenance (#1045, ADR-023
+   * §40/§83) — the "borrowed taxonomy reuse" lookup. A `borrows` destination
+   * (ERLI) has no rows of its own; this reuses an owner-authored row
+   * (`destination_taxonomy_provenance = :provenance`, e.g. `'allegro'`) with zero
+   * re-authoring.
+   *
+   * When `sourceConnectionId` is given, matches rows for that source store OR the
+   * source-agnostic (`NULL`) historical rows — bounding multi-owner-connection
+   * ambiguity. Like `findBySourceCategory`, MUST order deterministically and warn
+   * when >1 row matches rather than silently picking one.
+   */
+  findBySourceCategoryByProvenance(
+    destinationTaxonomyProvenance: string,
+    sourceCategoryId: string,
+    sourceConnectionId?: string | null
+  ): Promise<CategoryMapping | null>;
+
+  /**
    * Create or update a single category mapping, keyed on
    * (destinationConnectionId, sourceConnectionId, sourceCategoryId).
    */
