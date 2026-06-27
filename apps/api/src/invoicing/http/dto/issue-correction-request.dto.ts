@@ -8,12 +8,12 @@
  *
  * @module apps/api/src/invoicing/http/dto
  */
-import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, Min } from 'class-validator';
+import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, Min, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CorrectionLineDto {
-  @ApiPropertyOptional({ description: '1-based line number of the original invoice line to correct.' })
+  @ApiProperty({ description: '1-based line number of the original invoice line to correct.' })
   @IsNumber()
   @Min(1)
   originalLineNumber!: number;
@@ -37,8 +37,9 @@ export class IssueCorrectionRequestDto {
   @IsOptional()
   reason?: string;
 
-  @ApiPropertyOptional({ type: [CorrectionLineDto], description: 'Per-line corrections — at least one line must be present.' })
+  @ApiProperty({ type: [CorrectionLineDto], description: 'Per-line corrections — at least one line must be present.' })
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CorrectionLineDto)
   lines!: CorrectionLineDto[];

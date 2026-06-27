@@ -16,7 +16,7 @@
  *
  * @module plugins/subiekt/components
  */
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useState, useRef } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -63,6 +63,13 @@ export function SubiektInvoiceCorrectionFlow({
 
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
+  const [linesError, setLinesError] = useState<string | null>(null);
+
+  // Stable per-dialog-mount key — prevents re-issuing the same correction if
+  // the component re-renders or the user retries after a network timeout.
+  const idempotencyKeyRef = useRef(
+    `sk-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+  );
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
     setLines((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));

@@ -41,6 +41,7 @@ import {
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
+  DuplicateInvoiceRecordException,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -445,6 +446,9 @@ export class InvoicingController {
    *     the global filter — they are not invoice-issuance rejections).
    */
   private toHttpException(error: unknown): Error {
+    if (error instanceof DuplicateInvoiceRecordException) {
+      return new ConflictException('An invoice record with this idempotency key already exists');
+    }
     if (
       error instanceof InvalidBuyerProfileError ||
       error instanceof UnsupportedPriceTreatmentError
