@@ -9701,6 +9701,41 @@ html[data-density='compact'] .status-badge {
   word-break: break-word;
 }
 
+/* ─ Per-provider invoice detail section slot (#1152, B4) ─
+   Rendered by the `invoiceDetailSection` plugin slot into the neutral
+   invoice surfaces (order panel + detail page). Reuses the panel kv-grid
+   shape so a provider region reads consistently with the host chrome. */
+.invoice-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.invoice-detail-section__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-detail-section__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-detail-section__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-detail-section__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 /* ─ Panel inline-alert (used for failed / in-doubt) ─ */
 .invoice-panel__inline-alert {
   display: flex;
