@@ -77,6 +77,60 @@ describe('CategoryMappingRepository', () => {
     });
   });
 
+  describe('findBySourceCategoryByProvenance (#1045)', () => {
+    it('matches the source store OR source-agnostic rows when a source connection is given', async () => {
+      repo.find.mockResolvedValue([]);
+
+      await sut.findBySourceCategoryByProvenance('allegro', 'src-cat-1', 'src-conn-7');
+
+      expect(repo.find).toHaveBeenCalledWith({
+        where: [
+          {
+            destinationTaxonomyProvenance: 'allegro',
+            sourceCategoryId: 'src-cat-1',
+            sourceConnectionId: 'src-conn-7',
+          },
+          {
+            destinationTaxonomyProvenance: 'allegro',
+            sourceCategoryId: 'src-cat-1',
+            sourceConnectionId: IsNull(),
+          },
+        ],
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
+    });
+
+    it('matches by provenance + source category only when no source connection is given', async () => {
+      repo.find.mockResolvedValue([]);
+
+      await sut.findBySourceCategoryByProvenance('allegro', 'src-cat-1');
+
+      expect(repo.find).toHaveBeenCalledWith({
+        where: { destinationTaxonomyProvenance: 'allegro', sourceCategoryId: 'src-cat-1' },
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
+    });
+
+    it('returns the oldest row and warns when more than one matches', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      repo.find.mockResolvedValue([
+        ormRow({ id: 'oldest', destinationCategoryId: 'dest-cat-OLD' }),
+        ormRow({ id: 'newer', destinationCategoryId: 'dest-cat-NEW' }),
+      ]);
+
+      const result = await sut.findBySourceCategoryByProvenance('allegro', 'src-cat-1', 'src-conn-7');
+
+      expect(result?.id).toBe('oldest');
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    it('returns null when no row matches', async () => {
+      repo.find.mockResolvedValue([]);
+      expect(await sut.findBySourceCategoryByProvenance('allegro', 'src-cat-1')).toBeNull();
+    });
+  });
+
   describe('upsertMapping', () => {
     it('creates a new row (provenance defaults to allegro) when none exists', async () => {
       repo.findOne.mockResolvedValue(null);

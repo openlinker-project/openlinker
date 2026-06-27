@@ -76,6 +76,12 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('getBorrowedTaxonomy (#1045 — TaxonomyBorrower)', () => {
+    it("declares 'allegro' as the borrowed owner taxonomy", () => {
+      expect(adapter.getBorrowedTaxonomy()).toBe('allegro');
+    });
+  });
+
   describe('createOffer', () => {
     it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
       const result = await adapter.createOffer(createCmd());

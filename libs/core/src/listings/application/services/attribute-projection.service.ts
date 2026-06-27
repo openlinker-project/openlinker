@@ -50,7 +50,13 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     const { sourceConnectionId, destinationConnectionId, destinationCategoryId, attributes } =
       input;
 
-    const all = await this.mappingConfig.getAttributeMappings(destinationConnectionId);
+    const own = await this.mappingConfig.getAttributeMappings(destinationConnectionId);
+    // Borrowed-taxonomy reuse (#1045): a `borrows` destination (ERLI) has no
+    // attribute mappings of its own — fold in the owner's (e.g. Allegro's) rows.
+    // Own-destination rows win per source attribute key (deduped by id below).
+    const all = input.borrowedTaxonomy
+      ? this.dedupeById(own, await this.mappingConfig.getAttributeMappingsByProvenance(input.borrowedTaxonomy))
+      : own;
     const applicable = this.selectApplicableMappings(
       all,
       sourceConnectionId,
@@ -109,6 +115,23 @@ export class AttributeProjectionService implements IAttributeProjectionService {
     });
 
     return { parameters, unmappedSourceKeys, unresolvedRequired };
+  }
+
+  /**
+   * Merge `primary` (own-destination) ahead of `secondary` (borrowed-by-provenance)
+   * rows, deduped by id (#1045). Own rows appear first so `selectApplicableMappings`
+   * — which prefers the first seen at equal category-specificity — favours an
+   * explicit own-destination row over a borrowed one. An ERLI row carrying the
+   * default `'allegro'` provenance appears in both lists; dedup keeps it once.
+   */
+  private dedupeById(
+    primary: AttributeMapping[],
+    secondary: AttributeMapping[]
+  ): AttributeMapping[] {
+    const byId = new Map<string, AttributeMapping>();
+    for (const mapping of primary) byId.set(mapping.id, mapping);
+    for (const mapping of secondary) if (!byId.has(mapping.id)) byId.set(mapping.id, mapping);
+    return Array.from(byId.values());
   }
 
   /**
