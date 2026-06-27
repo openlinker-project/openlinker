@@ -26,7 +26,6 @@ export {
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
-export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
 export type {
   InvoiceRecord,
   InvoiceStatus,

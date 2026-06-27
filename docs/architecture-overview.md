@@ -153,7 +153,7 @@ The system is organized into the following core bounded contexts:
 - **Location**: `libs/core/src/orders/`
 - **Capabilities**:
   - `OrderSourcePort` — cursor-based order-event ingestion from marketplaces *and* shops (`listOrderFeed` + `getOrder({externalOrderId})`)
-  - `OrderProcessorManagerPort` — order lifecycle on the destination shop (create / update-status / cancel / return)
+  - `OrderProcessorManagerPort` — destination-shop order creation (`createOrder`, the only base-port method); post-create status/tracking and lifecycle reads live in composable sub-capabilities (`OrderFulfillmentUpdater`, `OrderStatusWriteback`, …). The canonical OL-owned lifecycle state machine is deferred (#1032).
 
 ### 5. Customers
 - **Responsibility**: Customer identity resolution, customer projections, multi-origin identity management
@@ -408,42 +408,35 @@ export class ProductSyncService {
 
 ### OrderProcessorManagerPort
 
-**Purpose**: Orchestrates order lifecycle (creation, status changes, cancellations, returns).
+**Purpose**: Create orders on a destination shop. The base port carries only `createOrder` — the single method every order destination must implement. Post-create status/tracking writes, lifecycle reads, and option discovery are split into composable sub-capabilities (mirroring `OfferManagerPort`); a full OL-owned order-lifecycle state machine (`updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders` as authoritative operations) is **deferred** — see #1032.
 
 **Interface**:
 ```typescript
 interface OrderProcessorManagerPort {
   /**
-   * Create a new order
+   * Create a new order on the destination shop.
+   *
+   * Returns the destination-native external order id (OrderRef.orderId),
+   * never an internal OpenLinker id (#909). Idempotency and the
+   * external↔internal mapping write are owned by OrderSyncService under a
+   * per-(order, destination) lock — the adapter creates unconditionally.
+   * Lines MUST be priced at the buyer-paid source price (#895, ADR-014).
    */
-  createOrder(order: OrderCreate): Promise<Order>;
-  
-  /**
-   * Get order by ID
-   */
-  getOrder(orderId: string): Promise<Order>;
-  
-  /**
-   * Update order status
-   */
-  updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order>;
-  
-  /**
-   * Cancel an order
-   */
-  cancelOrder(orderId: string, reason?: string): Promise<Order>;
-  
-  /**
-   * Process return/refund
-   */
-  processReturn(orderId: string, returnData: ReturnData): Promise<Order>;
-  
-  /**
-   * Get orders with filters
-   */
-  getOrders(filters: OrderFilters): Promise<Order[]>;
+  createOrder(order: OrderCreate): Promise<OrderRef>;
 }
 ```
+
+**Sub-capabilities** (in `libs/core/src/orders/domain/ports/capabilities/`):
+
+Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Destinations declare what they support via `implements OrderProcessorManagerPort, OrderFulfillmentUpdater, …`; call sites resolve the destination adapter via `getCapabilityAdapter<OrderProcessorManagerPort>(connectionId, 'OrderProcessorManager')`, narrow with the guard, and degrade gracefully (skip) when a destination doesn't implement it.
+
+| Capability | Method(s) | Notes |
+|---|---|---|
+| `OrderFulfillmentUpdater` | `updateFulfillment({ externalOrderId, status, trackingNumber? })` | Push a post-create status + tracking update to the destination order (#837). PrestaShop maps the neutral `OrderStatus` to its native state. |
+| `OrderStatusWriteback` | `write(event: OrderLifecycleEvent)` | Relay-based, source-bound order-status round-trip — push a status change back to the originating marketplace (#1157, [ADR-027](./architecture/adrs/027-order-status-writeback-capability-and-relay.md)). |
+| `FulfillmentStatusReader` | `getFulfillmentStatus({ externalOrderId })` | Read a destination order's current fulfillment status. |
+| `DestinationOptionsReader` | `listCarriers()`, `listOrderStatuses()`, `listPaymentMethods()` | Discover the destination's option vocabulary for mapping. |
+| `SourceOptionsReader` | `listOrderStatuses()`, `listDeliveryMethods()`, `listPaymentMethods()` | Discover a source's option vocabulary for mapping. |
 
 **Current Implementations**: `PrestashopOrderProcessorAdapter`, `WooCommerceOrderProcessorAdapter`
 

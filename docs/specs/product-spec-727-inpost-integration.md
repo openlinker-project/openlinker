@@ -319,7 +319,7 @@ User-visible. Engineering AC (rate limits, retry policies, exact ShipX field map
 
 **AC-7** (US-3 + US-7): clicking "Generate label" calls ShipX → label PDF returned within 5 seconds, downloadable from order panel; status updates to `generated`. While status is `generated` (not yet dispatched), "Cancel + re-issue" button is available; clicking voids the existing label and re-opens the generation flow for the same order.
 
-**AC-8** (US-8): tracking number and shipment status auto-propagate to Allegro (via `OrderProcessorManagerPort.updateOrderStatus` or equivalent) and PrestaShop (order status + tracking field) when label is generated and when InPost webhook events fire.
+**AC-8** (US-8): tracking number and shipment status auto-propagate to Allegro (via the `OrderFulfillmentUpdater` / `OrderStatusWriteback` sub-capability of `OrderProcessorManagerPort`) and PrestaShop (order status + tracking field) when label is generated and when InPost webhook events fire.
 
 **AC-9** (US-8): when InPost webhook signals `delivered` (or equivalent terminal event), OL updates Shipment status, propagates to source platforms, no operator action required. If webhook isn't provisioned, OL polls tracking endpoint at a conservative cadence.
 

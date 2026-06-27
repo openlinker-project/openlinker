@@ -292,15 +292,18 @@ import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   OrderProcessorManagerPort,
+  OrderFulfillmentUpdater,
   OrderCreate,
-  Order,
+  OrderRef,
   OrderStatus,
 } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { XHttpClient } from '../http/x-http-client';
 
 @Injectable()
-export class XOrderProcessorManagerAdapter implements OrderProcessorManagerPort {
+export class XOrderProcessorManagerAdapter
+  implements OrderProcessorManagerPort, OrderFulfillmentUpdater
+{
   private readonly logger = new Logger(XOrderProcessorManagerAdapter.name);
 
   constructor(
@@ -309,18 +312,27 @@ export class XOrderProcessorManagerAdapter implements OrderProcessorManagerPort 
     // ... other plugin-internal deps
   ) {}
 
-  async createOrder(order: OrderCreate): Promise<Order> {
+  // Base-port method — the only one every order destination must implement.
+  async createOrder(order: OrderCreate): Promise<OrderRef> {
     // 1. Translate internal IDs → external IDs via identifierMapping
     // 2. Call the platform API
-    // 3. Map response → unified Order
+    // 3. Return the destination-native external order id (never an internal id)
     // 4. Translate platform errors → domain exceptions
   }
 
-  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+  // Optional sub-capability — implement only the capabilities your platform
+  // supports, and declare each in the `implements` clause so call sites can
+  // narrow with the co-located `is{Capability}` guard.
+  async updateFulfillment(input: {
+    externalOrderId: string;
+    status: OrderStatus;
+    trackingNumber?: string;
+  }): Promise<void> {
     // ...
   }
 
-  // Throw for unsupported operations rather than returning a half-baked result.
+  // Don't stub capabilities you don't support — omit them from `implements`
+  // entirely; call sites skip gracefully when the guard returns false.
 }
 ```
 
