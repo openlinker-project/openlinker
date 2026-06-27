@@ -39,7 +39,10 @@ type StructuredField =
   | 'unmanagedStockQuantity'
   | 'inpostPsModuleType'
   | 'subiektBridgeUrl'
-  | 'subiektTriggerModel';
+  | 'subiektTriggerModel'
+  | 'ksefEnvironment'
+  | 'sellerNip'
+  | 'contextIdentifier';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -79,6 +82,12 @@ function readTriggerModel(
   return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
     ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
     : '';
+}
+
+/** Read the KSeF environment out of `config.env` (#1152). */
+function readKsefEnvironment(config: Record<string, unknown>): '' | 'test' | 'demo' | 'prod' {
+  const value = config.env;
+  return value === 'test' || value === 'demo' || value === 'prod' ? value : '';
 }
 
 /**
@@ -226,6 +235,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
       subiektTriggerModel: readTriggerModel(connection.config),
       subiektCapabilities: readSubiektCapabilities(connection.config),
+      // KSeF structured fields (#1152) — read from `config.{env,sellerNip,contextIdentifier}`.
+      ksefEnvironment: readKsefEnvironment(connection.config),
+      sellerNip: readString(connection.config, 'sellerNip'),
+      contextIdentifier: readString(connection.config, 'contextIdentifier'),
     },
     resolver: zodResolver(editConnectionSchema),
   });

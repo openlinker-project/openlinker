@@ -31,6 +31,8 @@ export type {
   OfferBlockerDescriptor,
   OfferRowValidationInput,
   OfferValidationContribution,
+  InvoiceDetailSectionProps,
+  InvoiceCorrectionFlowProps,
 } from './plugin.types';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';
 export { usePlatforms } from './use-platforms';

@@ -45,6 +45,7 @@ import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants'
 import { dpdPlugin } from './dpd';
 import { erliPlugin } from './erli';
 import { inpostPlugin } from './inpost';
+import { ksefPlugin } from './ksef';
 import { prestashopPlugin } from './prestashop';
 import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
@@ -57,6 +58,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   woocommercePlugin,
   erliPlugin,
   subiektPlugin,
+  ksefPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);
