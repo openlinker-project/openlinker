@@ -256,7 +256,7 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {linesError ? (
-        <p className="field-error" role="alert">
+        <p className="error-text" role="alert">
           {linesError}
         </p>
       ) : null}
