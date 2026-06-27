@@ -20,6 +20,11 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '../../../shared/ui/dialog';
 
 import { useConnectionsQuery, type Connection } from '../../connections';
 import { useTranslation } from '../../../shared/i18n';
@@ -99,9 +104,12 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId, invoicingConnectionId);
   const issueMutation = useIssueInvoiceMutation();
 
-  // Per-provider plugin slot (resolved via platformType — ZERO literal strings here)
+  // Per-provider plugin slots (resolved via platformType — ZERO literal strings here)
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
+  const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
+
+  const [correctionOpen, setCorrectionOpen] = useState(false);
 
   // Loading skeleton while connections settle
   if (connectionsQuery.isLoading) {
@@ -329,6 +337,29 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           {/* Provider extras slot (e.g. KSeF UPO, Subiekt KSeF status) */}
           {InvoiceDetailSection && invoicingConnection ? (
             <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
+          ) : null}
+
+          {/* Correction trigger — only when the provider supports the slot */}
+          {InvoiceCorrectionFlow && invoicingConnection ? (
+            <div className="order-invoice-panel__correction">
+              <Button tone="secondary" onClick={() => setCorrectionOpen(true)}>
+                {t('invoice.action.issueCorrection', 'Issue correction')}
+              </Button>
+              <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
+                <DialogContent aria-describedby={undefined}>
+                  <DialogTitle>{t('invoice.correction.dialogTitle', 'Issue correction')}</DialogTitle>
+                  <InvoiceCorrectionFlow
+                    invoice={invoice}
+                    connection={invoicingConnection}
+                    onClose={() => setCorrectionOpen(false)}
+                    onCorrectionIssued={() => {
+                      setCorrectionOpen(false);
+                      void invoiceQuery.refetch();
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
+            </div>
           ) : null}
         </div>
       ) : null}

@@ -174,3 +174,18 @@ export interface RetryInvoicesResult {
   skipped: number;
   results: RetryInvoiceResult[];
 }
+
+/** One corrected line for `POST /invoices/:invoiceId/correct` (#1241). */
+export interface CorrectionLineInput {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/** `POST /invoices/:invoiceId/correct` request body (#1241). Mirrors
+ *  `IssueCorrectionCommand` minus the server-resolved fields. */
+export interface IssueCorrectionInput {
+  reason?: string;
+  lines: CorrectionLineInput[];
+  idempotencyKey?: string;
+}

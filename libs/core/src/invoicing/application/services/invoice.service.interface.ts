@@ -14,6 +14,7 @@ import type {
   GetInvoiceByOrderQuery,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
 } from '../../domain/types/invoicing.types';
@@ -77,6 +78,17 @@ export interface IInvoiceService {
    * Returns `null` when no record holds the order on the connection.
    */
   getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null>;
+
+  /**
+   * Issue a correction of an already-issued document. Creates a new
+   * `InvoiceRecord` for the correcting document (status `pending` → `issued` on
+   * success). The original record is NOT mutated — corrections co-exist alongside
+   * the original in the projection. Throws `CapabilityNotSupportedException` if
+   * the connection's adapter does not implement `CorrectionIssuer`. Throws
+   * `CapabilityNotEnabledException` if the capability is not enabled on the
+   * connection.
+   */
+  issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord>;
 
   /**
    * Read OL's OWN `InvoiceRecord` projection by its primary id. Projection read —
