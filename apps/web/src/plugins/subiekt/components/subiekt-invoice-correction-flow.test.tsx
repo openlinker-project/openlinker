@@ -139,6 +139,7 @@ describe('SubiektInvoiceCorrectionFlow', () => {
       expect(issueCorrection).toHaveBeenCalledWith('ol_invoice_test', {
         reason: 'Partial return',
         lines: [{ originalLineNumber: 1, newQuantity: 0, newUnitPriceGross: 34.84 }],
+        idempotencyKey: expect.stringMatching(/^sk-corr-/),
       });
     });
 

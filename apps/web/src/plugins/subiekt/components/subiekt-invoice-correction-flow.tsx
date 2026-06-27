@@ -65,14 +65,15 @@ export function SubiektInvoiceCorrectionFlow({
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
-  // Stable per-dialog-mount key — prevents re-issuing the same correction if
-  // the component re-renders or the user retries after a network timeout.
+  // Stable per-dialog-mount key — collapses post-timeout retries / duplicate tabs
+  // onto the same pending row so the same correcting document is never issued twice.
   const idempotencyKeyRef = useRef(
     `sk-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
     setLines((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    if (linesError) setLinesError(null);
   }
 
   function addLine(): void {
@@ -85,12 +86,23 @@ export function SubiektInvoiceCorrectionFlow({
 
   function handleSubmit(): void {
     const parsedLines = parseLineRows(lines);
+    if (parsedLines.length === 0) {
+      setLinesError(
+        t(
+          'subiekt.correction.linesRequired',
+          'At least one line with a line number is required.',
+        ),
+      );
+      return;
+    }
+    setLinesError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
           reason: reason.trim() !== '' ? reason.trim() : undefined,
           lines: parsedLines,
+          idempotencyKey: idempotencyKeyRef.current,
         },
       },
       {
@@ -122,7 +134,7 @@ export function SubiektInvoiceCorrectionFlow({
   return (
     <div className="subiekt-correction">
       {/* Header */}
-      <div className="section-card__head" style={{ border: 0, padding: '0 0 var(--space-3)' }}>
+      <div className="subiekt-correction__head">
         <h3>{t('subiekt.correction.title', 'Issue correction')}</h3>
         <span className="section-card__provider">
           {t('subiekt.correction.providerTag', 'Subiekt · slot')}
@@ -154,7 +166,7 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field" style={{ marginBottom: 'var(--space-4)' }}>
+      <div className="field subiekt-correction__reason">
         <label htmlFor="sk-reason">
           {t('subiekt.correction.reasonLabel', 'Reason for correction')}
         </label>
@@ -173,13 +185,13 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {/* Line items */}
-      <div className="table-wrap" style={{ overflowX: 'auto' }}>
+      <div className="table-wrap subiekt-correction__table-scroll">
         <table className="lineitems">
           <thead>
             <tr>
               <th>{t('subiekt.correction.col.lp', 'Lp')}</th>
-              <th style={{ minWidth: '80px' }}>{t('subiekt.correction.col.newQty', 'New qty')}</th>
-              <th style={{ minWidth: '100px' }}>
+              <th className="subiekt-correction__col-qty">{t('subiekt.correction.col.newQty', 'New qty')}</th>
+              <th className="subiekt-correction__col-price">
                 {t('subiekt.correction.col.newPrice', 'New net')}
               </th>
               <th aria-label={t('subiekt.correction.col.remove', 'Remove')} />
@@ -191,7 +203,7 @@ export function SubiektInvoiceCorrectionFlow({
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--num input--w-lp"
                     value={row.originalLineNumber}
                     onChange={(e) => updateLine(i, 'originalLineNumber', e.target.value)}
                     placeholder="1"
@@ -199,13 +211,12 @@ export function SubiektInvoiceCorrectionFlow({
                     step={1}
                     aria-label={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '60px' }}
                   />
                 </td>
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--num input--w-qty"
                     value={row.newQuantity}
                     onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
                     placeholder="—"
@@ -213,13 +224,12 @@ export function SubiektInvoiceCorrectionFlow({
                     step="any"
                     aria-label={`${t('subiekt.correction.newQty', 'New qty, line')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '80px' }}
                   />
                 </td>
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--num input--w-price"
                     value={row.newUnitPriceGross}
                     onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
                     placeholder="—"
@@ -227,7 +237,6 @@ export function SubiektInvoiceCorrectionFlow({
                     step="any"
                     aria-label={`${t('subiekt.correction.newPrice', 'New net, line')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '100px' }}
                   />
                 </td>
                 <td>
@@ -246,11 +255,17 @@ export function SubiektInvoiceCorrectionFlow({
         </table>
       </div>
 
+      {linesError ? (
+        <p className="field-error" role="alert">
+          {linesError}
+        </p>
+      ) : null}
+
       <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
         {t('subiekt.correction.addLine', '+ Add line')}
       </Button>
 
-      <p className="corr-note" style={{ marginTop: 'var(--space-3)' }}>
+      <p className="corr-note subiekt-correction__note">
         {t(
           'subiekt.correction.note',
           'A correcting invoice (faktura korygująca) can adjust quantity and/or price per line — e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.',
@@ -259,7 +274,7 @@ export function SubiektInvoiceCorrectionFlow({
 
       {/* Actions */}
       <div className="wizard__actions">
-        <span style={{ flex: 1 }} />
+        <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
           {t('subiekt.correction.cancel', 'Cancel')}
         </Button>
