@@ -216,8 +216,8 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           <div className="slot-row__label ksef-fa3-view__lines-title">
             {t('invoice.ksef.fa3Lines', 'Invoice lines')}
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="lineitems">
+          <div className="ksef-fa3-view__lines-table-wrap">
+            <table className="ksef-fa3-view__lineitems">
               <thead>
                 <tr>
                   <th>{t('invoice.ksef.fa3LineNo', '#')}</th>
@@ -255,35 +255,38 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           </div>
           {data.vatNet23 !== null ? (
             <div className="slot-row">
-              <div className="slot-row__label">23%</div>
-              <span>
-                {t('invoice.ksef.fa3VatNet', 'Net')}: {data.vatNet23}
-                {data.vatTax23 !== null
-                  ? ` · ${t('invoice.ksef.fa3VatTax', 'Tax')}: ${data.vatTax23}`
-                  : ''}
-              </span>
+              <div className="slot-row__label">23% {t('invoice.ksef.fa3VatNet', 'Net')}</div>
+              <span>{data.vatNet23}</span>
+            </div>
+          ) : null}
+          {data.vatTax23 !== null ? (
+            <div className="slot-row">
+              <div className="slot-row__label">23% {t('invoice.ksef.fa3VatTax', 'Tax')}</div>
+              <span>{data.vatTax23}</span>
             </div>
           ) : null}
           {data.vatNet8 !== null ? (
             <div className="slot-row">
-              <div className="slot-row__label">8%</div>
-              <span>
-                {t('invoice.ksef.fa3VatNet', 'Net')}: {data.vatNet8}
-                {data.vatTax8 !== null
-                  ? ` · ${t('invoice.ksef.fa3VatTax', 'Tax')}: ${data.vatTax8}`
-                  : ''}
-              </span>
+              <div className="slot-row__label">8% {t('invoice.ksef.fa3VatNet', 'Net')}</div>
+              <span>{data.vatNet8}</span>
+            </div>
+          ) : null}
+          {data.vatTax8 !== null ? (
+            <div className="slot-row">
+              <div className="slot-row__label">8% {t('invoice.ksef.fa3VatTax', 'Tax')}</div>
+              <span>{data.vatTax8}</span>
             </div>
           ) : null}
           {data.vatNet0 !== null ? (
             <div className="slot-row">
-              <div className="slot-row__label">0%</div>
-              <span>
-                {t('invoice.ksef.fa3VatNet', 'Net')}: {data.vatNet0}
-                {data.vatTax0 !== null
-                  ? ` · ${t('invoice.ksef.fa3VatTax', 'Tax')}: ${data.vatTax0}`
-                  : ''}
-              </span>
+              <div className="slot-row__label">0% {t('invoice.ksef.fa3VatNet', 'Net')}</div>
+              <span>{data.vatNet0}</span>
+            </div>
+          ) : null}
+          {data.vatTax0 !== null ? (
+            <div className="slot-row">
+              <div className="slot-row__label">0% {t('invoice.ksef.fa3VatTax', 'Tax')}</div>
+              <span>{data.vatTax0}</span>
             </div>
           ) : null}
         </div>

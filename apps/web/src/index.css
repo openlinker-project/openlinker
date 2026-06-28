@@ -10064,22 +10064,23 @@ html[data-density='compact'] .status-badge {
 /* ── Invoice line-items table (#1228) ────────────────────────────────
  * Compact scrollable table used inside `.ksef-fa3-view__lines`.
  */
-.lineitems {
+.ksef-fa3-view__lines-table-wrap { overflow-x: auto; }
+.ksef-fa3-view__lineitems {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.75rem;
 }
-.lineitems th,
-.lineitems td {
+.ksef-fa3-view__lineitems th,
+.ksef-fa3-view__lineitems td {
   padding: 4px 8px;
   text-align: left;
   border-bottom: 1px solid var(--border-subtle, var(--border-default));
   white-space: nowrap;
 }
-.lineitems th {
+.ksef-fa3-view__lineitems th {
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg-surface-muted);
 }
-.lineitems tbody tr:last-child td { border-bottom: none; }
+.ksef-fa3-view__lineitems tbody tr:last-child td { border-bottom: none; }
 
