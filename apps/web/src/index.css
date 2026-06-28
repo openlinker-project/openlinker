@@ -10031,3 +10031,55 @@ html[data-density='compact'] .status-badge {
   border: none;
 }
 
+/* ── KsefFa3View parsed invoice display (#1228) ─────────────────────
+ * Structured human-readable visualization of an FA(3) XML document.
+ * Fills the `.doc-preview` container that replaces the former iframe.
+ */
+.ksef-fa3-view {
+  width: 100%;
+  padding: var(--space-4, 1rem);
+  text-align: left;
+  color: var(--text-default);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.ksef-fa3-view__lines {
+  margin-top: var(--space-3, 0.75rem);
+}
+.ksef-fa3-view__lines-title,
+.ksef-fa3-view__vat-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps, 0.05em);
+  color: var(--text-muted);
+  margin-bottom: var(--space-2, 0.5rem);
+  margin-top: var(--space-3, 0.75rem);
+}
+.ksef-fa3-view__vat { margin-top: var(--space-2, 0.5rem); }
+.ksef-fa3-view__total { border-top: 2px solid var(--border-default); margin-top: var(--space-2, 0.5rem); }
+.ksef-fa3-view__total-value { font-weight: 600; font-size: 1rem; }
+
+/* ── Invoice line-items table (#1228) ────────────────────────────────
+ * Compact scrollable table used inside `.ksef-fa3-view__lines`.
+ */
+.lineitems {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.lineitems th,
+.lineitems td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle, var(--border-default));
+  white-space: nowrap;
+}
+.lineitems th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+}
+.lineitems tbody tr:last-child td { border-bottom: none; }
+

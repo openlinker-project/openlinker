@@ -25,6 +25,7 @@ import {
   useKsefUpoPreview,
   useKsefFa3,
 } from '../../../features/invoicing';
+import { KsefFa3View } from './ksef-fa3-view';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -238,16 +239,8 @@ export function KsefInvoiceDetailSection({
               </span>
               {fa3.viewError ? (
                 <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
-              ) : fa3.viewObjectUrl ? (
-                <iframe
-                  className="doc-preview__frame"
-                  src={fa3.viewObjectUrl}
-                  title={t('invoice.ksef.fa3FrameTitle', 'FA(3) document preview')}
-                  // blob: URL inherits the app origin, so framing it without restrictions
-                  // would allow scripts from the invoice document to run with app privileges.
-                  // sandbox="" blocks all scripts while still rendering the document.
-                  sandbox=""
-                />
+              ) : fa3.viewText !== null ? (
+                <KsefFa3View xmlText={fa3.viewText} />
               ) : (
                 <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
               )}
