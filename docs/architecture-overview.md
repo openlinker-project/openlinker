@@ -484,6 +484,8 @@ interface OfferManagerPort {
 
 Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Adapters declare the capabilities they support via `implements OfferManagerPort, OfferLister, OfferCreator, …`; call sites narrow via the guard before invoking the method — after the guard TypeScript knows the method is present.
 
+> The table below is a curated highlight. The **complete, code-synced inventory of all 31 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
+
 | Capability | Method |
 |---|---|
 | `OfferLister` | `listOffers(input)` |
@@ -499,9 +501,9 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
 | `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
-**Current Implementation**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`).
+**Current Implementations**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984).
 
-**Future Implementations**: `ShopifyOfferManagerAdapter`, `WooCommerceOfferManagerAdapter`, `EbayOfferManagerAdapter`, `ErliOfferManagerAdapter` (#984 — plugin skeleton registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
+**Future Implementations**: `ShopifyOfferManagerAdapter`, `EbayOfferManagerAdapter`.
 
 ### Future Capability Ports
 
