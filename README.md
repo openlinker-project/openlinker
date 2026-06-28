@@ -42,15 +42,18 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | Integration | Role | Status |
 |---|---|---|
 | **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
-| **[Allegro](./libs/integrations/allegro/)** | Marketplace *(source + offers)* | ✅ Live |
+| **[WooCommerce](./libs/integrations/woocommerce/)** *([guide](./docs/integrations/woocommerce/setup-guide.md))* | Shop *(source + destination + inventory)* | ✅ Live |
+| **[Allegro](./libs/integrations/allegro/)** | Marketplace *(source + offers + shipping)* | ✅ Live |
+| **[Erli](./libs/integrations/erli/)** *([guide](./docs/integrations/erli/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
-| **Subiekt nexo** *([#728](https://github.com/openlinker-project/openlinker/issues/728))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | 🚧 In progress |
-| **InPost** *([#727](https://github.com/openlinker-project/openlinker/issues/727))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | 🚧 In progress |
-| **[WooCommerce](./libs/integrations/woocommerce/)** | Shop *(source + destination + inventory)* | ✅ Live |
+| **[InPost](./libs/integrations/inpost/)** *([guide](./docs/integrations/inpost/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
+| **[DPD](./libs/integrations/dpd-polska/)** *([guide](./docs/integrations/dpd-polska/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
+| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./docs/integrations/subiekt/setup-guide.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
+| **[KSeF](./libs/integrations/ksef/)** *([guide](./docs/integrations/ksef/setup-guide.md))* | Invoicing *(Polish national e-invoicing)* | 🚧 In progress |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
-| DPD · DHL · FedEx · ORLEN Paczka · GLS | Shipping *(pending `ShippingProviderPort` from #727)* | 📋 Planned |
-| Fakturownia · iFirma · wFirma · inFakt | Invoicing *(siblings of Subiekt under `InvoicingPort`)* | 📋 Planned |
+| DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
+| Fakturownia · iFirma · wFirma · inFakt | Invoicing *(siblings under `InvoicingPort`)* | 📋 Planned |
 
 Planned items are open for community contributions — see [Adding your own integration](#adding-your-own-integration) below.
 
@@ -62,13 +65,15 @@ OpenLinker is built around a small set of capability ports. Each integration imp
 
 | Capability | What it does | Integrations |
 |---|---|---|
-| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop |
-| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · Allegro *(source only)* |
-| **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro |
+| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce |
+| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Allegro *(source)* · Erli *(source)* |
+| **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro · Erli |
+| **Shipping** | Generate labels + handover protocols, fetch tracking *(via `ShippingProviderManagerPort`)* | Allegro · InPost · DPD |
+| **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt nexo · KSeF |
 | **Content suggestion** | Provider-agnostic AI completions with editable, versioned prompts | AI router *(Anthropic, OpenAI)* |
-| **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | PrestaShop · Allegro |
+| **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | All integrations |
 
-See [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the full port signatures, the offer sub-capability inventory, and the contracts plugin authors implement against.
+See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced vocabulary — every capability port, its base contract, and all 31 sub-capabilities with descriptions and guards — and [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the contracts plugin authors implement against.
 
 **Host-provided, regardless of integration:** encrypted credentials store · multi-connection per platform type *(two PrestaShop stores from one instance)* · identifier mapping with a single unified seed *(`ol_product_*`, `ol_order_*`, `ol_variant_*`, …)* · customer identity resolution with optional email-fallback · PII-aware storage *(full or hash-only)* · sync-job orchestration with retry classification + outcome tracking · browser-based admin UI.
 
@@ -121,12 +126,14 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | **Orders** | | |
 | Ingest orders from any source *(marketplace or shop)* | ✅ | `OrderSourcePort` |
 | Create + manage orders in destination shop | ✅ | `OrderProcessorManagerPort` |
-| Generate invoices, receipts, accounting export | — | *Out of scope; integrate accounting separately* |
+| Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt nexo, KSeF |
+| Accounting export / GL / valuation | — | *Out of scope; integrate accounting separately* |
 | **Inventory & catalog** | | |
 | Read products, variants, attributes | ✅ | `ProductMasterPort` |
 | Read inventory levels | ✅ | `InventoryMasterPort` |
 | Multi-location / multi-warehouse stock | 🛣️ | `InventoryMasterPort` accepts `locationId`; not yet exercised by an adapter |
-| Bulk catalog operations | ⚠️ | `OfferQuantityBatchUpdater` sub-capability defined; not yet implemented |
+| Bulk offer creation | ✅ | Bulk offer-creation batch *(Allegro)* + bulk shop-publish *(WooCommerce)* |
+| Bulk quantity batch-update | ⚠️ | `OfferQuantityBatchUpdater` sub-capability defined; no adapter implements it yet |
 | **Marketplace listings** | | |
 | Create + update offers *(categories, policies, GPSR)* | ✅ | `OfferManagerPort` + sub-capability ports |
 | AI offer descriptions | ✅ | `AiCompletionPort` |
@@ -139,11 +146,11 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | Carrier mapping *(marketplace ↔ physical carrier)* | ✅ | Host-provided carrier-mapping service |
 | Pickup-point handling *(Paczkomat, etc.)* | ✅ | Through `OrderSourcePort` order shape |
 | Buyer-paid shipping cost round-trip | ✅ | `OrderProcessorManagerPort` + plugin-owned shop module |
-| Generate shipping labels | 🛣️ | `ShippingProviderManagerPort` planned |
-| Push tracking back to marketplace | 🛣️ | Paired with `ShippingProviderManagerPort` |
+| Generate shipping labels + handover protocols | ✅ | `ShippingProviderManagerPort` — InPost, DPD, Allegro |
+| Fetch tracking + push status back to marketplace | ✅ | `ShippingProviderManagerPort` tracking + order-status writeback *(ADR-027)* |
 | **Payments** | | |
 | Payment status from order data | ✅ | Part of the `IncomingOrder` shape from `OrderSourcePort` |
-| Refunds via return flow | ✅ | `OrderProcessorManagerPort.processReturn` |
+| Refunds / returns lifecycle | 🛣️ | OL-owned order-status state machine deferred (#1032); the `refunded` payment status is read-only forward-compat *(no source emits it in v1)* |
 | Payment provider integrations *(Stripe, P24, …)* | 🛣️ | `PaymentProcessorPort` planned |
 | **Operations** | | |
 | Multiple shops + marketplaces in one instance | ✅ | Host-provided connection model |
