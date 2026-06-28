@@ -42,7 +42,9 @@ type StructuredField =
   | 'subiektTriggerModel'
   | 'ksefEnvironment'
   | 'sellerNip'
-  | 'contextIdentifier';
+  | 'contextIdentifier'
+  | 'inpostEnvironment'
+  | 'inpostOrganizationId';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -88,6 +90,43 @@ function readTriggerModel(
 function readKsefEnvironment(config: Record<string, unknown>): '' | 'test' | 'demo' | 'prod' {
   const value = config.env;
   return value === 'test' || value === 'demo' || value === 'prod' ? value : '';
+}
+
+/** Read the InPost environment out of `config.environment` (#771). */
+function readInpostEnvironment(config: Record<string, unknown>): '' | 'sandbox' | 'production' {
+  const value = config.environment;
+  return value === 'sandbox' || value === 'production' ? value : '';
+}
+
+/**
+ * Read the InPost sender address out of `config.senderAddress` (#771). Returns
+ * a fully-populated form shape — empty-string fields where the operator hasn't
+ * filled them yet — so RHF's nested `register()` paths work without per-field
+ * undefined guards. Clone of `readSellerDefaults`'s shape-guard discipline.
+ */
+function readInpostSenderAddress(
+  config: Record<string, unknown>,
+): NonNullable<EditConnectionFormValues['inpostSenderAddress']> {
+  const raw =
+    typeof config.senderAddress === 'object' && config.senderAddress !== null
+      ? (config.senderAddress as Record<string, unknown>)
+      : {};
+  const address =
+    typeof raw.address === 'object' && raw.address !== null
+      ? (raw.address as Record<string, unknown>)
+      : {};
+  return {
+    name: typeof raw.name === 'string' ? raw.name : '',
+    email: typeof raw.email === 'string' ? raw.email : '',
+    phone: typeof raw.phone === 'string' ? raw.phone : '',
+    address: {
+      street: typeof address.street === 'string' ? address.street : '',
+      buildingNumber: typeof address.buildingNumber === 'string' ? address.buildingNumber : '',
+      city: typeof address.city === 'string' ? address.city : '',
+      postCode: typeof address.postCode === 'string' ? address.postCode : '',
+      countryCode: typeof address.countryCode === 'string' ? address.countryCode : '',
+    },
+  };
 }
 
 /**
@@ -239,6 +278,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ksefEnvironment: readKsefEnvironment(connection.config),
       sellerNip: readString(connection.config, 'sellerNip'),
       contextIdentifier: readString(connection.config, 'contextIdentifier'),
+      // InPost structured fields (#771) — read from `config.{environment,
+      // organizationId,senderAddress}`. Symmetric read-side hydration so an
+      // unrelated save doesn't blank the persisted InPost config.
+      inpostEnvironment: readInpostEnvironment(connection.config),
+      inpostOrganizationId: readString(connection.config, 'organizationId'),
+      inpostSenderAddress: readInpostSenderAddress(connection.config),
     },
     resolver: zodResolver(editConnectionSchema),
   });
@@ -328,6 +373,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       subiektCapabilities: form.getValues('subiektCapabilities'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #771 — re-serialize the whole `inpostSenderAddress` object into configText.
+  // Clone of `syncSellerDefaultsToJson`: reads CURRENT form state, takes NO
+  // argument, and KEEPS the `!configIsParseable` early-return. The InPost
+  // section MUST setValue('inpostSenderAddress.*', …) BEFORE calling this.
+  function syncInpostSenderAddressToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      inpostSenderAddress: form.getValues('inpostSenderAddress'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -448,6 +506,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
             syncStructuredToJson(field as StructuredField, value, options)
           }
           syncObjectToJson={syncSubiektCapabilitiesToJson}
+          syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
         />
       ) : null}
 
