@@ -7,7 +7,6 @@
  *
  * @module apps/api/src/invoicing/http
  */
-import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import {
   ConflictException,
@@ -25,6 +24,7 @@ import {
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
+  InvoiceRecord,
   InvoiceRecordRepositoryPort,
   InvoicingPort,
   IssuedDocumentContent,
@@ -44,7 +44,6 @@ import {
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { InvoicingController } from './invoicing.controller';
-import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
 
@@ -133,58 +132,9 @@ function recordWithContent(content: IssuedDocumentContent | null): InvoiceRecord
     null,
     issuedAt,
     issuedAt,
+    // failureMode, failureCode, failureReason, leaseExpiresAt, hasBuyerTaxId
+    null, null, null, null, false,
     content,
-  );
-  return r as unknown as InvoiceRecord;
-}
-
-function makeOrderRecord(snapshot?: Record<string, unknown>): OrderRecord {
-  return new OrderRecord(
-    'ol_order_1',
-    'cust_1',
-    'conn_src',
-    null,
-    snapshot ?? {
-      id: 'ol_order_1',
-      status: 'processing',
-      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' }],
-      totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
-      billingAddress: {
-        firstName: 'Jan',
-        lastName: 'Kowalski',
-        address1: 'ul. Testowa 1',
-        city: 'Poznań',
-        postalCode: '61-001',
-        country: 'PL',
-      },
-      createdAt: '2026-06-20T08:00:00.000Z',
-      updatedAt: '2026-06-21T09:30:00.000Z',
-const SAMPLE_SOURCE: StoredDocument = {
-  contentType: 'application/xml',
-  contentBase64: Buffer.from('<Document>fake</Document>', 'utf-8').toString('base64'),
-};
-
-function recordWithSource(source: StoredDocument | null): InvoiceRecord {
-  const issuedAt = new Date('2026-04-01T12:00:00Z');
-  const r = new InvoiceRecordClass(
-    'rec-inv-1',
-    'conn-ksef-1',
-    'ol_order_001',
-    'ksef',
-    'invoice',
-    'issued',
-    'SESSION:INVOICE',
-    null,
-    'accepted',
-    '5265877635-20250826-0100001AF629-AF',
-    null,
-    null,
-    issuedAt,
-    null,
-    issuedAt,
-    issuedAt,
-    null,
-    source,
   );
   return r as unknown as InvoiceRecord;
 }
@@ -218,10 +168,107 @@ function makeOrderRecord(snapshot?: Record<string, unknown>): OrderRecord {
   );
 }
 
+const SAMPLE_SOURCE: StoredDocument = {
+  contentType: 'application/xml',
+  contentBase64: Buffer.from('<Document>fake</Document>', 'utf-8').toString('base64'),
+};
+
+function recordWithSource(source: StoredDocument | null): InvoiceRecord {
+  const issuedAt = new Date('2026-04-01T12:00:00Z');
+  const r = new InvoiceRecordClass(
+    'rec-inv-1',
+    'conn-ksef-1',
+    'ol_order_001',
+    'ksef',
+    'invoice',
+    'issued',
+    'SESSION:INVOICE',
+    null,
+    'accepted',
+    '5265877635-20250826-0100001AF629-AF',
+    null,
+    null,
+    issuedAt,
+    null,
+    issuedAt,
+    issuedAt,
+    // failureMode, failureCode, failureReason, leaseExpiresAt, hasBuyerTaxId, documentContent
+    null, null, null, null, false, null,
+    source,
+  );
+  return r as unknown as InvoiceRecord;
+}
+
+function clearedRecord(): InvoiceRecordClass {
+  return new InvoiceRecordClass(
+    'rec-inv-1',
+    'conn-ksef-1',
+    'ol_order_001',
+    'ksef',
+    'invoice',
+    'issued',
+    'SESSION:INVOICE',
+    null,
+    'accepted',
+    '5265877635-20250826-0100001AF629-AF',
+    null,
+    null,
+    new Date('2026-04-01T12:00:00Z'),
+    null,
+    new Date('2026-04-01T12:00:00Z'),
+    new Date('2026-04-01T12:00:00Z'),
+  );
+}
+
+function pendingRecord(): InvoiceRecordClass {
+  const r = clearedRecord();
+  return new InvoiceRecordClass(
+    r.id,
+    r.connectionId,
+    r.orderId,
+    r.providerType,
+    r.documentType,
+    'issued',
+    r.providerInvoiceId,
+    r.providerInvoiceNumber,
+    'submitted',
+    null,
+    r.idempotencyKey,
+    r.pdfUrl,
+    r.issuedAt,
+    r.errorMessage,
+    r.createdAt,
+    r.updatedAt,
+  );
+}
+
+function mockResponse(): Response & {
+  headers: Record<string, string>;
+  body: Buffer | null;
+} {
+  const headers: Record<string, string> = {};
+  let body: Buffer | null = null;
+  const res = {
+    headers,
+    get body(): Buffer | null {
+      return body;
+    },
+    setHeader(name: string, value: string): void {
+      headers[name] = value;
+    },
+    send(payload: Buffer): void {
+      body = payload;
+    },
+  };
+  return res as unknown as Response & { headers: Record<string, string>; body: Buffer | null };
+}
+
 describe('InvoicingController', () => {
   let controller: InvoicingController;
   let invoiceService: jest.Mocked<IInvoiceService>;
   let orders: jest.Mocked<IOrderRecordService>;
+  let repository: jest.Mocked<InvoiceRecordRepositoryPort>;
+  let integrations: jest.Mocked<IIntegrationsService>;
 
   beforeEach(async () => {
     invoiceService = {
@@ -258,6 +305,8 @@ describe('InvoicingController', () => {
     }).compile();
 
     controller = moduleRef.get(InvoicingController);
+    repository = moduleRef.get(INVOICE_RECORD_REPOSITORY_TOKEN);
+    integrations = moduleRef.get(INTEGRATIONS_SERVICE_TOKEN);
   });
 
   it('instantiates', () => {
@@ -718,103 +767,6 @@ describe('InvoicingController', () => {
   // ---- UPO download endpoint tests (#1224) ----------------------------------------
 
   describe('GET /invoices/:invoiceId/upo', () => {
-    let repository: jest.Mocked<InvoiceRecordRepositoryPort>;
-    let integrationsMock: jest.Mocked<IIntegrationsService>;
-    let upoController: InvoicingController;
-
-    function clearedRecord(): InvoiceRecordClass {
-      return new InvoiceRecordClass(
-        'rec-inv-1',
-        'conn-ksef-1',
-        'ol_order_001',
-        'ksef',
-        'invoice',
-        'issued',
-        'SESSION:INVOICE',
-        null,
-        'accepted',
-        '5265877635-20250826-0100001AF629-AF',
-        null,
-        null,
-        new Date('2026-04-01T12:00:00Z'),
-        null,
-        new Date('2026-04-01T12:00:00Z'),
-        new Date('2026-04-01T12:00:00Z'),
-      );
-    }
-
-    function pendingRecord(): InvoiceRecordClass {
-      const r = clearedRecord();
-      return new InvoiceRecordClass(
-        r.id,
-        r.connectionId,
-        r.orderId,
-        r.providerType,
-        r.documentType,
-        'issued',
-        r.providerInvoiceId,
-        r.providerInvoiceNumber,
-        'submitted',
-        null,
-        r.idempotencyKey,
-        r.pdfUrl,
-        r.issuedAt,
-        r.errorMessage,
-        r.createdAt,
-        r.updatedAt,
-      );
-    }
-
-    function mockResponse(): Response & {
-      headers: Record<string, string>;
-      body: Buffer | null;
-    } {
-      const headers: Record<string, string> = {};
-      let body: Buffer | null = null;
-      const res = {
-        headers,
-        get body(): Buffer | null {
-          return body;
-        },
-        setHeader(name: string, value: string): void {
-          headers[name] = value;
-        },
-        send(payload: Buffer): void {
-          body = payload;
-        },
-      };
-      return res as unknown as Response & { headers: Record<string, string>; body: Buffer | null };
-    }
-
-    beforeEach(async () => {
-      const mockRepo: jest.Mocked<InvoiceRecordRepositoryPort> = {
-        create: jest.fn(),
-        findById: jest.fn(),
-        findByOrderId: jest.fn(),
-        findLatestByOrderId: jest.fn(),
-        findByIdempotencyKey: jest.fn(),
-        updateOutcome: jest.fn(),
-      } as unknown as jest.Mocked<InvoiceRecordRepositoryPort>;
-
-      const mockIntegrations = {
-        getCapabilityAdapter: jest.fn(),
-      } as unknown as jest.Mocked<IIntegrationsService>;
-
-      const module: TestingModule = await Test.createTestingModule({
-        controllers: [InvoicingController],
-        providers: [
-          { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
-          { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
-          { provide: INVOICE_RECORD_REPOSITORY_TOKEN, useValue: mockRepo },
-          { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
-        ],
-      }).compile();
-
-      upoController = module.get(InvoicingController);
-      repository = module.get(INVOICE_RECORD_REPOSITORY_TOKEN);
-      integrationsMock = module.get(INTEGRATIONS_SERVICE_TOKEN);
-    });
-
     it('should stream the UPO bytes for a cleared invoice (200)', async () => {
       repository.findById.mockResolvedValue(clearedRecord());
       const document: RegulatoryDocument = {
@@ -828,12 +780,12 @@ describe('InvoicingController', () => {
         getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
         getRegulatoryDocument: jest.fn().mockResolvedValue(document),
       } as InvoicingPort;
-      integrationsMock.getCapabilityAdapter.mockResolvedValue(adapter);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
       const res = mockResponse();
-      await upoController.downloadUpo('rec-inv-1', res);
+      await controller.downloadUpo('rec-inv-1', res);
 
-      expect(integrationsMock.getCapabilityAdapter).toHaveBeenCalledWith('conn-ksef-1', 'Invoicing');
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-ksef-1', 'Invoicing');
       expect(res.headers['Content-Type']).toBe('application/xml');
       expect(res.headers['Content-Disposition']).toContain('ol-upo-rec-inv-1.xml');
       expect(res.body).toEqual(Buffer.from([1, 2, 3]));
@@ -842,7 +794,7 @@ describe('InvoicingController', () => {
     it('should 404 when the invoice id is unknown', async () => {
       repository.findById.mockResolvedValue(null);
 
-      await expect(upoController.downloadUpo('nope', mockResponse())).rejects.toBeInstanceOf(
+      await expect(controller.downloadUpo('nope', mockResponse())).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
@@ -851,9 +803,9 @@ describe('InvoicingController', () => {
       repository.findById.mockResolvedValue(pendingRecord());
 
       await expect(
-        upoController.downloadUpo('rec-inv-1', mockResponse()),
+        controller.downloadUpo('rec-inv-1', mockResponse()),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(integrationsMock.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     });
 
     it('should 409 when the provider exposes no confirmation document', async () => {
@@ -864,10 +816,10 @@ describe('InvoicingController', () => {
         upsertCustomer: jest.fn(),
         getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
       };
-      integrationsMock.getCapabilityAdapter.mockResolvedValue(adapter);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
       await expect(
-        upoController.downloadUpo('rec-inv-1', mockResponse()),
+        controller.downloadUpo('rec-inv-1', mockResponse()),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });

@@ -543,6 +543,7 @@ export class InvoiceService implements IInvoiceService {
     }
     const marker = '…[truncated]';
     return raw.slice(0, MAX_ERROR_MESSAGE_LENGTH - marker.length) + marker;
+  }
 
   /**
    * Snapshot the issued-document content (§7.3) from the command + the adapter's

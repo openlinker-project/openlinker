@@ -72,6 +72,9 @@ describe('OrdersController', () => {
       findLatestByOrderId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
+      claimForIssue: jest.fn(),
+      findMany: jest.fn(),
+      findIssuedNonTerminal: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
