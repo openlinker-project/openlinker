@@ -188,6 +188,15 @@ export interface StructuredConfigSectionProps {
    * it MUST gate their inputs on `configIsParseable`.
    */
   syncObjectToJson?: () => void;
+  /**
+   * #771 — whole-object serializer for the InPost sender address. Same shape as
+   * `syncObjectToJson` (no field argument; the host serializer reads current
+   * form state) but dedicated to `inpostSenderAddress` so it can coexist with
+   * the subiekt-capabilities serializer on the same prop bag. Additive and
+   * optional: existing plugins ignore it. Early-returns when raw JSON is
+   * unparseable, so the InPost section gates its inputs on `configIsParseable`.
+   */
+  syncInpostSenderAddressToJson?: () => void;
 }
 
 /**
