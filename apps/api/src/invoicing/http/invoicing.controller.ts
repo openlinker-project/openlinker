@@ -688,9 +688,9 @@ export class InvoicingController {
     this.streamBinaryDocument(res, invoiceId, 'upo', document.contentType, Buffer.from(document.content));
   }
 
-  // Declared last: the single-segment `:invoiceId` route must not shadow the more
-  // specific `/:invoiceId/upo` + `/:invoiceId/content` sub-resources above.
-  @Get(':invoiceId')
+  // Declared last: must not shadow the more specific
+  // `invoices/:invoiceId/upo` + `invoices/:invoiceId/content` sub-resources above.
+  @Get('invoices/:invoiceId')
   @ApiOperation({
     summary: 'Get an invoice record by id',
     description:
