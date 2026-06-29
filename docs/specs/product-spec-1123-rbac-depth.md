@@ -11,7 +11,7 @@
 
 > **Phase A loop (2026-06-22):** initial framing was "the shop that grew past one person." During Gate A the maintainer introduced a concrete, immediate driver — a **public hosted demo** — that reframes the primary problem. Both drivers are kept below; **D1 (demo) is the primary, concrete driver; D2 (team delegation) is the secondary, analogy-based one.**
 
-OpenLinker today is **effectively single-admin**. There is a shipped two-role seam (`admin` + `viewer`, `RolesGuard`, `@Roles('admin')` on ~50 endpoints), but it is **inert and too coarse to expose to untrusted users**:
+OpenLinker today ships a **3-rung role ladder** (`admin` / `operator` / `viewer`, `RolesGuard`, `@Roles` on ~50 endpoints — #1124 / #1125 / #1126), but the **user-management UI is not yet live**, so the roles are not fully self-serviceable. Prior to #1124 the system was effectively single-admin; the context below describes the state at refinement time:
 
 - **No user-management API/UI** — users exist only via DB seed/migration.
 - **The `viewer` role is read-only but still sees everything** — there is no field/secret redaction, so a read-only user can read connection credentials/config, AI provider settings, and webhook secrets. Write-gating is endpoint-level only; there is no row- or field-level filtering.
@@ -63,8 +63,8 @@ Three research streams (run 2026-06-22) plus the first-party demo signal.
 
 Grounded map (file:line):
 
-- **Two roles shipped**: `admin` + `viewer` as-const union — `libs/core/src/users/domain/types/role.types.ts`. Derived `ROLE_PERMISSIONS` map (7 permission strings, computed from role, **not stored per-user**).
-- **Enforcement shipped**: global `JwtAuthGuard` + `RolesGuard` (`APP_GUARD`, `apps/api/src/auth/auth.module.ts`); `@Roles('admin')` on ~50 endpoints across 21 controllers; JWT carries `role`; access + refresh-token infra present.
+- **Three roles shipped**: `admin` + `operator` + `viewer` as-const union — `libs/core/src/users/domain/types/role.types.ts`. Derived `ROLE_PERMISSIONS` map (operator: 11 write-scoped permissions; viewer: 8 read-only permissions; computed from role, **not stored per-user**). Shipped in #1125 (viewer redaction) + #1126 (operator write delegation).
+- **Enforcement shipped**: global `JwtAuthGuard` + `RolesGuard` (`APP_GUARD`, `apps/api/src/auth/auth.module.ts`); `@Roles('admin', 'operator')` on operational-write endpoints (~14 handlers across 7 controllers); `@Roles('admin')` on administrative endpoints; JWT carries `role`; access + refresh-token infra present.
 - **FE**: `requiresRole` nav filtering, `useSession()`; `SessionUser.permissions[]` exists but is **never populated** (stub).
 - **Gaps that block this spec**:
   - **No user-management API/UI** — users are seed/migration-only. (Blocks any second user, demo or staff.)
