@@ -112,17 +112,15 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         body: JSON.stringify(input),
       });
     },
-<<<<<<< HEAD
     issueCorrection(invoiceId, input): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/correct`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
       });
-=======
+    },
     downloadUpo(invoiceId): Promise<Blob> {
       return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
->>>>>>> 003bfc3d (feat(web): KSeF UPO preview + download in invoice-detail slot (B3/B5, #1221))
     },
     downloadDocument(invoiceId, kind): Promise<Blob> {
       return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/document?kind=${kind}`);
