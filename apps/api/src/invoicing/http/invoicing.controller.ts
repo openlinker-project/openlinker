@@ -35,6 +35,7 @@ import {
   Body,
   Query,
   Param,
+  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
   Inject,
@@ -701,7 +702,7 @@ export class InvoicingController {
   @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getInvoice(@Param('invoiceId') invoiceId: string): Promise<InvoiceRecordResponseDto> {
+  async getInvoice(@Param('invoiceId', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 })) invoiceId: string): Promise<InvoiceRecordResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
