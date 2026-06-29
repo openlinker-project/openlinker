@@ -151,6 +151,24 @@ jobs:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
     steps:
       - uses: actions/checkout@v4
+      # Self-hosted runners accumulate Docker images, stopped containers,
+      # anonymous volumes, and build-cache across CI runs. Prune before any
+      # install so containerd has headroom to start Testcontainers containers.
+      #
+      # Flags:
+      #   -a / --all  — removes *all* unused images, not just dangling ones.
+      #                 Required: postgres:16-alpine, redis:7-alpine, and
+      #                 accumulated testcontainers/ryuk:* version tags are
+      #                 tagged (not dangling) and survive prune -f alone.
+      #   -f          — skip the interactive confirmation prompt.
+      #   volume prune -f — removes orphaned anonymous volumes left by
+      #                 containers killed mid-teardown (cancel-in-progress).
+      #
+      # Safe on a dedicated runner (no shared Docker workloads).
+      - name: Prune Docker resources
+        run: |
+          docker system prune -af
+          docker volume prune -f
       - uses: pnpm/action-setup@v2
         with:
           version: 9
