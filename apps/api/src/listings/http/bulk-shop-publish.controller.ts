@@ -49,7 +49,7 @@ export class BulkShopPublishController {
     private readonly bulkSubmit: IBulkShopPublishSubmitService,
   ) {}
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

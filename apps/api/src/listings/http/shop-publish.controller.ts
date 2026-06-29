@@ -49,7 +49,7 @@ export class ShopPublishController {
     private readonly query: IListingCreationQueryService,
   ) {}
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

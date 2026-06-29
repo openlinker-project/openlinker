@@ -80,7 +80,7 @@ import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dt
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { ShipmentResponseDto } from './dto/shipment-response.dto';
 
-@Roles('admin')
+@Roles('admin', 'operator')
 @ApiBearerAuth()
 @ApiTags('shipments')
 @Controller('shipments')
@@ -192,6 +192,7 @@ export class ShipmentController {
   }
 
   @Post('generate-label')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Generate a shipping label for an order via the resolved fulfillment processor',
@@ -227,6 +228,7 @@ export class ShipmentController {
   }
 
   @Post('bulk/generate-labels')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Dispatch labels for up to 25 orders in one action (#964)',
@@ -260,6 +262,7 @@ export class ShipmentController {
   }
 
   @Post('bulk/protocol')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Download the carrier handover protocol over a set of dispatched shipments (#964)',
@@ -290,6 +293,7 @@ export class ShipmentController {
   }
 
   @Post(':id/cancel')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel a not-yet-dispatched shipment' })
   @ApiResponse({ status: 200, type: ShipmentResponseDto })
@@ -306,6 +310,7 @@ export class ShipmentController {
   }
 
   @Post(':id/notify-dispatched')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:

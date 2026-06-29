@@ -1,13 +1,13 @@
 /**
  * Write-Guard Coverage Invariant
  *
- * Asserts that every non-GET route handler on the 10 controllers modified by
- * #1124 carries @Roles('admin') metadata. This guards the posture shift from
+ * Asserts that every non-GET route handler on the 13 controllers modified by
+ * #1124 / #1126 carries @Roles metadata. This guards the posture shift from
  * deny-by-default (class-level guard) to opt-in-per-endpoint: any future PR
  * that adds a write endpoint to one of these controllers without the decorator
  * will fail this test immediately rather than silently granting viewer access.
  *
- * Scope: bounded to the 10 controllers listed in CONTROLLERS. When a new
+ * Scope: bounded to the 13 controllers listed in CONTROLLERS. When a new
  * controller with write endpoints is added to the API, extend CONTROLLERS here.
  *
  * Implementation: reads NestJS HTTP-method metadata off each prototype method
@@ -28,6 +28,8 @@ import { ShopPublishController } from '../listings/http/shop-publish.controller'
 import { BulkShopPublishController } from '../listings/http/bulk-shop-publish.controller';
 import { ProductsController, VariantsController } from '../products/http/products.controller';
 import { InventoryController } from '../inventory/http/inventory.controller';
+import { ShipmentController } from '../shipping/http/shipment.controller';
+import { PickupPointController } from '../shipping/http/pickup-point.controller';
 import { UsersController } from '../users/http/users.controller';
 
 const METHOD_METADATA = 'method';
@@ -51,9 +53,11 @@ const CONTROLLERS = [
   VariantsController,
   InventoryController,
   UsersController,
+  ShipmentController,
+  PickupPointController,
 ];
 
-describe('Write-guard coverage invariant (#1124)', () => {
+describe('Write-guard coverage invariant (#1124 / #1126)', () => {
   for (const Controller of CONTROLLERS) {
     it(`${Controller.name}: every write handler carries @Roles`, () => {
       const proto = Controller.prototype as unknown as Record<string, unknown>;
