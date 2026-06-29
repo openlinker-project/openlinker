@@ -154,6 +154,45 @@ describe('AttributeProjectionService', () => {
     expect(result.parameters).toEqual([{ id: 'colour', values: ['red'], section: 'offer' }]);
   });
 
+  it('reuses owner attribute mappings by provenance for a borrows destination (#1045)', async () => {
+    // ERLI (borrows): zero attribute rows authored against the ERLI destination,
+    // but the operator's Allegro-authored rows are reused by provenance.
+    const integrationsMock = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue(passthroughAdapter()),
+    } as unknown as IIntegrationsService;
+    const getAttributeMappingsByProvenance = jest
+      .fn()
+      .mockResolvedValue([
+        mapping('Color', 'colour', { values: [{ sourceValue: 'Red', destinationValue: 'red' }] }),
+      ]);
+    const mappingConfigMock = {
+      getAttributeMappings: jest.fn().mockResolvedValue([]),
+      getAttributeMappingsByProvenance,
+    } as unknown as IMappingConfigService;
+    const svc = new AttributeProjectionService(integrationsMock, mappingConfigMock);
+
+    const result = await svc.project({ ...input({ Color: 'Red' }), borrowedTaxonomy: 'allegro' });
+
+    expect(getAttributeMappingsByProvenance).toHaveBeenCalledWith('allegro');
+    expect(result.parameters).toEqual([{ id: 'colour', values: ['red'], section: 'offer' }]);
+  });
+
+  it('does not consult provenance mappings when borrowedTaxonomy is absent (#1045)', async () => {
+    const integrationsMock = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue(passthroughAdapter()),
+    } as unknown as IIntegrationsService;
+    const getAttributeMappingsByProvenance = jest.fn().mockResolvedValue([]);
+    const mappingConfigMock = {
+      getAttributeMappings: jest.fn().mockResolvedValue([mapping('Color', 'colour')]),
+      getAttributeMappingsByProvenance,
+    } as unknown as IMappingConfigService;
+    const svc = new AttributeProjectionService(integrationsMock, mappingConfigMock);
+
+    await svc.project(input({ Color: 'Red' }));
+
+    expect(getAttributeMappingsByProvenance).not.toHaveBeenCalled();
+  });
+
   it('reports present-but-unmapped source attributes', async () => {
     const params = [param({ id: 'p-mat', name: 'Material' })];
     service = build(ownsAdapter(params), [mapping('Fabric', 'Material')]);

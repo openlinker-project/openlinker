@@ -123,6 +123,14 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'timestamp', nullable: true })
   leaseExpiresAt!: Date | null;
 
+  /**
+   * Neutral denormalized flag: did the buyer carry a tax identifier at issue
+   * time (#1202)? Backs the `taxId=with|without` list filter without joining to
+   * the Order. Not "nip" — a presence boolean. Defaults `false` for legacy rows.
+   */
+  @Column({ type: 'boolean', default: false })
+  hasBuyerTaxId!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

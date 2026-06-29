@@ -97,6 +97,7 @@ describe('OrderSyncService', () => {
       deleteCategoryMapping: jest.fn(),
       resolveDestinationCategory: jest.fn(),
       getAttributeMappings: jest.fn(),
+      getAttributeMappingsByProvenance: jest.fn(),
       upsertAttributeMapping: jest.fn(),
       deleteAttributeMapping: jest.fn(),
     } as jest.Mocked<IMappingConfigService>;

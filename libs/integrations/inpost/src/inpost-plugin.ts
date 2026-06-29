@@ -18,6 +18,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createInpostShippingAdapter } from './application/inpost-adapter.factory';
 import { InpostAuthFailureClassifierAdapter } from './infrastructure/adapters/inpost-auth-failure-classifier.adapter';
 import { InpostConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/inpost-connection-config-shape-validator.adapter';
+import { InpostConnectionTesterAdapter } from './infrastructure/adapters/inpost-connection-tester.adapter';
 import { InpostInboundWebhookDecoderAdapter } from './infrastructure/adapters/inpost-inbound-webhook-decoder.adapter';
 import { InpostWebhookEventTranslatorAdapter } from './infrastructure/adapters/inpost-webhook-event-translator.adapter';
 import { buildInpostSchedulerTasks } from './infrastructure/scheduler/inpost-scheduler-tasks';
@@ -51,6 +52,14 @@ export function createInpostPlugin(): AdapterPlugin {
       );
       // No credentials-shape validator: the `{ apiToken }` shape is enforced
       // at adapter construction time by the factory (deeper than this boundary).
+
+      // #771 — connection-test probe. Makes `POST /connections/:id/test`
+      // meaningful for InPost (it 400s without a registered tester): a cheap
+      // authenticated `GET /v1/points` probe validates the stored token.
+      host.connectionTesterRegistry.register(
+        inpostAdapterManifest.adapterKey,
+        new InpostConnectionTesterAdapter(),
+      );
 
       // Auth-failure classifier (#819 / #1103): a non-retryable 401/403 from the
       // ShipX client flips the connection to `needs_reauth` on the SyncJobRunner

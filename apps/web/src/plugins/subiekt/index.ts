@@ -42,6 +42,8 @@ import { definePlugin } from '../define-plugin';
 import { subiektSetupRoute } from './subiekt-setup.route';
 import { SubiektCredentialsPanel } from './components/subiekt-credentials-panel';
 import { SubiektStructuredSection } from './components/subiekt-structured-section';
+import { SubiektInvoiceDetailSection } from './components/subiekt-invoice-detail-section';
+import { SubiektInvoiceCorrectionFlow } from './components/subiekt-invoice-correction-flow';
 import { SUBIEKT_CAPABILITY_DESCRIPTORS } from './subiekt-capability-descriptors';
 
 export const subiektPlugin: OpenLinkerPlugin = definePlugin({
@@ -62,5 +64,7 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
     capabilityDescriptors: SUBIEKT_CAPABILITY_DESCRIPTORS,
     StructuredConfigSection: SubiektStructuredSection,
     CredentialsPanel: SubiektCredentialsPanel,
+    invoiceDetailSection: SubiektInvoiceDetailSection,
+    invoiceCorrectionFlow: SubiektInvoiceCorrectionFlow,
   },
 });

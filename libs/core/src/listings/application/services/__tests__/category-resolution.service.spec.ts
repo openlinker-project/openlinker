@@ -111,6 +111,47 @@ describe('CategoryResolutionService', () => {
     expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
   });
 
+  it('should reuse a borrowed-taxonomy mapping and bear borrows provenance on the mapping path (#1045)', async () => {
+    mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-258066');
+
+    const result = await service.resolveCategory({
+      connectionId: 'erli-conn',
+      sourceCategoryIds: ['ps-cat-1'],
+      borrowedTaxonomy: 'allegro',
+      sourceConnectionId: 'ps-master',
+    });
+
+    expect(result).toEqual({
+      destinationCategoryId: 'allegro-cat-258066',
+      provenance: 'borrows',
+      method: 'category_mapping',
+    });
+    // Borrowed taxonomy + source store threaded into the mapping lookup.
+    expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith('erli-conn', 'ps-cat-1', {
+      borrowedTaxonomy: 'allegro',
+      sourceConnectionId: 'ps-master',
+    });
+    // No adapter resolution on the mapping path (no extra I/O).
+    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+  });
+
+  it('should report borrows provenance even when a borrowed mapping is unresolved (#1045)', async () => {
+    mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+    const result = await service.resolveCategory({
+      connectionId: 'erli-conn',
+      sourceCategoryIds: ['ps-cat-1'],
+      borrowedTaxonomy: 'allegro',
+      sourceConnectionId: 'ps-master',
+    });
+
+    expect(result).toEqual({
+      destinationCategoryId: null,
+      provenance: 'borrows',
+      method: 'manual',
+    });
+  });
+
   it('should try multiple source categories in order until one resolves', async () => {
     mappingConfig.resolveDestinationCategory
       .mockResolvedValueOnce(null)

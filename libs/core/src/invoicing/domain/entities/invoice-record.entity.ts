@@ -68,6 +68,13 @@ export class InvoiceRecord {
      * `status === 'issuing'` AND the lease is in the future.
      */
     public readonly leaseExpiresAt: Date | null = null,
+    /**
+     * Whether the buyer carried a tax identifier at issue time. A neutral,
+     * denormalized presence flag (NOT the tax-id value, NOT "nip") that backs the
+     * `taxId=with|without` list filter (#1202) without joining to the Order. Set
+     * once on the write path; defaults `false` for legacy rows with no backfill.
+     */
+    public readonly hasBuyerTaxId: boolean = false,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

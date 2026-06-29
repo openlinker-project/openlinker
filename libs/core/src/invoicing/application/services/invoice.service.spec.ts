@@ -71,6 +71,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.failureCode === undefined ? null : overrides.failureCode,
     overrides.failureReason === undefined ? null : overrides.failureReason,
     overrides.leaseExpiresAt === undefined ? null : overrides.leaseExpiresAt,
+    overrides.hasBuyerTaxId,
   );
 }
 
@@ -153,6 +154,8 @@ describe('InvoiceService', () => {
           status: 'pending',
           idempotencyKey: KEY,
           documentType: '',
+          // Buyer carries a tax id -> denormalized presence flag is true (#1202).
+          hasBuyerTaxId: true,
         }),
       );
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION, 'Invoicing');
@@ -191,6 +194,44 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         'rec-1',
         expect.objectContaining({ providerType: 'subiekt', documentType: 'invoice' }),
+      );
+    });
+
+    it('(a3) should set hasBuyerTaxId=false on the pending row when the buyer has no tax id (#1202)', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      const noTaxBuyer = new BuyerProfile(
+        'Jan Kowalski',
+        null,
+        { line1: 'ul. Y 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'private',
+      );
+      await service.issueInvoice(makeCmd({ buyer: noTaxBuyer }));
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerTaxId: false }),
+      );
+    });
+
+    it('(a4) should set hasBuyerTaxId=false on the pending row when the buyer tax id value is blank (#1202)', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      const blankTaxBuyer = new BuyerProfile(
+        'ACME Sp. z o.o.',
+        { scheme: 'pl-nip', value: '' },
+        { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+        'company',
+      );
+      await service.issueInvoice(makeCmd({ buyer: blankTaxBuyer }));
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerTaxId: false }),
       );
     });
 

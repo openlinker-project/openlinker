@@ -37,6 +37,7 @@ function ormRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordO
       pdfUrl: null,
       issuedAt: null,
       errorMessage: null,
+      hasBuyerTaxId: false,
       createdAt: now,
       updatedAt: now,
     },
@@ -122,6 +123,32 @@ describe('InvoiceRecordRepository', () => {
       const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
       expect(saved.failureCode).toBeNull();
       expect(saved.failureReason).toBeNull();
+    });
+
+    it('should persist hasBuyerTaxId=true and map it back when the input carries the flag (#1202)', async () => {
+      let savedEntity: InvoiceRecordOrmEntity | undefined;
+      ormRepo.save.mockImplementation((entity) => {
+        savedEntity = entity as InvoiceRecordOrmEntity;
+        return Promise.resolve(ormRow({ hasBuyerTaxId: savedEntity.hasBuyerTaxId }));
+      });
+
+      const result = await repository.create({ ...createInput, hasBuyerTaxId: true });
+
+      expect(savedEntity?.hasBuyerTaxId).toBe(true);
+      expect(result.hasBuyerTaxId).toBe(true);
+    });
+
+    it('should default hasBuyerTaxId to false when the input omits the flag (#1202)', async () => {
+      let savedEntity: InvoiceRecordOrmEntity | undefined;
+      ormRepo.save.mockImplementation((entity) => {
+        savedEntity = entity as InvoiceRecordOrmEntity;
+        return Promise.resolve(ormRow({ hasBuyerTaxId: savedEntity.hasBuyerTaxId }));
+      });
+
+      const result = await repository.create(createInput);
+
+      expect(savedEntity?.hasBuyerTaxId).toBe(false);
+      expect(result.hasBuyerTaxId).toBe(false);
     });
 
     it('converts a unique-violation into DuplicateInvoiceRecordException', async () => {
@@ -366,6 +393,20 @@ describe('InvoiceRecordRepository', () => {
       await repository.findMany({ issuedFrom: from, issuedTo: to }, PAGE);
       expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt >= :issuedFrom', { issuedFrom: from });
       expect(qb.andWhere).toHaveBeenCalledWith('inv.issuedAt <= :issuedTo', { issuedTo: to });
+    });
+
+    it('should filter by hasBuyerTaxId = true when taxId=with is provided (#1202)', async () => {
+      await repository.findMany({ taxId: 'with' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
+        hasBuyerTaxId: true,
+      });
+    });
+
+    it('should filter by hasBuyerTaxId = false when taxId=without is provided (#1202)', async () => {
+      await repository.findMany({ taxId: 'without' }, PAGE);
+      expect(qb.andWhere).toHaveBeenCalledWith('inv.hasBuyerTaxId = :hasBuyerTaxId', {
+        hasBuyerTaxId: false,
+      });
     });
 
     it('orders by inv.createdAt DESC and applies skip/take from pagination', async () => {

@@ -17,6 +17,15 @@ export interface AttributeMappingRepositoryPort {
   findByDestinationConnection(destinationConnectionId: string): Promise<AttributeMapping[]>;
 
   /**
+   * All attribute mappings authored under a given owner-taxonomy provenance
+   * (e.g. `'allegro'`), across destination connections (#1045). Used for
+   * borrowed-taxonomy reuse: a `borrows` destination (ERLI) reuses the owner's
+   * attribute mappings. The projection service filters the result by source
+   * connection + category in memory.
+   */
+  findByProvenance(destinationTaxonomyProvenance: string): Promise<AttributeMapping[]>;
+
+  /**
    * Create or update one attribute mapping (and replace its value set), keyed on
    * (sourceConnectionId, destinationConnectionId, sourceAttributeKey,
    * destinationCategoryId — `null` ⇒ the connection-wide default row).
