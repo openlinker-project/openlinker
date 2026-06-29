@@ -8,6 +8,8 @@
  *   - `POST /invoices`
  *   - `POST /invoices/retry` (batch retry — W6 #1245)
  *   - `POST /invoices/:invoiceId/correct` (correction — #1241)
+ *   - `GET /invoices/:invoiceId/upo` (UPO blob — #1234)
+ *   - `GET /invoices/:invoiceId/document?kind=source|rendered` (FA(3) doc — W3 #1231)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -39,10 +41,29 @@ export interface InvoicingApi {
   retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
   /** `POST /invoices/:invoiceId/correct` — issue a correcting document (#1241). */
   issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
+  /**
+   * `GET /invoices/:invoiceId/upo` (#1234) — fetch the official UPO confirmation
+   * document for a cleared/accepted e-invoice as a Blob. Content type is
+   * provider-defined (PDF / XML); the caller derives the kind from `blob.type`.
+   * Capability-gated on `RegulatoryDocumentReader` server-side. Neutral: keyed
+   * on the internal `invoice.id`, never on platform type (ADR-026).
+   */
+  downloadUpo: (invoiceId: string) => Promise<Blob>;
+  /**
+   * `GET /invoices/:invoiceId/document?kind=source|rendered` (W3 #1231) —
+   * fetch the issued FA(3) document. `kind=source` returns the original XML;
+   * `kind=rendered` returns a human-readable HTML rendering. Returns a Blob;
+   * content type is provider-defined.
+   */
+  downloadDocument: (invoiceId: string, kind: 'source' | 'rendered') => Promise<Blob>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+interface ApiBlobRequest {
+  (path: string, init?: RequestInit): Promise<Blob>;
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
@@ -63,7 +84,7 @@ function buildQuery(filters?: InvoiceFilters, pagination?: InvoicePagination): s
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createInvoicingApi(request: ApiRequest): InvoicingApi {
+export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequest): InvoicingApi {
   return {
     getForOrder(orderId, connectionId): Promise<InvoiceRecord> {
       const params = new URLSearchParams({ connectionId });
@@ -97,6 +118,12 @@ export function createInvoicingApi(request: ApiRequest): InvoicingApi {
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
       });
+    },
+    downloadUpo(invoiceId): Promise<Blob> {
+      return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
+    },
+    downloadDocument(invoiceId, kind): Promise<Blob> {
+      return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/document?kind=${kind}`);
     },
   };
 }
