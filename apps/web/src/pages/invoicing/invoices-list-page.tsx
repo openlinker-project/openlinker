@@ -19,7 +19,7 @@
  * @module apps/web/src/pages/invoicing
  */
 import { useState, useCallback, type ReactElement } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -117,6 +117,16 @@ export function InvoicesListPage(): ReactElement {
       if (value) next.set(key, value);
       else next.delete(key);
       next.delete('offset');
+      return next;
+    });
+  }
+
+  function clearFilters(): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const key of ['status', 'connectionId', 'regulatoryStatus', 'taxId', 'issuedFrom', 'issuedTo', 'offset']) {
+        next.delete(key);
+      }
       return next;
     });
   }
@@ -332,6 +342,12 @@ export function InvoicesListPage(): ReactElement {
           value={issuedTo ?? ''}
           onChange={(e) => setFilter('issuedTo', e.target.value)}
         />
+
+        {hasFilters ? (
+          <Button tone="secondary" className="button--sm" onClick={clearFilters}>
+            {t('invoice.filter.clearAll', 'Clear filters')}
+          </Button>
+        ) : null}
       </div>
 
       {query.isLoading ? (
@@ -354,9 +370,20 @@ export function InvoicesListPage(): ReactElement {
             hasFilters
               ? t(
                   'invoice.list.empty.filtered',
-                  'No invoices match the current filters. Try clearing some filters.',
+                  'No invoices match the current filters.',
                 )
               : t('invoice.list.empty.none', 'No invoices have been issued yet.')
+          }
+          action={
+            hasFilters ? (
+              <Button tone="secondary" onClick={clearFilters}>
+                {t('invoice.filter.clearAll', 'Clear filters')}
+              </Button>
+            ) : (
+              <Link className="button button--secondary" to="/orders">
+                {t('invoice.list.empty.goToOrders', 'Go to orders')}
+              </Link>
+            )
           }
         />
       ) : (

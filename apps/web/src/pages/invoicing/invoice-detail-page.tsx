@@ -161,6 +161,7 @@ export function InvoiceDetailPage(): ReactElement {
     <PageLayout
       eyebrow="Operations"
       title={title}
+      backTo={{ to: '/invoices', label: t('invoice.detail.backToList', 'Back to invoices') }}
       description={
         <span>
           {t('invoice.detail.orderLabel', 'Order')}{' '}
