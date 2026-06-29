@@ -224,7 +224,7 @@ export function InvoicesListPage(): ReactElement {
           <span className="text-muted">—</span>
         ),
       accessor: (r) => r.clearanceReference ?? '',
-      hideBelow: 1280,
+      hideBelow: 1024,
     },
     {
       id: 'connection',
