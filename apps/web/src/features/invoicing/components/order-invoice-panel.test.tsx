@@ -15,7 +15,7 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient, sampleConnection } from '../../../test/test-utils';
+import { renderWithProviders, createMockApiClient, sampleConnection, findToastDescription } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../../orders';
@@ -256,7 +256,7 @@ describe('OrderInvoicePanel — issue flow', () => {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()), issue } }),
     });
     await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
-    expect(await screen.findByText(/Invoicing is not enabled for this connection/i)).toBeInTheDocument();
+    expect(await findToastDescription(/Invoicing is not enabled for this connection/i)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('adapter subiekt-gt');
   });
 });
