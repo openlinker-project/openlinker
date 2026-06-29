@@ -28,9 +28,9 @@ import { ShopPublishController } from '../listings/http/shop-publish.controller'
 import { BulkShopPublishController } from '../listings/http/bulk-shop-publish.controller';
 import { ProductsController, VariantsController } from '../products/http/products.controller';
 import { InventoryController } from '../inventory/http/inventory.controller';
-import { UsersController } from '../users/http/users.controller';
 import { ShipmentController } from '../shipping/http/shipment.controller';
 import { PickupPointController } from '../shipping/http/pickup-point.controller';
+import { UsersController } from '../users/http/users.controller';
 
 const METHOD_METADATA = 'method';
 

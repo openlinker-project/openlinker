@@ -246,7 +246,7 @@ export function createApiClient({
     customers: createCustomersApi(request),
     health: createHealthApi(request),
     inventory: createInventoryApi(request),
-    invoicing: createInvoicingApi(request),
+    invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request),
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),

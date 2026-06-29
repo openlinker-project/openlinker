@@ -159,6 +159,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
             }
           >
             <option value="viewer">Viewer</option>
+            <option value="operator">Operator</option>
             <option value="admin">Admin</option>
           </Select>
           <Button
@@ -222,6 +223,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
             disabled={updateRoleMutation.isPending}
           >
             <option value="viewer">Viewer</option>
+            <option value="operator">Operator</option>
             <option value="admin">Admin</option>
           </Select>
         ),
