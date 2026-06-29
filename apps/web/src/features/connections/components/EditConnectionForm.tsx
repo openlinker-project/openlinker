@@ -42,6 +42,12 @@ type StructuredField =
   | 'subiektTriggerModel'
   | 'ksefEnvironment'
   | 'sellerNip'
+  | 'sellerName'
+  | 'sellerAddressLine1'
+  | 'sellerAddressLine2'
+  | 'sellerCity'
+  | 'sellerPostalCode'
+  | 'sellerCountryIso2'
   | 'contextIdentifier'
   | 'inpostEnvironment'
   | 'inpostOrganizationId';
@@ -126,6 +132,47 @@ function readInpostSenderAddress(
       postCode: typeof address.postCode === 'string' ? address.postCode : '',
       countryCode: typeof address.countryCode === 'string' ? address.countryCode : '',
     },
+  };
+}
+
+/**
+ * Read the KSeF seller config sub-object out of `config.seller` (#1223).
+ * Returns a flat object of form-field values so the edit form can hydrate the
+ * seller profile fields. Falls back to the old flat `config.sellerNip` for
+ * connections saved before the nested shape was introduced.
+ */
+function readKsefSeller(config: Record<string, unknown>): {
+  sellerNip: string;
+  sellerName: string;
+  sellerAddressLine1: string;
+  sellerAddressLine2: string;
+  sellerCity: string;
+  sellerPostalCode: string;
+  sellerCountryIso2: string;
+} {
+  const seller =
+    typeof config.seller === 'object' && config.seller !== null
+      ? (config.seller as Record<string, unknown>)
+      : {};
+  const address =
+    typeof seller.address === 'object' && seller.address !== null
+      ? (seller.address as Record<string, unknown>)
+      : {};
+  // Fallback: if config.seller.nip is absent, read legacy flat config.sellerNip.
+  const nip =
+    typeof seller.nip === 'string'
+      ? seller.nip
+      : typeof config.sellerNip === 'string'
+        ? config.sellerNip
+        : '';
+  return {
+    sellerNip: nip,
+    sellerName: typeof seller.name === 'string' ? seller.name : '',
+    sellerAddressLine1: typeof address.line1 === 'string' ? address.line1 : '',
+    sellerAddressLine2: typeof address.line2 === 'string' ? address.line2 : '',
+    sellerCity: typeof address.city === 'string' ? address.city : '',
+    sellerPostalCode: typeof address.postalCode === 'string' ? address.postalCode : '',
+    sellerCountryIso2: typeof address.countryIso2 === 'string' ? address.countryIso2 : '',
   };
 }
 
@@ -274,9 +321,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
       subiektTriggerModel: readTriggerModel(connection.config),
       subiektCapabilities: readSubiektCapabilities(connection.config),
-      // KSeF structured fields (#1152) — read from `config.{env,sellerNip,contextIdentifier}`.
+      // KSeF structured fields (#1152, #1223) — env from `config.env`; seller
+      // profile from nested `config.seller` (with legacy flat `config.sellerNip`
+      // fallback); context identifier from `config.contextIdentifier`.
       ksefEnvironment: readKsefEnvironment(connection.config),
-      sellerNip: readString(connection.config, 'sellerNip'),
+      ...readKsefSeller(connection.config),
       contextIdentifier: readString(connection.config, 'contextIdentifier'),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an
