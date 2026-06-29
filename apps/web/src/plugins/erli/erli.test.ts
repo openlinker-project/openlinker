@@ -49,9 +49,11 @@ describe('erliPlugin', () => {
     it('contributes a credentials panel', () => {
       expect(erliPlugin.platform?.CredentialsPanel).toBeDefined();
     });
-    it('does NOT contribute structured-config edit or connection-action slots', () => {
+    it('does NOT contribute a structured-config edit slot', () => {
       expect(erliPlugin.platform?.StructuredConfigSection).toBeUndefined();
-      expect(erliPlugin.platform?.ConnectionActions).toBeUndefined();
+    });
+    it('contributes a ConnectionActions component for webhook install (#1216)', () => {
+      expect(erliPlugin.platform?.ConnectionActions).toBeDefined();
     });
     it('contributes the bulk-offer config section + offer validation (#1096)', () => {
       expect(erliPlugin.platform?.bulkOfferConfigSection?.component).toBeDefined();

@@ -41,6 +41,7 @@ import {
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
+  DuplicateInvoiceRecordException,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -61,6 +62,7 @@ import {
   CapabilityNotEnabledException,
 } from '@openlinker/core/integrations';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
+import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
@@ -282,6 +284,55 @@ export class InvoicingController {
     }
   }
 
+  @Post('invoices/:invoiceId/correct')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Issue a correction of an already-issued invoice',
+    description:
+      'Issues a correcting document (faktura korygująca / credit-note) for the invoice ' +
+      'identified by :invoiceId. The original InvoiceRecord is resolved server-side to ' +
+      'extract connectionId, orderId, and originalProviderInvoiceId. Requires the ' +
+      'connection adapter to implement the CorrectionIssuer sub-capability.',
+  })
+  @ApiResponse({ status: 201, description: 'Correction invoice issued', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async issueCorrection(
+    @Param('invoiceId') invoiceId: string,
+    @Body() dto: IssueCorrectionRequestDto,
+  ): Promise<InvoiceRecordResponseDto> {
+    const original = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!original) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!original.providerInvoiceId) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
+      );
+    }
+
+    let issued: InvoiceRecord;
+    try {
+      issued = await this.invoiceService.issueCorrection({
+        connectionId: original.connectionId,
+        orderId: original.orderId,
+        originalProviderInvoiceId: original.providerInvoiceId,
+        documentType: dto.lines.length > 0 ? 'corrected' : undefined,
+        reason: dto.reason,
+        lines: dto.lines.map((l) => ({
+          originalLineNumber: l.originalLineNumber,
+          newQuantity: l.newQuantity,
+          newUnitPriceGross: l.newUnitPriceGross,
+        })),
+        idempotencyKey: dto.idempotencyKey,
+      });
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
+    return this.toDto(issued);
+  }
+
   @Get('orders/:orderId/invoice')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -326,10 +377,9 @@ export class InvoicingController {
     summary: 'List invoice records',
     description:
       'Paginated list with AC-6 filters: status, connection, regulatory status, ' +
-      'issued date range. The AC-6 "with/without tax id" sub-filter is NOT exposed ' +
-      'here: the persisted InvoiceRecord projection has no buyer/tax-id column (the ' +
-      'buyer lives on the Order), so it cannot be served without a schema migration ' +
-      'that is out of #1119 scope. Tracked as #1202; not silently "done".',
+      'issued date range, and buyer-tax-id presence (taxId=with|without, #1202). ' +
+      'The taxId filter is served by the neutral denormalized hasBuyerTaxId column ' +
+      'on the projection (set on the write path), so no Order join is needed.',
   })
   @ApiResponse({
     status: 200,
@@ -346,6 +396,7 @@ export class InvoicingController {
       regulatoryStatus: query.regulatoryStatus,
       issuedFrom: query.issuedFrom ? new Date(query.issuedFrom) : undefined,
       issuedTo: query.issuedTo ? new Date(query.issuedTo) : undefined,
+      taxId: query.taxId,
     };
     const page = await this.invoiceService.listInvoices(filter, { limit, offset });
     return {
@@ -395,6 +446,9 @@ export class InvoicingController {
    *     the global filter — they are not invoice-issuance rejections).
    */
   private toHttpException(error: unknown): Error {
+    if (error instanceof DuplicateInvoiceRecordException) {
+      return new ConflictException('An invoice record with this idempotency key already exists');
+    }
     if (
       error instanceof InvalidBuyerProfileError ||
       error instanceof UnsupportedPriceTreatmentError

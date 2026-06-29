@@ -97,6 +97,8 @@ import {
   type OfferStatusReader,
   type OfferStockRestorer,
   type OfferStockRestoreTarget,
+  type TaxonomyBorrower,
+  type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
@@ -166,9 +168,26 @@ const ERLI_FROZEN_STOCK_FIELD = 'stock';
 export const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
 
 export class ErliOfferManagerAdapter
-  implements OfferManagerPort, OfferCreator, OfferFieldUpdater, OfferStatusReader, OfferStockRestorer
+  implements
+    OfferManagerPort,
+    OfferCreator,
+    OfferFieldUpdater,
+    OfferStatusReader,
+    OfferStockRestorer,
+    TaxonomyBorrower
 {
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
+
+  /**
+   * Erli borrows Allegro's taxonomy (ADR-025 §3): it accepts Allegro
+   * category/parameter ids verbatim via `source:"allegro"` and ships no
+   * `CategoryBrowser` / `CategoryParametersReader` of its own. Declaring this
+   * lets core reuse an operator's existing PrestaShop→Allegro category/attribute
+   * mappings for an Erli destination with zero re-authoring (#1045).
+   */
+  getBorrowedTaxonomy(): TaxonomyOwner {
+    return 'allegro';
+  }
 
   constructor(
     private readonly connectionId: string,

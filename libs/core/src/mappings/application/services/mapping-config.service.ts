@@ -148,17 +148,39 @@ export class MappingConfigService implements IMappingConfigService {
 
   async resolveDestinationCategory(
     destinationConnectionId: string,
-    sourceCategoryId: string
+    sourceCategoryId: string,
+    opts?: { borrowedTaxonomy?: string; sourceConnectionId?: string }
   ): Promise<string | null> {
-    const mapping = await this.categoryRepo.findBySourceCategory(
+    // 1. Destination-keyed row wins — an explicit mapping authored for this exact
+    //    connection overrides any borrowed reuse.
+    const direct = await this.categoryRepo.findBySourceCategory(
       destinationConnectionId,
       sourceCategoryId
     );
-    return mapping?.destinationCategoryId ?? null;
+    if (direct) {
+      return direct.destinationCategoryId;
+    }
+    // 2. Borrowed-taxonomy fallback (#1045): a `borrows` destination reuses an
+    //    owner-authored row under its borrowed provenance, source-scoped when known.
+    if (opts?.borrowedTaxonomy) {
+      const reused = await this.categoryRepo.findBySourceCategoryByProvenance(
+        opts.borrowedTaxonomy,
+        sourceCategoryId,
+        opts.sourceConnectionId ?? null
+      );
+      return reused?.destinationCategoryId ?? null;
+    }
+    return null;
   }
 
   getAttributeMappings(destinationConnectionId: string): Promise<AttributeMapping[]> {
     return this.attributeRepo.findByDestinationConnection(destinationConnectionId);
+  }
+
+  getAttributeMappingsByProvenance(
+    destinationTaxonomyProvenance: string
+  ): Promise<AttributeMapping[]> {
+    return this.attributeRepo.findByProvenance(destinationTaxonomyProvenance);
   }
 
   upsertAttributeMapping(

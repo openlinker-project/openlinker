@@ -33,6 +33,15 @@ export interface AttributeProjectionInput {
    * branch regardless of which capability resolved it.
    */
   destinationCapability?: string;
+  /**
+   * Owner taxonomy this destination borrows (#1045, e.g. `'allegro'`). When set,
+   * the projection additionally reuses attribute mappings authored under this
+   * provenance across destination connections — so a `borrows` destination (ERLI)
+   * reuses the owner's (Allegro's) attribute mappings with zero re-authoring.
+   * Rows authored directly against this destination win per source attribute key.
+   * Absent for `owns` / `open` destinations.
+   */
+  borrowedTaxonomy?: string;
 }
 
 /**

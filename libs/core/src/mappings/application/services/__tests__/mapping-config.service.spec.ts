@@ -54,6 +54,7 @@ describe('MappingConfigService', () => {
     categoryRepo = {
       findByDestinationConnection: jest.fn(),
       findBySourceCategory: jest.fn(),
+      findBySourceCategoryByProvenance: jest.fn(),
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
@@ -63,6 +64,7 @@ describe('MappingConfigService', () => {
     };
     attributeRepo = {
       findByDestinationConnection: jest.fn(),
+      findByProvenance: jest.fn(),
       upsertMapping: jest.fn(),
       deleteMapping: jest.fn(),
     };
@@ -372,6 +374,66 @@ describe('MappingConfigService', () => {
       const result = await service.resolveDestinationCategory(CONNECTION_ID, '999');
 
       expect(result).toBeNull();
+    });
+
+    it('should prefer a destination-keyed mapping over the borrowed-taxonomy fallback (#1045)', async () => {
+      const direct = new CategoryMapping('id-1', null, CONNECTION_ID, '3', '258066', 'X', null, 'allegro');
+      categoryRepo.findBySourceCategory.mockResolvedValue(direct);
+
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3', {
+        borrowedTaxonomy: 'allegro',
+        sourceConnectionId: 'src-1',
+      });
+
+      expect(result).toBe('258066');
+      expect(categoryRepo.findBySourceCategoryByProvenance).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to a borrowed-taxonomy mapping when no destination-keyed row exists (#1045)', async () => {
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
+      const borrowed = new CategoryMapping('id-2', 'src-1', 'allegro-conn', '3', '258066', 'X', null, 'allegro');
+      categoryRepo.findBySourceCategoryByProvenance.mockResolvedValue(borrowed);
+
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3', {
+        borrowedTaxonomy: 'allegro',
+        sourceConnectionId: 'src-1',
+      });
+
+      expect(result).toBe('258066');
+      expect(categoryRepo.findBySourceCategoryByProvenance).toHaveBeenCalledWith(
+        'allegro',
+        '3',
+        'src-1'
+      );
+    });
+
+    it('should return null when neither a destination-keyed nor a borrowed mapping exists (#1045)', async () => {
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
+      categoryRepo.findBySourceCategoryByProvenance.mockResolvedValue(null);
+
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3', {
+        borrowedTaxonomy: 'allegro',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('should not consult the borrowed fallback when no borrowedTaxonomy is given (#1045)', async () => {
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
+
+      await service.resolveDestinationCategory(CONNECTION_ID, '3');
+
+      expect(categoryRepo.findBySourceCategoryByProvenance).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getAttributeMappingsByProvenance', () => {
+    it('should delegate to the attribute repo findByProvenance (#1045)', async () => {
+      attributeRepo.findByProvenance.mockResolvedValue([]);
+
+      await service.getAttributeMappingsByProvenance('allegro');
+
+      expect(attributeRepo.findByProvenance).toHaveBeenCalledWith('allegro');
     });
   });
 });

@@ -187,6 +187,11 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     if (filter.issuedTo !== undefined) {
       qb.andWhere('inv.issuedAt <= :issuedTo', { issuedTo: filter.issuedTo });
     }
+    if (filter.taxId !== undefined) {
+      qb.andWhere('inv.hasBuyerTaxId = :hasBuyerTaxId', {
+        hasBuyerTaxId: filter.taxId === 'with',
+      });
+    }
 
     qb.orderBy('inv.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
 
@@ -268,6 +273,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.failureReason = input.failureReason ?? null;
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
+    entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
     return entity;
   }
 
@@ -293,6 +299,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.failureCode,
       entity.failureReason,
       entity.leaseExpiresAt,
+      entity.hasBuyerTaxId,
     );
   }
 }

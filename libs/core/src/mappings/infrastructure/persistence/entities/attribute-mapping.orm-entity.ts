@@ -55,6 +55,17 @@ export class AttributeMappingOrmEntity {
   @Column({ type: 'varchar', length: 100, name: 'destination_category_id', nullable: true })
   destinationCategoryId!: string | null;
 
+  // Owner-taxonomy provenance (#1045) — the owner whose parameter names this row
+  // is authored against (e.g. 'allegro'). A `borrows` destination (ERLI) reuses
+  // these rows by provenance. Default keeps existing rows resolvable post-migration.
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'destination_taxonomy_provenance',
+    default: 'allegro',
+  })
+  destinationTaxonomyProvenance!: string;
+
   // Cascade + orphan-delete: setting `values` and saving the parent
   // inserts/updates/removes the child set atomically (no manual transaction).
   // Eager so reads return the full aggregate.

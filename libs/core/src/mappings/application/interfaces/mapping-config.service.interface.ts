@@ -86,12 +86,16 @@ export interface IMappingConfigService {
   /**
    * Resolve the configured destination category ID for a given source category.
    * `destinationConnectionId` is the marketplace/shop connection the mapping
-   * targets. Returns null if no mapping is configured for this destination +
-   * sourceCategoryId pair.
+   * targets. Tries a destination-keyed row first (an explicit row for this
+   * connection wins); when none and `opts.borrowedTaxonomy` is set, falls back to
+   * an owner-authored row under that provenance (#1045) so a `borrows` destination
+   * (ERLI) reuses an Allegro mapping with zero re-authoring. `opts.sourceConnectionId`
+   * scopes the fallback to the right source store. Returns null when nothing matches.
    */
   resolveDestinationCategory(
     destinationConnectionId: string,
-    sourceCategoryId: string
+    sourceCategoryId: string,
+    opts?: { borrowedTaxonomy?: string; sourceConnectionId?: string }
   ): Promise<string | null>;
 
   /**
@@ -101,6 +105,15 @@ export interface IMappingConfigService {
    * category in memory.
    */
   getAttributeMappings(destinationConnectionId: string): Promise<AttributeMapping[]>;
+  /**
+   * Attribute mappings authored under a given owner-taxonomy provenance (#1045),
+   * across destination connections — the borrowed-taxonomy reuse source for a
+   * `borrows` destination (ERLI reusing Allegro's mappings). The projection
+   * service filters the result by source connection + category in memory.
+   */
+  getAttributeMappingsByProvenance(
+    destinationTaxonomyProvenance: string
+  ): Promise<AttributeMapping[]>;
   upsertAttributeMapping(
     destinationConnectionId: string,
     input: AttributeMappingInput

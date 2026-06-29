@@ -244,6 +244,8 @@ export function createMockApiClient(
       // explicit `overrides.invoicing.list` still wins.
       list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
+      retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
+      issueCorrection: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     orders: {

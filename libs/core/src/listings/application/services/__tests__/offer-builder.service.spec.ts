@@ -134,6 +134,7 @@ describe('OfferBuilderService', () => {
       expect(categoryResolution.resolveCategory).toHaveBeenCalledWith({
         connectionId: MARKETPLACE_CONN_ID,
         barcode: '5901234123457',
+        sourceConnectionId: MASTER_CONN_ID,
       });
 
       expect(result).toEqual({
@@ -261,6 +262,52 @@ describe('OfferBuilderService', () => {
 
       expect(command.overrides?.categoryId).toBeUndefined();
       expect(command.sourceCategories).toEqual([{ id: '12' }, { id: '34' }]);
+    });
+
+    it('threads the destination-declared borrowed taxonomy into resolution and projection (#1045)', async () => {
+      // Destination is a TaxonomyBorrower (ERLI → 'allegro') with source categories
+      // that resolve to a reused Allegro category, so projection runs too.
+      integrationsService.getCapabilityAdapter.mockImplementation((_connId: string, capability: string) =>
+        Promise.resolve(
+          capability === 'OfferManager'
+            ? ({
+                updateOfferQuantity: jest.fn(),
+                getBorrowedTaxonomy: () => 'allegro',
+              } as unknown as OfferManagerPort)
+            : (productMaster as unknown as OfferManagerPort)
+        )
+      );
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'd',
+        price: 49.99,
+        currency: 'PLN',
+        images: ['https://example.com/img1.jpg'],
+        categories: ['12'],
+      });
+      categoryResolution.resolveCategory.mockResolvedValue({
+        destinationCategoryId: 'allegro-cat-258066',
+        provenance: 'borrows',
+        method: 'category_mapping',
+      });
+
+      await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(categoryResolution.resolveCategory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          borrowedTaxonomy: 'allegro',
+          sourceConnectionId: MASTER_CONN_ID,
+        })
+      );
+      expect(attributeProjection.project).toHaveBeenCalledWith(
+        expect.objectContaining({ borrowedTaxonomy: 'allegro' })
+      );
     });
   });
 
@@ -586,6 +633,7 @@ describe('OfferBuilderService', () => {
         connectionId: MARKETPLACE_CONN_ID,
         barcode: '5901234123457',
         sourceCategoryIds: ['ps-cat-15', 'ps-cat-22'],
+        sourceConnectionId: MASTER_CONN_ID,
       });
     });
 

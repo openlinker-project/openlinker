@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { normalizeNip } from './ksef-nip';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -63,6 +64,53 @@ const allegroSellerDefaultsSchema = z.object({
 });
 
 export type AllegroSellerDefaultsFormValues = z.input<typeof allegroSellerDefaultsSchema>;
+
+/**
+ * InPost sender-address structured schema (#771). Mirrors the shipped backend
+ * config DTO (`libs/integrations/inpost/.../inpost-connection-config.dto.ts`):
+ * `senderAddress: { name?, email, phone, address: { street, buildingNumber,
+ * city, postCode (NN-NNN), countryCode (ISO2) } }`. Every sub-field is optional
+ * at the FE level so the operator can save incremental progress; the BE DTO is
+ * the strict gate (email/phone/address required). Format IS enforced
+ * client-side when a value is present (email shape, PL postcode, ISO2 country)
+ * for fast, targeted feedback. Modelled on the `sellerDefaults` whole-object
+ * pattern: a nested `inpostSenderAddress` object on the form that the merge
+ * helper prunes into `config.senderAddress`.
+ */
+const inpostAddressSchema = z.object({
+  street: z.string().trim().max(200).optional(),
+  buildingNumber: z.string().trim().max(50).optional(),
+  city: z.string().trim().max(200).optional(),
+  postCode: z
+    .union([
+      z.string().regex(/^\d{2}-\d{3}$/, 'Postcode must use the PL format NN-NNN'),
+      z.literal(''),
+    ])
+    .optional(),
+  // Coerce to uppercase before the ISO2 check so a lowercase `pl` is accepted
+  // and normalized — parity with the setup wizard's countryCode transform
+  // (`inpost-setup.schema.ts`). `z.literal('')` is listed first so an empty
+  // value short-circuits before the transform (an uppercased '' would fail the regex).
+  countryCode: z
+    .union([
+      z.literal(''),
+      z
+        .string()
+        .trim()
+        .transform((v) => v.toUpperCase())
+        .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country must be an ISO 3166-1 alpha-2 code (e.g. PL)')),
+    ])
+    .optional(),
+});
+
+const inpostSenderAddressSchema = z.object({
+  name: z.string().trim().max(200).optional(),
+  email: z.union([z.string().trim().email('Enter a valid email'), z.literal('')]).optional(),
+  phone: z.string().trim().max(30).optional(),
+  address: inpostAddressSchema.optional(),
+});
+
+export type InpostSenderAddressFormValues = z.input<typeof inpostSenderAddressSchema>;
 
 export const editConnectionSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
@@ -178,6 +226,36 @@ export const editConnectionSchema = z.object({
   subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
   // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
   subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
+  // KSeF-only structured fields surfacing `config.env` / `config.sellerNip` /
+  // `config.contextIdentifier` (#1152). `ksefEnvironment` maps to the BE C2
+  // `KsefConnectionConfig.env` enum (the one config-validator-gated field);
+  // the other two are FE-additive context fields. All optional client-side so
+  // the operator can save incremental progress; the server is the strict gate.
+  ksefEnvironment: z.union([z.enum(['test', 'demo', 'prod']), z.literal('')]).optional(),
+  // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
+  // dashes/spaces the operator may paste, then enforce 10 digits. Without this
+  // parity a value saved with separators on create fails the edit-schema check.
+  sellerNip: z
+    .union([
+      z
+        .string()
+        .transform(normalizeNip)
+        .refine((v) => v === '' || /^\d{10}$/.test(v), {
+          message: 'Seller NIP must be 10 digits.',
+        }),
+      z.literal(''),
+    ])
+    .optional(),
+  contextIdentifier: z.union([z.string().trim().max(64), z.literal('')]).optional(),
+  // InPost-only structured fields (#771). `inpostEnvironment` → flat
+  // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
+  // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
+  // `inpost*`-prefixed to avoid colliding with DPD's `environment` / other
+  // platforms' flat keys; the merge clauses map them to the real config keys.
+  // All optional at the FE level for incremental save; the BE DTO is the gate.
+  inpostEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
+  inpostOrganizationId: z.string().trim().optional(),
+  inpostSenderAddress: inpostSenderAddressSchema.optional(),
 });
 
 export type EditConnectionFormValues = z.input<typeof editConnectionSchema>;
@@ -246,6 +324,23 @@ export interface StructuredConfigPatch {
    * Mirrors the `sellerDefaults` whole-object seam.
    */
   subiektCapabilities?: Record<string, boolean>;
+  /** KSeF environment — `config.env` (#1152). Empty string clears the key. */
+  ksefEnvironment?: string;
+  /** KSeF seller NIP — `config.sellerNip` (#1152). Empty string clears the key. */
+  sellerNip?: string;
+  /** KSeF context identifier — `config.contextIdentifier` (#1152). Empty clears. */
+  contextIdentifier?: string;
+  /** InPost environment → flat `config.environment` (#771). Empty string clears the key. */
+  inpostEnvironment?: 'sandbox' | 'production' | '';
+  /** InPost organization id → flat `config.organizationId` (#771). Empty clears. */
+  inpostOrganizationId?: string;
+  /**
+   * InPost sender address → whole-object `config.senderAddress` (#771). The
+   * merge helper writes a pruned object whenever a value is supplied (mirrors
+   * the `sellerDefaults` whole-object seam); pass `null` to clear the key, and
+   * an all-empty pruned object also drops the key (delete-on-empty).
+   */
+  inpostSenderAddress?: InpostSenderAddressFormValues | null;
 }
 
 /**
@@ -387,6 +482,62 @@ export function mergeStructuredIntoConfig(
       next.capabilities = enabled;
     }
   }
+  // KSeF structured fields — map directly onto `config.{env,sellerNip,contextIdentifier}`.
+  // `env` is the wire key (matching the BE `KsefConnectionConfig.env`); the form
+  // field is named `ksefEnvironment` to avoid colliding with DPD's `environment`.
+  if (structured.ksefEnvironment !== undefined) {
+    if (structured.ksefEnvironment.length === 0) {
+      delete next.env;
+    } else {
+      next.env = structured.ksefEnvironment;
+    }
+  }
+  if (structured.sellerNip !== undefined) {
+    // Store digits-only, matching the create path's normalized value
+    // (`ksef-setup.schema.ts` strips `[\s-]` before persisting `config.sellerNip`).
+    const normalizedNip = normalizeNip(structured.sellerNip);
+    if (normalizedNip.length === 0) {
+      delete next.sellerNip;
+    } else {
+      next.sellerNip = normalizedNip;
+    }
+  }
+  if (structured.contextIdentifier !== undefined) {
+    if (structured.contextIdentifier.length === 0) {
+      delete next.contextIdentifier;
+    } else {
+      next.contextIdentifier = structured.contextIdentifier;
+    }
+  }
+  // InPost structured fields (#771). `inpostEnvironment`/`inpostOrganizationId`
+  // are flat (delete-on-empty); `inpostSenderAddress` is a whole-object pruned
+  // into `config.senderAddress` (clone of the `sellerDefaults` seam).
+  if (structured.inpostEnvironment !== undefined) {
+    if (structured.inpostEnvironment.length === 0) {
+      delete next.environment;
+    } else {
+      next.environment = structured.inpostEnvironment;
+    }
+  }
+  if (structured.inpostOrganizationId !== undefined) {
+    if (structured.inpostOrganizationId.length === 0) {
+      delete next.organizationId;
+    } else {
+      next.organizationId = structured.inpostOrganizationId;
+    }
+  }
+  if (structured.inpostSenderAddress !== undefined) {
+    if (structured.inpostSenderAddress === null) {
+      delete next.senderAddress;
+    } else {
+      const pruned = pruneEmptyInpostSenderAddress(structured.inpostSenderAddress);
+      if (Object.keys(pruned).length === 0) {
+        delete next.senderAddress;
+      } else {
+        next.senderAddress = pruned;
+      }
+    }
+  }
   return next;
 }
 
@@ -425,6 +576,39 @@ function pruneEmptySellerDefaults(
       safety.attachments = values.safetyInformation.attachments;
     }
     out.safetyInformation = safety;
+  }
+  return out;
+}
+
+/**
+ * Prune empty-string sub-fields out of the InPost sender address so the BE DTO
+ * sees a clean nested shape (the FE schema accepts `''` for incremental
+ * editing; the BE rejects it). Clone of `pruneEmptySellerDefaults`. The nested
+ * `address` object is dropped entirely when none of its fields are set.
+ */
+function pruneEmptyInpostSenderAddress(
+  values: InpostSenderAddressFormValues,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (values.name && values.name.length > 0) out.name = values.name;
+  if (values.email && values.email.length > 0) out.email = values.email;
+  if (values.phone && values.phone.length > 0) out.phone = values.phone;
+  if (values.address) {
+    const addr: Record<string, unknown> = {};
+    if (values.address.street && values.address.street.length > 0) {
+      addr.street = values.address.street;
+    }
+    if (values.address.buildingNumber && values.address.buildingNumber.length > 0) {
+      addr.buildingNumber = values.address.buildingNumber;
+    }
+    if (values.address.city && values.address.city.length > 0) addr.city = values.address.city;
+    if (values.address.postCode && values.address.postCode.length > 0) {
+      addr.postCode = values.address.postCode;
+    }
+    if (values.address.countryCode && values.address.countryCode.length > 0) {
+      addr.countryCode = values.address.countryCode;
+    }
+    if (Object.keys(addr).length > 0) out.address = addr;
   }
   return out;
 }

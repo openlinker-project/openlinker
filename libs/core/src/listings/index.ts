@@ -37,6 +37,8 @@ export {
   CategoryResolutionMethodValues,
   CategoryProvenanceValues,
 } from './application/types/category-resolution.types';
+export type { TaxonomyOwner } from './domain/types/taxonomy-owner.types';
+export { TaxonomyOwnerValues } from './domain/types/taxonomy-owner.types';
 export type { IAttributeProjectionService } from './application/interfaces/attribute-projection.service.interface';
 export type {
   AttributeProjectionInput,
@@ -286,6 +288,10 @@ export { ResponsibleProducerKindValues } from './domain/types/responsible-produc
 export type { ShopProductManagerPort } from './domain/ports/shop-product-manager.port';
 export type { CategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
 export { isCategoryProvisioner } from './domain/ports/capabilities/category-provisioner.capability';
+// Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
+// names the owner taxonomy whose category/parameter ids it reuses verbatim.
+export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
+export { isTaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
 export { PublishProductStatusValues } from './domain/types/product-publish.types';
 export type {
   PublishProductStatus,

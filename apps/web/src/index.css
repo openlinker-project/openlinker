@@ -9707,6 +9707,41 @@ html[data-density='compact'] .status-badge {
   word-break: break-word;
 }
 
+/* ─ Per-provider invoice detail section slot (#1152, B4) ─
+   Rendered by the `invoiceDetailSection` plugin slot into the neutral
+   invoice surfaces (order panel + detail page). Reuses the panel kv-grid
+   shape so a provider region reads consistently with the host chrome. */
+.invoice-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.invoice-detail-section__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-detail-section__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-detail-section__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-detail-section__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 /* ─ Panel inline-alert (used for failed / in-doubt) ─ */
 .invoice-panel__inline-alert {
   display: flex;
@@ -9863,5 +9898,61 @@ html[data-density='compact'] .status-badge {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* ─ Shared wizard action bar ─ */
+.wizard__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.wizard__spacer {
+  flex: 1;
+}
+
+/* ─ Subiekt invoice correction dialog (#1241) ─ */
+.subiekt-correction__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border: 0;
+  padding: 0 0 var(--space-3);
+}
+.subiekt-correction__reason {
+  margin-bottom: var(--space-4);
+}
+.subiekt-correction__table-scroll {
+  overflow-x: auto;
+}
+.subiekt-correction__col-qty {
+  min-width: 80px;
+}
+.subiekt-correction__col-price {
+  min-width: 100px;
+}
+.input--w-lp {
+  width: 60px;
+}
+.input--w-qty {
+  width: 80px;
+}
+.input--w-price {
+  width: 100px;
+}
+.subiekt-correction__note {
+  margin-top: var(--space-3);
+}
+
+/* ─ Correction trigger in order invoice panel (issued state) ─ */
+.order-invoice-panel__correction {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
 }
 

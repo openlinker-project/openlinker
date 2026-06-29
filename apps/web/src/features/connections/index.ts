@@ -38,3 +38,12 @@ export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
+
+// KSeF connection-setup enums — re-exported so the KSeF plugin (plugins/ksef)
+// imports them through the feature's public barrel, not via a deep internal path.
+export {
+  KSEF_ENVIRONMENT_VALUES,
+  KSEF_AUTH_TYPE_VALUES,
+  type KsefEnvironment,
+  type KsefAuthType,
+} from './components/ksef-setup.schema';

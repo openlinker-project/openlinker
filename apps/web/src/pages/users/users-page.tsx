@@ -19,6 +19,7 @@ import { Alert } from '../../shared/ui/alert';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
+import { useSession } from '../../shared/auth/use-session';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
 import { useRejectUserMutation } from '../../features/users/hooks/use-reject-user-mutation';
@@ -42,6 +43,8 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const { showToast } = useToast();
+  const { session } = useSession();
+  const currentUserId = session.user?.id ?? null;
 
   const usersQuery = useUsersQuery({ status: undefined });
   const approveMutation = useApproveUserMutation();
@@ -207,18 +210,21 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     {
       id: 'role',
       header: 'Role',
-      cell: (row) => (
-        <Select
-          className="select--sm"
-          aria-label="Change role"
-          value={row.role}
-          onChange={(e) => void handleUpdateRole(row.id, e.target.value as UserRole)}
-          disabled={updateRoleMutation.isPending}
-        >
-          <option value="viewer">Viewer</option>
-          <option value="admin">Admin</option>
-        </Select>
-      ),
+      cell: (row) =>
+        row.id === currentUserId ? (
+          <span className="cell-meta">{row.role}</span>
+        ) : (
+          <Select
+            className="select--sm"
+            aria-label="Change role"
+            value={row.role}
+            onChange={(e) => void handleUpdateRole(row.id, e.target.value as UserRole)}
+            disabled={updateRoleMutation.isPending}
+          >
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </Select>
+        ),
     },
     {
       id: 'createdAt',
@@ -232,39 +238,42 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     {
       id: 'actions',
       header: 'Actions',
-      cell: (row) => (
-        <div className="table-actions">
-          {row.status === 'active' && (
+      cell: (row) => {
+        if (row.id === currentUserId) return null;
+        return (
+          <div className="table-actions">
+            {row.status === 'active' && (
+              <Button
+                tone="danger"
+                className="button--sm"
+                onClick={() => void handleDeactivate(row.id)}
+                disabled={deactivateMutation.isPending}
+              >
+                Deactivate
+              </Button>
+            )}
+            {row.status === 'deactivated' && (
+              <Button
+                tone="secondary"
+                className="button--sm"
+                onClick={() => void handleReactivate(row.id)}
+                disabled={reactivateMutation.isPending}
+              >
+                Reactivate
+              </Button>
+            )}
             <Button
               tone="danger"
               className="button--sm"
-              onClick={() => void handleDeactivate(row.id)}
-              disabled={deactivateMutation.isPending}
+              onClick={() => setPendingDeleteId(row.id)}
             >
-              Deactivate
+              Delete
             </Button>
-          )}
-          {row.status === 'deactivated' && (
-            <Button
-              tone="secondary"
-              className="button--sm"
-              onClick={() => void handleReactivate(row.id)}
-              disabled={reactivateMutation.isPending}
-            >
-              Reactivate
-            </Button>
-          )}
-          <Button
-            tone="danger"
-            className="button--sm"
-            onClick={() => setPendingDeleteId(row.id)}
-          >
-            Delete
-          </Button>
-        </div>
-      ),
+          </div>
+        );
+      },
     },
-  ], [updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending]);
+  ], [currentUserId, updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending]);
 
   function renderAllContent(): ReactElement {
     if (usersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;

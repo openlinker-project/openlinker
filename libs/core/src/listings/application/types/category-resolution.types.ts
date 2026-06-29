@@ -9,6 +9,8 @@
  * @module libs/core/src/listings/application/types
  */
 
+import type { TaxonomyOwner } from '../../domain/types/taxonomy-owner.types';
+
 export const CategoryResolutionMethodValues = [
   // ADR-023 §1 step 1 — destination provisions/mirrors the source category path.
   // Gated on the `CategoryProvisioner` capability (delivered by #1041); a no-op
@@ -56,6 +58,21 @@ export interface CategoryResolutionInput {
    * If both `barcode` and `sourceCategoryIds` are omitted, resolution returns `manual`.
    */
   sourceCategoryIds?: string[];
+  /**
+   * Owner taxonomy this destination borrows (#1045). Present only for a
+   * `borrows` destination (ERLI → `'allegro'`); the caller reads it from the
+   * destination adapter's `TaxonomyBorrower` capability and threads it here so
+   * the mapping step can reuse an owner-authored row with zero re-authoring.
+   * Absent for `owns` / `open` destinations.
+   */
+  borrowedTaxonomy?: TaxonomyOwner;
+  /**
+   * Source (master) connection id, threaded by the caller to scope the
+   * borrowed-taxonomy mapping fallback to the right source store (#1045) — the
+   * containment for multi-owner-connection ambiguity. Absent ⇒ the fallback is
+   * provenance-only (oldest-wins + warn).
+   */
+  sourceConnectionId?: string;
 }
 
 export interface CategoryResolutionResult {
@@ -63,9 +80,10 @@ export interface CategoryResolutionResult {
   destinationCategoryId: string | null;
   /**
    * Taxonomy relationship of the destination the id was resolved against, or
-   * `null` when no destination adapter was resolved (no-barcode / fallback /
-   * manual paths). Populated on the barcode path; the mapping-path provenance
-   * lands with #1045.
+   * `null` when unknown. Populated on the barcode path (derived from the
+   * resolved adapter) and, for a `borrows` destination, on the mapping/manual
+   * paths from the threaded `borrowedTaxonomy` (#1045). Stays `null` for
+   * `owns`/`open` destinations on the non-barcode paths (no adapter resolved).
    */
   provenance: CategoryProvenance | null;
   /** Which resolution method produced the result */
