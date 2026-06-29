@@ -127,7 +127,9 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
   }
 
   private header(headers: Record<string, string>, name: string): string | null {
-    return headers[name] ?? headers[name.toLowerCase()] ?? null;
+    const lower = name.toLowerCase();
+    const entry = Object.entries(headers).find(([k]) => k.toLowerCase() === lower);
+    return entry?.[1] ?? null;
   }
 
   private asNonEmptyString(value: unknown): string | null {
