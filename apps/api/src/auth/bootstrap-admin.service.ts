@@ -25,7 +25,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
-import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
+import { UserAlreadyExistsException, UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
 
 const BCRYPT_COST = 10;
 const NON_PROD_DEFAULT_PASSWORD = 'admin';
@@ -81,10 +81,11 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
         email,
         passwordHash,
         role: 'admin',
+        status: 'active',
       });
     } catch (error) {
-      // Concurrent boot peer won the insert — username unique constraint fired.
-      if (this.isUniqueViolation(error)) {
+      // Concurrent boot peer won the insert — repository converts 23505 to this.
+      if (error instanceof UserAlreadyExistsException) {
         this.logger.log(
           `Default admin user '${username}' already created by another instance — skipping seed`
         );
@@ -131,11 +132,4 @@ export class BootstrapAdminService implements OnApplicationBootstrap {
     );
   }
 
-  private isUniqueViolation(error: unknown): boolean {
-    if (typeof error !== 'object' || error === null) {
-      return false;
-    }
-    const e = error as { code?: string; driverError?: { code?: string } };
-    return e.code === '23505' || e.driverError?.code === '23505';
-  }
 }

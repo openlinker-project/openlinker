@@ -32,6 +32,9 @@ export class UserOrmEntity {
   @Column({ type: 'varchar', length: 50, default: 'admin' })
   role!: string;
 
+  @Column({ type: 'varchar', length: 20, default: 'active' })
+  status!: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

@@ -3,6 +3,7 @@ import type {
   LoginRequest,
   LoginResponse,
   OkResponse,
+  RegisterRequest,
   ResetPasswordRequest,
 } from './auth.types';
 
@@ -12,6 +13,7 @@ interface ApiRequest {
 
 export interface AuthApi {
   login: (input: LoginRequest) => Promise<LoginResponse>;
+  register: (input: RegisterRequest) => Promise<OkResponse>;
   forgotPassword: (input: ForgotPasswordRequest) => Promise<OkResponse>;
   resetPassword: (input: ResetPasswordRequest) => Promise<OkResponse>;
 }
@@ -20,6 +22,12 @@ export function createAuthApi(request: ApiRequest): AuthApi {
   return {
     login(input): Promise<LoginResponse> {
       return request<LoginResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    register(input): Promise<OkResponse> {
+      return request<OkResponse>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(input),
       });

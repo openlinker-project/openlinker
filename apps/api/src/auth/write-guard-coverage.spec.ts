@@ -28,6 +28,7 @@ import { ShopPublishController } from '../listings/http/shop-publish.controller'
 import { BulkShopPublishController } from '../listings/http/bulk-shop-publish.controller';
 import { ProductsController, VariantsController } from '../products/http/products.controller';
 import { InventoryController } from '../inventory/http/inventory.controller';
+import { UsersController } from '../users/http/users.controller';
 
 const METHOD_METADATA = 'method';
 
@@ -49,6 +50,7 @@ const CONTROLLERS = [
   ProductsController,
   VariantsController,
   InventoryController,
+  UsersController,
 ];
 
 describe('Write-guard coverage invariant (#1124)', () => {

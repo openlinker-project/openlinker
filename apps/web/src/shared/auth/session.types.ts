@@ -19,6 +19,8 @@ export const PermissionValues = [
   'inventory:write',
   'listings:read',
   'listings:write',
+  'users:read',
+  'users:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

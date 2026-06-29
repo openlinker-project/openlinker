@@ -7,11 +7,11 @@ import type { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import type { UserRepositoryPort } from '@openlinker/core/users';
-import { User } from '@openlinker/core/users';
+import { User, UserAlreadyExistsException } from '@openlinker/core/users';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 
 const makeUser = (username: string): User =>
-  new User('id', username, null, 'hash', 'admin', new Date(), new Date());
+  new User('id', username, null, 'hash', 'admin', 'active', new Date(), new Date());
 
 const makeConfig = (overrides: Record<string, string | undefined> = {}): ConfigService => {
   const values: Record<string, string | undefined> = {
@@ -29,8 +29,16 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   findByUsername: jest.fn(),
   findByEmail: jest.fn(),
   findById: jest.fn(),
+  findAll: jest.fn(),
   save: jest.fn(),
   updatePasswordHash: jest.fn(),
+  updateStatus: jest.fn(),
+  updateRole: jest.fn(),
+  approveUser: jest.fn(),
+  deleteById: jest.fn(),
+  deactivateAdminAtomically: jest.fn(),
+  updateAdminRoleAtomically: jest.fn(),
+  deleteAdminAtomically: jest.fn(),
 });
 
 describe('BootstrapAdminService', () => {
@@ -139,8 +147,7 @@ describe('BootstrapAdminService', () => {
   it('treats unique-violation on save as a benign concurrent-boot race', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
-    const err = Object.assign(new Error('duplicate key'), { code: '23505' });
-    repo.save.mockRejectedValue(err);
+    repo.save.mockRejectedValue(new UserAlreadyExistsException('admin'));
 
     const service = new BootstrapAdminService(makeConfig(), repo);
     await expect(service.bootstrap()).resolves.toBeUndefined();
