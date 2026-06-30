@@ -69,7 +69,7 @@ export class BulkListingController {
     private readonly bulkRetry: IBulkListingRetryService
   ) {}
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -144,7 +144,7 @@ export class BulkListingController {
     return this.toSummaryDto(summary);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post(':batchId/retry-failed')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'batchId', format: 'uuid' })
