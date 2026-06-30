@@ -12,11 +12,19 @@ Issue FA(3) VAT invoices from OpenLinker orders and submit them to KSeF
 
 - OpenLinker running (API + worker + web).
 - A source connection (PrestaShop, Allegro, …) already set up so orders flow in.
-- Access to the KSeF portal for your target environment:
-  - **Test:** `https://ksef-test.mf.gov.pl` (no legal force; use a test NIP)
-  - **Demo:** `https://ksef-demo.mf.gov.pl`
-  - **Prod:** `https://ksef.mf.gov.pl`
+- Access to the KSeF 2.0 Taxpayer Application for your target environment:
+  - **Test:** `https://ap-test.ksef.mf.gov.pl` — supports a built-in **test
+    authentication** mechanism (no real Trusted Profile / qualified certificate
+    needed; uses fictional data only)
+  - **Demo:** pre-production environment, announced separately by the Ministry
+    of Finance ahead of go-live
+  - **Prod:** `https://ksef.mf.gov.pl` (requires a real Trusted Profile,
+    qualified signature, or qualified seal)
 - The **NIP** (Polish tax ID) of the seller entity you will invoice as.
+
+> ⚠️ The older `ksef-test.mf.gov.pl` (KSeF 1.0) test portal was decommissioned
+> on 1 September 2025. The current test environment lives at
+> `ap-test.ksef.mf.gov.pl`.
 
 ---
 
@@ -25,18 +33,47 @@ Issue FA(3) VAT invoices from OpenLinker orders and submit them to KSeF
 KSeF uses token-based auth. You generate a token on the KSeF portal once and store
 it in OpenLinker's encrypted credential store.
 
-1. Open the KSeF portal for your environment and log in with your NIP.
-2. Navigate to **Zarządzanie tokenami** (Token management).
-3. Click **Wygeneruj token** (Generate token), give it a description, and select
-   the role **Wystawianie faktur** (Invoice issuance).
-4. Click **Generuj** (Generate).
+Open the test portal (`ap-test.ksef.mf.gov.pl`) and choose **Uwierzytelnienie
+testowe** (test authentication) — no real Trusted Profile is required here.
 
-> ⚠️ **Copy the token now.** It is shown **only once**. Store it in a password
-> manager before closing the dialog — KSeF does not let you retrieve it again.
+![KSeF 2.0 portal — login page with test authentication option](./assets/p1-ksef-portal-home.png)
 
-> **Manual step.** The KSeF portal screenshots (token management UI) are taken
-> directly in the browser on the KSeF portal. Use a test NIP (e.g. `9999999999`)
-> and blur any real tax IDs before sharing.
+Accept the test-environment declaration (confirms you'll only use anonymised,
+fictional data).
+
+![Test-environment consent dialog](./assets/p2-ksef-portal-test-auth-consent.png)
+
+Enter your test **NIP**, click **Generuj certyfikat** to mint a throwaway test
+certificate (SHA256 + ID), then scroll down.
+
+![NIP entered, test certificate generated](./assets/p3-ksef-portal-nip-and-cert.png)
+
+In the **Podpisz testowe żądanie autoryzacyjne** section, enter the same NIP
+again and click **Uwierzytelnij do aplikacji testowej**.
+
+![Sign test authorization request — NIP filled in](./assets/p4-ksef-portal-sign-test-request.png)
+
+You're now logged in to the Taxpayer Application as your test NIP.
+
+![KSeF 2.0 dashboard — logged in, NIP shown top-right](./assets/p5-ksef-portal-dashboard.png)
+
+Open **Tokeny → Lista tokenów** in the left menu to see existing tokens (if any),
+then click **Generuj token**.
+
+![Token list + Generuj token button](./assets/p6-ksef-portal-token-list.png)
+
+Give the token a description and check **wystawianie faktur** (invoice issuance)
+under permissions, then submit.
+
+![Generate-token form — description filled, "wystawianie faktur" checked](./assets/p7-ksef-portal-generate-token-form.png)
+
+Click **Odśwież** (refresh) once the request finishes processing. The token value
+is shown **only this once**.
+
+![Token generated and revealed — value redacted for this tutorial](./assets/p8-ksef-portal-token-revealed.png)
+
+> ⚠️ **Copy the token now.** KSeF does not let you retrieve it again — store it
+> in a password manager before navigating away.
 
 ---
 
@@ -59,8 +96,8 @@ Fill in **Connection name** — a human-readable label, e.g. `KSeF — main sell
 ![Wizard — connection name filled in](./assets/04-ol-ksef-wizard-name.png)
 
 Select **Environment**: `test`, `demo`, or `prod` to match where you generated
-the token. The test environment (`ksef-test.mf.gov.pl`) is recommended for
-initial setup — documents issued there have no legal force.
+the token. The test environment is recommended for initial setup — documents
+issued there have no legal force.
 
 ![Wizard — environment selector](./assets/05-ol-ksef-environment.png)
 
