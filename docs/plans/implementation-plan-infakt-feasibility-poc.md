@@ -42,7 +42,7 @@
 | **`getSupportedDocumentTypes`** | `invoice`, `corrected` | `invoice`, `receipt`, `credit-note`, `corrected` | `invoice`, `credit-note`, `corrected`, `advance`, `proforma` |
 | **`RegulatoryStatusReader`** | N/A (OL is transmitter) | ✅ reads KSeF status from bridge | ✅ reads `ksef_data.status` from Infakt |
 | **`RegulatoryTransmitter`** | ✅ OL submits FA(3) to KSeF directly | ❌ Subiekt submits | ❌ Infakt submits (trigger via API or auto) |
-| **`CorrectionIssuer`** | ✅ KOR XML | ✅ correcting document via bridge | ✅ `POST /v3/invoices` with `kind=corrective` |
+| **`CorrectionIssuer`** | ✅ KOR XML | ✅ correcting document via bridge | ✅ `POST /v3/corrective_invoices` (before/after pairs) |
 | **`RegulatoryDocumentReader`** | ✅ UPO + FA(3) stored in OL DB | ❌ | ❌ UPO not exposed in API |
 
 ### 2.3 KSeF Integration Model (critical difference)
@@ -443,7 +443,7 @@ Rejected — the POC is explicitly scoped to validate the API surface and capabi
 | getInvoice by UUID | `GET /invoices/{uuid}.json?invoice_type=vat` | ✅ 200, full document | `ksef_data: null` as expected pre-submission |
 | Status change | `PUT /invoices/{uuid}/change_status.json` | ❌ 404 | Action endpoints not available in sandbox |
 | Corrective invoice | `POST /invoices.json` `kind=corrective` | ⚠️ 201 but treated as vat | Sandbox ignores `kind=corrective`, `corrected_invoice_number`, `correction_reason` fields |
-| `/corrective_invoices.json` | `POST /corrective_invoices.json` | ❌ 500 internal | Separate endpoint crashes in sandbox |
+| `/corrective_invoices.json` | `POST /corrective_invoices.json` | ✅ 200, `number: 1/KOR/06/2026` | Works — correct endpoint + payload required; previous 500 was malformed body |
 | KSeF trigger | `POST /invoices/{uuid}/send_to_ksef.json` | ✅ 200, `status: pending`, `request_uuid` returned | Endpoint exists; clearance is async |
 | KSeF poll | `GET /invoices/{uuid}.json` → `ksef_data.status` | ✅ `success`, `ksef_number: 8201194127-20260630-693CFF400000-2D` | ~90 s to clear; invoice flips to `sent` in Infakt |
 | List invoices | `GET /invoices.json?invoice_type=vat` | ✅ 200, all 4 test invoices visible | `invoice_type` filter unreliable in sandbox (returns all kinds) |
@@ -456,7 +456,8 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 | Feature | Sandbox | Production |
 |---|---|---|
 | Invoice status change | ❌ 404 on action endpoints | ✅ `change_status`, `print`, `send_by_email` |
-| Corrective invoice | ⚠️ `kind` field ignored | ✅ Full corrective flow with `corrected_invoice_number` etc. |
+| Corrective invoice via `/invoices.json kind=corrective` | ⚠️ `kind` field ignored | ✅ Full corrective flow |
+| Corrective invoice via `/corrective_invoices.json` | ✅ works (confirmed 2026-06-30) | ✅ same |
 | `invoice_type` filter | ⚠️ Returns all kinds | ✅ Filters correctly |
 | KSeF integration | ✅ active on sandbox; `success` in ~90 s | ✅ same |
 | Bank account in transfer | ⚠️ Must be pre-configured | Same — requires setup in account settings |
@@ -467,7 +468,7 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 2. **`getInvoice`**: `GET /invoices/{uuid}.json?invoice_type=vat` — ✅ endpoint works. **Note**: `InvoicingPort.getInvoice` is a dead contract (§2.6) — core never calls it. The adapter implements it for completeness but it has no operational impact.
 3. **`upsertCustomer`**: `POST /clients.json` — ✅ confirmed. NIP-based dedup must search `GET /clients.json?nip={nip}` first.
 4. **`getClearanceStatus` (RegulatoryStatusReader)**: reads `ksef_data.status` from `getInvoice` response. Mapping: `null → 'not-applicable'`, `pending → 'submitted'`, `sent → 'submitted'`, `success → 'cleared'`, `error → 'rejected'`.
-5. **`issueCorrection` (CorrectionIssuer)**: NOT confirmed in sandbox (sandbox limitation). Production API supports it per schema. Adapter implementation should follow the `corrected_invoice_number + services[].{group, correction}` pattern confirmed from schema.
+5. **`issueCorrection` (CorrectionIssuer)**: ✅ **confirmed in sandbox** (2026-06-30). `POST /corrective_invoices.json` (not `/invoices.json kind=corrective`). Body wrapped in `corrective_invoice` key. Services as before/after pairs with same `group` id and `correction: false/true`. `unit_net_price` in PLN (not grosze). Response synchronous. Created `1/KOR/06/2026`, net -200 PLN, VAT -46 PLN. Previous 500 was a malformed payload.
 6. **KSeF trigger** (`POST /invoices/{uuid}/send_to_ksef.json`): ✅ **confirmed E2E in sandbox**. Returns `request_uuid + status: pending`. Infakt handles actual submission asynchronously. After ~90 s: `ksef_data.status = 'success'`, `ksef_number = '8201194127-20260630-693CFF400000-2D'`, invoice status flips to `sent`. **Full KSeF lifecycle confirmed.**
 7. **Bank accounts**: for `payment_method=transfer`, the account number must already exist in Infakt settings. Adapter should document this as a prerequisite or use `payment_method=cash` as default.
 
@@ -480,7 +481,7 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 - `InvoicingPort.upsertCustomer` → `POST/GET /clients.json` (NIP dedup) ✅
 - `InvoicingPort.getSupportedDocumentTypes` → static: `['invoice', 'corrected', 'prepayment', 'proforma']`
 - `RegulatoryStatusReader.getClearanceStatus` → reads `ksef_data` from getInvoice ✅ (endpoint confirmed)
-- `CorrectionIssuer.issueCorrection` → `POST /invoices.json` with `kind=corrective` ✅ (production only; sandbox ignores this)
+- `CorrectionIssuer.issueCorrection` → `POST /corrective_invoices.json` (before/after service pairs) ✅ (sandbox confirmed 2026-06-30)
 
 **Unsupported (out of scope for this adapter)**:
 - `RegulatoryTransmitter` — Infakt submits to KSeF internally; OL does not build FA(3) XML
