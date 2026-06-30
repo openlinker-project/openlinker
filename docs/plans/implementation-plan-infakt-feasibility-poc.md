@@ -37,7 +37,7 @@
 | Capability | KSeF (direct) | Subiekt (bridge) | **Infakt (SaaS)** |
 |---|---|---|---|
 | **`issueInvoice`** | ✅ FA(3) XML → KSeF | ✅ via bridge → Subiekt ERP | ✅ `POST /v3/invoices` |
-| **`getInvoice`** | ✅ by KSeF number | ❌ always `null` (bridge limitation) | ✅ `GET /v3/invoices/{uuid}` |
+| **`getInvoice`** | ✅ by KSeF number | ❌ always `null` (bridge limitation) | ✅ `GET /v3/invoices/{uuid}` | ⚠️ **port is a dead contract** — core never calls it (see §2.6) |
 | **`upsertCustomer`** | N/A (taxpayer-keyed) | ✅ kontrahent via bridge | ✅ `POST/PUT /v3/clients` |
 | **`getSupportedDocumentTypes`** | `invoice`, `corrected` | `invoice`, `receipt`, `credit-note`, `corrected` | `invoice`, `credit-note`, `corrected`, `advance`, `proforma` |
 | **`RegulatoryStatusReader`** | N/A (OL is transmitter) | ✅ reads KSeF status from bridge | ✅ reads `ksef_data.status` from Infakt |
@@ -63,7 +63,7 @@ KSeF submission flow (when triggered via API):
 ```
 issueInvoice → invoice_uuid
 → [optional, if auto-submit not active] POST /invoices/{uuid}/send_to_ksef
-→ poll ksef_data.status via getInvoice
+→ poll ksef_data.status via getClearanceStatus (reads GET /invoices/{uuid} internally)
 → status = 'success' → ksef_number available
 ```
 
@@ -84,14 +84,23 @@ Infakt exposes (confirmed from `infakt_meta_dictionary("invoice_types")`):
 - Implements `InvoicingPort` + `RegulatoryStatusReader` + `CorrectionIssuer`
 - Does NOT implement `RegulatoryTransmitter` (Infakt submits to KSeF, OL reads back)
 - Does NOT implement `RegulatoryDocumentReader` (no UPO download via API)
-- `getInvoice` WORKS (unlike Subiekt) — OL can read back issued invoices by UUID stored in `InvoiceRecord`
 - No local infrastructure required (pure cloud SaaS) — simplest deployment model of the three providers
 
-**Advantages over KSeF-direct**: no FA(3) XML generation, no AES session management, no async polling of KSeF directly, multi-currency support, proforma/OSS coverage, customer management.
+**Advantages over KSeF-direct**: no FA(3) XML generation, no AES session management, multi-currency support, proforma/OSS coverage, customer management.
 
-**Advantages over Subiekt**: no local .exe dependency, `getInvoice` works, cloud-native deployment.
+**Advantages over Subiekt**: no local .exe dependency, cloud-native deployment.
 
 **Limitations**: no UPO download, no paragon (receipt) support, KSeF integration must be activated on the Infakt account, Polish B2B only.
+
+### 2.6 `InvoicingPort.getInvoice` — dead contract (irrelevant for all providers)
+
+`InvoicingPort.getInvoice` is declared on the port but **never called by core `InvoiceService`**. Verified by grepping all call-sites:
+
+- `IInvoiceService.getInvoice` (HTTP layer method) reads **only from OL's own `invoice_records` table** via `this.repo.findByOrderId(...)` — comment in code states explicitly: *"Projection read of OL's OWN store — NEVER the provider/adapter."*
+- `invoicing.types.ts` documents: *"IInvoiceService.getInvoice answers from OL's store, never the adapter."*
+- Core calls the adapter only through: `issueInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`, `getClearanceStatus`, `issueCorrection`.
+
+**Consequence**: The Subiekt `getInvoice → null` limitation is **practically irrelevant** — OL holds its own `InvoiceRecord` projection from the moment of issuance and never needs to re-fetch from the provider. The ❌ in the Subiekt column has no operational impact. Similarly, the ✅ for Infakt's `GET /invoices/{uuid}` is cosmetic — useful for debugging/POC but not load-bearing for the integration.
 
 ---
 
@@ -455,7 +464,7 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 ### Key Findings for Adapter Implementation
 
 1. **`issueInvoice`**: `POST /invoices.json` with `payment_method`, `client_id`, `services[]` — confirmed working. Invoice creates as `draft` — status lifecycle is managed by Infakt UI, not OL. OL stores the UUID in `InvoiceRecord.providerInvoiceId`.
-2. **`getInvoice`**: `GET /invoices/{uuid}.json?invoice_type=vat` — ✅ confirmed working by UUID. The `invoice_type` param is required in production; adapter must store the kind alongside UUID.
+2. **`getInvoice`**: `GET /invoices/{uuid}.json?invoice_type=vat` — ✅ endpoint works. **Note**: `InvoicingPort.getInvoice` is a dead contract (§2.6) — core never calls it. The adapter implements it for completeness but it has no operational impact.
 3. **`upsertCustomer`**: `POST /clients.json` — ✅ confirmed. NIP-based dedup must search `GET /clients.json?nip={nip}` first.
 4. **`getClearanceStatus` (RegulatoryStatusReader)**: reads `ksef_data.status` from `getInvoice` response. Mapping: `null → 'not-applicable'`, `pending → 'submitted'`, `sent → 'submitted'`, `success → 'cleared'`, `error → 'rejected'`.
 5. **`issueCorrection` (CorrectionIssuer)**: NOT confirmed in sandbox (sandbox limitation). Production API supports it per schema. Adapter implementation should follow the `corrected_invoice_number + services[].{group, correction}` pattern confirmed from schema.
@@ -467,7 +476,7 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 **✅ CONFIRMED FEASIBLE** with the following adapter profile:
 
 - `InvoicingPort.issueInvoice` → `POST /invoices.json` ✅
-- `InvoicingPort.getInvoice` → `GET /invoices/{uuid}.json?invoice_type={kind}` ✅
+- `InvoicingPort.getInvoice` → `GET /invoices/{uuid}.json?invoice_type={kind}` ✅ (dead contract — see §2.6; implemented for completeness)
 - `InvoicingPort.upsertCustomer` → `POST/GET /clients.json` (NIP dedup) ✅
 - `InvoicingPort.getSupportedDocumentTypes` → static: `['invoice', 'corrected', 'prepayment', 'proforma']`
 - `RegulatoryStatusReader.getClearanceStatus` → reads `ksef_data` from getInvoice ✅ (endpoint confirmed)
@@ -480,7 +489,81 @@ The sandbox has notable gaps compared to the production API (confirmed via MCP s
 
 ---
 
-## 11. Alignment Checklist
+## 11. Webhooks — Infakt Push Notifications
+
+### Mechanism
+
+Infakt supports webhooks (push HTTP callbacks) for real-time event delivery. **Key constraint: webhook subscriptions are configured exclusively via the Infakt web dashboard** (Ustawienia → Webhooki → "Dodaj webhook") — there is no REST API endpoint for programmatic webhook management. `GET/POST /api/v3/webhooks.json` → 404 on both production and sandbox; the MCP catalog exposes no webhook tool.
+
+### Webhook Payload Structure
+
+```json
+{
+  "event": {
+    "uuid": "3e18cd8c-09a3-b729-958b-f393b459b761",
+    "name": "invoice_processed_in_ksef",
+    "retry_counter": 1,
+    "created_at": "2026-06-30T15:42:00Z"
+  },
+  "resource": {
+    /* full invoice object — same shape as GET /invoices/{uuid}.json */
+  }
+}
+```
+
+### Security — Signature Verification
+
+Infakt sends the `X-Infakt-Signature` header on every webhook delivery:
+- **Algorithm**: HMAC-SHA256 of the raw request body
+- **Secret**: auto-generated per webhook subscription, visible in webhook details in the UI
+- **Expected response on bad signature**: HTTP 401
+
+```typescript
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifyInfaktSignature(rawBody: Buffer, secret: string, header: string): boolean {
+  const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(header));
+}
+```
+
+### Known Event Types
+
+| Event name | Description |
+|---|---|
+| `invoice_processed_in_ksef` | Invoice clearance status changed in KSeF (pending/success/error) |
+| *(additional events visible only in UI webhook configuration)* | E.g. invoice paid, invoice created — exact names discoverable in Infakt dashboard |
+
+The `invoice_processed_in_ksef` event is the most relevant for OL: it fires when `ksef_data.status` changes, enabling event-driven `InvoiceRecord` update instead of polling `getClearanceStatus`.
+
+### Integration Architecture for OL
+
+```
+Infakt → POST /webhooks/infakt/{connectionId}
+  ↓
+WebhookController (OL)
+  - verify X-Infakt-Signature (HMAC-SHA256)
+  - parse event.name + resource.uuid
+  - if invoice_processed_in_ksef: call InfaktInvoicingAdapter.getClearanceStatus(record)
+  - update InvoiceRecord.regulatoryStatus + clearanceReference in OL DB
+```
+
+**Operator setup required**: After creating the Infakt connection in OL, the operator must manually add the webhook URL in the Infakt dashboard and paste the secret into OL's connection config. There is no way to automate this via API — it's a one-time manual step.
+
+### Webhook vs Polling Trade-off
+
+| | Polling (`getClearanceStatus` in SyncJob) | Webhook (`invoice_processed_in_ksef`) |
+|---|---|---|
+| Latency | 30–60 s (cron interval) | ~0 s (immediate push) |
+| Infra dependency | None | Operator must configure webhook URL in Infakt UI |
+| Reliability | Always works | Requires internet-reachable OL endpoint |
+| MVP recommendation | ✅ Start here | Deferred to production hardening |
+
+**MVP decision**: polling is sufficient and requires zero operator setup. Webhooks are an optimization for production deployments where KSeF clearance latency matters.
+
+---
+
+## 12. Alignment Checklist
 
 - [x] Follows hexagonal architecture — integration layer only, ports consumed from core barrel
 - [x] Respects CORE vs Integration boundaries — zero core changes
