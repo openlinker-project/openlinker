@@ -653,7 +653,7 @@ describe('KsefInvoicingAdapter', () => {
         headers: { 'content-type': 'application/xml' },
       });
 
-      const result = await adapter(http).getRegulatoryDocument(record(), 'upo');
+      const result = await adapter(http).getRegulatoryDocument(record(), 'confirmation');
 
       expect(result.contentType).toBe('application/xml');
       expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
