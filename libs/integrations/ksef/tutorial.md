@@ -11,43 +11,32 @@ Issue FA(3) VAT invoices from OpenLinker orders and submit them to KSeF
 ## What you need before you start
 
 - OpenLinker running (API + worker + web).
-- A PrestaShop connection already set up in OpenLinker (as the order source).
+- A source connection (PrestaShop, Allegro, …) already set up so orders flow in.
 - Access to the KSeF portal for your target environment:
-  - **Test:** `https://ksef-test.mf.gov.pl` (no legal force, use a test NIP)
+  - **Test:** `https://ksef-test.mf.gov.pl` (no legal force; use a test NIP)
   - **Demo:** `https://ksef-demo.mf.gov.pl`
   - **Prod:** `https://ksef.mf.gov.pl`
-- The NIP (Polish tax ID) of the seller entity you will invoice as.
+- The **NIP** (Polish tax ID) of the seller entity you will invoice as.
 
 ---
 
 ## Part 1 — Get a KSeF authorisation token
 
-KSeF uses token-based auth. You generate a token on the KSeF portal once and
-store it in OpenLinker's encrypted credential store.
+KSeF uses token-based auth. You generate a token on the KSeF portal once and store
+it in OpenLinker's encrypted credential store.
 
-Open the KSeF portal for your environment and log in with your NIP.
-
-![KSeF portal home page — NIP login](./assets/01-ksef-portal-home.png)
-
-After logging in, navigate to **Zarządzanie tokenami** (Token management) in the
-top navigation.
-
-![KSeF portal — Zarządzanie tokenami menu item](./assets/02-ksef-token-menu.png)
-
-The token list shows all existing tokens. If you have none, click **Wygeneruj token**
-(Generate token).
-
-![KSeF portal — empty token list with Wygeneruj token button](./assets/03-ksef-token-list.png)
-
-Fill the form: give the token a description and select the role
-**Wystawianie faktur** (Invoice issuance). Click **Generuj** (Generate).
-
-![KSeF portal — generate token form, role selected](./assets/04-ksef-token-form.png)
+1. Open the KSeF portal for your environment and log in with your NIP.
+2. Navigate to **Zarządzanie tokenami** (Token management).
+3. Click **Wygeneruj token** (Generate token), give it a description, and select
+   the role **Wystawianie faktur** (Invoice issuance).
+4. Click **Generuj** (Generate).
 
 > ⚠️ **Copy the token now.** It is shown **only once**. Store it in a password
-> manager before closing this dialog — KSeF does not let you retrieve it again.
+> manager before closing the dialog — KSeF does not let you retrieve it again.
 
-![KSeF portal — generated token (one-time display)](./assets/05-ksef-token-created.png)
+> **Manual step.** The KSeF portal screenshots (token management UI) are taken
+> directly in the browser on the KSeF portal. Use a test NIP (e.g. `9999999999`)
+> and blur any real tax IDs before sharing.
 
 ---
 
@@ -55,146 +44,148 @@ Fill the form: give the token a description and select the role
 
 In OpenLinker, go to **Connections** and click **Add connection**.
 
-![OpenLinker Connections page — Add connection button](./assets/06-ol-connections-list.png)
+![Connections page — Add connection button highlighted](./assets/01-ol-connections-list.png)
 
-On the platform picker, select **KSeF**.
+On the platform picker, find and select **KSeF**.
 
-![Platform picker — KSeF card](./assets/07-ol-ksef-platform-card.png)
+![Platform picker — KSeF card](./assets/02-ol-platform-picker.png)
 
-The KSeF connection wizard opens. Fill in:
+The KSeF connection wizard opens with all the fields needed for invoice issuance.
 
-- **Connection name** — a label for your own reference, e.g. `KSeF Test`.
-- **Environment** — choose `test`, `demo`, or `prod` to match where you got
-  the token.
-- **Seller NIP** — the Polish tax ID (NIP) of the entity issuing invoices.
-- **Seller name** — legal name as it appears on the invoice.
-- **Seller address** — street, postal code, city.
-- **KSeF token** — paste the token you copied in Part 1.
+![KSeF setup wizard — empty form](./assets/03-ol-ksef-wizard-empty.png)
 
-![KSeF wizard — environment dropdown](./assets/08-ol-ksef-wizard-env.png)
+Fill in **Connection name** — a human-readable label, e.g. `KSeF — main seller`.
 
-![KSeF wizard — token field filled (value obscured)](./assets/09-ol-ksef-wizard-token.png)
+![Wizard — connection name filled in](./assets/04-ol-ksef-wizard-name.png)
 
-Click **Connect KSeF**. The connection is created and shows the **Invoicing**
-capability badge.
+Select **Environment**: `test`, `demo`, or `prod` to match where you generated
+the token. The test environment (`ksef-test.mf.gov.pl`) is recommended for
+initial setup — documents issued there have no legal force.
 
-![KSeF connection created — Invoicing badge visible](./assets/10-ol-ksef-connection-created.png)
+![Wizard — environment selector](./assets/05-ol-ksef-environment.png)
 
-Click **Test connection** — OpenLinker authenticates against KSeF and confirms
-the token is valid.
+Fill in **Seller NIP** — the Polish tax ID (10 digits, no dashes).
 
-![Test connection — green result](./assets/11-ol-ksef-test-ok.png)
+![Wizard — seller NIP filled in](./assets/06-ol-ksef-nip.png)
 
-![KSeF connection detail page](./assets/12-ol-ksef-connection-detail.png)
+Fill in **Seller legal name** and the full seller address (street, city, postal
+code, country `PL`). These appear verbatim on every issued invoice.
+
+![Wizard — seller name and address filled in](./assets/07-ol-ksef-seller-address.png)
+
+Choose **Authentication type**. Two options are available:
+
+- **KSeF authorization token** — paste the token you generated in Part 1. This
+  is the most common option.
+- **Qualified electronic seal** — for entities using a qualified e-seal
+  certificate instead of a KSeF token.
+
+![Wizard — authentication type selector with both options visible](./assets/08-ol-ksef-auth-type.png)
+
+Paste your KSeF token (or seal certificate) into **Authentication secret**.
+The value is stored encrypted and never shown again.
+
+![Wizard — authentication secret field filled (value obscured)](./assets/09-ol-ksef-auth-secret.png)
+
+Click **Connect KSeF**. The connection is created with the **Invoicing** capability.
+
+![Connection created — Invoicing badge visible, Test connection button](./assets/10-ol-ksef-created.png)
+
+The new KSeF connection appears in the Connections list:
+
+![Connections list — KSeF entry with Invoicing capability badge](./assets/11-ol-connections-with-ksef.png)
+
+Click the connection row to view its detail page — environment, NIP, status, and
+the capability breakdown.
+
+![KSeF connection detail page](./assets/12-ol-ksef-detail.png)
 
 ---
 
-## Part 3 — Get a PrestaShop B2B order into OpenLinker
+## Part 3 — Get a B2B order into OpenLinker
 
-KSeF issues a **faktura** (VAT invoice) when the buyer has a NIP. Create a
-customer with a company address in PrestaShop.
+KSeF issues a **faktura VAT** when the buyer address contains a **NIP**. Orders
+without a NIP use a different document type (or are skipped by KSeF rules).
 
-In the PrestaShop back office, go to **Customers → Add new customer**. Fill in the
-customer's details (first name, last name, email).
+Orders flow into OpenLinker automatically from any configured source connection
+(PrestaShop, Allegro, etc.). For the issuance flow to work, the order must have
+arrived with a buyer NIP in the address block.
 
-![PrestaShop — new customer form with company details](./assets/13-presta-customer-b2b.png)
-
-Add a company address: in the **Company** field put the company name; in
-**VAT number** put the buyer's NIP (e.g. `1234567890` for test). This field
-drives OpenLinker's document-type decision.
-
-![PrestaShop — company address with NIP/VAT number](./assets/14-presta-address-b2b.png)
-
-Create an order for this customer (**Orders → Add new order**): pick the
-customer, add a product, select the company address as the delivery address,
-choose a carrier, set **Payment = accepted**, and click **Create the order**.
-
-![PrestaShop — order builder with company address selected](./assets/15-presta-order-builder.png)
-
-![PrestaShop — created order confirmation](./assets/16-presta-order-created.png)
-
-OpenLinker ingests the order on its next PrestaShop poll (or webhook trigger). It
-appears in **Orders** with the buyer's NIP visible in the address block.
-
-![OpenLinker Orders list — ingested order](./assets/17-ol-orders-list.png)
-
-![OpenLinker Order detail — buyer address with NIP](./assets/18-ol-order-detail-buyer.png)
+> **PrestaShop:** fill the **VAT number** field on the customer's company address
+> in the PrestaShop back office. OpenLinker reads this field during order ingestion
+> and stores it on the order snapshot.
 
 ---
 
 ## Part 4 — Issue the invoice
 
-Open the order in OpenLinker. The **Invoice** panel shows **Not issued**
-with a document-type dropdown and an **Issue invoice** button.
+Open **Operations → Orders**. Find the order you want to invoice and click it.
 
-If you have more than one Invoicing connection active, the panel also shows a
-connection picker — select your KSeF connection.
+The order detail page shows the full order with the **Invoice** panel. If you
+have multiple Invoicing connections, the panel first shows a **connection picker**
+— select your KSeF connection.
 
-Select **Invoice (faktura)** in the dropdown (OpenLinker pre-selects it when a
-buyer NIP is present), then click **Issue invoice**.
+The panel shows **Not issued** with the document type pre-set to
+**Invoice (faktura VAT)** (when a NIP is present). Click **Issue invoice**.
 
-![Order detail — Invoice panel, Not issued, faktura type selected](./assets/19-ol-order-invoice-panel-empty.png)
+OpenLinker builds the FA(3) XML payload, calls KSeF, and the panel transitions
+to **Issued**. The KSeF regulatory status badge appears as **Submitted** while
+KSeF processes the document asynchronously.
 
-OpenLinker builds the FA(3) XML, calls KSeF, and the panel flips to **Issued**.
-The regulatory badge shows **Pending** (→ **Submitted**) while KSeF processes
-the document asynchronously.
-
-![Order detail — Invoice panel: issued, KSeF badge = Pending](./assets/20-ol-order-invoice-issued-pending.png)
-
-> **Note:** KSeF processes documents asynchronously. The badge updates to
-> **Accepted** (or **Rejected**) when the regulatory-reconcile worker job polls
-> the clearance status — typically within seconds on the test environment.
+> **Async clearance:** KSeF processes documents asynchronously. The badge updates
+> to **Accepted** (green) or **Rejected** (red) when OpenLinker's
+> regulatory-reconcile worker polls KSeF for the clearance status — typically
+> within seconds on the test environment.
 
 ---
 
 ## Part 5 — Track clearance and download the UPO
 
 Go to **Operations → Invoices** (`/invoices`) to see all issued documents.
-Your invoice appears with its KSeF document number and regulatory badge.
 
-![/invoices list — document row with KSeF badge and document number](./assets/21-ol-invoices-list.png)
+![Invoices list — issued documents with KSeF regulatory status badges](./assets/13-ol-invoices-ksef-status.png)
 
-Click the row to open the invoice detail. Once KSeF clears the document the
-badge moves to **Accepted** and the KSeF reference number is shown.
+Each row shows the document number, issue date, document type, invoice status,
+and the KSeF regulatory badge (`pending → submitted → accepted` or `rejected`).
 
-![Invoice detail — badge = Accepted, KSeF reference number visible](./assets/22-ol-invoice-detail-accepted.png)
+Click a row to open the invoice detail. The detail page shows the full issuance
+timeline: when the document was sent to KSeF, when it was accepted, and the
+official KSeF reference number.
 
-Click **Download UPO** to save the Urzędowe Poświadczenie Odbioru — the official
-government receipt of clearance. Store it alongside the invoice PDF for
-compliance purposes.
+![Invoice detail — issuance timeline, KSeF reference, UPO download](./assets/14-ol-invoice-detail-ksef.png)
 
-![Invoice detail — Download UPO button](./assets/23-ol-invoice-upo-download.png)
+Once the status reaches **Accepted**, the **Download UPO** button becomes active.
+Click it to save the *Urzędowe Poświadczenie Odbioru* — the official government
+receipt of clearance. Store it alongside the invoice PDF for compliance.
+
+---
+
+## Part 6 — Correction invoices (KOR)
+
+When a previously accepted invoice needs correction (wrong amount, buyer data,
+etc.):
+
+1. Open the invoice detail page.
+2. Click **Issue correction** — the correction flow pre-fills the original
+   document data and the KSeF reference number.
+3. Adjust the fields that changed (quantity, price, VAT rate) and confirm.
+
+OpenLinker issues a KOR document that references the original KSeF number. Both
+the original and the correction appear on the `/invoices` list.
 
 ---
 
 ## Next steps
 
-- **Automatic issuance** — instead of clicking per order, set an auto-trigger:
-  on the connection edit page set **Invoice trigger** to
-  **Auto on order paid** (or **shipped**). OpenLinker enqueues issuance
-  automatically when orders reach that state.
+- **Automatic issuance** — instead of clicking per order, change the connection's
+  **Invoice trigger** to `auto-on-paid` or `auto-on-shipped`. Edit the connection
+  and set the trigger model; OpenLinker enqueues issuance automatically.
 
-- **Correction invoices (KOR)** — reopen the issued invoice and click
-  **Issue correction**. The KOR document references the original KSeF number.
+- **Pair with Subiekt nexo** — if you also use Subiekt nexo, you can issue the
+  document via the Subiekt bridge and separately submit the resulting FS number to
+  KSeF through the KSeF connection. See
+  [`libs/integrations/subiekt/tutorial.md`](../subiekt/tutorial.md).
 
-- **Operational reference** — environments table, auth types, compliance
-  caveats, troubleshooting:
+- **Operational reference** — environments table, auth types, FA(3) schema
+  constraints, compliance caveats, troubleshooting:
   [`docs/integrations/ksef/setup-guide.md`](../../../docs/integrations/ksef/setup-guide.md).
-
----
-
-## Screenshot capture notes
-
-> **For the person running the capture session:**
->
-> OL-side screenshots (`06-` through `12-`, `17-` through `23-`) are automated
-> by `apps/web/e2e/ksef-walkthrough.mjs` and `ksef-invoice.mjs`. Run against
-> a preview build on `:4173`.
->
-> KSeF portal screenshots (`01-` through `05-`) are **manual** — taken in the
-> browser on `ksef-test.mf.gov.pl`. Use a test NIP (e.g. `9999999999`); blur or
-> crop out any real tax IDs before committing.
->
-> Place all PNGs in `libs/integrations/ksef/assets/` with the exact filenames
-> above. The `./assets/*.gitkeep` placeholder will be replaced when the first
-> image is added.
