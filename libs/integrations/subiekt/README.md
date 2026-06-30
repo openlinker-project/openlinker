@@ -60,13 +60,13 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ## Running the bridge
 
-The bridge is the [`openlinker-subiekt`](https://github.com/norbert-kulus-blockydevs/openlinker-subiekt)
-repository, **`without-exe-packaging` branch**. Start from a console (PowerShell in WSL
+The bridge lives in the [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
+repository (not yet published). Start from a console (PowerShell in WSL
 or a native Windows terminal — not as a compiled exe):
 
 ```powershell
 # PowerShell (in WSL: pwsh, or Windows Terminal)
-cd /mnt/c/Users/<user>/repos/openlinker-subiekt    # adjust path
+cd /mnt/c/Users/<user>/repos/openlinker-subiekt-bridge    # adjust path
 
 $env:Sfera__NexoPassword = "your-nexo-password"
 $env:Sfera__SqlPassword  = "your-sql-password"
