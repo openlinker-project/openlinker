@@ -226,11 +226,10 @@ and, if KSeF submission is configured, the regulatory status badge.
 
 Open Subiekt nexo and go to **Dokumenty → Sprzedaży** (Sales documents). The
 new FS document appears at the top of the list. Open it to verify the line items,
-VAT breakdown, and buyer NIP.
+VAT breakdown, and buyer NIP — the document number matches the one shown in
+OpenLinker's Invoice panel.
 
-> **Manual step.** These screenshots are taken in the Subiekt nexo desktop
-> application on Windows. The document number visible in OpenLinker's Invoice
-> panel (e.g. `FS 168/CENTRALA/2026`) matches the document in nexo.
+![Subiekt nexo — FS document detail, line items, NIP, VAT breakdown](./assets/27-subiekt-nexo-fs-detail.png)
 
 ---
 
