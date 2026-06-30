@@ -40,4 +40,5 @@ The `organizationId` is visible in the ShipX dashboard or API response (`/v1/org
 
 ## Documentation
 
+- [docs/setup-guide.md](./docs/setup-guide.md) — setup guide
 - [`docs/capabilities.md`](../../../docs/capabilities.md) — full capability catalog

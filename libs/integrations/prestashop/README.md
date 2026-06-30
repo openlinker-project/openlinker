@@ -57,3 +57,4 @@ operator-facing docs:
   — testing the OpenLinker PHP module against a live PrestaShop.
 - [`docs/connections-and-adapter-resolution.md`](../../../docs/connections-and-adapter-resolution.md)
   — how a connection resolves to this adapter at request time.
+- [docs/paczkomat.md](./docs/paczkomat.md) — InPost Paczkomat carrier-aware checkout reader

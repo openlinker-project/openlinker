@@ -84,9 +84,9 @@ See the bridge repo's `docs/DEPLOYMENT.md` for TLS, firewall, and SQL config.
 
 ## Documentation
 
-- **Operator tutorial** — [tutorial.md](./tutorial.md) — complete A-to-Z setup guide with screenshots
-- **Developer setup guide** — [`docs/integrations/subiekt/setup-guide.md`](../../../docs/integrations/subiekt/setup-guide.md)
-- **Operations runbook** — [`docs/integrations/subiekt/runbook.md`](../../../docs/integrations/subiekt/runbook.md)
+- **Operator tutorial** — [docs/tutorial.md](./docs/tutorial.md) — complete A-to-Z setup guide with screenshots
+- **Developer setup guide** — [docs/setup-guide.md](./docs/setup-guide.md)
+- **Operations runbook** — [docs/runbook.md](./docs/runbook.md)
 
 ## Source layout
 

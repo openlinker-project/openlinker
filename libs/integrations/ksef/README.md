@@ -65,8 +65,8 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ## Documentation
 
-- **Operator tutorial** — [tutorial.md](./tutorial.md) — complete A-to-Z setup guide with screenshots
-- **Developer setup guide** — [`docs/integrations/ksef/setup-guide.md`](../../../docs/integrations/ksef/setup-guide.md)
+- **Operator tutorial** — [docs/tutorial.md](./docs/tutorial.md) — complete A-to-Z setup guide with screenshots
+- **Developer setup guide** — [docs/setup-guide.md](./docs/setup-guide.md)
 
 ## Source layout
 

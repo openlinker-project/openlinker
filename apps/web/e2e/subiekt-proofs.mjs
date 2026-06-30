@@ -2,7 +2,7 @@
  * Subiekt setup-guide screenshot capture — auto-trigger + idempotency proofs.
  *
  * Captures the UI evidence for the worker-driven paths (#1120 auto-issue
- * trigger, #1212 exactly-once) into docs/assets/subiekt/:
+ * trigger, #1212 exactly-once) into libs/integrations/subiekt/docs/assets/:
  *   - the /invoices list reflecting an auto-issued document (trigger = "Auto on
  *     order paid" on the Subiekt connection, fired by the worker);
  *   - re-Issue/Retry on an already-issued order returning the SAME document with
@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/subiekt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/subiekt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const ORDER_AUTO_ID = process.env.ORDER_AUTO_ID ?? '';
 const ORDER_B2B_ID = process.env.ORDER_B2B_ID ?? '';

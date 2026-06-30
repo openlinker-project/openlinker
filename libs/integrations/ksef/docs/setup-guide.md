@@ -6,7 +6,7 @@ structured invoices, submits them for clearance, and reconciles the
 authority-assigned KSeF number + UPO (Urzędowe Poświadczenie Odbioru).
 
 KSeF is the first provider of the country-agnostic **Invoicing** domain
-([ADR-026](../../architecture/adrs/026-country-agnostic-invoicing-domain.md)).
+([ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md)).
 All Polish/KSeF/FA terminology is confined to the `@openlinker/integrations-ksef`
 package; `libs/core` stays country-neutral.
 
@@ -242,5 +242,5 @@ the table below covers both current gaps and explicitly out-of-scope items:
 
 - KSeF API 2.0 documentation & OpenAPI: `https://api-test.ksef.mf.gov.pl/docs/v2`
 - FA(3) schema: MF wzór `2025/06/25/13775`, schema version `1-0E`
-- [ADR-026: Country-agnostic invoicing domain](../../architecture/adrs/026-country-agnostic-invoicing-domain.md)
-- [Architecture Overview — Invoicing context](../../architecture-overview.md#14-invoicing)
+- [ADR-026: Country-agnostic invoicing domain](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md)
+- [Architecture Overview — Invoicing context](../../../../docs/architecture-overview.md#14-invoicing)

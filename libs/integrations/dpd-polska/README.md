@@ -40,4 +40,5 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ## Documentation
 
+- [docs/setup-guide.md](./docs/setup-guide.md) — setup guide
 - [`docs/capabilities.md`](../../../docs/capabilities.md) — full capability catalog
