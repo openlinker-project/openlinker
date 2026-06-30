@@ -2430,7 +2430,8 @@ textarea {
  * surface look.
  */
 .data-table {
-  width: 100%;
+  width: auto;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
