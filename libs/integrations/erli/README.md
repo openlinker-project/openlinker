@@ -49,5 +49,6 @@ Authentication uses a **static API key** (no OAuth).
 
 ## Documentation
 
-- [`docs/integrations/erli/`](../../../docs/integrations/erli/) — setup guide
+- [docs/setup-guide.md](./docs/setup-guide.md) — setup guide
+- [docs/runbook.md](./docs/runbook.md) — operational runbook
 - [ADR-025](../../../docs/architecture/adrs/025-erli-marketplace-adapter.md) — design rationale

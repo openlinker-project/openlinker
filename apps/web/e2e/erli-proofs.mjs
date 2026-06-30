@@ -2,7 +2,7 @@
  * Erli setup-guide captures (cropped).
  *
  * Drives the running web app (:4173) as the bootstrap admin and captures tight,
- * cropped screenshots of the Erli flow for docs/integrations/erli/setup-guide.md:
+ * cropped screenshots of the Erli flow for libs/integrations/erli/docs/setup-guide.md:
  *   20/21 are panel shots (separate script: erli-panel.mjs)
  *   22 — the created Erli offer row in OL Listings (cropped to the row)
  *   23 — the OL inventory value after a PrestaShop stock change (cropped)
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/erli');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/erli/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const VARIANT = 'ol_variant_2dab6f6bd3a542b3b6e86a1bc6696150';
 const ERLI_ORDER_ID = process.env.ERLI_ORDER_ID ?? 'ol_order_0b951671b4584d7f97b7866c58665f9c';

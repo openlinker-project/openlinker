@@ -44,5 +44,7 @@ Generate at **WooCommerce → Settings → Advanced → REST API**.
 
 ## Documentation
 
+- [docs/setup-guide.md](./docs/setup-guide.md) — setup guide
+- [docs/master-shop-setup-guide.md](./docs/master-shop-setup-guide.md) — full master-shop walkthrough with screenshots
 - [`docs/capabilities.md`](../../../docs/capabilities.md) — full capability catalog
 - [`libs/integrations/prestashop/README.md`](../prestashop/README.md) — reference adapter (broader capability set)

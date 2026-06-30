@@ -18,7 +18,7 @@ By the end you will have:
 4. ✅ WooCommerce's product catalog and per-variant inventory read into OpenLinker
 5. ✅ WooCommerce products listed as offers on Allegro, WooCommerce stock propagated to those offers, and Allegro orders routed into WooCommerce
 
-> Step 5 requires an **Allegro sandbox account** — see [Allegro Setup Guide](../allegro/setup-guide.md). Steps 1–4 work fully offline.
+> Step 5 requires an **Allegro sandbox account** — see [Allegro Setup Guide](../../allegro/docs/setup-guide.md). Steps 1–4 work fully offline.
 
 ## What this guide does **not** cover
 
@@ -54,7 +54,7 @@ WooCommerce is the source of truth for its own catalog and stock. OpenLinker rea
 - **Node.js** LTS (18.x or 20.x) and **pnpm** (`pnpm --version`)
 - **Git** (the OpenLinker repo cloned)
 - **`jq`** (used by the credentials helper script)
-- For § 6: an **Allegro sandbox account** with API credentials ([Allegro Setup Guide](../allegro/setup-guide.md))
+- For § 6: an **Allegro sandbox account** with API credentials ([Allegro Setup Guide](../../allegro/docs/setup-guide.md))
 - Several GB free disk space (container images + databases)
 
 **Ports used:**
@@ -186,11 +186,11 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 
 1. In the web app, go to **Connections → Add Connection** (`/connections/new`).
 
-   ![Connections list — New Connection button](./screenshots/1.png)
+   ![Connections list — New Connection button](./assets/1.png)
 
 2. Select **WooCommerce**.
 
-   ![Add Connection — WooCommerce integration selected](./screenshots/2.png)
+   ![Add Connection — WooCommerce integration selected](./assets/2.png)
 
 3. Fill in the setup form:
    - **Connection name:** `WooCommerce Store`
@@ -204,7 +204,7 @@ Wait for all three to report ready. Log in to the web app with the admin credent
    has no pre-save test button — validation in the wizard is shape-only: HTTPS URL,
    `ck_` / `cs_` prefixes.)
 
-   ![Connection detail page — Test connection action](./screenshots/4.png)
+   ![Connection detail page — Test connection action](./assets/4.png)
 
 > **HTTPS is required.** Both the setup form and the API validate `siteUrl` as `https://` — Basic Auth credentials must not travel in cleartext. The bundled dev stack serves WooCommerce over plain HTTP on port 8082, so for the UI flow put a local TLS terminator in front and use that as the Site URL, e.g.:
 >
@@ -229,11 +229,11 @@ Wait for all three to report ready. Log in to the web app with the admin credent
 >
 > Site URL: `https://localhost:8443`. (`https://localhost` is accepted — the validator allows TLD-less hosts; plain `http://localhost` is not.)
 
-![WooCommerce setup form, filled — Connection name, Site URL, Consumer Key/Secret and the Connect WooCommerce button](./screenshots/2a.png)
+![WooCommerce setup form, filled — Connection name, Site URL, Consumer Key/Secret and the Connect WooCommerce button](./assets/2a.png)
 
 The connection detail page shows **Active** with capability pills.
 
-![Connection detail page — Active status with WooCommerce capability pills](./screenshots/3.png)
+![Connection detail page — Active status with WooCommerce capability pills](./assets/3.png)
 
 > **Capability pills:** this flow uses `ProductMaster` and `InventoryMaster` (read the catalog/stock) plus `OrderProcessorManager` (write Allegro orders into WooCommerce). `OrderSource` (#876) may also appear — it is not part of the master-shop flow and you can leave it unused.
 
@@ -268,17 +268,17 @@ Open **Products**. You should see the WooCommerce products with:
 - Name, SKU/reference
 - Variants (variable products list one row per variation; simple products map to a single deterministic synthetic variant)
 
-![OpenLinker Products list populated from WooCommerce](./screenshots/5.png)
+![OpenLinker Products list populated from WooCommerce](./assets/5.png)
 
 ### 5.3 Verify inventory in OpenLinker
 
 Open **Inventory**. Stock is tracked **per variant**, read from each WooCommerce variation's `stock_quantity` (simple products report on their synthetic variant).
 
-![OpenLinker Inventory list with per-variant stock](./screenshots/6.png)
+![OpenLinker Inventory list with per-variant stock](./assets/6.png)
 
 Opening an inventory row shows the per-variant detail:
 
-![OpenLinker inventory item detail page](./screenshots/7.png)
+![OpenLinker inventory item detail page](./assets/7.png)
 
 > This is a one-way read: OpenLinker reflects WooCommerce's stock. Changing stock in OpenLinker does not write back to WooCommerce.
 
@@ -303,7 +303,7 @@ orders arrived with their items resolved to internal catalog entries:
 - order `19` — *completed*, 1× OL Test Jeans-S, total **79.99** — the line item
   links to the internal **variant** (`ol_variant_…`), not just the product
 
-![OpenLinker Orders list with the two WooCommerce orders](./screenshots/8.png)
+![OpenLinker Orders list with the two WooCommerce orders](./assets/8.png)
 
 > **Expected error in a single-shop setup:** the worker logs
 > `No OrderProcessorManager destinations available` for these jobs and retries
@@ -321,9 +321,9 @@ The destination half of the flow: WooCommerce catalog → Allegro offers, WooCom
 
 ### 6.1 Connect Allegro (sandbox)
 
-1. Register a sandbox OAuth application at [apps.developer.allegro.pl.allegrosandbox.pl](https://apps.developer.allegro.pl.allegrosandbox.pl/) — see [Allegro Setup Guide § 1](../allegro/setup-guide.md#1-allegro-oauth-application-setup) for the redirect-URI and scope details.
+1. Register a sandbox OAuth application at [apps.developer.allegro.pl.allegrosandbox.pl](https://apps.developer.allegro.pl.allegrosandbox.pl/) — see [Allegro Setup Guide § 1](../../allegro/docs/setup-guide.md#1-allegro-oauth-application-setup) for the redirect-URI and scope details.
 2. In the web app, go to **Connections → Add Connection** and pick **Allegro**. The guided wizard collects the client ID/secret and environment (`sandbox`), then sends you through Allegro's OAuth consent screen; the callback creates the connection automatically (`adapterKey: allegro.publicapi.v1`, `config.environment: sandbox`).
-3. The connection detail page should show **Active**. The raw-API path (`POST /integrations/allegro/oauth/connect`) is documented in [Allegro Setup Guide § 5](../allegro/setup-guide.md#5-connection-creation-steps).
+3. The connection detail page should show **Active**. The raw-API path (`POST /integrations/allegro/oauth/connect`) is documented in [Allegro Setup Guide § 5](../../allegro/docs/setup-guide.md#5-connection-creation-steps).
 
 #### Fresh seller-account checklist (do this once, before any offer)
 
@@ -383,7 +383,7 @@ logged in as the seller account; the consumer-side "Moje Allegro" menu does
 or directly via the API (works on sandbox; the bearer token must be a **user**
 OAuth token for the seller account with the `allegro:api:sale:settings:write`
 scope — e.g. obtained the same way as during the connection OAuth in the
-[Allegro Setup Guide](../allegro/setup-guide.md)):
+[Allegro Setup Guide](../../allegro/docs/setup-guide.md)):
 
 ```bash
 curl -X POST https://api.allegro.pl.allegrosandbox.pl/sale/responsible-producers \
@@ -541,6 +541,6 @@ You now have:
 ## References
 
 - `docs/specs/product-spec-872-woocommerce-shop-integration.md` — intended WooCommerce role (master shop). Ships with the WooCommerce integration chain (PRs #947 → #958 → #960 / #959 → #969 → #970 → #972); the FE setup wizard is PR #1002. May not be present on `main` yet.
-- [Allegro Setup Guide](../allegro/setup-guide.md) — marketplace connection used in § 6
-- [Architecture Overview](../../architecture-overview.md) — capability ports, inventory→offer data flow
-- [Getting Started](../../getting-started.md) — broader dev-stack setup
+- [Allegro Setup Guide](../../allegro/docs/setup-guide.md) — marketplace connection used in § 6
+- [Architecture Overview](../../../../docs/architecture-overview.md) — capability ports, inventory→offer data flow
+- [Getting Started](../../../../docs/getting-started.md) — broader dev-stack setup

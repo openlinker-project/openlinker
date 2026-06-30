@@ -3,7 +3,7 @@
  *
  * Drives the running web app (:4173) with a real browser, logs in as the
  * bootstrap admin, and captures a screenshot at each step of the Erli setup
- * flow into docs/assets/erli/ (used by docs/integrations/erli/setup-guide.md).
+ * flow into libs/integrations/erli/docs/assets/ (used by libs/integrations/erli/docs/setup-guide.md).
  * Run with the dev stack + API + web up.
  *
  * Usage: node apps/web/e2e/erli-walkthrough.mjs [step]
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/erli');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/erli/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const ERLI_CONNECTION_ID = process.env.ERLI_CONNECTION_ID ?? '19d837f0-1b7c-448b-b381-8c8c9bc4ba07';
 

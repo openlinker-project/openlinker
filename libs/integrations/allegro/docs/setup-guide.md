@@ -222,6 +222,6 @@ For full API documentation, see the Swagger UI at `/api/docs` (if enabled).
 - [Manual Testing Guide](./manual-testing-guide.md) - Step-by-step manual testing procedures
 - [Runbook](./runbook.md) - Operational troubleshooting guide
 - [Allegro API Documentation](https://developer.allegro.pl/documentation/)
-- [OpenLinker Architecture Overview](../../architecture-overview.md)
+- [OpenLinker Architecture Overview](../../../../docs/architecture-overview.md)
 
  

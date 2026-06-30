@@ -57,4 +57,4 @@ connection that generates labels + handover protocols over the REST
 ## Related
 
 - Reference plan / epic: [#961](https://github.com/openlinker-project/openlinker/issues/961) (children #962–#966)
-- Capability port: `ShippingProviderManagerPort` (see [`docs/architecture-overview.md`](../../architecture-overview.md))
+- Capability port: `ShippingProviderManagerPort` (see [`docs/architecture-overview.md`](../../../../docs/architecture-overview.md))

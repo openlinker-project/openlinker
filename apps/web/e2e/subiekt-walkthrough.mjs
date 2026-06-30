@@ -3,8 +3,8 @@
  *
  * Drives the running web app (:4173) with a real browser, logs in as the
  * bootstrap admin, and captures a screenshot at EACH step of the Subiekt
- * guided connection wizard (#1199) into docs/assets/subiekt/ (used by
- * docs/integrations/subiekt/setup-guide.md). Captures every meaningful click
+ * guided connection wizard (#1199) into libs/integrations/subiekt/docs/assets/ (used by
+ * libs/integrations/subiekt/docs/setup-guide.md). Captures every meaningful click
  * (exhaustiveness mandate) — empty form, each field filled, created, tested.
  * Run with the dev stack + API + web up, and the Subiekt bridge reachable.
  *
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/subiekt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/subiekt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const BRIDGE_URL = process.env.SUBIEKT_BRIDGE_URL ?? 'https://172.26.96.1:5005';
 const BRIDGE_TOKEN = process.env.SUBIEKT_BRIDGE_TOKEN ?? '';

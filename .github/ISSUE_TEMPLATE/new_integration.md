@@ -114,5 +114,5 @@ What ship state is realistic for v1 of this adapter? Tick **one**:
 - [ ] Connection-config and credentials shape validators registered (see plugin author guide § Step 7)
 - [ ] Connection tester registered against `ConnectionTesterRegistryService`
 - [ ] Unit tests cover request shape, response parsing, and error mapping for each capability
-- [ ] Adapter package `README.md` + a one-paragraph entry in `docs/integrations/<name>/` (if operator-facing setup is non-trivial)
+- [ ] Adapter package `README.md` + a `docs/setup-guide.md` in `libs/integrations/<name>/docs/` (if operator-facing setup is non-trivial)
 - [ ] Adapter registered in `apps/api/src/plugins.ts`

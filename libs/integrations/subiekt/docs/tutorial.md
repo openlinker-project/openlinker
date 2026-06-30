@@ -5,7 +5,7 @@ complete A-to-Z guide covering the bridge, the OpenLinker wizard, and the full
 order → invoice flow.
 
 > **Happy path only.** For TLS config, firewall, version matrix, and troubleshooting
-> see [`docs/integrations/subiekt/runbook.md`](../../../docs/integrations/subiekt/runbook.md).
+> see [`runbook.md`](./runbook.md).
 
 ---
 
@@ -285,7 +285,7 @@ the existing document silently (no duplicate in Subiekt nexo).
 
 - **KSeF integration:** pair the Subiekt connection with a KSeF connection to
   automatically submit the issued FS document for e-invoicing clearance. See
-  [`libs/integrations/ksef/tutorial.md`](../ksef/tutorial.md).
+  [`ksef tutorial`](../../ksef/docs/tutorial.md).
 
 - **Operational reference** — version matrix, TLS/auth/firewall, troubleshooting:
-  [`docs/integrations/subiekt/runbook.md`](../../../docs/integrations/subiekt/runbook.md).
+  [`runbook.md`](./runbook.md).
