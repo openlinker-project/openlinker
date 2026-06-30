@@ -497,17 +497,35 @@ Infakt supports webhooks (push HTTP callbacks) for real-time event delivery. **K
 
 ### Webhook Payload Structure
 
+Confirmed live 2026-06-30 on sandbox (`User-Agent: Infakt-Webhooks/2`, `sentry-environment=sandbox`):
+
 ```json
 {
   "event": {
     "uuid": "3e18cd8c-09a3-b729-958b-f393b459b761",
-    "name": "invoice_processed_in_ksef",
+    "name": "<event_name>",
     "retry_counter": 1,
     "created_at": "2026-06-30T15:42:00Z"
   },
-  "resource": {
-    /* full invoice object — same shape as GET /invoices/{uuid}.json */
-  }
+  "resource": { /* shape depends on event — see below */ }
+}
+```
+
+**`draft_invoice_created` resource** (confirmed): full invoice object, same shape as `GET /invoices/{uuid}.json`.
+
+**`send_to_ksef_success` resource** (confirmed live):
+```json
+{
+  "status": "success",
+  "timestamps": {
+    "request_created_at": "2026-06-30 21:37:16 +0200",
+    "request_finished_at": "2026-06-30 21:38:16 +0200"
+  },
+  "ksef_number": "8201194127-20260630-981CFF400000-90",
+  "invoice_kind": "vat",
+  "invoice_uuid": "02070a43-43b1-4670-b7ec-321436eda8f1",
+  "request_uuid": "de9caa74-1cd8-452d-a04f-613fe23e2aa7",
+  "status_description": null
 }
 ```
 
@@ -529,12 +547,19 @@ function verifyInfaktSignature(rawBody: Buffer, secret: string, header: string):
 
 ### Known Event Types
 
-| Event name | Description |
-|---|---|
-| `invoice_processed_in_ksef` | Invoice clearance status changed in KSeF (pending/success/error) |
-| *(additional events visible only in UI webhook configuration)* | E.g. invoice paid, invoice created — exact names discoverable in Infakt dashboard |
+> ⚠️ Infakt documentation lists `invoice_processed_in_ksef` — **this name is WRONG**. Confirmed live event names from sandbox (2026-06-30):
 
-The `invoice_processed_in_ksef` event is the most relevant for OL: it fires when `ksef_data.status` changes, enabling event-driven `InvoiceRecord` update instead of polling `getClearanceStatus`.
+| Event name | Confirmed | Description |
+|---|---|---|
+| `draft_invoice_created` | ✅ live | Invoice created as draft |
+| `send_to_ksef_success` | ✅ live | KSeF clearance succeeded — `ksef_number` in resource |
+| `send_to_ksef_error` | inferred | KSeF clearance failed |
+| `invoice_created_via_async_api` | UI-listed | Invoice created via async API |
+| `invoice_creation_error_via_async_api` | UI-listed | Async API creation error |
+| `invoice_marked_as_paid` | UI-listed | Invoice marked paid |
+| `invoice_deleted` | UI-listed | Invoice deleted |
+
+**Key finding**: `send_to_ksef_success` carries `ksef_number` directly in the webhook resource — OL does **not** need to call `getClearanceStatus` after receiving this event. The webhook handler can update `InvoiceRecord.clearanceReference = ksef_number` and `regulatoryStatus = 'accepted'` in one step.
 
 ### Integration Architecture for OL
 
@@ -542,17 +567,22 @@ The `invoice_processed_in_ksef` event is the most relevant for OL: it fires when
 Infakt → POST /webhooks/infakt/{connectionId}
   ↓
 WebhookController (OL)
-  - verify X-Infakt-Signature (HMAC-SHA256)
-  - parse event.name + resource.uuid
-  - if invoice_processed_in_ksef: call InfaktInvoicingAdapter.getClearanceStatus(record)
-  - update InvoiceRecord.regulatoryStatus + clearanceReference in OL DB
+  - if verification_code present: echo back → webhook activated
+  - verify X-Infakt-Signature (HMAC-SHA256, reject 401 on failure)
+  - parse event.name
+  - if send_to_ksef_success:
+      extract ksef_number from resource directly (no getClearanceStatus call needed)
+      update InvoiceRecord.regulatoryStatus = 'accepted', clearanceReference = ksef_number
+  - if send_to_ksef_error:
+      update InvoiceRecord.regulatoryStatus = 'rejected'
+  - all other events: ACK 200 and ignore
 ```
 
 **Operator setup required**: After creating the Infakt connection in OL, the operator must manually add the webhook URL in the Infakt dashboard and paste the secret into OL's connection config. There is no way to automate this via API — it's a one-time manual step.
 
 ### Webhook vs Polling Trade-off
 
-| | Polling (`getClearanceStatus` in SyncJob) | Webhook (`invoice_processed_in_ksef`) |
+| | Polling (`getClearanceStatus` in SyncJob) | Webhook (`send_to_ksef_success`) |
 |---|---|---|
 | Latency | 30–60 s (cron interval) | ~0 s (immediate push) |
 | Infra dependency | None | Operator must configure webhook URL in Infakt UI |
