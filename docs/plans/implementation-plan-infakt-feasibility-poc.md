@@ -552,7 +552,7 @@ function verifyInfaktSignature(rawBody: Buffer, secret: string, header: string):
 
 | Event name | Confirmed | Description |
 |---|---|---|
-| `draft_invoice_created` | ✅ live | Invoice created as draft |
+| `draft_invoice_created` | ✅ live (×2) | Any document created as draft — `resource.kind` distinguishes `vat` vs `correction` |
 | `send_to_ksef_success` | ✅ live | KSeF clearance succeeded — `ksef_number` in resource |
 | `send_to_ksef_error` | inferred | KSeF clearance failed |
 | `invoice_created_via_async_api` | UI-listed | Invoice created via async API |
