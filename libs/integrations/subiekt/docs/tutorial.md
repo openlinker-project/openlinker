@@ -68,13 +68,9 @@ $env:Sfera__NexoPassword = "your-nexo-operator-password"
 # $env:Sfera__SqlPassword = "your-sql-password"
 ```
 
-> **WSL users:** the Windows host IP seen from WSL is your default gateway.
-> Find it with:
-> ```bash
-> ip route show default | awk '{print $3}'
-> # example: 172.26.96.1
-> ```
-> Use this IP as the **Bridge URL** when you create the connection in Part 2.
+> If OpenLinker runs on the same machine as the bridge, `http://127.0.0.1:5005`
+> works as the **Bridge URL** in Part 2. If OpenLinker runs elsewhere on your
+> network, use this machine's LAN IP (`ipconfig` → IPv4 Address) instead.
 
 ### 1c — Start the bridge
 
@@ -101,10 +97,10 @@ Sfera session opened — zalogowano
 
 ### 1d — Smoke-test the bridge
 
-From a WSL terminal or any shell that can reach the Windows machine:
+From another PowerShell window:
 
-```bash
-curl http://172.26.96.1:5005/health
+```powershell
+Invoke-RestMethod http://127.0.0.1:5005/health
 # → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}
 ```
 
@@ -132,7 +128,8 @@ The guided setup wizard opens. Fill in the fields:
   ![Wizard — connection name filled in](./assets/09-ol-wizard-name.png)
 
 - **Bridge URL** — the bridge base URL **without** a path suffix, e.g.
-  `http://172.26.96.1:5005`. The adapter appends `/api/…` paths automatically.
+  `http://127.0.0.1:5005` (same machine) or `http://192.168.1.50:5005` (bridge
+  on a different machine). The adapter appends `/api/…` paths automatically.
 
   ![Wizard — bridge URL filled in](./assets/10-ol-wizard-bridge-url.png)
 

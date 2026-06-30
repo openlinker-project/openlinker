@@ -55,18 +55,16 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 | Field | Values | Notes |
 |---|---|---|
-| `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. From WSL: use the Windows host gateway IP, e.g. `https://172.26.96.1:5005` |
+| `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. If OpenLinker runs on a different host than the bridge, use the bridge machine's address, e.g. `https://192.168.1.50:5005` |
 | `invoicing.triggerModel` | `"manual"` \| `"auto-on-paid"` \| `"auto-on-shipped"` \| `"batched"` | `manual` = operator clicks Issue; others = worker-driven auto-issuance |
 
 ## Running the bridge
 
 The bridge lives in the [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-repository (not yet published). Start from a console (PowerShell in WSL
-or a native Windows terminal — not as a compiled exe):
+repository. Start it from a Windows PowerShell prompt (not as a compiled exe):
 
 ```powershell
-# PowerShell (in WSL: pwsh, or Windows Terminal)
-cd /mnt/c/Users/<user>/repos/openlinker-subiekt-bridge    # adjust path
+cd C:\Users\<user>\repos\openlinker-subiekt-bridge    # adjust path
 
 $env:Sfera__NexoPassword = "your-nexo-password"
 $env:Sfera__SqlPassword  = "your-sql-password"
