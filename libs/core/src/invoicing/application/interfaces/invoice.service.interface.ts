@@ -16,6 +16,9 @@ export interface IInvoiceService {
   /** Read a record by its internal id; `null` when unknown. */
   getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null>;
 
+  /** Read the most recently created invoice record for an order; `null` when none. */
+  getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+
   /**
    * Issue a fiscal document for an order. Resolves the connection's `InvoicingPort`,
    * issues the document, persists the projection, and snapshots the issued-document

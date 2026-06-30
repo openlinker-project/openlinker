@@ -20,15 +20,15 @@ import type {
   OrderRecordRepositoryPort,
   IOrderDestinationRetryService,
 } from '@openlinker/core/orders';
-import { INVOICE_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/invoicing';
-import type { InvoiceRecordRepositoryPort } from '@openlinker/core/invoicing';
+import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import type { IInvoiceService } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
-  let invoiceRepository: jest.Mocked<InvoiceRecordRepositoryPort>;
+  let invoiceService: jest.Mocked<IInvoiceService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -65,16 +65,10 @@ describe('OrdersController', () => {
       retry: jest.fn(),
     };
 
-    const mockInvoiceRepository: jest.Mocked<InvoiceRecordRepositoryPort> = {
-      create: jest.fn(),
-      findById: jest.fn(),
-      findByOrderId: jest.fn(),
-      findLatestByOrderId: jest.fn(),
-      findByIdempotencyKey: jest.fn(),
-      updateOutcome: jest.fn(),
-      claimForIssue: jest.fn(),
-      findMany: jest.fn(),
-      findIssuedNonTerminal: jest.fn(),
+    const mockInvoiceService: jest.Mocked<IInvoiceService> = {
+      getInvoiceById: jest.fn(),
+      getLatestInvoiceForOrder: jest.fn(),
+      issueInvoice: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -89,8 +83,8 @@ describe('OrdersController', () => {
           useValue: mockRetryService,
         },
         {
-          provide: INVOICE_RECORD_REPOSITORY_TOKEN,
-          useValue: mockInvoiceRepository,
+          provide: INVOICE_SERVICE_TOKEN,
+          useValue: mockInvoiceService,
         },
       ],
     }).compile();
@@ -98,7 +92,7 @@ describe('OrdersController', () => {
     controller = module.get<OrdersController>(OrdersController);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
-    invoiceRepository = module.get(INVOICE_RECORD_REPOSITORY_TOKEN);
+    invoiceService = module.get(INVOICE_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -357,7 +351,7 @@ describe('OrdersController', () => {
 
     it('should merge a neutral invoice projection into the snapshot when a record exists (#1224)', async () => {
       repository.findById.mockResolvedValue(mockOrder);
-      invoiceRepository.findLatestByOrderId.mockResolvedValue(
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(
         new InvoiceRecord(
           'rec-inv-1',
           'conn-ksef-1',
@@ -384,13 +378,13 @@ describe('OrdersController', () => {
         invoiceId: 'rec-inv-1',
         regulatoryStatus: 'accepted',
         clearanceReference: '5265877635-20250826-0100001AF629-AF',
-        upoReference: 'rec-inv-1',
+        confirmationDocumentAvailable: true,
       });
     });
 
-    it('should set upoReference null when the invoice is not yet cleared (#1224)', async () => {
+    it('should set confirmationDocumentAvailable false when the invoice is not yet cleared (#1224)', async () => {
       repository.findById.mockResolvedValue(mockOrder);
-      invoiceRepository.findLatestByOrderId.mockResolvedValue(
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(
         new InvoiceRecord(
           'rec-inv-2',
           'conn-ksef-1',
@@ -416,13 +410,13 @@ describe('OrdersController', () => {
       expect(result.orderSnapshot.invoice).toMatchObject({
         invoiceId: 'rec-inv-2',
         regulatoryStatus: 'submitted',
-        upoReference: null,
+        confirmationDocumentAvailable: false,
       });
     });
 
     it('should leave the snapshot untouched when no invoice record exists', async () => {
       repository.findById.mockResolvedValue(mockOrder);
-      invoiceRepository.findLatestByOrderId.mockResolvedValue(null);
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(null);
 
       const result = await controller.getOrder('ol_order_001');
 

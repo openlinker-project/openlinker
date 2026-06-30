@@ -20,6 +20,7 @@ import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplica
 import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
+  IssuedDocumentContent,
   IssuedDocumentSeller,
 } from '../../domain/types/invoicing.types';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
@@ -688,7 +689,7 @@ describe('InvoiceService', () => {
 
       await service.issueInvoice(command());
 
-      const snapshotContent = patch?.['documentContent'] as import('../../domain/types/invoicing.types').IssuedDocumentContent | null | undefined;
+      const snapshotContent = patch?.['documentContent'] as IssuedDocumentContent | null | undefined;
       expect(snapshotContent).toBeDefined();
       expect(snapshotContent?.seller).toEqual(SELLER);
       expect(snapshotContent?.buyer.name).toBe('Jan Kowalski');
@@ -697,14 +698,14 @@ describe('InvoiceService', () => {
 
       // Line 1: 2 * 123 = 246 gross @23% → net 200, vat 46.
       expect(snapshotContent?.lines[0]).toEqual({
-        name: 'Widget', quantity: 2, unitNet: 100, taxRate: '23', net: 200, vat: 46, gross: 246,
+        name: 'Widget', quantity: 2, unitNet: 100, taxRate: '23', net: 200, tax: 46, gross: 246,
       });
       // Totals across all three lines (net 340.65 + vat 60.35 = gross 401).
-      expect(snapshotContent?.totals).toEqual({ net: 340.65, vat: 60.35, gross: 401 });
+      expect(snapshotContent?.totals).toEqual({ net: 340.65, tax: 60.35, gross: 401 });
       // VAT breakdown grouped by rate (23% bucket = lines 1+2; 5% bucket = line 3).
-      const byRate = Object.fromEntries((snapshotContent?.vatBreakdown ?? []).map((b) => [b.rate, b]));
-      expect(byRate['23']).toEqual({ rate: '23', net: 240.65, vat: 55.35, gross: 296 });
-      expect(byRate['5']).toEqual({ rate: '5', net: 100, vat: 5, gross: 105 });
+      const byRate = Object.fromEntries((snapshotContent?.taxBreakdown ?? []).map((b) => [b.rate, b]));
+      expect(byRate['23']).toEqual({ rate: '23', net: 240.65, tax: 55.35, gross: 296 });
+      expect(byRate['5']).toEqual({ rate: '5', net: 100, tax: 5, gross: 105 });
     });
 
     it('should persist seller:null when the adapter surfaces no seller block', async () => {
@@ -718,7 +719,7 @@ describe('InvoiceService', () => {
 
       await service.issueInvoice(command());
 
-      const snapshotContent = patch?.['documentContent'] as import('../../domain/types/invoicing.types').IssuedDocumentContent | null | undefined;
+      const snapshotContent = patch?.['documentContent'] as IssuedDocumentContent | null | undefined;
       expect(snapshotContent?.seller).toBeNull();
     });
 

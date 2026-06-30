@@ -60,8 +60,6 @@ import {
 import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
-  INVOICE_RECORD_REPOSITORY_TOKEN,
-  InvoiceRecordRepositoryPort,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
@@ -122,8 +120,6 @@ export class InvoicingController {
     private readonly invoiceService: IInvoiceService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
-    @Inject(INVOICE_RECORD_REPOSITORY_TOKEN)
-    private readonly invoiceRecordRepository: InvoiceRecordRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
   ) {}
@@ -598,12 +594,12 @@ export class InvoicingController {
   @ApiResponse({ status: 409, description: 'Document not available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async downloadDocument(
-    @Param('invoiceId') invoiceId: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
     @Res() res: Response,
     @Query('kind') kindParam?: string,
   ): Promise<void> {
     const kind = this.parseDocumentKind(kindParam);
-    const record = await this.invoiceRecordRepository.findById(invoiceId);
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
@@ -661,8 +657,8 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'UPO not yet available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async downloadUpo(@Param('invoiceId') invoiceId: string, @Res() res: Response): Promise<void> {
-    const record = await this.invoiceRecordRepository.findById(invoiceId);
+  async downloadUpo(@Param('invoiceId', ParseUUIDPipe) invoiceId: string, @Res() res: Response): Promise<void> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
@@ -685,8 +681,8 @@ export class InvoicingController {
     // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
     // runs FIRST so a thrown error still routes through the exception layer
     // before any byte is written; `res.*` only ever runs on success.
-    const document = await adapter.getRegulatoryDocument(record, 'upo');
-    this.streamBinaryDocument(res, invoiceId, 'upo', document.contentType, Buffer.from(document.content));
+    const document = await adapter.getRegulatoryDocument(record, 'confirmation');
+    this.streamBinaryDocument(res, invoiceId, 'confirmation', document.contentType, Buffer.from(document.content));
   }
 
   // Declared last: must not shadow the more specific
@@ -721,7 +717,7 @@ export class InvoicingController {
       return value;
     }
     throw new BadRequestException(
-      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.filter((k) => k !== 'upo').join(', ')}`,
+      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.filter((k) => k !== 'confirmation').join(', ')}`,
     );
   }
 
@@ -753,6 +749,11 @@ export class InvoicingController {
     contentType: string,
     body: Buffer,
   ): void {
+    if (body.length > 20 * 1024 * 1024) {
+      throw new ConflictException(
+        `Document for invoice ${invoiceId} exceeds the 20 MB size limit (${body.length} bytes)`,
+      );
+    }
     const safeContentType = contentType.length > 0 ? contentType : 'application/octet-stream';
     const ext = extensionForContentType(safeContentType);
     res.setHeader('Content-Type', safeContentType);

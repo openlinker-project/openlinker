@@ -4,8 +4,8 @@
  * Neutral (#1224, ADR-026) invoice sub-tree merged into the order-detail snapshot.
  * The FE invoice panel reads this off `orderSnapshot.invoice` on the detail read
  * only. No regime/provider vocabulary crosses here — `regulatoryStatus` is the
- * neutral CTC clearance lifecycle, `upoReference` is present only once the
- * confirmation document is downloadable.
+ * neutral CTC clearance lifecycle, `confirmationDocumentAvailable` is true
+ * once the confirmation document can be downloaded.
  *
  * @module apps/api/src/orders/http/dto
  */
@@ -34,9 +34,8 @@ export class OrderInvoiceProjectionDto {
   clearanceReference!: string | null;
 
   @ApiProperty({
-    nullable: true,
     description:
-      'Present only once the authority confirmation document (UPO) is downloadable; its presence gates the FE download action. null otherwise.',
+      'True once the authority confirmation document is downloadable (invoice issued and cleared); gates the FE download action.',
   })
-  upoReference!: string | null;
+  confirmationDocumentAvailable!: boolean;
 }

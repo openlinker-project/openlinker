@@ -238,22 +238,22 @@ export interface IssuedDocumentLine {
   unitNet: number;
   taxRate: string;
   net: number;
-  vat: number;
+  tax: number;
   gross: number;
 }
 
-/** One VAT-breakdown bucket, grouped by neutral `rate` code. */
-export interface VatBreakdownEntry {
+/** One tax-breakdown bucket, grouped by neutral `rate` code. */
+export interface TaxBreakdownEntry {
   rate: string;
   net: number;
-  vat: number;
+  tax: number;
   gross: number;
 }
 
 /** Document money totals (sum across all lines). */
 export interface DocumentTotals {
   net: number;
-  vat: number;
+  tax: number;
   gross: number;
 }
 
@@ -267,7 +267,7 @@ export interface IssuedDocumentPayment {
  * Neutral snapshot of an issued document's CONTENT, taken at issue time (ADR-026).
  * It is a non-authoritative projection backing the FE "Invoice contents" card —
  * the provider owns the authoritative document. No country/regulatory vocabulary
- * appears here: `seller`/`buyer` carry scheme-tagged tax ids, `lines`/`vatBreakdown`
+ * appears here: `seller`/`buyer` carry scheme-tagged tax ids, `lines`/`taxBreakdown`
  * use the neutral `taxRate` string codes, `currency` is ISO 4217, dates are ISO 8601.
  * `seller` is `null` when the issuing adapter does not surface a seller block (it
  * degrades gracefully rather than blocking the snapshot).
@@ -276,7 +276,7 @@ export interface IssuedDocumentContent {
   seller: IssuedDocumentSeller | null;
   buyer: IssuedDocumentBuyer;
   lines: IssuedDocumentLine[];
-  vatBreakdown: VatBreakdownEntry[];
+  taxBreakdown: TaxBreakdownEntry[];
   totals: DocumentTotals;
   /** ISO 4217 currency code. */
   currency: string;
@@ -291,13 +291,13 @@ export interface IssuedDocumentContent {
 /**
  * Neutral document kind a {@link RegulatoryDocumentReader} can fetch for a record.
  * Country-agnostic (ADR-026):
- *  - `upo` — the tax authority's confirmation/receipt document (PL: UPO).
+ *  - `confirmation` — the tax authority's confirmation/receipt document (PL: UPO).
  *  - `source` — the machine-readable source document submitted to the authority
  *    (PL: the FA(3) XML), persisted at issue time.
  *  - `rendered` — a human-readable rendering (HTML/PDF) of the source document,
  *    when the provider can produce one server-side.
  */
-export const RegulatoryDocumentKindValues = ['upo', 'source', 'rendered'] as const;
+export const RegulatoryDocumentKindValues = ['confirmation', 'source', 'rendered'] as const;
 export type RegulatoryDocumentKind = (typeof RegulatoryDocumentKindValues)[number];
 
 /**

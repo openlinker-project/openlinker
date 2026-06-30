@@ -347,13 +347,13 @@ export class KsefInvoicingAdapter
    */
   async getRegulatoryDocument(
     record: InvoiceRecordType,
-    kind: RegulatoryDocumentKind = 'upo',
+    kind: RegulatoryDocumentKind = 'confirmation',
   ): Promise<RegulatoryDocument> {
     // `source` is the persisted FA(3) XML served by the core service from the
     // record snapshot, never via this adapter. `rendered` (server-side HTML/PDF
     // visualization) is not a KSeF API capability — integrators render the FA(3)
     // XML client-side via the official XSLT. Both are soft 409s, not failures.
-    if (kind !== 'upo') {
+    if (kind !== 'confirmation') {
       throw new UnsupportedRegulatoryDocumentKindError(kind);
     }
     const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);

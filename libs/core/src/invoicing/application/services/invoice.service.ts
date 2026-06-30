@@ -47,7 +47,7 @@ import type {
   IssuedDocumentSeller,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
-  VatBreakdownEntry,
+  TaxBreakdownEntry,
 } from '../../domain/types/invoicing.types';
 
 /**
@@ -523,6 +523,10 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findById(invoiceId);
   }
 
+  async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
+    return this.repo.findLatestByOrderId(orderId);
+  }
+
   async listInvoices(
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
@@ -567,7 +571,7 @@ export class InvoiceService implements IInvoiceService {
       const fraction = rateFraction(line.taxRate);
       const gross = round2(line.quantity * line.unitPriceGross);
       const net = round2(gross / (1 + fraction));
-      const vat = round2(gross - net);
+      const tax = round2(gross - net);
       const unitNet = round2(line.unitPriceGross / (1 + fraction));
       return {
         name: line.name,
@@ -575,15 +579,15 @@ export class InvoiceService implements IInvoiceService {
         unitNet,
         taxRate: line.taxRate,
         net,
-        vat,
+        tax,
         gross,
       };
     });
 
-    const vatBreakdown = this.buildVatBreakdown(lines);
+    const taxBreakdown = this.buildTaxBreakdown(lines);
     const totals = {
       net: round2(lines.reduce((sum, l) => sum + l.net, 0)),
-      vat: round2(lines.reduce((sum, l) => sum + l.vat, 0)),
+      tax: round2(lines.reduce((sum, l) => sum + l.tax, 0)),
       gross: round2(lines.reduce((sum, l) => sum + l.gross, 0)),
     };
 
@@ -595,7 +599,7 @@ export class InvoiceService implements IInvoiceService {
         address: cmd.buyer.address,
       },
       lines,
-      vatBreakdown,
+      taxBreakdown,
       totals,
       currency: cmd.currency,
       issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
@@ -604,18 +608,18 @@ export class InvoiceService implements IInvoiceService {
     };
   }
 
-  /** Group lines by their neutral `taxRate` code, summing net/vat/gross per bucket. */
-  private buildVatBreakdown(lines: IssuedDocumentLine[]): VatBreakdownEntry[] {
-    const byRate = new Map<string, VatBreakdownEntry>();
+  /** Group lines by their neutral `taxRate` code, summing net/tax/gross per bucket. */
+  private buildTaxBreakdown(lines: IssuedDocumentLine[]): TaxBreakdownEntry[] {
+    const byRate = new Map<string, TaxBreakdownEntry>();
     for (const line of lines) {
       const bucket = byRate.get(line.taxRate) ?? {
         rate: line.taxRate,
         net: 0,
-        vat: 0,
+        tax: 0,
         gross: 0,
       };
       bucket.net = round2(bucket.net + line.net);
-      bucket.vat = round2(bucket.vat + line.vat);
+      bucket.tax = round2(bucket.tax + line.tax);
       bucket.gross = round2(bucket.gross + line.gross);
       byRate.set(line.taxRate, bucket);
     }

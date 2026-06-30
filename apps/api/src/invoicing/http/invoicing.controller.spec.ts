@@ -18,14 +18,12 @@ import {
 import type { Response } from 'express';
 import {
   INVOICE_SERVICE_TOKEN,
-  INVOICE_RECORD_REPOSITORY_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
   InvoiceRecord,
-  InvoiceRecordRepositoryPort,
   InvoicingPort,
   IssuedDocumentContent,
   RegulatoryDocument,
@@ -61,9 +59,9 @@ const SAMPLE_CONTENT: IssuedDocumentContent = {
     taxId: null,
     address: { line1: 'ul. Kupna 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
   },
-  lines: [{ name: 'Widget', quantity: 1, unitNet: 100, taxRate: '23', net: 100, vat: 23, gross: 123 }],
-  vatBreakdown: [{ rate: '23', net: 100, vat: 23, gross: 123 }],
-  totals: { net: 100, vat: 23, gross: 123 },
+  lines: [{ name: 'Widget', quantity: 1, unitNet: 100, taxRate: '23', net: 100, tax: 23, gross: 123 }],
+  taxBreakdown: [{ rate: '23', net: 100, tax: 23, gross: 123 }],
+  totals: { net: 100, tax: 23, gross: 123 },
   currency: 'PLN',
   issueDate: '2026-04-01T12:00:00.000Z',
   saleDate: null,
@@ -267,7 +265,6 @@ describe('InvoicingController', () => {
   let controller: InvoicingController;
   let invoiceService: jest.Mocked<IInvoiceService>;
   let orders: jest.Mocked<IOrderRecordService>;
-  let repository: jest.Mocked<InvoiceRecordRepositoryPort>;
   let integrations: jest.Mocked<IIntegrationsService>;
 
   beforeEach(async () => {
@@ -281,15 +278,6 @@ describe('InvoicingController', () => {
       getOrderRecord: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
-    const mockRepo: jest.Mocked<InvoiceRecordRepositoryPort> = {
-      create: jest.fn(),
-      findById: jest.fn(),
-      findByOrderId: jest.fn(),
-      findLatestByOrderId: jest.fn(),
-      findByIdempotencyKey: jest.fn(),
-      updateOutcome: jest.fn(),
-    } as unknown as jest.Mocked<InvoiceRecordRepositoryPort>;
-
     const mockIntegrations = {
       getCapabilityAdapter: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
@@ -299,13 +287,11 @@ describe('InvoicingController', () => {
       providers: [
         { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
-        { provide: INVOICE_RECORD_REPOSITORY_TOKEN, useValue: mockRepo },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
       ],
     }).compile();
 
     controller = moduleRef.get(InvoicingController);
-    repository = moduleRef.get(INVOICE_RECORD_REPOSITORY_TOKEN);
     integrations = moduleRef.get(INTEGRATIONS_SERVICE_TOKEN);
   });
 
@@ -768,7 +754,7 @@ describe('InvoicingController', () => {
 
   describe('GET /invoices/:invoiceId/upo', () => {
     it('should stream the UPO bytes for a cleared invoice (200)', async () => {
-      repository.findById.mockResolvedValue(clearedRecord());
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
       const document: RegulatoryDocument = {
         content: new Uint8Array([1, 2, 3]),
         contentType: 'application/xml',
@@ -787,12 +773,12 @@ describe('InvoicingController', () => {
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-ksef-1', 'Invoicing');
       expect(res.headers['Content-Type']).toBe('application/xml');
-      expect(res.headers['Content-Disposition']).toContain('ol-upo-rec-inv-1.xml');
+      expect(res.headers['Content-Disposition']).toContain('ol-confirmation-rec-inv-1.xml');
       expect(res.body).toEqual(Buffer.from([1, 2, 3]));
     });
 
     it('should 404 when the invoice id is unknown', async () => {
-      repository.findById.mockResolvedValue(null);
+      invoiceService.getInvoiceById.mockResolvedValue(null);
 
       await expect(controller.downloadUpo('nope', mockResponse())).rejects.toBeInstanceOf(
         NotFoundException,
@@ -800,7 +786,7 @@ describe('InvoicingController', () => {
     });
 
     it('should 409 when the invoice is not yet cleared', async () => {
-      repository.findById.mockResolvedValue(pendingRecord());
+      invoiceService.getInvoiceById.mockResolvedValue(pendingRecord());
 
       await expect(
         controller.downloadUpo('rec-inv-1', mockResponse()),
@@ -809,7 +795,7 @@ describe('InvoicingController', () => {
     });
 
     it('should 409 when the provider exposes no confirmation document', async () => {
-      repository.findById.mockResolvedValue(clearedRecord());
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
       const adapter: InvoicingPort = {
         issueInvoice: jest.fn(),
         getInvoice: jest.fn(),
@@ -853,9 +839,9 @@ describe('InvoicingController', () => {
 
       expect(dto.currency).toBe('PLN');
       expect(dto.seller?.taxId).toEqual({ scheme: 'pl-nip', value: '1234567890' });
-      expect(dto.totals).toEqual({ net: 100, vat: 23, gross: 123 });
+      expect(dto.totals).toEqual({ net: 100, tax: 23, gross: 123 });
       expect(dto.lines).toHaveLength(1);
-      expect(dto.vatBreakdown).toEqual([{ rate: '23', net: 100, vat: 23, gross: 123 }]);
+      expect(dto.taxBreakdown).toEqual([{ rate: '23', net: 100, tax: 23, gross: 123 }]);
     });
 
     it('should 404 when the invoice id is unknown', async () => {
@@ -873,7 +859,7 @@ describe('InvoicingController', () => {
 
   describe('getDocument', () => {
     it('should stream the persisted source XML for kind=source (200), no provider call', async () => {
-      repository.findById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
 
       const res = mockResponse();
       await controller.downloadDocument('rec-inv-1', res, 'source');
@@ -885,7 +871,7 @@ describe('InvoicingController', () => {
     });
 
     it('should default kind to source when the query param is absent', async () => {
-      repository.findById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithSource(SAMPLE_SOURCE));
 
       const res = mockResponse();
       await controller.downloadDocument('rec-inv-1', res, undefined);
@@ -894,7 +880,7 @@ describe('InvoicingController', () => {
     });
 
     it('should 404 when the invoice id is unknown', async () => {
-      repository.findById.mockResolvedValue(null);
+      invoiceService.getInvoiceById.mockResolvedValue(null);
 
       await expect(
         controller.downloadDocument('nope', mockResponse(), 'source'),
@@ -902,7 +888,7 @@ describe('InvoicingController', () => {
     });
 
     it('should 409 for kind=source when no source snapshot exists', async () => {
-      repository.findById.mockResolvedValue(recordWithSource(null));
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithSource(null));
 
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'source'),
@@ -913,18 +899,18 @@ describe('InvoicingController', () => {
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'bogus'),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.findById).not.toHaveBeenCalled();
+      expect(invoiceService.getInvoiceById).not.toHaveBeenCalled();
     });
 
     it('should 400 when kind=upo is passed (upo has its own dedicated route)', async () => {
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'upo'),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.findById).not.toHaveBeenCalled();
+      expect(invoiceService.getInvoiceById).not.toHaveBeenCalled();
     });
 
     it('should 409 for kind=rendered when the provider cannot produce it', async () => {
-      repository.findById.mockResolvedValue(clearedRecord());
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
       const adapter: InvoicingPort = {
         issueInvoice: jest.fn(),
         getInvoice: jest.fn(),
@@ -942,7 +928,7 @@ describe('InvoicingController', () => {
     });
 
     it('should 409 for kind=rendered when the invoice is not yet cleared', async () => {
-      repository.findById.mockResolvedValue(pendingRecord());
+      invoiceService.getInvoiceById.mockResolvedValue(pendingRecord());
 
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),

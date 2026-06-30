@@ -15,7 +15,7 @@ import type {
   IssuedDocumentLine,
   IssuedDocumentPayment,
   IssuedDocumentSeller,
-  VatBreakdownEntry,
+  TaxBreakdownEntry,
 } from '@openlinker/core/invoicing';
 import {
   BuyerAddress,
@@ -58,20 +58,20 @@ class LineDto implements IssuedDocumentLine {
   @ApiProperty() unitNet!: number;
   @ApiProperty({ description: 'Neutral tax-rate string code (e.g. `23`, `zw`).' }) taxRate!: string;
   @ApiProperty() net!: number;
-  @ApiProperty() vat!: number;
+  @ApiProperty() tax!: number;
   @ApiProperty() gross!: number;
 }
 
-class VatBreakdownDto implements VatBreakdownEntry {
+class TaxBreakdownDto implements TaxBreakdownEntry {
   @ApiProperty() rate!: string;
   @ApiProperty() net!: number;
-  @ApiProperty() vat!: number;
+  @ApiProperty() tax!: number;
   @ApiProperty() gross!: number;
 }
 
 class TotalsDto implements DocumentTotals {
   @ApiProperty() net!: number;
-  @ApiProperty() vat!: number;
+  @ApiProperty() tax!: number;
   @ApiProperty() gross!: number;
 }
 
@@ -94,8 +94,8 @@ export class IssuedDocumentContentDto {
   @ApiProperty({ type: [LineDto] })
   lines!: IssuedDocumentLine[];
 
-  @ApiProperty({ type: [VatBreakdownDto] })
-  vatBreakdown!: VatBreakdownEntry[];
+  @ApiProperty({ type: [TaxBreakdownDto] })
+  taxBreakdown!: TaxBreakdownEntry[];
 
   @ApiProperty({ type: TotalsDto })
   totals!: DocumentTotals;
@@ -117,7 +117,7 @@ export class IssuedDocumentContentDto {
     dto.seller = content.seller;
     dto.buyer = content.buyer;
     dto.lines = content.lines;
-    dto.vatBreakdown = content.vatBreakdown;
+    dto.taxBreakdown = content.taxBreakdown;
     dto.totals = content.totals;
     dto.currency = content.currency;
     dto.issueDate = content.issueDate;

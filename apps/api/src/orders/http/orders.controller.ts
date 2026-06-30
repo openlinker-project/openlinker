@@ -35,8 +35,8 @@ import {
 } from '@openlinker/core/orders';
 import type { OrderRecord, OrderSyncStatus, SyncAttempt } from '@openlinker/core/orders';
 import {
-  INVOICE_RECORD_REPOSITORY_TOKEN,
-  InvoiceRecordRepositoryPort,
+  INVOICE_SERVICE_TOKEN,
+  IInvoiceService,
 } from '@openlinker/core/invoicing';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
@@ -59,8 +59,8 @@ export class OrdersController {
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
     @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
     private readonly destinationRetryService: IOrderDestinationRetryService,
-    @Inject(INVOICE_RECORD_REPOSITORY_TOKEN)
-    private readonly invoiceRecordRepository: InvoiceRecordRepositoryPort
+    @Inject(INVOICE_SERVICE_TOKEN)
+    private readonly invoiceService: IInvoiceService
   ) {}
 
   @Get()
@@ -187,7 +187,7 @@ export class OrdersController {
     // Order-detail-only invoice projection (#1224): the FE invoice panel reads a
     // neutral `invoice` sub-tree off the snapshot. Joined on the detail read only
     // (the list endpoint stays a single query — no N+1).
-    const invoiceRecord = await this.invoiceRecordRepository.findLatestByOrderId(
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
       order.internalOrderId
     );
     if (invoiceRecord) {
@@ -268,17 +268,17 @@ export class OrdersController {
   /**
    * Neutral invoice projection (#1224, ADR-026) merged into the order-detail
    * snapshot. `invoiceId` is the internal record id the UPO download endpoint
-   * keys on; `upoReference` is present only once the document is cleared
-   * (`regulatoryStatus === 'accepted'`) — its presence gates the FE download
+   * keys on; `confirmationDocumentAvailable` is true only when the invoice
+   * is cleared (`regulatoryStatus === 'accepted'`) — it gates the FE download
    * action. No regime/provider vocabulary crosses here.
    */
   private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
-    const upoAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
-      upoReference: upoAvailable ? record.id : null,
+      confirmationDocumentAvailable,
     };
   }
 
