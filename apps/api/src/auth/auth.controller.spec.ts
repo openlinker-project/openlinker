@@ -13,7 +13,8 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
+import type { IAuthService } from './auth.service.interface';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import {
@@ -27,10 +28,12 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import type { IRegistrationService } from './registration.service.interface';
+import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import { REFRESH_COOKIE_NAME } from './auth.cookies';
 
 const makeUser = (): User =>
-  new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', new Date(), new Date());
+  new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', 'active', new Date(), new Date());
 
 const makeLoginResponse = (): LoginResponseDto => {
   const dto = new LoginResponseDto();
@@ -45,16 +48,16 @@ const makeMockResponse = (): jest.Mocked<Pick<Response, 'cookie' | 'clearCookie'
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<AuthService>;
+  let authService: jest.Mocked<IAuthService>;
   let passwordResetService: jest.Mocked<IPasswordResetService>;
   let refreshTokenService: jest.Mocked<IRefreshTokenService>;
 
   beforeEach(async () => {
-    const mockAuthService = {
+    const mockAuthService: jest.Mocked<IAuthService> = {
       validateUser: jest.fn(),
       login: jest.fn(),
       getMe: jest.fn(),
-    } as unknown as jest.Mocked<AuthService>;
+    };
     const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
       requestReset: jest.fn(),
       resetPassword: jest.fn(),
@@ -64,18 +67,22 @@ describe('AuthController', () => {
       rotate: jest.fn(),
       revoke: jest.fn(),
     };
+    const mockRegistrationService: jest.Mocked<IRegistrationService> = {
+      register: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: mockAuthService },
+        { provide: AUTH_SERVICE_TOKEN, useValue: mockAuthService },
         { provide: PASSWORD_RESET_SERVICE_TOKEN, useValue: mockPasswordResetService },
         { provide: REFRESH_TOKEN_SERVICE_TOKEN, useValue: mockRefreshTokenService },
+        { provide: REGISTRATION_SERVICE_TOKEN, useValue: mockRegistrationService },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get(AuthService);
+    authService = module.get(AUTH_SERVICE_TOKEN);
     passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
     refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
   });

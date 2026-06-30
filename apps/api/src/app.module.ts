@@ -36,6 +36,7 @@ import { AiApiModule } from './ai/ai.module';
 import { ContentApiModule } from './content/content.module';
 import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
+import { UsersApiModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { InvoicingApiModule } from './invoicing/invoicing.module';
     AiApiModule, // REST surface for prompt templates (#341)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
+    UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); imports core InvoicingModule + OrdersModule
   ],
   controllers: [AppController],

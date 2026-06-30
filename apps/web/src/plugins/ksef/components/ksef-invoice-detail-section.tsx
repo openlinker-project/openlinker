@@ -68,7 +68,7 @@ export function KsefInvoiceDetailSection({
 
   // UPO and FA(3) are available only once the authority has accepted the invoice —
   // that's the terminal success state where the UPO document and issued FA(3) exist.
-  const canUseUpo = invoice.regulatoryStatus === 'accepted';
+  const isAccepted = invoice.regulatoryStatus === 'accepted';
 
   async function handlePreviewUpo(): Promise<void> {
     const ok = await upoPreview.open(invoice.id);
@@ -165,12 +165,12 @@ export function KsefInvoiceDetailSection({
               {t('invoice.ksef.upoLabel', 'Official receipt (UPO)')}
             </div>
             <div className="slot-row__hint">
-              {canUseUpo
+              {isAccepted
                 ? t('invoice.ksef.upoHint', 'Proof of clearance')
                 : t('invoice.ksef.upoHintPending', 'Available once cleared')}
             </div>
           </div>
-          {canUseUpo ? (
+          {isAccepted ? (
             <span className="slot-row__actions">
               <Button
                 tone="ghost"
@@ -198,7 +198,7 @@ export function KsefInvoiceDetailSection({
           )}
         </div>
 
-        {canUseUpo ? (
+        {isAccepted ? (
           <>
             <div className="slot-row">
               <div>

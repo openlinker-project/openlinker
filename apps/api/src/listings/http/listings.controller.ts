@@ -234,7 +234,7 @@ export class ListingsController {
     return MarketplaceOfferResponseDto.fromDomain(offer);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/offers/:offerId/fields')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Connection ID' })
@@ -278,7 +278,7 @@ export class ListingsController {
     return { jobId };
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/sync/auto-match-variants')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID (e.g., Allegro)' })
@@ -311,7 +311,7 @@ export class ListingsController {
     return { jobId };
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/offers')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -379,7 +379,7 @@ export class ListingsController {
     return this.toOfferCreationStatusDto(record);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Get('connections/:connectionId/seller-policies')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -398,7 +398,7 @@ export class ListingsController {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -454,7 +454,7 @@ export class ListingsController {
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/categories/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -505,7 +505,7 @@ export class ListingsController {
     };
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/categories/resolve-batch')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -561,7 +561,7 @@ export class ListingsController {
   // appears (e.g. a future bulk-prefill worker), promote to a service.
   // -----------------------------------------------------------------
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post('connections/:connectionId/products/find-by-barcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -614,7 +614,7 @@ export class ListingsController {
     return { kind: 'no_match' };
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Get('connections/:connectionId/products/:productId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })

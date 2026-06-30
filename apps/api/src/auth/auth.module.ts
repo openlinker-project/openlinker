@@ -16,6 +16,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
+import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
 import { AuthController } from './auth.controller';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -25,6 +26,8 @@ import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface
 import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
+import { RegistrationService } from './registration.service';
+import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 
 @Module({
   imports: [
@@ -47,6 +50,7 @@ import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
   controllers: [AuthController],
   providers: [
     AuthService,
+    { provide: AUTH_SERVICE_TOKEN, useExisting: AuthService },
     BootstrapAdminService,
     JwtStrategy,
     PasswordResetService,
@@ -55,6 +59,8 @@ import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
     { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
     RefreshTokenService,
     { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
+    RegistrationService,
+    { provide: REGISTRATION_SERVICE_TOKEN, useExisting: RegistrationService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

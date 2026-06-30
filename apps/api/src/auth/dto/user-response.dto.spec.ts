@@ -12,7 +12,7 @@ import { UserResponseDto } from './user-response.dto';
 describe('UserResponseDto', () => {
   describe('fromDomain', () => {
     it('should map basic user fields correctly', () => {
-      const user = new User('id-1', 'testuser', 'test@example.com', 'hash', 'admin', new Date(), new Date());
+      const user = new User('id-1', 'testuser', 'test@example.com', 'hash', 'admin', 'active', new Date(), new Date());
 
       const dto = UserResponseDto.fromDomain(user);
 
@@ -22,7 +22,7 @@ describe('UserResponseDto', () => {
     });
 
     it('should include role in the response', () => {
-      const user = new User('id-1', 'testuser', null, 'hash', 'viewer', new Date(), new Date());
+      const user = new User('id-1', 'testuser', null, 'hash', 'viewer', 'active', new Date(), new Date());
 
       const dto = UserResponseDto.fromDomain(user);
 
@@ -30,7 +30,7 @@ describe('UserResponseDto', () => {
     });
 
     it('should derive admin permissions correctly', () => {
-      const user = new User('id-1', 'admin', null, 'hash', 'admin', new Date(), new Date());
+      const user = new User('id-1', 'admin', null, 'hash', 'admin', 'active', new Date(), new Date());
 
       const dto = UserResponseDto.fromDomain(user);
 
@@ -39,7 +39,7 @@ describe('UserResponseDto', () => {
     });
 
     it('should derive viewer permissions correctly', () => {
-      const user = new User('id-1', 'viewer', null, 'hash', 'viewer', new Date(), new Date());
+      const user = new User('id-1', 'viewer', null, 'hash', 'viewer', 'active', new Date(), new Date());
 
       const dto = UserResponseDto.fromDomain(user);
 
@@ -61,7 +61,7 @@ describe('UserResponseDto', () => {
     });
 
     it('should not expose passwordHash', () => {
-      const user = new User('id-1', 'testuser', null, 'secret-hash', 'admin', new Date(), new Date());
+      const user = new User('id-1', 'testuser', null, 'secret-hash', 'admin', 'active', new Date(), new Date());
 
       const dto = UserResponseDto.fromDomain(user);
 

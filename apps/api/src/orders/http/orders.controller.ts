@@ -178,7 +178,7 @@ export class OrdersController {
     return this.toDto(order);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator')
   @Post(':internalOrderId/destinations/:connectionId/retry')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

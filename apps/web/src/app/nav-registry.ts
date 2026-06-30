@@ -68,6 +68,12 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     ],
   },
   {
+    kind: 'live',
+    label: 'Administration',
+    requiresRole: 'admin',
+    items: [{ to: '/users', label: 'Users' }],
+  },
+  {
     kind: 'planned',
     label: 'Planned',
     items: [

@@ -24,7 +24,7 @@ import request from 'supertest';
 export async function loginAs(
   http: ReturnType<typeof request>,
   dataSource: DataSource,
-  role: 'admin' | 'viewer',
+  role: 'admin' | 'operator' | 'viewer',
   username: string,
   password = 'test-password',
 ): Promise<string> {
@@ -52,6 +52,18 @@ export async function loginAsAdmin(
   password = 'test-password',
 ): Promise<string> {
   return loginAs(http, dataSource, 'admin', username, password);
+}
+
+/**
+ * Seed an operator user and return a valid Bearer token.
+ */
+export async function loginAsOperator(
+  http: ReturnType<typeof request>,
+  dataSource: DataSource,
+  username = 'operator',
+  password = 'test-password',
+): Promise<string> {
+  return loginAs(http, dataSource, 'operator', username, password);
 }
 
 /**

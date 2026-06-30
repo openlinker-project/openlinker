@@ -302,7 +302,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       return iso;
     } catch (error) {
       this.logger.warn(`Failed to resolve country ${key}: ${(error as Error).message}`);
-      this.countryIso2Cache.set(key, '');
+      // Do not cache failures — a transient error must not suppress the country
+      // for the lifetime of the adapter. The next order for the same country retries.
       return '';
     }
   }

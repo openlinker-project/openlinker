@@ -128,7 +128,7 @@ describe('KsefInvoiceDetailSection', () => {
     });
 
     it('calls downloadUpo when Preview is clicked and opens the UPO dialog', async () => {
-      URL.createObjectURL = vi.fn(() => 'blob:mock-upo');
+      URL.createObjectURL = vi.fn(() => 'about:blank');
       URL.revokeObjectURL = vi.fn();
       const downloadUpo = vi.fn().mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
       const apiClient = createMockApiClient({ invoicing: { downloadUpo } });

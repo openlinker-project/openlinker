@@ -13,9 +13,10 @@ import * as bcrypt from 'bcryptjs';
 import type { User } from '@openlinker/core/users';
 import { UserRepositoryPort, USER_REPOSITORY_TOKEN } from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
+import type { IAuthService } from './auth.service.interface';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements IAuthService {
   constructor(
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepository: UserRepositoryPort,
@@ -34,7 +35,15 @@ export class AuthService {
       return null;
     }
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    return isMatch ? user : null;
+    if (!isMatch) {
+      return null;
+    }
+    // Non-active users (pending/deactivated) get the same 401 as wrong password
+    // to avoid account-status enumeration via the login endpoint.
+    if (user.status !== 'active') {
+      return null;
+    }
+    return user;
   }
 
   login(user: User): LoginResponseDto {

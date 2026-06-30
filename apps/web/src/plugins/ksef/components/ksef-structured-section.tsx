@@ -5,7 +5,8 @@
  * when the connection's `platformType` is `'ksef'`. Carries:
  *
  *   - Environment (`config.env`) — the C2 config-validator-gated field
- *   - Seller NIP (`config.sellerNip`) — FE-additive context field
+ *   - Seller profile (`config.seller.{nip,name,address}`, #1223) — NIP,
+ *     legal name, and postal address the adapter's `resolveSeller` reads.
  *   - Context identifier (`config.contextIdentifier`) — FE-additive context field
  *
  * Credentials (auth type + secret) are NOT edited here — they live in the
@@ -59,7 +60,7 @@ export function KsefStructuredSection({
         label="Seller NIP"
         name="sellerNip"
         error={form.formState.errors.sellerNip?.message}
-        description="10-digit Polish tax identifier of the issuing seller. Optional."
+        description="10-digit Polish tax identifier of the issuing seller. Required to issue invoices."
       >
         <Input
           value={form.watch('sellerNip') ?? ''}
@@ -68,6 +69,96 @@ export function KsefStructuredSection({
           inputMode="numeric"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.sellerNip)}
+        />
+      </FormField>
+      <FormField
+        label="Seller legal name"
+        name="sellerName"
+        error={form.formState.errors.sellerName?.message}
+        description="Registered company name (Podmiot1) printed on the invoice. Required to issue."
+      >
+        <Input
+          value={form.watch('sellerName') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerName', event.target.value)}
+          placeholder="ACME Sp. z o.o."
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerName)}
+        />
+      </FormField>
+      <FormField
+        label="Address line 1"
+        name="sellerAddressLine1"
+        error={form.formState.errors.sellerAddressLine1?.message}
+        description="Street and building number. Required to issue."
+      >
+        <Input
+          value={form.watch('sellerAddressLine1') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerAddressLine1', event.target.value)}
+          placeholder="ul. Przykładowa 1"
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerAddressLine1)}
+        />
+      </FormField>
+      <FormField
+        label="Address line 2"
+        name="sellerAddressLine2"
+        error={form.formState.errors.sellerAddressLine2?.message}
+        description="Apartment, suite, or unit. Optional."
+      >
+        <Input
+          value={form.watch('sellerAddressLine2') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerAddressLine2', event.target.value)}
+          placeholder="(optional)"
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerAddressLine2)}
+        />
+      </FormField>
+      <FormField
+        label="City"
+        name="sellerCity"
+        error={form.formState.errors.sellerCity?.message}
+        description="Required to issue."
+      >
+        <Input
+          value={form.watch('sellerCity') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerCity', event.target.value)}
+          placeholder="Warszawa"
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerCity)}
+        />
+      </FormField>
+      <FormField
+        label="Postal code"
+        name="sellerPostalCode"
+        error={form.formState.errors.sellerPostalCode?.message}
+        description="Required to issue."
+      >
+        <Input
+          value={form.watch('sellerPostalCode') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerPostalCode', event.target.value)}
+          placeholder="00-001"
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerPostalCode)}
+        />
+      </FormField>
+      <FormField
+        label="Country"
+        name="sellerCountryIso2"
+        error={form.formState.errors.sellerCountryIso2?.message}
+        description="ISO 3166-1 alpha-2 code. Defaults to PL."
+      >
+        <Input
+          value={form.watch('sellerCountryIso2') ?? ''}
+          onChange={(event) => syncStructuredToJson('sellerCountryIso2', event.target.value)}
+          placeholder="PL"
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.sellerCountryIso2)}
         />
       </FormField>
       <FormField

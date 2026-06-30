@@ -11,10 +11,13 @@
 /**
  * Valid user role values.
  *
- * - `admin`: Full access to all endpoints
- * - `viewer`: Read-only access to operational data
+ * - `admin`: Full access to all endpoints, including administrative surfaces
+ *   (connections, webhooks, AI provider settings, user management).
+ * - `operator`: Day-to-day operational access — orders, listings, inventory,
+ *   shipments. Cannot touch administrative surfaces.
+ * - `viewer`: Read-only access to operational data.
  */
-export const UserRoleValues = ['admin', 'viewer'] as const;
+export const UserRoleValues = ['admin', 'operator', 'viewer'] as const;
 
 /**
  * Union type derived from UserRoleValues.
@@ -40,6 +43,8 @@ export const PermissionValues = [
   'inventory:write',
   'listings:read',
   'listings:write',
+  'users:read',
+  'users:write',
 ] as const;
 
 /**
@@ -58,6 +63,19 @@ export type Permission = (typeof PermissionValues)[number];
  */
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   admin: PermissionValues,
+  operator: [
+    'connections:read',
+    'sync:read',
+    'integrations:read',
+    'adapters:read',
+    'orders:read',
+    'orders:write',
+    'products:read',
+    'inventory:read',
+    'inventory:write',
+    'listings:read',
+    'listings:write',
+  ],
   viewer: [
     'connections:read',
     'sync:read',

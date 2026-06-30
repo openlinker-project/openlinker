@@ -10,11 +10,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
+import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
 import type { UserRole } from '../../../domain/types/role.types';
 import { UserRoleValues } from '../../../domain/types/role.types';
+import type { UserStatus } from '../../../domain/types/user-status.types';
+import { UserStatusValues } from '../../../domain/types/user-status.types';
 import { UserOrmEntity } from '../entities/user.orm-entity';
 
 @Injectable()
@@ -39,19 +42,101 @@ export class UserRepository implements UserRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findAll(opts?: {
+    status?: UserStatus;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ users: User[]; total: number }> {
+    const page = opts?.page ?? 0;
+    const pageSize = opts?.pageSize ?? 25;
+    const where = opts?.status ? { status: opts.status } : {};
+
+    const [entities, total] = await this.ormRepository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: page * pageSize,
+      take: pageSize,
+    });
+
+    return { users: entities.map((e) => this.toDomain(e)), total };
+  }
+
   async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
     await this.ormRepository.update({ id: userId }, { passwordHash });
   }
 
-  async save(user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role'>): Promise<User> {
+  async updateStatus(userId: string, status: UserStatus): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { status });
+  }
+
+  async updateRole(userId: string, role: UserRole): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { role });
+  }
+
+  async approveUser(userId: string, role: UserRole): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { role, status: 'active' });
+  }
+
+  async deleteById(userId: string): Promise<void> {
+    await this.ormRepository.delete({ id: userId });
+  }
+
+  async save(
+    user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>
+  ): Promise<User> {
     const entity = this.ormRepository.create({
       username: user.username,
       email: user.email,
       passwordHash: user.passwordHash,
       role: user.role,
+      status: user.status,
     });
-    const saved = await this.ormRepository.save(entity);
-    return this.toDomain(saved);
+    try {
+      const saved = await this.ormRepository.save(entity);
+      return this.toDomain(saved);
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        const pgErr = error as QueryFailedError & { code?: string; detail?: string };
+        if (pgErr.code === '23505') {
+          const detail = pgErr.detail ?? '';
+          const identifier = detail.includes('(email)') ? (user.email ?? 'email') : user.username;
+          throw new UserAlreadyExistsException(identifier);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async deactivateAdminAtomically(userId: string): Promise<{ updated: boolean }> {
+    const result = await this.ormRepository.query(
+      `UPDATE users
+         SET status = 'deactivated'
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
+      [userId],
+    ) as [unknown, number];
+    return { updated: result[1] > 0 };
+  }
+
+  async updateAdminRoleAtomically(userId: string, role: UserRole): Promise<{ updated: boolean }> {
+    const result = await this.ormRepository.query(
+      `UPDATE users
+         SET role = $2
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
+      [userId, role],
+    ) as [unknown, number];
+    return { updated: result[1] > 0 };
+  }
+
+  async deleteAdminAtomically(userId: string): Promise<{ deleted: boolean }> {
+    const result = await this.ormRepository.query(
+      `DELETE FROM users
+       WHERE id = $1
+         AND (SELECT count(*) FROM users WHERE role = 'admin' AND status = 'active') > 1`,
+      [userId],
+    ) as [unknown, number];
+    return { deleted: result[1] > 0 };
   }
 
   private toDomain(entity: UserOrmEntity): User {
@@ -59,12 +144,17 @@ export class UserRepository implements UserRepositoryPort {
       ? (entity.role as UserRole)
       : 'viewer';
 
+    const status = UserStatusValues.includes(entity.status as UserStatus)
+      ? (entity.status as UserStatus)
+      : 'active';
+
     return new User(
       entity.id,
       entity.username,
       entity.email,
       entity.passwordHash,
       role,
+      status,
       entity.createdAt,
       entity.updatedAt
     );
