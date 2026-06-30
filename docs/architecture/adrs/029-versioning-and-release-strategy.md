@@ -40,6 +40,20 @@ release-please (product) and Changesets (npm) coexist with **disjoint scopes** �
 **Migration path:**
 - `#1133` lands `/v1` first; then release-please + `RELEASING.md`; then `v0.1.0`; Changesets at first publish per the `PUBLIC_API.md` trigger.
 
+## Worked scenarios
+
+How the axes behave in practice (the throughline: product version moves when you merge a release PR; demo only ever runs a tag; API and package versions run on their own clocks):
+
+| Scenario | What happens |
+|---|---|
+| **Feature ships** — `feat:`/`fix:` PRs merge to `main` | release-please accumulates a "release 0.3.0" PR; merging it tags `v0.3.0` → CD deploys the image to prod (flag off) + demo (flag on). |
+| **`main` breaks** after a green-CI merge | Demo is unaffected — it runs the last tag, not `main`. Fix forward; demo advances only at the next release. |
+| **Urgent patch** while `main` carries unfinished work | Lazily branch `release/0.3` from tag `v0.3.0`, commit the fix there → `v0.3.1`; forward-port to `main`. |
+| **Breaking API change** | Add `/v2`, keep `/v1` for a deprecation window. Product version moves on its own (e.g. `v0.6.0`); the integrator on `/v1` isn't broken. |
+| **First npm publish** — a 3rd-party plugin pins `@openlinker/core` | Flip the publishable packages `private:false`, adopt Changesets (Axis 2). Core then versions via Changesets (`core@0.2.0`) while the product line keeps moving via release-please — disjoint scopes. |
+| **Self-hoster files a bug** | `GET /v1/health` → `{ version: "0.3.0", api: "v1" }`; you know the exact code + contract they ran. |
+| **Demo must preview unreleased work** (conference) | Cut `v0.4.0-rc.1` from a verified commit, point demo at it; prod stays on `v0.3.1`. Still a deliberate tag, never raw `main`. |
+
 ## References
 
 - Related issues: #1277, #1137, #1133, #596, #552, #1127
