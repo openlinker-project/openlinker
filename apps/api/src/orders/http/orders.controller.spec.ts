@@ -69,6 +69,9 @@ describe('OrdersController', () => {
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
       issueInvoice: jest.fn(),
+      getInvoice: jest.fn(),
+      issueCorrection: jest.fn(),
+      listInvoices: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

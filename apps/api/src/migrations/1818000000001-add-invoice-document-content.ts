@@ -13,8 +13,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceDocumentContent1813000000000 implements MigrationInterface {
-  name = 'AddInvoiceDocumentContent1813000000000';
+export class AddInvoiceDocumentContent1818000000001 implements MigrationInterface {
+  name = 'AddInvoiceDocumentContent1818000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

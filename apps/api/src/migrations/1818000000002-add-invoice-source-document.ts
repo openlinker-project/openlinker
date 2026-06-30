@@ -10,13 +10,13 @@
  * surface no source document) carry NULL rather than blocking.
  *
  * Generated: 2026-06-26 (synthetic sequential prefix per docs/migrations.md #1013;
- * strictly greater than the W2 `1813000000000` document-content migration).
+ * strictly greater than the W2 `1818000000001` document-content migration).
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceSourceDocument1814000000000 implements MigrationInterface {
-  name = 'AddInvoiceSourceDocument1814000000000';
+export class AddInvoiceSourceDocument1818000000002 implements MigrationInterface {
+  name = 'AddInvoiceSourceDocument1818000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
