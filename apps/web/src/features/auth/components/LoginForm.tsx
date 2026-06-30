@@ -39,7 +39,7 @@ export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
   });
 
   return (
-    <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)}>
+    <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)} noValidate>
       {demoMode ? (
         <div className="guest-form__demo-bar">
           <strong>🔗 OpenLinker Demo</strong>
@@ -87,7 +87,7 @@ export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
           <div className="guest-form__divider" aria-hidden="true">
             new here?
           </div>
-          <Link to="/register" className="button button--secondary" style={{ justifyContent: 'center' }}>
+          <Link to="/register" className="button button--secondary guest-form__demo-register">
             Create a free demo account →
           </Link>
         </>

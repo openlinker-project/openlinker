@@ -10082,6 +10082,10 @@ html[data-density='compact'] .status-badge {
   opacity: 0.85;
 }
 
+.guest-form__demo-register {
+  justify-content: center;
+}
+
 /* "new here?" divider shown between sign-in and demo-register link. */
 .guest-form__divider {
   display: flex;
