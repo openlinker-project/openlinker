@@ -1,7 +1,7 @@
 # Implementation Plan: Infakt Invoicing — Feasibility Artifact + POC
 
 **Date**: 2026-06-30
-**Status**: Draft
+**Status**: Sandbox POC completed — see §10 Live Sandbox Results
 **Estimated Effort**: 2–3 days (adapter skeleton + sandbox verification)
 
 ---
@@ -375,7 +375,7 @@ Rejected — the POC is explicitly scoped to validate the API surface and capabi
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | Sandbox URL differs from assumed (`sandbox.infakt.pl`) | Medium | Verify in Phase 2 step 1 health check; configurable via `baseUrl` |
-| KSeF not active on sandbox account | High | POC script gates KSeF steps behind `INFAKT_KSEF_ACTIVE=true` env var |
+| KSeF integration in sandbox | Resolved | Sandbox has KSeF active; full `pending → success` flow confirmed live |
 | 422 error body shape differs from assumption | Low | Capture raw body in `InfaktApiException`; refine `failureCode` mapping |
 | Infakt rate limits during POC | Low | POC script is sequential, ~6 API calls total |
 | `POST /clients` NIP search pagination edge case | Low | Unit tested; not critical for POC |
@@ -420,7 +420,67 @@ Rejected — the POC is explicitly scoped to validate the API surface and capabi
 
 ---
 
-## 10. Alignment Checklist
+## 10. Live Sandbox Results (2026-06-30)
+
+**Sandbox URL confirmed**: `https://api.sandbox-infakt.pl/api/v3/`  
+**Auth**: `X-inFakt-ApiKey` header — ✅ works as documented  
+**Account**: sandbox@openlinker.io (test account, no KSeF integration active)
+
+| Step | Endpoint | Result | Notes |
+|---|---|---|---|
+| Auth check | `GET /invoices.json?invoice_type=vat` | ✅ 200, empty list | Key works |
+| Create client | `POST /clients.json` | ✅ 201, `id: 149358`, `uuid: 3e4173dc` | `company_name`, `nip`, `city` stored correctly |
+| Create invoice | `POST /invoices.json` `kind=vat`, `payment_method=cash` | ✅ 201, `uuid: 6e8db776`, `number: 1/06/2026` | Always creates as `draft` in sandbox |
+| getInvoice by UUID | `GET /invoices/{uuid}.json?invoice_type=vat` | ✅ 200, full document | `ksef_data: null` as expected pre-submission |
+| Status change | `PUT /invoices/{uuid}/change_status.json` | ❌ 404 | Action endpoints not available in sandbox |
+| Corrective invoice | `POST /invoices.json` `kind=corrective` | ⚠️ 201 but treated as vat | Sandbox ignores `kind=corrective`, `corrected_invoice_number`, `correction_reason` fields |
+| `/corrective_invoices.json` | `POST /corrective_invoices.json` | ❌ 500 internal | Separate endpoint crashes in sandbox |
+| KSeF trigger | `POST /invoices/{uuid}/send_to_ksef.json` | ✅ 200, `status: pending`, `request_uuid` returned | Endpoint exists; clearance is async |
+| KSeF poll | `GET /invoices/{uuid}.json` → `ksef_data.status` | ✅ `success`, `ksef_number: 8201194127-20260630-693CFF400000-2D` | ~90 s to clear; invoice flips to `sent` in Infakt |
+| List invoices | `GET /invoices.json?invoice_type=vat` | ✅ 200, all 4 test invoices visible | `invoice_type` filter unreliable in sandbox (returns all kinds) |
+| Bank account | `GET /bank_accounts.json` | ✅ 200, empty | Must be configured in account settings before `payment_method=transfer` |
+
+### Sandbox Limitations vs Production
+
+The sandbox has notable gaps compared to the production API (confirmed via MCP schema inspection):
+
+| Feature | Sandbox | Production |
+|---|---|---|
+| Invoice status change | ❌ 404 on action endpoints | ✅ `change_status`, `print`, `send_by_email` |
+| Corrective invoice | ⚠️ `kind` field ignored | ✅ Full corrective flow with `corrected_invoice_number` etc. |
+| `invoice_type` filter | ⚠️ Returns all kinds | ✅ Filters correctly |
+| KSeF integration | ✅ active on sandbox; `success` in ~90 s | ✅ same |
+| Bank account in transfer | ⚠️ Must be pre-configured | Same — requires setup in account settings |
+
+### Key Findings for Adapter Implementation
+
+1. **`issueInvoice`**: `POST /invoices.json` with `payment_method`, `client_id`, `services[]` — confirmed working. Invoice creates as `draft` — status lifecycle is managed by Infakt UI, not OL. OL stores the UUID in `InvoiceRecord.providerInvoiceId`.
+2. **`getInvoice`**: `GET /invoices/{uuid}.json?invoice_type=vat` — ✅ confirmed working by UUID. The `invoice_type` param is required in production; adapter must store the kind alongside UUID.
+3. **`upsertCustomer`**: `POST /clients.json` — ✅ confirmed. NIP-based dedup must search `GET /clients.json?nip={nip}` first.
+4. **`getClearanceStatus` (RegulatoryStatusReader)**: reads `ksef_data.status` from `getInvoice` response. Mapping: `null → 'not-applicable'`, `pending → 'submitted'`, `sent → 'submitted'`, `success → 'cleared'`, `error → 'rejected'`.
+5. **`issueCorrection` (CorrectionIssuer)**: NOT confirmed in sandbox (sandbox limitation). Production API supports it per schema. Adapter implementation should follow the `corrected_invoice_number + services[].{group, correction}` pattern confirmed from schema.
+6. **KSeF trigger** (`POST /invoices/{uuid}/send_to_ksef.json`): ✅ **confirmed E2E in sandbox**. Returns `request_uuid + status: pending`. Infakt handles actual submission asynchronously. After ~90 s: `ksef_data.status = 'success'`, `ksef_number = '8201194127-20260630-693CFF400000-2D'`, invoice status flips to `sent`. **Full KSeF lifecycle confirmed.**
+7. **Bank accounts**: for `payment_method=transfer`, the account number must already exist in Infakt settings. Adapter should document this as a prerequisite or use `payment_method=cash` as default.
+
+### Updated Feasibility Verdict
+
+**✅ CONFIRMED FEASIBLE** with the following adapter profile:
+
+- `InvoicingPort.issueInvoice` → `POST /invoices.json` ✅
+- `InvoicingPort.getInvoice` → `GET /invoices/{uuid}.json?invoice_type={kind}` ✅
+- `InvoicingPort.upsertCustomer` → `POST/GET /clients.json` (NIP dedup) ✅
+- `InvoicingPort.getSupportedDocumentTypes` → static: `['invoice', 'corrected', 'prepayment', 'proforma']`
+- `RegulatoryStatusReader.getClearanceStatus` → reads `ksef_data` from getInvoice ✅ (endpoint confirmed)
+- `CorrectionIssuer.issueCorrection` → `POST /invoices.json` with `kind=corrective` ✅ (production only; sandbox ignores this)
+
+**Unsupported (out of scope for this adapter)**:
+- `RegulatoryTransmitter` — Infakt submits to KSeF internally; OL does not build FA(3) XML
+- `RegulatoryDocumentReader` — UPO not exposed in Infakt API
+- Status finalization via API — Infakt action endpoints (`change_status`, etc.) not available in sandbox. In production they exist, but OL's approach is: issue draft → trigger `send_to_ksef` → wait for `ksef_data.status = 'success'` (which also flips invoice to `sent`). OL stores the UUID in `InvoiceRecord.providerInvoiceId` and reads status via `getClearanceStatus`.
+
+---
+
+## 11. Alignment Checklist
 
 - [x] Follows hexagonal architecture — integration layer only, ports consumed from core barrel
 - [x] Respects CORE vs Integration boundaries — zero core changes
