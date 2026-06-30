@@ -48,8 +48,8 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **[InPost](./libs/integrations/inpost/)** *([guide](./docs/integrations/inpost/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
 | **[DPD](./libs/integrations/dpd-polska/)** *([guide](./docs/integrations/dpd-polska/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
-| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./docs/integrations/subiekt/setup-guide.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
-| **[KSeF](./libs/integrations/ksef/)** *([guide](./docs/integrations/ksef/setup-guide.md))* | Invoicing *(Polish national e-invoicing)* | 🚧 In progress |
+| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./docs/integrations/subiekt/setup-guide.md) · [tutorial](./libs/integrations/subiekt/tutorial.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
+| **[KSeF](./libs/integrations/ksef/)** *([guide](./docs/integrations/ksef/setup-guide.md) · [tutorial](./libs/integrations/ksef/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | 🚧 In progress |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
