@@ -13,12 +13,6 @@
  *
  *   - `config.env` → `KsefConnectionConfig.env` (`test` | `demo` | `prod`),
  *     the one field the BE config validator currently gates.
-<<<<<<< HEAD
- *   - `config.sellerNip` / `config.contextIdentifier` are FE-additive context
- *     fields the operator supplies for display + future scoping; they are not
- *     gated by the C2 config validator yet (it only requires `env`), so they
- *     stay optional client-side and the server remains the authoritative gate.
-=======
  *   - `config.seller.{nip,name,address}` → `KsefSellerConfig` (#1223). The
  *     adapter's `resolveSeller` (`ksef-adapter.factory.ts`) requires a
  *     well-formed seller profile and throws `KsefConfigException` at issuance
@@ -30,7 +24,6 @@
  *   - `config.contextIdentifier` is an FE-additive context field the operator
  *     supplies for display + future scoping; not gated by the C2 config
  *     validator yet (it only requires `env`).
->>>>>>> origin/main
  *   - `credentials.authType` → `KsefCredentials.authType`
  *     (`ksef-token` | `qualified-seal`).
  *   - `credentials.secret` carries the write-only secret the operator pastes.
@@ -43,11 +36,8 @@
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
 import { normalizeNip } from './ksef-nip';
-<<<<<<< HEAD
-=======
 import { buildKsefSellerConfig } from './ksef-seller-config';
 export type { KsefSellerProfileInput } from './ksef-seller-config';
->>>>>>> origin/main
 
 export const KSEF_ADAPTER_KEY = 'ksef.publicapi.v2';
 
@@ -64,26 +54,6 @@ export type KsefAuthType = (typeof KSEF_AUTH_TYPE_VALUES)[number];
 // the C2 config validator only requires `env`; the server is the strict gate.
 const NIP_DIGITS = /^\d{10}$/;
 
-<<<<<<< HEAD
-export const ksefSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
-  environment: z.enum(KSEF_ENVIRONMENT_VALUES),
-  sellerNip: z
-    .union([
-      z
-        .string()
-        .trim()
-        .transform(normalizeNip)
-        .pipe(z.string().regex(NIP_DIGITS, 'Seller NIP must be 10 digits')),
-      z.literal(''),
-    ])
-    .optional(),
-  contextIdentifier: z.string().trim().max(64).optional(),
-  authType: z.enum(KSEF_AUTH_TYPE_VALUES),
-  // Write-only secret (KSeF authorization token / qualified-seal reference).
-  secret: z.string().trim().min(1, 'Authentication secret is required'),
-});
-=======
 // ISO 3166-1 alpha-2 — two uppercase letters. Mirrors the adapter's
 // `address.countryIso2` field. Defaults to `PL` since KSeF is Polish-domestic.
 const COUNTRY_ISO2 = /^[A-Z]{2}$/;
@@ -142,7 +112,6 @@ export const ksefSetupSchema = z
       });
     }
   });
->>>>>>> origin/main
 
 export type KsefSetupFormValues = z.input<typeof ksefSetupSchema>;
 export type KsefSetupFormSubmission = z.output<typeof ksefSetupSchema>;
@@ -151,25 +120,17 @@ export const KSEF_SETUP_DEFAULT_VALUES: KsefSetupFormValues = {
   name: '',
   environment: 'test',
   sellerNip: '',
-<<<<<<< HEAD
-=======
   sellerName: '',
   sellerAddressLine1: '',
   sellerAddressLine2: '',
   sellerCity: '',
   sellerPostalCode: '',
   sellerCountryIso2: 'PL',
->>>>>>> origin/main
   contextIdentifier: '',
   authType: 'ksef-token',
   secret: '',
 };
 
-<<<<<<< HEAD
-export function toCreateConnectionInput(values: KsefSetupFormSubmission): CreateConnectionInput {
-  const config: Record<string, unknown> = { env: values.environment };
-  if (values.sellerNip && values.sellerNip.length > 0) config.sellerNip = values.sellerNip;
-=======
 // `buildKsefSellerConfig` (assembly) lives in the shared `ksef-seller-config`
 // module so the create path here and the edit path
 // (`edit-connection.schema.ts`) normalize + assemble the nested `config.seller`
@@ -180,7 +141,6 @@ export function toCreateConnectionInput(values: KsefSetupFormSubmission): Create
   const config: Record<string, unknown> = { env: values.environment };
   const seller = buildKsefSellerConfig(values);
   if (seller) config.seller = seller;
->>>>>>> origin/main
   if (values.contextIdentifier && values.contextIdentifier.length > 0) {
     config.contextIdentifier = values.contextIdentifier;
   }

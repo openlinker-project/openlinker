@@ -145,11 +145,7 @@ export function KsefSetupForm(): ReactElement {
         label="Seller NIP"
         name="sellerNip"
         error={form.formState.errors.sellerNip?.message}
-<<<<<<< HEAD
-        description="10-digit Polish tax identifier of the issuing seller. Optional."
-=======
         description="10-digit Polish tax identifier of the issuing seller. Required to issue invoices."
->>>>>>> origin/main
       >
         <Input
           {...form.register('sellerNip')}
@@ -161,8 +157,6 @@ export function KsefSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-<<<<<<< HEAD
-=======
         label="Seller legal name"
         name="sellerName"
         error={form.formState.errors.sellerName?.message}
@@ -247,7 +241,6 @@ export function KsefSetupForm(): ReactElement {
       </FormField>
 
       <FormField
->>>>>>> origin/main
         label="Context identifier"
         name="contextIdentifier"
         error={form.formState.errors.contextIdentifier?.message}

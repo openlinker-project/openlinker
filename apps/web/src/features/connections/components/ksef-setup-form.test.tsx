@@ -96,11 +96,6 @@ describe('KsefSetupForm', () => {
     };
     expect(payload.platformType).toBe('ksef');
     expect(payload.adapterKey).toBe('ksef.publicapi.v2');
-<<<<<<< HEAD
-    // env (the C2 config-validator-gated field) + normalised NIP land in config.
-    expect(payload.config.env).toBe('prod');
-    expect(payload.config.sellerNip).toBe('1234567890');
-=======
     // env (the C2 config-validator-gated field) + normalised NIP (nested under
     // `config.seller`, the shape `resolveSeller` reads) land in config. Country
     // defaults to PL, so the seller carries an address with just the ISO code.
@@ -109,15 +104,12 @@ describe('KsefSetupForm', () => {
       nip: '1234567890',
       address: { countryIso2: 'PL' },
     });
->>>>>>> origin/main
     // Write-only: secret travels only in credentials, never in config.
     expect(payload.credentials).toEqual({ authType: 'qualified-seal', secret: 'super-secret-token' });
     expect(JSON.stringify(payload.config)).not.toContain('super-secret-token');
 
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
-<<<<<<< HEAD
-=======
 
   it('assembles the full nested seller profile (#1223) from name + address fields', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-ksef', name: 'KSeF main' });
@@ -155,5 +147,4 @@ describe('KsefSetupForm', () => {
       },
     });
   });
->>>>>>> origin/main
 });
