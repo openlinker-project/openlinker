@@ -488,8 +488,10 @@ export interface PaginatedInvoiceRecords {
 
 /**
  * Patch applied to an existing record after an issue / transmission attempt.
- * `sourceDocument` is intentionally absent: it is snapshotted once at issue time
- * (via {@link CreateInvoiceRecordInput}) and never patched afterwards (write-once).
+ * `sourceDocument` is write-once: the service sets it ONCE on the first successful
+ * `issued` patch (from the adapter's {@link IssueInvoiceResult}); the repository
+ * enforces at the persistence boundary that it is never overwritten once a snapshot
+ * is present.
  */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
@@ -542,4 +544,12 @@ export interface InvoiceOutcomePatch {
   leaseExpiresAt?: Date | null;
   /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
   documentContent?: IssuedDocumentContent | null;
+  /**
+   * Persisted machine-readable source document (e.g. FA(3) XML), captured at
+   * issue time from the adapter's {@link IssueInvoiceResult}. Write-once: set
+   * on the first successful `issued` patch; the repository guards against
+   * overwriting an existing snapshot. `null` when the adapter does not surface
+   * a source document.
+   */
+  sourceDocument?: StoredDocument | null;
 }

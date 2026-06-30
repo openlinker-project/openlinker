@@ -91,10 +91,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     if (!entity) {
       throw new InvoiceRecordNotFoundException(id);
     }
-    // sourceDocument is write-once (set at create). Guard against an untyped/cast
-    // patch slipping the key through Object.assign and clobbering the snapshot.
-    if ('sourceDocument' in patch) {
-      throw new Error('sourceDocument is write-once and cannot be patched via updateOutcome');
+    // sourceDocument is write-once: allow setting it once (when the current
+    // value is null) but reject any attempt to overwrite an existing snapshot.
+    if (patch.sourceDocument !== undefined && entity.sourceDocument !== null) {
+      throw new Error(
+        'sourceDocument is write-once and cannot overwrite an existing snapshot via updateOutcome',
+      );
     }
     Object.assign(entity, patch);
     const saved = await this.repository.save(entity);

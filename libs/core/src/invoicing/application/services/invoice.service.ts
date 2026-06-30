@@ -330,7 +330,7 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller } = issueResult;
+    const { record: issued, seller, sourceDocument } = issueResult;
     const documentContent = this.buildContent(cmd, issued, seller ?? null);
 
     const patch: InvoiceOutcomePatch = {
@@ -357,6 +357,12 @@ export class InvoiceService implements IInvoiceService {
       leaseExpiresAt: null,
       // W2: snapshot the issued-document content at issue time.
       documentContent,
+      // W3: persist the raw source document (e.g. FA(3) XML) returned by the
+      // adapter so `GET /invoices/:id/document?kind=source` can re-serve it
+      // from the record snapshot without a provider round-trip (#1224).
+      // `undefined` when the adapter does not surface one — leaves the column
+      // null and the endpoint 409s gracefully.
+      sourceDocument: sourceDocument ?? null,
     };
     return this.repo.updateOutcome(recordId, patch);
   }

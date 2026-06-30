@@ -18,8 +18,8 @@ import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-rec
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import type {
-  CreateInvoiceRecordInput,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   IssuedDocumentSeller,
 } from '../../domain/types/invoicing.types';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
@@ -114,23 +114,25 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
 }
 
 /** A fully-populated `issued` projection the adapter returns. */
-function makeIssuedFromAdapter(): InvoiceRecord {
-  return makeRecord({
-    id: 'adapter-rec',
-    status: 'issued',
-    // Authoritative values the adapter owns: a concrete provider and a derived
-    // documentType the keyless caller omitted. The service must backfill both
-    // onto the projection (it created the pending row with providerType '' and
-    // documentType '').
-    providerType: 'subiekt',
-    documentType: 'invoice',
-    providerInvoiceId: 'PROV-123',
-    providerInvoiceNumber: 'FV/2026/1',
-    regulatoryStatus: 'cleared',
-    clearanceReference: 'KSEF-XYZ',
-    pdfUrl: 'https://prov/inv.pdf',
-    issuedAt: new Date('2026-06-22T11:00:00.000Z'),
-  });
+function makeIssuedFromAdapter(): IssueInvoiceResult {
+  return {
+    record: makeRecord({
+      id: 'adapter-rec',
+      status: 'issued',
+      // Authoritative values the adapter owns: a concrete provider and a derived
+      // documentType the keyless caller omitted. The service must backfill both
+      // onto the projection (it created the pending row with providerType '' and
+      // documentType '').
+      providerType: 'subiekt',
+      documentType: 'invoice',
+      providerInvoiceId: 'PROV-123',
+      providerInvoiceNumber: 'FV/2026/1',
+      regulatoryStatus: 'cleared',
+      clearanceReference: 'KSEF-XYZ',
+      pdfUrl: 'https://prov/inv.pdf',
+      issuedAt: new Date('2026-06-22T11:00:00.000Z'),
+    }),
+  };
 }
 
 // W2 adapterRecord() — minimal issued record used in content-snapshot tests.
@@ -222,7 +224,7 @@ describe('InvoiceService', () => {
       );
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION, 'Invoicing');
       expect(adapter.issueInvoice).toHaveBeenCalledWith(cmd);
-      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', expect.objectContaining({
         status: 'issued',
         providerType: 'subiekt',
         documentType: 'invoice',
@@ -231,7 +233,7 @@ describe('InvoiceService', () => {
         regulatoryStatus: 'cleared',
         clearanceReference: 'KSEF-XYZ',
         pdfUrl: 'https://prov/inv.pdf',
-        issuedAt: adapterResult.issuedAt,
+        issuedAt: adapterResult.record.issuedAt,
         // A successful issue clears the failure mode/code/reason + releases the
         // lease (#1200 / W1).
         errorMessage: null,
@@ -239,7 +241,9 @@ describe('InvoiceService', () => {
         failureCode: null,
         failureReason: null,
         leaseExpiresAt: null,
-      });
+        // W3: source document persisted from adapter result (#1224).
+        sourceDocument: null,
+      }));
       expect(result).toBe(finalRecord);
     });
 
@@ -663,7 +667,8 @@ describe('InvoiceService', () => {
           input.status, input.providerInvoiceId ?? null, input.providerInvoiceNumber ?? null,
           input.regulatoryStatus ?? 'not-applicable', input.clearanceReference ?? null,
           input.idempotencyKey, input.pdfUrl ?? null, input.issuedAt ?? null,
-          input.errorMessage ?? null, new Date(), new Date(), input.documentContent ?? null,
+          input.errorMessage ?? null, new Date(), new Date(),
+          null, null, null, null, input.hasBuyerTaxId ?? false,
         )),
       );
 
@@ -674,15 +679,16 @@ describe('InvoiceService', () => {
 
     it('should snapshot the issued-document content with computed VAT and the adapter seller', async () => {
       adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
-      let persisted: CreateInvoiceRecordInput | undefined;
-      repo.create.mockImplementation((input) => {
-        persisted = input;
+      repo.create.mockResolvedValue(adapterRecord());
+      let patch: Record<string, unknown> | undefined;
+      repo.updateOutcome.mockImplementation((_id, p) => {
+        patch = p as Record<string, unknown>;
         return Promise.resolve(adapterRecord());
       });
 
       await service.issueInvoice(command());
 
-      const snapshotContent = persisted?.documentContent;
+      const snapshotContent = patch?.['documentContent'] as import('../../domain/types/invoicing.types').IssuedDocumentContent | null | undefined;
       expect(snapshotContent).toBeDefined();
       expect(snapshotContent?.seller).toEqual(SELLER);
       expect(snapshotContent?.buyer.name).toBe('Jan Kowalski');
@@ -703,45 +709,47 @@ describe('InvoiceService', () => {
 
     it('should persist seller:null when the adapter surfaces no seller block', async () => {
       adapter.issueInvoice.mockResolvedValue({ record: adapterRecord() });
-      let persisted: CreateInvoiceRecordInput | undefined;
-      repo.create.mockImplementation((input) => {
-        persisted = input;
+      repo.create.mockResolvedValue(adapterRecord());
+      let patch: Record<string, unknown> | undefined;
+      repo.updateOutcome.mockImplementation((_id, p) => {
+        patch = p as Record<string, unknown>;
         return Promise.resolve(adapterRecord());
       });
 
       await service.issueInvoice(command());
 
-      expect(persisted?.documentContent?.seller).toBeNull();
+      const snapshotContent = patch?.['documentContent'] as import('../../domain/types/invoicing.types').IssuedDocumentContent | null | undefined;
+      expect(snapshotContent?.seller).toBeNull();
     });
 
-    it('should persist the adapter-supplied source document when present', async () => {
+    it('should persist the adapter-supplied source document in updateOutcome when present', async () => {
       const sourceDocument = {
         contentType: 'application/xml',
         contentBase64: 'PERvY3VtZW50PmZha2U8L0RvY3VtZW50Pg==',
       };
       adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER, sourceDocument });
-      let persisted: CreateInvoiceRecordInput | undefined;
-      repository.create.mockImplementation((input) => {
-        persisted = input;
-        return Promise.resolve(adapterRecord());
-      });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
 
       await service.issueInvoice(command());
 
-      expect(persisted?.sourceDocument).toEqual(sourceDocument);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocument }),
+      );
     });
 
-    it('should persist sourceDocument:null when the adapter surfaces none', async () => {
+    it('should persist sourceDocument:null in updateOutcome when the adapter surfaces none', async () => {
       adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
-      let persisted: CreateInvoiceRecordInput | undefined;
-      repository.create.mockImplementation((input) => {
-        persisted = input;
-        return Promise.resolve(adapterRecord());
-      });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
 
       await service.issueInvoice(command());
 
-      expect(persisted?.sourceDocument).toBeNull();
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocument: null }),
+      );
     });
   });
 });
