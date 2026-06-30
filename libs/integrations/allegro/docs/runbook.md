@@ -447,6 +447,6 @@ Monitor for:
 - [Setup Guide](./setup-guide.md) - Initial setup and configuration
 - [Manual Testing Guide](./manual-testing-guide.md) - Step-by-step manual testing procedures
 - [Allegro API Documentation](https://developer.allegro.pl/documentation/)
-- [OpenLinker Architecture Overview](../../architecture-overview.md)
-- [Testing Guide](../../testing-guide.md)
+- [OpenLinker Architecture Overview](../../../../docs/architecture-overview.md)
+- [Testing Guide](../../../../docs/testing-guide.md)
 

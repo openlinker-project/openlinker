@@ -46,6 +46,8 @@ token set (access + refresh token) managed by the adapter's token-refresh cycle.
 
 ## Documentation
 
-- [`docs/integrations/allegro/`](../../../docs/integrations/allegro/) — setup guide
+- [docs/setup-guide.md](./docs/setup-guide.md) — initial setup and configuration
+- [docs/runbook.md](./docs/runbook.md) — operational troubleshooting
+- [docs/manual-testing-guide.md](./docs/manual-testing-guide.md) — manual testing procedures
 - [`docs/capabilities.md`](../../../docs/capabilities.md) — full capability catalog
 - [`libs/integrations/prestashop/README.md`](../prestashop/README.md) — reference adapter pattern

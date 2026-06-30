@@ -57,4 +57,4 @@ Without webhooks, OL falls back to polling tracking at a conservative cadence.
 ## Related
 
 - Reference plan: [#727](https://github.com/openlinker-project/openlinker/issues/727)
-- Capability port: `ShippingProviderManagerPort` (see [`docs/architecture-overview.md`](../../architecture-overview.md))
+- Capability port: `ShippingProviderManagerPort` (see [`docs/architecture-overview.md`](../../../../docs/architecture-overview.md))

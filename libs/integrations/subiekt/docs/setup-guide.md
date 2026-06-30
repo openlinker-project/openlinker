@@ -43,7 +43,7 @@ becomes a **faktura** (B2B); **without** one it becomes a **paragon** (B2C).
    (<https://github.com/norbert-kulus-blockydevs/openlinker-subiekt>). Build/run per its
    `docs/DEPLOYMENT.md`; the essentials are in [Part A](#part-a--run-the-bridge-on-windows).
 4. **An order source connection** in OpenLinker — e.g. a **PrestaShop** connection — so
-   there are orders to invoice. See [Connecting a platform](../../user-guide/02-connecting-a-platform.md).
+   there are orders to invoice. See [Connecting a platform](../../../../docs/user-guide/02-connecting-a-platform.md).
 5. **Network reachability:** OpenLinker must reach the bridge over **HTTPS**. On a LAN this
    is the Windows host's address (e.g. `https://192.168.1.50:5005`); from WSL it's the
    Windows host gateway.
@@ -93,42 +93,42 @@ Full detail lives in the bridge repo's `docs/DEPLOYMENT.md`. The essentials:
 OpenLinker ships a **guided wizard** for Subiekt. In OpenLinker go to **Connections → Add
 connection**.
 
-![OpenLinker connections list](../../assets/subiekt/01-connections-list.png)
+![OpenLinker connections list](./assets/01-connections-list.png)
 
 Pick **Subiekt nexo** on the platform picker.
 
-![Add-connection platform picker with the Subiekt nexo card](../../assets/subiekt/02-platform-picker.png)
+![Add-connection platform picker with the Subiekt nexo card](./assets/02-platform-picker.png)
 
 Fill the wizard:
 
-![Subiekt guided wizard — empty form](../../assets/subiekt/03-subiekt-wizard-empty.png)
+![Subiekt guided wizard — empty form](./assets/03-subiekt-wizard-empty.png)
 
 - **Connection name** — a label, e.g. `My Subiekt`.
 
-  ![Connection name](../../assets/subiekt/04-wizard-name.png)
+  ![Connection name](./assets/04-wizard-name.png)
 
 - **Bridge URL** — the bridge address, **without** `/api` (the adapter appends the paths),
   e.g. `https://192.168.1.50:5005`.
 
-  ![Bridge URL](../../assets/subiekt/05-wizard-bridge-url.png)
+  ![Bridge URL](./assets/05-wizard-bridge-url.png)
 
 - **Bridge token** *(optional, advanced)* — the same value as the bridge's `Auth__ApiKey`,
   for a secured bridge. Stored encrypted, never shown again.
 
-  ![Bridge token](../../assets/subiekt/06-wizard-token-filled.png)
+  ![Bridge token](./assets/06-wizard-token-filled.png)
 
 Click **Connect Subiekt**. After it's created, click **Test connection** — this probes the
 bridge `/health`.
 
-![Connection created — Test connection](../../assets/subiekt/07-wizard-created.png)
+![Connection created — Test connection](./assets/07-wizard-created.png)
 
-![Connection test passed](../../assets/subiekt/08-connection-test-ok.png)
+![Connection test passed](./assets/08-connection-test-ok.png)
 
 The new connection shows up with the **Invoicing** capability:
 
-![Connections list with the Subiekt connection](../../assets/subiekt/09-connections-list-with-subiekt.png)
+![Connections list with the Subiekt connection](./assets/09-connections-list-with-subiekt.png)
 
-![Subiekt connection detail](../../assets/subiekt/10-subiekt-connection-detail.png)
+![Subiekt connection detail](./assets/10-subiekt-connection-detail.png)
 
 > **Advanced mode (alternative).** You can also add the connection via **Add connection →
 > Use advanced mode**: `Platform type = Subiekt`, `Adapter key = subiekt.invoicing.v1`,
@@ -142,7 +142,7 @@ The new connection shows up with the **Invoicing** capability:
 Open the connection and click **Edit** (or **Connections → My Subiekt → Edit**) to reach
 the settings. Everything you set in the wizard is editable here, plus:
 
-![Subiekt connection settings — bridge URL, invoice trigger, KSeF toggle, rotate token](../../assets/subiekt/80-subiekt-connection-settings.png)
+![Subiekt connection settings — bridge URL, invoice trigger, KSeF toggle, rotate token](./assets/80-subiekt-connection-settings.png)
 
 - **Invoice trigger** — how issuance is kicked off:
   - **Manual** — you issue from the order screen (Part D). Default.
@@ -168,19 +168,19 @@ uses a **PrestaShop** order with a company buyer (for a B2B faktura).
 
 In the PrestaShop back office, create the customer:
 
-![PrestaShop — add customer](../../assets/subiekt/43-presta-add-customer-filled.png)
+![PrestaShop — add customer](./assets/43-presta-add-customer-filled.png)
 
 Add a company address for them (the **Company** + **VAT number / NIP** fields make it a B2B
 buyer):
 
-![PrestaShop — add company address](../../assets/subiekt/46-presta-add-address-filled.png)
+![PrestaShop — add company address](./assets/46-presta-add-address-filled.png)
 
 Create the order (**Orders → Add new order**): pick the customer, add a product, choose the
 company address, a carrier, **Payment = accepted**, and create it:
 
-![PrestaShop — order builder, cart + company address](../../assets/subiekt/52-presta-order-cart.png)
+![PrestaShop — order builder, cart + company address](./assets/52-presta-order-cart.png)
 
-![PrestaShop — created order](../../assets/subiekt/55-presta-order-created.png)
+![PrestaShop — created order](./assets/55-presta-order-created.png)
 
 OpenLinker ingests the order on its next PrestaShop poll (or webhook). It appears on the
 **Orders** screen, `ready`, with its line items and the buyer address.
@@ -196,12 +196,12 @@ issue. (If more than one Invoicing connection is active, the panel also shows a 
 picker; pick the right Subiekt connection so the document isn't issued against the wrong
 one.)
 
-![Order detail — Invoice panel, not issued, with the document-type dropdown + Issue button](../../assets/subiekt/62-ol-order-not-issued.png)
+![Order detail — Invoice panel, not issued, with the document-type dropdown + Issue button](./assets/62-ol-order-not-issued.png)
 
 Click **Issue invoice**. OpenLinker calls the bridge, Subiekt issues the document, and the
 panel flips to **Issued** with the document number, type, and KSeF badge:
 
-![Order detail — invoice issued (FS …, KSeF sent)](../../assets/subiekt/60-ol-order-invoice-panel-issued.png)
+![Order detail — invoice issued (FS …, KSeF sent)](./assets/60-ol-order-invoice-panel-issued.png)
 
 To issue **without clicking** per order, use an automatic trigger — see
 [Part E](#part-e--automatic-issuance-retry--idempotency).
@@ -212,14 +212,14 @@ To issue **without clicking** per order, use an automatic trigger — see
    KSeF state, connection and date. Your document is there with its number and KSeF badge;
    the PDF link works.
 
-   ![/invoices list](../../assets/subiekt/61-ol-invoices-list.png)
+   ![/invoices list](./assets/61-ol-invoices-list.png)
 
 2. **In Subiekt nexo** — open **Dokumenty → Sprzedaży** and find the number (e.g.
    `FS …/CENTRALA/2026`). Line items, VAT and the buyer match.
 
-   ![Subiekt nexo — Dokumenty sprzedaży listing the issued documents (FS 170, FS 171, PA 9)](../../assets/subiekt/70-subiekt-documents-list.png)
+   ![Subiekt nexo — Dokumenty sprzedaży listing the issued documents (FS 170, FS 171, PA 9)](./assets/70-subiekt-documents-list.png)
 
-   ![Subiekt nexo — the issued faktura open (lines, VAT, buyer)](../../assets/subiekt/71-subiekt-fs170.png)
+   ![Subiekt nexo — the issued faktura open (lines, VAT, buyer)](./assets/71-subiekt-fs170.png)
 
 3. **KSeF** — the badge moves from `pending` to `accepted` as the regulatory reconcile job
    refreshes it (demo/trial environments report a non-authoritative status).
@@ -267,4 +267,4 @@ an authoritative government clearance — see the [runbook](./runbook.md#ksef--e
 - Operational reference — TLS/auth/firewall, env keys, the **version support matrix**,
   trial constraints, and troubleshooting — is in the [runbook](./runbook.md).
 - The neutral invoicing domain and why document-type policy sits above the adapter:
-  [ADR-026](../../architecture/adrs/026-country-agnostic-invoicing-domain.md).
+  [ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md).

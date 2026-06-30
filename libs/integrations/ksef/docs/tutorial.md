@@ -4,7 +4,7 @@ Issue FA(3) VAT invoices from OpenLinker orders and submit them to KSeF
 (Krajowy System e-Faktur) for government clearance — complete A-to-Z guide.
 
 > **Happy path only.** For error handling, retry, and compliance caveats see
-> [`docs/integrations/ksef/setup-guide.md`](../../../docs/integrations/ksef/setup-guide.md).
+> [`setup-guide.md`](./setup-guide.md).
 
 ---
 
@@ -221,8 +221,8 @@ the original and the correction appear on the `/invoices` list.
 - **Pair with Subiekt nexo** — if you also use Subiekt nexo, you can issue the
   document via the Subiekt bridge and separately submit the resulting FS number to
   KSeF through the KSeF connection. See
-  [`libs/integrations/subiekt/tutorial.md`](../subiekt/tutorial.md).
+  [`subiekt tutorial`](../../subiekt/docs/tutorial.md).
 
 - **Operational reference** — environments table, auth types, FA(3) schema
   constraints, compliance caveats, troubleshooting:
-  [`docs/integrations/ksef/setup-guide.md`](../../../docs/integrations/ksef/setup-guide.md).
+  [`setup-guide.md`](./setup-guide.md).
