@@ -104,6 +104,7 @@ import {
   type ErliOrderStatusBody,
 } from './erli-fulfillment.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
+import type { ErliHttpResponse } from '../http/erli-http-client.types';
 import { mapErliOrderToIncomingOrder } from './erli-order.mapper';
 import type { ErliOrder, ErliOrderStatus } from './erli-order.types';
 import {
@@ -155,7 +156,7 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    * wave so the cursor never gets stuck.
    */
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
-    let response;
+    let response: ErliHttpResponse<unknown>;
     try {
       // `GET /inbox` returns up to 500 unread events as a TOP-LEVEL ARRAY and
       // takes no query params (the unread cap is server-fixed).
@@ -350,10 +351,18 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    * Fetch the order, resolve master-authoritative stock per variant, and issue
    * absolute-set stock-restore writes via the shared offer-manager reference.
    *
-   * Erli ID duality: for Erli, `item.externalId` is the OL internal variant id
-   * (the seller key), which doubles as both the Erli offer id (path key for
-   * `updateOfferQuantity`) and the OL inventory variant id (key for
-   * `getAvailabilityByVariantIds`) — no identifier mapping step is needed.
+   * Why this does not delegate to the core `OfferStockRestoreService`:
+   * The relay delivers only `externalOrderId` (no `internalOrderId`), so the
+   * core service's `getOrderRecord(internalOrderId)` path is unavailable here.
+   * Additionally, Erli ID duality — `item.externalId` is simultaneously the OL
+   * internal variant id (inventory key) AND the Erli offer path key — eliminates
+   * both the `identifier_mappings` lookup and the `offer_mappings` lookup that
+   * `OfferStockRestoreService` performs. Fetching the raw order and reading
+   * directly from `getAvailabilityByVariantIds` is therefore shorter, and the
+   * two code paths are mutually exclusive: the relay fires only when the
+   * destination (PrestaShop) cancels and the relay propagates back to Erli;
+   * the core service fires via the `marketplace.offer.stockRestore` job for
+   * buyer-initiated inbox cancellations where `internalOrderId` is known.
    *
    * Absolute-set semantics: master is authoritative including 0, so a sold-out
    * variant restores to 0 rather than being backfilled. The frozen-stock check
@@ -369,7 +378,7 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
     inventoryQuery: IInventoryQueryService,
   ): Promise<void> {
     // 1. Fetch the order to learn which offer IDs need restocking.
-    let response;
+    let response: ErliHttpResponse<unknown>;
     try {
       response = await this.httpClient.get<unknown>(erliOrderPath(externalOrderId));
     } catch (error) {
