@@ -39,14 +39,14 @@ becomes a **faktura** (B2B); **without** one it becomes a **paragon** (B2C).
    demo/trial database; a purchased Subiekt nexo needs the paid Sfera add-on — see the
    [runbook](./runbook.md#license)).
 2. **.NET 8 runtime** on that machine.
-3. **The bridge** — the `openlinker-subiekt` repository
-   (<https://github.com/norbert-kulus-blockydevs/openlinker-subiekt>). Build/run per its
-   `docs/DEPLOYMENT.md`; the essentials are in [Part A](#part-a--run-the-bridge-on-windows).
+3. **The bridge** — the
+   [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
+   repository. Build/run per its `docs/DEPLOYMENT.md`; the essentials are in
+   [Part A](#part-a--run-the-bridge-on-windows).
 4. **An order source connection** in OpenLinker — e.g. a **PrestaShop** connection — so
    there are orders to invoice. See [Connecting a platform](../../../../docs/user-guide/02-connecting-a-platform.md).
 5. **Network reachability:** OpenLinker must reach the bridge over **HTTPS**. On a LAN this
-   is the Windows host's address (e.g. `https://192.168.1.50:5005`); from WSL it's the
-   Windows host gateway.
+   is the Windows host's address, e.g. `https://192.168.1.50:5005`.
 
 ---
 
@@ -76,8 +76,8 @@ Full detail lives in the bridge repo's `docs/DEPLOYMENT.md`. The essentials:
    ```
    The log should show `Now listening on: https://…:5005` and `Sfera: zalogowano`.
 6. **Smoke-test** from the machine where OpenLinker runs:
-   ```bash
-   curl -k https://<bridge-host>:5005/health
+   ```powershell
+   Invoke-RestMethod https://<bridge-host>:5005/health -SkipCertificateCheck
    # → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable", …}
    ```
 
