@@ -51,10 +51,10 @@ export class SyncJobOrmEntity {
   @Column({ default: 10 })
   maxAttempts!: number;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   nextRunAt!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   lockedAt!: Date | null;
 
   @Column({ type: 'varchar', nullable: true })
