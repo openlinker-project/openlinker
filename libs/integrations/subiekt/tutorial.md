@@ -14,8 +14,8 @@ order → invoice flow.
 - **Windows machine** with Subiekt nexo PRO + Sfera (the SDK ships with the
   demo/trial database; a production nexo requires the paid Sfera add-on).
 - **.NET 8 runtime** on the Windows machine.
-- The [`openlinker-subiekt`](https://github.com/norbert-kulus-blockydevs/openlinker-subiekt)
-  bridge repository cloned — use the **`without-exe-packaging` branch**.
+- The [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
+  repository cloned (not yet published).
 - OpenLinker running (API + worker + web) and reachable from the Windows machine.
 - A **source connection** (e.g. PrestaShop or Allegro) already set up in OpenLinker
   so that orders flow in.
@@ -60,7 +60,7 @@ Open **PowerShell** and navigate to the repository root. Set the secret
 environment variables for the current session:
 
 ```powershell
-cd C:\Users\<user>\repos\openlinker-subiekt
+cd C:\Users\<user>\repos\openlinker-subiekt-bridge
 
 $env:Auth__ApiKey       = "a-strong-random-token"   # copy this — it's your bridgeToken
 $env:Sfera__NexoPassword = "your-nexo-operator-password"
