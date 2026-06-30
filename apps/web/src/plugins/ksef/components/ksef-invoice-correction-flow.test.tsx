@@ -94,6 +94,27 @@ describe('KsefInvoiceCorrectionFlow', () => {
     expect(lineInputs).toHaveLength(2);
   });
 
+  it('removes a line row when Remove is clicked', async () => {
+    renderWithProviders(
+      <KsefInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={ksefConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+    );
+    // Add second line so Remove is enabled
+    fireEvent.click(await screen.findByText(/Add line/i));
+    let lineInputs = await screen.findAllByLabelText(/Line number/i);
+    expect(lineInputs).toHaveLength(2);
+
+    const removeBtns = await screen.findAllByRole('button', { name: /Remove line/i });
+    fireEvent.click(removeBtns[0]);
+
+    lineInputs = await screen.findAllByLabelText(/Line number/i);
+    expect(lineInputs).toHaveLength(1);
+  });
+
   it('calls onClose when Cancel is clicked', async () => {
     const onClose = vi.fn();
     renderWithProviders(
@@ -108,7 +129,27 @@ describe('KsefInvoiceCorrectionFlow', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('submits issueCorrection with reason and line data on form submit', async () => {
+  it('blocks submit when no line has a line number and shows error', async () => {
+    const issueCorrection = vi.fn();
+    renderWithProviders(
+      <KsefInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={ksefConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection } }) },
+    );
+
+    // Submit without filling any line number
+    fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
+
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(await screen.findByText(/at least one line/i)).toBeDefined();
+    expect(issueCorrection).not.toHaveBeenCalled();
+  });
+
+  it('submits issueCorrection with reason, line data and idempotencyKey on form submit', async () => {
     const correctionInvoice = makeInvoice({ id: 'ol_invoice_correction' });
     const issueCorrection = vi.fn().mockResolvedValue(correctionInvoice);
     const onCorrectionIssued = vi.fn();
@@ -140,10 +181,14 @@ describe('KsefInvoiceCorrectionFlow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
 
     await waitFor(() => {
-      expect(issueCorrection).toHaveBeenCalledWith('ol_invoice_test', {
-        reason: 'Partial return',
-        lines: [{ originalLineNumber: 1, newQuantity: 0, newUnitPriceGross: 34.84 }],
-      });
+      expect(issueCorrection).toHaveBeenCalledWith(
+        'ol_invoice_test',
+        expect.objectContaining({
+          reason: 'Partial return',
+          lines: [{ originalLineNumber: 1, newQuantity: 0, newUnitPriceGross: 34.84 }],
+          idempotencyKey: expect.stringMatching(/^ksef-corr-/),
+        }),
+      );
     });
 
     await waitFor(() => expect(onCorrectionIssued).toHaveBeenCalledWith('ol_invoice_correction'));

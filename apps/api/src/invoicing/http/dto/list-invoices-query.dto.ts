@@ -1,15 +1,12 @@
 /**
- * List Invoices Query DTO (#1119)
+ * List Invoices Query DTO (#1119, #1202)
  *
  * Query parameters for GET /invoices (AC-6). All fields optional.
  *
- * The AC-6 "with/without tax id" sub-filter is DELIBERATELY NOT exposed: the
- * persisted InvoiceRecord projection carries no buyer/tax-id column (the buyer
- * lives on the Order, never on the invoice projection), so the filter cannot be
- * served without a schema migration that is out of #1119 scope. It is omitted
- * from the public contract rather than accepted-and-ignored (which would mislead
- * a caller into thinking `hasTaxId=true` results were filtered). Tracked as a
- * #1119 follow-up so AC-6 sign-off is not claimed for an inert filter.
+ * The AC-6 "with/without tax id" sub-filter is exposed as `taxId=with|without`
+ * (#1202): it is served by the neutral denormalized `hasBuyerTaxId` column on the
+ * InvoiceRecord projection (set on the write path from the buyer at issue time),
+ * so no Order join is needed. Neutral presence concept — not "nip".
  *
  * @module apps/api/src/invoicing/http/dto
  */
@@ -59,6 +56,16 @@ export class ListInvoicesQueryDto {
   @IsOptional()
   @IsISO8601()
   issuedTo?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by buyer-tax-id presence: "with" keeps invoices whose buyer ' +
+      'carried a tax id, "without" keeps those that did not.',
+    enum: ['with', 'without'],
+  })
+  @IsOptional()
+  @IsIn(['with', 'without'])
+  taxId?: 'with' | 'without';
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()

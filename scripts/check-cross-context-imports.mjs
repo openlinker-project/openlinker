@@ -386,6 +386,27 @@ const ALLOW_LIST = new Map([
       'ProductVariantRepositoryPort',
     ]),
   ],
+
+  // ─── apps-scope (#1125 user-management) ─────────────────────────────────
+  // RegistrationService and UserManagementService sit in the API layer and
+  // inject UserRepositoryPort directly (no I*Service cross-context seam exists
+  // for the users context yet). Rewire via IUsersService in a follow-up.
+  [
+    'apps/api/src/auth/registration.service.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/registration.service.spec.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/users/user-management.service.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/users/user-management.service.spec.ts',
+    new Set(['UserRepositoryPort']),
+  ],
 ]);
 
 const DENY_PATTERNS = [

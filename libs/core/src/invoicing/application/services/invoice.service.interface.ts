@@ -14,6 +14,7 @@ import type {
   GetInvoiceByOrderQuery,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
 } from '../../domain/types/invoicing.types';
@@ -30,45 +31,44 @@ export interface IInvoiceService {
    * (`adapter.issueInvoice(cmd)`) and patch the row `issued`/`failed`;
    * (5) a create-race that trips the dedup guard re-reads and returns the winner.
    *
-   * ACCEPTED-RISK CONTRACT — three explicit risks the future ECA caller MUST heed:
+   * FISCAL-SAFETY INVARIANT (governs all retry behaviour): a real fiscal document
+   * must NEVER be double-issued. When it is UNCERTAIN whether the provider already
+   * created a document, the SVC does NOT auto-re-attempt — it surfaces the record
+   * for manual reconciliation. A stuck/needs-attention row is always preferable to
+   * a duplicate document.
+   *
+   * EXACTLY-ONCE CONTRACT — one remaining caller obligation (R1) plus the now-CLOSED
+   * concurrency/in-doubt gaps (R2/R3, #1200):
    *
    * - (R1) Exactly-once requires `idempotencyKey`. When omitted, NO deduplication
    *   happens (no read-gate, no DB unique guard): two keyless calls for the same
    *   order produce two pending rows and two real provider documents. Callers
-   *   needing exactly-once MUST supply a stable `idempotencyKey`.
+   *   needing exactly-once MUST supply a stable `idempotencyKey`. (Unchanged.)
    *
-   * - (R2) non-`issued`-row retry is single-flight-only. A same-key call whose
-   *   prior attempt left a non-`issued` row (`failed` OR `pending`) re-attempts by
-   *   REUSING that row (`updateOutcome`, not `create`). The partial unique index
-   *   only guards the create path, so two CONCURRENT same-key retries can both read
-   *   the row and both call the provider — two documents. Non-`issued`-row retries
-   *   are exactly-once ONLY when serialized.
+   * - (R2 — CLOSED, #1200) Concurrent same-key retry no longer double-issues. Before
+   *   re-crossing the provider boundary the SVC performs an ATOMIC compare-and-swap
+   *   claim (`InvoiceRecordRepositoryPort.claimForIssue`) that flips the row to
+   *   `issuing` under a time-bounded lease ONLY when no live attempt already holds
+   *   it. Of two concurrent same-key retries exactly ONE wins the claim and calls
+   *   the provider; the loser backs off WITHOUT crossing the boundary. The lease
+   *   expiry lets a crash-orphaned `issuing` row be re-claimed later.
    *
-   * - (R3) non-`issued`-row retry may double-issue an in-doubt document. The
-   *   read-gate re-attempts on ANY non-`issued` hit — `failed` AND `pending` (it
-   *   only short-circuits on `issued`). The SVC cannot distinguish a terminal
-   *   provider rejection from a transient transport failure (it must not
-   *   value-import the adapter error subclasses), so any non-`issued` row is always
-   *   treated as re-attemptable. Two double-issue exposures result:
-   *     • A `failed` hit may correspond to an in-doubt transport failure where the
-   *       provider actually DID issue; the retry re-crosses the boundary and may
-   *       double-issue a real fiscal document.
-   *     • A `pending` hit is the STRONGEST in-doubt case: it means a prior same-key
-   *       attempt persisted intent and crashed/raced mid-adapter-call, OR an
-   *       ORIGINAL attempt for that key is STILL IN FLIGHT. The SVC does not exclude
-   *       a concurrent in-flight original, so a retry on a `pending` hit can
-   *       double-issue alongside it. This is the path with the highest exactly-once
-   *       exposure.
-   *   Deliberate MVP trade-off: never-retrying non-`issued` rows would brick
-   *   transient failures and orphan crash-interrupted `pending` intents (worse),
-   *   while a deterministic terminal rejection simply fails again with no
-   *   double-issue.
+   * - (R3 — CLOSED, #1200) In-doubt retry no longer double-issues. The adapter
+   *   stamps a NEUTRAL `failureMode` (`rejected` | `in-doubt`) on the errors it
+   *   throws; the SVC reads it STRUCTURALLY (no adapter error-subclass value-import)
+   *   and persists it on the `failed` row. The read-gate then:
+   *     • re-attempts a `failed` row ONLY when `failureMode === 'rejected'` — a
+   *       TERMINAL rejection where the provider definitely created NO document;
+   *     • NEVER auto-re-attempts an `in-doubt` `failed` row (a document MAY exist) —
+   *       it is returned for manual reconciliation;
+   *     • NEVER re-attempts a row under a LIVE `issuing` lease (an original attempt
+   *       is still in flight) — closing the `pending` half of R3 alongside R2.
+   *   Any failure whose mode cannot be read structurally collapses to the
+   *   fiscal-safe `in-doubt` (never auto-re-attempted).
    *
-   * Follow-up (R2/R3 closure): see GitHub issue #1200 — neutral
-   * `retryable` discriminator (so `failed` rows from terminal vs. transient
-   * outcomes are distinguishable) + compare-and-swap/lease on
-   * `InvoiceRecordRepositoryPort` (so a `pending` row's still-in-flight original is
-   * excluded before a retry re-crosses the boundary).
+   * Closure tracked by GitHub issue #1200 (follow-up to #1118): neutral
+   * `failureMode` discriminator + CAS/lease (`claimForIssue`) on
+   * `InvoiceRecordRepositoryPort`.
    */
   issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
 
@@ -78,6 +78,25 @@ export interface IInvoiceService {
    * Returns `null` when no record holds the order on the connection.
    */
   getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null>;
+
+  /**
+   * Issue a correction of an already-issued document. Creates a new
+   * `InvoiceRecord` for the correcting document (status `pending` → `issued` on
+   * success). The original record is NOT mutated — corrections co-exist alongside
+   * the original in the projection. Throws `CapabilityNotSupportedException` if
+   * the connection's adapter does not implement `CorrectionIssuer`. Throws
+   * `CapabilityNotEnabledException` if the capability is not enabled on the
+   * connection.
+   */
+  issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord>;
+
+  /**
+   * Read OL's OWN `InvoiceRecord` projection by its primary id. Projection read —
+   * NEVER queries the provider/adapter. Returns `null` when no record exists.
+   * Backs the batch-retry endpoint's per-id eligibility check (#1245), which
+   * keys retry-eligibility on `InvoiceRecord.isReattemptableFailure`.
+   */
+  getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null>;
 
   /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered

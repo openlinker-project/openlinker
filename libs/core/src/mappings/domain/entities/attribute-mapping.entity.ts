@@ -25,5 +25,9 @@ export class AttributeMapping {
     /** Per-value translations (e.g. `Red → Czerwony`). Empty when source and
      * destination value vocabularies already agree. */
     public readonly values: AttributeValueMapping[],
+    /** Owner-taxonomy provenance this row is authored against (e.g. `'allegro'`),
+     * used for borrowed-taxonomy reuse (#1045). Appended last to keep existing
+     * positional construction source-compatible. */
+    public readonly destinationTaxonomyProvenance: string = 'allegro',
   ) {}
 }

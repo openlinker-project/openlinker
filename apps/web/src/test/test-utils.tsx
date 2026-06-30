@@ -112,6 +112,7 @@ export function createMockApiClient(
     } as ApiClient['aiProviderSettings'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
+      register: vi.fn().mockResolvedValue({ ok: true }),
       forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
@@ -241,11 +242,17 @@ export function createMockApiClient(
       // other `invoicing.list` caller) does not hit `undefined` once `list` is
       // added to the InvoicingApi interface. Placed before the spread so an
       // explicit `overrides.invoicing.list` still wins.
-      getById: vi.fn().mockResolvedValue(null),
       list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
       issueCorrection: vi.fn().mockResolvedValue(null),
+      // #1234 — resolves to an empty PDF blob by default so tests that invoke the
+      // UPO preview/download path don't hit `undefined`.
+      downloadUpo: vi.fn().mockResolvedValue(new Blob([''], { type: 'application/pdf' })),
+      // #1228 — resolves to an empty HTML blob by default for FA(3) doc tests.
+      downloadDocument: vi
+        .fn()
+        .mockResolvedValue(new Blob([''], { type: 'text/html' })),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     orders: {
@@ -427,6 +434,16 @@ export function createMockApiClient(
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.webhookDeliveries,
     } as ApiClient['webhookDeliveries'],
+    users: {
+      list: vi.fn().mockResolvedValue({ users: [], total: 0 }),
+      approve: vi.fn().mockResolvedValue(undefined),
+      reject: vi.fn().mockResolvedValue(undefined),
+      updateRole: vi.fn().mockResolvedValue(undefined),
+      deactivate: vi.fn().mockResolvedValue(undefined),
+      reactivate: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      ...overrides.users,
+    } as ApiClient['users'],
   };
 
   // Fold plugin mock defaults, layering caller overrides per namespace. Caller

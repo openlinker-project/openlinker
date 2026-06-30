@@ -19,6 +19,7 @@ import { lazy } from 'react';
 import { erliBulkConfigIsComplete, erliOfferValidation } from '../../features/listings';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { ErliConnectionActions } from './components/erli-connection-actions';
 import { ErliCredentialsPanel } from './components/erli-credentials-panel';
 import { erliSetupRoute } from './erli-setup.route';
 
@@ -57,6 +58,7 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
       badge: 'API key',
     },
     CredentialsPanel: ErliCredentialsPanel,
+    ConnectionActions: ErliConnectionActions,
     // Bulk offer creation (#1096): dispatch time, no policies, PLN-only.
     bulkOfferConfigSection: {
       component: ErliBulkConfigSectionLazy,

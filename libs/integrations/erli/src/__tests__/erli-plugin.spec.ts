@@ -46,6 +46,7 @@ function makeRegisterHost(): {
   retryClassifierRegistry: { register: jest.Mock };
   authFailureClassifierRegistry: { register: jest.Mock };
   schedulerTaskRegistry: { register: jest.Mock };
+  inboundWebhookDecoderRegistry: { register: jest.Mock };
   webhookEventTranslatorRegistry: { register: jest.Mock };
   webhookProvisioningRegistry: { register: jest.Mock };
 } {
@@ -56,6 +57,7 @@ function makeRegisterHost(): {
   const retryClassifierRegistry = { register: jest.fn() };
   const authFailureClassifierRegistry = { register: jest.fn() };
   const schedulerTaskRegistry = { register: jest.fn() };
+  const inboundWebhookDecoderRegistry = { register: jest.fn() };
   const webhookEventTranslatorRegistry = { register: jest.fn() };
   const webhookProvisioningRegistry = { register: jest.fn() };
   const hostStub = {
@@ -66,6 +68,7 @@ function makeRegisterHost(): {
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
+    inboundWebhookDecoderRegistry,
     webhookEventTranslatorRegistry,
     webhookProvisioningRegistry,
   } as unknown as HostServices;
@@ -78,6 +81,7 @@ function makeRegisterHost(): {
     retryClassifierRegistry,
     authFailureClassifierRegistry,
     schedulerTaskRegistry,
+    inboundWebhookDecoderRegistry,
     webhookEventTranslatorRegistry,
     webhookProvisioningRegistry,
   };
@@ -221,6 +225,16 @@ describe('createErliPlugin', () => {
           jobType: 'marketplace.orders.poll',
           enabledEnvVar: 'OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED',
         }),
+      );
+    });
+
+    it('should register the inbound webhook decoder at platform type erli (#1081)', () => {
+      const { host, inboundWebhookDecoderRegistry } = makeRegisterHost();
+      createErliPlugin().register?.(host);
+
+      expect(inboundWebhookDecoderRegistry.register).toHaveBeenCalledWith(
+        'erli',
+        expect.objectContaining({ verify: expect.any(Function), extractEnvelope: expect.any(Function) }),
       );
     });
 

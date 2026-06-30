@@ -22,6 +22,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+import type {
+  InvoiceFailureCode,
+  InvoiceFailureMode,
+} from '../../../domain/types/invoicing.types';
 import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
 @Entity('invoice_records')
@@ -88,6 +92,44 @@ export class InvoiceRecordOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
+
+  /**
+   * Neutral failure discriminator (#1200) — `null` unless `status = 'failed'`.
+   * `rejected` (terminal, no document) is re-attemptable; `in-doubt` is not.
+   */
+  @Column({ type: 'text', nullable: true })
+  failureMode!: InvoiceFailureMode | null;
+
+  /**
+   * Neutral machine-readable failure code (W1) — `null` unless `status =
+   * 'failed'`. The closed {@link InvoiceFailureCode} taxonomy the FE switches on
+   * (never the PII-tainted `errorMessage`).
+   */
+  @Column({ type: 'varchar', nullable: true })
+  failureCode!: InvoiceFailureCode | null;
+
+  /**
+   * Short, PII-free failure summary (W1) — `null` unless `status = 'failed'`.
+   * Safe to expose, unlike the INTERNAL-ONLY `errorMessage`.
+   */
+  @Column({ type: 'text', nullable: true })
+  failureReason!: string | null;
+
+  /**
+   * Lease expiry for the `issuing` CAS claim (#1200) — `null` unless this row
+   * currently holds the in-flight slot. Backs the atomic `claimForIssue` guard
+   * that lets exactly one concurrent same-key retry cross the provider boundary.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  leaseExpiresAt!: Date | null;
+
+  /**
+   * Neutral denormalized flag: did the buyer carry a tax identifier at issue
+   * time (#1202)? Backs the `taxId=with|without` list filter without joining to
+   * the Order. Not "nip" — a presence boolean. Defaults `false` for legacy rows.
+   */
+  @Column({ type: 'boolean', default: false })
+  hasBuyerTaxId!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;

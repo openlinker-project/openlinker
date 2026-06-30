@@ -45,7 +45,8 @@ import type {
   SourceAttribute,
   SourceCategoryRef,
 } from '@openlinker/core/listings';
-import { isCategoryBrowser, isEanCategoryMatcher } from '@openlinker/core/listings';
+import { isCategoryBrowser, isEanCategoryMatcher, isTaxonomyBorrower } from '@openlinker/core/listings';
+import type { TaxonomyOwner } from '@openlinker/core/listings';
 import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
@@ -118,10 +119,19 @@ export class OfferBuilderService implements IOfferBuilderService {
     const requiresResolvedCategory =
       isCategoryBrowser(destination) || isEanCategoryMatcher(destination);
 
+    // #1045 — a `borrows` destination (ERLI) names the owner taxonomy whose
+    // category/attribute mappings it reuses verbatim. Read it once from the
+    // already-resolved adapter (no extra resolution downstream) and thread it +
+    // the master connection through category resolution and attribute projection.
+    const borrowedTaxonomy: TaxonomyOwner | undefined = isTaxonomyBorrower(destination)
+      ? destination.getBorrowedTaxonomy()
+      : undefined;
+
     const categoryId = await this.resolveCategory(
       input,
       variant.ean ?? variant.gtin ?? null,
-      product.categories
+      product.categories,
+      { borrowedTaxonomy, sourceConnectionId: masterConnectionId }
     );
     if (!categoryId && requiresResolvedCategory) {
       issues.push({
@@ -150,7 +160,8 @@ export class OfferBuilderService implements IOfferBuilderService {
           input,
           masterConnectionId,
           categoryId,
-          variant.attributes ?? {}
+          variant.attributes ?? {},
+          borrowedTaxonomy
         )
       : [];
 
@@ -268,7 +279,8 @@ export class OfferBuilderService implements IOfferBuilderService {
   private async resolveCategory(
     input: BuildCreateOfferCommandInput,
     barcode: string | null,
-    sourceCategoryIds: string[] | undefined
+    sourceCategoryIds: string[] | undefined,
+    taxonomy: { borrowedTaxonomy?: TaxonomyOwner; sourceConnectionId: string }
   ): Promise<string | null> {
     if (input.overrides?.categoryId) {
       return input.overrides.categoryId;
@@ -284,6 +296,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       // Only include when present so the call shape stays minimal (the chain
       // treats an absent list the same as an empty one).
       ...(hasSourceCategories ? { sourceCategoryIds } : {}),
+      // #1045 — borrowed-taxonomy reuse + source-store scoping for the mapping step.
+      ...(taxonomy.borrowedTaxonomy ? { borrowedTaxonomy: taxonomy.borrowedTaxonomy } : {}),
+      sourceConnectionId: taxonomy.sourceConnectionId,
     });
     return result.destinationCategoryId;
   }
@@ -297,13 +312,16 @@ export class OfferBuilderService implements IOfferBuilderService {
     input: BuildCreateOfferCommandInput,
     sourceConnectionId: string,
     destinationCategoryId: string,
-    attributes: Record<string, string>
+    attributes: Record<string, string>,
+    borrowedTaxonomy: TaxonomyOwner | undefined
   ): Promise<OfferParameter[]> {
     const projection = await this.attributeProjection.project({
       sourceConnectionId,
       destinationConnectionId: input.connectionId,
       destinationCategoryId,
       attributes,
+      // #1045 — reuse the owner's attribute mappings for a borrows destination.
+      ...(borrowedTaxonomy ? { borrowedTaxonomy } : {}),
     });
 
     const operatorParameters = this.normalizeOperatorParameters(input.overrides);

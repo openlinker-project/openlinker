@@ -67,7 +67,9 @@ describe('InvoicingIssueHandler', () => {
     invoiceService = {
       issueInvoice: jest.fn().mockResolvedValue({} as never),
       getInvoice: jest.fn(),
+      getInvoiceById: jest.fn(),
       listInvoices: jest.fn(),
+      issueCorrection: jest.fn(),
     };
     handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
     warnSpy = jest

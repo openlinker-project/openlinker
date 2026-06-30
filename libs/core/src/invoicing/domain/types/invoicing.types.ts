@@ -31,9 +31,63 @@ export const DocumentTypeValues = [
 ] as const;
 export type DocumentType = (typeof DocumentTypeValues)[number];
 
-/** Issuance lifecycle of an `InvoiceRecord` (distinct from payment — see ADR-026). */
-export const InvoiceStatusValues = ['pending', 'issued', 'failed'] as const;
+/**
+ * Issuance lifecycle of an `InvoiceRecord` (distinct from payment — see ADR-026).
+ *
+ * `issuing` (#1200) is the in-flight CLAIM state: a record an attempt has leased
+ * to cross the provider boundary. It sits between `pending` (intent persisted,
+ * not yet claimed) and the terminal `issued`/`failed`. A concurrent same-key
+ * retry that finds a record under a LIVE `issuing` lease must NOT re-cross the
+ * boundary — exactly one attempt may hold the slot (closes R2 + the `pending`
+ * half of R3). The lease has an expiry (`leaseExpiresAt`) so a crash mid-call
+ * does not orphan the record forever.
+ */
+export const InvoiceStatusValues = ['pending', 'issuing', 'issued', 'failed'] as const;
 export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
+
+/**
+ * Neutral failure discriminator (#1200) — the fiscal-safety pivot for re-attempt.
+ * Carried from the provider adapter into the neutral outcome WITHOUT core ever
+ * value-importing an adapter error subclass: the service reads it STRUCTURALLY
+ * off the caught throwable (see `InvoiceService.classifyFailure`).
+ *
+ *   - `rejected`: a TERMINAL provider rejection — the provider DEFINITELY did not
+ *     create a document (e.g. invalid tax data). A `failed` row of this kind is
+ *     SAFE to re-attempt: re-crossing the boundary cannot double-issue.
+ *   - `in-doubt`: a transient/indeterminate transport failure — the request MAY
+ *     have reached the provider and a document MAY have been created (timeout,
+ *     reset, unknown error). A `failed` row of this kind is UNSAFE to re-attempt:
+ *     it is surfaced for manual reconciliation, never auto-re-issued. This is the
+ *     FISCAL-SAFE DEFAULT: any failure whose mode the service cannot read
+ *     structurally is treated as `in-doubt`.
+ */
+export const InvoiceFailureModeValues = ['rejected', 'in-doubt'] as const;
+export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
+
+/**
+ * Closed neutral failure-code taxonomy (#1214 / W1) — the machine-readable
+ * companion to {@link InvoiceFailureMode}. The FE distinguishes failure causes
+ * off this code without parsing the free-text (PII-tainted) `errorMessage`,
+ * which is never exposed to API callers. PII-free by construction — the values
+ * are fixed neutral discriminators, never an echo of provider/buyer data. Closed
+ * (not open-world) because every value must map onto a deliberate FE affordance.
+ *
+ *   - `buyer-tax-id-invalid`: a TERMINAL `rejected` failure caused by an invalid
+ *     buyer tax identifier — the operator can fix the buyer data and re-issue.
+ *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
+ *     re-attempt once the underlying input is corrected).
+ *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
+ *     exist; NEVER auto-re-attempted, surfaced for manual reconciliation.
+ *   - `provider-error`: an unclassifiable failure (the fiscal-safe default code,
+ *     paired with the `in-doubt` mode).
+ */
+export const InvoiceFailureCodeValues = [
+  'buyer-tax-id-invalid',
+  'provider-rejected',
+  'transport-timeout',
+  'provider-error',
+] as const;
+export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
 
 /**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
@@ -124,11 +178,40 @@ export interface InvoiceLine {
 }
 
 /**
+ * Neutral correction descriptor — present only when {@link IssueInvoiceCommand}
+ * issues a correcting document (`documentType` of `corrected` / `credit-note`).
+ *
+ * Country-agnostic (ADR-026): it references the original document by its neutral
+ * authority-assigned `originalClearanceReference` (the same opaque
+ * `clearanceReference` vocabulary the {@link RegulatoryStatus} lifecycle uses —
+ * `null` when the original was never cleared by an authority) plus the human
+ * `originalDocumentNumber` + `originalIssueDate`, and carries a free-text
+ * `reason`. No regime tax vocabulary appears here; the adapter maps these neutral
+ * fields onto its wire shape. The command's top-level `lines` carry the *original*
+ * ("before") line state; `correctedLines` carry the *post-correction* ("after")
+ * state — the adapter emits whichever before/after representation its regime needs.
+ */
+export interface CorrectionReference {
+  /** Authority-assigned reference of the original document; `null` if never cleared. */
+  originalClearanceReference: string | null;
+  /** Human-facing sequential number of the corrected original document. */
+  originalDocumentNumber: string;
+  /** Issue date of the corrected original, ISO 8601 calendar `YYYY-MM-DD`. */
+  originalIssueDate: string;
+  /** Free-text reason for the correction (return, refund, price adjustment, …). */
+  reason: string;
+  /** Post-correction ("after") line state; the top-level `lines` carry the original. */
+  correctedLines: InvoiceLine[];
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
  * `documentType` is caller-supplied (open-world); the adapter may derive it
- * when absent. `idempotencyKey` backs exactly-once issuance.
+ * when absent. `idempotencyKey` backs exactly-once issuance. `correction` is
+ * present only for a correcting document (see {@link CorrectionReference}); the
+ * caller (the returns/refund trigger) decides *when* — the port never does.
  */
 export interface IssueInvoiceCommand {
   connectionId: string;
@@ -138,6 +221,41 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Correction linkage + reason; present only for a correcting document. */
+  correction?: CorrectionReference;
+  idempotencyKey?: string;
+}
+
+/**
+ * One corrected line on a correction document. Identifies the original line by its
+ * position (`originalLineNumber`, 1-based) and carries the new values to apply.
+ * At least one of `newQuantity` / `newUnitPriceGross` must be present — a line that
+ * changes neither would be a no-op. `newUnitPriceGross` is the gross unit price
+ * (matches core's `number` money idiom and `InvoiceLine.unitPriceGross`).
+ */
+export interface CorrectionLine {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/**
+ * Command to issue a correction of an already-issued document (ADR-026). Like
+ * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
+ * port does not decide whether/when. `originalProviderInvoiceId` references the
+ * provider's id of the corrected original (the adapter interprets it). `lines`
+ * carry the post-correction values per original line; `reason` is the free-text
+ * correction reason. `documentType` is caller-supplied (open-world); the adapter
+ * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ */
+export interface IssueCorrectionCommand {
+  connectionId: string;
+  orderId: string;
+  originalProviderInvoiceId: string;
+  /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
+  documentType?: string;
+  reason?: string;
+  lines: CorrectionLine[];
   idempotencyKey?: string;
 }
 
@@ -182,6 +300,17 @@ export interface CreateInvoiceRecordInput {
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
+  /** Neutral failure discriminator (#1200); `null` for a non-`failed` create. */
+  failureMode?: InvoiceFailureMode | null;
+  /** Neutral machine-readable failure code (W1); `null` for a non-`failed` create. */
+  failureCode?: InvoiceFailureCode | null;
+  /** Short, PII-free failure summary (W1); `null` for a non-`failed` create. */
+  failureReason?: string | null;
+  /**
+   * Whether the buyer carried a tax identifier at issue time (#1202). Neutral
+   * presence flag set on the write path; defaults `false` when omitted.
+   */
+  hasBuyerTaxId?: boolean;
 }
 
 /**
@@ -190,14 +319,10 @@ export interface CreateInvoiceRecordInput {
  * POST re-issue gate does NOT widen this surface: it reads the order's single
  * projection row via the existing `findByOrderId(orderId, connectionId)`
  * primitive (surfaced as `IInvoiceService.getInvoice`), so `findMany` stays a
- * pure AC-6 list query. No `hasTaxId`: the InvoiceRecord projection has no
- * buyer/tax-id column (the buyer lives on the Order), so the AC-6
- * "with/without tax id" sub-filter cannot be served without denormalizing
- * `buyerTaxId` onto the projection + a migration + a backfill — out of #1119
- * scope. It is therefore absent from this filter surface AND from the public
- * `ListInvoicesQueryDto` (where `forbidNonWhitelisted` rejects `hasTaxId` with
- * a 400 rather than accepting-and-ignoring it). Tracked as #1202; AC-6
- * sign-off must NOT be claimed for this sub-filter until it ships.
+ * pure AC-6 list query. The `taxId` filter (#1202) is served by the neutral
+ * denormalized `hasBuyerTaxId` column on the projection (set on the write path),
+ * NOT by joining to the Order: `'with'` → `hasBuyerTaxId = true`, `'without'` →
+ * `false`.
  */
 export interface InvoiceRecordFilters {
   status?: InvoiceStatus;
@@ -207,6 +332,12 @@ export interface InvoiceRecordFilters {
   issuedFrom?: Date;
   /** Inclusive upper bound on `issuedAt`. */
   issuedTo?: Date;
+  /**
+   * Filter by buyer-tax-id presence (#1202): `'with'` keeps rows where the buyer
+   * carried a tax id, `'without'` keeps rows where it did not. Neutral presence
+   * concept (not "nip"); maps to the denormalized `hasBuyerTaxId` column.
+   */
+  taxId?: 'with' | 'without';
 }
 
 /** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
@@ -246,4 +377,29 @@ export interface InvoiceOutcomePatch {
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
+  /**
+   * Neutral failure discriminator (#1200). Set when patching a `failed` outcome
+   * so the read-gate can tell a re-attemptable terminal rejection (`rejected`)
+   * from an unsafe in-doubt transport failure (`in-doubt`). Cleared (`null`) on a
+   * successful `issued` patch alongside `errorMessage`.
+   */
+  failureMode?: InvoiceFailureMode | null;
+  /**
+   * Neutral machine-readable failure code (W1). Set alongside `failureMode` when
+   * patching a `failed` outcome so the FE can drive a cause-specific affordance
+   * without parsing `errorMessage`. Cleared (`null`) on a successful `issued`
+   * patch alongside `errorMessage` + `failureMode`.
+   */
+  failureCode?: InvoiceFailureCode | null;
+  /**
+   * Short, PII-free human-readable failure summary (W1). Set on a `failed` patch;
+   * cleared (`null`) on a successful `issued` patch. Distinct from the
+   * INTERNAL-ONLY, possibly-PII `errorMessage` — `failureReason` is safe to expose.
+   */
+  failureReason?: string | null;
+  /**
+   * Lease expiry for the `issuing` CAS claim (#1200). Set when an attempt claims
+   * the in-flight slot; cleared (`null`) on the terminal `issued`/`failed` patch.
+   */
+  leaseExpiresAt?: Date | null;
 }

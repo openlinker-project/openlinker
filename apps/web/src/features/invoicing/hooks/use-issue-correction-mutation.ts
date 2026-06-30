@@ -1,10 +1,8 @@
 /**
- * Issue Correction Mutation Hook (#1233)
+ * useIssueCorrectionMutation (#1241)
  *
- * Fires `POST /invoices/:invoiceId/correct` via the invoicing API namespace.
- * Invalidates the whole invoicing domain on success so any invoicing query
- * (order invoice panel, invoices list, invoice detail) re-fetches without a
- * manual refresh.
+ * Mutation hook for `POST /invoices/:invoiceId/correct`. On success invalidates
+ * the invoicing query domain so the correction record appears immediately.
  *
  * @module apps/web/src/features/invoicing/hooks
  */

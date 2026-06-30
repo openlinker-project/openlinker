@@ -51,12 +51,15 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   ) {}
 
   async resolveCategory(input: CategoryResolutionInput): Promise<CategoryResolutionResult> {
-    const { connectionId, barcode, sourceCategoryIds } = input;
+    const { connectionId, barcode, sourceCategoryIds, borrowedTaxonomy, sourceConnectionId } = input;
 
-    // `provenance` is populated once the destination adapter is resolved (the
-    // barcode step). Mapping-only / manual paths leave it null until #1045
-    // makes the mapping lookup provenance-bearing.
-    let provenance: CategoryProvenance | null = null;
+    // `provenance` is populated from the resolved adapter on the barcode step.
+    // On the mapping / manual paths it is now seeded from the caller-threaded
+    // `borrowedTaxonomy` (#1045): a destination that borrows is — by definition —
+    // a `borrows` destination, so its mapping-path result carries that provenance.
+    // `owns` / `open` destinations still leave it null on the non-barcode paths
+    // (no adapter resolved here — by design, no extra I/O).
+    let provenance: CategoryProvenance | null = borrowedTaxonomy ? 'borrows' : null;
 
     // Step 1: Provision (open provenance). No-op seam — the `CategoryProvisioner`
     // capability is delivered by #1041; until then this always falls through.
@@ -86,7 +89,10 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
     // Step 3: Category mapping fallback
     if (sourceCategoryIds && sourceCategoryIds.length > 0) {
-      const mapped = await this.tryCategoryMapping(connectionId, sourceCategoryIds);
+      const mapped = await this.tryCategoryMapping(connectionId, sourceCategoryIds, {
+        borrowedTaxonomy,
+        sourceConnectionId,
+      });
       if (mapped) {
         this.logger.debug(
           `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
@@ -197,10 +203,17 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
   private async tryCategoryMapping(
     connectionId: string,
-    sourceCategoryIds: string[]
+    sourceCategoryIds: string[],
+    opts: { borrowedTaxonomy?: string; sourceConnectionId?: string }
   ): Promise<string | null> {
+    // Pass the opts object only when it carries something — keeps the call shape
+    // minimal (and the legacy 2-arg contract intact) for owns/open destinations
+    // that thread neither a borrowed taxonomy nor a source connection.
+    const hasOpts = opts.borrowedTaxonomy != null || opts.sourceConnectionId != null;
     for (const categoryId of sourceCategoryIds) {
-      const resolved = await this.mappingConfig.resolveDestinationCategory(connectionId, categoryId);
+      const resolved = hasOpts
+        ? await this.mappingConfig.resolveDestinationCategory(connectionId, categoryId, opts)
+        : await this.mappingConfig.resolveDestinationCategory(connectionId, categoryId);
       if (resolved) {
         return resolved;
       }

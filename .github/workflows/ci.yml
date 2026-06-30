@@ -149,6 +149,12 @@ jobs:
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     env:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
+      # Ryuk (the Testcontainers reaper) requires a TCP callback from the
+      # container back to the host. On self-hosted DinD runners this callback
+      # fails because the Docker-in-Docker network is isolated. Disabling Ryuk
+      # is safe here: ephemeral containers are cleaned up by the runner's Docker
+      # daemon when the job exits anyway.
+      TESTCONTAINERS_RYUK_DISABLED: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

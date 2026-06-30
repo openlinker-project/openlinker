@@ -13,7 +13,12 @@
  *
  * @module libs/core/src/invoicing/domain/entities
  */
-import type { InvoiceStatus, RegulatoryStatus } from '../types/invoicing.types';
+import type {
+  InvoiceFailureCode,
+  InvoiceFailureMode,
+  InvoiceStatus,
+  RegulatoryStatus,
+} from '../types/invoicing.types';
 
 export class InvoiceRecord {
   constructor(
@@ -37,10 +42,66 @@ export class InvoiceRecord {
     public readonly errorMessage: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /**
+     * Neutral failure discriminator (#1200) — `null` unless `status === 'failed'`.
+     * `rejected` = provider definitely created no document (safe to re-attempt);
+     * `in-doubt` = the request may have issued a document (UNSAFE to re-attempt,
+     * surfaced for manual reconciliation). See {@link InvoiceFailureMode}.
+     */
+    public readonly failureMode: InvoiceFailureMode | null = null,
+    /**
+     * Neutral machine-readable failure code (W1) — `null` unless `status ===
+     * 'failed'`. Lets the FE drive a cause-specific affordance off the closed
+     * {@link InvoiceFailureCode} taxonomy without parsing the PII-tainted,
+     * never-exposed `errorMessage`.
+     */
+    public readonly failureCode: InvoiceFailureCode | null = null,
+    /**
+     * Short, PII-free human-readable failure summary (W1) — `null` unless
+     * `status === 'failed'`. Safe to expose to API callers, unlike the
+     * INTERNAL-ONLY `errorMessage`.
+     */
+    public readonly failureReason: string | null = null,
+    /**
+     * Lease expiry for the `issuing` CAS claim (#1200) — `null` unless this
+     * record currently holds the in-flight slot. A claim is only contended while
+     * `status === 'issuing'` AND the lease is in the future.
+     */
+    public readonly leaseExpiresAt: Date | null = null,
+    /**
+     * Whether the buyer carried a tax identifier at issue time. A neutral,
+     * denormalized presence flag (NOT the tax-id value, NOT "nip") that backs the
+     * `taxId=with|without` list filter (#1202) without joining to the Order. Set
+     * once on the write path; defaults `false` for legacy rows with no backfill.
+     */
+    public readonly hasBuyerTaxId: boolean = false,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */
   get isIssued(): boolean {
     return this.status === 'issued';
+  }
+
+  /**
+   * Pure derivation (#1200): a `failed` row is safe to re-attempt ONLY when the
+   * provider DEFINITELY created no document — a terminal `rejected` failure. An
+   * `in-doubt` failure (or an absent mode) is NEVER re-attemptable: the document
+   * may already exist, so it is surfaced for manual reconciliation.
+   */
+  get isReattemptableFailure(): boolean {
+    return this.status === 'failed' && this.failureMode === 'rejected';
+  }
+
+  /**
+   * Pure derivation (#1200): is this record's `issuing` claim still live at
+   * `now`? A live claim means another attempt holds the in-flight slot and a
+   * concurrent retry must NOT re-cross the provider boundary.
+   */
+  isLeaseLive(now: Date): boolean {
+    return (
+      this.status === 'issuing' &&
+      this.leaseExpiresAt !== null &&
+      this.leaseExpiresAt.getTime() > now.getTime()
+    );
   }
 }

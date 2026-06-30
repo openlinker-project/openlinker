@@ -149,22 +149,6 @@ export interface PaginatedInvoices {
   offset: number;
 }
 
-/** One corrected line item for `POST /invoices/:invoiceId/correct` (BE #1189).
- *  `originalLineNumber` is required; `newQuantity` / `newUnitPriceGross` are
- *  optional — omit the one you are not changing. */
-export interface CorrectionLineInput {
-  originalLineNumber: number;
-  newQuantity?: number;
-  newUnitPriceGross?: number;
-}
-
-/** Request body for `POST /invoices/:invoiceId/correct` (BE #1189). */
-export interface IssueCorrectionInput {
-  lines: CorrectionLineInput[];
-  reason?: string;
-  idempotencyKey?: string;
-}
-
 /** `POST /invoices/retry` request body (W6 #1245). Only `failed + rejected`
  *  records are retried server-side; every other state is skipped per-id. */
 export interface RetryInvoicesInput {
@@ -189,4 +173,19 @@ export interface RetryInvoicesResult {
   retried: number;
   skipped: number;
   results: RetryInvoiceResult[];
+}
+
+/** One corrected line for `POST /invoices/:invoiceId/correct` (#1241). */
+export interface CorrectionLineInput {
+  originalLineNumber: number;
+  newQuantity?: number;
+  newUnitPriceGross?: number;
+}
+
+/** `POST /invoices/:invoiceId/correct` request body (#1241). Mirrors
+ *  `IssueCorrectionCommand` minus the server-resolved fields. */
+export interface IssueCorrectionInput {
+  reason?: string;
+  lines: CorrectionLineInput[];
+  idempotencyKey?: string;
 }

@@ -35,7 +35,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { ListPickupPointsQueryDto } from './dto/list-pickup-points-query.dto';
 import { PickupPointResponseDto } from './dto/pickup-point-response.dto';
 
-@Roles('admin')
+@Roles('admin', 'operator')
 @ApiBearerAuth()
 @ApiTags('pickup-points')
 @Controller('pickup-points')

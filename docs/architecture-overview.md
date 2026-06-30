@@ -153,7 +153,7 @@ The system is organized into the following core bounded contexts:
 - **Location**: `libs/core/src/orders/`
 - **Capabilities**:
   - `OrderSourcePort` — cursor-based order-event ingestion from marketplaces *and* shops (`listOrderFeed` + `getOrder({externalOrderId})`)
-  - `OrderProcessorManagerPort` — order lifecycle on the destination shop (create / update-status / cancel / return)
+  - `OrderProcessorManagerPort` — destination-shop order creation (`createOrder`, the only base-port method); post-create status/tracking and lifecycle reads live in composable sub-capabilities (`OrderFulfillmentUpdater`, `OrderStatusWriteback`, …). The canonical OL-owned lifecycle state machine is deferred (#1032).
 
 ### 5. Customers
 - **Responsibility**: Customer identity resolution, customer projections, multi-origin identity management
@@ -191,6 +191,7 @@ The system is organized into the following core bounded contexts:
 - **Bulk-flow lifecycle (#726)**: a `BulkOfferCreationBatch` (#734) is the parent aggregate; four core application services own its phases — `BulkOfferCreationSubmitService` (intake, #736), `OfferCreationEnqueueService` / `OfferCreationExecutionService` (per-child enqueue + run, shared with single-offer), `BulkOfferCreationProgressService` (counter advancement gated at-most-once by `bulk_batch_advancements`, #737), and `BulkOfferCreationRetryService` (#742). All four delegate to the same single-offer primitives — there's no parallel "bulk" pipeline. `BulkOfferCreationRetryService` reopens a terminal-state batch: per failed record it deletes the `bulk_batch_advancements` row, decrements `failedCount` lock-stepped to the record reset, then transitions `completed | partially-failed | failed → running` once after the loop. The per-record V2 payload is rebuilt from the persisted `request` snapshot + the parent batch's `sharedConfig.generateDescription` / `sharedConfig.descriptionTone` (the snapshot itself doesn't carry AI flags — they're batch-scoped). Each retry wave uses a wave-distinct idempotency key (`bulk:{batchId}:variant:{variantId}:retry:{retryWaveId}`) to bypass the 7-day TTL on the original submit's dedup gate.
 - **Multi-variant expansion (#824)**: `BulkOfferCreationSubmitService.submit` treats each submitted id as a primary-variant id and, for a **multi-variant** product, expands it into one offer-creation job per sibling variant before persisting the batch (so `totalCount` matches the real fan-out). Each variant-offer sources its `stock.available` from per-variant master inventory (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — **master is authoritative, including 0**, so an out-of-stock variant lists as 0 rather than being backfilled with the operator's bulk quantity (the operator quantity stays the source for single-variant / passthrough offers). Each offer self-links to its own Allegro catalog product by its own barcode (siblings drop the wizard-resolved `productCardId`). Allegro auto-groups the resulting offers into one buyer-facing listing from the Product Catalog (GTIN + distinguishing parameter) — the explicit variant-set API (`/sale/offer-variants`) was removed 14 Apr 2026 and is not used. Single-variant products and unknown ids pass through unchanged. Emitting OL variant `attributes` as explicit Allegro distinguishing parameters is a deferred follow-up (grouping already works off each variant's own catalog product).
 - **Neutral variant-grouping command field (#1065)**: `OfferBuilderService.buildCreateOfferCommand` stamps a platform-neutral `CreateOfferCommand.variantGroup` (`OfferVariantGroup` = an opaque `groupId` shared by every sibling — today the parent OL product id — plus this variant's distinguishing `attributes`, flattened from `ProductVariant.attributes`) for a sibling of a **multi-variant** product (`getVariantsByProductId(...).length > 1`); single-variant / simple products leave it absent and list standalone. The field is the marketplace-neutral seam for explicit grouping: explicit-grouping adapters map it to their wire shape (Erli → `externalVariantGroup` + `attributes`, #986; `groupId` is BODY-ONLY and must never be path-routed), while auto-grouping adapters (Allegro) ignore it and group off their own catalog product (#824). No platform name leaks into core — the adapter owns the neutral→wire mapping.
+- **Borrowed-taxonomy mapping reuse (#1045, [ADR-023](./architecture/adrs/023-cross-platform-category-and-attribute-projection.md) §40/§83)**: a destination that *borrows* its taxonomy (Erli — accepts Allegro ids verbatim, ships no `CategoryBrowser`/`CategoryParametersReader`) reuses an operator's existing PrestaShop→Allegro **category and attribute** mappings with **zero re-authoring**. It declares the owner taxonomy it consumes via the `TaxonomyBorrower` capability (`getBorrowedTaxonomy(): TaxonomyOwner`, e.g. `'allegro'`); `OfferBuilderService` threads that value + the master `sourceConnectionId` into `CategoryResolutionService` and `AttributeProjectionService`, which fall back from a destination-keyed lookup to the owner's provenance-matching rows (`destination_taxonomy_provenance`). Capability-driven, never `platformType`; the downstream `source:"allegro"` emission was already in place (#985/#1096) — #1045 wired the resolution half.
 
 ### 7. Sync Manager
 *See [ADR-007](./architecture/adrs/007-syncjob-status-vs-outcome-split.md) for the decision rationale.*
@@ -257,6 +258,18 @@ The system is organized into the following core bounded contexts:
 - **Storage**: `prompt_templates` table with four partial unique indexes honouring `NULL`-distinct semantics on the nullable `channel` column (version uniqueness + "at most one published per `(key, channel)`").
 - **Telemetry**: per-completion structured log `{ requestId, model, latencyMs, inputTokens, outputTokens, cachedInputTokens }`; publish / revert actions log `{ templateId, key, channel, version, actor }`.
 - **Worker registration (#737)**: `AiIntegrationModule.register()` is registered in `apps/worker/src/plugins.ts` so the bulk-flow `marketplace.offer.create` handler can call `ContentSuggestionService.suggestDescription()` per-job for AI-generated offer descriptions. `AI_COMPLETION_PORT_TOKEN` resolves through `PluginRegistryModule.forRoot({ plugins: workerPlugins })` in the worker's `AppModule`. The suggestion binding lives at `apps/worker/src/content/worker-content.module.ts` (mirrors `apps/api/src/content/content.module.ts`) — it cannot live in `libs/core/src/content/content.module.ts` because that would force core to value-import `@openlinker/integrations-ai`, reversing the core → integration dependency direction.
+
+### 14. Invoicing
+
+*See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for the country-agnostic design.*
+
+- **Responsibility**: Issue fiscal documents for orders, optionally submit them to a tax authority for clearance, and reconcile the authority-assigned identifier + receipt. **Country-agnostic by construction** — no `NIP`/`KSeF`/`FA`/`VAT`-specific vocabulary lives in `libs/core`; all national specifics are confined to the provider adapter package.
+- **Key Entities**: `InvoiceRecord` (neutral projection of an issued document), value types `DocumentType`, `InvoiceStatus` (`pending | issued | failed`), `RegulatoryStatus` (`not-applicable | submitted | cleared | accepted | rejected`).
+- **Location**: `libs/core/src/invoicing/`.
+- **Capability**: `InvoicingPort` (base — `issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) plus two composable sub-capabilities in `domain/ports/capabilities/`, each with a co-located `is*` guard:
+  - `RegulatoryStatusReader` — read the clearance status of a previously-submitted document.
+  - `RegulatoryTransmitter` (extends `RegulatoryStatusReader`) — submit a document for clearance + read its status. `getSupportedDocumentTypes()` is value-level discovery (which neutral types a provider can issue), distinct from the method-bearing sub-capability.
+- **First provider**: **KSeF** (Polish national e-invoicing), `@openlinker/integrations-ksef`, adapterKey `ksef.publicapi.v2`, registry capability `Invoicing`. The C2 plugin skeleton is wired (connection config + credentials validators registered; adapter dispatches `Invoicing` from the factory); the `KsefInvoicingAdapter` is a stub and all mutating methods throw until C4 ships the issuance mechanics. The target design: FA(3) `VAT` + `KOR` documents issued and cleared through the async submit→poll→UPO model, with the `RegulatoryTransmitter` sub-capability (guard `isRegulatoryTransmitter`) narrowed at call sites. See the [KSeF setup guide](./integrations/ksef/setup-guide.md) for the full target flow, current limitations, and compliance caveats.
 
 ---
 
@@ -395,42 +408,35 @@ export class ProductSyncService {
 
 ### OrderProcessorManagerPort
 
-**Purpose**: Orchestrates order lifecycle (creation, status changes, cancellations, returns).
+**Purpose**: Create orders on a destination shop. The base port carries only `createOrder` — the single method every order destination must implement. Post-create status/tracking writes, lifecycle reads, and option discovery are split into composable sub-capabilities (mirroring `OfferManagerPort`); a full OL-owned order-lifecycle state machine (`updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders` as authoritative operations) is **deferred** — see #1032.
 
 **Interface**:
 ```typescript
 interface OrderProcessorManagerPort {
   /**
-   * Create a new order
+   * Create a new order on the destination shop.
+   *
+   * Returns the destination-native external order id (OrderRef.orderId),
+   * never an internal OpenLinker id (#909). Idempotency and the
+   * external↔internal mapping write are owned by OrderSyncService under a
+   * per-(order, destination) lock — the adapter creates unconditionally.
+   * Lines MUST be priced at the buyer-paid source price (#895, ADR-014).
    */
-  createOrder(order: OrderCreate): Promise<Order>;
-  
-  /**
-   * Get order by ID
-   */
-  getOrder(orderId: string): Promise<Order>;
-  
-  /**
-   * Update order status
-   */
-  updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order>;
-  
-  /**
-   * Cancel an order
-   */
-  cancelOrder(orderId: string, reason?: string): Promise<Order>;
-  
-  /**
-   * Process return/refund
-   */
-  processReturn(orderId: string, returnData: ReturnData): Promise<Order>;
-  
-  /**
-   * Get orders with filters
-   */
-  getOrders(filters: OrderFilters): Promise<Order[]>;
+  createOrder(order: OrderCreate): Promise<OrderRef>;
 }
 ```
+
+**Sub-capabilities** (in `libs/core/src/orders/domain/ports/capabilities/`):
+
+Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Destinations declare what they support via `implements OrderProcessorManagerPort, OrderFulfillmentUpdater, …`; call sites resolve the destination adapter via `getCapabilityAdapter<OrderProcessorManagerPort>(connectionId, 'OrderProcessorManager')`, narrow with the guard, and degrade gracefully (skip) when a destination doesn't implement it.
+
+| Capability | Method(s) | Notes |
+|---|---|---|
+| `OrderFulfillmentUpdater` | `updateFulfillment({ externalOrderId, status, trackingNumber? })` | Push a post-create status + tracking update to the destination order (#837). PrestaShop maps the neutral `OrderStatus` to its native state. |
+| `OrderStatusWriteback` | `write(event: OrderLifecycleEvent)` | Relay-based, source-bound order-status round-trip — push a status change back to the originating marketplace (#1157, [ADR-027](./architecture/adrs/027-order-status-writeback-capability-and-relay.md)). |
+| `FulfillmentStatusReader` | `getFulfillmentStatus({ externalOrderId })` | Read a destination order's current fulfillment status. |
+| `DestinationOptionsReader` | `listCarriers()`, `listOrderStatuses()`, `listPaymentMethods()` | Discover the destination's option vocabulary for mapping. |
+| `SourceOptionsReader` | `listOrderStatuses()`, `listDeliveryMethods()`, `listPaymentMethods()` | Discover a source's option vocabulary for mapping. |
 
 **Current Implementations**: `PrestashopOrderProcessorAdapter`, `WooCommerceOrderProcessorAdapter`
 
@@ -478,6 +484,8 @@ interface OfferManagerPort {
 
 Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Adapters declare the capabilities they support via `implements OfferManagerPort, OfferLister, OfferCreator, …`; call sites narrow via the guard before invoking the method — after the guard TypeScript knows the method is present.
 
+> The table below is a curated highlight. The **complete, code-synced inventory of all 31 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
+
 | Capability | Method |
 |---|---|
 | `OfferLister` | `listOffers(input)` |
@@ -493,9 +501,9 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
 | `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
-**Current Implementation**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`).
+**Current Implementations**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984).
 
-**Future Implementations**: `ShopifyOfferManagerAdapter`, `WooCommerceOfferManagerAdapter`, `EbayOfferManagerAdapter`, `ErliOfferManagerAdapter` (#984 — plugin skeleton registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
+**Future Implementations**: `ShopifyOfferManagerAdapter`, `EbayOfferManagerAdapter`.
 
 ### Future Capability Ports
 
@@ -1138,16 +1146,18 @@ The rule applies only to imports from the bare top-level barrel `@openlinker/cor
 
 ### Current dependency map
 
-Audited 2026-05-15 from `libs/core/src/**`:
+Audited 2026-06-26 from `libs/core/src/**`:
 
 ```mermaid
 graph LR
   orders --> customers
   orders --> identifier-mapping
   orders --> integrations
+  orders --> invoicing
   orders --> mappings
   orders --> products
   orders --> sync
+  invoicing --> orders
   customers --> identifier-mapping
   customers --> integrations
   customers --> orders
@@ -1181,7 +1191,7 @@ graph LR
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
 
-The `orders ↔ customers` and `listings ↔ inventory` (the latter added for #824) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes (and at the NestJS module layer the back-edge — `inventory → listings` — is type/token-only, not a module import, so `ListingsModule` can import `InventoryModule` without a DI cycle). The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
+The `orders ↔ customers`, `listings ↔ inventory` (the latter added for #824), and `orders ↔ invoicing` (#1120) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The NestJS module-graph back-edges (`inventory → listings` type/token-only; `invoicing → orders` via the `@openlinker/core/orders/types` sub-barrel that omits `OrdersModule`) avoid DI cycles. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
 
 ### Enforcement
 

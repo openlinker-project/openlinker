@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1125 — User Management · UI Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   OpenLinker cockpit tokens (light) — from apps/web/src/index.css
+   ============================================================ */
+:root {
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-neutral-soft: oklch(95% 0.005 80);
+  --status-neutral-border: oklch(85% 0.008 80);
+  --status-neutral-fg: oklch(38% 0.010 80);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+  --shadow-sm: 0 1px 2px oklch(20% 0.01 80 / 0.06);
+  --shadow-md: 0 4px 14px oklch(20% 0.01 80 / 0.08);
+  --shadow-lg: 0 12px 40px oklch(20% 0.01 80 / 0.14);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---- Mockup scaffold ---- */
+.sheet { max-width: 1200px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); }
+.sheet__title { font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 var(--space-1); }
+.sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-6); }
+.spec-eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted);
+  margin: var(--space-7) 0 var(--space-3); display: flex; align-items: center; gap: var(--space-3);
+}
+.spec-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.note { font-size: 12px; color: var(--text-muted); margin: var(--space-2) 0 0; font-style: italic; }
+.stage {
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  display: flex; gap: var(--space-5); flex-wrap: wrap; align-items: flex-start;
+}
+.stage--center { justify-content: center; }
+
+/* ============================================================
+   Primitives (mirror apps/web/src/index.css)
+   ============================================================ */
+.button {
+  font: inherit; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-md); border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 7px 14px; font-size: 13px; line-height: 18px;
+  white-space: nowrap; transition: background 100ms;
+}
+.button--primary {
+  background: var(--accent-primary); color: var(--text-on-primary);
+  border-color: var(--accent-primary);
+}
+.button--primary:hover { background: var(--accent-primary-hover); }
+.button--ghost {
+  background: transparent; color: var(--text-primary);
+  border-color: var(--border-default);
+}
+.button--ghost:hover { background: var(--bg-surface-hover); }
+.button--danger {
+  background: var(--status-error-soft); color: var(--status-error-fg);
+  border-color: var(--status-error-border);
+}
+.button--sm { padding: 4px 10px; font-size: 12px; }
+.button--icon { padding: 6px; border-radius: var(--radius-md); }
+
+.input {
+  font: inherit; font-size: 13px; width: 100%;
+  padding: 7px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface); color: var(--text-primary);
+  outline: none;
+}
+.input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-ring); }
+.input::placeholder { color: var(--text-disabled); }
+
+.select {
+  font: inherit; font-size: 13px;
+  padding: 6px 28px 6px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  appearance: none; -webkit-appearance: none;
+  color: var(--text-primary); cursor: pointer;
+}
+.select:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-ring); outline: none; }
+
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 500; line-height: 18px;
+  white-space: nowrap; border: 1px solid transparent;
+}
+.badge--active { background: var(--status-success-soft); color: var(--status-success-fg); border-color: var(--status-success-border); }
+.badge--pending { background: var(--status-warning-soft); color: var(--status-warning-fg); border-color: var(--status-warning-border); }
+.badge--deactivated { background: var(--status-neutral-soft); color: var(--status-neutral-fg); border-color: var(--status-neutral-border); }
+.badge--admin { background: var(--accent-primary-soft); color: var(--accent-primary); border-color: var(--accent-primary-border); }
+.badge--viewer { background: var(--status-neutral-soft); color: var(--status-neutral-fg); border-color: var(--status-neutral-border); }
+
+.form-group { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.form-group label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.form-help { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+/* ============================================================
+   Data Table
+   ============================================================ */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  text-align: left; padding: 8px 12px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);
+}
+.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--bg-surface-hover); }
+
+/* ============================================================
+   Guest layout (mirrors apps/web — guest-layout + guest-page)
+   ============================================================ */
+.guest-shell {
+  min-height: 340px; background: var(--bg-canvas);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-6);
+}
+.guest-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  width: 360px; padding: var(--space-6);
+}
+.guest-card__eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent-primary); margin-bottom: var(--space-1);
+}
+.guest-card__title { font-size: 18px; font-weight: 700; margin: 0 0 var(--space-1); letter-spacing: -0.01em; }
+.guest-card__desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 var(--space-5); line-height: 18px; }
+.guest-card__footer { margin-top: var(--space-4); text-align: center; font-size: 12px; color: var(--text-muted); }
+.guest-card__footer a { color: var(--text-link); text-decoration: none; font-weight: 500; }
+.guest-card__footer a:hover { text-decoration: underline; }
+.guest-card__divider { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-4) 0; }
+.alert {
+  border-radius: var(--radius-md); padding: 8px 12px;
+  font-size: 12.5px; line-height: 18px;
+  display: flex; gap: 8px; align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+.alert--info { background: var(--status-info-soft); color: var(--status-info-fg); border: 1px solid var(--status-info-border); }
+.alert--success { background: var(--status-success-soft); color: var(--status-success-fg); border: 1px solid var(--status-success-border); }
+
+/* ============================================================
+   App shell chrome (simplified nav strip)
+   ============================================================ */
+.app-chrome {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.app-topbar {
+  padding: 10px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+.app-topbar__logo { font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+.app-topbar__breadcrumb { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.app-topbar__breadcrumb span { color: var(--text-primary); font-weight: 500; }
+.app-body { padding: 24px; }
+.page-header { margin-bottom: var(--space-5); display: flex; align-items: flex-start; justify-content: space-between; }
+.page-title { font-size: 18px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.01em; }
+.page-desc { font-size: 12.5px; color: var(--text-muted); margin: 0; }
+
+.tabs-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-5); }
+.tab {
+  padding: 8px 14px; font-size: 13px; font-weight: 500;
+  color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+}
+.tab--active { color: var(--text-primary); border-bottom-color: var(--accent-primary); }
+
+.pending-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--status-warning-soft); color: var(--status-warning-fg);
+  border-radius: var(--radius-pill); font-size: 10.5px; font-weight: 600;
+  min-width: 18px; height: 18px; padding: 0 5px;
+}
+
+/* ============================================================
+   Action popover / inline form
+   ============================================================ */
+.inline-approve {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 12px;
+  min-width: 220px;
+  position: relative;
+}
+.inline-approve__label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+.inline-approve__row { display: flex; gap: 6px; margin-top: 8px; }
+
+/* ============================================================
+   Filter bar
+   ============================================================ */
+.filter-bar { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); flex-wrap: wrap; align-items: center; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default); font-size: 12px;
+  background: var(--bg-surface); cursor: pointer; font-weight: 500;
+  color: var(--text-secondary);
+}
+.filter-chip--active { background: var(--accent-primary-soft); color: var(--accent-primary); border-color: var(--accent-primary-border); }
+.filter-search {
+  font: inherit; font-size: 12.5px; padding: 5px 10px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border-default);
+  background: var(--bg-surface); color: var(--text-primary);
+  width: 200px;
+}
+
+/* ============================================================
+   Empty state
+   ============================================================ */
+.empty-state {
+  padding: 40px 20px; text-align: center;
+  border: 1.5px dashed var(--border-default); border-radius: var(--radius-lg);
+}
+.empty-state__icon { font-size: 32px; margin-bottom: 8px; opacity: 0.3; }
+.empty-state__title { font-weight: 600; margin: 0 0 4px; }
+.empty-state__desc { font-size: 12.5px; color: var(--text-muted); }
+
+/* ---- Actions cell ---- */
+.row-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.role-select-inline { font: inherit; font-size: 12px; padding: 3px 22px 3px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center; appearance: none; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <p class="mono" style="font-size:11px;color:var(--text-muted);margin:0 0 4px">#1125 — Self-service registration + admin approval + user-management UI</p>
+  <h1 class="sheet__title">User Management — UI Mockups</h1>
+  <p class="sheet__sub">Low-fidelity screens for review. Three surfaces: (1) self-registration page, (2) admin pending-approval queue, (3) full user-management list. All three share the cockpit token set and IBM Plex type pairing per <code>docs/frontend-ui-style-guide.md</code>.</p>
+
+
+  <!-- =====================================================
+       SCREEN 1 — Registration page (guest route /register)
+       ===================================================== -->
+  <div class="spec-eyebrow">Screen 1 — /register · Guest route (public, @Public())</div>
+  <p class="note">Mirrors the existing /login guest layout. Shown when OL_REGISTRATION_ENABLED=true. When registration is disabled, the /register path returns HTTP 410 and the FE shows an appropriate message (not mocked here).</p>
+
+  <div class="stage stage--center" style="margin-top:16px">
+    <!-- Variant A — empty form -->
+    <div>
+      <p class="mono" style="font-size:11px;color:var(--text-muted);margin:0 0 8px">A — empty state</p>
+      <div class="guest-shell" style="min-width:380px">
+        <div class="guest-card">
+          <p class="guest-card__eyebrow">OpenLinker</p>
+          <h2 class="guest-card__title">Create an account</h2>
+          <p class="guest-card__desc">Your registration will be reviewed by an admin before you can sign in.</p>
+
+          <div class="form-group">
+            <label>Username</label>
+            <input class="input" placeholder="e.g. jan.kowalski" />
+          </div>
+          <div class="form-group">
+            <label>Email address</label>
+            <input class="input" type="email" placeholder="jan@example.com" />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input class="input" type="password" placeholder="Min. 8 characters" />
+          </div>
+          <div class="form-group" style="margin-bottom:var(--space-4)">
+            <label>Confirm password</label>
+            <input class="input" type="password" placeholder="" />
+          </div>
+
+          <button class="button button--primary" style="width:100%;justify-content:center">
+            Request access
+          </button>
+          <div class="guest-card__footer">
+            Already have an account? <a href="#">Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variant B — success state -->
+    <div>
+      <p class="mono" style="font-size:11px;color:var(--text-muted);margin:0 0 8px">B — submitted (pending)</p>
+      <div class="guest-shell" style="min-width:380px">
+        <div class="guest-card">
+          <p class="guest-card__eyebrow">OpenLinker</p>
+          <h2 class="guest-card__title">Request submitted</h2>
+          <p class="guest-card__desc">Your account request has been sent to the admin. You will be able to sign in once it's approved.</p>
+
+          <div class="alert alert--success">
+            <span>✓</span>
+            <span>Registration submitted for <strong>jan.kowalski</strong>. Check back later or contact your admin.</span>
+          </div>
+
+          <button class="button button--ghost" style="width:100%;justify-content:center;margin-top:4px">
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variant C — validation error -->
+    <div>
+      <p class="mono" style="font-size:11px;color:var(--text-muted);margin:0 0 8px">C — validation error</p>
+      <div class="guest-shell" style="min-width:380px">
+        <div class="guest-card">
+          <p class="guest-card__eyebrow">OpenLinker</p>
+          <h2 class="guest-card__title">Create an account</h2>
+          <p class="guest-card__desc">Your registration will be reviewed by an admin before you can sign in.</p>
+
+          <div class="form-group">
+            <label>Username</label>
+            <input class="input" value="jan.kowalski" style="border-color:var(--status-error)" />
+            <span style="font-size:11.5px;color:var(--status-error-fg);margin-top:2px">Username is already taken</span>
+          </div>
+          <div class="form-group">
+            <label>Email address</label>
+            <input class="input" type="email" value="jan@example.com" />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input class="input" type="password" value="••••••••" />
+          </div>
+          <div class="form-group" style="margin-bottom:var(--space-4)">
+            <label>Confirm password</label>
+            <input class="input" type="password" value="••••••" style="border-color:var(--status-error)" />
+            <span style="font-size:11.5px;color:var(--status-error-fg);margin-top:2px">Passwords do not match</span>
+          </div>
+
+          <button class="button button--primary" style="width:100%;justify-content:center">
+            Request access
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Layout: identical to <code>LoginPage</code> — <code>GuestLayout</code> wrapping a <code>section.guest-page</code> → <code>RegisterForm</code>. No shell chrome. Link "Already have an account? Sign in" links to <code>/login</code>. On success: show Variant B in-place (no redirect until admin approves).</p>
+
+
+  <!-- =====================================================
+       SCREEN 2 — Pending approvals (admin tab)
+       ===================================================== -->
+  <div class="spec-eyebrow">Screen 2 — /admin/users · "Pending" tab · Admin-only route</div>
+  <p class="note">The Users page has two tabs: "All users" and "Pending (N)". The badge count on the Pending tab provides ambient pressure visibility (Status First principle). Shown here: the Pending tab selected with three registrations in queue.</p>
+
+  <div class="stage" style="margin-top:16px">
+    <div class="app-chrome" style="flex:1;min-width:760px">
+
+      <!-- Top bar -->
+      <div class="app-topbar">
+        <div class="app-topbar__logo">OpenLinker</div>
+        <div class="app-topbar__breadcrumb">
+          Platform
+          <span style="color:var(--text-muted)">›</span>
+          <span>Users</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mono" style="font-size:11px;color:var(--text-muted)">admin</span>
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-primary-soft);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--accent-primary)">A</div>
+        </div>
+      </div>
+
+      <div class="app-body">
+        <!-- Page header -->
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Users</h1>
+            <p class="page-desc">Manage team members and pending access requests.</p>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-bar">
+          <div class="tab">All users <span class="mono" style="font-size:11px;color:var(--text-muted)">4</span></div>
+          <div class="tab tab--active">
+            Pending
+            <span class="pending-count">3</span>
+          </div>
+        </div>
+
+        <!-- Pending table -->
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Requested</th>
+              <th>Assign role &amp; approve</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <!-- Row 1 — inline approve open -->
+            <tr style="background:var(--accent-primary-soft)">
+              <td>
+                <span style="font-weight:500">anna.nowak</span>
+              </td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">anna@example.com</td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-23 14:02</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <select class="select" style="font-size:12px;padding:5px 24px 5px 8px">
+                    <option>admin</option>
+                    <option selected>viewer</option>
+                  </select>
+                  <button class="button button--primary button--sm">Approve</button>
+                </div>
+              </td>
+              <td>
+                <button class="button button--danger button--sm">Reject</button>
+              </td>
+            </tr>
+
+            <!-- Row 2 -->
+            <tr>
+              <td><span style="font-weight:500">piotr.wis</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">p.wis@corp.pl</td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-23 09:45</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <select class="select" style="font-size:12px;padding:5px 24px 5px 8px">
+                    <option>admin</option>
+                    <option selected>viewer</option>
+                  </select>
+                  <button class="button button--primary button--sm">Approve</button>
+                </div>
+              </td>
+              <td>
+                <button class="button button--danger button--sm">Reject</button>
+              </td>
+            </tr>
+
+            <!-- Row 3 -->
+            <tr>
+              <td><span style="font-weight:500">marta.k</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">marta@store.eu</td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-22 17:11</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <select class="select" style="font-size:12px;padding:5px 24px 5px 8px">
+                    <option>admin</option>
+                    <option selected>viewer</option>
+                  </select>
+                  <button class="button button--primary button--sm">Approve</button>
+                </div>
+              </td>
+              <td>
+                <button class="button button--danger button--sm">Reject</button>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="note">Each pending row shows approve-with-role inline (role select defaults to the least-privileged available role). Reject is destructive (confirmation dialog not mocked — standard browser confirm or a Radix AlertDialog). The badge on the tab header is derived from the pending-count query. When the queue is empty, the tab shows a zero-pressure empty state ("No pending registrations").</p>
+
+
+  <!-- =====================================================
+       SCREEN 3 — Full user list (admin, "All users" tab)
+       ===================================================== -->
+  <div class="spec-eyebrow">Screen 3 — /admin/users · "All users" tab · Role change + deactivate/reactivate</div>
+  <p class="note">Paginated list of all users (pending excluded — they're on the Pending tab). Shows current role and status. Admin can change role via inline select (auto-saves on change) and toggle status (deactivate ↔ reactivate).</p>
+
+  <div class="stage" style="margin-top:16px">
+    <div class="app-chrome" style="flex:1;min-width:760px">
+
+      <div class="app-topbar">
+        <div class="app-topbar__logo">OpenLinker</div>
+        <div class="app-topbar__breadcrumb">
+          Platform
+          <span style="color:var(--text-muted)">›</span>
+          <span>Users</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mono" style="font-size:11px;color:var(--text-muted)">admin</span>
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-primary-soft);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--accent-primary)">A</div>
+        </div>
+      </div>
+
+      <div class="app-body">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Users</h1>
+            <p class="page-desc">Manage team members and pending access requests.</p>
+          </div>
+        </div>
+
+        <div class="tabs-bar">
+          <div class="tab tab--active">All users <span class="mono" style="font-size:11px;color:var(--text-muted)">4</span></div>
+          <div class="tab">
+            Pending
+            <span class="pending-count">3</span>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar">
+          <input class="filter-search" placeholder="Search by username or email…" />
+          <div class="filter-chip filter-chip--active">All statuses</div>
+          <div class="filter-chip">Active</div>
+          <div class="filter-chip">Deactivated</div>
+        </div>
+
+        <!-- Users table -->
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Role</th>
+              <th>Member since</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <!-- Bootstrap admin — self, protected -->
+            <tr>
+              <td>
+                <span style="font-weight:500">admin</span>
+                <span class="mono" style="font-size:10.5px;color:var(--text-muted);margin-left:6px">you</span>
+              </td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">admin@openlinker.local</td>
+              <td><span class="badge badge--active">active</span></td>
+              <td><span class="badge badge--admin">admin</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-01</td>
+              <td>
+                <div class="row-actions">
+                  <!-- Can't deactivate yourself or demote yourself from admin -->
+                  <button class="button button--ghost button--sm" disabled style="opacity:0.38;cursor:not-allowed">Deactivate</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Active viewer — can change role and deactivate -->
+            <tr>
+              <td><span style="font-weight:500">anna.nowak</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">anna@example.com</td>
+              <td><span class="badge badge--active">active</span></td>
+              <td>
+                <select class="role-select-inline">
+                  <option>admin</option>
+                  <option selected>viewer</option>
+                </select>
+              </td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-23</td>
+              <td>
+                <div class="row-actions">
+                  <button class="button button--danger button--sm">Deactivate</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Active admin -->
+            <tr>
+              <td><span style="font-weight:500">piotr.wis</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">p.wis@corp.pl</td>
+              <td><span class="badge badge--active">active</span></td>
+              <td>
+                <select class="role-select-inline">
+                  <option selected>admin</option>
+                  <option>viewer</option>
+                </select>
+              </td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-23</td>
+              <td>
+                <div class="row-actions">
+                  <button class="button button--danger button--sm">Deactivate</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Deactivated -->
+            <tr style="opacity:0.72">
+              <td><span style="font-weight:500">marta.k</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-secondary)">marta@store.eu</td>
+              <td><span class="badge badge--deactivated">deactivated</span></td>
+              <td><span class="badge badge--viewer">viewer</span></td>
+              <td class="mono" style="font-size:12px;color:var(--text-muted)">2026-06-22</td>
+              <td>
+                <div class="row-actions">
+                  <button class="button button--ghost button--sm">Reactivate</button>
+                </div>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+
+        <!-- Pagination placeholder -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;">
+          <span style="font-size:12px;color:var(--text-muted)">4 users</span>
+          <div style="display:flex;gap:4px;">
+            <button class="button button--ghost button--sm" disabled style="opacity:0.38">Previous</button>
+            <button class="button button--ghost button--sm" disabled style="opacity:0.38">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Role change: inline select fires PATCH /users/:id immediately on change (no separate Save). A brief toast confirms success. Deactivated users get reduced opacity and a Reactivate button instead of Deactivate. The current session user ("you") can't deactivate themselves or change their own role — those actions are disabled. Pending users are excluded from this view (they appear only on the Pending tab).</p>
+
+
+  <!-- =====================================================
+       SCREEN 4 — Empty queue state (no pending registrations)
+       ===================================================== -->
+  <div class="spec-eyebrow">Screen 4 — Pending tab · Empty queue state</div>
+  <div class="stage" style="margin-top:16px">
+    <div class="app-chrome" style="flex:1;min-width:600px">
+      <div class="app-topbar">
+        <div class="app-topbar__logo">OpenLinker</div>
+        <div class="app-topbar__breadcrumb">Platform <span style="color:var(--text-muted)">›</span> <span>Users</span></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--accent-primary-soft);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--accent-primary)">A</div>
+      </div>
+      <div class="app-body">
+        <div class="page-header">
+          <div><h1 class="page-title">Users</h1><p class="page-desc">Manage team members and pending access requests.</p></div>
+        </div>
+        <div class="tabs-bar">
+          <div class="tab">All users <span class="mono" style="font-size:11px;color:var(--text-muted)">4</span></div>
+          <div class="tab tab--active">Pending <span class="mono" style="font-size:11px;color:var(--text-muted)">0</span></div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state__icon">✓</div>
+          <p class="empty-state__title">No pending registrations</p>
+          <p class="empty-state__desc">New registration requests will appear here for you to approve or reject.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">When the queue is empty the pending count badge is hidden (or shows 0). Standard empty state pattern per the UI style guide.</p>
+
+
+  <!-- =====================================================
+       Notes
+       ===================================================== -->
+  <div class="spec-eyebrow">Design notes &amp; open questions</div>
+  <ul style="font-size:13px;line-height:22px;color:var(--text-secondary);margin:12px 0 0;padding-left:20px">
+    <li><strong>Nav placement:</strong> "Users" appears under a "Platform" group in the sidebar nav, admin-only (guarded by <code>usePermission('users:read')</code> once that permission is wired).</li>
+    <li><strong>Role options:</strong> The approve and role-change selects are populated from the server-known role list. When #1126 adds <code>operator</code>, it appears automatically with no FE change.</li>
+    <li><strong>Self-protection:</strong> The backend rejects requests that would deactivate or demote the caller's own account. The UI pre-emptively disables those actions for the current session user.</li>
+    <li><strong>Reject confirmation:</strong> Uses a Radix AlertDialog (not a browser confirm) to match the existing destructive-action pattern in the app.</li>
+    <li><strong>Registration toggle:</strong> When <code>OL_REGISTRATION_ENABLED=false</code> (default), <code>GET /register</code> redirects to <code>/login</code> and the login page shows no "Create account" link.</li>
+    <li><strong>Role change on active session:</strong> The role change takes effect on the user's next session (next JWT refresh). No forced logout from the admin side in v1.</li>
+    <li><strong>Pagination:</strong> Page size 25, offset-based, matching existing patterns in the app.</li>
+    <li><strong>Out of scope for this issue:</strong> Secret redaction (#1124), operator role (#1126), OL_DEMO_MODE (#1127).</li>
+  </ul>
+
+</div>
+</body>
+</html>

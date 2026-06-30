@@ -57,6 +57,34 @@ export class CategoryMappingRepository implements CategoryMappingRepositoryPort 
     return matches[0] ? this.toDomain(matches[0]) : null;
   }
 
+  async findBySourceCategoryByProvenance(
+    destinationTaxonomyProvenance: string,
+    sourceCategoryId: string,
+    sourceConnectionId?: string | null
+  ): Promise<CategoryMapping | null> {
+    // Borrowed-taxonomy reuse (#1045): resolve against any destination connection
+    // that authored a row under this owner provenance. When the source store is
+    // known, match it OR the source-agnostic (NULL) historical rows — a NULL-source
+    // row is a wildcard that applies to any source store.
+    const where =
+      sourceConnectionId != null
+        ? [
+            { destinationTaxonomyProvenance, sourceCategoryId, sourceConnectionId },
+            { destinationTaxonomyProvenance, sourceCategoryId, sourceConnectionId: IsNull() },
+          ]
+        : { destinationTaxonomyProvenance, sourceCategoryId };
+    const matches = await this.repo.find({
+      where,
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    if (matches.length > 1) {
+      this.logger.warn(
+        `Ambiguous borrowed-taxonomy category mapping: ${matches.length} rows for provenance=${destinationTaxonomyProvenance} sourceCategory=${sourceCategoryId} sourceConnection=${sourceConnectionId ?? 'any'}; using oldest (id=${matches[0].id}). Source-connection scoping is a follow-up.`
+      );
+    }
+    return matches[0] ? this.toDomain(matches[0]) : null;
+  }
+
   async upsertMapping(
     destinationConnectionId: string,
     input: CategoryMappingInput

@@ -9,6 +9,7 @@
  */
 
 import type { UserRole } from '../types/role.types';
+import type { UserStatus } from '../types/user-status.types';
 
 export class User {
   constructor(
@@ -17,6 +18,7 @@ export class User {
     public readonly email: string | null,
     public readonly passwordHash: string,
     public readonly role: UserRole,
+    public readonly status: UserStatus,
     public readonly createdAt: Date,
     public readonly updatedAt: Date
   ) {}

@@ -15,7 +15,7 @@
  *
  * @module plugins/ksef/components
  */
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useRef, useState } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -60,8 +60,14 @@ export function KsefInvoiceCorrectionFlow({
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
 
+  // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
+  const idempotencyKeyRef = useRef(
+    `ksef-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+  );
+
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
+  const [linesError, setLinesError] = useState<string | null>(null);
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
     setLines((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
@@ -77,12 +83,23 @@ export function KsefInvoiceCorrectionFlow({
 
   function handleSubmit(): void {
     const parsedLines = parseLineRows(lines);
+    if (parsedLines.length === 0) {
+      setLinesError(
+        t(
+          'ksef.correction.linesRequired',
+          'At least one line with a line number is required.',
+        ),
+      );
+      return;
+    }
+    setLinesError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
           reason: reason.trim() !== '' ? reason.trim() : undefined,
           lines: parsedLines,
+          idempotencyKey: idempotencyKeyRef.current,
         },
       },
       {
@@ -114,7 +131,7 @@ export function KsefInvoiceCorrectionFlow({
   return (
     <div className="ksef-correction">
       {/* Header */}
-      <div className="section-card__head" style={{ border: 0, padding: '0 0 var(--space-3)' }}>
+      <div className="ksef-correction__head">
         <h3>{t('ksef.correction.title', 'Issue KOR correction')}</h3>
         <span className="section-card__provider">
           {t('ksef.correction.providerTag', 'KSeF · slot')}
@@ -122,7 +139,7 @@ export function KsefInvoiceCorrectionFlow({
       </div>
 
       {/* Original invoice reference */}
-      <div className="corr__orig">
+      <div className="ksef-correction__orig">
         <span>
           {t('ksef.correction.correcting', 'Correcting')}{' '}
           <strong>{invoice.providerInvoiceNumber ?? invoice.id}</strong>
@@ -146,7 +163,7 @@ export function KsefInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field" style={{ marginBottom: 'var(--space-4)' }}>
+      <div className="field ksef-correction__reason">
         <label htmlFor="ksef-reason">
           {t('ksef.correction.reasonLabel', 'Reason for correction')}
         </label>
@@ -165,13 +182,20 @@ export function KsefInvoiceCorrectionFlow({
       </div>
 
       {/* Line items */}
-      <div className="table-wrap" style={{ overflowX: 'auto' }}>
-        <table className="lineitems">
+      {linesError ? (
+        <p className="error-text" role="alert">
+          {linesError}
+        </p>
+      ) : null}
+      <div className="ksef-correction__table-scroll">
+        <table className="data-table">
           <thead>
             <tr>
               <th>{t('ksef.correction.col.lp', 'Lp')}</th>
-              <th style={{ minWidth: '80px' }}>{t('ksef.correction.col.newQty', 'New qty')}</th>
-              <th style={{ minWidth: '100px' }}>
+              <th className="ksef-correction__col-qty">
+                {t('ksef.correction.col.newQty', 'New qty')}
+              </th>
+              <th className="ksef-correction__col-price">
                 {t('ksef.correction.col.newPrice', 'New price')}
               </th>
               <th aria-label={t('ksef.correction.col.remove', 'Remove')} />
@@ -183,7 +207,7 @@ export function KsefInvoiceCorrectionFlow({
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--w-lp"
                     value={row.originalLineNumber}
                     onChange={(e) => updateLine(i, 'originalLineNumber', e.target.value)}
                     placeholder="1"
@@ -191,13 +215,12 @@ export function KsefInvoiceCorrectionFlow({
                     step={1}
                     aria-label={`${t('ksef.correction.lineNum', 'Line number')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '60px' }}
                   />
                 </td>
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--w-qty"
                     value={row.newQuantity}
                     onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
                     placeholder="—"
@@ -205,13 +228,12 @@ export function KsefInvoiceCorrectionFlow({
                     step="any"
                     aria-label={`${t('ksef.correction.newQty', 'New qty, line')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '80px' }}
                   />
                 </td>
                 <td>
                   <input
                     type="number"
-                    className="input input--num"
+                    className="input input--w-price"
                     value={row.newUnitPriceGross}
                     onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
                     placeholder="—"
@@ -219,7 +241,6 @@ export function KsefInvoiceCorrectionFlow({
                     step="any"
                     aria-label={`${t('ksef.correction.newPrice', 'New price, line')} ${i + 1}`}
                     disabled={isSubmitting}
-                    style={{ width: '100px' }}
                   />
                 </td>
                 <td>
@@ -242,7 +263,7 @@ export function KsefInvoiceCorrectionFlow({
         {t('ksef.correction.addLine', '+ Add line')}
       </Button>
 
-      <p className="corr-note" style={{ marginTop: 'var(--space-3)' }}>
+      <p className="ksef-correction__note">
         {t(
           'ksef.correction.note',
           'A KOR document corrects quantity and/or price per line. KSeF assigns a clearance number; OpenLinker reconciles the status automatically.',
@@ -251,7 +272,7 @@ export function KsefInvoiceCorrectionFlow({
 
       {/* Actions */}
       <div className="wizard__actions">
-        <span style={{ flex: 1 }} />
+        <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
           {t('ksef.correction.cancel', 'Cancel')}
         </Button>

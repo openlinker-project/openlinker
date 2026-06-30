@@ -23,7 +23,11 @@ import type { InpostCredentials } from '../domain/types/inpost-credentials.types
 import { InpostShippingAdapter } from '../infrastructure/adapters/inpost-shipping.adapter';
 import { InpostHttpClient } from '../infrastructure/http/inpost-http-client';
 
-const BASE_URLS: Readonly<Record<InpostEnvironment, string>> = {
+/**
+ * ShipX environment → base URL. Exported (#771) so the connection-tester
+ * adapter can build a probe `InpostHttpClient` without duplicating the map.
+ */
+export const BASE_URLS: Readonly<Record<InpostEnvironment, string>> = {
   sandbox: 'https://sandbox-api-shipx-pl.easypack24.net',
   production: 'https://api-shipx-pl.easypack24.net',
 };
@@ -38,7 +42,7 @@ export async function createInpostShippingAdapter(
   return new InpostShippingAdapter(client, config);
 }
 
-function extractConfig(connection: Connection): InpostConnectionConfig {
+export function extractConfig(connection: Connection): InpostConnectionConfig {
   const raw = (connection.config ?? {}) as Record<string, unknown>;
 
   const environment = raw.environment;
@@ -75,7 +79,7 @@ function extractConfig(connection: Connection): InpostConnectionConfig {
   };
 }
 
-async function resolveApiToken(
+export async function resolveApiToken(
   connection: Connection,
   credentialsResolver: CredentialsResolverPort,
 ): Promise<string> {

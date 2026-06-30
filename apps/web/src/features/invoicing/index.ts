@@ -19,9 +19,16 @@ export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
-export { useIssueCorrectionMutation } from './hooks/use-issue-correction-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
+export {
+  useIssueCorrectionMutation,
+  type IssueCorrectionVariables,
+} from './hooks/use-issue-correction-mutation';
+export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
+export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
+export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
+export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export type {
   InvoiceRecord,
@@ -31,8 +38,6 @@ export type {
   RegulatoryStatus,
   DocumentType,
   IssueInvoiceInput,
-  CorrectionLineInput,
-  IssueCorrectionInput,
   InvoiceFilters,
   InvoicePagination,
   PaginatedInvoices,
@@ -40,4 +45,6 @@ export type {
   RetryInvoicesResult,
   RetryInvoiceResult,
   RetryOutcome,
+  CorrectionLineInput,
+  IssueCorrectionInput,
 } from './api/invoicing.types';

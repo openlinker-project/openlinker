@@ -145,7 +145,11 @@ export function KsefSetupForm(): ReactElement {
         label="Seller NIP"
         name="sellerNip"
         error={form.formState.errors.sellerNip?.message}
+<<<<<<< HEAD
         description="10-digit Polish tax identifier of the issuing seller. Optional."
+=======
+        description="10-digit Polish tax identifier of the issuing seller. Required to issue invoices."
+>>>>>>> origin/main
       >
         <Input
           {...form.register('sellerNip')}
@@ -157,6 +161,93 @@ export function KsefSetupForm(): ReactElement {
       </FormField>
 
       <FormField
+<<<<<<< HEAD
+=======
+        label="Seller legal name"
+        name="sellerName"
+        error={form.formState.errors.sellerName?.message}
+        description="Registered company name (Podmiot1) printed on the invoice. Required to issue."
+      >
+        <Input
+          {...form.register('sellerName')}
+          placeholder="ACME Sp. z o.o."
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerName)}
+        />
+      </FormField>
+
+      <FormField
+        label="Address line 1"
+        name="sellerAddressLine1"
+        error={form.formState.errors.sellerAddressLine1?.message}
+        description="Street and building number. Required to issue."
+      >
+        <Input
+          {...form.register('sellerAddressLine1')}
+          placeholder="ul. Przykładowa 1"
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerAddressLine1)}
+        />
+      </FormField>
+
+      <FormField
+        label="Address line 2"
+        name="sellerAddressLine2"
+        error={form.formState.errors.sellerAddressLine2?.message}
+        description="Apartment, suite, or unit. Optional."
+      >
+        <Input
+          {...form.register('sellerAddressLine2')}
+          placeholder="(optional)"
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerAddressLine2)}
+        />
+      </FormField>
+
+      <FormField
+        label="City"
+        name="sellerCity"
+        error={form.formState.errors.sellerCity?.message}
+        description="Required to issue."
+      >
+        <Input
+          {...form.register('sellerCity')}
+          placeholder="Warszawa"
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerCity)}
+        />
+      </FormField>
+
+      <FormField
+        label="Postal code"
+        name="sellerPostalCode"
+        error={form.formState.errors.sellerPostalCode?.message}
+        description="Required to issue."
+      >
+        <Input
+          {...form.register('sellerPostalCode')}
+          placeholder="00-001"
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerPostalCode)}
+        />
+      </FormField>
+
+      <FormField
+        label="Country"
+        name="sellerCountryIso2"
+        error={form.formState.errors.sellerCountryIso2?.message}
+        description="ISO 3166-1 alpha-2 code. Defaults to PL."
+      >
+        <Input
+          {...form.register('sellerCountryIso2')}
+          placeholder="PL"
+          autoComplete="off"
+          invalid={Boolean(form.formState.errors.sellerCountryIso2)}
+        />
+      </FormField>
+
+      <FormField
+>>>>>>> origin/main
         label="Context identifier"
         name="contextIdentifier"
         error={form.formState.errors.contextIdentifier?.message}

@@ -285,4 +285,12 @@ describe('InvoicesListPage', () => {
       expect(bar?.getAttribute('aria-hidden')).toBe('true');
     });
   });
+
+  it('renders the clearanceReference (KSeF number) column when present', async () => {
+    const invoice = makeInvoice({ clearanceReference: '5260001246-20260625-A1B2-3D' });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [invoice], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    expect(await screen.findByText('5260001246-20260625-A1B2-3D')).toBeInTheDocument();
+  });
 });

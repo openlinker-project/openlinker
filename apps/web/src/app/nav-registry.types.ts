@@ -19,11 +19,10 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * Roles that the FE chrome gates against. Runtime array + derived union
  * follows the `as const` pattern from engineering standards § "Union Types".
  *
- * Today only `'admin'` is gated; the array exists so adding another role
- * (e.g. `'operator'`) is a single-file change rather than a type-rename
- * propagation across the contribution surface.
+ * `'operator'` is included so nav groups can declare `requiresRole: 'operator'`
+ * for operator-only sections without any further type changes.
  */
-export const RoleValues = ['admin'] as const;
+export const RoleValues = ['admin', 'operator'] as const;
 export type Role = (typeof RoleValues)[number];
 
 export type NavCountKey = keyof NavCounts;

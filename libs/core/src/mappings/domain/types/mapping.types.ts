@@ -65,6 +65,12 @@ export interface AttributeMappingInput {
   destinationParameterName: string;
   /** Per-category override; `null`/omitted ⇒ the connection-wide default row. */
   destinationCategoryId?: string | null;
+  /**
+   * Owner-taxonomy identifier the mapping is authored against (e.g. `'allegro'`).
+   * Defaults to `'allegro'` when omitted — mirrors `CategoryMappingInput` so a
+   * `borrows` destination (ERLI) can reuse it by provenance (#1045).
+   */
+  destinationTaxonomyProvenance?: string;
   /** Source→destination value translations (e.g. `Red → Czerwony`). */
   values?: { sourceValue: string; destinationValue: string }[];
 }

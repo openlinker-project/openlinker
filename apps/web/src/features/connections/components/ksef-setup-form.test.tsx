@@ -96,13 +96,64 @@ describe('KsefSetupForm', () => {
     };
     expect(payload.platformType).toBe('ksef');
     expect(payload.adapterKey).toBe('ksef.publicapi.v2');
+<<<<<<< HEAD
     // env (the C2 config-validator-gated field) + normalised NIP land in config.
     expect(payload.config.env).toBe('prod');
     expect(payload.config.sellerNip).toBe('1234567890');
+=======
+    // env (the C2 config-validator-gated field) + normalised NIP (nested under
+    // `config.seller`, the shape `resolveSeller` reads) land in config. Country
+    // defaults to PL, so the seller carries an address with just the ISO code.
+    expect(payload.config.env).toBe('prod');
+    expect(payload.config.seller).toEqual({
+      nip: '1234567890',
+      address: { countryIso2: 'PL' },
+    });
+>>>>>>> origin/main
     // Write-only: secret travels only in credentials, never in config.
     expect(payload.credentials).toEqual({ authType: 'qualified-seal', secret: 'super-secret-token' });
     expect(JSON.stringify(payload.config)).not.toContain('super-secret-token');
 
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
+<<<<<<< HEAD
+=======
+
+  it('assembles the full nested seller profile (#1223) from name + address fields', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-ksef', name: 'KSeF main' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    renderWithProviders(<KsefSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'KSeF main' } });
+    fireEvent.change(screen.getByLabelText('Seller NIP'), { target: { value: '1234567890' } });
+    fireEvent.change(screen.getByLabelText('Seller legal name'), {
+      target: { value: 'ACME Sp. z o.o.' },
+    });
+    fireEvent.change(screen.getByLabelText('Address line 1'), {
+      target: { value: 'ul. Przykładowa 1' },
+    });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Warszawa' } });
+    fireEvent.change(screen.getByLabelText('Postal code'), { target: { value: '00-001' } });
+    // Country lower-cased on input is normalised to uppercase by the schema.
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'pl' } });
+    fireEvent.change(screen.getByLabelText('Authentication secret'), {
+      target: { value: 'tok_secret_value' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect KSeF' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const payload = create.mock.calls[0][0] as { config: Record<string, unknown> };
+    // The nested shape `resolveSeller` reads; `line2` is omitted when blank.
+    expect(payload.config.seller).toEqual({
+      nip: '1234567890',
+      name: 'ACME Sp. z o.o.',
+      address: {
+        line1: 'ul. Przykładowa 1',
+        city: 'Warszawa',
+        postalCode: '00-001',
+        countryIso2: 'PL',
+      },
+    });
+  });
+>>>>>>> origin/main
 });
