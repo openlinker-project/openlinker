@@ -112,8 +112,16 @@ describe('ErliWebhookProvisioningAdapter', () => {
       );
     });
 
-    it('should report testPingTriggered=true when the ingress accepts the signature (non-401)', async () => {
+    it('should report testPingTriggered=true when the ingress accepts the signature (400, body rejected)', async () => {
       fetchSpy.mockResolvedValue({ status: 400 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(true);
+    });
+
+    it('should report testPingTriggered=true when the ingress accepts the signature (2xx)', async () => {
+      fetchSpy.mockResolvedValue({ status: 202 } as Response);
 
       const result = await adapter.install(CONNECTION_ID);
 
@@ -122,6 +130,14 @@ describe('ErliWebhookProvisioningAdapter', () => {
 
     it('should report testPingTriggered=false when the ingress rejects the signature (401)', async () => {
       fetchSpy.mockResolvedValue({ status: 401 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(false);
+    });
+
+    it('should report testPingTriggered=false on a transient ingress error (5xx) rather than mistaking it for an accepted signature', async () => {
+      fetchSpy.mockResolvedValue({ status: 500 } as Response);
 
       const result = await adapter.install(CONNECTION_ID);
 

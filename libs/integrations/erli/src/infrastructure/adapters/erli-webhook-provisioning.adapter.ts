@@ -154,8 +154,12 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
    * The body is intentionally empty: an authentic signature always reaches
    * `extractEnvelope`, which then rejects it (400, missing order id) — so a
    * successful self-test never enqueues a real `marketplace.order.sync` job.
-   * Only a genuine signature failure (401) counts as "not triggered"; the
-   * secret is never logged, only used in-memory for this one request.
+   * Only 2xx or 400 count as "signature accepted" — those are the only two
+   * outcomes reachable once `verify()` passes (route, or reject on the empty
+   * body); any other status (401 = signature rejected, 5xx = ingress error,
+   * a timeout, …) is treated as "not triggered" rather than mistaking a
+   * transient failure for a working signature. The secret is never logged,
+   * only used in-memory for this one request.
    *
    * Bounded by `SELF_TEST_TIMEOUT_MS`: a hung or unreachable OL ingress must
    * degrade to `testPingTriggered: false`, never block the caller — `install()`
@@ -176,7 +180,7 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
         body: '{}',
         signal: controller.signal,
       });
-      const ok = response.status !== 401;
+      const ok = response.status === 400 || (response.status >= 200 && response.status < 300);
       this.logger.log(
         `Erli webhook self-test ping for connection ${connectionId}: HTTP ${response.status} ` +
           `(signature ${ok ? 'accepted' : 'REJECTED'}).`,
