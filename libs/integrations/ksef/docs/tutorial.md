@@ -91,44 +91,25 @@ The KSeF connection wizard opens with all the fields needed for invoice issuance
 
 ![KSeF setup wizard — empty form](./assets/03-ol-ksef-wizard-empty.png)
 
-Fill in **Connection name** — a human-readable label, e.g. `KSeF — main seller`.
+Fill in the form:
 
-![Wizard — connection name filled in](./assets/04-ol-ksef-wizard-name.png)
+- **Connection name** — a human-readable label, e.g. `KSeF — main seller`.
+- **Environment**: `test`, `demo`, or `prod` to match where you generated the
+  token. The test environment is recommended for initial setup — documents
+  issued there have no legal force.
+- **Seller NIP** — the Polish tax ID (10 digits, no dashes).
+- **Seller legal name** and the full seller address (street, city, postal
+  code, country `PL`). These appear verbatim on every issued invoice.
+- **Authentication type** — either **KSeF authorization token** (paste the
+  token you generated in Part 1 — the common case) or **Qualified electronic
+  seal** for entities using a qualified e-seal certificate.
+- **Authentication secret** — the token or seal reference. Stored encrypted
+  and never shown again.
 
-Select **Environment**: `test`, `demo`, or `prod` to match where you generated
-the token. The test environment is recommended for initial setup — documents
-issued there have no legal force.
+![Wizard — all fields filled in, ready to submit](./assets/04-ol-ksef-wizard-filled.png)
 
-![Wizard — environment selector](./assets/05-ol-ksef-environment.png)
-
-Fill in **Seller NIP** — the Polish tax ID (10 digits, no dashes).
-
-![Wizard — seller NIP filled in](./assets/06-ol-ksef-nip.png)
-
-Fill in **Seller legal name** and the full seller address (street, city, postal
-code, country `PL`). These appear verbatim on every issued invoice.
-
-![Wizard — seller name and address filled in](./assets/07-ol-ksef-seller-address.png)
-
-Choose **Authentication type**. Two options are available:
-
-- **KSeF authorization token** — paste the token you generated in Part 1. This
-  is the most common option.
-- **Qualified electronic seal** — for entities using a qualified e-seal
-  certificate instead of a KSeF token.
-
-![Wizard — authentication type selector with both options visible](./assets/08-ol-ksef-auth-type.png)
-
-Paste your KSeF token (or seal certificate) into **Authentication secret**.
-The value is stored encrypted and never shown again.
-
-![Wizard — authentication secret field filled (value obscured)](./assets/09-ol-ksef-auth-secret.png)
-
-Click **Connect KSeF**. The connection is created with the **Invoicing** capability.
-
-![Connection created — Invoicing badge visible, Test connection button](./assets/10-ol-ksef-created.png)
-
-The new KSeF connection appears in the Connections list:
+Click **Connect KSeF**. The connection is created with the **Invoicing**
+capability and appears in the Connections list:
 
 ![Connections list — KSeF entry with Invoicing capability badge](./assets/11-ol-connections-with-ksef.png)
 
