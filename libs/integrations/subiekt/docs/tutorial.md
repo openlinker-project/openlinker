@@ -124,19 +124,13 @@ The guided setup wizard opens. Fill in the fields:
 ![Subiekt setup wizard — empty form](./assets/08-ol-subiekt-wizard-empty.png)
 
 - **Connection name** — a human-readable label, e.g. `My Subiekt`.
-
-  ![Wizard — connection name filled in](./assets/09-ol-wizard-name.png)
-
 - **Bridge URL** — the bridge base URL **without** a path suffix, e.g.
   `http://127.0.0.1:5005` (same machine) or `http://192.168.1.50:5005` (bridge
   on a different machine). The adapter appends `/api/…` paths automatically.
-
-  ![Wizard — bridge URL filled in](./assets/10-ol-wizard-bridge-url.png)
-
 - **Bridge token** — paste the value you set as `Auth__ApiKey` in Part 1b.
   Stored encrypted; never shown again after save.
 
-  ![Wizard — bridge token field filled (value obscured)](./assets/11-ol-wizard-token-filled.png)
+![Wizard — all fields filled in](./assets/09-ol-wizard-filled.png)
 
 Click **Connect Subiekt**. OpenLinker creates the connection record:
 
@@ -207,12 +201,10 @@ a NIP.
 ![Invoice panel — connection selected, "Issue invoice" button ready](./assets/23-ol-invoice-panel-ready-to-issue.png)
 
 Click **Issue invoice**. OpenLinker sends the command to the bridge → bridge calls
-Sfera → Subiekt nexo creates the document. The panel transitions through
-**Issuing…** to **Issued**.
+Sfera → Subiekt nexo creates the document. The panel briefly shows **Issuing…**
+then flips to **Issued**.
 
-![Invoice panel — shortly after clicking Issue](./assets/24-ol-invoice-issuing-or-issued.png)
-
-The **Issued** state shows the Subiekt document number (e.g. `FS 168/CENTRALA/2026`)
+The **Issued** state shows the Subiekt document number (e.g. `FS 175/CENTRALA/2026`)
 and, if KSeF submission is configured, the regulatory status badge.
 
 ![Invoice panel — issued state with FS document number](./assets/25-ol-invoice-issued-state.png)
