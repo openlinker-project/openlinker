@@ -5,11 +5,15 @@
  * over the Infakt REST API v3. PL-specific logic (NIP mapping, ksef_data polling,
  * paragon vs faktura) stays here — never bleeds into libs/core.
  *
- * KSeF model: OL calls `issueInvoice` (creates a draft in Infakt) then
- * `getClearanceStatus` reads `ksef_data.status` off the stored invoice UUID.
- * Infakt submits to KSeF natively; OL does not build FA(3) XML. This is why the
- * adapter implements `RegulatoryStatusReader` (read-only clearance poll), NOT
- * `RegulatoryTransmitter` (active KSeF session + submit).
+ * KSeF model: `issueInvoice`/`issueCorrection` create the draft in Infakt AND
+ * explicitly trigger `send_to_ksef.json` inline, one atomic step — verified
+ * live (2026-07-01): an Infakt draft does NOT auto-submit to KSeF on its own,
+ * so this call is required or the document sits in `draft` forever. Infakt
+ * still builds the FA(3) XML and owns the KSeF session itself (OL never
+ * touches FA(3)); `getClearanceStatus` reads `ksef_data.status` for later
+ * polling. This is why the adapter implements `RegulatoryStatusReader`
+ * (read-only clearance poll), NOT `RegulatoryTransmitter` (which implies OL
+ * itself holds the active KSeF session).
  *
  * @module libs/integrations/infakt/src/infrastructure/adapters
  */
@@ -49,7 +53,18 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
   'prepayment',
 ];
 
-/** Maps Infakt ksef_data.status → neutral RegulatoryStatus. */
+/**
+ * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
+ *
+ * `success` is the TERMINAL accepted state — it must map to `accepted`, not
+ * `cleared`. `cleared` is reserved for split-clearance regimes (no current
+ * provider emits it) and the FE's status card only branches on
+ * `submitted`/`accepted`/`rejected`, so a `cleared` mapping here left the
+ * badge permanently stuck at "CLEARING" and hid the clearance-reference chip
+ * even once the invoice had genuinely cleared on the government side
+ * (#1293 review, live E2E finding). Mirrors KSeF's own adapter, which maps
+ * its terminal 200 status to `accepted` for the exact same reason.
+ */
 function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): RegulatoryStatus {
   if (!ksefStatus) return 'not-applicable';
   switch (ksefStatus) {
@@ -57,7 +72,7 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
     case 'sent':
       return 'submitted';
     case 'success':
-      return 'cleared';
+      return 'accepted';
     case 'error':
       return 'rejected';
   }
@@ -74,6 +89,18 @@ function toInfaktInvoiceType(documentType: string): string {
       return 'vat';
   }
 }
+
+/**
+ * Poland's standard VAT rate — the "regime rate" the adapter is documented
+ * (`order-to-issue-invoice-command.mapper.ts`) to resolve when core leaves
+ * `InvoiceLine.taxRate` empty, which it always does today (core never names
+ * a tax rate on the order contract). Verified live (2026-07-01): an empty
+ * `tax_symbol` doesn't just get rejected on its own field — Infakt cascades
+ * it into `services.gross` / `value.tax_values` errors too, so EVERY line on
+ * EVERY invoice 422'd before this fallback existed.
+ */
+const DEFAULT_PL_VAT_SYMBOL = '23';
+const DEFAULT_PL_VAT_RATE = 0.23;
 
 /** Maps neutral taxRate string to Infakt tax_symbol. */
 function toInfaktTaxSymbol(taxRate: string): string {
@@ -97,27 +124,46 @@ function toInfaktTaxSymbol(taxRate: string): string {
     case 'oo':
       return 'np';
     default:
-      return taxRate;
+      return taxRate.trim() === '' ? DEFAULT_PL_VAT_SYMBOL : taxRate;
   }
 }
 
-/** Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol` `'zw'`/`'np'`) to a decimal fraction. */
+/**
+ * Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol`
+ * `'zw'`/`'np'`) to a decimal fraction.
+ *
+ * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback — a
+ * mismatched net/gross split for the declared tax_symbol is itself rejected
+ * by Infakt as an invalid `value.tax_values`.
+ */
 function taxRateNumeric(taxRate: string): number {
+  if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
   const n = parseFloat(taxRate);
   if (!isNaN(n) && n > 1) return n / 100;
   if (!isNaN(n)) return n;
   return 0;
 }
 
-/** Converts a buyer-paid gross unit price to Infakt's net unit price for the given tax rate. */
+/** Converts a buyer-paid gross unit price (PLN) to Infakt's net unit price (PLN) for the given tax rate. */
 function grossToNet(unitPriceGross: number, taxRate: string): number {
   return unitPriceGross / (1 + taxRateNumeric(taxRate));
 }
 
-/** Parses Infakt's "amount currency" monetary string (e.g. "123.00 PLN") to a number. */
-function parseInfaktAmount(value: string): number {
-  const n = parseFloat(value);
-  return isNaN(n) ? 0 : n;
+/**
+ * Converts a PLN amount to Infakt's wire format: a plain integer count of
+ * groszy (1 PLN = 100 groszy). Confirmed both live against the real sandbox
+ * and against the official API schema — `unit_net_price`/`net_price`/
+ * `gross_price` are `integer`, documented "w groszach". Sending a decimal
+ * "amount currency" string here (the previous behaviour) understated every
+ * invoice's legal/KSeF amount ~100x (#1293 review).
+ */
+function toGroszy(amountPln: number): number {
+  return Math.round(amountPln * 100);
+}
+
+/** Converts an Infakt wire amount (plain integer groszy) back to a PLN decimal for arithmetic. */
+function fromGroszy(amountGroszy: number): number {
+  return amountGroszy / 100;
 }
 
 export class InfaktInvoicingAdapter
@@ -142,32 +188,35 @@ export class InfaktInvoicingAdapter
     if (nip) {
       const existing = await this.findClientByNip(nip);
       if (existing) {
-        this.logger.log(`Infakt client found by NIP ${nip}: ${existing.uuid}`);
-        return { providerCustomerId: existing.uuid };
+        this.logger.log(`Infakt client found by NIP ${nip}: ${existing.id}`);
+        return { providerCustomerId: String(existing.id) };
       }
     }
 
-    // Create new client
+    // Create new client. Field names verified live against the sandbox
+    // (2026-07-01): the API wants `company_name` / `postal_code`, not the
+    // `name` / `post_code` this previously sent — the latter is silently
+    // rejected/ignored, so first-time client creation always 422'd.
     const payload = {
       client: {
-        name: buyer.name,
+        company_name: buyer.name,
         nip: nip ?? undefined,
         city: buyer.address.city,
         street: buyer.address.line1,
-        post_code: buyer.address.postalCode,
+        postal_code: buyer.address.postalCode,
         country: buyer.address.countryIso2,
       },
     };
 
     // InfaktApiError carries `failureMode`; propagate as-is (see issueInvoice).
     const created = await this.http.post<InfaktClient>('clients.json', payload);
-    this.logger.log(`Infakt client created: ${created.uuid}`);
-    return { providerCustomerId: created.uuid };
+    this.logger.log(`Infakt client created: ${created.id}`);
+    return { providerCustomerId: String(created.id) };
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
-    const { lines, currency, documentType, idempotencyKey, orderId } = cmd;
-    const clientUuid = await this.resolveClientUuid(cmd);
+    const { lines, documentType, idempotencyKey, orderId } = cmd;
+    const clientId = await this.resolveClientId(cmd);
 
     const kind = documentType === 'proforma' ? 'proforma' : 'vat';
     const services = lines.map((l) => ({
@@ -175,14 +224,22 @@ export class InfaktInvoicingAdapter
       tax_symbol: toInfaktTaxSymbol(l.taxRate),
       quantity: l.quantity,
       unit: 'szt.',
-      unit_net_price: `${grossToNet(l.unitPriceGross, l.taxRate).toFixed(2)} ${currency ?? 'PLN'}`,
+      // Plain integer groszy, NOT an "amount currency" string — see toGroszy.
+      unit_net_price: toGroszy(grossToNet(l.unitPriceGross, l.taxRate)),
     }));
 
     const payload = {
       invoice: {
         kind,
-        payment_method: 'transfer',
-        client_uuid: clientUuid,
+        // 'cash' is the sandbox/production-safe default confirmed live
+        // (2026-06-30 POC) — 'transfer' is rejected unless the seller has a
+        // bank account configured in Infakt (`bank_account`/`bank_name`
+        // required), which OL has no way to know or configure per-connection.
+        payment_method: 'cash',
+        // Infakt's invoices.json wants the NUMERIC client id, not the client
+        // uuid — verified live (2026-07-01): `client_uuid` is silently
+        // ignored and the request 422s with "client_id required".
+        client_id: clientId,
         services,
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
       },
@@ -195,7 +252,27 @@ export class InfaktInvoicingAdapter
 
     this.logger.log(`Infakt invoice created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
 
-    const ksefStatus = invoice.ksef_data?.status ?? null;
+    // Issuing does NOT submit to KSeF on its own — verified live (2026-07-01):
+    // an Infakt invoice sits in `draft` (KSeF-untouched) forever unless
+    // send_to_ksef.json is called explicitly. Mirrors how KSeF's own
+    // `issueInvoice` submits inline (build → session → submit, one atomic
+    // step) and how Subiekt "transmits to KSeF natively at issuance" — for
+    // Infakt that native transmission requires this explicit kick, so it
+    // belongs in the same place: issuing IS submitting.
+    //
+    // Retry-safety assumption (unverified — #1293 review): if this call
+    // throws (network/API error), the draft above was already created and
+    // this whole method rejects, so core treats issuance as failed. A caller
+    // retry re-invokes issueInvoice, which re-POSTs invoices.json with the
+    // SAME external_id (idempotencyKey). We rely on Infakt returning/reusing
+    // the same invoice uuid for a repeat external_id rather than creating a
+    // duplicate draft — that would make this second sendToKsef call a safe
+    // re-attempt on the same document. This dedup behaviour has not been
+    // confirmed against the live API; if Infakt instead creates a new draft
+    // per POST, a failed sendToKsef leaves an orphaned un-submitted document
+    // on every retry.
+    const ksefResult = await this.sendToKsef(invoice.uuid);
+
     const now = new Date();
     const record = new InvoiceRecord(
       randomUUID(),
@@ -206,8 +283,8 @@ export class InfaktInvoicingAdapter
       'issued',
       invoice.uuid,
       invoice.number ?? null,
-      toRegulatoryStatus(ksefStatus),
-      invoice.ksef_data?.ksef_number ?? null,
+      toRegulatoryStatus(ksefResult.status),
+      ksefResult.ksef_number,
       idempotencyKey ?? null,
       invoice.pdf_url ?? null,
       now,
@@ -292,25 +369,19 @@ export class InfaktInvoicingAdapter
       { invoice_type: 'vat' },
     );
 
-    // Infakt's InfaktInvoice type carries no currency field (accounts are
-    // single-currency in practice); PLN mirrors issueInvoice's own default
-    // and is the only value Infakt sandbox/production has ever returned here.
-    const currency = 'PLN';
-
     // Build correction services: original row (correction: false) + corrected row (correction: true)
     const correctionServices = original.services.flatMap((svc, idx) => {
       const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
       const corrQty = corrLine?.newQuantity ?? svc.quantity;
-      // Infakt returns unit_net_price as an "amount currency" string (e.g.
-      // "100.00 PLN"), never a plain number — confirmed against the v3
-      // schema (#1292 review) — so it must be parsed before arithmetic.
-      const originalNet = parseInfaktAmount(svc.unit_net_price);
+      // svc.unit_net_price is a plain integer groszy (Infakt wire format —
+      // see toGroszy/fromGroszy) — convert to a PLN decimal before arithmetic.
+      const originalNet = fromGroszy(svc.unit_net_price);
       // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
       // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
       // same as issueInvoice's gross→net conversion (#1292 review).
       const corrPrice = corrLine?.newUnitPriceGross
-        ? `${grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol).toFixed(2)} ${currency}`
-        : `${originalNet.toFixed(2)} ${currency}`;
+        ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
+        : toGroszy(originalNet);
       return [
         // Original "before" row
         {
@@ -318,7 +389,7 @@ export class InfaktInvoicingAdapter
           tax_symbol: svc.tax_symbol,
           quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: `${originalNet.toFixed(2)} ${currency}`,
+          unit_net_price: toGroszy(originalNet),
           group: idx + 1,
           correction: false,
         },
@@ -339,6 +410,11 @@ export class InfaktInvoicingAdapter
       invoice: {
         kind: 'corrective',
         payment_method: 'cash',
+        // Required by Infakt on every invoice, corrective included — verified
+        // live (2026-07-01): omitting it 422s with "client_id required". The
+        // original invoice already carries the numeric id, so no extra
+        // upsertCustomer round-trip is needed for a correction.
+        client_id: original.client_id,
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
         correction_reason_symbol: 'other',
@@ -352,6 +428,18 @@ export class InfaktInvoicingAdapter
     const invoice = await this.http.post<InfaktInvoice>('invoices.json', payload);
 
     this.logger.log(`Infakt correction created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
+
+    // A correction is its own KSeF document (KOR) — it needs the same explicit
+    // submission kick as the original (see issueInvoice).
+    //
+    // Same retry-safety assumption as issueInvoice (unverified — #1293
+    // review): a retry re-calls issueCorrection, which re-POSTs
+    // invoices.json with the same external_id; we rely on Infakt
+    // returning/reusing the same correction uuid rather than creating a
+    // second corrective draft, which would make this sendToKsef call a safe
+    // re-attempt on the same document.
+    const ksefResult = await this.sendToKsef(invoice.uuid);
+
     const now = new Date();
     return new InvoiceRecord(
       randomUUID(),
@@ -362,8 +450,8 @@ export class InfaktInvoicingAdapter
       'issued',
       invoice.uuid,
       invoice.number ?? null,
-      'not-applicable',
-      null,
+      toRegulatoryStatus(ksefResult.status),
+      ksefResult.ksef_number,
       idempotencyKey ?? null,
       invoice.pdf_url ?? null,
       now,
@@ -374,6 +462,10 @@ export class InfaktInvoicingAdapter
   }
 
   // --- Infakt-specific: trigger KSeF submission ---
+  // Called inline by issueInvoice/issueCorrection (issuing IS submitting for
+  // this provider). Public: already called directly by
+  // scripts/poc-sandbox-test.ts, and kept accessible so a future
+  // operator-facing manual re-submit can reuse it without a second code path.
 
   async sendToKsef(invoiceUuid: string): Promise<InfaktSendToKsefResponse> {
     return this.http.post<InfaktSendToKsefResponse>(
@@ -384,9 +476,9 @@ export class InfaktInvoicingAdapter
 
   // --- helpers ---
 
-  private async resolveClientUuid(cmd: IssueInvoiceCommand): Promise<string> {
+  private async resolveClientId(cmd: IssueInvoiceCommand): Promise<number> {
     const result = await this.upsertCustomer({ connectionId: cmd.connectionId, buyer: cmd.buyer });
-    return result.providerCustomerId;
+    return Number(result.providerCustomerId);
   }
 
   private async findClientByNip(nip: string): Promise<InfaktClient | null> {

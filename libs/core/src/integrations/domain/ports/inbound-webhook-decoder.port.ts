@@ -42,4 +42,15 @@ export interface InboundWebhookDecoderPort {
    * (malformed). Must be total — never throw unbounded.
    */
   extractEnvelope(rawBody: Buffer, headers: Record<string, string>): DecodeResult;
+
+  /**
+   * Detect a provider-native subscription-verification handshake (e.g.
+   * Infakt's `{"verification_code": "..."}` ping the endpoint must echo back
+   * to activate the webhook) and return the exact JSON body to echo, or
+   * `null` if this isn't a handshake request. Runs BEFORE `verify` — a
+   * handshake ping precedes any signed traffic and predates a rotated
+   * secret being meaningful. Optional: providers without a handshake step
+   * omit it, and the host skips straight to `verify`.
+   */
+  detectHandshake?(rawBody: Buffer, headers: Record<string, string>): Record<string, unknown> | null;
 }

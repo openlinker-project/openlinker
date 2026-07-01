@@ -17,6 +17,7 @@ import { DefaultWebhookDecoder } from '../decoders/default-webhook-decoder';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookDecodeException } from '../errors/webhook-decode.exception';
 import type { InboundWebhookEvent } from '@openlinker/core/events';
+import type { InboundWebhookDecoderPort } from '@openlinker/core/integrations';
 import {
   InboundWebhookDecoderRegistryService,
   INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN,
@@ -58,13 +59,24 @@ export class WebhookService implements IWebhookService {
     connectionId: string,
     rawBody: Buffer,
     headers: Record<string, string>
-  ): Promise<void> {
+  ): Promise<Record<string, unknown> | void> {
     // Resolve the provider's decoder (ADR-021); fall back to the host's
     // OL-HMAC + WebhookRequestDto default for OL-module providers.
-    const decoder = this.decoderRegistry.get(provider) ?? this.defaultDecoder;
+    const decoder: InboundWebhookDecoderPort =
+      this.decoderRegistry.get(provider) ?? this.defaultDecoder;
 
     // Connection gate (provider-agnostic): exists, active, platformType matches.
     await this.authService.assertConnectionUsable(provider, connectionId);
+
+    // Subscription-verification handshake (e.g. Infakt's `verification_code`
+    // echo) — runs BEFORE signature verification: the ping precedes any
+    // signed traffic. Short-circuits with the exact body to echo; no
+    // verify/dedup/publish for a handshake request.
+    const handshakeBody = decoder.detectHandshake?.(rawBody, headers);
+    if (handshakeBody) {
+      this.logger.log(`Webhook handshake detected: provider=${provider}, connectionId=${connectionId}`);
+      return handshakeBody;
+    }
 
     // Verify the signature via the decoder (host supplies the per-connection
     // secret). Then replay-check the decoder-normalized timestamp. Order is

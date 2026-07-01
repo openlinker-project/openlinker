@@ -6,10 +6,10 @@
  * `createNestAdapterModule` directly: the helper imports the
  * integrations/sync/identifier-mapping modules, builds the `HostServices`
  * bag from DI, and registers the manifest + factory + the descriptor's
- * side-registrations (config/credentials validators, retry classifier).
+ * side-registrations (config/credentials validators, retry classifier,
+ * inbound webhook decoder + translator — #1281).
  *
- * Not yet wired into `apps/api/src/plugins.ts` / `apps/worker/src/plugins.ts`
- * — that registration + webhook routing is #1281.
+ * Wired into `apps/api/src/plugins.ts` and `apps/worker/src/plugins.ts`.
  *
  * @module libs/integrations/infakt/src
  */
