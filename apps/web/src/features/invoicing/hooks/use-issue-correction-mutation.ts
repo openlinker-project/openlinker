@@ -6,8 +6,7 @@
  *
  * @module apps/web/src/features/invoicing/hooks
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { UseMutationResult } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { invoicingQueryKeys } from '../api/invoicing.query-keys';
 import type { InvoiceRecord, IssueCorrectionInput } from '../api/invoicing.types';
