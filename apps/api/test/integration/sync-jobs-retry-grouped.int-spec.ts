@@ -39,7 +39,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
     it('should require authentication', async () => {
       const http = harness.getHttp();
       await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .send({ connectionId: CONNECTION_A, jobType: 'master.inventory.syncByExternalId' })
         .expect(401);
     });
@@ -50,7 +50,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: CONNECTION_A })
         .expect(400);
@@ -62,7 +62,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: CONNECTION_A, jobType: 'not.a.real.job.type' })
         .expect(400);
@@ -97,7 +97,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
       });
 
       const response = await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: CONNECTION_A, jobType: 'master.inventory.syncByExternalId' })
         .expect(200);
@@ -129,7 +129,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const response = await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: CONNECTION_A, jobType: 'master.inventory.syncByExternalId' })
         .expect(200);
@@ -156,7 +156,7 @@ describe('Sync Jobs Retry Grouped API Integration', () => {
       });
 
       const response = await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: CONNECTION_A, jobType: 'master.inventory.syncByExternalId' })
         .expect(200);

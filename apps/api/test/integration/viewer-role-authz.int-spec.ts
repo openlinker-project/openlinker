@@ -54,7 +54,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /connections', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/connections')
+        .get('/v1/connections')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -62,7 +62,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /orders', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/orders')
+        .get('/v1/orders')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -70,7 +70,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /sync/jobs', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/sync/jobs')
+        .get('/v1/sync/jobs')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -78,7 +78,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /products', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/products')
+        .get('/v1/products')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -86,7 +86,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /inventory', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/inventory')
+        .get('/v1/inventory')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -94,7 +94,7 @@ describe('Viewer Role Authorization', () => {
     it('GET /listings', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .get('/listings')
+        .get('/v1/listings')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
@@ -110,7 +110,7 @@ describe('Viewer Role Authorization', () => {
       const { http, viewerToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send(dto)
         .expect(403);
@@ -121,12 +121,12 @@ describe('Viewer Role Authorization', () => {
       // Admin creates the connection; viewer is blocked on the update
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .patch(`/connections/${conn.id as string}`)
+        .patch(`/v1/connections/${conn.id as string}`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ name: 'should-be-blocked' })
         .expect(403);
@@ -135,7 +135,7 @@ describe('Viewer Role Authorization', () => {
     it('POST /sync/jobs', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .post('/sync/jobs')
+        .post('/v1/sync/jobs')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ jobType: 'marketplace.orders.poll', connectionId: '00000000-0000-4000-8000-000000000001' })
         .expect(403);
@@ -145,7 +145,7 @@ describe('Viewer Role Authorization', () => {
       const { http, viewerToken } = await seeds();
       // Guard fires before the service lookup, so no order needs to exist
       await http
-        .post('/orders/fake-order-id/destinations/00000000-0000-4000-8000-000000000001/retry')
+        .post('/v1/orders/fake-order-id/destinations/00000000-0000-4000-8000-000000000001/retry')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
     });
@@ -153,7 +153,7 @@ describe('Viewer Role Authorization', () => {
     it('POST /listings/connections/:connectionId/offers', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .post('/listings/connections/00000000-0000-4000-8000-000000000001/offers')
+        .post('/v1/listings/connections/00000000-0000-4000-8000-000000000001/offers')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({})
         .expect(403);
@@ -162,7 +162,7 @@ describe('Viewer Role Authorization', () => {
     it('POST /sync/jobs/retry-grouped', async () => {
       const { http, viewerToken } = await seeds();
       await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ connectionId: '00000000-0000-4000-8000-000000000001', jobType: 'marketplace.orders.poll' })
         .expect(403);
@@ -172,12 +172,12 @@ describe('Viewer Role Authorization', () => {
       const { http, adminToken, viewerToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .get(`/connections/${conn.id as string}/diagnostics`)
+        .get(`/v1/connections/${conn.id as string}/diagnostics`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
     });
@@ -193,21 +193,21 @@ describe('Viewer Role Authorization', () => {
       });
 
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
 
       // Admin sees the raw config
       const adminGet = await http
-        .get(`/connections/${conn.id as string}`)
+        .get(`/v1/connections/${conn.id as string}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(adminGet.body.config).toEqual(dto.config);
 
       // Viewer gets an empty object
       const viewerGet = await http
-        .get(`/connections/${conn.id as string}`)
+        .get(`/v1/connections/${conn.id as string}`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
       expect(viewerGet.body.config).toEqual({});
@@ -222,11 +222,11 @@ describe('Viewer Role Authorization', () => {
 
       const dto1 = createPrestashopConnectionDto({ name: 'Store A' });
       const dto2 = createPrestashopConnectionDto({ name: 'Store B' });
-      await http.post('/connections').set('Authorization', `Bearer ${adminToken}`).send(dto1).expect(201);
-      await http.post('/connections').set('Authorization', `Bearer ${adminToken}`).send(dto2).expect(201);
+      await http.post('/v1/connections').set('Authorization', `Bearer ${adminToken}`).send(dto1).expect(201);
+      await http.post('/v1/connections').set('Authorization', `Bearer ${adminToken}`).send(dto2).expect(201);
 
       const { body: list } = await http
-        .get('/connections')
+        .get('/v1/connections')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
 

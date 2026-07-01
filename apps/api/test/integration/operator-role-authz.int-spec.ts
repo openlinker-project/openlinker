@@ -54,7 +54,7 @@ describe('Operator Role Authorization', () => {
     it('POST /orders/:id/destinations/:connectionId/retry → 404 (guard passes; order unknown)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .post('/orders/fake-order-id/destinations/00000000-0000-4000-8000-000000000001/retry')
+        .post('/v1/orders/fake-order-id/destinations/00000000-0000-4000-8000-000000000001/retry')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect((res) => {
           expect(res.status).not.toBe(403);
@@ -64,7 +64,7 @@ describe('Operator Role Authorization', () => {
     it('POST /listings/connections/:connectionId/offers → not 403 (guard passes; handler validates)', async () => {
       const { http, operatorToken } = await seeds();
       const res = await http
-        .post('/listings/connections/00000000-0000-4000-8000-000000000001/offers')
+        .post('/v1/listings/connections/00000000-0000-4000-8000-000000000001/offers')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({});
       expect(res.status).not.toBe(403);
@@ -73,7 +73,7 @@ describe('Operator Role Authorization', () => {
     it('POST /listings/bulk-create → not 403 (guard passes; handler validates body)', async () => {
       const { http, operatorToken } = await seeds();
       const res = await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({});
       expect(res.status).not.toBe(403);
@@ -82,7 +82,7 @@ describe('Operator Role Authorization', () => {
     it('POST /listings/bulk-shop-publish → not 403 (guard passes; handler validates body)', async () => {
       const { http, operatorToken } = await seeds();
       const res = await http
-        .post('/listings/bulk-shop-publish')
+        .post('/v1/listings/bulk-shop-publish')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({});
       expect(res.status).not.toBe(403);
@@ -91,7 +91,7 @@ describe('Operator Role Authorization', () => {
     it('GET /listings/connections/:connectionId/seller-policies → not 403 (guard passes; connection unknown)', async () => {
       const { http, operatorToken } = await seeds();
       const res = await http
-        .get('/listings/connections/00000000-0000-4000-8000-000000000001/seller-policies')
+        .get('/v1/listings/connections/00000000-0000-4000-8000-000000000001/seller-policies')
         .set('Authorization', `Bearer ${operatorToken}`);
       expect(res.status).not.toBe(403);
     });
@@ -99,7 +99,7 @@ describe('Operator Role Authorization', () => {
     it('GET /shipments → 200 (operator has full shipment access)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .get('/shipments')
+        .get('/v1/shipments')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
     });
@@ -107,7 +107,7 @@ describe('Operator Role Authorization', () => {
     it('GET /pickup-points → not 403 (operator has pickup-point access; connectionId required so 400 without params)', async () => {
       const { http, operatorToken } = await seeds();
       const res = await http
-        .get('/pickup-points')
+        .get('/v1/pickup-points')
         .set('Authorization', `Bearer ${operatorToken}`);
       expect(res.status).not.toBe(403);
     });
@@ -120,7 +120,7 @@ describe('Operator Role Authorization', () => {
       const { http, operatorToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send(dto)
         .expect(403);
@@ -130,12 +130,12 @@ describe('Operator Role Authorization', () => {
       const { http, adminToken, operatorToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .patch(`/connections/${conn.id as string}`)
+        .patch(`/v1/connections/${conn.id as string}`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ name: 'should-be-blocked' })
         .expect(403);
@@ -145,12 +145,12 @@ describe('Operator Role Authorization', () => {
       const { http, adminToken, operatorToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .put(`/connections/${conn.id as string}/credentials`)
+        .put(`/v1/connections/${conn.id as string}/credentials`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ credentials: {} })
         .expect(403);
@@ -160,12 +160,12 @@ describe('Operator Role Authorization', () => {
       const { http, adminToken, operatorToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .post(`/connections/${conn.id as string}/webhooks/install`)
+        .post(`/v1/connections/${conn.id as string}/webhooks/install`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -173,7 +173,7 @@ describe('Operator Role Authorization', () => {
     it('POST /sync/jobs → 403', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .post('/sync/jobs')
+        .post('/v1/sync/jobs')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ jobType: 'marketplace.orders.poll', connectionId: '00000000-0000-4000-8000-000000000001' })
         .expect(403);
@@ -182,7 +182,7 @@ describe('Operator Role Authorization', () => {
     it('POST /sync/jobs/retry-grouped → 403', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .post('/sync/jobs/retry-grouped')
+        .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ connectionId: '00000000-0000-4000-8000-000000000001', jobType: 'marketplace.orders.poll' })
         .expect(403);
@@ -192,12 +192,12 @@ describe('Operator Role Authorization', () => {
       const { http, adminToken, operatorToken } = await seeds();
       const dto = createPrestashopConnectionDto();
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
       await http
-        .get(`/connections/${conn.id as string}/diagnostics`)
+        .get(`/v1/connections/${conn.id as string}/diagnostics`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -205,7 +205,7 @@ describe('Operator Role Authorization', () => {
     it('GET /prompt-templates → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .get('/prompt-templates')
+        .get('/v1/prompt-templates')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -213,7 +213,7 @@ describe('Operator Role Authorization', () => {
     it('PUT /ai-provider-settings/active → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ provider: 'anthropic' })
         .expect(403);
@@ -222,7 +222,7 @@ describe('Operator Role Authorization', () => {
     it('GET /webhook-deliveries → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .get('/webhook-deliveries')
+        .get('/v1/webhook-deliveries')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -230,7 +230,7 @@ describe('Operator Role Authorization', () => {
     it('GET /cursors → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .get('/cursors')
+        .get('/v1/cursors')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -238,7 +238,7 @@ describe('Operator Role Authorization', () => {
     it('GET /users → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
-        .get('/users')
+        .get('/v1/users')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
@@ -256,13 +256,13 @@ describe('Operator Role Authorization', () => {
       });
 
       const { body: conn } = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(dto)
         .expect(201);
 
       const operatorGet = await http
-        .get(`/connections/${conn.id as string}`)
+        .get(`/v1/connections/${conn.id as string}`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
 
@@ -275,10 +275,10 @@ describe('Operator Role Authorization', () => {
       const { http, adminToken, operatorToken } = await seeds();
 
       const dto1 = createPrestashopConnectionDto({ name: 'Store A' });
-      await http.post('/connections').set('Authorization', `Bearer ${adminToken}`).send(dto1).expect(201);
+      await http.post('/v1/connections').set('Authorization', `Bearer ${adminToken}`).send(dto1).expect(201);
 
       const { body: list } = await http
-        .get('/connections')
+        .get('/v1/connections')
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
 
