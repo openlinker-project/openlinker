@@ -113,6 +113,12 @@ function grossToNet(unitPriceGross: number, taxRate: string): number {
   return unitPriceGross / (1 + taxRateNumeric(taxRate));
 }
 
+/** Parses Infakt's "amount currency" monetary string (e.g. "123.00 PLN") to a number. */
+function parseInfaktAmount(value: string): number {
+  const n = parseFloat(value);
+  return isNaN(n) ? 0 : n;
+}
+
 export class InfaktInvoicingAdapter
   implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
 {
@@ -289,12 +295,16 @@ export class InfaktInvoicingAdapter
     const correctionServices = original.services.flatMap((svc, idx) => {
       const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
       const corrQty = corrLine?.newQuantity ?? svc.quantity;
+      // Infakt returns unit_net_price as an "amount currency" string (e.g.
+      // "100.00 PLN"), never a plain number — confirmed against the v3
+      // schema (#1292 review) — so it must be parsed before arithmetic.
+      const originalNet = parseInfaktAmount(svc.unit_net_price);
       // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
       // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
       // same as issueInvoice's gross→net conversion (#1292 review).
       const corrPrice = corrLine?.newUnitPriceGross
         ? `${grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol).toFixed(2)} ${currency}`
-        : `${svc.unit_net_price.toFixed(2)} ${currency}`;
+        : `${originalNet.toFixed(2)} ${currency}`;
       return [
         // Original "before" row
         {
@@ -302,7 +312,7 @@ export class InfaktInvoicingAdapter
           tax_symbol: svc.tax_symbol,
           quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: `${svc.unit_net_price.toFixed(2)} ${currency}`,
+          unit_net_price: `${originalNet.toFixed(2)} ${currency}`,
           group: idx + 1,
           correction: false,
         },

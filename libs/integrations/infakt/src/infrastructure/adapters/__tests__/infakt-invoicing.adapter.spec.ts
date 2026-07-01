@@ -45,9 +45,9 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
     number: 'FV/1/2026',
     kind: 'vat',
     status: 'sent',
-    gross_price: 123,
-    net_price: 100,
-    tax_price: 23,
+    gross_price: '123.00 PLN',
+    net_price: '100.00 PLN',
+    tax_price: '23.00 PLN',
     payment_method: 'transfer',
     invoice_date: '2026-07-01',
     sale_date: '2026-07-01',
@@ -66,10 +66,10 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
         tax_symbol: '23',
         quantity: 1,
         unit: 'szt.',
-        unit_net_price: 100,
-        net_price: 100,
-        tax_price: 23,
-        gross_price: 123,
+        unit_net_price: '100.00 PLN',
+        net_price: '100.00 PLN',
+        tax_price: '23.00 PLN',
+        gross_price: '123.00 PLN',
         correction: null,
         group: null,
       },
@@ -424,6 +424,27 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record).toBeInstanceOf(InvoiceRecord);
       expect(record.providerInvoiceId).toBe('corr-uuid-1');
       expect(record.idempotencyKey).toBe('idem-corr-1');
+    });
+
+    it('should parse Infakt\'s "amount currency" unit_net_price string for the untouched-line fallback', async () => {
+      // Infakt returns unit_net_price as "100.00 PLN", never a plain number
+      // (#1292 review); baseCmd's line carries no newUnitPriceGross, so both
+      // the "before" row and the fallback "after" row go through this path.
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+
+      await adapter.issueCorrection(baseCmd);
+
+      const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = postCall?.body as {
+        invoice: { services: { unit_net_price: string; correction: boolean }[] };
+      };
+      expect(body.invoice.services.find((s) => s.correction === false)?.unit_net_price).toBe(
+        '100.00 PLN',
+      );
+      expect(body.invoice.services.find((s) => s.correction === true)?.unit_net_price).toBe(
+        '100.00 PLN',
+      );
     });
 
     it('should convert a price-changing correction line from gross to net (#1292 review)', async () => {

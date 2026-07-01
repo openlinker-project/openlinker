@@ -47,9 +47,11 @@ export interface InfaktInvoice {
   number: string | null;
   kind: InfaktInvoiceKind;
   status: string;
-  gross_price: number;
-  net_price: number;
-  tax_price: number;
+  // Infakt returns monetary fields as "amount currency" strings (e.g. "123.00 PLN"),
+  // never plain numbers — confirmed against the v3 vat_invoice schema (#1292 review).
+  gross_price: string;
+  net_price: string;
+  tax_price: string;
   payment_method: string;
   invoice_date: string | null;
   sale_date: string | null;
@@ -73,10 +75,11 @@ export interface InfaktInvoiceService {
   tax_symbol: string;
   quantity: number;
   unit: string | null;
-  unit_net_price: number;
-  net_price: number;
-  tax_price: number;
-  gross_price: number;
+  // Same "amount currency" string format as InfaktInvoice's top-level totals.
+  unit_net_price: string;
+  net_price: string;
+  tax_price: string;
+  gross_price: string;
   correction: boolean | null;
   group: number | null;
 }
