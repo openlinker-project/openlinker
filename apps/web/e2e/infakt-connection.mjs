@@ -26,16 +26,27 @@ const SHOTS = resolve(__dirname, '../../../docs/assets/infakt');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const API_KEY = process.env.INFAKT_SANDBOX_API_KEY ?? '';
 const CONN_NAME = process.env.INFAKT_CONN_NAME ?? 'inFakt Sandbox';
+// inFakt's adapter defaults to the production base URL — sandbox key holders
+// must override it, or every call (including the connection-test probe) 401s.
+const INFAKT_BASE_URL = process.env.INFAKT_BASE_URL ?? 'https://api.sandbox-infakt.pl/api/v3';
 
 if (!API_KEY) {
   console.error('INFAKT_CONNECTION_ERROR: INFAKT_SANDBOX_API_KEY is required (not committed, not logged).');
   process.exit(1);
 }
 
+async function forceLightTheme(page) {
+  // These screenshots are reused in the tutorial — always capture OpenLinker's
+  // light theme regardless of the OS/browser color-scheme preference.
+  await page.addInitScript(() => {
+    window.localStorage.setItem('openlinker.theme', 'light');
+  });
+}
+
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill('operator');
+  await page.getByPlaceholder('Enter your password').fill('infakt-e2e-pw');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }
@@ -49,6 +60,7 @@ async function shot(page, name) {
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 try {
+  await forceLightTheme(page);
   await login(page);
 
   // 1. Platform picker — inFakt card visible.
@@ -64,6 +76,7 @@ try {
   // 3. Filled form — realistic name, real sandbox key (masked on screen).
   await page.getByLabel('Connection name').fill(CONN_NAME);
   await page.getByLabel('API key').fill(API_KEY);
+  await page.getByLabel(/Base URL/i).fill(INFAKT_BASE_URL);
   await shot(page, '02-infakt-wizard-filled');
 
   // 4. Submit — connection created.
