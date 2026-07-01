@@ -19,6 +19,7 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 | `OrderSource` | Cursor-based order feed + hydrate full order |
 | `OrderProcessorManager` | Create orders in WooCommerce; supports `OrderFulfillmentUpdater`, `FulfillmentStatusReader`, `DestinationOptionsReader` |
 | `ProductPublisher` | Publish product content changes back to WooCommerce |
+| `CategoryProvisioner` | Create / ensure a category exists in WooCommerce before publishing |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 

@@ -18,7 +18,7 @@ Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
 | Field (wizard) | Config key | Notes |
 |---|---|---|
 | Bridge URL | `config.bridgeBaseUrl` | `https://<host>:5005` — **no** `/api` suffix. |
-| Bridge token | credential `bridgeToken` | == bridge `Auth__ApiKey`; sent as `Authorization: Bearer`. Stored encrypted. |
+| Bridge token | credential `bridgeToken` | == bridge `Auth__ApiKey`; sent as `Authorization: Bearer` (the only header the bridge checks — a redundant `x-bridge-token` header is also sent but ignored). Stored encrypted. |
 | Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
 | Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
