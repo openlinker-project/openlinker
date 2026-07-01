@@ -158,7 +158,7 @@ jobs:
       # process exits, and a cancelled run (`cancel-in-progress`, see the
       # workflow-level `concurrency` block) is SIGKILLed before Jest's
       # globalTeardown can run either. With Ryuk off, nothing reaps those
-      # containers on its own — the explicit sweep steps below are the
+      # containers on its own — the age-gated sweep step below is the
       # compensating control.
       TESTCONTAINERS_RYUK_DISABLED: 'true'
     steps:
@@ -170,25 +170,42 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - name: Sweep stale Testcontainers from a prior run (#1285)
-        # Ryuk is disabled (see above) and a cancelled/killed prior run skips
-        # Jest's globalTeardown, so containers from that run may still be
-        # alive on this persistent runner. Testcontainers labels every
-        # container/network it creates with org.testcontainers=true
-        # regardless of Ryuk, so this sweep is safe and specific — it never
-        # touches the runner's own long-lived containers (e.g. the runner
-        # process itself).
+      - name: Sweep orphaned Testcontainers older than 90 minutes (#1285)
+        # Ryuk is disabled (see above) so containers from a cancelled or
+        # crashed prior run are never reaped and pile up on this persistent
+        # runner until the docker0 bridge's FDB table fills up (SSHS-7962).
+        # Age-gated at 90 minutes — double this job's 45-minute timeout — so
+        # it can NEVER remove a container belonging to another
+        # `test-integration` job legitimately running concurrently on this
+        # runner: GitHub Actions API history confirms multiple branches'
+        # Integration Tests jobs do overlap in time on this runner, so an
+        # unconditional "remove everything" sweep would be unsafe. Anything
+        # still alive past 90 minutes is guaranteed orphaned, never live.
+        # Testcontainers labels every container/network it creates with
+        # org.testcontainers=true regardless of Ryuk, so the filter is safe
+        # and specific — it never touches the runner's own long-lived
+        # containers (e.g. the runner process itself).
         run: |
-          STALE_CONTAINERS=$(docker ps -aq --filter "label=org.testcontainers=true")
-          if [ -n "$STALE_CONTAINERS" ]; then
-            echo "Removing stale Testcontainers containers:"
-            docker rm -f $STALE_CONTAINERS
+          CUTOFF_EPOCH=$(( $(date -u +%s) - 5400 ))
+          CANDIDATES=$(docker ps -aq --filter "label=org.testcontainers=true")
+          if [ -n "$CANDIDATES" ]; then
+            STALE=""
+            for cid in $CANDIDATES; do
+              CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid")" +%s)
+              if [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+                STALE="$STALE $cid"
+              fi
+            done
+            if [ -n "$STALE" ]; then
+              echo "Removing stale (>90min old) Testcontainers containers:"
+              docker rm -f $STALE
+            else
+              echo "No stale Testcontainers containers found."
+            fi
           fi
-          STALE_NETWORKS=$(docker network ls -q --filter "label=org.testcontainers=true")
-          if [ -n "$STALE_NETWORKS" ]; then
-            echo "Removing stale Testcontainers networks:"
-            docker network rm $STALE_NETWORKS || true
-          fi
+          # Network prune is safe unconditionally, regardless of age: Docker
+          # refuses to remove a network that still has containers attached.
+          docker network prune -f --filter "label=org.testcontainers=true" || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build libs (workspace glob — auto-discovers new packages)
@@ -210,24 +227,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --filter @openlinker/worker test:integration
         timeout-minutes: 10 # Worker suite runs ~80s locally; cap guards a hung container boot
-      - name: Sweep this run's Testcontainers (#1285)
-        # Belt-and-suspenders: with Ryuk disabled, this job's own containers
-        # (Postgres/Redis/MySQL/PrestaShop/WordPress) rely on Jest's
-        # globalTeardown / afterAll hooks to stop them. `if: always()` also
-        # catches the case where a test step failed/timed out before its own
-        # teardown ran.
-        if: always()
-        run: |
-          THIS_RUN_CONTAINERS=$(docker ps -aq --filter "label=org.testcontainers=true")
-          if [ -n "$THIS_RUN_CONTAINERS" ]; then
-            echo "Removing this run's Testcontainers containers:"
-            docker rm -f $THIS_RUN_CONTAINERS
-          fi
-          THIS_RUN_NETWORKS=$(docker network ls -q --filter "label=org.testcontainers=true")
-          if [ -n "$THIS_RUN_NETWORKS" ]; then
-            echo "Removing this run's Testcontainers networks:"
-            docker network rm $THIS_RUN_NETWORKS || true
-          fi
+        # This job's own containers are cleaned up by apps/api's globalTeardown
+        # (now wired, see jest-integration.cjs) and each suite's own afterAll
+        # (e.g. the PrestaShop/WooCommerce container helpers). No post-job
+        # sweep here: a same-job leftover would be well under the 90-minute
+        # age gate above, so it wouldn't be caught anyway — an age-unaware
+        # "remove everything" step would risk killing a concurrently running
+        # job's containers instead (see the pre-flight step's comment).
 
   test-php:
     name: PHP Unit Tests
