@@ -220,6 +220,16 @@ export class KsefInvoicingAdapter
    * the original. Throws `KsefInvalidCorrectionException` (terminal, no retry)
    * when the caller could not assemble a snapshot — KSeF cannot resubmit a KOR
    * without the full original buyer/currency/lines.
+   *
+   * `cmd.originalProviderInvoiceId` (the base-port `{sessionRef}:{invoiceRef}`
+   * composite this adapter's OWN `providerInvoiceId` packs, used by
+   * `getClearanceStatus` to poll a specific submission) is intentionally NOT
+   * read here — the KOR linkage KSeF actually needs (the authority-assigned
+   * KSeF number, human document number, issue date) travels on the neutral
+   * `originalDocument` snapshot instead, since that's the caller-assembled
+   * source of truth for what the original document looked like. The field
+   * stays on the base `IssueCorrectionCommand` for adapters (e.g. Subiekt)
+   * whose provider-native id IS the correction target.
    */
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecordType> {
     if (!cmd.originalDocument) {
@@ -234,6 +244,10 @@ export class KsefInvoicingAdapter
       orderId: cmd.orderId,
       buyer: cmd.originalDocument.buyer,
       currency: cmd.originalDocument.currency,
+      // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
+      // `CorrectionReference`'s contract, the command's top-level `lines` carry
+      // the "before" state and `correction.correctedLines` carries the "after"
+      // state; the FA(3) mapper reads both to build the KOR's before/after rows.
       lines: cmd.originalDocument.lines,
       documentType: cmd.documentType ?? 'corrected',
       correction: {

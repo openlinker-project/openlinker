@@ -418,6 +418,22 @@ describe('InvoicingController', () => {
       );
     });
 
+    it('passes through documentType:corrected when correcting an already-corrected invoice', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(makeInvoiceRecord({ documentType: 'corrected' }));
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({ documentType: 'corrected' }),
+        }),
+      );
+    });
+
     it('passes originalDocument: undefined when the backing order is no longer available', async () => {
       invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
       orders.getOrderRecord.mockResolvedValue(null);

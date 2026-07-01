@@ -240,24 +240,38 @@ export interface CorrectionLine {
 }
 
 /**
- * Full reconstruction of the original document's issuance inputs, assembled by
- * the CALLER (never by adapters) from the order the original document was
- * issued for — mirroring how a keyless re-issue rebuilds its
- * {@link IssueInvoiceCommand} from the order snapshot (buyer tax id is not
- * persisted on `InvoiceRecord`, so it is not recoverable here either; callers
- * rebuild with `buyerTaxId: null`, same accepted limitation as re-issue).
- * Needed by adapters that must resubmit a COMPLETE corrected document rather
- * than apply a delta (e.g. KSeF's FA(3) KOR, which has no delta-only
- * correction primitive) — adapters that only need per-line deltas (Subiekt)
- * never read this field.
+ * Best-effort reconstruction of the original document's issuance inputs,
+ * assembled by the CALLER (never by adapters) from the order the original
+ * document was issued for — mirroring how a keyless re-issue rebuilds its
+ * {@link IssueInvoiceCommand} from the order snapshot. Needed by adapters that
+ * must resubmit a COMPLETE corrected document rather than apply a delta (e.g.
+ * KSeF's FA(3) KOR, which has no delta-only correction primitive) — adapters
+ * that only need per-line deltas (Subiekt) never read this field.
+ *
+ * ACCEPTED LIMITATIONS (no persisted point-in-time snapshot exists today):
+ * - `buyer` tax id is not persisted on `InvoiceRecord`, so it is rebuilt as
+ *   `buyerTaxId: null` — same accepted limitation as a keyless re-issue.
+ * - `lines` are read off the order's CURRENT state, NOT a snapshot taken at
+ *   original-issuance time. If the order's items were modified after the
+ *   original document was issued (edited quantity/price, added/removed/
+ *   reordered line), `lines` — and therefore the `originalLineNumber`-indexed
+ *   correction deltas applied against it — may no longer match what the
+ *   provider actually has on file for the referenced original document.
+ *   Correcting an order that changed since its original issuance is UNSAFE
+ *   until `InvoiceRecord` persists the true issuance-time line snapshot.
  */
 export interface OriginalDocumentSnapshot {
   buyer: BuyerProfile;
   /** ISO 4217 currency code, echoed from the original issue command. */
   currency: string;
-  /** Neutral document type of the original document (open-world). */
+  /**
+   * Neutral document type of the original document (open-world). Not
+   * currently read by any shipping `CorrectionIssuer` adapter (KSeF derives
+   * the corrected document's type from `IssueCorrectionCommand.documentType`
+   * instead) — carried for a future adapter that needs it.
+   */
   documentType: string;
-  /** Reconstructed "before" lines of the original document. */
+  /** Reconstructed "before" lines of the original document — see the accepted-limitations note above. */
   lines: InvoiceLine[];
   /** Authority-assigned reference of the original document; `null` if never cleared. */
   clearanceReference: string | null;
