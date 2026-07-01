@@ -9948,6 +9948,38 @@ html[data-density='compact'] .status-badge {
   margin-top: var(--space-3);
 }
 
+/* ─ Shared: correction dialog provider tag (used by ksef + subiekt) ─ */
+.section-card__provider {
+  font-size: 0.71875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ─ KSeF invoice correction dialog (#1220) ─ */
+.ksef-correction__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border: 0;
+  padding: 0 0 var(--space-3);
+}
+.ksef-correction__reason {
+  margin-bottom: var(--space-4);
+}
+.ksef-correction__table-scroll {
+  overflow-x: auto;
+}
+.ksef-correction__col-qty {
+  min-width: 80px;
+}
+.ksef-correction__col-price {
+  min-width: 100px;
+}
+.ksef-correction__note {
+  margin-top: var(--space-3);
+}
+
 /* ─ Correction trigger in order invoice panel (issued state) ─ */
 .order-invoice-panel__correction {
   margin-top: var(--space-3);
@@ -10037,4 +10069,3 @@ html[data-density='compact'] .status-badge {
   min-height: 150px;
   border: none;
 }
-
