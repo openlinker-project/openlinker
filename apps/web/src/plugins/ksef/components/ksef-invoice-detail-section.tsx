@@ -50,6 +50,14 @@ function resolveKsefNumber(
   return clearanceReference ?? providerInvoiceNumber ?? null;
 }
 
+/** Severity-stripe tone for the shared `.reg-card` treatment (#1282). */
+function resolveRegCardTone(status: InvoiceDetailSectionProps['invoice']['regulatoryStatus']): string {
+  if (status === 'submitted') return 'reg-card--info';
+  if (status === 'accepted') return 'reg-card--success';
+  if (status === 'rejected') return 'reg-card--error';
+  return '';
+}
+
 export function KsefInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
@@ -127,7 +135,11 @@ export function KsefInvoiceDetailSection({
 
   return (
     <>
-      <section className="invoice-detail-section invoice-detail-section--ksef">
+      <section
+        className={`invoice-detail-section invoice-detail-section--ksef reg-card ${resolveRegCardTone(
+          invoice.regulatoryStatus,
+        )}`.trim()}
+      >
         <h4 className="invoice-detail-section__title">
           {t('invoice.ksef.sectionTitle', 'KSeF · National e-Invoicing System')}
         </h4>

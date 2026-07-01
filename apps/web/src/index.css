@@ -9774,6 +9774,76 @@ html[data-density='compact'] .status-badge {
   align-self: stretch;
 }
 
+/* ── Regulatory section card (#1282) ──────────────────────────────────
+   Tone wrapper a provider's `invoiceDetailSection` root class adopts
+   (KSeF, Subiekt, inFakt) so the region reads at a glance — severity
+   stripe reusing the existing --status-* tokens, no new colors. Additive
+   alongside each section's own root class (e.g. `invoice-detail-section`),
+   never a replacement, so pre-existing DOM-shape assertions keep passing. */
+.reg-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+}
+.reg-card--info {
+  border-left-color: var(--status-info);
+  background: var(--status-info-soft);
+}
+.reg-card--success {
+  border-left-color: var(--status-success);
+  background: var(--status-success-soft);
+}
+.reg-card--error {
+  border-left-color: var(--status-error);
+  background: var(--status-error-soft);
+}
+.reg-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.reg-card__progress {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    100deg,
+    var(--status-info-soft) 0%,
+    var(--status-info) 50%,
+    var(--status-info-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reg-card__progress {
+    animation: none;
+    background: var(--status-info);
+  }
+}
+.reg-card__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.reg-card__reference {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+.reg-card__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 /* ─ Invoice Timeline ─ */
 .invoice-timeline {
   display: flex;
@@ -9982,6 +10052,31 @@ html[data-density='compact'] .status-badge {
   min-width: 100px;
 }
 .ksef-correction__note {
+  margin-top: var(--space-3);
+}
+
+/* ─ Infakt invoice correction dialog (#1282) ─ */
+.infakt-correction__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border: 0;
+  padding: 0 0 var(--space-3);
+}
+.infakt-correction__reason {
+  margin-bottom: var(--space-4);
+}
+.infakt-correction__table-scroll {
+  overflow-x: auto;
+}
+.infakt-correction__col-qty {
+  min-width: 80px;
+}
+.infakt-correction__col-price {
+  min-width: 100px;
+}
+.infakt-correction__note {
   margin-top: var(--space-3);
 }
 

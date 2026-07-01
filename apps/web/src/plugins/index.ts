@@ -44,6 +44,7 @@ import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
 import { erliPlugin } from './erli';
+import { infaktPlugin } from './infakt';
 import { inpostPlugin } from './inpost';
 import { ksefPlugin } from './ksef';
 import { prestashopPlugin } from './prestashop';
@@ -59,6 +60,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   erliPlugin,
   subiektPlugin,
   ksefPlugin,
+  infaktPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);
