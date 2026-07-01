@@ -54,7 +54,7 @@ export class KsefConnectionConfigShapeValidatorAdapter
             path: 'seller.defaultTaxRate',
             message: 'must be a non-empty string',
           });
-        } else if (!(defaultTaxRate in FA3_TAX_RATE_MAP)) {
+        } else if (!Object.prototype.hasOwnProperty.call(FA3_TAX_RATE_MAP, defaultTaxRate)) {
           issues.push({
             path: 'seller.defaultTaxRate',
             message: `must be one of: ${Object.keys(FA3_TAX_RATE_MAP).join(', ')}`,

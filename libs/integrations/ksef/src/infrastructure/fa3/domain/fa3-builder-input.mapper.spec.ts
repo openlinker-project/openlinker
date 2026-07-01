@@ -2,9 +2,9 @@
  * Neutral → FA(3) Builder-Input Mapper — Unit Specs
  *
  * Pins the empty-`taxRate` → connection-`defaultTaxRate` fallback (#1290):
- * an empty neutral rate resolves via the seller's default; a non-empty rate
- * is never overridden (including a genuinely unmapped one, which still
- * throws); the same fallback applies to correction lines.
+ * an empty neutral rate resolves via the context's connection default; a
+ * non-empty rate is never overridden (including a genuinely unmapped one,
+ * which still throws); the same fallback applies to correction lines.
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
  */
@@ -17,7 +17,6 @@ const SELLER: SellerProfile = {
   nip: '1234567890',
   name: 'Acme Sp. z o.o.',
   address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
-  defaultTaxRate: '8',
 };
 
 const CONTEXT: Fa3MappingContext = {
@@ -25,6 +24,7 @@ const CONTEXT: Fa3MappingContext = {
   issueDate: '2026-07-01',
   generatedAt: '2026-07-01T00:00:00.000Z',
   invoiceNumber: 'ol_order_test_001',
+  defaultTaxRate: '8',
 };
 
 function baseCommand(taxRate: string): IssueInvoiceCommand {

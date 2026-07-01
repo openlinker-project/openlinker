@@ -55,9 +55,8 @@ export const FA3_TAX_RATE_MAP: Readonly<Record<string, Fa3P12Value>> = {
  * @throws {UnmappedTaxRateException} when the code is unknown / empty.
  */
 export function resolveP12(neutralTaxRate: string): Fa3P12Value {
-  const mapped = FA3_TAX_RATE_MAP[neutralTaxRate];
-  if (mapped === undefined) {
+  if (!Object.prototype.hasOwnProperty.call(FA3_TAX_RATE_MAP, neutralTaxRate)) {
     throw new UnmappedTaxRateException(neutralTaxRate);
   }
-  return mapped;
+  return FA3_TAX_RATE_MAP[neutralTaxRate];
 }

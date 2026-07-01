@@ -64,6 +64,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const authMaterial = await this.resolveAuthMaterial(connection, credentials, credentialsResolver);
 
     const seller = this.resolveSeller(connection);
+    const defaultTaxRate = this.resolveDefaultTaxRate(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -84,6 +85,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
+        defaultTaxRate,
       ),
     };
   }
@@ -134,8 +136,20 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         postalCode: address.postalCode,
         countryIso2: address.countryIso2,
       },
-      defaultTaxRate: seller.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE,
     };
+  }
+
+  /**
+   * Resolve the connection-level fallback `P_12` neutral code (adapter-scoped
+   * issuance policy, not seller identity — see `Fa3MappingContext.defaultTaxRate`).
+   * The `.trim() ||` fallback is defensive for configs saved before the
+   * `ksef.publicapi.v2` shape validator started rejecting a whitespace-only
+   * `seller.defaultTaxRate` (#1291) — a post-validation config can never
+   * actually hit the empty branch, but a pre-existing row could.
+   */
+  private resolveDefaultTaxRate(connection: Connection): string {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
   }
 
   private async resolveCredentials(

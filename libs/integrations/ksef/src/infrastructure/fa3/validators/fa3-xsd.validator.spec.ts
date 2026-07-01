@@ -22,7 +22,6 @@ const seller: SellerProfile = {
   nip: '1234567890',
   name: 'Acme Sp. z o.o.',
   address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
-  defaultTaxRate: '23',
 };
 
 function builtDoc(): RawFa3Xml {

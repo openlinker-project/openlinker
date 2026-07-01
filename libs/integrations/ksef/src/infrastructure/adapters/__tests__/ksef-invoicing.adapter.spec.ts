@@ -34,8 +34,9 @@ const SELLER: SellerProfile = {
     postalCode: '00-001',
     countryIso2: 'PL',
   },
-  defaultTaxRate: '23',
 };
+
+const DEFAULT_TAX_RATE = '23';
 
 const SESSION_REF = 'SESSION-REF-001';
 const INVOICE_REF = 'INVOICE-REF-001';
@@ -145,6 +146,7 @@ function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder
     fakeCrypto(),
     builder,
     SELLER,
+    DEFAULT_TAX_RATE,
     () => new Date('2026-06-23T10:00:00.000Z'),
   );
 }

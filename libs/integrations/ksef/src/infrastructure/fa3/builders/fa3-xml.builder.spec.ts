@@ -29,7 +29,6 @@ const seller: SellerProfile = {
     postalCode: '00-001',
     countryIso2: 'PL',
   },
-  defaultTaxRate: '23',
 };
 
 function b2bInput(): Fa3BuilderInput {

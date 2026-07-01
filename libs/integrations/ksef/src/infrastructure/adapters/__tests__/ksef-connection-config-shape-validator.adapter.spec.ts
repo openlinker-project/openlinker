@@ -101,6 +101,15 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
     });
 
+    it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+      'should reject the inherited-prototype key %s (not a real FA3_TAX_RATE_MAP entry)',
+      async (protoKey) => {
+        await expect(
+          validator.validate({ env: 'test', seller: { defaultTaxRate: protoKey } }),
+        ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+      },
+    );
+
     it('should carry a flat { path, message } issue for seller.defaultTaxRate', async () => {
       await expect(
         validator.validate({ env: 'test', seller: { defaultTaxRate: '23%' } }),

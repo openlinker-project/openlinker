@@ -40,6 +40,18 @@ export interface Fa3MappingContext {
   generatedAt: string;
   /** Human-facing sequential invoice number `P_2`. */
   invoiceNumber: string;
+  /**
+   * Connection-resolved fallback `P_12` neutral code (see
+   * `DEFAULT_FA3_TAX_RATE` in `fa3-tax-rate.mapper.ts`), applied to any line
+   * whose neutral `taxRate` arrives empty — core has no per-line tax rate to
+   * give (ADR-026). Always a concrete value by the time this context exists;
+   * the factory resolves it (connection config or the PL standard default).
+   *
+   * This is adapter-scoped issuance *policy*, not seller identity — it does
+   * not belong on `SellerProfile` (which mirrors `Podmiot1` XML fields only)
+   * even though both are resolved from the same connection config.
+   */
+  defaultTaxRate: string;
 }
 
 /**
@@ -61,9 +73,9 @@ export function mapToFa3BuilderInput(
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
-    lines: cmd.lines.map((line) => mapLine(line, context.seller.defaultTaxRate)),
+    lines: cmd.lines.map((line) => mapLine(line, context.defaultTaxRate)),
     ...(cmd.correction !== undefined
-      ? { correction: mapCorrection(cmd.correction, context.seller.defaultTaxRate) }
+      ? { correction: mapCorrection(cmd.correction, context.defaultTaxRate) }
       : {}),
   };
 }
