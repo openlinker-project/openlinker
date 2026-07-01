@@ -153,7 +153,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
       .expect(200);
 
     expect(res.headers['content-type']).toContain('application/xml');
-    expect(res.headers['content-disposition']).toContain(`ol-upo-${record.id}.xml`);
+    expect(res.headers['content-disposition']).toContain(`ol-confirmation-${record.id}.xml`);
     expect(res.body as Buffer).toEqual(Buffer.from(UPO_BYTES));
   });
 
