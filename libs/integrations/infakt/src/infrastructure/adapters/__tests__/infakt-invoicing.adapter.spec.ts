@@ -398,7 +398,7 @@ describe('InfaktInvoicingAdapter', () => {
     });
 
     it.each([
-      ['success', 'cleared'],
+      ['success', 'accepted'],
       ['pending', 'submitted'],
       ['sent', 'submitted'],
       ['error', 'rejected'],

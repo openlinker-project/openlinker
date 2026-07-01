@@ -22,11 +22,11 @@ import { ApiProperty } from '@nestjs/swagger';
 import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
-} from '@openlinker/core/invoicing';
+
+  InvoiceRecord} from '@openlinker/core/invoicing';
 import {
   InvoiceFailureCodeValues,
   InvoiceFailureModeValues,
-  InvoiceRecord,
   InvoiceStatus,
   InvoiceStatusValues,
   RegulatoryStatus,

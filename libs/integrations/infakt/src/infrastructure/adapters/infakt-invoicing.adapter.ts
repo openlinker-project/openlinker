@@ -53,7 +53,18 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = [
   'prepayment',
 ];
 
-/** Maps Infakt ksef_data.status → neutral RegulatoryStatus. */
+/**
+ * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
+ *
+ * `success` is the TERMINAL accepted state — it must map to `accepted`, not
+ * `cleared`. `cleared` is reserved for split-clearance regimes (no current
+ * provider emits it) and the FE's status card only branches on
+ * `submitted`/`accepted`/`rejected`, so a `cleared` mapping here left the
+ * badge permanently stuck at "CLEARING" and hid the clearance-reference chip
+ * even once the invoice had genuinely cleared on the government side
+ * (#1293 review, live E2E finding). Mirrors KSeF's own adapter, which maps
+ * its terminal 200 status to `accepted` for the exact same reason.
+ */
 function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): RegulatoryStatus {
   if (!ksefStatus) return 'not-applicable';
   switch (ksefStatus) {
@@ -61,7 +72,7 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
     case 'sent':
       return 'submitted';
     case 'success':
-      return 'cleared';
+      return 'accepted';
     case 'error':
       return 'rejected';
   }
