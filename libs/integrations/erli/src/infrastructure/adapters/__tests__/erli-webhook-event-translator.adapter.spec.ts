@@ -21,7 +21,7 @@ function makeEvent(overrides: Partial<InboundWebhookEvent> = {}): InboundWebhook
     receivedAt: '2026-06-16T10:00:01.000Z',
     objectType: 'order',
     externalId: 'erli-order-fake-123',
-    payload: { orderId: 'erli-order-fake-123' },
+    payload: { id: 'erli-order-fake-123' },
     ...overrides,
   };
 }
@@ -41,7 +41,7 @@ describe('ErliWebhookEventTranslator', () => {
       externalId: 'erli-order-fake-123',
       eventType: 'created',
       occurredAt: '2026-06-16T10:00:00.000Z',
-      payload: { orderId: 'erli-order-fake-123' },
+      payload: { id: 'erli-order-fake-123' },
     });
   });
 
@@ -53,7 +53,7 @@ describe('ErliWebhookEventTranslator', () => {
 
   it('should fall back to the payload order-id field when externalId is empty', () => {
     const result = translator.translate(
-      makeEvent({ externalId: '', payload: { orderId: 'erli-order-fake-999' } }),
+      makeEvent({ externalId: '', payload: { id: 'erli-order-fake-999' } }),
     );
 
     expect(result).toMatchObject({ domain: 'order', externalId: 'erli-order-fake-999' });
@@ -61,11 +61,11 @@ describe('ErliWebhookEventTranslator', () => {
 
   it('should pass occurredAt and payload through unchanged', () => {
     const result = translator.translate(
-      makeEvent({ occurredAt: '2026-01-01T00:00:00.000Z', payload: { orderId: 'x-1', extra: 7 } }),
+      makeEvent({ occurredAt: '2026-01-01T00:00:00.000Z', payload: { id: 'x-1', extra: 7 } }),
     );
 
     expect(result?.occurredAt).toBe('2026-01-01T00:00:00.000Z');
-    expect(result?.payload).toEqual({ orderId: 'x-1', extra: 7 });
+    expect(result?.payload).toEqual({ id: 'x-1', extra: 7 });
   });
 
   it('should return null for an unknown event type without throwing', () => {
@@ -82,7 +82,7 @@ describe('ErliWebhookEventTranslator', () => {
   });
 
   it('should return null when the order id is a blank / whitespace string', () => {
-    const result = translator.translate(makeEvent({ externalId: '   ', payload: { orderId: '  ' } }));
+    const result = translator.translate(makeEvent({ externalId: '   ', payload: { id: '  ' } }));
 
     expect(result).toBeNull();
   });
@@ -91,7 +91,7 @@ describe('ErliWebhookEventTranslator', () => {
     const result = translator.translate(
       makeEvent({
         externalId: '',
-        payload: { orderId: 42 as unknown as string },
+        payload: { id: 42 as unknown as string },
       }),
     );
 

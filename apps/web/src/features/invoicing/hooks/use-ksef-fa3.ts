@@ -2,12 +2,9 @@
  * useKsefFa3
  *
  * Provides FA(3) document access for accepted KSeF invoices (#1228, B5):
- *   - `loadView(invoiceId)` — fetch `kind=rendered` and expose as an object URL
- *     for inline display in a sandboxed `<iframe>` inside the `.doc-preview` area.
+ *   - `loadView(invoiceId)` — fetch `kind=source` (XML) and expose as raw text
+ *     for client-side parsing by `KsefFa3View`.
  *   - `downloadXml(invoiceId)` — fetch `kind=source` and trigger a browser download.
- *
- * The rendered view object URL is kept in state while visible; `clearView` revokes
- * it and resets to placeholder state. Unmount cleanup revokes any live URL.
  *
  * Neutral: keyed on the internal `invoice.id`, never on platform type (ADR-026).
  * Lives in `features/invoicing/hooks/` so it can use `useApiClient` freely
@@ -15,7 +12,7 @@
  *
  * @module features/invoicing/hooks
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -34,17 +31,17 @@ function xmlFilename(invoiceId: string): string {
 }
 
 interface UseKsefFa3 {
-  /** Object URL for the rendered FA(3) HTML/blob, or `null` when not loaded. */
-  viewObjectUrl: string | null;
+  /** Raw XML text of the FA(3) source document, for client-side parsing by `KsefFa3View`. */
+  viewText: string | null;
   isLoadingView: boolean;
   viewError: Error | null;
   /**
-   * Fetch the rendered FA(3) and expose it as an object URL for inline display.
+   * Fetch the source FA(3) XML and expose it as raw text for `KsefFa3View`.
    * Returns the caught error on failure (also stored in `viewError`), or `null`
    * on success — callers use the return value to avoid reading stale React state.
    */
   loadView: (invoiceId: string) => Promise<Error | null>;
-  /** Clear the inline preview and revoke the object URL. */
+  /** Clear the inline preview and reset to placeholder state. */
   clearView: () => void;
   isDownloadingXml: boolean;
   xmlError: Error | null;
@@ -58,37 +55,25 @@ interface UseKsefFa3 {
 
 export function useKsefFa3(): UseKsefFa3 {
   const apiClient = useApiClient();
-  const [viewObjectUrl, setViewObjectUrl] = useState<string | null>(null);
+  const [viewText, setViewText] = useState<string | null>(null);
   const [isLoadingView, setIsLoadingView] = useState(false);
   const [viewError, setViewError] = useState<Error | null>(null);
   const [isDownloadingXml, setIsDownloadingXml] = useState(false);
   const [xmlError, setXmlError] = useState<Error | null>(null);
 
-  const objectUrlRef = useRef<string | null>(null);
-
-  const revoke = useCallback((): void => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-  }, []);
-
   const clearView = useCallback((): void => {
-    revoke();
-    setViewObjectUrl(null);
+    setViewText(null);
     setViewError(null);
-  }, [revoke]);
+  }, []);
 
   const loadView = useCallback(
     async (invoiceId: string): Promise<Error | null> => {
       setIsLoadingView(true);
       setViewError(null);
       try {
-        const blob = await apiClient.invoicing.downloadDocument(invoiceId, 'rendered');
-        revoke();
-        const url = URL.createObjectURL(blob);
-        objectUrlRef.current = url;
-        setViewObjectUrl(url);
+        const blob = await apiClient.invoicing.downloadDocument(invoiceId, 'source');
+        const text = await blob.text();
+        setViewText(text);
         return null;
       } catch (caught) {
         const err = caught instanceof Error ? caught : new Error(String(caught));
@@ -98,7 +83,7 @@ export function useKsefFa3(): UseKsefFa3 {
         setIsLoadingView(false);
       }
     },
-    [apiClient, revoke],
+    [apiClient],
   );
 
   const downloadXml = useCallback(
@@ -120,7 +105,5 @@ export function useKsefFa3(): UseKsefFa3 {
     [apiClient],
   );
 
-  useEffect(() => revoke, [revoke]);
-
-  return { viewObjectUrl, isLoadingView, viewError, loadView, clearView, isDownloadingXml, xmlError, downloadXml };
+  return { viewText, isLoadingView, viewError, loadView, clearView, isDownloadingXml, xmlError, downloadXml };
 }

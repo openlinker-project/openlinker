@@ -2,11 +2,19 @@
  * KSeF Invoicing Adapter (#1149 / C5)
  *
  * Per-connection implementation of the neutral `InvoicingPort` + the
- * `RegulatoryTransmitter` sub-capability (ADR-002 / ADR-026) for the KSeF
- * provider. Wires the C3 transport (`IKsefHttpClient` + session crypto) and the
- * C4 FA(3) builder into the country-agnostic port: it consumes ONLY neutral
- * `@openlinker/core/invoicing` types and returns ONLY neutral results — no
- * KSeF/FA(3)/NIP/UPO string ever crosses back into core.
+ * `RegulatoryTransmitter` and `CorrectionIssuer` (#1288) sub-capabilities
+ * (ADR-002 / ADR-026) for the KSeF provider. Wires the C3 transport
+ * (`IKsefHttpClient` + session crypto) and the C4 FA(3) builder into the
+ * country-agnostic port: it consumes ONLY neutral `@openlinker/core/invoicing`
+ * types and returns ONLY neutral results — no KSeF/FA(3)/NIP/UPO string ever
+ * crosses back into core.
+ *
+ * `issueCorrection` (#1288) is a pure delegation into `issueInvoice`'s existing
+ * KOR path: KSeF has no delta-only correction primitive, so every correction
+ * resubmits a complete FA(3) document built from a caller-assembled
+ * `IssueCorrectionCommand.originalDocument` snapshot (buyer/currency/lines
+ * reconstructed by the caller from the order, since `InvoiceRecord` does not
+ * persist them) plus the per-line deltas.
  *
  * `getClearanceStatus` (#1150 / C6) is the read primitive the reconciliation
  * job (#1121) calls — it polls the per-invoice status, maps the KSeF status code
@@ -49,11 +57,15 @@
 import { createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
 import type {
+  CorrectionIssuer,
+  CorrectionLine,
   RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
+  InvoiceLine,
   InvoiceRecord as InvoiceRecordType,
   InvoicingPort,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   RegulatoryTransmitter,
   UpsertCustomerCommand,
@@ -91,7 +103,9 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
-export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitter {
+export class KsefInvoicingAdapter
+  implements InvoicingPort, RegulatoryTransmitter, CorrectionIssuer
+{
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
   constructor(
@@ -202,6 +216,84 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       issuedAt,
       issuedAt,
     );
+  }
+
+  /**
+   * `CorrectionIssuer`. KSeF has no delta-only correction primitive — every KOR
+   * is a brand-new full FA(3) submission, so this is a PURE DELEGATION to the
+   * already-tested `issueInvoice` KOR path (zero duplicated session/XML-build
+   * logic): apply the per-line deltas onto the caller-assembled
+   * `originalDocument` snapshot, then issue a `corrected` document referencing
+   * the original. Throws `KsefInvalidCorrectionException` (terminal, no retry)
+   * when the caller could not assemble a snapshot — KSeF cannot resubmit a KOR
+   * without the full original buyer/currency/lines.
+   *
+   * `cmd.originalProviderInvoiceId` (the base-port `{sessionRef}:{invoiceRef}`
+   * composite this adapter's OWN `providerInvoiceId` packs, used by
+   * `getClearanceStatus` to poll a specific submission) is intentionally NOT
+   * read here — the KOR linkage KSeF actually needs (the authority-assigned
+   * KSeF number, human document number, issue date) travels on the neutral
+   * `originalDocument` snapshot instead, since that's the caller-assembled
+   * source of truth for what the original document looked like. The field
+   * stays on the base `IssueCorrectionCommand` for adapters (e.g. Subiekt)
+   * whose provider-native id IS the correction target.
+   */
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecordType> {
+    if (!cmd.originalDocument) {
+      throw new KsefInvalidCorrectionException(
+        `Cannot issue a KSeF correction for order ${cmd.orderId}: the original invoice ` +
+          'has no reconstructable document snapshot (buyer/currency/lines) to rebuild the corrected FA(3) from.',
+      );
+    }
+    const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
+    const issueCmd: IssueInvoiceCommand = {
+      connectionId: cmd.connectionId,
+      orderId: cmd.orderId,
+      buyer: cmd.originalDocument.buyer,
+      currency: cmd.originalDocument.currency,
+      // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
+      // `CorrectionReference`'s contract, the command's top-level `lines` carry
+      // the "before" state and `correction.correctedLines` carries the "after"
+      // state; the FA(3) mapper reads both to build the KOR's before/after rows.
+      lines: cmd.originalDocument.lines,
+      documentType: cmd.documentType ?? 'corrected',
+      correction: {
+        originalClearanceReference: cmd.originalDocument.clearanceReference,
+        originalDocumentNumber: cmd.originalDocument.documentNumber,
+        originalIssueDate: cmd.originalDocument.issueDate,
+        reason: cmd.reason ?? '',
+        correctedLines,
+      },
+      idempotencyKey: cmd.idempotencyKey,
+    };
+    return this.issueInvoice(issueCmd);
+  }
+
+  /**
+   * Apply per-line deltas onto a copy of the original lines, keeping `name`/
+   * `taxRate` from the original (the delta carries only the changed
+   * `newQuantity`/`newUnitPriceGross`). `originalLineNumber` is 1-based per
+   * {@link CorrectionLine}'s contract.
+   */
+  private applyCorrectionDeltas(original: InvoiceLine[], deltas: CorrectionLine[]): InvoiceLine[] {
+    const corrected = original.map((line) => ({ ...line }));
+    for (const delta of deltas) {
+      const index = delta.originalLineNumber - 1;
+      const line = corrected[index];
+      if (!line) {
+        throw new KsefInvalidCorrectionException(
+          `Correction line references originalLineNumber ${delta.originalLineNumber}, ` +
+            `but the original document has only ${original.length} line(s)`,
+        );
+      }
+      if (delta.newQuantity !== undefined) {
+        line.quantity = delta.newQuantity;
+      }
+      if (delta.newUnitPriceGross !== undefined) {
+        line.unitPriceGross = delta.newUnitPriceGross;
+      }
+    }
+    return corrected;
   }
 
   /**

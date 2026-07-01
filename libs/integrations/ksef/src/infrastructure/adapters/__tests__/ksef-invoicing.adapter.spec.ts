@@ -6,10 +6,12 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
-import { isRegulatoryTransmitter } from '@openlinker/core/invoicing';
+import { isCorrectionIssuer, isRegulatoryTransmitter } from '@openlinker/core/invoicing';
 import type {
   BuyerProfile as BuyerProfileType,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
+  OriginalDocumentSnapshot,
 } from '@openlinker/core/invoicing';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
@@ -137,6 +139,31 @@ function seedHappyPath(
       status: 200,
       headers: {},
     });
+}
+
+function originalDocument(overrides: Partial<OriginalDocumentSnapshot> = {}): OriginalDocumentSnapshot {
+  return {
+    buyer: buyer(),
+    currency: 'PLN',
+    documentType: 'invoice',
+    lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, taxRate: '23' }],
+    clearanceReference: '1111111111-20260501-ABCDEF-01',
+    documentNumber: 'FV/2026/05/0042',
+    issueDate: '2026-05-01',
+    ...overrides,
+  };
+}
+
+function correctionCommand(overrides: Partial<IssueCorrectionCommand> = {}): IssueCorrectionCommand {
+  return {
+    connectionId: 'conn-1',
+    orderId: 'ol_order_123',
+    originalProviderInvoiceId: `${SESSION_REF}:${INVOICE_REF}`,
+    reason: 'Customer returned 1 unit',
+    lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+    originalDocument: originalDocument(),
+    ...overrides,
+  };
 }
 
 function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder): KsefInvoicingAdapter {
@@ -381,6 +408,74 @@ describe('KsefInvoicingAdapter', () => {
       );
 
       expect(lastInput()?.correction?.originalKsefNumber).toBeNull();
+    });
+  });
+
+  describe('issueCorrection (#1288)', () => {
+    it('should be exposed as CorrectionIssuer', () => {
+      expect(isCorrectionIssuer(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+
+    it('should delegate into the issueInvoice KOR path and submit a corrected document', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const record = await adapter(http, builder).issueCorrection(correctionCommand());
+
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      expect(paths).toEqual([
+        'POST /sessions/online',
+        `POST /sessions/online/${SESSION_REF}/invoices`,
+        `POST /sessions/online/${SESSION_REF}/close`,
+        `GET /sessions/${SESSION_REF}`,
+      ]);
+      expect(record.documentType).toBe('corrected');
+      expect(record.regulatoryStatus).toBe('submitted');
+      expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
+
+      const built = lastInput();
+      expect(built?.correction).toBeDefined();
+      expect(built?.correction?.originalKsefNumber).toBe('1111111111-20260501-ABCDEF-01');
+      expect(built?.correction?.originalInvoiceNumber).toBe('FV/2026/05/0042');
+      // The delta (newQuantity: 1) was applied onto the original line (qty 2).
+      expect(built?.correction?.correctedLines).toHaveLength(1);
+      expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
+    });
+
+    it('should apply newUnitPriceGross deltas while keeping name/taxRate from the original line', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ lines: [{ originalLineNumber: 1, newUnitPriceGross: 99.0 }] }),
+      );
+
+      const line = lastInput()?.correction?.correctedLines?.[0];
+      expect(line?.quantity).toBe(2); // unchanged (only price corrected)
+    });
+
+    it('should throw KsefInvalidCorrectionException when no originalDocument snapshot was supplied', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueCorrection(correctionCommand({ originalDocument: undefined })),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should throw KsefInvalidCorrectionException when originalLineNumber is out of range', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueCorrection(
+          correctionCommand({ lines: [{ originalLineNumber: 5, newQuantity: 1 }] }),
+        ),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      expect(http.calls).toHaveLength(0);
     });
   });
 
