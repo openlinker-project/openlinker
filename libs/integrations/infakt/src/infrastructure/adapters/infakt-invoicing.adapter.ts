@@ -133,15 +133,26 @@ function taxRateNumeric(taxRate: string): number {
   return 0;
 }
 
-/** Converts a buyer-paid gross unit price to Infakt's net unit price for the given tax rate. */
+/** Converts a buyer-paid gross unit price (PLN) to Infakt's net unit price (PLN) for the given tax rate. */
 function grossToNet(unitPriceGross: number, taxRate: string): number {
   return unitPriceGross / (1 + taxRateNumeric(taxRate));
 }
 
-/** Parses Infakt's "amount currency" monetary string (e.g. "123.00 PLN") to a number. */
-function parseInfaktAmount(value: string): number {
-  const n = parseFloat(value);
-  return isNaN(n) ? 0 : n;
+/**
+ * Converts a PLN amount to Infakt's wire format: a plain integer count of
+ * groszy (1 PLN = 100 groszy). Confirmed both live against the real sandbox
+ * and against the official API schema — `unit_net_price`/`net_price`/
+ * `gross_price` are `integer`, documented "w groszach". Sending a decimal
+ * "amount currency" string here (the previous behaviour) understated every
+ * invoice's legal/KSeF amount ~100x (#1293 review).
+ */
+function toGroszy(amountPln: number): number {
+  return Math.round(amountPln * 100);
+}
+
+/** Converts an Infakt wire amount (plain integer groszy) back to a PLN decimal for arithmetic. */
+function fromGroszy(amountGroszy: number): number {
+  return amountGroszy / 100;
 }
 
 export class InfaktInvoicingAdapter
@@ -193,7 +204,7 @@ export class InfaktInvoicingAdapter
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
-    const { lines, currency, documentType, idempotencyKey, orderId } = cmd;
+    const { lines, documentType, idempotencyKey, orderId } = cmd;
     const clientId = await this.resolveClientId(cmd);
 
     const kind = documentType === 'proforma' ? 'proforma' : 'vat';
@@ -202,7 +213,8 @@ export class InfaktInvoicingAdapter
       tax_symbol: toInfaktTaxSymbol(l.taxRate),
       quantity: l.quantity,
       unit: 'szt.',
-      unit_net_price: `${grossToNet(l.unitPriceGross, l.taxRate).toFixed(2)} ${currency ?? 'PLN'}`,
+      // Plain integer groszy, NOT an "amount currency" string — see toGroszy.
+      unit_net_price: toGroszy(grossToNet(l.unitPriceGross, l.taxRate)),
     }));
 
     const payload = {
@@ -346,25 +358,19 @@ export class InfaktInvoicingAdapter
       { invoice_type: 'vat' },
     );
 
-    // Infakt's InfaktInvoice type carries no currency field (accounts are
-    // single-currency in practice); PLN mirrors issueInvoice's own default
-    // and is the only value Infakt sandbox/production has ever returned here.
-    const currency = 'PLN';
-
     // Build correction services: original row (correction: false) + corrected row (correction: true)
     const correctionServices = original.services.flatMap((svc, idx) => {
       const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
       const corrQty = corrLine?.newQuantity ?? svc.quantity;
-      // Infakt returns unit_net_price as an "amount currency" string (e.g.
-      // "100.00 PLN"), never a plain number — confirmed against the v3
-      // schema (#1292 review) — so it must be parsed before arithmetic.
-      const originalNet = parseInfaktAmount(svc.unit_net_price);
+      // svc.unit_net_price is a plain integer groszy (Infakt wire format —
+      // see toGroszy/fromGroszy) — convert to a PLN decimal before arithmetic.
+      const originalNet = fromGroszy(svc.unit_net_price);
       // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
       // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
       // same as issueInvoice's gross→net conversion (#1292 review).
       const corrPrice = corrLine?.newUnitPriceGross
-        ? `${grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol).toFixed(2)} ${currency}`
-        : `${originalNet.toFixed(2)} ${currency}`;
+        ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
+        : toGroszy(originalNet);
       return [
         // Original "before" row
         {
@@ -372,7 +378,7 @@ export class InfaktInvoicingAdapter
           tax_symbol: svc.tax_symbol,
           quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: `${originalNet.toFixed(2)} ${currency}`,
+          unit_net_price: toGroszy(originalNet),
           group: idx + 1,
           correction: false,
         },

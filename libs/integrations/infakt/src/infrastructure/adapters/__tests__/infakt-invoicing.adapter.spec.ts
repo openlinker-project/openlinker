@@ -45,9 +45,9 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
     number: 'FV/1/2026',
     kind: 'vat',
     status: 'sent',
-    gross_price: '123.00 PLN',
-    net_price: '100.00 PLN',
-    tax_price: '23.00 PLN',
+    gross_price: 12300,
+    net_price: 10000,
+    tax_price: 2300,
     payment_method: 'transfer',
     invoice_date: '2026-07-01',
     sale_date: '2026-07-01',
@@ -66,10 +66,10 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
         tax_symbol: '23',
         quantity: 1,
         unit: 'szt.',
-        unit_net_price: '100.00 PLN',
-        net_price: '100.00 PLN',
-        tax_price: '23.00 PLN',
-        gross_price: '123.00 PLN',
+        unit_net_price: 10000,
+        net_price: 10000,
+        tax_price: 2300,
+        gross_price: 12300,
         correction: null,
         group: null,
       },
@@ -289,10 +289,10 @@ describe('InfaktInvoicingAdapter', () => {
       await adapter.issueInvoice({ ...baseCmd, lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }] });
 
       const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
-      const services = (invoiceCall?.body as { invoice: { services: Array<{ tax_symbol: string; unit_net_price: string }> } })
+      const services = (invoiceCall?.body as { invoice: { services: Array<{ tax_symbol: string; unit_net_price: number }> } })
         .invoice.services;
       expect(services[0].tax_symbol).toBe('23');
-      expect(services[0].unit_net_price).toBe('100.00 PLN');
+      expect(services[0].unit_net_price).toBe(10000);
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
@@ -527,10 +527,11 @@ describe('InfaktInvoicingAdapter', () => {
       ).toBe(true);
     });
 
-    it('should parse Infakt\'s "amount currency" unit_net_price string for the untouched-line fallback', async () => {
-      // Infakt returns unit_net_price as "100.00 PLN", never a plain number
-      // (#1292 review); baseCmd's line carries no newUnitPriceGross, so both
-      // the "before" row and the fallback "after" row go through this path.
+    it('should carry the original unit_net_price (plain integer groszy) through for the untouched-line fallback', async () => {
+      // Infakt's wire format is a plain integer count of groszy (#1293 review
+      // finding — the earlier "amount currency" string assumption understated
+      // every invoice ~100x); baseCmd's line carries no newUnitPriceGross, so
+      // both the "before" row and the fallback "after" row go through this path.
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
       http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
@@ -539,17 +540,17 @@ describe('InfaktInvoicingAdapter', () => {
 
       const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
       const body = postCall?.body as {
-        invoice: { services: { unit_net_price: string; correction: boolean }[] };
+        invoice: { services: { unit_net_price: number; correction: boolean }[] };
       };
       expect(body.invoice.services.find((s) => s.correction === false)?.unit_net_price).toBe(
-        '100.00 PLN',
+        10000,
       );
       expect(body.invoice.services.find((s) => s.correction === true)?.unit_net_price).toBe(
-        '100.00 PLN',
+        10000,
       );
     });
 
-    it('should convert a price-changing correction line from gross to net (#1292 review)', async () => {
+    it('should convert a price-changing correction line from gross to net, in groszy (#1292 review)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
       http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
@@ -561,12 +562,13 @@ describe('InfaktInvoicingAdapter', () => {
 
       const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
       const body = postCall?.body as {
-        invoice: { services: { unit_net_price: string; correction: boolean }[] };
+        invoice: { services: { unit_net_price: number; correction: boolean }[] };
       };
       const correctedRow = body.invoice.services.find((s) => s.correction === true);
-      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net — was previously written
-      // straight through as "61.50 PLN", overstating the net price.
-      expect(correctedRow?.unit_net_price).toBe('50.00 PLN');
+      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net PLN = 5000 groszy —
+      // was previously written straight through as "61.50 PLN" (61500 groszy
+      // if naively converted), overstating the net price.
+      expect(correctedRow?.unit_net_price).toBe(5000);
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
