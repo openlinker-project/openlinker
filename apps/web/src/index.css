@@ -2444,6 +2444,11 @@ textarea {
   box-shadow: var(--shadow-xs);
 }
 
+.data-table__container:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 /* Virtualized mode: the inner scroller owns both axes. */
 .data-table__container--virtual {
   overflow: visible;
