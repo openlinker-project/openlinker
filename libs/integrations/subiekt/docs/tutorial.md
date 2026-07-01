@@ -36,7 +36,7 @@ and SQL connection. Secrets go in **environment variables only** — never in th
 ```json
 {
   "Port": 5005,
-  "Auth": { "Enabled": true, "ApiKey": "", "HeaderName": "X-Api-Key" },
+  "Auth": { "Enabled": true, "ApiKey": "" },
   "Sfera": {
     "BinariesDir": "%LOCALAPPDATA%\\InsERT\\Deployments\\Nexo\\<deployment>\\Binaries",
     "SqlServer":   "localhost\\INSERTNEXO",
@@ -46,6 +46,12 @@ and SQL connection. Secrets go in **environment variables only** — never in th
   }
 }
 ```
+
+> **Auth is header-fixed, not configurable.** The bridge only accepts
+> `Authorization: Bearer <token>` — there is no `HeaderName` option to change
+> it. OpenLinker's client also sends a redundant `x-bridge-token: <token>`
+> header alongside `Authorization`, but the bridge ignores it; only the
+> `Authorization: Bearer` value is checked.
 
 Replace `<deployment>` with the folder name visible under
 `%LOCALAPPDATA%\InsERT\Deployments\Nexo\`.

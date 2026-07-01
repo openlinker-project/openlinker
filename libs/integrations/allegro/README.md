@@ -40,7 +40,9 @@ token set (access + refresh token) managed by the adapter's token-refresh cycle.
   owns a refresh-on-401 retry cycle. See `allegro-auth-token.service.ts`.
 - **Offer auto-grouping**: multi-variant products fan out to one offer per variant;
   Allegro auto-groups via GTIN + distinguishing parameters (no `/sale/offer-variants` API
-  — removed April 2026). See [ADR-024](../../../docs/architecture/adrs/) and `#824`.
+  — removed April 2026). See the [Listings context — Multi-variant expansion (#824)](../../../docs/architecture-overview.md#6-listings-offers)
+  section of the architecture overview; [ADR-024](../../../docs/architecture/adrs/024-destination-listing-capabilities.md)
+  covers the related marketplace-`OfferManager`-vs-shop-`ProductPublisher` split.
 - **Cursor-based order feed**: uses `GET /order/events` with a persisted `lastEventId`
   cursor for incremental ingestion.
 

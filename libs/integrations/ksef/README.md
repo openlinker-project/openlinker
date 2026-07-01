@@ -58,7 +58,7 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 | Field | Values | Notes |
 |---|---|---|
-| `environment` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/api/v2`; `prod` → `ksef.mf.gov.pl/api/v2` |
+| `environment` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/v2`; `demo` → `api-demo.ksef.mf.gov.pl/v2`; `prod` → `api.ksef.mf.gov.pl/v2` |
 | `nip` | Polish tax ID (NIP) of the seller | |
 | `sellerName` | Legal name | Required for FA(3) header |
 | `sellerAddress` | Street, city, postalCode | Required for FA(3) header |

@@ -10,11 +10,10 @@ KSeF is the first provider of the country-agnostic **Invoicing** domain
 All Polish/KSeF/FA terminology is confined to the `@openlinker/integrations-ksef`
 package; `libs/core` stays country-neutral.
 
-> **Status:** C2 plugin skeleton — connection creation and credential validation
-> are wired, but issuance mechanics land in C4. This guide documents both the
-> current wired behaviour and the C4+ target design; sections that describe
-> future behaviour are explicitly marked. Validate against `test`/`demo` before
-> any production rollout. See [Limitations](#limitations) and
+> **Status:** shipped. Connection creation, credential validation, and full
+> FA(3) issuance + clearance (`VAT` and `KOR` corrections) are wired end to
+> end via the async submit → poll → UPO flow. Validate against `test`/`demo`
+> before any production rollout. See [Limitations](#limitations) and
 > [Compliance caveats](#compliance-caveats).
 
 ---
@@ -23,14 +22,15 @@ package; `libs/core` stays country-neutral.
 
 | Capability | Supported | Notes |
 |---|---|---|
-| `Invoicing` (issue / get / supported-types) | ⚠️ stub (C2) | The registry capability the adapter advertises. Issuance mechanics land in C4; `getSupportedDocumentTypes()` currently returns `[]` and mutating methods throw until C4 ships. |
-| `RegulatoryTransmitter` (submit-for-clearance + status read) | ⚠️ planned (C4+) | A sub-capability of `InvoicingPort`, narrowed at the call site via `isRegulatoryTransmitter`. It extends `RegulatoryStatusReader`. The `KsefInvoicingAdapter` does not yet implement it. |
+| `Invoicing` (issue / get / supported-types) | ✅ | `issueInvoice` builds and submits the FA(3) XML (`VAT` or `KOR`) via the online-session flow; `getSupportedDocumentTypes()` returns `invoice` + `corrected`. |
+| `RegulatoryTransmitter` (submit-for-clearance + status read) | ✅ | A sub-capability of `InvoicingPort`, narrowed at the call site via `isRegulatoryTransmitter`. It extends `RegulatoryStatusReader`. Implemented by `KsefInvoicingAdapter` — for KSeF, submission is folded into `issueInvoice` (see [Issuance & clearance flow](#issuance--clearance-flow-async-submit--poll--upo)), so `submitForClearance` is a documented no-op. |
+| `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a FA(3) `KOR` correction of an already-issued document — see [Corrections (KOR)](#corrections-kor). |
 | `upsertCustomer` | ⚠️ pass-through | KSeF has no customer registry; the buyer identity travels inside the FA(3) document. |
 
 - **adapterKey:** `ksef.publicapi.v2`
 - **platformType:** `ksef`
 - **displayName:** `KSeF Public API v2`
-- **supported document types (C4+):** `invoice` (FA(3) `VAT`), `corrected` (FA(3) `KOR`) — returned by `getSupportedDocumentTypes()` once C4 issuance mechanics are wired.
+- **supported document types:** `invoice` (FA(3) `VAT`), `corrected` (FA(3) `KOR`) — returned by `getSupportedDocumentTypes()`.
 
 ---
 
@@ -99,19 +99,12 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 | Field | Required | Collected by wizard | Description |
 |---|---|---|---|
 | `env` | ✅ | ✅ | `test` \| `demo` \| `prod`. Gated by the config-shape validator at connection create/update. |
+| `seller` | ✅ for issuance | ✅ | Seller identity (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`. Optional at connection-create time, but required before the connection can issue. |
 
-> **Planned addition (C5) — seller profile.**
-> The issuance path (C4+) will require a `seller` block on the config — the full seller profile
-> (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address
-> { line1, line2?, city, postalCode, countryIso2 }`. This field does not exist on
-> `KsefConnectionConfig` yet; its shape validation and wizard collection are tracked
-> follow-ups that land alongside the C5 issuance work. Until then, `env` is the only
-> config field the server gates.
-
-> **Note:** the seller's tax identifier (NIP) is deliberately not stored on the connection
-> config in C2. Per the config-shape validator's design, it travels with the issued document
-> rather than living on the connection row. The `seller` block (C5) will introduce it as
-> part of a structured seller-profile object, not as a bare `sellerNip` field.
+> **Note:** the seller's tax identifier lives on the connection's `seller.nip`
+> field, not as a bare top-level `sellerNip` — it travels as part of the
+> structured seller-profile object so the adapter can hand it straight to the
+> FA(3) `SellerProfile` section.
 
 Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort`):
 
@@ -122,11 +115,7 @@ Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort`):
 
 ---
 
-## Issuance & clearance flow (async submit → poll → UPO) — planned (C4+)
-
-> **Current state (C2):** the `KsefInvoicingAdapter` is a stub — `issueInvoice`,
-> `upsertCustomer`, and `submitForClearance` all throw a "not yet implemented" error.
-> The flow below describes the target design that lands in C4.
+## Issuance & clearance flow (async submit → poll → UPO)
 
 KSeF clears invoices asynchronously: a submitted document is accepted into a
 session, then processed; the KSeF number and UPO are assigned later.
@@ -192,7 +181,7 @@ record's `clearanceReference`.
 
 ---
 
-## Corrections (KOR) — planned (C4+)
+## Corrections (KOR)
 
 A correction (`documentType: 'corrected'`) is issued as a normal FA(3) with
 `RodzajFaktury = KOR`. The link to the original lives in the FA(3) body
@@ -201,20 +190,21 @@ A correction (`documentType: 'corrected'`) is issued as a normal FA(3) with
 reserved for a *technical* correction (korekta techniczna — re-submitting a
 fixed copy of the same document) and is **not** used by the regular KOR flow.
 
+KSeF has no delta-only correction primitive — every correction resubmits a
+complete FA(3) document, so `CorrectionIssuer.issueCorrection` is a pure
+delegation into the same online-session issuance path as `issueInvoice`.
+
 ---
 
 ## Limitations
 
 OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
-`VAT` and `KOR` documents. The integration is currently at **C2 (plugin skeleton)**;
-the table below covers both current gaps and explicitly out-of-scope items:
+`VAT` and `KOR` documents. The table below covers explicitly out-of-scope items:
 
 | Not supported | Rationale |
 |---|---|
-| Issuance / clearance (C2 stub) | The `KsefInvoicingAdapter` is a stub — `issueInvoice`, `upsertCustomer`, and `submitForClearance` throw "not yet implemented". Mechanics land in C4. |
-| Seller profile on connection config | `KsefConnectionConfig` currently only carries `env`. The `seller` block (NIP, name, address) is a C5 addition; without it a connection cannot issue. |
-| Receipts / paragony (B2C fiscal receipts) | KSeF covers structured invoices; receipts are a separate fiscal regime. An invoice to a buyer without a NIP **is** planned (FA(3) `BrakID`) once issuance ships. |
-| Batch (wsadowa) submission pipeline | The online (interactive) session flow is the C4 target; the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
+| Receipts / paragony (B2C fiscal receipts) | KSeF covers structured invoices; receipts are a separate fiscal regime. An invoice to a buyer without a NIP **is** planned (FA(3) `BrakID`) as a follow-up. |
+| Batch (wsadowa) submission pipeline | OpenLinker issues via the online (interactive) session flow (`/sessions/online`); the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
 | Inbound invoice retrieval | OpenLinker is a transmitter, not a KSeF inbox reader; pulling received invoices is out of scope. |
 | FA_PEF / PEF documents | Only the FA(3) VAT/KOR schema is planned. |
 | Auto-generated API reference | See the official OpenAPI at `https://api-test.ksef.mf.gov.pl/docs/v2`. |
