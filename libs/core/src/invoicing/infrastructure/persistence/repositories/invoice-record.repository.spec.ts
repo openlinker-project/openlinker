@@ -15,7 +15,8 @@ import { InvoiceRecord } from '../../../domain/entities/invoice-record.entity';
 import { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 import { DuplicateInvoiceRecordException } from '../../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
-import type { CreateInvoiceRecordInput } from '../../../domain/types/invoicing.types';
+import { SourceDocumentImmutableError } from '../../../domain/exceptions/source-document-immutable.error';
+import type { CreateInvoiceRecordInput, StoredDocument } from '../../../domain/types/invoicing.types';
 
 function ormRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordOrmEntity {
   const now = new Date('2026-06-16T00:00:00.000Z');
@@ -334,6 +335,67 @@ describe('InvoiceRecordRepository', () => {
       expect(result.failureMode).toBe('in-doubt');
       expect(result.failureCode).toBe('transport-timeout');
       expect(result.failureReason).toBe('The invoicing request timed out.');
+    });
+  });
+
+  describe('updateOutcome — sourceDocument write-once (atomic guard)', () => {
+    const sourceDocument: StoredDocument = {
+      contentType: 'application/xml',
+      contentBase64: 'PGE+',
+    };
+
+    let updateQb: {
+      update: jest.Mock;
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      execute: jest.Mock;
+    };
+
+    beforeEach(() => {
+      updateQb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn(),
+      };
+      ormRepo.createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(updateQb) as unknown as typeof ormRepo.createQueryBuilder;
+    });
+
+    it('sets the snapshot via a single guarded UPDATE (WHERE "sourceDocument" IS NULL) when no snapshot exists yet', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 1 });
+      ormRepo.findOne.mockResolvedValue(ormRow({ status: 'issued', sourceDocument }));
+
+      const result = await repository.updateOutcome('ol_invoice_1', {
+        status: 'issued',
+        sourceDocument,
+      });
+
+      expect(updateQb.andWhere).toHaveBeenCalledWith('"sourceDocument" IS NULL');
+      expect(result.sourceDocument).toEqual(sourceDocument);
+    });
+
+    it('throws SourceDocumentImmutableError when a snapshot already exists (affected = 0, row present)', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0 });
+      ormRepo.findOne.mockResolvedValue(ormRow({ sourceDocument }));
+
+      await expect(
+        repository.updateOutcome('ol_invoice_1', {
+          sourceDocument: { contentType: 'application/xml', contentBase64: 'new' },
+        }),
+      ).rejects.toBeInstanceOf(SourceDocumentImmutableError);
+    });
+
+    it('throws InvoiceRecordNotFoundException when affected = 0 and the row is absent', async () => {
+      updateQb.execute.mockResolvedValue({ affected: 0 });
+      ormRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        repository.updateOutcome('missing', { sourceDocument }),
+      ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
     });
   });
 

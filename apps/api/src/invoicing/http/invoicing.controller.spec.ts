@@ -102,7 +102,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
       return (
         base.status === 'issuing' &&
         base.leaseExpiresAt !== null &&
-        (base.leaseExpiresAt as Date).getTime() > now.getTime()
+        (base.leaseExpiresAt).getTime() > now.getTime()
       );
     },
     get isReattemptableFailure(): boolean {
@@ -802,6 +802,24 @@ describe('InvoicingController', () => {
         upsertCustomer: jest.fn(),
         getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
       };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(
+        controller.downloadUpo('rec-inv-1', mockResponse()),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should 409 when the reader rejects the confirmation kind', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
+      const adapter: InvoicingPort = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
+        getRegulatoryDocument: jest
+          .fn()
+          .mockRejectedValue(new UnsupportedRegulatoryDocumentKindError('confirmation')),
+      } as InvoicingPort;
       integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
       await expect(

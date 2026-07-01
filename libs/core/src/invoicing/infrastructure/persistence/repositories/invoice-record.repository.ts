@@ -90,14 +90,35 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   async updateOutcome(id: string, patch: InvoiceOutcomePatch): Promise<InvoiceRecord> {
+    // sourceDocument is write-once. When the patch sets it, enforce the
+    // invariant with a SINGLE guarded UPDATE (WHERE "sourceDocument" IS NULL)
+    // rather than read-then-check-then-write, so a concurrent double-write
+    // race can't slip an overwrite between the read and the save.
+    if (patch.sourceDocument !== undefined) {
+      const result = await this.repository
+        .createQueryBuilder()
+        .update(InvoiceRecordOrmEntity)
+        .set(patch)
+        .where('id = :id', { id })
+        .andWhere('"sourceDocument" IS NULL')
+        .execute();
+      if (result.affected === 0) {
+        const existing = await this.repository.findOne({ where: { id } });
+        if (!existing) {
+          throw new InvoiceRecordNotFoundException(id);
+        }
+        throw new SourceDocumentImmutableError(id);
+      }
+      const saved = await this.repository.findOne({ where: { id } });
+      if (!saved) {
+        throw new InvoiceRecordNotFoundException(id);
+      }
+      return this.toDomain(saved);
+    }
+
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
       throw new InvoiceRecordNotFoundException(id);
-    }
-    // sourceDocument is write-once: allow setting it once (when the current
-    // value is null) but reject any attempt to overwrite an existing snapshot.
-    if (patch.sourceDocument !== undefined && entity.sourceDocument !== null) {
-      throw new SourceDocumentImmutableError(id);
     }
     Object.assign(entity, patch);
     const saved = await this.repository.save(entity);
