@@ -95,13 +95,27 @@ describe('InfaktInboundWebhookDecoderAdapter', () => {
     it('should fall back to the event uuid as externalId when invoice_uuid is absent', () => {
       const rawBody = Buffer.from(
         JSON.stringify({
-          event: { uuid: 'e-2', name: 'draft_invoice_created', retry_counter: 0, created_at: '2026-06-30T10:00:00Z' },
+          event: { uuid: 'e-2', name: 'send_to_ksef_error', retry_counter: 0, created_at: '2026-06-30T10:00:00Z' },
           resource: { id: 42 },
         }),
       );
       const result = adapter.extractEnvelope(rawBody);
       expect(result.action).toBe('route');
       expect(result.action === 'route' && result.envelope.externalId).toBe('e-2');
+    });
+
+    it('should ignore (not route) an Infakt event OL does not act on', () => {
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: { uuid: 'e-3', name: 'draft_invoice_created', retry_counter: 0, created_at: '2026-06-30T10:00:00Z' },
+          resource: { id: 42 },
+        }),
+      );
+      const result = adapter.extractEnvelope(rawBody);
+      expect(result).toEqual({
+        action: 'ignore',
+        reason: 'unhandled Infakt event: draft_invoice_created',
+      });
     });
 
     it('should reject a malformed payload', () => {

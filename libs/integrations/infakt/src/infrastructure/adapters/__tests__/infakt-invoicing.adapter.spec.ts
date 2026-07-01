@@ -80,6 +80,29 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
   };
 }
 
+function ksefResponseFixture(
+  overrides: Partial<{ status: 'pending' | 'sent' | 'success' | 'error'; ksef_number: string | null }> = {},
+): {
+  request_uuid: string;
+  invoice_uuid: string;
+  invoice_kind: string;
+  ksef_number: string | null;
+  status: 'pending' | 'sent' | 'success' | 'error';
+  status_description: string | null;
+  timestamps: { request_created_at: string | null; request_finished_at: string | null };
+} {
+  return {
+    request_uuid: 'req-uuid-1',
+    invoice_uuid: 'inv-uuid-1',
+    invoice_kind: 'vat',
+    ksef_number: null,
+    status: 'pending',
+    status_description: 'Faktura oczekuje na wysłanie do KSeF.',
+    timestamps: { request_created_at: '2026-07-01T12:00:00Z', request_finished_at: '2026-07-01T12:00:00Z' },
+    ...overrides,
+  };
+}
+
 describe('InfaktInvoicingAdapter', () => {
   let http: FakeInfaktHttpClient;
   let logger: jest.Mocked<LoggerPort>;
@@ -107,12 +130,12 @@ describe('InfaktInvoicingAdapter', () => {
       const existing: InfaktClient = {
         id: 1,
         uuid: 'client-existing',
-        name: 'Acme',
+        company_name: 'Acme',
         nip: '1234567890',
         email: null,
         city: null,
         street: null,
-        post_code: null,
+        postal_code: null,
         country: null,
       };
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
@@ -125,7 +148,9 @@ describe('InfaktInvoicingAdapter', () => {
         buyer: buyer({ nip: '1234567890' }),
       });
 
-      expect(result).toEqual({ providerCustomerId: 'client-existing' });
+      // The neutral providerCustomerId carries Infakt's NUMERIC client id
+      // (not the uuid) — invoices.json only accepts client_id.
+      expect(result).toEqual({ providerCustomerId: '1' });
     });
 
     it('should create a new client when no NIP match exists (happy path)', async () => {
@@ -136,12 +161,12 @@ describe('InfaktInvoicingAdapter', () => {
       const created: InfaktClient = {
         id: 2,
         uuid: 'client-new',
-        name: 'Acme',
+        company_name: 'Acme',
         nip: '1234567890',
         email: null,
         city: 'Warszawa',
         street: 'Testowa 1',
-        post_code: '00-001',
+        postal_code: '00-001',
         country: 'PL',
       };
       http.seed('POST', 'clients.json', created);
@@ -151,26 +176,32 @@ describe('InfaktInvoicingAdapter', () => {
         buyer: buyer({ nip: '1234567890' }),
       });
 
-      expect(result).toEqual({ providerCustomerId: 'client-new' });
+      expect(result).toEqual({ providerCustomerId: '2' });
+      // Field names verified live against the real Infakt v3 sandbox
+      // (2026-07-01): `name`/`post_code` are silently rejected/ignored.
+      const createCall = http.calls.find((c) => c.method === 'POST' && c.path === 'clients.json');
+      expect(createCall?.body).toMatchObject({
+        client: expect.objectContaining({ company_name: 'Acme Sp. z o.o.', postal_code: '00-001' }),
+      });
     });
 
     it('should create a new client without a NIP lookup when the buyer has no tax id', async () => {
       const created: InfaktClient = {
         id: 3,
         uuid: 'client-no-nip',
-        name: 'Jan Kowalski',
+        company_name: 'Jan Kowalski',
         nip: null,
         email: null,
         city: 'Warszawa',
         street: 'Testowa 1',
-        post_code: '00-001',
+        postal_code: '00-001',
         country: 'PL',
       };
       http.seed('POST', 'clients.json', created);
 
       const result = await adapter.upsertCustomer({ connectionId: 'conn-1', buyer: buyer() });
 
-      expect(result).toEqual({ providerCustomerId: 'client-no-nip' });
+      expect(result).toEqual({ providerCustomerId: '3' });
       expect(http.calls.some((c) => c.method === 'GET' && c.path === 'clients.json')).toBe(false);
     });
 
@@ -202,14 +233,17 @@ describe('InfaktInvoicingAdapter', () => {
       http.seed('POST', 'clients.json', {
         id: 1,
         uuid: 'client-uuid-1',
-        name: 'Acme',
+        company_name: 'Acme',
         nip: '1234567890',
         email: null,
         city: null,
         street: null,
-        post_code: null,
+        postal_code: null,
         country: null,
       });
+      // issueInvoice now submits to KSeF inline (issuing IS submitting) —
+      // verified live (2026-07-01) that an Infakt draft never auto-submits.
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
     });
 
     it('should issue an invoice and return an InvoiceRecord (happy path)', async () => {
@@ -226,6 +260,39 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record.status).toBe('issued');
       expect(record.idempotencyKey).toBe('idem-1');
       expect(record.pdfUrl).toBe('https://infakt.pl/inv-uuid-1.pdf');
+      // KSeF submission is inline now — the record reflects the send_to_ksef
+      // response, not the (necessarily stale, pre-submission) invoice payload.
+      expect(record.regulatoryStatus).toBe('submitted');
+
+      // Verified live against the real Infakt v3 sandbox (2026-07-01):
+      // `payment_method: 'transfer'` 422s without a configured bank account,
+      // and `client_uuid` is ignored — invoices.json needs the numeric
+      // `client_id`.
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'cash', client_id: 1 }),
+      });
+      // issuing IS submitting for Infakt (draft never auto-submits) — verified
+      // live (2026-07-01).
+      expect(http.calls.some((c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/send_to_ksef.json')).toBe(
+        true,
+      );
+    });
+
+    it('should default an empty taxRate to the Polish standard VAT rate (regime-rate fallback)', async () => {
+      // Core always leaves InvoiceLine.taxRate empty (documented contract:
+      // "the provider adapter resolves the regime rate"). Verified live
+      // (2026-07-01): an empty tax_symbol cascades into services.gross /
+      // value.tax_values rejections too — every real order line hit this.
+      http.seed('POST', 'invoices.json', invoiceFixture());
+
+      await adapter.issueInvoice({ ...baseCmd, lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }] });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const services = (invoiceCall?.body as { invoice: { services: Array<{ tax_symbol: string; unit_net_price: string }> } })
+        .invoice.services;
+      expect(services[0].tax_symbol).toBe('23');
+      expect(services[0].unit_net_price).toBe('100.00 PLN');
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
@@ -420,12 +487,27 @@ describe('InfaktInvoicingAdapter', () => {
     it('should issue a correction and return an InvoiceRecord (happy path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      // A correction is its own KSeF document — needs its own send_to_ksef
+      // kick, same as the original (verified live, 2026-07-01).
+      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       const record = await adapter.issueCorrection(baseCmd);
 
       expect(record).toBeInstanceOf(InvoiceRecord);
       expect(record.providerInvoiceId).toBe('corr-uuid-1');
       expect(record.idempotencyKey).toBe('idem-corr-1');
+      expect(record.regulatoryStatus).toBe('submitted');
+
+      // Verified live against the real Infakt v3 sandbox (2026-07-01):
+      // omitting client_id on a corrective invoice 422s with "client_id
+      // required" — the original invoice's own client_id must be forwarded.
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ client_id: 1 }),
+      });
+      expect(
+        http.calls.some((c) => c.method === 'POST' && c.path === 'invoices/corr-uuid-1/send_to_ksef.json'),
+      ).toBe(true);
     });
 
     it('should parse Infakt\'s "amount currency" unit_net_price string for the untouched-line fallback', async () => {

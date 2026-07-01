@@ -50,6 +50,14 @@ export class InfaktInboundWebhookDecoderAdapter implements InboundWebhookDecoder
       return { action: 'reject', reason: 'malformed Infakt webhook payload' };
     }
 
+    // Short-circuit here rather than always routing: every Infakt event OL
+    // doesn't act on (draft_invoice_created, invoice_marked_as_paid, …) would
+    // otherwise still pay for a full Postgres dedup-insert + Redis publish
+    // before being dead-lettered two hops later in WebhookToJobHandler.
+    if (this.parser.toOlDomain(parsed.event.name) === null) {
+      return { action: 'ignore', reason: `unhandled Infakt event: ${parsed.event.name}` };
+    }
+
     const externalId =
       typeof parsed.resource['invoice_uuid'] === 'string'
         ? (parsed.resource['invoice_uuid'])

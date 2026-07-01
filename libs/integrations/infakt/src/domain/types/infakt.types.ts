@@ -84,16 +84,20 @@ export interface InfaktInvoiceService {
   group: number | null;
 }
 
-/** Client (buyer) from GET /clients/{uuid}.json or POST /clients.json */
+/**
+ * Client (buyer) from GET /clients/{uuid}.json or POST /clients.json.
+ * Field names verified live against the sandbox response (2026-07-01) —
+ * `company_name` / `postal_code`, not `name` / `post_code`.
+ */
 export interface InfaktClient {
   id: number;
   uuid: string;
-  name: string;
+  company_name: string;
   nip: string | null;
   email: string | null;
   city: string | null;
   street: string | null;
-  post_code: string | null;
+  postal_code: string | null;
   country: string | null;
 }
 
