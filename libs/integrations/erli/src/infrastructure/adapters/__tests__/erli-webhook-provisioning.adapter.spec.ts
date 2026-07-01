@@ -137,6 +137,35 @@ describe('ErliWebhookProvisioningAdapter', () => {
       expect(result.testPingTriggered).toBe(false);
     });
 
+    it('should abort and report testPingTriggered=false (not hang install) when OL\'s own ingress never responds', async () => {
+      jest.useFakeTimers();
+      fetchSpy.mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            const signal = (init as RequestInit)?.signal;
+            signal?.addEventListener('abort', () => {
+              const err = new Error('The operation was aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          }),
+      );
+
+      const installPromise = adapter.install(CONNECTION_ID);
+      // Flush the microtask queue between each timer advance so the aborted
+      // fetch's rejection has a chance to propagate before the next tick.
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+        jest.advanceTimersByTime(1_000);
+      }
+      const result = await installPromise;
+
+      expect(result.webhooksConfigured).toBe(true);
+      expect(result.testPingTriggered).toBe(false);
+
+      jest.useRealTimers();
+    });
+
     it('should NEVER log the secret while self-testing', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);

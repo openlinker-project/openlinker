@@ -58,6 +58,15 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.ok).toBe(true);
     });
 
+    it('should accept a lowercase "bearer" auth scheme', () => {
+      const result = decoder.verify({
+        rawBody: makeBody(),
+        headers: { authorization: `bearer ${SECRET}` },
+        secret: SECRET,
+      });
+      expect(result.ok).toBe(true);
+    });
+
     it('should reject a tampered (wrong) access token', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
@@ -111,6 +120,19 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
     it('should produce a deterministic eventId for the same orderId + updated timestamp', () => {
       const a = decoder.extractEnvelope(makeBody({ updated: '2026-07-01T11:20:17.415Z' }), {});
       const b = decoder.extractEnvelope(makeBody({ updated: '2026-07-01T11:20:17.415Z' }), {});
+      expect(a.action).toBe('route');
+      expect(b.action).toBe('route');
+      if (a.action !== 'route' || b.action !== 'route') return;
+      expect(a.envelope.eventId).toBe(b.envelope.eventId);
+    });
+
+    it('should produce a deterministic eventId across retried deliveries of a timestamp-less body', () => {
+      // Guards against the eventId hash basis absorbing the decode-time "now"
+      // fallback used for the envelope's advisory occurredAt — that value must
+      // stay out of the dedup hash or every retry would mint a fresh eventId
+      // and defeat the Postgres eventId-dedup gate.
+      const a = decoder.extractEnvelope(makeBody(), {});
+      const b = decoder.extractEnvelope(makeBody(), {});
       expect(a.action).toBe('route');
       expect(b.action).toBe('route');
       if (a.action !== 'route' || b.action !== 'route') return;

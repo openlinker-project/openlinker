@@ -12,6 +12,9 @@
  * `extractEnvelope` always emits a generic `'orderStatusChanged'` envelope
  * eventType — every delivery is treated as "go re-fetch this order", which is
  * both hooks' only decodable signal. Erli sends no signed delivery timestamp.
+ * `ErliWebhookEventTranslator` still special-cases a hypothetical
+ * `orderCreated` discriminator for forward-compat — this decoder never emits
+ * it today, so don't go looking for it here if that branch looks dead.
  *
  * Trigger model (ADR-025): webhook is a low-latency nudge, never the source
  * of truth. We read only the order id from the body; the authoritative order
@@ -45,7 +48,11 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
     if (!header) {
       return { ok: false };
     }
-    const token = header.startsWith(ERLI_WEBHOOK_AUTH_HEADER_PREFIX)
+    // Scheme match is case-insensitive: RFC 7235 doesn't mandate a case for
+    // the auth-scheme token, and a lowercase `bearer ` from Erli or an
+    // intermediary proxy must not fall through to a raw-header comparison
+    // that always fails the length check.
+    const token = header.toLowerCase().startsWith(ERLI_WEBHOOK_AUTH_HEADER_PREFIX.toLowerCase())
       ? header.slice(ERLI_WEBHOOK_AUTH_HEADER_PREFIX.length)
       : header;
     const provided = Buffer.from(token);
@@ -82,7 +89,8 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
     // No body discriminator exists (see module doc) — every delivery decodes
     // to the same generic "order changed" signal.
     const eventType = 'orderStatusChanged';
-    const occurredAt = this.resolveOccurredAt(record);
+    const bodyTimestamp = this.resolveBodyTimestamp(record);
+    const occurredAt = bodyTimestamp ?? new Date().toISOString();
 
     return {
       action: 'route',
@@ -93,7 +101,7 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
         // every delivery would hash to `${orderId}:orderStatusChanged` and the
         // Postgres eventId-dedup gate would silently drop every delivery after
         // the first for a given order.
-        eventId: this.deriveEventId(record, orderId, occurredAt),
+        eventId: this.deriveEventId(record, orderId, bodyTimestamp),
         eventType,
         occurredAt,
         objectType: 'order',
@@ -103,25 +111,35 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
     };
   }
 
-  private deriveEventId(record: Record<string, unknown>, orderId: string, occurredAt: string): string {
+  private deriveEventId(
+    record: Record<string, unknown>,
+    orderId: string,
+    bodyTimestamp: string | null,
+  ): string {
     const explicit = this.asNonEmptyString(record['eventId']);
     if (explicit) {
       return explicit;
     }
-    const basis = `${orderId}:${occurredAt}`;
+    // The hash basis intentionally never includes the "now" fallback used for
+    // the envelope's advisory `occurredAt` — that value is decode-time and
+    // non-deterministic, so hashing it would produce a fresh eventId on every
+    // retried delivery and defeat the Postgres eventId-dedup gate. A body
+    // that carries no timestamp at all hashes on `orderId` alone: deliberately
+    // deterministic (retries of the same timestamp-less delivery dedupe
+    // together) at the cost of collapsing distinct timestamp-less events for
+    // the same order — an accepted, documented trade-off, not the silent
+    // regression a "now" basis would cause.
+    const basis = bodyTimestamp ? `${orderId}:${bodyTimestamp}` : orderId;
     return `erli-${createHash('sha256').update(basis).digest('hex').slice(0, 32)}`;
   }
 
-  private resolveOccurredAt(record: Record<string, unknown>): string {
-    const fromBody =
+  private resolveBodyTimestamp(record: Record<string, unknown>): string | null {
+    return (
       this.asNonEmptyString(record['updated']) ??
       this.asNonEmptyString(record['occurredAt']) ??
       this.asNonEmptyString(record['timestamp']) ??
-      this.asNonEmptyString(record['created']);
-    // Falls back to "now" only when the body carries no timestamp at all —
-    // advisory either way, since the authoritative status always comes from
-    // the downstream order fetch (ADR-025 trigger-not-truth model).
-    return fromBody ?? new Date().toISOString();
+      this.asNonEmptyString(record['created'])
+    );
   }
 
   private header(headers: Record<string, string>, name: string): string | null {
