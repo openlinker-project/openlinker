@@ -107,14 +107,14 @@ try {
   await pickConnectionIfNeeded(page);
   await shot(page, '10-order-detail-not-issued');
 
-  // 2. Issue the invoice.
+  // 2. Issue the invoice. Shoot BEFORE any reload — the mutation's own
+  // query-invalidation updates the panel in place, and a reload here would
+  // just drop the connection-picker selection for no benefit.
   const issueBtn = page.getByRole('button', { name: /Issue invoice/i }).first();
   if (await issueBtn.count()) {
     await issueBtn.click();
     await page.waitForTimeout(3000);
   }
-  await page.reload({ waitUntil: 'networkidle' });
-  await pickConnectionIfNeeded(page);
   await shot(page, '11-invoice-issued-submitted');
   const pendingCard = await page.locator('.reg-card--info').count();
   console.log('pending reg-card visible:', pendingCard > 0);
