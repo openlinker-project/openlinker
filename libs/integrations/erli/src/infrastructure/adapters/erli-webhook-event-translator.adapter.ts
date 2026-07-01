@@ -3,8 +3,11 @@
  *
  * Decodes Erli's id-only inbound webhook events into neutral
  * `CanonicalInboundEvent`s. Pure transform — no I/O, no connection state, no DI.
- * Erli emits these order event types (#992-PROVISIONAL, isolated in
- * `erli-webhook.types.ts`):
+ * `ErliInboundWebhookDecoderAdapter` always emits `orderStatusChanged` (#992
+ * sandbox spike — the real body carries no event-type discriminator to tell
+ * `orderCreated` apart), mapped below to canonical `updated`. The `orderCreated`
+ * branch is kept for defensiveness / forward-compat if a future decoder
+ * revision recovers a real discriminator:
  *   - `orderCreated`       → canonical `{ domain: 'order', eventType: 'created' }`
  *   - `orderStatusChanged` → canonical `{ domain: 'order', eventType: 'updated' }`
  *
