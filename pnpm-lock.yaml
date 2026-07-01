@@ -424,6 +424,9 @@ importers:
       '@nestjs/testing':
         specifier: 10.3.0
         version: 10.3.0(@nestjs/common@10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1))(@nestjs/core@10.3.0)(@nestjs/platform-express@10.3.0)
+      '@openlinker/test-kit':
+        specifier: workspace:*
+        version: link:../../libs/test-kit
       '@testcontainers/postgresql':
         specifier: ^10.9.0
         version: 10.13.2

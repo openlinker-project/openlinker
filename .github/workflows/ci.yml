@@ -147,6 +147,12 @@ jobs:
     needs: changes
     # Skip while draft / docs-only; always run on push (post-merge).
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
+    # `actions: read` lets the orphan-sweep step below ask the Actions API
+    # whether the run that created a given leftover container has actually
+    # finished, instead of guessing from container age (#1285).
+    permissions:
+      contents: read
+      actions: read
     env:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
       # Ryuk (the Testcontainers reaper) requires a TCP callback from the
@@ -158,7 +164,7 @@ jobs:
       # process exits, and a cancelled run (`cancel-in-progress`, see the
       # workflow-level `concurrency` block) is SIGKILLed before Jest's
       # globalTeardown can run either. With Ryuk off, nothing reaps those
-      # containers on its own — the age-gated sweep step below is the
+      # containers on its own — the orphan-sweep step below is the
       # compensating control.
       TESTCONTAINERS_RYUK_DISABLED: 'true'
     steps:
@@ -170,41 +176,62 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - name: Sweep orphaned Testcontainers older than 90 minutes (#1285)
+      - name: Sweep orphaned Testcontainers from finished CI runs (#1285)
         # Ryuk is disabled (see above) so containers from a cancelled or
         # crashed prior run are never reaped and pile up on this persistent
         # runner until the docker0 bridge's FDB table fills up (SSHS-7962).
-        # Age-gated at 90 minutes — double this job's 45-minute timeout — so
-        # it can NEVER remove a container belonging to another
-        # `test-integration` job legitimately running concurrently on this
-        # runner: GitHub Actions API history confirms multiple branches'
-        # Integration Tests jobs do overlap in time on this runner, so an
-        # unconditional "remove everything" sweep would be unsafe. Anything
-        # still alive past 90 minutes is guaranteed orphaned, never live.
-        # Testcontainers labels every container/network it creates with
-        # org.testcontainers=true regardless of Ryuk, so the filter is safe
-        # and specific — it never touches the runner's own long-lived
-        # containers (e.g. the runner process itself).
+        #
+        # `libs/test-kit`'s `ciRunIdLabels()` stamps every Testcontainers
+        # container this repo creates with its owning `GITHUB_RUN_ID`. For
+        # each leftover container found here, this step asks the Actions API
+        # for THAT run's actual current status rather than guessing from
+        # container age — a run only ever reports `completed` once it is
+        # truly over, so this can never remove a container belonging to
+        # another `test-integration` job legitimately running concurrently
+        # on this runner. (GitHub Actions API history confirmed 64 of 88
+        # sampled `Integration Tests` job windows across different branches
+        # overlap in time — this runner genuinely has more than one
+        # concurrent job slot, ruling out an unconditional "remove
+        # everything" sweep.) Containers without the label (predate this
+        # fix, or a local/manual `docker compose` run) or whose owning run's
+        # status can't be resolved (API hiccup, run outside retention) fall
+        # back to a 90-minute age gate — double this job's timeout, so it
+        # still can never match a live job's own containers.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           CUTOFF_EPOCH=$(( $(date -u +%s) - 5400 ))
           CANDIDATES=$(docker ps -aq --filter "label=org.testcontainers=true")
-          if [ -n "$CANDIDATES" ]; then
-            STALE=""
-            for cid in $CANDIDATES; do
-              CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid")" +%s)
-              if [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+          STALE=""
+          for cid in $CANDIDATES; do
+            OWNER_RUN_ID=$(docker inspect -f '{{ index .Config.Labels "ol.ci.run-id" }}' "$cid" 2>/dev/null || true)
+            if [ -n "$OWNER_RUN_ID" ] && [ "$OWNER_RUN_ID" != "local" ] && [ "$OWNER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+              RUN_STATUS=$(gh api "repos/${{ github.repository }}/actions/runs/$OWNER_RUN_ID" --jq '.status' 2>/dev/null || echo "")
+              if [ "$RUN_STATUS" = "completed" ]; then
                 STALE="$STALE $cid"
+                continue
+              elif [ -n "$RUN_STATUS" ]; then
+                continue # queued/in_progress — still legitimately alive, leave it
               fi
-            done
-            if [ -n "$STALE" ]; then
-              echo "Removing stale (>90min old) Testcontainers containers:"
-              docker rm -f $STALE
-            else
-              echo "No stale Testcontainers containers found."
+              # RUN_STATUS empty: API lookup failed — fall through to the age check.
             fi
+            if [ "$OWNER_RUN_ID" = "$GITHUB_RUN_ID" ]; then
+              continue # this run's own container — never touch it here
+            fi
+            CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid")" +%s)
+            if [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+              STALE="$STALE $cid"
+            fi
+          done
+          if [ -n "$STALE" ]; then
+            echo "Removing orphaned Testcontainers containers:"
+            docker rm -f $STALE
+          else
+            echo "No orphaned Testcontainers containers found."
           fi
-          # Network prune is safe unconditionally, regardless of age: Docker
-          # refuses to remove a network that still has containers attached.
+          # Network prune is safe unconditionally: Docker refuses to remove
+          # a network that still has containers attached, regardless of age
+          # or which run created it.
           docker network prune -f --filter "label=org.testcontainers=true" || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -230,10 +257,10 @@ jobs:
         # This job's own containers are cleaned up by apps/api's globalTeardown
         # (now wired, see jest-integration.cjs) and each suite's own afterAll
         # (e.g. the PrestaShop/WooCommerce container helpers). No post-job
-        # sweep here: a same-job leftover would be well under the 90-minute
-        # age gate above, so it wouldn't be caught anyway — an age-unaware
-        # "remove everything" step would risk killing a concurrently running
-        # job's containers instead (see the pre-flight step's comment).
+        # sweep here: this run's own status is still `in_progress` until the
+        # job finishes, so the pre-flight sweep's run-status check wouldn't
+        # touch its containers anyway — the next run's pre-flight sweep picks
+        # up anything this run itself failed to clean up.
 
   test-php:
     name: PHP Unit Tests

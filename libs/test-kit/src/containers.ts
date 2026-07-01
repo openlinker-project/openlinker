@@ -32,6 +32,25 @@ const DEFAULT_DB_USER = 'postgres';
 const DEFAULT_DB_PASSWORD = 'postgres';
 
 /**
+ * Docker label key carrying the owning CI run's id.
+ *
+ * CI's orphan-sweep step (#1285) reads this label to ask the GitHub Actions
+ * API whether the run that created a given container has actually finished,
+ * rather than guessing from container age — the precise check can never
+ * mistake a live, concurrently-running job's container for an orphan.
+ */
+export const CI_RUN_ID_LABEL = 'ol.ci.run-id';
+
+/**
+ * Label set every Testcontainers-backed container/helper should stamp on
+ * itself. `GITHUB_RUN_ID` is only set inside GitHub Actions; local/dev runs
+ * fall back to `'local'`, which the CI sweep step never touches.
+ */
+export function ciRunIdLabels(): Record<string, string> {
+  return { [CI_RUN_ID_LABEL]: process.env.GITHUB_RUN_ID ?? 'local' };
+}
+
+/**
  * Start Postgres + Redis containers and populate connection env vars.
  *
  * Idempotent — a second call returns the existing handles without booting
@@ -54,9 +73,12 @@ export async function startContainers(config?: ContainerConfig): Promise<Contain
     .withDatabase(DEFAULT_DB_NAME)
     .withUsername(DEFAULT_DB_USER)
     .withPassword(DEFAULT_DB_PASSWORD)
+    .withLabels(ciRunIdLabels())
     .start();
 
-  const redis = await new RedisContainer(config?.redisImage ?? DEFAULT_REDIS_IMAGE).start();
+  const redis = await new RedisContainer(config?.redisImage ?? DEFAULT_REDIS_IMAGE)
+    .withLabels(ciRunIdLabels())
+    .start();
 
   process.env.DB_HOST = postgres.getHost();
   process.env.DB_PORT = String(postgres.getPort());
