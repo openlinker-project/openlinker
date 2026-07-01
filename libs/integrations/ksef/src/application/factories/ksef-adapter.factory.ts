@@ -30,6 +30,7 @@ import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoici
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import type { SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
@@ -133,6 +134,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         postalCode: address.postalCode,
         countryIso2: address.countryIso2,
       },
+      defaultTaxRate: seller.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE,
     };
   }
 

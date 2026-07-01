@@ -5,6 +5,7 @@
  */
 import { KsefAdapterFactory } from '../ksef-adapter.factory';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
+import type { SellerProfile } from '../../../infrastructure/fa3/domain/fa3-xml.types';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Connection, type IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
@@ -108,5 +109,37 @@ describe('KsefAdapterFactory', () => {
         resolver({ 'ref:ksef': { authType: 'qualified-seal', secretRef: 'ref:cert' } }),
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
+  });
+
+  describe('resolveSeller — defaultTaxRate (#1290)', () => {
+    const creds = resolver({
+      'ref:ksef': { authType: 'ksef-token', secretRef: 'ref:secret' },
+      'ref:secret': { token: 'TKN', contextNip: '1234567890' },
+    });
+
+    async function resolvedSeller(sellerConfig: Record<string, unknown>): Promise<SellerProfile> {
+      const factory = new KsefAdapterFactory();
+      const adapters = await factory.createAdapters(
+        connection({ config: { env: 'test', seller: sellerConfig } }),
+        idMapping,
+        creds,
+      );
+      return (adapters.invoicing as unknown as { seller: SellerProfile }).seller;
+    }
+
+    it('should fall back to the PL standard rate when unconfigured', async () => {
+      const seller = await resolvedSeller(SELLER_CONFIG);
+      expect(seller.defaultTaxRate).toBe('23');
+    });
+
+    it('should use the connection-configured defaultTaxRate when present', async () => {
+      const seller = await resolvedSeller({ ...SELLER_CONFIG, defaultTaxRate: '8' });
+      expect(seller.defaultTaxRate).toBe('8');
+    });
+
+    it('should fall back to the PL standard rate when defaultTaxRate is whitespace-only', async () => {
+      const seller = await resolvedSeller({ ...SELLER_CONFIG, defaultTaxRate: '   ' });
+      expect(seller.defaultTaxRate).toBe('23');
+    });
   });
 });

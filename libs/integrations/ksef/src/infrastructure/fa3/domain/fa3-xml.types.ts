@@ -69,6 +69,14 @@ export interface SellerProfile {
   nip: string;
   name: string;
   address: BuyerAddress;
+  /**
+   * Connection-resolved fallback `P_12` neutral code (see
+   * `DEFAULT_FA3_TAX_RATE` in `fa3-tax-rate.mapper.ts`), applied to any line
+   * whose neutral `taxRate` arrives empty — core has no per-line tax rate to
+   * give (ADR-026). Always a concrete value by the time this profile exists;
+   * the factory resolves it (connection config or the PL standard default).
+   */
+  defaultTaxRate: string;
 }
 
 /**

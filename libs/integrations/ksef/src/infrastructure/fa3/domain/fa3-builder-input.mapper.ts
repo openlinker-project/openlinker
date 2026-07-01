@@ -61,18 +61,26 @@ export function mapToFa3BuilderInput(
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
-    lines: cmd.lines.map(mapLine),
-    ...(cmd.correction !== undefined ? { correction: mapCorrection(cmd.correction) } : {}),
+    lines: cmd.lines.map((line) => mapLine(line, context.seller.defaultTaxRate)),
+    ...(cmd.correction !== undefined
+      ? { correction: mapCorrection(cmd.correction, context.seller.defaultTaxRate) }
+      : {}),
   };
 }
 
-/** Map one neutral line to a fully-mapped FA(3) line (applies the P_12 mapper). */
-function mapLine(line: InvoiceLine): Fa3Line {
+/**
+ * Map one neutral line to a fully-mapped FA(3) line (applies the P_12 mapper).
+ * An empty neutral `taxRate` (core has no per-line rate to give — ADR-026)
+ * falls back to the connection's `defaultTaxRate` before resolution; a
+ * non-empty rate is never overridden, so a genuine unmapped/mis-keyed code
+ * still surfaces loudly via `resolveP12`'s throw.
+ */
+function mapLine(line: InvoiceLine, defaultTaxRate: string): Fa3Line {
   return {
     name: line.name,
     quantity: line.quantity,
     unitPriceGross: line.unitPriceGross,
-    p12: resolveP12(line.taxRate),
+    p12: resolveP12(line.taxRate || defaultTaxRate),
   };
 }
 
@@ -84,13 +92,16 @@ function mapLine(line: InvoiceLine): Fa3Line {
  * cleared) becomes the `NrKSeF`/`NrKSeFN` choice. A return/refund corrects line
  * items, so `TypKorekty` defaults to `2` (see FA3_IMPLEMENTATION_NOTES.md).
  */
-function mapCorrection(correction: CorrectionReference): Fa3CorrectionContext {
+function mapCorrection(
+  correction: CorrectionReference,
+  defaultTaxRate: string,
+): Fa3CorrectionContext {
   return {
     typKorekty: '2',
     reason: correction.reason,
     originalIssueDate: correction.originalIssueDate,
     originalInvoiceNumber: correction.originalDocumentNumber,
     originalKsefNumber: correction.originalClearanceReference,
-    correctedLines: correction.correctedLines.map(mapLine),
+    correctedLines: correction.correctedLines.map((line) => mapLine(line, defaultTaxRate)),
   };
 }

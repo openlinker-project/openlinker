@@ -34,6 +34,7 @@ const SELLER: SellerProfile = {
     postalCode: '00-001',
     countryIso2: 'PL',
   },
+  defaultTaxRate: '23',
 };
 
 const SESSION_REF = 'SESSION-REF-001';
