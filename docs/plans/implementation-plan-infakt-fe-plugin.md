@@ -53,6 +53,11 @@ generic/capability-gated.
   line-row model, since both ride the same generic `useIssueCorrectionMutation` +
   `POST /invoices/:invoiceId/correct` contract.
 - Registration in `apps/web/src/plugins/index.ts`.
+- Two Playwright evidence scripts (`apps/web/e2e/infakt-connection.mjs`,
+  `apps/web/e2e/infakt-invoice.mjs`) run once locally against the real inFakt sandbox, producing
+  `docs/assets/infakt/*.png` screenshots committed to the branch and posted inline in a PR
+  comment — proof that connecting inFakt and issuing/clearing/correcting a real invoice through
+  OpenLinker actually works end to end, not just that the UI renders (see §6 Phase 4).
 - Redesign of the shared `.invoice-panel__inline-alert` / raw `.slot-row` host chrome in
   `OrderInvoicePanel` (`features/invoicing/components/order-invoice-panel.tsx`) and the
   KSeF/Subiekt detail sections' outer chrome, into the "reg-card" treatment validated in
@@ -377,6 +382,59 @@ invoice, using the redesigned host chrome.
     - **Acceptance**: `/connections/new` shows the inFakt card; `pnpm --filter @openlinker/web test`
       green (covers the module-load duplicate-id/platformType assertion).
 
+### Phase 4: E2E Playwright verification + screenshot evidence
+
+**Goal**: Prove, with real browser screenshots against a running local stack + the real inFakt
+sandbox, that an operator can connect inFakt and issue a real invoice through OpenLinker end to
+end (OL → `InfaktInvoicingAdapter` → inFakt sandbox API → KSeF) — not just that the components
+render. Follows the exact precedent already established for Subiekt/Erli
+(`apps/web/e2e/subiekt-invoice.mjs`, `apps/web/e2e/subiekt-proofs.mjs`): plain Playwright `.mjs`
+scripts (not `*.spec.ts` — these are one-off evidence-capture walkthroughs, not part of `pnpm test`),
+run manually against `pnpm --filter @openlinker/web preview` (port 4173), saving screenshots to
+`docs/assets/infakt/` and committing them to the PR branch (the established convention — see
+`docs/assets/subiekt/*.png`, already tracked in git).
+
+**Steps**:
+
+11. **Connection walkthrough script**
+    - **File**: `apps/web/e2e/infakt-connection.mjs`
+    - **Action**: Port `subiekt-invoice.mjs`'s login/shot helper pattern. Drive: `/connections/new`
+      → click inFakt card → fill name + real sandbox API key (from environment/local secrets —
+      **never hardcode the sandbox key in the script or commit it**; read via
+      `process.env.INFAKT_SANDBOX_API_KEY`) → submit → "Test connection" → connection list showing
+      the new `infakt` connection. Capture one screenshot per step into
+      `docs/assets/infakt/{00..05}-*.png`.
+    - **Acceptance**: running the script against a local `pnpm --filter @openlinker/web preview`
+      + `pnpm start:dev:api` stack with real sandbox credentials produces a green "Connection test
+      passed" screenshot.
+
+12. **Invoice issuance walkthrough script**
+    - **File**: `apps/web/e2e/infakt-invoice.mjs`
+    - **Action**: Port `subiekt-invoice.mjs`'s `issueFlow` near-verbatim: open a real ingested
+      order → invoice panel not-issued state → click "Issue invoice" → wait for the real
+      OL → inFakt → KSeF round-trip → capture the `submitted` reg-card, then poll/reload until
+      `regulatoryStatus` flips to `accepted` (KSeF clearance in sandbox is ~90s per the earlier
+      feasibility POC finding) and capture the `accepted` reg-card with the clearance reference
+      chip. Also drive "Issue correction" once on the accepted invoice to capture the KOR modal
+      states + the resulting corrected-document row on `/invoices`.
+    - **Acceptance**: screenshots exist proving (a) invoice issued, (b) KSeF clearance reached
+      `accepted` through the real sandbox (not mocked), (c) a correction was issued successfully.
+      This is the concrete "we can issue an invoice through OpenLinker and inFakt" confirmation
+      the user asked for.
+
+13. **Screenshot evidence in the PR**
+    - **Action**: After both scripts run successfully and `docs/assets/infakt/*.png` are
+      committed to the branch, post a PR comment (via `gh pr comment`) embedding the screenshots
+      as markdown images referencing
+      `https://raw.githubusercontent.com/openlinker-project/openlinker/1282-infakt-fe-plugin/docs/assets/infakt/{name}.png`
+      — the same raw-content-URL technique the repo already relies on for rendering
+      `docs/assets/*` images works here too, because the files are committed to the PR's own
+      branch, so the images render inline in the GitHub comment UI with no external upload step.
+      Structure the comment as a short walkthrough: setup → issue → clearance → correction, one
+      image per step with a one-line caption.
+    - **Acceptance**: the PR has a comment with inline-rendered screenshots covering the full
+      connect → issue → clear → correct flow.
+
 ### Implementation Details
 
 **New Components**: listed in §3 above — all `apps/web`, no domain/application/infrastructure
@@ -523,6 +581,16 @@ config field, not a build-time var).
 - None needed — no backend/API changes; existing `apps/api` int-specs for
   `/connections`, `/invoices/*` already cover the generic endpoints this plugin calls.
 
+### E2E Verification (Phase 4)
+
+- `apps/web/e2e/infakt-connection.mjs` and `apps/web/e2e/infakt-invoice.mjs` — manual-run
+  Playwright walkthroughs (not part of `pnpm test` / CI), run once against a live local stack
+  + the real inFakt sandbox before opening the PR. Produces `docs/assets/infakt/*.png`,
+  committed to the branch, then posted as an inline-image PR comment (§6 Phase 4 Step 13).
+  This is the one part of the plan that requires real external sandbox credentials and a
+  running `pnpm start:dev:api` + `pnpm --filter @openlinker/web preview` stack — everything
+  else in this plan is verified by `pnpm test` alone.
+
 ### Mocking Strategy
 
 - All tests use `createMockApiClient()` / `renderWithProviders()` from
@@ -551,6 +619,10 @@ config field, not a build-time var).
 - [ ] "Issue correction" opens the KOR modal with one empty line row + "Add line"; missing
   line number blocks submit; success closes the dialog + refetches the invoice
 - [ ] KSeF and Subiekt invoice-detail-section existing tests remain green after the redesign
+- [ ] `docs/assets/infakt/*.png` exist proving a real sandbox connection + issuance + KSeF
+  clearance (`accepted`) + a correction, captured via `infakt-connection.mjs` / `infakt-invoice.mjs`
+- [ ] The PR has a comment with those screenshots rendered inline (raw.githubusercontent.com
+  image links against the PR branch)
 
 ---
 
