@@ -199,16 +199,18 @@ jobs:
         # still can never match a live job's own containers.
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
           CUTOFF_EPOCH=$(( $(date -u +%s) - 5400 ))
-          CANDIDATES=$(docker ps -aq --filter "label=org.testcontainers=true")
-          STALE=""
-          for cid in $CANDIDATES; do
+          readarray -t CANDIDATES < <(docker ps -aq --filter "label=org.testcontainers=true")
+          STALE=()
+          for cid in "${CANDIDATES[@]}"; do
+            [ -z "$cid" ] && continue
             OWNER_RUN_ID=$(docker inspect -f '{{ index .Config.Labels "ol.ci.run-id" }}' "$cid" 2>/dev/null || true)
             if [ -n "$OWNER_RUN_ID" ] && [ "$OWNER_RUN_ID" != "local" ] && [ "$OWNER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
-              RUN_STATUS=$(gh api "repos/${{ github.repository }}/actions/runs/$OWNER_RUN_ID" --jq '.status' 2>/dev/null || echo "")
+              RUN_STATUS=$(gh api "repos/$GH_REPOSITORY/actions/runs/$OWNER_RUN_ID" --jq '.status' 2>/dev/null || echo "")
               if [ "$RUN_STATUS" = "completed" ]; then
-                STALE="$STALE $cid"
+                STALE+=("$cid")
                 continue
               elif [ -n "$RUN_STATUS" ]; then
                 continue # queued/in_progress — still legitimately alive, leave it
@@ -220,12 +222,12 @@ jobs:
             fi
             CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid")" +%s)
             if [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
-              STALE="$STALE $cid"
+              STALE+=("$cid")
             fi
           done
-          if [ -n "$STALE" ]; then
+          if [ "${#STALE[@]}" -gt 0 ]; then
             echo "Removing orphaned Testcontainers containers:"
-            docker rm -f $STALE
+            docker rm -f "${STALE[@]}"
           else
             echo "No orphaned Testcontainers containers found."
           fi
