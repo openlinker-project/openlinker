@@ -109,6 +109,7 @@ describe('InvoicingController', () => {
   beforeEach(async () => {
     invoiceService = {
       issueInvoice: jest.fn(),
+      issueCorrection: jest.fn(),
       getInvoice: jest.fn().mockResolvedValue(null),
       getInvoiceById: jest.fn().mockResolvedValue(null),
       listInvoices: jest.fn(),
@@ -361,6 +362,98 @@ describe('InvoicingController', () => {
       expect(result.failureReason).toBe('The buyer tax identifier was rejected as invalid.');
       // The PII-tainted internal diagnostic is NEVER exposed.
       expect(result).not.toHaveProperty('errorMessage');
+    });
+  });
+
+  describe('POST /invoices/:invoiceId/correct (#1288)', () => {
+    const invoiceId = 'inv_1';
+    const dto = { reason: 'Customer returned 1 unit', lines: [{ originalLineNumber: 1, newQuantity: 1 }] };
+
+    it('404 NotFound when the invoice record does not exist', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('422 when the original invoice has no providerInvoiceId yet', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ providerInvoiceId: null }),
+      );
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('422 when the original invoice is missing document number / issue date', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ providerInvoiceNumber: null }),
+      );
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('passes originalDocument (rebuilt from the order snapshot) when the order is available', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(makeInvoiceRecord({ documentType: 'corrected' }));
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn_1',
+          orderId: 'ol_order_1',
+          originalProviderInvoiceId: 'FV/2026/1',
+          originalDocument: expect.objectContaining({
+            currency: 'PLN',
+            documentType: 'invoice',
+            clearanceReference: null,
+            documentNumber: 'FV/2026/1',
+            issueDate: '2026-06-23',
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+          }),
+        }),
+      );
+    });
+
+    it('passes through documentType:corrected when correcting an already-corrected invoice', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(makeInvoiceRecord({ documentType: 'corrected' }));
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({ documentType: 'corrected' }),
+        }),
+      );
+    });
+
+    it('passes originalDocument: undefined when the backing order is no longer available', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(null);
+      invoiceService.issueCorrection.mockResolvedValue(makeInvoiceRecord({ documentType: 'corrected' }));
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({ originalDocument: undefined }),
+      );
+    });
+
+    it('maps a provider rejection to an HTTP exception via toHttpException', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockRejectedValue(
+        new CapabilityNotSupportedException('conn_1', 'CorrectionIssuer'),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toThrow();
     });
   });
 

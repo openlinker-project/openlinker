@@ -240,6 +240,49 @@ export interface CorrectionLine {
 }
 
 /**
+ * Best-effort reconstruction of the original document's issuance inputs,
+ * assembled by the CALLER (never by adapters) from the order the original
+ * document was issued for — mirroring how a keyless re-issue rebuilds its
+ * {@link IssueInvoiceCommand} from the order snapshot. Needed by adapters that
+ * must resubmit a COMPLETE corrected document rather than apply a delta (e.g.
+ * KSeF's FA(3) KOR, which has no delta-only correction primitive) — adapters
+ * that only need per-line deltas (Subiekt) never read this field.
+ *
+ * ACCEPTED LIMITATIONS (no persisted point-in-time snapshot exists today):
+ * - `buyer` tax id is not persisted on `InvoiceRecord`, so it is rebuilt as
+ *   `buyerTaxId: null` — same accepted limitation as a keyless re-issue.
+ * - `lines` are read off the order's CURRENT state, NOT a snapshot taken at
+ *   original-issuance time. If the order's items were modified after the
+ *   original document was issued (edited quantity/price, added/removed/
+ *   reordered line), `lines` — and therefore the `originalLineNumber`-indexed
+ *   correction deltas applied against it — may no longer match what the
+ *   provider actually has on file for the referenced original document.
+ *   Correcting an order that changed since its original issuance is UNSAFE
+ *   until `InvoiceRecord` persists the true issuance-time line snapshot.
+ *   Tracked by https://github.com/openlinker-project/openlinker/issues/1297.
+ */
+export interface OriginalDocumentSnapshot {
+  buyer: BuyerProfile;
+  /** ISO 4217 currency code, echoed from the original issue command. */
+  currency: string;
+  /**
+   * Neutral document type of the original document (open-world). Not
+   * currently read by any shipping `CorrectionIssuer` adapter (KSeF derives
+   * the corrected document's type from `IssueCorrectionCommand.documentType`
+   * instead) — carried for a future adapter that needs it.
+   */
+  documentType: string;
+  /** Reconstructed "before" lines of the original document — see the accepted-limitations note above. */
+  lines: InvoiceLine[];
+  /** Authority-assigned reference of the original document; `null` if never cleared. */
+  clearanceReference: string | null;
+  /** Human-facing sequential number of the original document. */
+  documentNumber: string;
+  /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
+  issueDate: string;
+}
+
+/**
  * Command to issue a correction of an already-issued document (ADR-026). Like
  * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
  * port does not decide whether/when. `originalProviderInvoiceId` references the
@@ -247,6 +290,7 @@ export interface CorrectionLine {
  * carry the post-correction values per original line; `reason` is the free-text
  * correction reason. `documentType` is caller-supplied (open-world); the adapter
  * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ * `originalDocument` is caller-assembled — see {@link OriginalDocumentSnapshot}.
  */
 export interface IssueCorrectionCommand {
   connectionId: string;
@@ -257,6 +301,8 @@ export interface IssueCorrectionCommand {
   reason?: string;
   lines: CorrectionLine[];
   idempotencyKey?: string;
+  /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
+  originalDocument?: OriginalDocumentSnapshot;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
