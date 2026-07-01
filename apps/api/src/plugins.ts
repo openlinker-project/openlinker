@@ -36,6 +36,7 @@ import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommer
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
+import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -49,4 +50,6 @@ export const apiPlugins: PluginEntry[] = [
   // #753: Subiekt nexo invoicing adapter — registered so the host can resolve
   // the 'Invoicing' capability for subiekt connections.
   SubiektIntegrationModule,
+  // #1281: Infakt accounting invoicing adapter (KSeF submitted via Infakt).
+  InfaktIntegrationModule,
 ];

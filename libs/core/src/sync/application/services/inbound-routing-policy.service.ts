@@ -39,6 +39,15 @@ import type {
   MasterInventorySyncByExternalIdPayloadV1,
   MasterProductSyncByExternalIdPayloadV1,
 } from '../../domain/types/master-job-payloads.types';
+import type { RegulatoryStatusReconcilePayloadV1 } from '../../domain/types/invoicing-job-payloads.types';
+
+/**
+ * Page size for the reconcile job a webhook-triggered `invoicing` event
+ * enqueues. The webhook is a trigger, not the source of truth (#1281,
+ * mirrors the InPost/webhook philosophy): it only shortens the latency
+ * until the next scheduled reconcile drains the full non-terminal frontier.
+ */
+const INVOICING_WEBHOOK_RECONCILE_LIMIT = 50;
 
 /**
  * Local mirror of the order-domain event vocabulary. `OrderFeedEventType` is
@@ -151,6 +160,20 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
             schemaVersion: 1,
             externalId: event.externalId,
           } satisfies MarketplaceShipmentSyncByExternalIdPayloadV1,
+        };
+      case 'invoicing':
+        // No by-id job exists (or is needed) — a clearance-status webhook
+        // (e.g. Infakt relaying a KSeF update) is a trigger, not the source
+        // of truth. It nudges the existing page-scan reconciler rather than
+        // inventing a by-id job; the scheduled run still drains the full
+        // non-terminal frontier regardless.
+        return {
+          jobType: 'invoicing.regulatoryStatus.reconcile',
+          requiredCapability: 'Invoicing',
+          payload: {
+            schemaVersion: 1,
+            limit: INVOICING_WEBHOOK_RECONCILE_LIMIT,
+          } satisfies RegulatoryStatusReconcilePayloadV1,
         };
       default: {
         // Exhaustive — `domain` is a closed union; this guards future additions.

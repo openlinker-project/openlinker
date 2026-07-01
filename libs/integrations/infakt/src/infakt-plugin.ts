@@ -27,6 +27,8 @@ import { InfaktAdapterFactory } from './application/infakt-adapter.factory';
 import { InfaktConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/infakt-connection-config-shape-validator.adapter';
 import { InfaktConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/infakt-connection-credentials-shape-validator.adapter';
 import { InfaktRetryClassifierAdapter } from './infrastructure/adapters/infakt-retry-classifier.adapter';
+import { InfaktInboundWebhookDecoderAdapter } from './infrastructure/adapters/infakt-inbound-webhook-decoder.adapter';
+import { InfaktWebhookEventTranslatorAdapter } from './infrastructure/adapters/infakt-webhook-event-translator.adapter';
 
 /**
  * Static plugin manifest. Exported for host tooling (capability-matrix, manifest
@@ -58,6 +60,20 @@ export function createInfaktPlugin(): AdapterPlugin {
         new InfaktConnectionCredentialsShapeValidatorAdapter(INFAKT_BRAND),
       );
       host.retryClassifierRegistry.register(INFAKT_ADAPTER_KEY, new InfaktRetryClassifierAdapter());
+
+      // #1281 / ADR-021 — third-party-native webhook ingress. The decoder
+      // (provider-keyed) authenticates + decodes Infakt's KSeF-relay webhook
+      // (incl. the subscription-verification handshake) at the host ingress;
+      // the translator (adapterKey-keyed) maps the decoded event onto the
+      // `invoicing` inbound domain downstream.
+      host.inboundWebhookDecoderRegistry.register(
+        infaktAdapterManifest.platformType,
+        new InfaktInboundWebhookDecoderAdapter(),
+      );
+      host.webhookEventTranslatorRegistry.register(
+        INFAKT_ADAPTER_KEY,
+        new InfaktWebhookEventTranslatorAdapter(),
+      );
     },
 
     async createCapabilityAdapter<T>(

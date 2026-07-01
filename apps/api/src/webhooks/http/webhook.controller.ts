@@ -67,7 +67,7 @@ export class WebhookController {
     @Param('connectionId') connectionId: string,
     @Headers() headers: Record<string, string>,
     @Req() req: RequestWithRawBody,
-  ): Promise<void> {
+  ): Promise<Record<string, unknown> | void> {
     // No `@Body() WebhookRequestDto` — the body shape is the provider's, not
     // OL's (ADR-021). The per-provider decoder (resolved in WebhookService)
     // verifies + parses the raw bytes; the host OL-module default decoder still
@@ -100,7 +100,7 @@ export class WebhookController {
     }
 
     try {
-      await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
+      return await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
     } catch (error) {
       // Map domain exceptions to HTTP exceptions
       if (error instanceof WebhookDecodeException) {

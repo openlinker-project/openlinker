@@ -17,7 +17,13 @@
  * @module libs/core/src/integrations/domain/types
  */
 
-export const InboundEventDomainValues = ['order', 'inventory', 'product', 'shipment'] as const;
+export const InboundEventDomainValues = [
+  'order',
+  'inventory',
+  'product',
+  'shipment',
+  'invoicing',
+] as const;
 
 export type InboundEventDomain = (typeof InboundEventDomainValues)[number];
 
