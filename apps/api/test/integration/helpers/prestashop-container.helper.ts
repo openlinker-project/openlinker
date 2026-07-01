@@ -27,6 +27,7 @@ import { join, resolve } from 'path';
 import { Readable } from 'stream';
 import { GenericContainer, Network, StartedNetwork, StartedTestContainer } from 'testcontainers';
 import { MySqlContainer, StartedMySqlContainer } from '@testcontainers/mysql';
+import { ciRunIdLabels } from '@openlinker/test-kit';
 import {
   applyPrestashopFixture,
   ApplyFixtureOptions,
@@ -635,6 +636,7 @@ async function startMysql(
     .withRootPassword(MYSQL_ROOT_PASSWORD)
     .withNetwork(network)
     .withNetworkAliases(MYSQL_NETWORK_ALIAS)
+    .withLabels(ciRunIdLabels())
     .withLogConsumer(makeLogConsumer(logBuffer))
     // Cold-cache CI: MySQL 8.4 image is ~700MB, pull + boot can hit 3-4 min.
     // 240s gives enough headroom without masking real container failures.
@@ -650,6 +652,7 @@ async function startPrestashop(
   return await new GenericContainer(PRESTASHOP_IMAGE)
     .withNetwork(network)
     .withExposedPorts(80)
+    .withLabels(ciRunIdLabels())
     // Bind-mount a host tmpdir onto /var/www/html. The PS image's entrypoint
     // detects the empty mount and copies bundled PHP source into it before
     // install runs ("Reapplying PrestaShop files for enabled volumes" /

@@ -72,6 +72,7 @@ import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
+  OriginalDocumentSnapshot,
   TaxIdentifier,
   InvoicingPort,
   RegulatoryDocumentKind,
@@ -355,9 +356,38 @@ export class InvoicingController {
         `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
       );
     }
+    if (!original.providerInvoiceNumber || !original.issuedAt) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet`,
+      );
+    }
 
     let issued: InvoiceRecord;
     try {
+      // Some adapters (KSeF's FA(3) KOR) cannot correct via a delta — they must
+      // resubmit a COMPLETE corrected document. Rebuild the original document's
+      // buyer/currency/lines from the order snapshot, exactly like a keyless
+      // re-issue does in `retryOne` — the buyer tax id is not persisted on
+      // `InvoiceRecord`, so it is rebuilt as `buyerTaxId: null`, same accepted
+      // limitation (see `OriginalDocumentSnapshot`'s doc comment for the
+      // line-fidelity caveat too). Built UNCONDITIONALLY whenever the backing
+      // order is still available — regardless of whether the resolved
+      // connection's adapter actually needs it — rather than resolving the
+      // adapter here just to branch on it; adapters that only need deltas
+      // (Subiekt) simply ignore the field. The extra order fetch is cheap
+      // relative to the network round-trip `issueCorrection` makes next.
+      const orderRecord = await this.orders.getOrderRecord(original.orderId);
+      const originalDocument = orderRecord
+        ? this.buildOriginalDocumentSnapshot({
+            orderRecord,
+            connectionId: original.connectionId,
+            documentType: original.documentType,
+            clearanceReference: original.clearanceReference,
+            documentNumber: original.providerInvoiceNumber,
+            issuedAt: original.issuedAt,
+          })
+        : undefined;
+
       issued = await this.invoiceService.issueCorrection({
         connectionId: original.connectionId,
         orderId: original.orderId,
@@ -370,6 +400,7 @@ export class InvoicingController {
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
+        originalDocument,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -476,6 +507,55 @@ export class InvoicingController {
     dto: IssueInvoiceRequestDto['buyerTaxId'],
   ): TaxIdentifier | null {
     return dto ? { scheme: dto.scheme, value: dto.value } : null;
+  }
+
+  /**
+   * ISO 8601 calendar date only (`YYYY-MM-DD`). Anchored to UTC (matches the
+   * adapter-side `toIsoDate` precedent in `KsefInvoicingAdapter`) — a `Date`
+   * close to local midnight in a UTC+ timezone can report the previous day's
+   * calendar date. Acceptable here since the value only threads through as an
+   * opaque correction-linkage field, never rendered to an operator directly.
+   */
+  private toIsoDateOnly(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Rebuild the original document's buyer/currency/lines from the order
+   * snapshot for adapters (e.g. KSeF) that must resubmit a COMPLETE corrected
+   * document rather than apply a delta — mirrors `retryOne`'s keyless-re-issue
+   * reconstruction. The buyer tax id is not persisted on `InvoiceRecord`, so it
+   * is rebuilt as `buyerTaxId: null`, the same accepted limitation as re-issue.
+   * Takes a single options object (rather than positional params) so call
+   * sites can't accidentally transpose two same-typed fields (e.g.
+   * `documentNumber` / `clearanceReference`, both nullable strings).
+   */
+  private buildOriginalDocumentSnapshot(input: {
+    orderRecord: OrderRecord;
+    connectionId: string;
+    documentType: string;
+    clearanceReference: string | null;
+    documentNumber: string;
+    issuedAt: Date;
+  }): OriginalDocumentSnapshot {
+    const { orderRecord, connectionId, documentType, clearanceReference, documentNumber, issuedAt } =
+      input;
+    const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
+    const issueCmd = toIssueInvoiceCommand({
+      order,
+      connectionId,
+      buyerTaxId: null,
+      documentType: documentType.length > 0 ? documentType : undefined,
+    });
+    return {
+      buyer: issueCmd.buyer,
+      currency: issueCmd.currency,
+      documentType: issueCmd.documentType ?? 'invoice',
+      lines: issueCmd.lines,
+      clearanceReference,
+      documentNumber,
+      issueDate: this.toIsoDateOnly(issuedAt),
+    };
   }
 
   /**

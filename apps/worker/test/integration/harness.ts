@@ -10,6 +10,7 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
 import { StartedTestContainer } from 'testcontainers';
+import { ciRunIdLabels } from '@openlinker/test-kit';
 
 type Harness = {
   postgres: StartedPostgreSqlContainer;
@@ -34,10 +35,11 @@ export async function startHarness(): Promise<void> {
     .withDatabase('openlinker_test')
     .withUsername('postgres')
     .withPassword('postgres')
+    .withLabels(ciRunIdLabels())
     .start();
 
   // Start Redis container
-  const redis = await new RedisContainer('redis:7-alpine').start();
+  const redis = await new RedisContainer('redis:7-alpine').withLabels(ciRunIdLabels()).start();
 
   // Provide connection info to tests via env vars
   process.env.DB_HOST = postgres.getHost();

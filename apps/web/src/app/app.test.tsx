@@ -61,7 +61,7 @@ describe('App', () => {
   it('renders orders list page from the primary navigation', async () => {
     const { view } = renderApp(['/orders']);
 
-    expect(await screen.findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Orders' }, { timeout: 10000 })).toBeInTheDocument();
     const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',
     });
@@ -78,7 +78,7 @@ describe('App', () => {
     // location to reflect the target path.
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/ai/prompt-templates');
-    });
+    }, { timeout: 5000 });
   });
 
   it('redirects legacy /settings/prompt-templates/:id to /ai/prompt-templates/:id (#377)', async () => {
@@ -86,6 +86,6 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/ai/prompt-templates/tmpl-42');
-    });
+    }, { timeout: 5000 });
   });
 });

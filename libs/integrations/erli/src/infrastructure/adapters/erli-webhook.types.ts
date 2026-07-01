@@ -1,31 +1,31 @@
 /**
  * Erli Webhook Wire Types
  *
- * Provisional shapes for Erli's inbound *webhook* bodies — the low-latency
- * trigger path (#996) that complements the mandatory inbox poll (#993). Models
- * the two order-relevant event literals and the id-only webhook body shape.
+ * Confirmed shapes for Erli's inbound *webhook* bodies (#992 sandbox spike,
+ * 2026-07-01) — the low-latency trigger path (#996) that complements the
+ * mandatory inbox poll (#993).
  *
- * PROVISIONAL (#992): the webhook body shape, the field that carries the order
- * id, the event-type discriminator vocabulary (`orderCreated` /
- * `orderStatusChanged`), and the signature/header scheme are ALL UNCONFIRMED
- * until the sandbox spike. This file is the SINGLE reconciliation point for
- * every webhook wire assumption — `ErliWebhookEventTranslator` (and the future
- * native `InboundWebhookDecoderPort`, the load-bearing #992 follow-up) read
- * webhook shapes only from here, so confirming the spike is a one-file edit.
- *
- * When #992 lands, these symbols flip:
- *   - `ErliWebhookEventTypeValues` — the literal discriminator strings.
- *   - `ERLI_WEBHOOK_ORDER_ID_FIELD` — the body field carrying the order id.
- *   - `ErliWebhookBody` — the full provisional body shape.
- * (The webhook event-type vocabulary is intentionally mirrored against the
- * inbox vocabulary in `erli-inbox.types.ts`; they are distinct wire surfaces
- * that #992 may reconcile to a single source.)
+ * CONFIRMED AGAINST THE LIVE SANDBOX (#992): unlike the original provisional
+ * assumption, Erli's webhook body is **not** an id-only `{ type, orderId }`
+ * envelope — it is the **full order resource** (the same shape `GET
+ * /orders/{id}` returns: `id`, `status`, `user`, `items`, `delivery`, …), and
+ * carries **no event-type discriminator field**. Both the `orderCreated` and
+ * `orderStatusChanged` hooks POST this same shape to the same callback URL, so
+ * OL cannot distinguish "created" from "status changed" from the body alone —
+ * the decoder treats every delivery as a generic "go re-fetch this order"
+ * trigger (ADR-025 trigger-not-truth: the real status always comes from the
+ * downstream `ErliOrderSourceAdapter.getOrder` call, never the webhook body).
+ * The access token Erli echoes back arrives on the standard `Authorization`
+ * header (`Bearer <token>`), not a custom `x-access-token` header.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  */
 
 /**
- * Order-relevant webhook event-type discriminators (#992-PROVISIONAL).
+ * Order-relevant webhook event-type discriminators.
+ *
+ * Used only for hook **registration** (`PUT /hooks/{hookName}`) — the webhook
+ * *body* carries no equivalent discriminator (see module doc above).
  *
  * `as const` + union per engineering standards — no runtime enum.
  */
@@ -34,41 +34,33 @@ export const ErliWebhookEventTypeValues = ['orderCreated', 'orderStatusChanged']
 export type ErliWebhookEventType = (typeof ErliWebhookEventTypeValues)[number];
 
 /**
- * The body field carrying the external order id (#992-PROVISIONAL).
+ * The body field carrying the external order id (#992-confirmed).
  *
- * Erli webhooks are id-only triggers (ADR-015 trigger-not-truth): the body
- * carries the order id, not the full order, which is pulled downstream by the
- * `marketplace.order.sync` job via `ErliOrderSourceAdapter.getOrder`.
+ * The webhook body is the full order resource; `id` is its top-level order
+ * id, the same field `ErliOrder` (`GET /orders/{id}`) uses.
  */
-export const ERLI_WEBHOOK_ORDER_ID_FIELD = 'orderId';
+export const ERLI_WEBHOOK_ORDER_ID_FIELD = 'id';
 
 /**
- * Provisional id-only Erli webhook body (#992-PROVISIONAL).
- *
- * Modelled as a generic record because the exact field set is unconfirmed; the
- * translator narrows it defensively from `unknown` rather than trusting the
- * declared shape (the id originates from an untrusted body in the future
- * native-decoder path).
+ * Confirmed Erli webhook body (#992) — the full order resource. Modelled as a
+ * generic record because only `id` is load-bearing for the decoder (the rest
+ * is ignored — ADR-025 trigger-not-truth); the translator narrows `id`
+ * defensively from `unknown` since it originates from an untrusted body.
  */
 export interface ErliWebhookBody {
-  /** External Erli order id — field name provisional (`ERLI_WEBHOOK_ORDER_ID_FIELD`). */
+  /** External Erli order id (`ERLI_WEBHOOK_ORDER_ID_FIELD`). */
   [ERLI_WEBHOOK_ORDER_ID_FIELD]: string;
 }
 
 /**
  * Request header Erli sends on each delivery carrying the access token for
- * signature verification (#992-PROVISIONAL — exact header unconfirmed).
- * Isolated here so #992 confirmation is a one-line edit; the decoder reads
- * only this constant.
+ * signature verification (#992-confirmed: the standard `Authorization`
+ * header, value `Bearer <token>` — not a custom `x-access-token` header).
  */
-export const ERLI_WEBHOOK_ACCESS_TOKEN_HEADER = 'x-access-token';
+export const ERLI_WEBHOOK_ACCESS_TOKEN_HEADER = 'authorization';
 
-/**
- * Body field carrying the Erli event-type discriminator (#992-PROVISIONAL).
- * Currently modelled as the `type` field; may differ from the inbox feed's
- * `status` field — #992 confirms or reconciles.
- */
-export const ERLI_WEBHOOK_EVENT_TYPE_FIELD = 'type';
+/** Prefix Erli prepends to the echoed access token on the `Authorization` header. */
+export const ERLI_WEBHOOK_AUTH_HEADER_PREFIX = 'Bearer ';
 
 /**
  * Webhook registration (#996), verified against the live Erli Shop API (#992).
