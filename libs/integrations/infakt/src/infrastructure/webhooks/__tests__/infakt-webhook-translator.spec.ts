@@ -75,6 +75,27 @@ describe('InfaktWebhookTranslator', () => {
       const body = Buffer.from('not json');
       expect(translator.getVerificationEcho(body)).toBeNull();
     });
+
+    it('should return null when a signed event carries a verification_code field', () => {
+      const body = Buffer.from(
+        JSON.stringify({
+          event: { uuid: 'e-1', name: 'send_to_ksef_success' },
+          resource: { verification_code: 'not-a-handshake' },
+        }),
+      );
+      expect(translator.getVerificationEcho(body)).toBeNull();
+    });
+
+    it('should return null when verification_code exceeds the length cap', () => {
+      const body = Buffer.from(JSON.stringify({ verification_code: 'a'.repeat(257) }));
+      expect(translator.getVerificationEcho(body)).toBeNull();
+    });
+
+    it('should echo a verification_code at exactly the length cap', () => {
+      const code = 'a'.repeat(256);
+      const body = Buffer.from(JSON.stringify({ verification_code: code }));
+      expect(translator.getVerificationEcho(body)).toEqual({ verification_code: code });
+    });
   });
 
   describe('parse', () => {
