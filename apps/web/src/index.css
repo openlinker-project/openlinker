@@ -810,7 +810,8 @@ textarea::placeholder {
   color: var(--text-disabled);
 }
 
-textarea {
+textarea,
+.textarea {
   height: auto;
   min-height: 5rem;
   padding: var(--space-2) var(--space-3);
@@ -9838,6 +9839,10 @@ html[data-density='compact'] .status-badge {
 .reg-card__reference {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
+}
+.reg-card__note {
+  font-size: 12px;
+  margin: 0;
 }
 .reg-card__actions {
   display: flex;
