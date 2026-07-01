@@ -183,6 +183,37 @@ receipt of clearance. Store it alongside the invoice PDF for compliance.
 
 ---
 
+## Part 6 — Correction invoices (KOR)
+
+If a shipped order changes after the invoice was issued (a returned item, a
+price adjustment), issue a correcting document instead of editing the
+original — KSeF invoices are immutable once accepted.
+
+Open the invoice on the order detail page and click **Issue correction**.
+
+![Order detail — issued invoice with the Issue correction button](./assets/15-ol-issue-correction-button.png)
+
+Fill in the reason and the affected line's `LP` (line number, 1-based),
+plus the new quantity and/or new price. Only the fields you change need a
+value — leave the others blank to keep the original.
+
+![Issue correction dialog — reason and corrected line filled in](./assets/16-ol-correction-dialog-filled.png)
+
+KSeF has no delta-only correction primitive — OpenLinker rebuilds the
+**complete** corrected FA(3) document from the original (buyer, currency, all
+lines) with your changes applied, and submits it referencing the original
+document number and KSeF clearance number.
+
+![Correction submitted — new document type "corrected", clearance pending](./assets/17-ol-correction-issued.png)
+
+The correction appears as its own row on **Operations → Invoices**, linked to
+the same order as the original — OpenLinker reconciles its clearance status
+the same way as any other document.
+
+![Invoices list — original invoice and its correction, both issued](./assets/18-ol-invoices-with-correction.png)
+
+---
+
 ## Next steps
 
 - **Automatic issuance** — instead of clicking per order, change the connection's
