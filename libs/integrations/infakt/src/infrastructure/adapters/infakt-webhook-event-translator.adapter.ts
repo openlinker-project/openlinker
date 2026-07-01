@@ -19,11 +19,11 @@ import type {
   WebhookEventTranslatorPort,
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
-import { InfaktWebhookTranslator } from '../../infrastructure/webhooks/infakt-webhook-translator';
+import { InfaktWebhookTranslator } from '../webhooks/infakt-webhook-translator';
 
 export class InfaktWebhookEventTranslatorAdapter implements WebhookEventTranslatorPort {
-  private readonly translator = new InfaktWebhookTranslator(
-    { secret: '' },
+  /** Secret-independent parsing helpers only — this adapter never verifies signatures. */
+  private readonly translator = InfaktWebhookTranslator.forParsing(
     new Logger(InfaktWebhookEventTranslatorAdapter.name),
   );
 

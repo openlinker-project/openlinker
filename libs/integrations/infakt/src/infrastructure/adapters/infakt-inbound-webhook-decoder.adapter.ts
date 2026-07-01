@@ -21,14 +21,14 @@ import type {
   WebhookVerifyResult,
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
-import { InfaktWebhookTranslator } from '../../infrastructure/webhooks/infakt-webhook-translator';
+import { InfaktWebhookTranslator } from '../webhooks/infakt-webhook-translator';
 
 const SIGNATURE_HEADER = 'X-Infakt-Signature';
 
 export class InfaktInboundWebhookDecoderAdapter implements InboundWebhookDecoderPort {
   private readonly logger = new Logger(InfaktInboundWebhookDecoderAdapter.name);
   /** Secret-independent parsing helpers only — `verify` builds its own instance with the resolved per-connection secret. */
-  private readonly parser = new InfaktWebhookTranslator({ secret: '' }, this.logger);
+  private readonly parser = InfaktWebhookTranslator.forParsing(this.logger);
 
   detectHandshake(rawBody: Buffer): Record<string, unknown> | null {
     return this.parser.getVerificationEcho(rawBody);

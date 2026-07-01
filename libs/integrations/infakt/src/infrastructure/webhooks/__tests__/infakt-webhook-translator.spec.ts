@@ -30,6 +30,14 @@ describe('InfaktWebhookTranslator', () => {
     translator = new InfaktWebhookTranslator({ secret: SECRET }, logger);
   });
 
+  describe('forParsing', () => {
+    it('should build a translator usable for parsing without a real secret', () => {
+      const parsingTranslator = InfaktWebhookTranslator.forParsing(logger);
+      const body = Buffer.from(JSON.stringify({ verification_code: 'abc123' }));
+      expect(parsingTranslator.getVerificationEcho(body)).toEqual({ verification_code: 'abc123' });
+    });
+  });
+
   describe('verifySignature', () => {
     it('should return true for a valid signature', () => {
       const body = Buffer.from(JSON.stringify({ event: { name: 'x' } }));

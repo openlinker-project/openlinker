@@ -90,6 +90,16 @@ export class InfaktWebhookTranslator {
   ) {}
 
   /**
+   * Builds a translator for callers that only need the secret-independent
+   * parsing helpers (`getVerificationEcho`, `parse`, `toOlDomain`,
+   * `toKsefResource`) — never `verifySignature`, which is always constructed
+   * separately with the per-connection resolved secret.
+   */
+  static forParsing(logger: LoggerPort): InfaktWebhookTranslator {
+    return new InfaktWebhookTranslator({ secret: '' }, logger);
+  }
+
+  /**
    * Returns the verification_code echo body when Infakt sends a verification ping.
    * The OL webhook controller must respond with this JSON body to activate the webhook.
    * Returns null if the payload is not a verification ping.
