@@ -320,6 +320,23 @@ describe('InfaktInvoicingAdapter', () => {
         statusCode: 500,
       });
     });
+
+    it('should propagate a failure from sendToKsef after the draft was already created (error path, #1293 review)', async () => {
+      // The draft succeeds but the explicit KSeF submission kick fails — the
+      // draft is left orphaned in Infakt (retry-safety assumption documented
+      // inline on the sendToKsef call site).
+      http.seed('POST', 'invoices.json', invoiceFixture());
+      http.seedError(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        new InfaktApiError('Infakt server error', 500, { error: 'internal' }),
+      );
+
+      await expect(adapter.issueInvoice(baseCmd)).rejects.toMatchObject({
+        failureMode: 'in-doubt',
+        statusCode: 500,
+      });
+    });
   });
 
   describe('getInvoice', () => {
@@ -580,6 +597,23 @@ describe('InfaktInvoicingAdapter', () => {
       http.seedError('GET', 'invoices/inv-uuid-1.json', new InfaktApiError('not found', 404, {}));
 
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('should propagate a failure from sendToKsef after the correction draft was already created (error path, #1293 review)', async () => {
+      // Same orphaned-draft risk as issueInvoice's equivalent case — the
+      // corrective draft succeeds but the explicit KSeF submission kick fails.
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      http.seedError(
+        'POST',
+        'invoices/corr-uuid-1/send_to_ksef.json',
+        new InfaktApiError('Infakt server error', 500, { error: 'internal' }),
+      );
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        failureMode: 'in-doubt',
+        statusCode: 500,
+      });
     });
   });
 });

@@ -236,6 +236,18 @@ export class InfaktInvoicingAdapter
     // step) and how Subiekt "transmits to KSeF natively at issuance" — for
     // Infakt that native transmission requires this explicit kick, so it
     // belongs in the same place: issuing IS submitting.
+    //
+    // Retry-safety assumption (unverified — #1293 review): if this call
+    // throws (network/API error), the draft above was already created and
+    // this whole method rejects, so core treats issuance as failed. A caller
+    // retry re-invokes issueInvoice, which re-POSTs invoices.json with the
+    // SAME external_id (idempotencyKey). We rely on Infakt returning/reusing
+    // the same invoice uuid for a repeat external_id rather than creating a
+    // duplicate draft — that would make this second sendToKsef call a safe
+    // re-attempt on the same document. This dedup behaviour has not been
+    // confirmed against the live API; if Infakt instead creates a new draft
+    // per POST, a failed sendToKsef leaves an orphaned un-submitted document
+    // on every retry.
     const ksefResult = await this.sendToKsef(invoice.uuid);
 
     const now = new Date();
@@ -402,6 +414,13 @@ export class InfaktInvoicingAdapter
 
     // A correction is its own KSeF document (KOR) — it needs the same explicit
     // submission kick as the original (see issueInvoice).
+    //
+    // Same retry-safety assumption as issueInvoice (unverified — #1293
+    // review): a retry re-calls issueCorrection, which re-POSTs
+    // invoices.json with the same external_id; we rely on Infakt
+    // returning/reusing the same correction uuid rather than creating a
+    // second corrective draft, which would make this sendToKsef call a safe
+    // re-attempt on the same document.
     const ksefResult = await this.sendToKsef(invoice.uuid);
 
     const now = new Date();
