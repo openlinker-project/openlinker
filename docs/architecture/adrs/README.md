@@ -118,5 +118,6 @@ One pointer per section, identical format every time.
 | [ADR-026](./026-country-agnostic-invoicing-domain.md) | Country-agnostic invoicing domain with capability decomposition | Accepted | 2026-06-16 |
 | [ADR-027](./027-order-status-writeback-capability-and-relay.md) | Order status writeback capability (event-as-data) & lifecycle relay | Accepted | 2026-06-22 |
 | [ADR-028](./028-order-cancellation-stock-restore.md) | Order-cancellation-observe hook → marketplace stock-restore | Proposed | 2026-06-22 |
+| [ADR-029](./029-versioning-and-release-strategy.md) | Versioning and release strategy (four axes) | Accepted | 2026-06-30 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
