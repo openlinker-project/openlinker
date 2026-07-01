@@ -240,6 +240,34 @@ export interface CorrectionLine {
 }
 
 /**
+ * Full reconstruction of the original document's issuance inputs, assembled by
+ * the CALLER (never by adapters) from the order the original document was
+ * issued for — mirroring how a keyless re-issue rebuilds its
+ * {@link IssueInvoiceCommand} from the order snapshot (buyer tax id is not
+ * persisted on `InvoiceRecord`, so it is not recoverable here either; callers
+ * rebuild with `buyerTaxId: null`, same accepted limitation as re-issue).
+ * Needed by adapters that must resubmit a COMPLETE corrected document rather
+ * than apply a delta (e.g. KSeF's FA(3) KOR, which has no delta-only
+ * correction primitive) — adapters that only need per-line deltas (Subiekt)
+ * never read this field.
+ */
+export interface OriginalDocumentSnapshot {
+  buyer: BuyerProfile;
+  /** ISO 4217 currency code, echoed from the original issue command. */
+  currency: string;
+  /** Neutral document type of the original document (open-world). */
+  documentType: string;
+  /** Reconstructed "before" lines of the original document. */
+  lines: InvoiceLine[];
+  /** Authority-assigned reference of the original document; `null` if never cleared. */
+  clearanceReference: string | null;
+  /** Human-facing sequential number of the original document. */
+  documentNumber: string;
+  /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
+  issueDate: string;
+}
+
+/**
  * Command to issue a correction of an already-issued document (ADR-026). Like
  * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
  * port does not decide whether/when. `originalProviderInvoiceId` references the
@@ -247,6 +275,7 @@ export interface CorrectionLine {
  * carry the post-correction values per original line; `reason` is the free-text
  * correction reason. `documentType` is caller-supplied (open-world); the adapter
  * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ * `originalDocument` is caller-assembled — see {@link OriginalDocumentSnapshot}.
  */
 export interface IssueCorrectionCommand {
   connectionId: string;
@@ -257,6 +286,8 @@ export interface IssueCorrectionCommand {
   reason?: string;
   lines: CorrectionLine[];
   idempotencyKey?: string;
+  /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
+  originalDocument?: OriginalDocumentSnapshot;
 }
 
 /** Query for an issued document by either internal order id or provider id. */

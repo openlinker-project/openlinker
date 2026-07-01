@@ -47,6 +47,7 @@ import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
+  OriginalDocumentSnapshot,
   TaxIdentifier,
 } from '@openlinker/core/invoicing';
 import {
@@ -311,9 +312,32 @@ export class InvoicingController {
         `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
       );
     }
+    if (!original.providerInvoiceNumber || !original.issuedAt) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet`,
+      );
+    }
 
     let issued: InvoiceRecord;
     try {
+      // Some adapters (KSeF's FA(3) KOR) cannot correct via a delta — they must
+      // resubmit a COMPLETE corrected document. Rebuild the original document's
+      // buyer/currency/lines from the order snapshot, exactly like a keyless
+      // re-issue does in `retryOne` — the buyer tax id is not persisted on
+      // `InvoiceRecord`, so it is rebuilt as `buyerTaxId: null`, same accepted
+      // limitation. Adapters that only need deltas (Subiekt) ignore this field.
+      const orderRecord = await this.orders.getOrderRecord(original.orderId);
+      const originalDocument = orderRecord
+        ? this.buildOriginalDocumentSnapshot(
+            orderRecord,
+            original.connectionId,
+            original.documentType,
+            original.clearanceReference,
+            original.providerInvoiceNumber,
+            original.issuedAt,
+          )
+        : undefined;
+
       issued = await this.invoiceService.issueCorrection({
         connectionId: original.connectionId,
         orderId: original.orderId,
@@ -326,6 +350,7 @@ export class InvoicingController {
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
+        originalDocument,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -432,6 +457,44 @@ export class InvoicingController {
     dto: IssueInvoiceRequestDto['buyerTaxId'],
   ): TaxIdentifier | null {
     return dto ? { scheme: dto.scheme, value: dto.value } : null;
+  }
+
+  /** ISO 8601 calendar date only (`YYYY-MM-DD`), UTC. */
+  private toIsoDateOnly(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Rebuild the original document's buyer/currency/lines from the order
+   * snapshot for adapters (e.g. KSeF) that must resubmit a COMPLETE corrected
+   * document rather than apply a delta — mirrors `retryOne`'s keyless-re-issue
+   * reconstruction. The buyer tax id is not persisted on `InvoiceRecord`, so it
+   * is rebuilt as `buyerTaxId: null`, the same accepted limitation as re-issue.
+   */
+  private buildOriginalDocumentSnapshot(
+    orderRecord: OrderRecord,
+    connectionId: string,
+    documentType: string,
+    clearanceReference: string | null,
+    documentNumber: string,
+    issuedAt: Date,
+  ): OriginalDocumentSnapshot {
+    const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
+    const issueCmd = toIssueInvoiceCommand({
+      order,
+      connectionId,
+      buyerTaxId: null,
+      documentType: documentType.length > 0 ? documentType : undefined,
+    });
+    return {
+      buyer: issueCmd.buyer,
+      currency: issueCmd.currency,
+      documentType: issueCmd.documentType ?? 'invoice',
+      lines: issueCmd.lines,
+      clearanceReference,
+      documentNumber,
+      issueDate: this.toIsoDateOnly(issuedAt),
+    };
   }
 
   /**
