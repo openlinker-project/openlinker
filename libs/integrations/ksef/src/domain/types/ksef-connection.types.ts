@@ -45,6 +45,14 @@ export interface KsefSellerConfig {
     postalCode: string;
     countryIso2: string;
   };
+  /**
+   * Neutral tax-rate code (an `FA3_TAX_RATE_MAP` key, e.g. `'23'`) applied to
+   * any invoice line whose neutral `taxRate` is empty — core has no per-line
+   * tax rate to give (ADR-026), so this is the connection's flat fallback.
+   * Optional; falls back to the PL standard rate (`DEFAULT_FA3_TAX_RATE`)
+   * when absent.
+   */
+  defaultTaxRate?: string;
 }
 
 /** Non-secret config persisted on the connection row. */

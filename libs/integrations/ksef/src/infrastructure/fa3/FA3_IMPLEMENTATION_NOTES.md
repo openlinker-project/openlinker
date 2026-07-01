@@ -65,6 +65,20 @@ RawFa3Xml (validated)
 
 Unknown codes throw `UnmappedTaxRateException` (no silent default).
 
+> **ACCEPTED LIMITATION (#1290):** core never supplies a real per-line tax
+> rate today — `OrderItem` has none (core is country-agnostic, ADR-026), so
+> `toIssueInvoiceCommand` always emits `taxRate: ''` on every line.
+> `fa3-builder-input.mapper.ts`'s `mapLine` substitutes the connection's
+> `SellerProfile.defaultTaxRate` (PL standard `23`% unless the connection
+> configures otherwise via `KsefSellerConfig.defaultTaxRate`) for an empty
+> `taxRate` *before* calling `resolveP12` — `resolveP12` itself is unchanged
+> and still throws on a genuinely unmapped non-empty code. This is a flat
+> per-connection default, not a real per-line VAT rate: an order mixing
+> goods at different rates (23%/8%/0%) will mis-tax every line at the
+> connection default until `OrderItem` carries a real per-item tax rate
+> end-to-end — a larger, separate follow-up spanning every order-source
+> adapter, intentionally out of scope for #1290.
+
 > **OPEN:** the canonical neutral tax-rate code set (UNCL 5305 vs OpenLinker
 > custom) is being settled upstream; the keys above are provisional and must be
 > reconciled before C3 submission.
