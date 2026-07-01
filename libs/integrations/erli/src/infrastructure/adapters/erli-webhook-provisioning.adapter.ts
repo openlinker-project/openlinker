@@ -43,6 +43,11 @@ import { erliHookPath, type ErliHookRegistrationBody } from './erli-webhook.type
 /** Webhook-secret provider key for Erli connections. */
 const ERLI_WEBHOOK_PROVIDER = 'erli';
 
+// Same-process loopback call to OL's own ingress — a short bound is enough,
+// and it keeps a hung self-test from blocking the admin-facing `install()`
+// call (mirrors the AbortController timeout pattern in `erli-http-client.ts`).
+const SELF_TEST_TIMEOUT_MS = 5_000;
+
 export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
   private readonly logger = new Logger(ErliWebhookProvisioningAdapter.name);
 
@@ -129,11 +134,73 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
         `(${ErliWebhookEventTypeValues.length} hooks${stateUpdateOk ? '' : '; state update pending'}).`,
     );
 
+    const testPingTriggered = await this.selfTestPing(url, secret, connectionId);
+
     return {
       webhooksConfigured: true,
-      testPingTriggered: false,
+      testPingTriggered,
       ...(stateUpdateOk ? {} : { warning: 'state-update-failed' }),
     };
+  }
+
+  /**
+   * Round-trips the just-registered secret against OL's OWN webhook endpoint,
+   * in the exact shape Erli uses (`Authorization: Bearer <secret>`) — proving
+   * the ingress accepts it without waiting for Erli to actually deliver
+   * anything (Erli's own delivery latency in the sandbox has been observed
+   * to range from seconds to 15+ minutes with no visible pattern, which makes
+   * "did the fix work" otherwise unanswerable on any predictable timeline).
+   *
+   * The body is intentionally empty: an authentic signature always reaches
+   * `extractEnvelope`, which then rejects it (400, missing order id) — so a
+   * successful self-test never enqueues a real `marketplace.order.sync` job.
+   * Only 2xx or 400 count as "signature accepted" — those are the only two
+   * outcomes reachable once `verify()` passes (route, or reject on the empty
+   * body); any other status (401 = signature rejected, 5xx = ingress error,
+   * a timeout, …) is treated as "not triggered" rather than mistaking a
+   * transient failure for a working signature. The secret is never logged,
+   * only used in-memory for this one request.
+   *
+   * Bounded by `SELF_TEST_TIMEOUT_MS`: a hung or unreachable OL ingress must
+   * degrade to `testPingTriggered: false`, never block the caller — `install()`
+   * already succeeded by the time this runs, and the docstring's "non-fatal"
+   * promise only holds if a stalled request can't stall the response too.
+   */
+  private async selfTestPing(
+    url: string,
+    secret: string,
+    connectionId: string,
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SELF_TEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller.signal,
+      });
+      const ok = response.status === 400 || (response.status >= 200 && response.status < 300);
+      this.logger.log(
+        `Erli webhook self-test ping for connection ${connectionId}: HTTP ${response.status} ` +
+          `(signature ${ok ? 'accepted' : 'REJECTED'}).`,
+      );
+      return ok;
+    } catch (error) {
+      const timedOut = controller.signal.aborted || (error as Error)?.name === 'AbortError';
+      const message = timedOut
+        ? `timed out after ${SELF_TEST_TIMEOUT_MS}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      this.logger.warn(
+        `Erli webhook self-test ping failed for connection ${connectionId} (non-fatal — ` +
+          `install already succeeded): ${message}`,
+      );
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**

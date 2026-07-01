@@ -42,6 +42,8 @@ describe('ErliWebhookProvisioningAdapter', () => {
   let credentialsResolver: { get: jest.Mock };
   let adapter: ErliWebhookProvisioningAdapter;
 
+  let fetchSpy: jest.SpiedFunction<typeof fetch>;
+
   beforeEach(() => {
     httpClient = {
       get: jest.fn(),
@@ -62,6 +64,16 @@ describe('ErliWebhookProvisioningAdapter', () => {
       credentialsResolver as never,
       factory as never,
     );
+    // Self-test ping (round-trips the secret against OL's own ingress) — default
+    // to a 400 (signature accepted, body rejected downstream), the same
+    // "authenticated but undecodable" shape a real empty-body self-test produces.
+    fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ status: 400 } as Response);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
   });
 
   it('should register both order hooks via PUT /hooks/{name} with the callback url + secret', async () => {
@@ -83,7 +95,107 @@ describe('ErliWebhookProvisioningAdapter', () => {
       { hookName: 'orderStatusChanged', url, accessToken: SECRET },
       { idempotent: true },
     );
-    expect(result).toEqual({ webhooksConfigured: true, testPingTriggered: false });
+    expect(result).toEqual({ webhooksConfigured: true, testPingTriggered: true });
+  });
+
+  describe('self-test ping', () => {
+    it('should round-trip the freshly-rotated secret against OL\'s own webhook ingress', async () => {
+      await adapter.install(CONNECTION_ID);
+
+      const url = `http://host.docker.internal:3000/webhooks/erli/${CONNECTION_ID}`;
+      expect(fetchSpy).toHaveBeenCalledWith(
+        url,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: `Bearer ${SECRET}` }),
+        }),
+      );
+    });
+
+    it('should report testPingTriggered=true when the ingress accepts the signature (400, body rejected)', async () => {
+      fetchSpy.mockResolvedValue({ status: 400 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(true);
+    });
+
+    it('should report testPingTriggered=true when the ingress accepts the signature (2xx)', async () => {
+      fetchSpy.mockResolvedValue({ status: 202 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(true);
+    });
+
+    it('should report testPingTriggered=false when the ingress rejects the signature (401)', async () => {
+      fetchSpy.mockResolvedValue({ status: 401 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(false);
+    });
+
+    it('should report testPingTriggered=false on a transient ingress error (5xx) rather than mistaking it for an accepted signature', async () => {
+      fetchSpy.mockResolvedValue({ status: 500 } as Response);
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.testPingTriggered).toBe(false);
+    });
+
+    it('should report testPingTriggered=false (non-fatal) when the self-test request itself fails', async () => {
+      fetchSpy.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await adapter.install(CONNECTION_ID);
+
+      expect(result.webhooksConfigured).toBe(true);
+      expect(result.testPingTriggered).toBe(false);
+    });
+
+    it('should abort and report testPingTriggered=false (not hang install) when OL\'s own ingress never responds', async () => {
+      jest.useFakeTimers();
+      fetchSpy.mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            const signal = (init as RequestInit)?.signal;
+            signal?.addEventListener('abort', () => {
+              const err = new Error('The operation was aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          }),
+      );
+
+      const installPromise = adapter.install(CONNECTION_ID);
+      // Flush the microtask queue between each timer advance so the aborted
+      // fetch's rejection has a chance to propagate before the next tick.
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+        jest.advanceTimersByTime(1_000);
+      }
+      const result = await installPromise;
+
+      expect(result.webhooksConfigured).toBe(true);
+      expect(result.testPingTriggered).toBe(false);
+
+      jest.useRealTimers();
+    });
+
+    it('should NEVER log the secret while self-testing', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await adapter.install(CONNECTION_ID);
+
+      const allLogged = [logSpy, warnSpy]
+        .flatMap((spy) => spy.mock.calls)
+        .flatMap((call) => call.map((arg) => String(arg)))
+        .join('\n');
+      expect(allLogged).not.toContain(SECRET);
+
+      jest.restoreAllMocks();
+    });
   });
 
   it('should mark the connection webhooksConfigured', async () => {
