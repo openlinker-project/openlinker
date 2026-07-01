@@ -70,6 +70,10 @@ export class WebhookController {
     @Param('connectionId') connectionId: string,
     @Headers() headers: Record<string, string>,
     @Req() req: RequestWithRawBody,
+    // Only usage of the raw Response object in this controller — needed to
+    // override the route's default 202 with 200 on the handshake-echo path
+    // (see the res.status(HttpStatus.OK) call below). Passthrough mode still
+    // lets Nest serialize the returned body as normal.
     @Res({ passthrough: true }) res: Response,
   ): Promise<Record<string, unknown> | void> {
     // No `@Body() WebhookRequestDto` — the body shape is the provider's, not

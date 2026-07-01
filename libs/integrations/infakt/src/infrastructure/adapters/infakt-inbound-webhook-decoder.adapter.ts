@@ -60,7 +60,7 @@ export class InfaktInboundWebhookDecoderAdapter implements InboundWebhookDecoder
 
     const externalId =
       typeof parsed.resource['invoice_uuid'] === 'string'
-        ? (parsed.resource['invoice_uuid'])
+        ? parsed.resource['invoice_uuid']
         : parsed.event.uuid;
 
     return {

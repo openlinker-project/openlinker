@@ -452,8 +452,9 @@ export class InfaktInvoicingAdapter
 
   // --- Infakt-specific: trigger KSeF submission ---
   // Called inline by issueInvoice/issueCorrection (issuing IS submitting for
-  // this provider). Left public rather than private so an operator-facing
-  // manual re-submit can reuse it later without adding a second code path.
+  // this provider). Public: already called directly by
+  // scripts/poc-sandbox-test.ts, and kept accessible so a future
+  // operator-facing manual re-submit can reuse it without a second code path.
 
   async sendToKsef(invoiceUuid: string): Promise<InfaktSendToKsefResponse> {
     return this.http.post<InfaktSendToKsefResponse>(
