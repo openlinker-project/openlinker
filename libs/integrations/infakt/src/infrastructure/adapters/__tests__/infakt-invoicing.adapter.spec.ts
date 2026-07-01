@@ -516,6 +516,7 @@ describe('InfaktInvoicingAdapter', () => {
       // the "before" row and the fallback "after" row go through this path.
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       await adapter.issueCorrection(baseCmd);
 
@@ -534,6 +535,7 @@ describe('InfaktInvoicingAdapter', () => {
     it('should convert a price-changing correction line from gross to net (#1292 review)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       await adapter.issueCorrection({
         ...baseCmd,

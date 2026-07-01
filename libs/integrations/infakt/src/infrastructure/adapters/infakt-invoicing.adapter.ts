@@ -117,8 +117,16 @@ function toInfaktTaxSymbol(taxRate: string): string {
   }
 }
 
-/** Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol` `'zw'`/`'np'`) to a decimal fraction. */
+/**
+ * Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol`
+ * `'zw'`/`'np'`) to a decimal fraction.
+ *
+ * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback — a
+ * mismatched net/gross split for the declared tax_symbol is itself rejected
+ * by Infakt as an invalid `value.tax_values`.
+ */
 function taxRateNumeric(taxRate: string): number {
+  if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
   const n = parseFloat(taxRate);
   if (!isNaN(n) && n > 1) return n / 100;
   if (!isNaN(n)) return n;
@@ -445,16 +453,5 @@ export class InfaktInvoicingAdapter
     } catch {
       return null;
     }
-  }
-
-  private taxRateNumeric(taxRate: string): number {
-    // Must stay consistent with toInfaktTaxSymbol's empty-string fallback —
-    // a mismatched net/gross split for the declared tax_symbol is itself
-    // rejected by Infakt as an invalid `value.tax_values`.
-    if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
-    const n = parseFloat(taxRate);
-    if (!isNaN(n) && n > 1) return n / 100;
-    if (!isNaN(n)) return n;
-    return 0;
   }
 }
