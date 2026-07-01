@@ -3,7 +3,7 @@
  *
  * Drives the running web app (:4173): opens /connections/new, selects the
  * inFakt card, fills out the guided setup form with the real sandbox API
- * key, submits, and runs "Test connection". Captures docs/assets/infakt/.
+ * key, submits, and runs "Test connection". Captures libs/integrations/infakt/docs/assets/.
  *
  * Presentation requirement (these screenshots are reused verbatim in the
  * operator-facing setup guide): the API-key input stays `type="password"`
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/infakt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/infakt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const API_KEY = process.env.INFAKT_SANDBOX_API_KEY ?? '';
 const CONN_NAME = process.env.INFAKT_CONN_NAME ?? 'inFakt Sandbox';
