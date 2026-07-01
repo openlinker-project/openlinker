@@ -304,8 +304,21 @@ export function DataTable<Row>({
     return rows;
   }
 
+  const plainScrollable = !renderCards && !virtualizeActive;
+
   return (
-    <div className={containerClasses}>
+    <div
+      className={containerClasses}
+      tabIndex={plainScrollable ? 0 : undefined}
+      role={plainScrollable ? 'region' : undefined}
+      aria-label={
+        plainScrollable
+          ? typeof caption === 'string'
+            ? `${caption} (scrollable)`
+            : 'Scrollable table'
+          : undefined
+      }
+    >
       {!renderCards ? (
         virtualizeActive ? (
           <div
