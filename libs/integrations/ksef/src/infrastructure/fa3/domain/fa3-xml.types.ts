@@ -75,6 +75,13 @@ export interface SellerProfile {
    * whose neutral `taxRate` arrives empty — core has no per-line tax rate to
    * give (ADR-026). Always a concrete value by the time this profile exists;
    * the factory resolves it (connection config or the PL standard default).
+   *
+   * Unlike `nip` / `name` / `address`, this is NOT a `Podmiot1` XML field —
+   * `sellerNode()` in `fa3-xml.builder.ts` never reads it. It rides along on
+   * `SellerProfile` purely because it's resolved from the same connection
+   * config at the same point in the pipeline; the only reader is
+   * `fa3-builder-input.mapper.ts`'s `mapLine`, before the builder ever sees
+   * this profile. Treat it as adapter-scoped policy, not seller identity.
    */
   defaultTaxRate: string;
 }
