@@ -259,6 +259,7 @@ export interface CorrectionLine {
  *   provider actually has on file for the referenced original document.
  *   Correcting an order that changed since its original issuance is UNSAFE
  *   until `InvoiceRecord` persists the true issuance-time line snapshot.
+ *   Tracked by https://github.com/openlinker-project/openlinker/issues/1297.
  */
 export interface OriginalDocumentSnapshot {
   buyer: BuyerProfile;
