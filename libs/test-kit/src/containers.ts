@@ -164,16 +164,35 @@ export async function stopContainers(): Promise<void> {
     return;
   }
 
-  await Promise.allSettled([
-    state.redis.stop().catch((err: unknown) => {
-      // Test-time teardown; using console.warn rather than the Logger factory.
-      // Logger backend may already be torn down at this point — see plan § 4.
-      console.warn('test-kit: failed to stop Redis container:', err);
-    }),
-    state.postgres.stop().catch((err: unknown) => {
-      console.warn('test-kit: failed to stop Postgres container:', err);
-    }),
-  ]);
+  // Testcontainers' underlying `@redis/client` socket can emit a stray
+  // 'error' event (e.g. SocketClosedUnexpectedlyError) once the Redis
+  // container is torn down — outside the Promise chain below, so .catch()
+  // never sees it. Node's default behaviour for an EventEmitter 'error'
+  // with no listener is to rethrow as an uncaught exception, which crashes
+  // this whole globalTeardown process with a non-zero exit code even though
+  // every test already passed (surfaced once stopContainers() started
+  // actually running here — previously this was a no-op, see #1285). Swallow
+  // it for the duration of the stop() calls only, so an unrelated crash
+  // elsewhere in this short-lived teardown script is still fatal.
+  const swallowTeardownSocketNoise = (err: unknown): void => {
+    console.warn('test-kit: swallowed a post-teardown socket error:', err);
+  };
+  process.on('uncaughtException', swallowTeardownSocketNoise);
+
+  try {
+    await Promise.allSettled([
+      state.redis.stop().catch((err: unknown) => {
+        // Test-time teardown; using console.warn rather than the Logger factory.
+        // Logger backend may already be torn down at this point — see plan § 4.
+        console.warn('test-kit: failed to stop Redis container:', err);
+      }),
+      state.postgres.stop().catch((err: unknown) => {
+        console.warn('test-kit: failed to stop Postgres container:', err);
+      }),
+    ]);
+  } finally {
+    process.off('uncaughtException', swallowTeardownSocketNoise);
+  }
 
   globalThis.__OL_TEST_KIT_CONTAINERS__ = undefined;
   delete process.env[CONTAINERS_PRIMED_ENV_VAR];
