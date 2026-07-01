@@ -122,38 +122,43 @@ the capability breakdown.
 
 ## Part 3 — Get a B2B order into OpenLinker
 
-KSeF issues a **faktura VAT** when the buyer address contains a **NIP**. Orders
-without a NIP use a different document type (or are skipped by KSeF rules).
-
 Orders flow into OpenLinker automatically from any configured source connection
-(PrestaShop, Allegro, etc.). For the issuance flow to work, the order must have
-arrived with a buyer NIP in the address block.
+(PrestaShop, Allegro, etc.) — no KSeF-specific setup is needed on the order side.
+This tutorial uses a B2B order (buyer is a company) already ingested from a
+PrestaShop-style source.
 
-> **PrestaShop:** fill the **VAT number** field on the customer's company address
-> in the PrestaShop back office. OpenLinker reads this field during order ingestion
-> and stores it on the order snapshot.
+![Orders list — ingested orders](./assets/05-ol-orders-list.png)
+
+Open the order. The detail page shows the full order — line items, delivery
+address, and the **Invoice** panel on the right, currently **Not issued**.
+
+![Order detail — line items, delivery address, Invoice panel](./assets/06-ol-order-detail.png)
 
 ---
 
 ## Part 4 — Issue the invoice
 
-Open **Operations → Orders**. Find the order you want to invoice and click it.
+If you have more than one Invoicing connection, the panel first shows a
+**connection picker** — select your KSeF connection.
 
-The order detail page shows the full order with the **Invoice** panel. If you
-have multiple Invoicing connections, the panel first shows a **connection picker**
-— select your KSeF connection.
+![Invoice panel — connection picker](./assets/07-ol-invoice-connection-picker.png)
 
-The panel shows **Not issued** with the document type pre-set to
-**Invoice (faktura VAT)** (when a NIP is present). Click **Issue invoice**.
+After selecting the connection, the panel shows the document-type dropdown
+(defaults to **Invoice (faktura)**) and the **Issue invoice** button.
 
-OpenLinker builds the FA(3) XML payload, calls KSeF, and the panel transitions
-to **Issued**. The KSeF regulatory status badge appears as **Submitted** while
-KSeF processes the document asynchronously.
+![Invoice panel — KSeF connection selected, ready to issue](./assets/08-ol-invoice-ready-to-issue.png)
 
-> **Async clearance:** KSeF processes documents asynchronously. The badge updates
-> to **Accepted** (green) or **Rejected** (red) when OpenLinker's
-> regulatory-reconcile worker polls KSeF for the clearance status — typically
-> within seconds on the test environment.
+Click **Issue invoice**. OpenLinker builds the FA(3) XML payload and calls KSeF.
+Once cleared, the panel shows **Issued** with the KSeF regulatory badge, the
+official KSeF reference number, and the UPO / FA(3) document actions.
+
+![Invoice panel — issued, KSeF: Accepted, KSeF reference, UPO/FA(3) actions](./assets/09-ol-invoice-issued-accepted.png)
+
+> **Async clearance:** KSeF processes documents asynchronously. Right after
+> issuing, the badge typically shows **Submitted**; it updates to **Accepted**
+> (green) or **Rejected** (red) once OpenLinker's regulatory-reconcile worker
+> polls KSeF for the clearance status — typically within seconds on the test
+> environment.
 
 ---
 
@@ -178,31 +183,11 @@ receipt of clearance. Store it alongside the invoice PDF for compliance.
 
 ---
 
-## Part 6 — Correction invoices (KOR)
-
-When a previously accepted invoice needs correction (wrong amount, buyer data,
-etc.):
-
-1. Open the invoice detail page.
-2. Click **Issue correction** — the correction flow pre-fills the original
-   document data and the KSeF reference number.
-3. Adjust the fields that changed (quantity, price, VAT rate) and confirm.
-
-OpenLinker issues a KOR document that references the original KSeF number. Both
-the original and the correction appear on the `/invoices` list.
-
----
-
 ## Next steps
 
 - **Automatic issuance** — instead of clicking per order, change the connection's
   **Invoice trigger** to `auto-on-paid` or `auto-on-shipped`. Edit the connection
   and set the trigger model; OpenLinker enqueues issuance automatically.
-
-- **Pair with Subiekt nexo** — if you also use Subiekt nexo, you can issue the
-  document via the Subiekt bridge and separately submit the resulting FS number to
-  KSeF through the KSeF connection. See
-  [`subiekt tutorial`](../../subiekt/docs/tutorial.md).
 
 - **Operational reference** — environments table, auth types, FA(3) schema
   constraints, compliance caveats, troubleshooting:
