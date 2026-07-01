@@ -14,6 +14,13 @@ module.exports = {
   // that are not fully drained even after app.close(). onModuleDestroy stops them,
   // but forceExit is a safety net for any other handles left open by NestJS internals.
   forceExit: true,
+  // Stop the Postgres + Redis Testcontainers (started lazily by the first
+  // int-spec's getTestHarness() call) once this whole run finishes. Without
+  // this the containers backing apps/api's ~68 int-spec files are never
+  // stopped in-process — see teardown.ts and libs/test-kit/src/harness.ts's
+  // `IntegrationTestHarnessImpl.teardown()` comment, which explicitly relies
+  // on this global hook to do it (#1285).
+  globalTeardown: '<rootDir>/test/integration/teardown.ts',
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),

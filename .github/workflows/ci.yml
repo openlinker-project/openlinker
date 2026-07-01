@@ -151,9 +151,15 @@ jobs:
       OL_PII_HASH_SALT: ${{ vars.OL_PII_HASH_SALT }}
       # Ryuk (the Testcontainers reaper) requires a TCP callback from the
       # container back to the host. On self-hosted DinD runners this callback
-      # fails because the Docker-in-Docker network is isolated. Disabling Ryuk
-      # is safe here: ephemeral containers are cleaned up by the runner's Docker
-      # daemon when the job exits anyway.
+      # fails because the Docker-in-Docker network is isolated, so Ryuk is
+      # disabled here. NOTE (#1285): this runner is a persistent self-hosted
+      # box (`runs-on: self-hosted`, not ephemeral `ubuntu-latest`) — its
+      # Docker daemon does NOT stop/remove containers just because a job's
+      # process exits, and a cancelled run (`cancel-in-progress`, see the
+      # workflow-level `concurrency` block) is SIGKILLed before Jest's
+      # globalTeardown can run either. With Ryuk off, nothing reaps those
+      # containers on its own — the explicit sweep steps below are the
+      # compensating control.
       TESTCONTAINERS_RYUK_DISABLED: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -164,6 +170,25 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+      - name: Sweep stale Testcontainers from a prior run (#1285)
+        # Ryuk is disabled (see above) and a cancelled/killed prior run skips
+        # Jest's globalTeardown, so containers from that run may still be
+        # alive on this persistent runner. Testcontainers labels every
+        # container/network it creates with org.testcontainers=true
+        # regardless of Ryuk, so this sweep is safe and specific — it never
+        # touches the runner's own long-lived containers (e.g. the runner
+        # process itself).
+        run: |
+          STALE_CONTAINERS=$(docker ps -aq --filter "label=org.testcontainers=true")
+          if [ -n "$STALE_CONTAINERS" ]; then
+            echo "Removing stale Testcontainers containers:"
+            docker rm -f $STALE_CONTAINERS
+          fi
+          STALE_NETWORKS=$(docker network ls -q --filter "label=org.testcontainers=true")
+          if [ -n "$STALE_NETWORKS" ]; then
+            echo "Removing stale Testcontainers networks:"
+            docker network rm $STALE_NETWORKS || true
+          fi
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build libs (workspace glob — auto-discovers new packages)
@@ -185,6 +210,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --filter @openlinker/worker test:integration
         timeout-minutes: 10 # Worker suite runs ~80s locally; cap guards a hung container boot
+      - name: Sweep this run's Testcontainers (#1285)
+        # Belt-and-suspenders: with Ryuk disabled, this job's own containers
+        # (Postgres/Redis/MySQL/PrestaShop/WordPress) rely on Jest's
+        # globalTeardown / afterAll hooks to stop them. `if: always()` also
+        # catches the case where a test step failed/timed out before its own
+        # teardown ran.
+        if: always()
+        run: |
+          THIS_RUN_CONTAINERS=$(docker ps -aq --filter "label=org.testcontainers=true")
+          if [ -n "$THIS_RUN_CONTAINERS" ]; then
+            echo "Removing this run's Testcontainers containers:"
+            docker rm -f $THIS_RUN_CONTAINERS
+          fi
+          THIS_RUN_NETWORKS=$(docker network ls -q --filter "label=org.testcontainers=true")
+          if [ -n "$THIS_RUN_NETWORKS" ]; then
+            echo "Removing this run's Testcontainers networks:"
+            docker network rm $THIS_RUN_NETWORKS || true
+          fi
 
   test-php:
     name: PHP Unit Tests
