@@ -55,7 +55,7 @@ generic/capability-gated.
 - Registration in `apps/web/src/plugins/index.ts`.
 - Two Playwright evidence scripts (`apps/web/e2e/infakt-connection.mjs`,
   `apps/web/e2e/infakt-invoice.mjs`) run once locally against the real inFakt sandbox, producing
-  `docs/assets/infakt/*.png` screenshots committed to the branch and posted inline in a PR
+  `libs/integrations/infakt/docs/assets/*.png` screenshots committed to the branch and posted inline in a PR
   comment — proof that connecting inFakt and issuing/clearing/correcting a real invoice through
   OpenLinker actually works end to end, not just that the UI renders (see §6 Phase 4).
 - Redesign of the shared `.invoice-panel__inline-alert` / raw `.slot-row` host chrome in
@@ -391,7 +391,7 @@ render. Follows the exact precedent already established for Subiekt/Erli
 (`apps/web/e2e/subiekt-invoice.mjs`, `apps/web/e2e/subiekt-proofs.mjs`): plain Playwright `.mjs`
 scripts (not `*.spec.ts` — these are one-off evidence-capture walkthroughs, not part of `pnpm test`),
 run manually against `pnpm --filter @openlinker/web preview` (port 4173), saving screenshots to
-`docs/assets/infakt/` and committing them to the PR branch (the established convention — see
+`libs/integrations/infakt/docs/assets/` and committing them to the PR branch (the established convention — see
 `docs/assets/subiekt/*.png`, already tracked in git).
 
 **Presentation requirement (these screenshots get reused verbatim in the operator-facing setup
@@ -409,7 +409,7 @@ guide later, so they must be clean, not just functional)**:
   skip it to go faster). If the sandbox API key itself is a throwaway sandbox credential (not a
   production secret), that's fine to type into the form — the concern is the *rendered pixels*,
   not the credential's sensitivity tier.
-- Review each `docs/assets/infakt/*.png` by eye before committing — if any frame looks like a
+- Review each `libs/integrations/infakt/docs/assets/*.png` by eye before committing — if any frame looks like a
   debug/dev artifact (raw JSON dump, console error toast, `localhost:3000` visibly in a URL bar
   that shouldn't be there, lorem-ipsum text), redo that step rather than shipping it as-is.
 
@@ -422,7 +422,7 @@ guide later, so they must be clean, not just functional)**:
       secrets — **never hardcode the sandbox key in the script or commit it**; read via
       `process.env.INFAKT_SANDBOX_API_KEY`) → submit → "Test connection" → connection list showing
       the new `infakt` connection. Capture one screenshot per step into
-      `docs/assets/infakt/{00..05}-*.png`. Per the presentation requirement above: the API-key
+      `libs/integrations/infakt/docs/assets/{00..05}-*.png`. Per the presentation requirement above: the API-key
       field stays masked throughout, and the connection-list shot only ever shows the panel's
       standard masked/last-4-chars rendering — never the full key.
     - **Acceptance**: running the script against a local `pnpm --filter @openlinker/web preview`
@@ -444,10 +444,10 @@ guide later, so they must be clean, not just functional)**:
       the user asked for.
 
 13. **Screenshot evidence in the PR**
-    - **Action**: After both scripts run successfully and `docs/assets/infakt/*.png` are
+    - **Action**: After both scripts run successfully and `libs/integrations/infakt/docs/assets/*.png` are
       committed to the branch, post a PR comment (via `gh pr comment`) embedding the screenshots
       as markdown images referencing
-      `https://raw.githubusercontent.com/openlinker-project/openlinker/1282-infakt-fe-plugin/docs/assets/infakt/{name}.png`
+      `https://raw.githubusercontent.com/openlinker-project/openlinker/1282-infakt-fe-plugin/libs/integrations/infakt/docs/assets/{name}.png`
       — the same raw-content-URL technique the repo already relies on for rendering
       `docs/assets/*` images works here too, because the files are committed to the PR's own
       branch, so the images render inline in the GitHub comment UI with no external upload step.
@@ -606,7 +606,7 @@ config field, not a build-time var).
 
 - `apps/web/e2e/infakt-connection.mjs` and `apps/web/e2e/infakt-invoice.mjs` — manual-run
   Playwright walkthroughs (not part of `pnpm test` / CI), run once against a live local stack
-  + the real inFakt sandbox before opening the PR. Produces `docs/assets/infakt/*.png`,
+  + the real inFakt sandbox before opening the PR. Produces `libs/integrations/infakt/docs/assets/*.png`,
   committed to the branch, then posted as an inline-image PR comment (§6 Phase 4 Step 13).
   This is the one part of the plan that requires real external sandbox credentials and a
   running `pnpm start:dev:api` + `pnpm --filter @openlinker/web preview` stack — everything
@@ -640,7 +640,7 @@ config field, not a build-time var).
 - [ ] "Issue correction" opens the KOR modal with one empty line row + "Add line"; missing
   line number blocks submit; success closes the dialog + refetches the invoice
 - [ ] KSeF and Subiekt invoice-detail-section existing tests remain green after the redesign
-- [ ] `docs/assets/infakt/*.png` exist proving a real sandbox connection + issuance + KSeF
+- [ ] `libs/integrations/infakt/docs/assets/*.png` exist proving a real sandbox connection + issuance + KSeF
   clearance (`accepted`) + a correction, captured via `infakt-connection.mjs` / `infakt-invoice.mjs`
 - [ ] The PR has a comment with those screenshots rendered inline (raw.githubusercontent.com
   image links against the PR branch)

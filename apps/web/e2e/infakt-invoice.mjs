@@ -5,7 +5,7 @@
  * invoice through the order-detail Invoice panel, waits for the real
  * OL -> InfaktInvoicingAdapter -> inFakt sandbox -> KSeF round-trip, then
  * captures the submitted (pending) and accepted (cleared) reg-card states,
- * and drives one KOR correction. Captures into docs/assets/infakt/.
+ * and drives one KOR correction. Captures into libs/integrations/infakt/docs/assets/.
  *
  * The document is created end-to-end against the real inFakt sandbox — this
  * script only drives + screenshots the OL browser side.
@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/infakt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/infakt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const ORDER_ID = process.env.ORDER_ID ?? '';
 const CONN_NAME = process.env.INFAKT_CONN_NAME ?? 'inFakt';
