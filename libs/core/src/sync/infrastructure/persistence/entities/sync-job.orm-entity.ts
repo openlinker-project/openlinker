@@ -63,10 +63,10 @@ export class SyncJobOrmEntity {
   @Column({ type: 'text', nullable: true })
   lastError!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }
 
