@@ -20,11 +20,15 @@ import type {
   OrderRecordRepositoryPort,
   IOrderDestinationRetryService,
 } from '@openlinker/core/orders';
+import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import type { IInvoiceService } from '@openlinker/core/invoicing';
+import { InvoiceRecord } from '@openlinker/core/invoicing';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
+  let invoiceService: jest.Mocked<IInvoiceService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -61,6 +65,15 @@ describe('OrdersController', () => {
       retry: jest.fn(),
     };
 
+    const mockInvoiceService: jest.Mocked<IInvoiceService> = {
+      getInvoiceById: jest.fn(),
+      getLatestInvoiceForOrder: jest.fn(),
+      issueInvoice: jest.fn(),
+      getInvoice: jest.fn(),
+      issueCorrection: jest.fn(),
+      listInvoices: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -72,12 +85,17 @@ describe('OrdersController', () => {
           provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
           useValue: mockRetryService,
         },
+        {
+          provide: INVOICE_SERVICE_TOKEN,
+          useValue: mockInvoiceService,
+        },
       ],
     }).compile();
 
     controller = module.get<OrdersController>(OrdersController);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
+    invoiceService = module.get(INVOICE_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -332,6 +350,80 @@ describe('OrdersController', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(controller.getOrder('ol_order_999')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should merge a neutral invoice projection into the snapshot when a record exists (#1224)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(
+        new InvoiceRecord(
+          'rec-inv-1',
+          'conn-ksef-1',
+          'ol_order_001',
+          'ksef',
+          'invoice',
+          'issued',
+          'SESSION:INVOICE',
+          null,
+          'accepted',
+          '5265877635-20250826-0100001AF629-AF',
+          null,
+          null,
+          new Date('2026-04-01T12:00:00Z'),
+          null,
+          new Date('2026-04-01T12:00:00Z'),
+          new Date('2026-04-01T12:00:00Z')
+        )
+      );
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.orderSnapshot.invoice).toEqual({
+        invoiceId: 'rec-inv-1',
+        regulatoryStatus: 'accepted',
+        clearanceReference: '5265877635-20250826-0100001AF629-AF',
+        confirmationDocumentAvailable: true,
+      });
+    });
+
+    it('should set confirmationDocumentAvailable false when the invoice is not yet cleared (#1224)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(
+        new InvoiceRecord(
+          'rec-inv-2',
+          'conn-ksef-1',
+          'ol_order_001',
+          'ksef',
+          'invoice',
+          'issued',
+          'SESSION:INVOICE',
+          null,
+          'submitted',
+          null,
+          null,
+          null,
+          new Date('2026-04-01T12:00:00Z'),
+          null,
+          new Date('2026-04-01T12:00:00Z'),
+          new Date('2026-04-01T12:00:00Z')
+        )
+      );
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.orderSnapshot.invoice).toMatchObject({
+        invoiceId: 'rec-inv-2',
+        regulatoryStatus: 'submitted',
+        confirmationDocumentAvailable: false,
+      });
+    });
+
+    it('should leave the snapshot untouched when no invoice record exists', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      invoiceService.getLatestInvoiceForOrder.mockResolvedValue(null);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.orderSnapshot).toEqual({ externalOrderId: 'EXT-123', items: [] });
     });
   });
 

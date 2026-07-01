@@ -1,10 +1,12 @@
 /**
  * Unit tests for ErliInboundWebhookDecoderAdapter (#1081, ADR-021).
  *
- * All wire constants are provisional (#992); tests are deliberately written
- * against the named constants (`ERLI_WEBHOOK_ACCESS_TOKEN_HEADER`, etc.) so
- * that updating the constants in `erli-webhook.types.ts` cascades through
- * without touching these assertions.
+ * Wire shapes are confirmed against the live sandbox (#992, 2026-07-01): the
+ * body is the full order resource (no `type` discriminator), keyed by `id`;
+ * the access token arrives on the standard `Authorization: Bearer <token>`
+ * header. Tests are written against the named constants
+ * (`ERLI_WEBHOOK_ACCESS_TOKEN_HEADER`, etc.) so future wire reconciliations
+ * cascade through without touching these assertions.
  */
 import { ErliInboundWebhookDecoderAdapter } from '../erli-inbound-webhook-decoder.adapter';
 
@@ -13,7 +15,7 @@ const ORDER_ID = 'erli-order-fake-123';
 
 function makeBody(overrides: Record<string, unknown> = {}): Buffer {
   return Buffer.from(
-    JSON.stringify({ type: 'orderCreated', orderId: ORDER_ID, ...overrides }),
+    JSON.stringify({ id: ORDER_ID, status: 'purchased', ...overrides }),
   );
 }
 
@@ -29,10 +31,19 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
   // ---------------------------------------------------------------------------
 
   describe('verify', () => {
-    it('should accept a correctly-matched access token', () => {
+    it('should accept a correctly-matched Bearer access token', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
-        headers: { 'x-access-token': SECRET },
+        headers: { authorization: `Bearer ${SECRET}` },
+        secret: SECRET,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('should accept a bare (non-Bearer-prefixed) access token', () => {
+      const result = decoder.verify({
+        rawBody: makeBody(),
+        headers: { authorization: SECRET },
         secret: SECRET,
       });
       expect(result.ok).toBe(true);
@@ -41,7 +52,16 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
     it('should accept the header in any casing', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
-        headers: { 'X-Access-Token': SECRET },
+        headers: { Authorization: `Bearer ${SECRET}` },
+        secret: SECRET,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('should accept a lowercase "bearer" auth scheme', () => {
+      const result = decoder.verify({
+        rawBody: makeBody(),
+        headers: { authorization: `bearer ${SECRET}` },
         secret: SECRET,
       });
       expect(result.ok).toBe(true);
@@ -50,13 +70,13 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
     it('should reject a tampered (wrong) access token', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
-        headers: { 'x-access-token': 'wrong-token' },
+        headers: { authorization: 'Bearer wrong-token' },
         secret: SECRET,
       });
       expect(result.ok).toBe(false);
     });
 
-    it('should reject when the access-token header is absent', () => {
+    it('should reject when the Authorization header is absent', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
         headers: {},
@@ -65,10 +85,10 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.ok).toBe(false);
     });
 
-    it('should not return timestampMs (provisional: no signed timestamp from Erli)', () => {
+    it('should not return timestampMs (Erli sends no signed delivery timestamp)', () => {
       const result = decoder.verify({
         rawBody: makeBody(),
-        headers: { 'x-access-token': SECRET },
+        headers: { authorization: `Bearer ${SECRET}` },
         secret: SECRET,
       });
       expect(result).not.toHaveProperty('timestampMs');
@@ -80,23 +100,13 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
   // ---------------------------------------------------------------------------
 
   describe('extractEnvelope', () => {
-    it('should route an orderCreated event with the orderId as externalId', () => {
+    it('should route the full-order-resource body with id as externalId', () => {
       const result = decoder.extractEnvelope(makeBody(), {});
       expect(result.action).toBe('route');
       if (result.action !== 'route') return;
       expect(result.envelope.externalId).toBe(ORDER_ID);
-      expect(result.envelope.eventType).toBe('orderCreated');
-      expect(result.envelope.objectType).toBe('order');
-    });
-
-    it('should route an orderStatusChanged event', () => {
-      const result = decoder.extractEnvelope(
-        makeBody({ type: 'orderStatusChanged' }),
-        {},
-      );
-      expect(result.action).toBe('route');
-      if (result.action !== 'route') return;
       expect(result.envelope.eventType).toBe('orderStatusChanged');
+      expect(result.envelope.objectType).toBe('order');
     });
 
     it('should include a non-empty eventId', () => {
@@ -107,7 +117,20 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.envelope.eventId.length).toBeGreaterThan(0);
     });
 
-    it('should produce a deterministic eventId for the same orderId + eventType', () => {
+    it('should produce a deterministic eventId for the same orderId + updated timestamp', () => {
+      const a = decoder.extractEnvelope(makeBody({ updated: '2026-07-01T11:20:17.415Z' }), {});
+      const b = decoder.extractEnvelope(makeBody({ updated: '2026-07-01T11:20:17.415Z' }), {});
+      expect(a.action).toBe('route');
+      expect(b.action).toBe('route');
+      if (a.action !== 'route' || b.action !== 'route') return;
+      expect(a.envelope.eventId).toBe(b.envelope.eventId);
+    });
+
+    it('should produce a deterministic eventId across retried deliveries of a timestamp-less body', () => {
+      // Guards against the eventId hash basis absorbing the decode-time "now"
+      // fallback used for the envelope's advisory occurredAt — that value must
+      // stay out of the dedup hash or every retry would mint a fresh eventId
+      // and defeat the Postgres eventId-dedup gate.
       const a = decoder.extractEnvelope(makeBody(), {});
       const b = decoder.extractEnvelope(makeBody(), {});
       expect(a.action).toBe('route');
@@ -124,18 +147,40 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.envelope.eventId).toBe(explicitId);
     });
 
-    it('should produce distinct eventIds for the same orderId but different eventTypes', () => {
-      const created = decoder.extractEnvelope(makeBody({ type: 'orderCreated' }), {});
-      const changed = decoder.extractEnvelope(makeBody({ type: 'orderStatusChanged' }), {});
+    it('should produce distinct eventIds for successive deliveries of the same order (create, then cancel)', () => {
+      const created = decoder.extractEnvelope(
+        makeBody({ updated: '2026-07-01T11:20:17.415Z' }),
+        {},
+      );
+      const cancelled = decoder.extractEnvelope(
+        makeBody({ status: 'cancelled', updated: '2026-07-01T11:37:02.000Z' }),
+        {},
+      );
       expect(created.action).toBe('route');
-      expect(changed.action).toBe('route');
-      if (created.action !== 'route' || changed.action !== 'route') return;
-      expect(created.envelope.eventId).not.toBe(changed.envelope.eventId);
+      expect(cancelled.action).toBe('route');
+      if (created.action !== 'route' || cancelled.action !== 'route') return;
+      expect(created.envelope.eventId).not.toBe(cancelled.envelope.eventId);
     });
 
-    it('should ignore (not reject) an unknown event type', () => {
-      const result = decoder.extractEnvelope(makeBody({ type: 'unknownEvent' }), {});
-      expect(result.action).toBe('ignore');
+    it('should produce distinct eventIds for a status change even when the body carries no timestamp', () => {
+      // Regression: a timestamp-less body used to hash on orderId alone, so
+      // the dedup gate would drop a later real status change for the same
+      // order. status is now folded into the hash basis too.
+      const created = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      const cancelled = decoder.extractEnvelope(makeBody({ status: 'cancelled' }), {});
+      expect(created.action).toBe('route');
+      expect(cancelled.action).toBe('route');
+      if (created.action !== 'route' || cancelled.action !== 'route') return;
+      expect(created.envelope.eventId).not.toBe(cancelled.envelope.eventId);
+    });
+
+    it('should produce the same eventId for a retried delivery of an identical timestamp-less body', () => {
+      const a = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      const b = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      expect(a.action).toBe('route');
+      expect(b.action).toBe('route');
+      if (a.action !== 'route' || b.action !== 'route') return;
+      expect(a.envelope.eventId).toBe(b.envelope.eventId);
     });
 
     it('should reject malformed JSON', () => {
@@ -143,33 +188,27 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.action).toBe('reject');
     });
 
-    it('should reject a body with a missing orderId', () => {
-      const body = Buffer.from(JSON.stringify({ type: 'orderCreated' }));
+    it('should reject a body with a missing id', () => {
+      const body = Buffer.from(JSON.stringify({ status: 'purchased' }));
       const result = decoder.extractEnvelope(body, {});
       expect(result.action).toBe('reject');
     });
 
-    it('should reject a body with a blank orderId', () => {
-      const result = decoder.extractEnvelope(makeBody({ orderId: '   ' }), {});
+    it('should reject a body with a blank id', () => {
+      const result = decoder.extractEnvelope(makeBody({ id: '   ' }), {});
       expect(result.action).toBe('reject');
     });
 
-    it('should reject a body with a non-string orderId', () => {
-      const result = decoder.extractEnvelope(makeBody({ orderId: 42 }), {});
+    it('should reject a body with a non-string id', () => {
+      const result = decoder.extractEnvelope(makeBody({ id: 42 }), {});
       expect(result.action).toBe('reject');
     });
 
-    it('should reject a body missing the event type field', () => {
-      const body = Buffer.from(JSON.stringify({ orderId: ORDER_ID }));
-      const result = decoder.extractEnvelope(body, {});
-      expect(result.action).toBe('reject');
-    });
-
-    it('should include the orderId in the envelope payload', () => {
+    it('should include the order id in the envelope payload', () => {
       const result = decoder.extractEnvelope(makeBody(), {});
       expect(result.action).toBe('route');
       if (result.action !== 'route') return;
-      expect(result.envelope.payload).toMatchObject({ orderId: ORDER_ID });
+      expect(result.envelope.payload).toMatchObject({ id: ORDER_ID });
     });
 
     it('should fall back to a non-empty occurredAt when the body has no timestamp', () => {
@@ -180,9 +219,9 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(result.envelope.occurredAt.length).toBeGreaterThan(0);
     });
 
-    it('should prefer occurredAt body field when present', () => {
+    it('should prefer the updated body field for occurredAt when present', () => {
       const ts = '2026-01-15T10:00:00.000Z';
-      const result = decoder.extractEnvelope(makeBody({ occurredAt: ts }), {});
+      const result = decoder.extractEnvelope(makeBody({ updated: ts }), {});
       expect(result.action).toBe('route');
       if (result.action !== 'route') return;
       expect(result.envelope.occurredAt).toBe(ts);

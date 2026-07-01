@@ -83,7 +83,8 @@ describe('SubiektInvoicingAdapter', () => {
   describe('issueInvoice', () => {
     it('builds a correct transient issued InvoiceRecord on success', async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueInvoice(command());
+      const result = await adapter.issueInvoice(command());
+      const record = result.record;
       expect(record.status).toBe('issued');
       expect(record.connectionId).toBe('conn-1');
       expect(record.orderId).toBe('ol_order_1');
@@ -97,7 +98,8 @@ describe('SubiektInvoicingAdapter', () => {
 
     it('stamps providerType=subiekt and the neutral documentType', async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueInvoice(command());
+      const result = await adapter.issueInvoice(command());
+      const record = result.record;
       expect(record.providerType).toBe(SUBIEKT_PROVIDER_TYPE);
       expect(SUBIEKT_PROVIDER_TYPE).toBe('subiekt');
       // NEUTRAL, never the bridge-native 'faktura'.
@@ -106,20 +108,23 @@ describe('SubiektInvoicingAdapter', () => {
 
     it('uses the receipt neutral type for a buyer with no nip', async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueInvoice(command({ buyer: buyer(null) }));
+      const result = await adapter.issueInvoice(command({ buyer: buyer(null) }));
+      const record = result.record;
       expect(record.documentType).toBe('receipt');
     });
 
     it('maps the bridge regulatoryStatus onto the neutral value', async () => {
       const { adapter } = makeAdapter();
       // The fake returns regulatoryStatus 'sent' -> neutral 'submitted'.
-      const record = await adapter.issueInvoice(command());
+      const result = await adapter.issueInvoice(command());
+      const record = result.record;
       expect(record.regulatoryStatus).toBe('submitted');
     });
 
     it('echoes idempotencyKey onto the returned InvoiceRecord', async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueInvoice(command({ idempotencyKey: 'idem-xyz' }));
+      const result = await adapter.issueInvoice(command({ idempotencyKey: 'idem-xyz' }));
+      const record = result.record;
       expect(record.idempotencyKey).toBe('idem-xyz');
     });
 
@@ -202,9 +207,10 @@ describe('SubiektInvoicingAdapter', () => {
       const spy = jest.spyOn(bridge, 'issueInvoice');
       // Buyer HAS a NIP -> the derived default would be 'invoice'; an explicit
       // 'receipt' must win and map to the bridge-native 'paragon'.
-      const record = await adapter.issueInvoice(
+      const result = await adapter.issueInvoice(
         command({ buyer: buyer({ scheme: 'pl-nip', value: '1234567890' }), documentType: 'receipt' }),
       );
+      const record = result.record;
       expect(record.documentType).toBe('receipt');
       // Bridge-native document type: receipt -> 'PA' (paragon).
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'PA' }));
@@ -213,7 +219,8 @@ describe('SubiektInvoicingAdapter', () => {
     it("honours an explicit documentType 'invoice' through issueInvoice (maps to FV)", async () => {
       const { adapter, bridge } = makeAdapter();
       const spy = jest.spyOn(bridge, 'issueInvoice');
-      const record = await adapter.issueInvoice(command({ documentType: 'invoice' }));
+      const result = await adapter.issueInvoice(command({ documentType: 'invoice' }));
+      const record = result.record;
       expect(record.documentType).toBe('invoice');
       // Bridge-native document type: invoice -> 'FV' (faktura).
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ documentType: 'FV' }));
@@ -411,7 +418,7 @@ describe('SubiektInvoicingAdapter', () => {
       const adapter = makeAdapter().adapter;
       // Issue first so the fake remembers the document id (regulatoryStatus 'sent').
       const issued = await adapter.issueInvoice(command());
-      const result = await adapter.getClearanceStatus(issued);
+      const result = await adapter.getClearanceStatus(issued.record);
       // 'sent' -> neutral 'submitted'.
       expect(result.regulatoryStatus).toBe('submitted');
     });
@@ -420,7 +427,7 @@ describe('SubiektInvoicingAdapter', () => {
       const { adapter, bridge } = makeAdapter();
       bridge.seed({ regulatoryStatus: 'accepted' });
       const issued = await adapter.issueInvoice(command());
-      const result = await adapter.getClearanceStatus(issued);
+      const result = await adapter.getClearanceStatus(issued.record);
       expect(result.regulatoryStatus).toBe('accepted');
     });
 
@@ -428,7 +435,7 @@ describe('SubiektInvoicingAdapter', () => {
       const { adapter, bridge } = makeAdapter();
       bridge.seed({ regulatoryStatus: 'rejected' });
       const issued = await adapter.issueInvoice(command());
-      const result = await adapter.getClearanceStatus(issued);
+      const result = await adapter.getClearanceStatus(issued.record);
       expect(result.regulatoryStatus).toBe('rejected');
     });
 
@@ -436,22 +443,22 @@ describe('SubiektInvoicingAdapter', () => {
       const adapter = makeAdapter().adapter;
       const issued = await adapter.issueInvoice(command());
       const withRef = new InvoiceRecord(
-        issued.id,
-        issued.connectionId,
-        issued.orderId,
-        issued.providerType,
-        issued.documentType,
-        issued.status,
-        issued.providerInvoiceId,
-        issued.providerInvoiceNumber,
-        issued.regulatoryStatus,
+        issued.record.id,
+        issued.record.connectionId,
+        issued.record.orderId,
+        issued.record.providerType,
+        issued.record.documentType,
+        issued.record.status,
+        issued.record.providerInvoiceId,
+        issued.record.providerInvoiceNumber,
+        issued.record.regulatoryStatus,
         'KSEF-REF-123',
-        issued.idempotencyKey,
-        issued.pdfUrl,
-        issued.issuedAt,
-        issued.errorMessage,
-        issued.createdAt,
-        issued.updatedAt,
+        issued.record.idempotencyKey,
+        issued.record.pdfUrl,
+        issued.record.issuedAt,
+        issued.record.errorMessage,
+        issued.record.createdAt,
+        issued.record.updatedAt,
       );
       const result = await adapter.getClearanceStatus(withRef);
       expect(result.clearanceReference).toBe('KSEF-REF-123');
@@ -523,7 +530,7 @@ describe('SubiektInvoicingAdapter', () => {
     it('does NOT warn for a record the bridge knows (issued document)', async () => {
       const { adapter, logger } = makeAdapter();
       const issued = await adapter.issueInvoice(command());
-      await adapter.getClearanceStatus(issued);
+      await adapter.getClearanceStatus(issued.record);
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -531,7 +538,7 @@ describe('SubiektInvoicingAdapter', () => {
       const { adapter, bridge } = makeAdapter();
       const issued = await adapter.issueInvoice(command());
       bridge.seedFailure('bridge-unreachable');
-      await expect(adapter.getClearanceStatus(issued)).rejects.toBeInstanceOf(
+      await expect(adapter.getClearanceStatus(issued.record)).rejects.toBeInstanceOf(
         SubiektBridgeTransportError,
       );
     });
@@ -547,7 +554,7 @@ describe('SubiektInvoicingAdapter', () => {
       jest
         .spyOn(bridge, 'getInvoiceStatus')
         .mockRejectedValueOnce(new SubiektInvoiceRejectedError('unknown document id'));
-      await expect(adapter.getClearanceStatus(issued)).rejects.toBeInstanceOf(
+      await expect(adapter.getClearanceStatus(issued.record)).rejects.toBeInstanceOf(
         SubiektInvoiceRejectedError,
       );
     });

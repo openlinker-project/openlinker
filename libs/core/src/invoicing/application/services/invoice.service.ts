@@ -10,7 +10,10 @@
  * adapters; nothing from `libs/integrations` is imported. No `faktura`/`paragon`/
  * `NIP` vocabulary lives here.
  *
- * The accepted-risk contract (R1/R2/R3) is on {@link IInvoiceService}.
+ * The accepted-risk contract (R1/R2/R3) is on {@link IInvoiceService}. On a
+ * successful issue the service also snapshots the issued-document content (§7.3):
+ * seller from the adapter result, buyer/lines from the command, with per-line and
+ * VAT-breakdown money computed here (country-agnostic, neutral tax-rate codes only).
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IInvoiceService}
@@ -39,8 +42,12 @@ import type {
   InvoiceRecordFilters,
   InvoiceRecordPagination,
   IssueCorrectionCommand,
+  IssuedDocumentContent,
+  IssuedDocumentLine,
+  IssuedDocumentSeller,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
+  TaxBreakdownEntry,
 } from '../../domain/types/invoicing.types';
 
 /**
@@ -129,6 +136,22 @@ interface NeutralFailureCarrier {
    * Read STRUCTURALLY (duck-typed) — core never value-imports the adapter class.
    */
   reason?: unknown;
+}
+
+/** Money is kept to 2 decimal places (the minor-unit precision of ISO-4217 currencies used here). */
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Resolve a neutral `taxRate` string code to a fractional rate. Numeric codes
+ * (`'23'`, `'8'`, `'0'`) are read as a percentage; non-numeric exemption codes
+ * (`zw`/`np`/…) carry no tax (0). The adapter owns the authoritative regime
+ * mapping; this is only for the non-authoritative content projection.
+ */
+function rateFraction(taxRate: string): number {
+  const parsed = Number.parseFloat(taxRate);
+  return Number.isFinite(parsed) ? parsed / 100 : 0;
 }
 
 @Injectable()
@@ -280,9 +303,9 @@ export class InvoiceService implements IInvoiceService {
       INVOICING_CAPABILITY,
     );
 
-    let issued: InvoiceRecord;
+    let issueResult: Awaited<ReturnType<InvoicingPort['issueInvoice']>>;
     try {
-      issued = await adapter.issueInvoice(cmd);
+      issueResult = await adapter.issueInvoice(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
       const failureMode = this.classifyFailure(error);
@@ -307,6 +330,9 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
+    const { record: issued, seller, sourceDocument } = issueResult;
+    const documentContent = this.buildContent(cmd, issued, seller ?? null);
+
     const patch: InvoiceOutcomePatch = {
       status: 'issued',
       // Backfill the authoritative provider identity + document type from the
@@ -329,6 +355,14 @@ export class InvoiceService implements IInvoiceService {
       failureCode: null,
       failureReason: null,
       leaseExpiresAt: null,
+      // W2: snapshot the issued-document content at issue time.
+      documentContent,
+      // W3: persist the raw source document (e.g. FA(3) XML) returned by the
+      // adapter so `GET /invoices/:id/document?kind=source` can re-serve it
+      // from the record snapshot without a provider round-trip (#1224).
+      // `undefined` when the adapter does not surface one — leaves the column
+      // null and the endpoint 409s gracefully.
+      sourceDocument: sourceDocument ?? null,
     };
     return this.repo.updateOutcome(recordId, patch);
   }
@@ -489,6 +523,10 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findById(invoiceId);
   }
 
+  async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
+    return this.repo.findLatestByOrderId(orderId);
+  }
+
   async listInvoices(
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
@@ -515,5 +553,83 @@ export class InvoiceService implements IInvoiceService {
     }
     const marker = '…[truncated]';
     return raw.slice(0, MAX_ERROR_MESSAGE_LENGTH - marker.length) + marker;
+  }
+
+  /**
+   * Snapshot the issued-document content (§7.3) from the command + the adapter's
+   * neutral result. Per-line `net`/`tax`/`gross` are derived from the command's
+   * gross unit price + neutral tax-rate code; the tax breakdown buckets lines by
+   * rate and the totals sum across lines. `seller` is `null` when the adapter did
+   * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
+   *
+   * NON-AUTHORITATIVE: this recomputes net/tax/gross from the neutral `taxRate`
+   * code rather than reading the provider's own figures — a display projection
+   * only, which can diverge from the provider's authoritative amounts under
+   * rounding or regime-specific tax rules. Adapters that can supply their own
+   * authoritative line money should do so via `IssueInvoiceResult` in a future
+   * revision rather than relying on this recomputation.
+   */
+  private buildContent(
+    cmd: IssueInvoiceCommand,
+    record: InvoiceRecord,
+    seller: IssuedDocumentSeller | null,
+  ): IssuedDocumentContent {
+    const lines = cmd.lines.map((line): IssuedDocumentLine => {
+      const fraction = rateFraction(line.taxRate);
+      const gross = round2(line.quantity * line.unitPriceGross);
+      const net = round2(gross / (1 + fraction));
+      const tax = round2(gross - net);
+      const unitNet = round2(line.unitPriceGross / (1 + fraction));
+      return {
+        name: line.name,
+        quantity: line.quantity,
+        unitNet,
+        taxRate: line.taxRate,
+        net,
+        tax,
+        gross,
+      };
+    });
+
+    const taxBreakdown = this.buildTaxBreakdown(lines);
+    const totals = {
+      net: round2(lines.reduce((sum, l) => sum + l.net, 0)),
+      tax: round2(lines.reduce((sum, l) => sum + l.tax, 0)),
+      gross: round2(lines.reduce((sum, l) => sum + l.gross, 0)),
+    };
+
+    return {
+      seller,
+      buyer: {
+        name: cmd.buyer.name,
+        taxId: cmd.buyer.taxId,
+        address: cmd.buyer.address,
+      },
+      lines,
+      taxBreakdown,
+      totals,
+      currency: cmd.currency,
+      issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
+      saleDate: null,
+      payment: null,
+    };
+  }
+
+  /** Group lines by their neutral `taxRate` code, summing net/tax/gross per bucket. */
+  private buildTaxBreakdown(lines: IssuedDocumentLine[]): TaxBreakdownEntry[] {
+    const byRate = new Map<string, TaxBreakdownEntry>();
+    for (const line of lines) {
+      const bucket = byRate.get(line.taxRate) ?? {
+        rate: line.taxRate,
+        net: 0,
+        tax: 0,
+        gross: 0,
+      };
+      bucket.net = round2(bucket.net + line.net);
+      bucket.tax = round2(bucket.tax + line.tax);
+      bucket.gross = round2(bucket.gross + line.gross);
+      byRate.set(line.taxRate, bucket);
+    }
+    return [...byRate.values()];
   }
 }

@@ -8,10 +8,11 @@
  */
 import { Module } from '@nestjs/common';
 import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
+import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersController } from './http/orders.controller';
 
 @Module({
-  imports: [CoreOrdersModule],
+  imports: [CoreOrdersModule, CoreInvoicingModule],
   controllers: [OrdersController],
 })
 export class OrdersModule {}

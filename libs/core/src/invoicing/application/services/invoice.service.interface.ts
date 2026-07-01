@@ -99,6 +99,13 @@ export interface IInvoiceService {
   getInvoiceById(invoiceId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * Read the most recently created `InvoiceRecord` for an order by its internal
+   * order id. Projection read — NEVER queries the provider/adapter. Returns `null`
+   * when no record exists for the order. Backs the order-detail invoice projection.
+   */
+  getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+
+  /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
    * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
    * the invoice projection through this service interface, NEVER the repository

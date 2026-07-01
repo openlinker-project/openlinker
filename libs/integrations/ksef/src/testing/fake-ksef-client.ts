@@ -242,6 +242,30 @@ export class FakeKsefClient implements IKsefHttpClient {
     return Promise.reject(this.apiError(404, path));
   }
 
+  /**
+   * UPO document download (`GET /sessions/{ref}/invoices/{invoiceRef}/upo`) read
+   * as binary (#1224). Returns fixed XML bytes for a cleared invoice; 404 for an
+   * unknown reference or one that has not cleared.
+   */
+  getExpectingBinary(path: string, options?: KsefHttpRequestOptions): Promise<KsefBinaryResponse> {
+    this.calls.push({ method: 'GET', path, options });
+    const normalized = this.normalize(path);
+    const upo = /^sessions\/([^/]+)\/invoices\/([^/]+)\/upo$/.exec(normalized);
+    if (!upo) {
+      return Promise.reject(this.apiError(404, path));
+    }
+    const session = this.sessions.get(decodeURIComponent(upo[1]));
+    if (!session || !session.ksefNumber) {
+      return Promise.reject(this.apiError(404, path));
+    }
+    return Promise.resolve({
+      data: new Uint8Array(Buffer.from('<UPO>fake</UPO>', 'utf8')),
+      contentType: 'application/xml',
+      status: 200,
+      headers: { 'content-type': 'application/xml' },
+    });
+  }
+
   // --- State machine ---------------------------------------------------------
 
   private openSession<T>(): Promise<KsefHttpResponse<T>> {

@@ -4,8 +4,10 @@
  * TypeORM implementation of `InvoiceRecordRepositoryPort`. Maps ORM ↔ domain
  * privately; callers receive domain entities only. Converts the Postgres
  * unique-violation on the dedup index into `DuplicateInvoiceRecordException`
- * (never leaks `QueryFailedError`), and throws `InvoiceRecordNotFoundException`
- * on the update path when the row is absent.
+ * (never leaks `QueryFailedError`), throws `InvoiceRecordNotFoundException`
+ * on the update path when the row is absent, and throws
+ * `SourceDocumentImmutableError` on an attempt to overwrite the write-once
+ * `sourceDocument` snapshot.
  *
  * @module libs/core/src/invoicing/infrastructure/persistence/repositories
  * @implements {InvoiceRecordRepositoryPort}
@@ -17,6 +19,7 @@ import { QueryFailedError, Repository } from 'typeorm';
 import { InvoiceRecord } from '../../../domain/entities/invoice-record.entity';
 import { DuplicateInvoiceRecordException } from '../../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
+import { SourceDocumentImmutableError } from '../../../domain/exceptions/source-document-immutable.error';
 import type { InvoiceRecordRepositoryPort } from '../../../domain/ports/invoice-record-repository.port';
 import type {
   CreateInvoiceRecordInput,
@@ -69,6 +72,15 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null> {
+    const entity = await this.repository.findOne({
+      where: { orderId },
+      // `id` is the tiebreaker so two records sharing a createdAt resolve deterministically.
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findByIdempotencyKey(
     connectionId: string,
     idempotencyKey: string,
@@ -78,6 +90,32 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   async updateOutcome(id: string, patch: InvoiceOutcomePatch): Promise<InvoiceRecord> {
+    // sourceDocument is write-once. When the patch sets it, enforce the
+    // invariant with a SINGLE guarded UPDATE (WHERE "sourceDocument" IS NULL)
+    // rather than read-then-check-then-write, so a concurrent double-write
+    // race can't slip an overwrite between the read and the save.
+    if (patch.sourceDocument !== undefined) {
+      const result = await this.repository
+        .createQueryBuilder()
+        .update(InvoiceRecordOrmEntity)
+        .set(patch)
+        .where('id = :id', { id })
+        .andWhere('"sourceDocument" IS NULL')
+        .execute();
+      if (result.affected === 0) {
+        const existing = await this.repository.findOne({ where: { id } });
+        if (!existing) {
+          throw new InvoiceRecordNotFoundException(id);
+        }
+        throw new SourceDocumentImmutableError(id);
+      }
+      const saved = await this.repository.findOne({ where: { id } });
+      if (!saved) {
+        throw new InvoiceRecordNotFoundException(id);
+      }
+      return this.toDomain(saved);
+    }
+
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {
       throw new InvoiceRecordNotFoundException(id);
@@ -274,6 +312,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
+    entity.documentContent = input.documentContent ?? null;
+    entity.sourceDocument = input.sourceDocument ?? null;
     return entity;
   }
 
@@ -300,6 +340,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.failureReason,
       entity.leaseExpiresAt,
       entity.hasBuyerTaxId,
+      entity.documentContent,
+      entity.sourceDocument,
     );
   }
 }
