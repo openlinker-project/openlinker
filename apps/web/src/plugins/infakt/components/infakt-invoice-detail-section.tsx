@@ -17,15 +17,7 @@ import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins/plugin.types';
-import { RegulatoryStatusBadge } from '../../../features/invoicing';
-
-/** Severity-stripe tone for the shared `.reg-card` treatment. */
-function resolveRegCardTone(status: InvoiceDetailSectionProps['invoice']['regulatoryStatus']): string {
-  if (status === 'submitted') return 'reg-card--info';
-  if (status === 'accepted') return 'reg-card--success';
-  if (status === 'rejected') return 'reg-card--error';
-  return '';
-}
+import { RegulatoryStatusBadge, regCardToneFor } from '../../../features/invoicing';
 
 export function InfaktInvoiceDetailSection({
   invoice,
@@ -39,7 +31,7 @@ export function InfaktInvoiceDetailSection({
   const ksefNumber = invoice.clearanceReference ?? invoice.providerInvoiceNumber ?? null;
 
   return (
-    <section className={`invoice-detail-section reg-card ${resolveRegCardTone(invoice.regulatoryStatus)}`.trim()}>
+    <section className={`invoice-detail-section reg-card ${regCardToneFor(invoice.regulatoryStatus)}`.trim()}>
       <div className="reg-card__header">
         <h4 className="invoice-detail-section__title">
           {t('infakt.invoice.detail.title', 'KSeF clearance (via inFakt)')}
@@ -49,7 +41,7 @@ export function InfaktInvoiceDetailSection({
 
       {invoice.regulatoryStatus === 'submitted' ? (
         <>
-          <p className="text-muted" style={{ fontSize: '12px', margin: 0 }}>
+          <p className="text-muted reg-card__note">
             {t(
               'infakt.invoice.detail.pending',
               'inFakt is submitting this invoice to KSeF. Clearance usually completes within a minute or two.',
@@ -72,7 +64,7 @@ export function InfaktInvoiceDetailSection({
       ) : null}
 
       {invoice.regulatoryStatus === 'rejected' ? (
-        <p className="text-muted" style={{ fontSize: '12px', margin: 0 }}>
+        <p className="text-muted reg-card__note">
           {invoice.failureReason ??
             t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
         </p>

@@ -361,7 +361,8 @@ export interface InvoiceDetailSectionProps {
  */
 export interface InvoiceCorrectionFlowProps {
   invoice: InvoiceRecord;
-  connection: Connection;
+  /** Optional: only KSeF, Subiekt, and inFakt implementers ignore it today. */
+  connection?: Connection;
   onClose: () => void;
   onCorrectionIssued: (correctionInvoiceId: string) => void;
 }

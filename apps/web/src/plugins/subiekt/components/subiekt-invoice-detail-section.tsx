@@ -13,18 +13,11 @@ import { useTranslation } from '../../../shared/i18n';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins/plugin.types';
 import {
   RegulatoryStatusBadge,
+  regCardToneFor,
   type RegulatoryStatus,
 } from '../../../features/invoicing';
 
 const NON_APPLICABLE: RegulatoryStatus = 'not-applicable';
-
-/** Severity-stripe tone for the shared `.reg-card` treatment (#1282). */
-function resolveRegCardTone(status: RegulatoryStatus): string {
-  if (status === 'submitted') return 'reg-card--info';
-  if (status === 'accepted') return 'reg-card--success';
-  if (status === 'rejected') return 'reg-card--error';
-  return '';
-}
 
 export function SubiektInvoiceDetailSection({
   invoice,
@@ -38,7 +31,7 @@ export function SubiektInvoiceDetailSection({
 
   return (
     <section
-      className={`detail-section reg-card ${resolveRegCardTone(invoice.regulatoryStatus)}`.trim()}
+      className={`detail-section reg-card ${regCardToneFor(invoice.regulatoryStatus)}`.trim()}
     >
       <h2 className="detail-section__title">
         {t('subiekt.invoice.detail.title', 'Regulatory status')}

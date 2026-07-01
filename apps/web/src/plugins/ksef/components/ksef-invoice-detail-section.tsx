@@ -21,6 +21,7 @@ import type { ReactElement } from 'react';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
   RegulatoryStatusBadge,
+  regCardToneFor,
   useKsefUpoDownload,
   useKsefUpoPreview,
   useKsefFa3,
@@ -48,14 +49,6 @@ function resolveKsefNumber(
   providerInvoiceNumber: string | null,
 ): string | null {
   return clearanceReference ?? providerInvoiceNumber ?? null;
-}
-
-/** Severity-stripe tone for the shared `.reg-card` treatment (#1282). */
-function resolveRegCardTone(status: InvoiceDetailSectionProps['invoice']['regulatoryStatus']): string {
-  if (status === 'submitted') return 'reg-card--info';
-  if (status === 'accepted') return 'reg-card--success';
-  if (status === 'rejected') return 'reg-card--error';
-  return '';
 }
 
 export function KsefInvoiceDetailSection({
@@ -136,7 +129,7 @@ export function KsefInvoiceDetailSection({
   return (
     <>
       <section
-        className={`invoice-detail-section invoice-detail-section--ksef reg-card ${resolveRegCardTone(
+        className={`invoice-detail-section invoice-detail-section--ksef reg-card ${regCardToneFor(
           invoice.regulatoryStatus,
         )}`.trim()}
       >
