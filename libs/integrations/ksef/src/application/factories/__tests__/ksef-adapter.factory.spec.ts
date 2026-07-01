@@ -111,34 +111,26 @@ describe('KsefAdapterFactory', () => {
   });
 
   describe('resolveDefaultTaxRate (#1290)', () => {
-    const creds = resolver({
-      'ref:ksef': { authType: 'ksef-token', secretRef: 'ref:secret' },
-      'ref:secret': { token: 'TKN', contextNip: '1234567890' },
-    });
-
-    async function resolvedDefaultTaxRate(sellerConfig: Record<string, unknown>): Promise<string> {
+    // Exercises the factory's own `resolveDefaultTaxRate` via private-method
+    // bracket access, rather than casting into the constructed adapter's
+    // internals to read a private field (#1291 NIT).
+    function resolvedDefaultTaxRate(sellerConfig: Record<string, unknown>): string {
       const factory = new KsefAdapterFactory();
-      const adapters = await factory.createAdapters(
-        connection({ config: { env: 'test', seller: sellerConfig } }),
-        idMapping,
-        creds,
-      );
-      return (adapters.invoicing as unknown as { defaultTaxRate: string }).defaultTaxRate;
+      const resolve = (factory as unknown as { resolveDefaultTaxRate(c: Connection): string })
+        .resolveDefaultTaxRate;
+      return resolve.call(factory, connection({ config: { env: 'test', seller: sellerConfig } }));
     }
 
-    it('should fall back to the PL standard rate when unconfigured', async () => {
-      const defaultTaxRate = await resolvedDefaultTaxRate(SELLER_CONFIG);
-      expect(defaultTaxRate).toBe('23');
+    it('should fall back to the PL standard rate when unconfigured', () => {
+      expect(resolvedDefaultTaxRate(SELLER_CONFIG)).toBe('23');
     });
 
-    it('should use the connection-configured defaultTaxRate when present', async () => {
-      const defaultTaxRate = await resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '8' });
-      expect(defaultTaxRate).toBe('8');
+    it('should use the connection-configured defaultTaxRate when present', () => {
+      expect(resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '8' })).toBe('8');
     });
 
-    it('should fall back to the PL standard rate when defaultTaxRate is whitespace-only', async () => {
-      const defaultTaxRate = await resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '   ' });
-      expect(defaultTaxRate).toBe('23');
+    it('should fall back to the PL standard rate when defaultTaxRate is whitespace-only', () => {
+      expect(resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '   ' })).toBe('23');
     });
   });
 });

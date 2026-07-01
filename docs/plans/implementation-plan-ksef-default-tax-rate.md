@@ -4,6 +4,14 @@
 **Status**: Ready for Review
 **Estimated Effort**: 2-3 hours
 
+> **Superseded during implementation** (PR #1291 review): two points below diverged
+> from what shipped. `defaultTaxRate` landed on `Fa3MappingContext` (adapter-scoped
+> issuance policy), not on `SellerProfile` (seller identity) as step 3 and its
+> acceptance criterion describe. A config-shape validator was also added (rejecting
+> empty/whitespace-only `defaultTaxRate` at save time), contradicting the "no
+> separate config-shape validation is added" assumption below. See the shipped code
+> for the current design.
+
 ---
 
 ## 1. Task Summary

@@ -533,8 +533,8 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
    */
   private warnOnEmptyTaxRateFallback(cmd: IssueInvoiceCommand): void {
     const emptyLineCount =
-      cmd.lines.filter((line) => line.taxRate === '').length +
-      (cmd.correction?.correctedLines.filter((line) => line.taxRate === '').length ?? 0);
+      cmd.lines.filter((line) => !line.taxRate).length +
+      (cmd.correction?.correctedLines.filter((line) => !line.taxRate).length ?? 0);
     if (emptyLineCount > 0) {
       this.logger.warn(
         `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) has ` +
