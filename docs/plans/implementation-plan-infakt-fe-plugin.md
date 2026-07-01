@@ -394,19 +394,40 @@ run manually against `pnpm --filter @openlinker/web preview` (port 4173), saving
 `docs/assets/infakt/` and committing them to the PR branch (the established convention — see
 `docs/assets/subiekt/*.png`, already tracked in git).
 
+**Presentation requirement (these screenshots get reused verbatim in the operator-facing setup
+guide later, so they must be clean, not just functional)**:
+- **Never let a real secret render in cleartext.** The API-key field is `type="password"`, so
+  the input itself already renders masked dots on screen — the script must NOT temporarily
+  switch it to `type="text"` to "show" the key for the screenshot, and must not print the raw
+  key to stdout/logs. The credentials-panel's masked-key display (last 4 chars) is the only
+  place a fragment of the real key may be visible, which is the same posture every other
+  provider's docs already use.
+- **No placeholder junk in frame.** Use a realistic connection name (e.g. "inFakt — Production"
+  or "inFakt Sandbox", not "test test 123" / "asdf"), a real-looking order (an actual seeded
+  order from the dev stack, not a manually-typed dummy), and let toasts/alerts resolve to their
+  final state before the shot (`shot()`'s existing `waitForTimeout` already does this — don't
+  skip it to go faster). If the sandbox API key itself is a throwaway sandbox credential (not a
+  production secret), that's fine to type into the form — the concern is the *rendered pixels*,
+  not the credential's sensitivity tier.
+- Review each `docs/assets/infakt/*.png` by eye before committing — if any frame looks like a
+  debug/dev artifact (raw JSON dump, console error toast, `localhost:3000` visibly in a URL bar
+  that shouldn't be there, lorem-ipsum text), redo that step rather than shipping it as-is.
+
 **Steps**:
 
 11. **Connection walkthrough script**
     - **File**: `apps/web/e2e/infakt-connection.mjs`
     - **Action**: Port `subiekt-invoice.mjs`'s login/shot helper pattern. Drive: `/connections/new`
-      → click inFakt card → fill name + real sandbox API key (from environment/local secrets —
-      **never hardcode the sandbox key in the script or commit it**; read via
+      → click inFakt card → fill a realistic name + real sandbox API key (from environment/local
+      secrets — **never hardcode the sandbox key in the script or commit it**; read via
       `process.env.INFAKT_SANDBOX_API_KEY`) → submit → "Test connection" → connection list showing
       the new `infakt` connection. Capture one screenshot per step into
-      `docs/assets/infakt/{00..05}-*.png`.
+      `docs/assets/infakt/{00..05}-*.png`. Per the presentation requirement above: the API-key
+      field stays masked throughout, and the connection-list shot only ever shows the panel's
+      standard masked/last-4-chars rendering — never the full key.
     - **Acceptance**: running the script against a local `pnpm --filter @openlinker/web preview`
       + `pnpm start:dev:api` stack with real sandbox credentials produces a green "Connection test
-      passed" screenshot.
+      passed" screenshot, with no cleartext secret visible in any frame.
 
 12. **Invoice issuance walkthrough script**
     - **File**: `apps/web/e2e/infakt-invoice.mjs`
