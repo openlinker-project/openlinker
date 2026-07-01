@@ -108,6 +108,11 @@ function extensionForContentType(contentType: string): string {
   return EXTENSION_BY_CONTENT_TYPE[mime] ?? 'bin';
 }
 
+/** Shared `:invoiceId` param pipe — 404 (not 400) on a malformed UUID, consistently across every route. */
+function invoiceIdPipe(): ParseUUIDPipe {
+  return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
@@ -338,7 +343,7 @@ export class InvoicingController {
   @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async issueCorrection(
-    @Param('invoiceId') invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Body() dto: IssueCorrectionRequestDto,
   ): Promise<InvoiceRecordResponseDto> {
     const original = await this.invoiceService.getInvoiceById(invoiceId);
@@ -562,7 +567,7 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'No content snapshot available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getContent(@Param('invoiceId') invoiceId: string): Promise<IssuedDocumentContentDto> {
+  async getContent(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<IssuedDocumentContentDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
@@ -580,13 +585,14 @@ export class InvoicingController {
     summary: 'Download a regulatory document for an invoice by neutral kind',
     description:
       'Returns the neutral document bytes for an issued invoice by `kind`: `source` (the persisted ' +
-      'machine-readable source document — PL/KSeF: the FA(3) XML — served from the snapshot), or ' +
-      '`rendered` (a human-readable rendering, when the provider produces one server-side). ' +
-      '`kind` defaults to `source`. 400 on an unknown kind; 404 when the invoice id is unknown; ' +
-      '409 when the requested document is not available (not issued, no snapshot, or the provider ' +
-      'cannot produce it).',
+      'machine-readable source document — PL/KSeF: the FA(3) XML — served from the snapshot), ' +
+      '`rendered` (a human-readable rendering, when the provider produces one server-side), or ' +
+      '`confirmation` (the authority confirmation document — PL/KSeF: the UPO — equivalent to the ' +
+      'dedicated `/upo` route). `kind` defaults to `source`. 400 on an unknown kind; 404 when the ' +
+      'invoice id is unknown; 409 when the requested document is not available (not issued, no ' +
+      'snapshot, or the provider cannot produce it).',
   })
-  @ApiQuery({ name: 'kind', enum: ['source', 'rendered'], required: false })
+  @ApiQuery({ name: 'kind', enum: ['source', 'rendered', 'confirmation'], required: false })
   @ApiProduces('application/xml', 'application/pdf', 'text/html')
   @ApiResponse({ status: 200, description: 'Document bytes (Content-Type per provider)' })
   @ApiResponse({ status: 400, description: 'Unknown document kind' })
@@ -594,7 +600,7 @@ export class InvoicingController {
   @ApiResponse({ status: 409, description: 'Document not available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async downloadDocument(
-    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Res() res: Response,
     @Query('kind') kindParam?: string,
   ): Promise<void> {
@@ -657,7 +663,7 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'UPO not yet available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async downloadUpo(@Param('invoiceId', ParseUUIDPipe) invoiceId: string, @Res() res: Response): Promise<void> {
+  async downloadUpo(@Param('invoiceId', invoiceIdPipe()) invoiceId: string, @Res() res: Response): Promise<void> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
@@ -681,8 +687,17 @@ export class InvoicingController {
     // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
     // runs FIRST so a thrown error still routes through the exception layer
     // before any byte is written; `res.*` only ever runs on success.
-    const document = await adapter.getRegulatoryDocument(record, 'confirmation');
-    this.streamBinaryDocument(res, invoiceId, 'confirmation', document.contentType, Buffer.from(document.content));
+    try {
+      const document = await adapter.getRegulatoryDocument(record, 'confirmation');
+      this.streamBinaryDocument(res, invoiceId, 'confirmation', document.contentType, Buffer.from(document.content));
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} provider cannot produce a confirmation document`,
+        );
+      }
+      throw error;
+    }
   }
 
   // Declared last: must not shadow the more specific
@@ -698,7 +713,7 @@ export class InvoicingController {
   @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getInvoice(@Param('invoiceId', new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 })) invoiceId: string): Promise<InvoiceRecordResponseDto> {
+  async getInvoice(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<InvoiceRecordResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
@@ -707,17 +722,17 @@ export class InvoicingController {
   }
 
   /**
-   * Narrow the `?kind=` query to a provider-fetched `RegulatoryDocumentKind`,
-   * defaulting to `source`. `upo` has its own dedicated route, so the document
-   * endpoint accepts only `source` | `rendered`; anything else is a 400.
+   * Narrow the `?kind=` query to a `RegulatoryDocumentKind`, defaulting to
+   * `source`. `confirmation` is also reachable here (in addition to its
+   * dedicated `/upo` alias) — any of the three neutral kinds is valid.
    */
-  private parseDocumentKind(raw: string | undefined): Exclude<RegulatoryDocumentKind, 'upo'> {
+  private parseDocumentKind(raw: string | undefined): RegulatoryDocumentKind {
     const value = raw ?? 'source';
-    if (value === 'source' || value === 'rendered') {
-      return value;
+    if ((RegulatoryDocumentKindValues as readonly string[]).includes(value)) {
+      return value as RegulatoryDocumentKind;
     }
     throw new BadRequestException(
-      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.filter((k) => k !== 'confirmation').join(', ')}`,
+      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.join(', ')}`,
     );
   }
 

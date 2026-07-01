@@ -557,10 +557,17 @@ export class InvoiceService implements IInvoiceService {
 
   /**
    * Snapshot the issued-document content (§7.3) from the command + the adapter's
-   * neutral result. Per-line `net`/`vat`/`gross` are derived from the command's
-   * gross unit price + neutral tax-rate code; the VAT breakdown buckets lines by
+   * neutral result. Per-line `net`/`tax`/`gross` are derived from the command's
+   * gross unit price + neutral tax-rate code; the tax breakdown buckets lines by
    * rate and the totals sum across lines. `seller` is `null` when the adapter did
    * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
+   *
+   * NON-AUTHORITATIVE: this recomputes net/tax/gross from the neutral `taxRate`
+   * code rather than reading the provider's own figures — a display projection
+   * only, which can diverge from the provider's authoritative amounts under
+   * rounding or regime-specific tax rules. Adapters that can supply their own
+   * authoritative line money should do so via `IssueInvoiceResult` in a future
+   * revision rather than relying on this recomputation.
    */
   private buildContent(
     cmd: IssueInvoiceCommand,

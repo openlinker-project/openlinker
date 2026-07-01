@@ -38,7 +38,7 @@ export interface RegulatoryDocument {
 export interface RegulatoryDocumentReader {
   /**
    * Retrieve a regulatory document for a record by neutral {@link RegulatoryDocumentKind}:
-   *  - `upo` — the authority's confirmation document (PL/KSeF: the UPO).
+   *  - `confirmation` — the authority's confirmation document (PL/KSeF: the UPO).
    *  - `rendered` — a human-readable rendering (HTML/PDF) when the provider can
    *    produce one server-side.
    * (`source` — the persisted machine-readable source document — is served by the
@@ -48,7 +48,7 @@ export interface RegulatoryDocumentReader {
    * The adapter resolves its provider references from the record; callers gate on
    * the record being cleared before invoking. A document the provider cannot
    * produce → a thrown {@link UnsupportedRegulatoryDocumentKindError} the caller
-   * maps to 409 (not a hard failure). `kind` defaults to `upo` for back-compat.
+   * maps to 409 (not a hard failure). `kind` defaults to `confirmation`.
    */
   getRegulatoryDocument(
     record: InvoiceRecord,

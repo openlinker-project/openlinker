@@ -25,6 +25,7 @@ export * from './domain/ports/capabilities/regulatory-document-reader.capability
 export * from './domain/ports/invoice-record-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
+export * from './domain/exceptions/source-document-immutable.error';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';

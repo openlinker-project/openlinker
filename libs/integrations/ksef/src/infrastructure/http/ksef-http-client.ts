@@ -291,15 +291,7 @@ export class KsefHttpClient implements IKsefHttpClient {
             url.toString(),
           );
         }
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.byteLength > MAX_BINARY_RESPONSE_BYTES) {
-          throw new KsefApiException(
-            `KSeF binary response too large: ${bytes.byteLength} bytes exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
-            response.status,
-            undefined,
-            url.toString(),
-          );
-        }
+        const bytes = await this.readBinaryBodyCapped(response, url.toString());
         return { data: bytes as unknown as T, status: response.status, headers: responseHeaders };
       }
 
@@ -335,6 +327,47 @@ export class KsefHttpClient implements IKsefHttpClient {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * Read a binary response body via the streaming reader, enforcing
+   * `MAX_BINARY_RESPONSE_BYTES` on the RUNNING total as chunks arrive. Closes
+   * the OOM vector the `Content-Length` pre-check leaves open when the header
+   * is absent or understates the true body size: the stream is cancelled the
+   * moment the cap is crossed, so an oversized body is never fully buffered.
+   */
+  private async readBinaryBodyCapped(response: Response, url: string): Promise<Uint8Array> {
+    const body = response.body;
+    if (!body) {
+      return new Uint8Array(0);
+    }
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      total += value.byteLength;
+      if (total > MAX_BINARY_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new KsefApiException(
+          `KSeF binary response too large: exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
+          response.status,
+          undefined,
+          url,
+        );
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
 
   /**

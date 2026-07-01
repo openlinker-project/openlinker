@@ -4,8 +4,10 @@
  * TypeORM implementation of `InvoiceRecordRepositoryPort`. Maps ORM ↔ domain
  * privately; callers receive domain entities only. Converts the Postgres
  * unique-violation on the dedup index into `DuplicateInvoiceRecordException`
- * (never leaks `QueryFailedError`), and throws `InvoiceRecordNotFoundException`
- * on the update path when the row is absent.
+ * (never leaks `QueryFailedError`), throws `InvoiceRecordNotFoundException`
+ * on the update path when the row is absent, and throws
+ * `SourceDocumentImmutableError` on an attempt to overwrite the write-once
+ * `sourceDocument` snapshot.
  *
  * @module libs/core/src/invoicing/infrastructure/persistence/repositories
  * @implements {InvoiceRecordRepositoryPort}
@@ -17,6 +19,7 @@ import { QueryFailedError, Repository } from 'typeorm';
 import { InvoiceRecord } from '../../../domain/entities/invoice-record.entity';
 import { DuplicateInvoiceRecordException } from '../../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
+import { SourceDocumentImmutableError } from '../../../domain/exceptions/source-document-immutable.error';
 import type { InvoiceRecordRepositoryPort } from '../../../domain/ports/invoice-record-repository.port';
 import type {
   CreateInvoiceRecordInput,
@@ -94,9 +97,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // sourceDocument is write-once: allow setting it once (when the current
     // value is null) but reject any attempt to overwrite an existing snapshot.
     if (patch.sourceDocument !== undefined && entity.sourceDocument !== null) {
-      throw new Error(
-        'sourceDocument is write-once and cannot overwrite an existing snapshot via updateOutcome',
-      );
+      throw new SourceDocumentImmutableError(id);
     }
     Object.assign(entity, patch);
     const saved = await this.repository.save(entity);

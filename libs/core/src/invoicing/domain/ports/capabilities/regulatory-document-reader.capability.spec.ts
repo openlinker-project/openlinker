@@ -32,7 +32,7 @@ describe('isRegulatoryDocumentReader', () => {
     expect(isRegulatoryDocumentReader(adapter)).toBe(true);
   });
 
-  it('should let a narrowed reader be called without a kind (kind defaults to upo)', async () => {
+  it('should let a narrowed reader be called without a kind (kind defaults to confirmation)', async () => {
     const document: RegulatoryDocument = { content: new Uint8Array([9]), contentType: 'application/xml' };
     const getRegulatoryDocument = jest.fn().mockResolvedValue(document);
     const adapter: InvoicingPort = { ...baseInvoicingPort, getRegulatoryDocument } as InvoicingPort;
@@ -40,7 +40,7 @@ describe('isRegulatoryDocumentReader', () => {
     if (!isRegulatoryDocumentReader(adapter)) {
       throw new Error('guard should have narrowed');
     }
-    // No `kind` argument — the optional param defaults to `upo` at the implementation.
+    // No `kind` argument — the optional param defaults to `confirmation` at the implementation.
     await expect(adapter.getRegulatoryDocument(record)).resolves.toBe(document);
     expect(getRegulatoryDocument).toHaveBeenCalledWith(record);
   });
