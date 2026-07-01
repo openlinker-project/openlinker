@@ -14,6 +14,18 @@ module.exports = {
   // that are not fully drained even after app.close(). onModuleDestroy stops them,
   // but forceExit is a safety net for any other handles left open by NestJS internals.
   forceExit: true,
+  // Start the Postgres + Redis Testcontainers in the main-process realm
+  // BEFORE any worker boots an int-spec (mirrors apps/worker). Required so
+  // globalTeardown below can actually stop what was started — a container
+  // booted lazily from inside a worker-realm int-spec's getTestHarness()
+  // call would be invisible to globalTeardown, which runs in a different
+  // realm with its own `globalThis` (#1285).
+  globalSetup: '<rootDir>/test/integration/setup-global.ts',
+  // Stop the Postgres + Redis Testcontainers started by globalSetup above
+  // once this whole run finishes. See teardown.ts and
+  // libs/test-kit/src/harness.ts's `IntegrationTestHarnessImpl.teardown()`
+  // comment, which explicitly relies on this global hook to do it (#1285).
+  globalTeardown: '<rootDir>/test/integration/teardown.ts',
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),

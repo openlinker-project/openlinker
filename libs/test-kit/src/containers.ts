@@ -32,6 +32,37 @@ const DEFAULT_DB_USER = 'postgres';
 const DEFAULT_DB_PASSWORD = 'postgres';
 
 /**
+ * Docker label key carrying the owning CI run's id.
+ *
+ * CI's orphan-sweep step (#1285) reads this label to ask the GitHub Actions
+ * API whether the run that created a given container has actually finished,
+ * rather than guessing from container age — the precise check can never
+ * mistake a live, concurrently-running job's container for an orphan.
+ */
+export const CI_RUN_ID_LABEL = 'ol.ci.run-id';
+
+/**
+ * Label set every Testcontainers-backed container/helper should stamp on
+ * itself. `GITHUB_RUN_ID` is only set inside GitHub Actions; local/dev runs
+ * fall back to `'local'`, which the CI sweep step never touches.
+ */
+export function ciRunIdLabels(): Record<string, string> {
+  return { [CI_RUN_ID_LABEL]: process.env.GITHUB_RUN_ID ?? 'local' };
+}
+
+/**
+ * Env var flipped to `'true'` once this process has actually booted the
+ * containers (never on the primed-reuse path below). A Jest `globalSetup`
+ * hook runs in the main process realm; the per-suite lazy caller (e.g.
+ * `IntegrationTestHarnessImpl.setup()`) runs inside a worker/VM realm with
+ * its own `globalThis` — so the `__OL_TEST_KIT_CONTAINERS__` singleton check
+ * above can't detect "already started elsewhere." `process.env`, unlike
+ * `globalThis`, *is* inherited by the worker process Jest forks after
+ * `globalSetup` completes, so this flag is the cross-realm signal.
+ */
+const CONTAINERS_PRIMED_ENV_VAR = 'OL_TEST_KIT_CONTAINERS_PRIMED';
+
+/**
  * Start Postgres + Redis containers and populate connection env vars.
  *
  * Idempotent — a second call returns the existing handles without booting
@@ -44,19 +75,35 @@ const DEFAULT_DB_PASSWORD = 'postgres';
  *
  * Plus anything in `config.env` (set last, so callers can override the
  * defaults above if they really mean to).
+ *
+ * Cross-realm reuse: if a `globalSetup` hook already primed containers in
+ * the Jest main process (see `CONTAINERS_PRIMED_ENV_VAR`), this call — made
+ * from the worker realm — reuses the inherited `DB_*`/`REDIS_*` env vars
+ * instead of booting a second Postgres/Redis pair. `config.env` is still
+ * applied on this path so per-suite fixtures (JWT secrets, feature flags)
+ * keep working.
  */
 export async function startContainers(config?: ContainerConfig): Promise<ContainerHandles> {
   if (globalThis.__OL_TEST_KIT_CONTAINERS__) {
+    applyEnvOverrides(config);
     return toHandles(globalThis.__OL_TEST_KIT_CONTAINERS__);
+  }
+
+  if (process.env[CONTAINERS_PRIMED_ENV_VAR] === 'true') {
+    applyEnvOverrides(config);
+    return handlesFromEnv();
   }
 
   const postgres = await new PostgreSqlContainer(config?.postgresImage ?? DEFAULT_POSTGRES_IMAGE)
     .withDatabase(DEFAULT_DB_NAME)
     .withUsername(DEFAULT_DB_USER)
     .withPassword(DEFAULT_DB_PASSWORD)
+    .withLabels(ciRunIdLabels())
     .start();
 
-  const redis = await new RedisContainer(config?.redisImage ?? DEFAULT_REDIS_IMAGE).start();
+  const redis = await new RedisContainer(config?.redisImage ?? DEFAULT_REDIS_IMAGE)
+    .withLabels(ciRunIdLabels())
+    .start();
 
   process.env.DB_HOST = postgres.getHost();
   process.env.DB_PORT = String(postgres.getPort());
@@ -67,15 +114,42 @@ export async function startContainers(config?: ContainerConfig): Promise<Contain
   process.env.REDIS_PORT = String(redis.getPort());
   process.env.REDIS_PASSWORD = '';
   process.env.REDIS_DB = '0';
+  process.env[CONTAINERS_PRIMED_ENV_VAR] = 'true';
 
+  applyEnvOverrides(config);
+
+  globalThis.__OL_TEST_KIT_CONTAINERS__ = { postgres, redis };
+  return toHandles(globalThis.__OL_TEST_KIT_CONTAINERS__);
+}
+
+function applyEnvOverrides(config?: ContainerConfig): void {
   if (config?.env) {
     for (const [key, value] of Object.entries(config.env)) {
       process.env[key] = value;
     }
   }
+}
 
-  globalThis.__OL_TEST_KIT_CONTAINERS__ = { postgres, redis };
-  return toHandles(globalThis.__OL_TEST_KIT_CONTAINERS__);
+/**
+ * Build `ContainerHandles` from already-set `DB_*`/`REDIS_*` env vars —
+ * used on the primed-reuse path, where this realm never started its own
+ * `StartedPostgreSqlContainer` / `StartedRedisContainer` instances to read
+ * host/port off of.
+ */
+function handlesFromEnv(): ContainerHandles {
+  return {
+    postgres: {
+      host: process.env.DB_HOST ?? '',
+      port: Number(process.env.DB_PORT),
+      database: process.env.DB_DATABASE ?? DEFAULT_DB_NAME,
+      username: process.env.DB_USERNAME ?? DEFAULT_DB_USER,
+      password: process.env.DB_PASSWORD ?? DEFAULT_DB_PASSWORD,
+    },
+    redis: {
+      host: process.env.REDIS_HOST ?? '',
+      port: Number(process.env.REDIS_PORT),
+    },
+  };
 }
 
 /**
@@ -90,18 +164,38 @@ export async function stopContainers(): Promise<void> {
     return;
   }
 
-  await Promise.allSettled([
-    state.redis.stop().catch((err: unknown) => {
-      // Test-time teardown; using console.warn rather than the Logger factory.
-      // Logger backend may already be torn down at this point — see plan § 4.
-      console.warn('test-kit: failed to stop Redis container:', err);
-    }),
-    state.postgres.stop().catch((err: unknown) => {
-      console.warn('test-kit: failed to stop Postgres container:', err);
-    }),
-  ]);
+  // Testcontainers' underlying `@redis/client` socket can emit a stray
+  // 'error' event (e.g. SocketClosedUnexpectedlyError) once the Redis
+  // container is torn down — outside the Promise chain below, so .catch()
+  // never sees it. Node's default behaviour for an EventEmitter 'error'
+  // with no listener is to rethrow as an uncaught exception, which crashes
+  // this whole globalTeardown process with a non-zero exit code even though
+  // every test already passed (surfaced once stopContainers() started
+  // actually running here — previously this was a no-op, see #1285). Swallow
+  // it for the duration of the stop() calls only, so an unrelated crash
+  // elsewhere in this short-lived teardown script is still fatal.
+  const swallowTeardownSocketNoise = (err: unknown): void => {
+    console.warn('test-kit: swallowed a post-teardown socket error:', err);
+  };
+  process.on('uncaughtException', swallowTeardownSocketNoise);
+
+  try {
+    await Promise.allSettled([
+      state.redis.stop().catch((err: unknown) => {
+        // Test-time teardown; using console.warn rather than the Logger factory.
+        // Logger backend may already be torn down at this point — see plan § 4.
+        console.warn('test-kit: failed to stop Redis container:', err);
+      }),
+      state.postgres.stop().catch((err: unknown) => {
+        console.warn('test-kit: failed to stop Postgres container:', err);
+      }),
+    ]);
+  } finally {
+    process.off('uncaughtException', swallowTeardownSocketNoise);
+  }
 
   globalThis.__OL_TEST_KIT_CONTAINERS__ = undefined;
+  delete process.env[CONTAINERS_PRIMED_ENV_VAR];
 }
 
 function toHandles(state: HarnessState): ContainerHandles {
