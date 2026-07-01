@@ -129,11 +129,54 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
         `(${ErliWebhookEventTypeValues.length} hooks${stateUpdateOk ? '' : '; state update pending'}).`,
     );
 
+    const testPingTriggered = await this.selfTestPing(url, secret, connectionId);
+
     return {
       webhooksConfigured: true,
-      testPingTriggered: false,
+      testPingTriggered,
       ...(stateUpdateOk ? {} : { warning: 'state-update-failed' }),
     };
+  }
+
+  /**
+   * Round-trips the just-registered secret against OL's OWN webhook endpoint,
+   * in the exact shape Erli uses (`Authorization: Bearer <secret>`) — proving
+   * the ingress accepts it without waiting for Erli to actually deliver
+   * anything (Erli's own delivery latency in the sandbox has been observed
+   * to range from seconds to 15+ minutes with no visible pattern, which makes
+   * "did the fix work" otherwise unanswerable on any predictable timeline).
+   *
+   * The body is intentionally empty: an authentic signature always reaches
+   * `extractEnvelope`, which then rejects it (400, missing order id) — so a
+   * successful self-test never enqueues a real `marketplace.order.sync` job.
+   * Only a genuine signature failure (401) counts as "not triggered"; the
+   * secret is never logged, only used in-memory for this one request.
+   */
+  private async selfTestPing(
+    url: string,
+    secret: string,
+    connectionId: string,
+  ): Promise<boolean> {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const ok = response.status !== 401;
+      this.logger.log(
+        `Erli webhook self-test ping for connection ${connectionId}: HTTP ${response.status} ` +
+          `(signature ${ok ? 'accepted' : 'REJECTED'}).`,
+      );
+      return ok;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Erli webhook self-test ping failed for connection ${connectionId} (non-fatal — ` +
+          `install already succeeded): ${message}`,
+      );
+      return false;
+    }
   }
 
   /**
