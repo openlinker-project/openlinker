@@ -67,11 +67,17 @@ import type {
   InvoicingPort,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
+  IssuedDocumentSeller,
+  RegulatoryDocument,
+  RegulatoryDocumentKind,
+  RegulatoryDocumentReader,
   RegulatoryTransmitter,
+  StoredDocument,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
@@ -103,8 +109,15 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
+/** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
+const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
+
 export class KsefInvoicingAdapter
-  implements InvoicingPort, RegulatoryTransmitter, CorrectionIssuer
+  implements
+    InvoicingPort,
+    RegulatoryTransmitter,
+    RegulatoryDocumentReader,
+    CorrectionIssuer
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
@@ -118,7 +131,7 @@ export class KsefInvoicingAdapter
     private readonly now: () => Date = (): Date => new Date(),
   ) {}
 
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecordType> {
+  async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
     // the subset getSupportedDocumentTypes advertises. Reject anything else up
     // front with a terminal exception so the service marks the record failed
@@ -191,7 +204,10 @@ export class KsefInvoicingAdapter
     // 4. Neutral result. KSeF number is async (C6 reconciles) → clearanceReference null.
     //    providerInvoiceId packs BOTH the session ref and the invoice ref — the
     //    status/UPO read (C6) needs both for GET /sessions/{sref}/invoices/{iref}.
-    return new InvoiceRecord(
+    //    The result also carries the neutral seller block (resolved from the
+    //    connection's KsefSellerConfig) so the core InvoiceService can snapshot the
+    //    issued-document content without core ever seeing a NIP/KSeF wire detail.
+    const record = new InvoiceRecord(
       '', // persistence id is assigned by the core InvoiceService (#1118), not here.
       cmd.connectionId,
       cmd.orderId,
@@ -209,6 +225,34 @@ export class KsefInvoicingAdapter
       issuedAt,
       issuedAt,
     );
+    // Persist the FA(3) source XML as a neutral opaque blob so the core service can
+    // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
+    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+  }
+
+  /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
+  private toSourceDocument(xml: string): StoredDocument {
+    return {
+      contentType: 'application/xml',
+      contentBase64: Buffer.from(xml, 'utf-8').toString('base64'),
+    };
+  }
+
+  /**
+   * Map the adapter's PL seller config (Podmiot1: NIP + name + address) onto the
+   * neutral {@link IssuedDocumentSeller} the core content snapshot persists. The
+   * `pl-nip` scheme tag is the ONLY place the PL identifier system is named — it
+   * stays behind the adapter; core sees a scheme-tagged `TaxIdentifier`.
+   */
+  private toNeutralSeller(): IssuedDocumentSeller {
+    return {
+      name: this.seller.name,
+      taxId: { scheme: 'pl-nip', value: this.seller.nip },
+      address: {
+        ...this.seller.address,
+        line2: this.seller.address.line2 ?? null,
+      },
+    };
   }
 
   /**
@@ -259,7 +303,11 @@ export class KsefInvoicingAdapter
       },
       idempotencyKey: cmd.idempotencyKey,
     };
-    return this.issueInvoice(issueCmd);
+    // `CorrectionIssuer.issueCorrection` returns the plain neutral `InvoiceRecord`
+    // (unlike `issueInvoice`, which wraps it in `IssueInvoiceResult` alongside the
+    // optional seller/sourceDocument the UPO/document-retrieval flow needs).
+    const { record } = await this.issueInvoice(issueCmd);
+    return record;
   }
 
   /**
@@ -381,6 +429,44 @@ export class KsefInvoicingAdapter
     }
 
     return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
+  }
+
+  /**
+   * `RegulatoryDocumentReader.getRegulatoryDocument` (#1224 / C15) — fetch the UPO confirmation
+   * document for a cleared invoice as neutral bytes. Decodes the composite
+   * `providerInvoiceId` into the session + invoice references and reads the
+   * session-scoped UPO endpoint (`GET /sessions/{sessionRef}/invoices/{invoiceRef}/upo`)
+   * as binary — the same authed path the clearance read uses, so no absolute-URL
+   * auth edge case. KSeF returns the UPO as XML (the official confirmation); the
+   * neutral `RegulatoryDocument` carries the provider-reported content type so the
+   * HTTP boundary streams it back verbatim. A `4xx`/`5xx` propagates as a thrown
+   * transport exception the controller maps (404/409/502); core sees only neutral
+   * bytes, never a KSeF/UPO wire detail.
+   */
+  async getRegulatoryDocument(
+    record: InvoiceRecordType,
+    kind: RegulatoryDocumentKind = 'confirmation',
+  ): Promise<RegulatoryDocument> {
+    // `source` is the persisted FA(3) XML served by the core service from the
+    // record snapshot, never via this adapter. `rendered` (server-side HTML/PDF
+    // visualization) is not a KSeF API capability — integrators render the FA(3)
+    // XML client-side via the official XSLT. Both are soft 409s, not failures.
+    if (kind !== 'confirmation') {
+      throw new UnsupportedRegulatoryDocumentKindError(kind);
+    }
+    const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);
+    const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
+      invoiceRef,
+    )}/upo`;
+    this.logger.log(
+      `Fetching UPO document (connection ${this.connectionId}, session ref ${sessionRef}, invoice ref ${invoiceRef})`,
+    );
+
+    const response = await this.httpClient.getExpectingBinary(upoPath);
+    return {
+      content: response.data,
+      contentType: response.contentType.length > 0 ? response.contentType : DEFAULT_UPO_CONTENT_TYPE,
+    };
   }
 
   /**

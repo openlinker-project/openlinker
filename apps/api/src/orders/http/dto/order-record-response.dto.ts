@@ -16,6 +16,7 @@ import {
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
+import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -30,8 +31,13 @@ export class OrderRecordResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'Source event ID for tracking' })
   sourceEventId!: string | null;
 
-  @ApiProperty({ description: 'Order snapshot (PII-aware)' })
-  orderSnapshot!: Record<string, unknown>;
+  @ApiProperty({
+    description:
+      'Order snapshot (PII-aware). On the detail read only (#1224), it may carry an optional neutral ' +
+      '`invoice` sub-tree (shape: OrderInvoiceProjectionDto) when a latest invoice record exists for the order; ' +
+      'the list read never includes it.',
+  })
+  orderSnapshot!: Record<string, unknown> & { invoice?: OrderInvoiceProjectionDto };
 
   @ApiProperty({ type: [OrderSyncStatusResponseDto], description: 'Sync status per destination' })
   syncStatus!: OrderSyncStatusResponseDto[];

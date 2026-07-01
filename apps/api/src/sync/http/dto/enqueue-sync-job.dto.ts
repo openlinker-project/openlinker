@@ -38,7 +38,6 @@ export class EnqueueSyncJobDto {
   @ApiProperty({
     description: 'Job payload (provider-specific data)',
     example: { schemaVersion: 1, cursorKey: 'allegro.orders.lastEventId', limit: 10 },
-    type: 'object',
   })
   @IsObject({ message: 'payload must be an object' })
   payload!: Record<string, unknown>;

@@ -17,7 +17,9 @@ import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
   InvoiceStatus,
+  IssuedDocumentContent,
   RegulatoryStatus,
+  StoredDocument,
 } from '../types/invoicing.types';
 
 export class InvoiceRecord {
@@ -75,6 +77,19 @@ export class InvoiceRecord {
      * once on the write path; defaults `false` for legacy rows with no backfill.
      */
     public readonly hasBuyerTaxId: boolean = false,
+    /**
+     * Neutral issued-document content snapshot (§7.3), captured at issue time;
+     * `null` until a document is issued (or when the issuing adapter surfaces no
+     * content). Backs the FE "Invoice contents" card via `GET /invoices/:id/content`.
+     */
+    public readonly documentContent: IssuedDocumentContent | null = null,
+    /**
+     * Neutral persisted source document (the machine-readable document submitted
+     * to the authority — PL/KSeF: the FA(3) XML), captured at issue time; `null`
+     * until issued (or when the adapter surfaces no source document). Re-served by
+     * `GET /invoices/:id/document?kind=source`.
+     */
+    public readonly sourceDocument: StoredDocument | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

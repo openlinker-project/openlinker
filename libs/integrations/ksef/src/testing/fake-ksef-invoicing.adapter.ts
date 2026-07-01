@@ -21,12 +21,13 @@ import type {
   InvoiceRecord,
   InvoicingPort,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 
 export class FakeKsefInvoicingAdapter implements InvoicingPort {
-  issueInvoice(_cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  issueInvoice(_cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     return Promise.reject(new Error('FakeKsefInvoicingAdapter.issueInvoice is not implemented (C9)'));
   }
 
