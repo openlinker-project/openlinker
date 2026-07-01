@@ -444,4 +444,40 @@ describe('DataTable', () => {
 
     expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
   });
+
+  it('exposes the plain (non-virtualized) container as a keyboard-accessible scrollable region', () => {
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        caption="Invoices"
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    const dataTableContainer = container.querySelector('.data-table__container');
+    expect(dataTableContainer).toHaveAttribute('tabindex', '0');
+    expect(dataTableContainer).toHaveAttribute('role', 'region');
+    expect(dataTableContainer).toHaveAttribute('aria-label', 'Invoices (scrollable)');
+  });
+
+  it('does not mark the container as a scrollable region when rendering mobile cards', () => {
+    const { restore } = mockMobileViewport();
+    try {
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          cardView={{ title: (row): string => row.name }}
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+        />,
+      );
+
+      const dataTableContainer = container.querySelector('.data-table__container');
+      expect(dataTableContainer).not.toHaveAttribute('tabindex');
+      expect(dataTableContainer).not.toHaveAttribute('role');
+    } finally {
+      restore();
+    }
+  });
 });

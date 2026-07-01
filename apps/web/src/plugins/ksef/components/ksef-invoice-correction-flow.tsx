@@ -35,20 +35,30 @@ function emptyRow(): LineRow {
   return { originalLineNumber: '', newQuantity: '', newUnitPriceGross: '' };
 }
 
-function parseLineRows(rows: LineRow[]): CorrectionLineInput[] {
-  return rows
-    .filter((r) => r.originalLineNumber.trim() !== '')
-    .map((r) => {
-      const lineNum = parseInt(r.originalLineNumber, 10);
-      const qty = r.newQuantity.trim() !== '' ? parseFloat(r.newQuantity) : undefined;
-      const price =
-        r.newUnitPriceGross.trim() !== '' ? parseFloat(r.newUnitPriceGross) : undefined;
-      return {
-        originalLineNumber: lineNum,
-        ...(qty !== undefined && !Number.isNaN(qty) ? { newQuantity: qty } : {}),
-        ...(price !== undefined && !Number.isNaN(price) ? { newUnitPriceGross: price } : {}),
-      };
+/**
+ * Returns `null` when a filled-in row changes neither quantity nor price — a
+ * no-op line the backend `CorrectionLineDto` rejects (at least one delta is
+ * required per line).
+ */
+function parseLineRows(rows: LineRow[]): CorrectionLineInput[] | null {
+  const filled = rows.filter((r) => r.originalLineNumber.trim() !== '');
+  const parsed: CorrectionLineInput[] = [];
+  for (const r of filled) {
+    const lineNum = parseInt(r.originalLineNumber, 10);
+    const qty = r.newQuantity.trim() !== '' ? parseFloat(r.newQuantity) : undefined;
+    const price = r.newUnitPriceGross.trim() !== '' ? parseFloat(r.newUnitPriceGross) : undefined;
+    const hasQty = qty !== undefined && !Number.isNaN(qty);
+    const hasPrice = price !== undefined && !Number.isNaN(price);
+    if (!hasQty && !hasPrice) {
+      return null;
+    }
+    parsed.push({
+      originalLineNumber: lineNum,
+      ...(hasQty ? { newQuantity: qty } : {}),
+      ...(hasPrice ? { newUnitPriceGross: price } : {}),
     });
+  }
+  return parsed;
 }
 
 export function KsefInvoiceCorrectionFlow({
@@ -83,6 +93,15 @@ export function KsefInvoiceCorrectionFlow({
 
   function handleSubmit(): void {
     const parsedLines = parseLineRows(lines);
+    if (parsedLines === null) {
+      setLinesError(
+        t(
+          'ksef.correction.lineDeltaRequired',
+          'Each line must specify a new quantity and/or a new price.',
+        ),
+      );
+      return;
+    }
     if (parsedLines.length === 0) {
       setLinesError(
         t(

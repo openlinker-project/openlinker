@@ -2430,7 +2430,8 @@ textarea {
  * surface look.
  */
 .data-table {
-  width: 100%;
+  width: auto;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -2441,6 +2442,11 @@ textarea {
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   box-shadow: var(--shadow-xs);
+}
+
+.data-table__container:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 /* Virtualized mode: the inner scroller owns both axes. */
