@@ -23,6 +23,7 @@
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { KsefCredentialsPanel } from './components/ksef-credentials-panel';
+import { KsefInvoiceCorrectionFlow } from './components/ksef-invoice-correction-flow';
 import { KsefInvoiceDetailSection } from './components/ksef-invoice-detail-section';
 import { KsefStructuredSection } from './components/ksef-structured-section';
 import { ksefSetupRoute } from './ksef-setup.route';
@@ -45,5 +46,6 @@ export const ksefPlugin: OpenLinkerPlugin = definePlugin({
     StructuredConfigSection: KsefStructuredSection,
     CredentialsPanel: KsefCredentialsPanel,
     invoiceDetailSection: KsefInvoiceDetailSection,
+    invoiceCorrectionFlow: KsefInvoiceCorrectionFlow,
   },
 });
