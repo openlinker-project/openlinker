@@ -201,6 +201,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
         run: |
+          # If `gh` is missing, every container silently falls back to the
+          # age gate below with no run-aware precision — log it loudly once
+          # so a broken/absent `gh` on this runner doesn't go unnoticed.
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::warning::gh CLI not found on this runner — orphan sweep will use the 90-minute age gate for every container instead of the precise run-status check"
+          fi
           CUTOFF_EPOCH=$(( $(date -u +%s) - 5400 ))
           readarray -t CANDIDATES < <(docker ps -aq --filter "label=org.testcontainers=true")
           STALE=()
@@ -220,14 +226,22 @@ jobs:
             if [ "$OWNER_RUN_ID" = "$GITHUB_RUN_ID" ]; then
               continue # this run's own container — never touch it here
             fi
-            CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid")" +%s)
-            if [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+            # A concurrently running job's own afterAll may remove this
+            # container between the `docker ps -aq` listing above and this
+            # inspect. Guarded to `0` (never stale) instead of letting the
+            # failed substitution abort the whole step under `set -eo pipefail`.
+            CREATED_EPOCH=$(date -u -d "$(docker inspect -f '{{.Created}}' "$cid" 2>/dev/null)" +%s 2>/dev/null || echo 0)
+            if [ "$CREATED_EPOCH" -gt 0 ] && [ "$CREATED_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
               STALE+=("$cid")
             fi
           done
           if [ "${#STALE[@]}" -gt 0 ]; then
             echo "Removing orphaned Testcontainers containers:"
-            docker rm -f "${STALE[@]}"
+            # `|| true`: a container in this batch may have been removed by a
+            # concurrent job's own cleanup between the listing above and here;
+            # docker rm -f returns non-zero if any single id fails, which would
+            # otherwise abort the step under `set -eo pipefail`.
+            docker rm -f "${STALE[@]}" || true
           else
             echo "No orphaned Testcontainers containers found."
           fi
@@ -256,13 +270,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --filter @openlinker/worker test:integration
         timeout-minutes: 10 # Worker suite runs ~80s locally; cap guards a hung container boot
-        # This job's own containers are cleaned up by apps/api's globalTeardown
-        # (now wired, see jest-integration.cjs) and each suite's own afterAll
-        # (e.g. the PrestaShop/WooCommerce container helpers). No post-job
-        # sweep here: this run's own status is still `in_progress` until the
-        # job finishes, so the pre-flight sweep's run-status check wouldn't
-        # touch its containers anyway — the next run's pre-flight sweep picks
-        # up anything this run itself failed to clean up.
+        # This job's own containers are cleaned up in-process: apps/worker has
+        # its own globalSetup/globalTeardown pair (setup-global.ts / teardown.ts,
+        # independent of apps/api's), plus each suite's own afterAll (e.g. the
+        # PrestaShop/WooCommerce container helpers). No post-job sweep here:
+        # this run's own status is still `in_progress` until the job finishes,
+        # so the pre-flight sweep's run-status check wouldn't touch its
+        # containers anyway — the next run's pre-flight sweep picks up anything
+        # this run itself failed to clean up.
 
   test-php:
     name: PHP Unit Tests
