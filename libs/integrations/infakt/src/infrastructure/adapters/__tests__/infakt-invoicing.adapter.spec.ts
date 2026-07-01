@@ -426,6 +426,25 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record.idempotencyKey).toBe('idem-corr-1');
     });
 
+    it('should convert a price-changing correction line from gross to net (#1292 review)', async () => {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+
+      await adapter.issueCorrection({
+        ...baseCmd,
+        lines: [{ originalLineNumber: 1, newUnitPriceGross: 61.5 }],
+      });
+
+      const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = postCall?.body as {
+        invoice: { services: { unit_net_price: string; correction: boolean }[] };
+      };
+      const correctedRow = body.invoice.services.find((s) => s.correction === true);
+      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net — was previously written
+      // straight through as "61.50 PLN", overstating the net price.
+      expect(correctedRow?.unit_net_price).toBe('50.00 PLN');
+    });
+
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seedError(

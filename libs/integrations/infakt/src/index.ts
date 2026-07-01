@@ -8,6 +8,7 @@ export type { InfaktWebhookEvent, InfaktWebhookEventName, InfaktWebhookTranslato
 export { InfaktInvoicingAdapter, INFAKT_PROVIDER_TYPE } from './infrastructure/adapters/infakt-invoicing.adapter';
 export { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from './infrastructure/http/infakt-http-client';
 export { InfaktApiError } from './domain/exceptions/infakt-api.error';
+export { InfaktConfigException } from './domain/exceptions/infakt-config.exception';
 export type { InfaktInvoice, InfaktClient, InfaktKsefData, InfaktKsefStatus } from './domain/types/infakt.types';
 
 // Shape validators + retry classifier — exported so host-side tests can

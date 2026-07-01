@@ -100,6 +100,19 @@ function toInfaktTaxSymbol(taxRate: string): string {
   }
 }
 
+/** Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol` `'zw'`/`'np'`) to a decimal fraction. */
+function taxRateNumeric(taxRate: string): number {
+  const n = parseFloat(taxRate);
+  if (!isNaN(n) && n > 1) return n / 100;
+  if (!isNaN(n)) return n;
+  return 0;
+}
+
+/** Converts a buyer-paid gross unit price to Infakt's net unit price for the given tax rate. */
+function grossToNet(unitPriceGross: number, taxRate: string): number {
+  return unitPriceGross / (1 + taxRateNumeric(taxRate));
+}
+
 export class InfaktInvoicingAdapter
   implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
 {
@@ -155,7 +168,7 @@ export class InfaktInvoicingAdapter
       tax_symbol: toInfaktTaxSymbol(l.taxRate),
       quantity: l.quantity,
       unit: 'szt.',
-      unit_net_price: `${(l.unitPriceGross / (1 + this.taxRateNumeric(l.taxRate))).toFixed(2)} ${currency ?? 'PLN'}`,
+      unit_net_price: `${grossToNet(l.unitPriceGross, l.taxRate).toFixed(2)} ${currency ?? 'PLN'}`,
     }));
 
     const payload = {
@@ -267,13 +280,21 @@ export class InfaktInvoicingAdapter
       { invoice_type: 'vat' },
     );
 
+    // Infakt's InfaktInvoice type carries no currency field (accounts are
+    // single-currency in practice); PLN mirrors issueInvoice's own default
+    // and is the only value Infakt sandbox/production has ever returned here.
+    const currency = 'PLN';
+
     // Build correction services: original row (correction: false) + corrected row (correction: true)
     const correctionServices = original.services.flatMap((svc, idx) => {
       const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
       const corrQty = corrLine?.newQuantity ?? svc.quantity;
+      // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
+      // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
+      // same as issueInvoice's gross→net conversion (#1292 review).
       const corrPrice = corrLine?.newUnitPriceGross
-        ? `${corrLine.newUnitPriceGross.toFixed(2)} PLN`
-        : `${svc.unit_net_price.toFixed(2)} PLN`;
+        ? `${grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol).toFixed(2)} ${currency}`
+        : `${svc.unit_net_price.toFixed(2)} ${currency}`;
       return [
         // Original "before" row
         {
@@ -281,7 +302,7 @@ export class InfaktInvoicingAdapter
           tax_symbol: svc.tax_symbol,
           quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: `${svc.unit_net_price.toFixed(2)} PLN`,
+          unit_net_price: `${svc.unit_net_price.toFixed(2)} ${currency}`,
           group: idx + 1,
           correction: false,
         },
@@ -361,12 +382,5 @@ export class InfaktInvoicingAdapter
     } catch {
       return null;
     }
-  }
-
-  private taxRateNumeric(taxRate: string): number {
-    const n = parseFloat(taxRate);
-    if (!isNaN(n) && n > 1) return n / 100;
-    if (!isNaN(n)) return n;
-    return 0;
   }
 }

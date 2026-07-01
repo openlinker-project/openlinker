@@ -10,7 +10,7 @@
  *   6. pollUntilCleared — poll getClearanceStatus until success/error (max 3 min)
  *
  * Usage:
- *   INFAKT_SANDBOX_API_KEY=<key> npx ts-node src/scripts/poc-sandbox-test.ts
+ *   INFAKT_SANDBOX_API_KEY=<key> pnpm --filter @openlinker/integrations-infakt poc:sandbox
  *
  * Optional env:
  *   INFAKT_BASE_URL   — defaults to https://api.sandbox-infakt.pl/api/v3
@@ -18,13 +18,16 @@
  *   POC_POLL_INTERVAL_MS — poll interval (default 10000 = 10 s)
  *
  * Verified live 2026-06-30: full draft→KSeF clearance in ~90 s on sandbox.
+ *
+ * Lives outside src/ (package `include` is `src/**\/*`) so it never compiles
+ * into dist or ships to consumers of this package.
  */
 
 /* eslint-disable no-console -- POC script intentionally uses console for output */
 
-import { InfaktHttpClient } from '../infrastructure/http/infakt-http-client';
-import { InfaktInvoicingAdapter } from '../infrastructure/adapters/infakt-invoicing.adapter';
-import type { InfaktSendToKsefResponse } from '../domain/types/infakt.types';
+import { InfaktHttpClient } from '../src/infrastructure/http/infakt-http-client';
+import { InfaktInvoicingAdapter } from '../src/infrastructure/adapters/infakt-invoicing.adapter';
+import type { InfaktSendToKsefResponse } from '../src/domain/types/infakt.types';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 
 // ---- config ----------------------------------------------------------------

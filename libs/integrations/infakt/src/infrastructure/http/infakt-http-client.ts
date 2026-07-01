@@ -68,7 +68,10 @@ export class InfaktHttpClient implements IInfaktHttpClient {
       );
     }
     if (!res.ok) {
-      this.logger.warn(`Infakt API ${method} ${path} → ${res.status}`, { body: text });
+      // Don't log the response body — Infakt error payloads can echo back
+      // buyer PII (name, NIP, address) submitted in the request. The full
+      // body still reaches the caller via InfaktApiError.responseBody.
+      this.logger.warn(`Infakt API ${method} ${path} → ${res.status}`);
       throw new InfaktApiError(
         `Infakt API ${method} ${path} failed with status ${res.status}`,
         res.status,
