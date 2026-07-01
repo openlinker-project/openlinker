@@ -53,6 +53,9 @@ describe('ksefPlugin', () => {
     it('contributes the invoice-detail section slot (B4 KSeF regulatory region)', () => {
       expect(ksefPlugin.platform?.invoiceDetailSection).toBeDefined();
     });
+    it('contributes the invoice-correction flow slot (C1 KOR)', () => {
+      expect(ksefPlugin.platform?.invoiceCorrectionFlow).toBeDefined();
+    });
     it('does NOT contribute marketplace or async-pickup slots', () => {
       expect(ksefPlugin.platform?.supportsListingEdit).toBeUndefined();
       expect(ksefPlugin.platform?.pickupPointResolvesAsync).toBeUndefined();
