@@ -12,6 +12,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AppInfoModule } from './app-info/app-info.module';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { CacheModule } from '@openlinker/shared/cache';
@@ -48,6 +49,7 @@ import { UsersApiModule } from './users/users.module';
     DatabaseModule,
     RedisConfigModule,
     CacheModule,
+    AppInfoModule, // Runtime product + API version surface for GET /v1/health (#1133)
     HealthModule,
     AuthModule,
     IdentifierMappingModule,

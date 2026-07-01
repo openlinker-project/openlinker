@@ -75,7 +75,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     );
     const response = await harness
       .getHttp()
-      .post('/auth/login')
+      .post('/v1/auth/login')
       .send({ username, password: 'viewer-pass' })
       .expect(200);
     return response.body.access_token as string;
@@ -88,13 +88,13 @@ describe('Fulfillment Routing HTTP Integration', () => {
 
     // Empty before any write.
     const initial = await http
-      .get(`/connections/${sourceId}/routing-rules`)
+      .get(`/v1/connections/${sourceId}/routing-rules`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(initial.body).toEqual([]);
 
     const putRes = await http
-      .put(`/connections/${sourceId}/routing-rules`)
+      .put(`/v1/connections/${sourceId}/routing-rules`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         items: [
@@ -114,7 +114,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     expect(putRes.body).toHaveLength(2);
 
     const getRes = await http
-      .get(`/connections/${sourceId}/routing-rules`)
+      .get(`/v1/connections/${sourceId}/routing-rules`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -139,7 +139,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     const { sourceId, prestashopId, inpostId } = await seedConnections();
 
     const res = await http
-      .get(`/connections/${sourceId}/routing-rules/candidates`)
+      .get(`/v1/connections/${sourceId}/routing-rules/candidates`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -166,7 +166,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     // Routing an OMP rule at the Allegro source itself — Allegro does not
     // declare OrderProcessorManager.
     await http
-      .put(`/connections/${sourceId}/routing-rules`)
+      .put(`/v1/connections/${sourceId}/routing-rules`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         items: [
@@ -185,7 +185,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     await http
-      .get('/connections/ol_connection_does_not_exist/routing-rules/candidates')
+      .get('/v1/connections/ol_connection_does_not_exist/routing-rules/candidates')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
@@ -196,7 +196,7 @@ describe('Fulfillment Routing HTTP Integration', () => {
     const viewerToken = await loginAsViewer();
 
     await http
-      .get(`/connections/${sourceId}/routing-rules`)
+      .get(`/v1/connections/${sourceId}/routing-rules`)
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
   });

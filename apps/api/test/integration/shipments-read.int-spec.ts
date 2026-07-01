@@ -100,7 +100,7 @@ describe('Shipments Read + Command API Integration', () => {
     deliveryMethodId: string = METHOD,
   ): request.Test {
     return http
-      .post('/shipments/generate-label')
+      .post('/v1/shipments/generate-label')
       .set('Authorization', `Bearer ${token}`)
       .send({
         sourceConnectionId: sourceId,
@@ -145,7 +145,7 @@ describe('Shipments Read + Command API Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .post('/shipments/generate-label')
+        .post('/v1/shipments/generate-label')
         .set('Authorization', `Bearer ${token}`)
         .send({ sourceConnectionId: 'not-a-uuid', orderId: '', shippingMethod: 'pigeon' })
         .expect(400);
@@ -157,7 +157,7 @@ describe('Shipments Read + Command API Integration', () => {
       const http = harness.getHttp();
       const token = await loginAsAdmin(http, harness.getDataSource());
 
-      const res = await http.get('/shipments').set('Authorization', `Bearer ${token}`).expect(200);
+      const res = await http.get('/v1/shipments').set('Authorization', `Bearer ${token}`).expect(200);
 
       expect(res.body).toMatchObject({ items: [], total: 0, limit: 20, offset: 0 });
     });
@@ -168,24 +168,24 @@ describe('Shipments Read + Command API Integration', () => {
       const { sourceId, carrierId } = await seedRoute();
       await generateLabel(http, token, sourceId, 'ol_order_list_1').expect(200);
 
-      const all = await http.get('/shipments').set('Authorization', `Bearer ${token}`).expect(200);
+      const all = await http.get('/v1/shipments').set('Authorization', `Bearer ${token}`).expect(200);
       expect(all.body.total).toBe(1);
       expect(all.body.items[0].orderId).toBe('ol_order_list_1');
 
       const byStatus = await http
-        .get('/shipments?status=generated')
+        .get('/v1/shipments?status=generated')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(byStatus.body.total).toBe(1);
 
       const byConn = await http
-        .get(`/shipments?connectionId=${carrierId}`)
+        .get(`/v1/shipments?connectionId=${carrierId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(byConn.body.total).toBe(1);
 
       const otherConn = await http
-        .get('/shipments?connectionId=00000000-0000-4000-8000-000000000000')
+        .get('/v1/shipments?connectionId=00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(otherConn.body.total).toBe(0);
@@ -201,13 +201,13 @@ describe('Shipments Read + Command API Integration', () => {
       await generateLabel(http, token, sourceId, 'ol_order_tracking').expect(200);
 
       const withoutTracking = await http
-        .get('/shipments?hasTracking=false')
+        .get('/v1/shipments?hasTracking=false')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(withoutTracking.body.total).toBe(1);
 
       const withTracking = await http
-        .get('/shipments?hasTracking=true')
+        .get('/v1/shipments?hasTracking=true')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(withTracking.body.total).toBe(0);
@@ -221,7 +221,7 @@ describe('Shipments Read + Command API Integration', () => {
       await generateLabel(http, token, sourceId, 'ol_order_p2').expect(200);
 
       const page = await http
-        .get('/shipments?limit=1&offset=0')
+        .get('/v1/shipments?limit=1&offset=0')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -240,23 +240,23 @@ describe('Shipments Read + Command API Integration', () => {
       const id = created.body.shipment.id as string;
 
       const byId = await http
-        .get(`/shipments/${id}`)
+        .get(`/v1/shipments/${id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(byId.body.id).toBe(id);
 
       const active = await http
-        .get('/shipments/active?orderId=ol_order_read')
+        .get('/v1/shipments/active?orderId=ol_order_read')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(active.body.id).toBe(id);
 
       await http
-        .get('/shipments/ol_shipment_missing')
+        .get('/v1/shipments/ol_shipment_missing')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
       await http
-        .get('/shipments/active?orderId=ol_order_none')
+        .get('/v1/shipments/active?orderId=ol_order_none')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -271,7 +271,7 @@ describe('Shipments Read + Command API Integration', () => {
       const id = created.body.shipment.id as string;
 
       const cancelled = await http
-        .post(`/shipments/${id}/cancel`)
+        .post(`/v1/shipments/${id}/cancel`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(cancelled.body.status).toBe('cancelled');
@@ -279,13 +279,13 @@ describe('Shipments Read + Command API Integration', () => {
 
       // Now terminal: no active shipment for the order.
       await http
-        .get('/shipments/active?orderId=ol_order_cancel')
+        .get('/v1/shipments/active?orderId=ol_order_cancel')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
 
       // Idempotent re-cancel.
       const again = await http
-        .post(`/shipments/${id}/cancel`)
+        .post(`/v1/shipments/${id}/cancel`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(again.body.status).toBe('cancelled');
@@ -296,7 +296,7 @@ describe('Shipments Read + Command API Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .post('/shipments/ol_shipment_missing/cancel')
+        .post('/v1/shipments/ol_shipment_missing/cancel')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });

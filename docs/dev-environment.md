@@ -144,12 +144,16 @@ pnpm dev:stack:up
 
 OpenLinker provides two health check endpoints:
 
-1. **`GET /health`** - Internal dependencies only
-   - Checks: PostgreSQL, Redis
-   - Used by: Monitoring, PM2, Kubernetes
-   - Returns: `{ status: 'ok' }` when internal services are healthy
+The API is versioned under `/v1` (#1133 / ADR-029 Axis 3), so both health
+endpoints live under that prefix.
 
-2. **`GET /health/dev-stack`** - Development stack (internal + external)
+1. **`GET /v1/health`** - Internal dependencies + runtime version surface
+   - Checks: PostgreSQL, Redis
+   - Reports: running product `version` + API `api` version (#1133)
+   - Used by: Monitoring, PM2, Kubernetes
+   - Returns: `{ status: 'ok', version, api, services, timestamp }`
+
+2. **`GET /v1/health/dev-stack`** - Development stack (internal + external)
    - Checks: PostgreSQL, Redis, PrestaShop
    - Used by: Local development troubleshooting
    - Returns: Detailed status for each service
@@ -157,26 +161,28 @@ OpenLinker provides two health check endpoints:
 ### Using Health Checks
 
 ```bash
-# Check internal health
-curl http://localhost:3000/health
+# Check internal health + version surface
+curl http://localhost:3000/v1/health
 
 # Check dev stack health (with PrestaShop)
 pnpm dev:health
 
 # Or manually
-curl http://localhost:3000/health/dev-stack
+curl http://localhost:3000/v1/health/dev-stack
 ```
 
 ### Expected Responses
 
-**Internal Health (`/health`):**
+**Internal Health (`/v1/health`):**
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "version": "0.1.0",
+  "api": "v1"
 }
 ```
 
-**Dev Stack Health (`/health/dev-stack`):**
+**Dev Stack Health (`/v1/health/dev-stack`):**
 ```json
 {
   "status": "ok",

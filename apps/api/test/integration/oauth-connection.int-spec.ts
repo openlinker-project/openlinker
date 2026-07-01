@@ -128,7 +128,7 @@ describe('OAuth Connection (integration)', () => {
   ): Promise<string> {
     const res = await harness
       .getHttp()
-      .post('/integrations/allegro/oauth/connect')
+      .post('/v1/integrations/allegro/oauth/connect')
       .set('Authorization', `Bearer ${token}`)
       .send({
         clientId: 'client-1',
@@ -148,7 +148,7 @@ describe('OAuth Connection (integration)', () => {
     installFetchStub();
     const res = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'auth-code-1', state })
       .expect(200);
 
@@ -179,7 +179,7 @@ describe('OAuth Connection (integration)', () => {
     installFetchStub();
     const first = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'auth-code-1', state })
       .expect(200);
 
@@ -187,7 +187,7 @@ describe('OAuth Connection (integration)', () => {
     // completed-marker path and returns the same connection without re-running.
     const replay = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'auth-code-1', state })
       .expect(200);
 
@@ -203,7 +203,7 @@ describe('OAuth Connection (integration)', () => {
     const state1 = await connect(token, { connectionName: 'Store' });
     const created = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'code-1', state: state1 })
       .expect(200);
     const connectionId = created.body.connectionId as string;
@@ -212,7 +212,7 @@ describe('OAuth Connection (integration)', () => {
     const state2 = await connect(token, { connectionId });
     const reauth = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'code-2', state: state2 })
       .expect(200);
 
@@ -230,7 +230,7 @@ describe('OAuth Connection (integration)', () => {
     const state1 = await connect(token, { connectionName: 'Store' });
     const created = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'code-1', state: state1 })
       .expect(200);
     const connectionId = created.body.connectionId as string;
@@ -241,7 +241,7 @@ describe('OAuth Connection (integration)', () => {
     const state2 = await connect(token, { connectionId });
     const res = await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'code-2', state: state2 })
       .expect(400);
     expect(res.body.code).toBe('OAUTH_ACCOUNT_MISMATCH');
@@ -261,7 +261,7 @@ describe('OAuth Connection (integration)', () => {
     tokenOk = false; // provider rejects the code → OAuthCodeExchangeException → 400
     await harness
       .getHttp()
-      .get('/integrations/allegro/oauth/callback')
+      .get('/v1/integrations/allegro/oauth/callback')
       .query({ code: 'bad-code', state })
       .expect(400);
 

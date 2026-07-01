@@ -56,7 +56,7 @@ describe('Auth Integration', () => {
       await seedUser(dataSource, 'testuser', 'correct-password');
 
       const response = await http
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ username: 'testuser', password: 'correct-password' })
         .expect(200);
 
@@ -72,7 +72,7 @@ describe('Auth Integration', () => {
       await seedUser(dataSource, 'testuser', 'correct-password');
 
       await http
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ username: 'testuser', password: 'wrong-password' })
         .expect(401);
     });
@@ -80,7 +80,7 @@ describe('Auth Integration', () => {
     it('should return 401 when user does not exist', async () => {
       const http = harness.getHttp();
 
-      await http.post('/auth/login').send({ username: 'ghost', password: 'any' }).expect(401);
+      await http.post('/v1/auth/login').send({ username: 'ghost', password: 'any' }).expect(401);
     });
   });
 
@@ -93,7 +93,7 @@ describe('Auth Integration', () => {
 
       // Login to get token
       const loginResponse = await http
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ username: 'meuser', password: 'password123' })
         .expect(200);
 
@@ -101,7 +101,7 @@ describe('Auth Integration', () => {
 
       // Use token to fetch current user
       const meResponse = await http
-        .get('/auth/me')
+        .get('/v1/auth/me')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -115,13 +115,13 @@ describe('Auth Integration', () => {
     it('should return 401 when no token is provided', async () => {
       const http = harness.getHttp();
 
-      await http.get('/auth/me').expect(401);
+      await http.get('/v1/auth/me').expect(401);
     });
 
     it('should return 401 when token is invalid', async () => {
       const http = harness.getHttp();
 
-      await http.get('/auth/me').set('Authorization', 'Bearer this.is.not.valid').expect(401);
+      await http.get('/v1/auth/me').set('Authorization', 'Bearer this.is.not.valid').expect(401);
     });
   });
 });

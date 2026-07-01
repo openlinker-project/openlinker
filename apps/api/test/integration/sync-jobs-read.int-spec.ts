@@ -45,7 +45,7 @@ describe('Sync Jobs Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const response = await http
-        .get('/sync/jobs')
+        .get('/v1/sync/jobs')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -64,7 +64,7 @@ describe('Sync Jobs Read API Integration', () => {
       });
 
       const response = await http
-        .get('/sync/jobs')
+        .get('/v1/sync/jobs')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -90,7 +90,7 @@ describe('Sync Jobs Read API Integration', () => {
       await createTestSyncJob(dataSource, { status: 'dead' });
 
       const response = await http
-        .get('/sync/jobs?status=queued')
+        .get('/v1/sync/jobs?status=queued')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -107,7 +107,7 @@ describe('Sync Jobs Read API Integration', () => {
       await createTestSyncJob(dataSource, { connectionId: OTHER_CONNECTION_ID });
 
       const response = await http
-        .get(`/sync/jobs?connectionId=${TARGET_CONNECTION_ID}`)
+        .get(`/v1/sync/jobs?connectionId=${TARGET_CONNECTION_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -124,7 +124,7 @@ describe('Sync Jobs Read API Integration', () => {
       await createTestSyncJob(dataSource, { jobType: 'marketplace.offers.sync' });
 
       const response = await http
-        .get('/sync/jobs?jobType=master.inventory.syncByExternalId')
+        .get('/v1/sync/jobs?jobType=master.inventory.syncByExternalId')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -142,7 +142,7 @@ describe('Sync Jobs Read API Integration', () => {
       }
 
       const page1 = await http
-        .get('/sync/jobs?limit=2&offset=0')
+        .get('/v1/sync/jobs?limit=2&offset=0')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -152,7 +152,7 @@ describe('Sync Jobs Read API Integration', () => {
       expect(page1.body.offset).toBe(0);
 
       const page2 = await http
-        .get('/sync/jobs?limit=2&offset=2')
+        .get('/v1/sync/jobs?limit=2&offset=2')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -167,7 +167,7 @@ describe('Sync Jobs Read API Integration', () => {
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/sync/jobs').expect(401);
+      await http.get('/v1/sync/jobs').expect(401);
     });
 
     // Issue #400 — Plan B for #391: outcome field on sync_jobs.
@@ -184,7 +184,7 @@ describe('Sync Jobs Read API Integration', () => {
         });
 
         const response = await http
-          .get('/sync/jobs')
+          .get('/v1/sync/jobs')
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
 
@@ -201,7 +201,7 @@ describe('Sync Jobs Read API Integration', () => {
         await createTestSyncJob(dataSource, { status: 'dead' });
 
         const response = await http
-          .get('/sync/jobs')
+          .get('/v1/sync/jobs')
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
 
@@ -229,7 +229,7 @@ describe('Sync Jobs Read API Integration', () => {
         await createTestSyncJob(dataSource, { status: 'queued', outcome: null });
 
         const response = await http
-          .get('/sync/jobs?outcome=business_failure')
+          .get('/v1/sync/jobs?outcome=business_failure')
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
 
@@ -244,7 +244,7 @@ describe('Sync Jobs Read API Integration', () => {
         const token = await loginAsAdmin(http, dataSource);
 
         await http
-          .get('/sync/jobs?outcome=garbage')
+          .get('/v1/sync/jobs?outcome=garbage')
           .set('Authorization', `Bearer ${token}`)
           .expect(400);
       });
@@ -262,7 +262,7 @@ describe('Sync Jobs Read API Integration', () => {
       });
 
       const response = await http
-        .get(`/sync/jobs/${job.id}`)
+        .get(`/v1/sync/jobs/${job.id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -277,14 +277,14 @@ describe('Sync Jobs Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/sync/jobs/${NONEXISTENT_ID}`)
+        .get(`/v1/sync/jobs/${NONEXISTENT_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get(`/sync/jobs/${NONEXISTENT_ID}`).expect(401);
+      await http.get(`/v1/sync/jobs/${NONEXISTENT_ID}`).expect(401);
     });
   });
 });
