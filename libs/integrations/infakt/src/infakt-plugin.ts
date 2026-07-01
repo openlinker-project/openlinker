@@ -29,6 +29,7 @@ import { InfaktConnectionCredentialsShapeValidatorAdapter } from './infrastructu
 import { InfaktRetryClassifierAdapter } from './infrastructure/adapters/infakt-retry-classifier.adapter';
 import { InfaktInboundWebhookDecoderAdapter } from './infrastructure/adapters/infakt-inbound-webhook-decoder.adapter';
 import { InfaktWebhookEventTranslatorAdapter } from './infrastructure/adapters/infakt-webhook-event-translator.adapter';
+import { InfaktConnectionTesterAdapter } from './infrastructure/adapters/infakt-connection-tester.adapter';
 
 /**
  * Static plugin manifest. Exported for host tooling (capability-matrix, manifest
@@ -60,6 +61,7 @@ export function createInfaktPlugin(): AdapterPlugin {
         new InfaktConnectionCredentialsShapeValidatorAdapter(INFAKT_BRAND),
       );
       host.retryClassifierRegistry.register(INFAKT_ADAPTER_KEY, new InfaktRetryClassifierAdapter());
+      host.connectionTesterRegistry.register(INFAKT_ADAPTER_KEY, new InfaktConnectionTesterAdapter());
 
       // #1281 / ADR-021 — third-party-native webhook ingress. The decoder
       // (provider-keyed) authenticates + decodes Infakt's KSeF-relay webhook
