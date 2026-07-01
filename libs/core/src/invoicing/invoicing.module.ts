@@ -2,9 +2,12 @@
  * Invoicing Module (core)
  *
  * NestJS module for the invoicing bounded context. Wires the `invoice_records`
- * ORM entity into TypeORM and binds `InvoiceRecordRepository` to its port token.
- * Issuance adapters are resolved per-connection through the integrations
- * registry (capability `'Invoicing'`), so no `InvoicingPort` binding lives here.
+ * ORM entity into TypeORM, binds `InvoiceRecordRepository` to its port token, and
+ * provides the `InvoiceService` (record read + issuance orchestration). Issuance
+ * adapters are resolved per-connection through the integrations registry
+ * (capability `'Invoicing'`) — so `IntegrationsModule` is imported for the
+ * `INTEGRATIONS_SERVICE_TOKEN` the service depends on, but no `InvoicingPort`
+ * binding lives here.
  *
  * @module libs/core/src/invoicing
  */
@@ -14,9 +17,9 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 
+import { InvoiceService } from './application/services/invoice.service';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
-import { InvoiceService } from './application/services/invoice.service';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import {

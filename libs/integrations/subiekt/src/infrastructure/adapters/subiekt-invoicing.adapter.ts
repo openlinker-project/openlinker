@@ -34,6 +34,7 @@ import type {
   InvoicingPort,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   RegulatoryClearanceResult,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
@@ -113,7 +114,7 @@ export class SubiektInvoicingAdapter
    * `SubiektUnsupportedDocumentTypeError` for it; corrections go through the
    * dedicated `issueCorrection` capability.
    */
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // OWN the NIP -> faktura/paragon mechanic: derive the NEUTRAL doctype then
     // map it to the bridge-native string. Core never sees faktura/paragon/NIP.
     // A correction doctype here is a clean rejection (corrections use the
@@ -145,7 +146,7 @@ export class SubiektInvoicingAdapter
       }
 
       const now = new Date();
-      return new InvoiceRecord(
+      const record = new InvoiceRecord(
         // Transient id — the core InvoiceService persists and may overwrite it.
         randomUUID(),
         this.connectionId,
@@ -169,6 +170,9 @@ export class SubiektInvoicingAdapter
         now,
         now,
       );
+      // Subiekt does not surface a seller identity or a source document
+      // (the bridge is a local adapter with no authority submission).
+      return { record };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }

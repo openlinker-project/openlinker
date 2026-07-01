@@ -7,15 +7,22 @@
  * + INVOICE_RECORD_REPOSITORY_TOKEN) and the core orders module (supplies
  * ORDER_RECORD_REPOSITORY_TOKEN for server-side Order loading).
  *
+ * Also imports the core + API `IntegrationsModule`s so that
+ * `getCapabilityAdapter('Invoicing')` resolves the per-connection KSeF adapter
+ * at runtime for the UPO download endpoint (#1224, epic #1142 C15). Mirrors
+ * `apps/api/src/content/content.module.ts`.
+ *
  * @module apps/api/src/invoicing
  */
 import { Module } from '@nestjs/common';
+import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
+import { IntegrationsModule } from '../integrations/integrations.module';
 import { InvoicingController } from './http/invoicing.controller';
 
 @Module({
-  imports: [InvoicingModule, OrdersModule],
+  imports: [InvoicingModule, OrdersModule, CoreIntegrationsModule, IntegrationsModule],
   controllers: [InvoicingController],
 })
 export class InvoicingApiModule {}

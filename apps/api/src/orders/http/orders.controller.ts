@@ -34,6 +34,11 @@ import {
   deriveSlaState,
 } from '@openlinker/core/orders';
 import type { OrderRecord, OrderSyncStatus, SyncAttempt } from '@openlinker/core/orders';
+import {
+  INVOICE_SERVICE_TOKEN,
+  IInvoiceService,
+} from '@openlinker/core/invoicing';
+import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
@@ -43,6 +48,7 @@ import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-respons
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
+import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -52,7 +58,9 @@ export class OrdersController {
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
     @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
-    private readonly destinationRetryService: IOrderDestinationRetryService
+    private readonly destinationRetryService: IOrderDestinationRetryService,
+    @Inject(INVOICE_SERVICE_TOKEN)
+    private readonly invoiceService: IInvoiceService
   ) {}
 
   @Get()
@@ -175,7 +183,17 @@ export class OrdersController {
     if (!order) {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
-    return this.toDto(order);
+    const dto = this.toDto(order);
+    // Order-detail-only invoice projection (#1224): the FE invoice panel reads a
+    // neutral `invoice` sub-tree off the snapshot. Joined on the detail read only
+    // (the list endpoint stays a single query — no N+1).
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
+      order.internalOrderId
+    );
+    if (invoiceRecord) {
+      dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
+    }
+    return dto;
   }
 
   @Roles('admin', 'operator')
@@ -244,6 +262,23 @@ export class OrdersController {
       // BE-owned SLA bucket (#1108): single source of truth so the list filter +
       // badge agree. The FE renders only the live countdown off dispatchByAt.
       slaState: deriveSlaState(order.dispatchByAt, order.fulfillmentState, new Date()),
+    };
+  }
+
+  /**
+   * Neutral invoice projection (#1224, ADR-026) merged into the order-detail
+   * snapshot. `invoiceId` is the internal record id the UPO download endpoint
+   * keys on; `confirmationDocumentAvailable` is true only when the invoice
+   * is cleared (`regulatoryStatus === 'accepted'`) — it gates the FE download
+   * action. No regime/provider vocabulary crosses here.
+   */
+  private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
+    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    return {
+      invoiceId: record.id,
+      regulatoryStatus: record.regulatoryStatus,
+      clearanceReference: record.clearanceReference,
+      confirmationDocumentAvailable,
     };
   }
 

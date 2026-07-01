@@ -215,8 +215,10 @@ describe('InfaktInvoicingAdapter', () => {
     it('should issue an invoice and return an InvoiceRecord (happy path)', async () => {
       http.seed('POST', 'invoices.json', invoiceFixture());
 
-      const record = await adapter.issueInvoice(baseCmd);
+      const { record, seller, sourceDocument } = await adapter.issueInvoice(baseCmd);
 
+      expect(seller).toBeUndefined();
+      expect(sourceDocument).toBeUndefined();
       expect(record).toBeInstanceOf(InvoiceRecord);
       expect(record.providerType).toBe(INFAKT_PROVIDER_TYPE);
       expect(record.providerInvoiceId).toBe('inv-uuid-1');

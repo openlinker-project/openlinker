@@ -21,6 +21,7 @@ import type {
   GetInvoiceQuery,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   InvoicingPort,
   RegulatoryClearanceResult,
   RegulatoryStatus,
@@ -164,7 +165,7 @@ export class InfaktInvoicingAdapter
     return { providerCustomerId: created.uuid };
   }
 
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+  async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     const { lines, currency, documentType, idempotencyKey, orderId } = cmd;
     const clientUuid = await this.resolveClientUuid(cmd);
 
@@ -196,7 +197,7 @@ export class InfaktInvoicingAdapter
 
     const ksefStatus = invoice.ksef_data?.status ?? null;
     const now = new Date();
-    return new InvoiceRecord(
+    const record = new InvoiceRecord(
       randomUUID(),
       this.connectionId,
       orderId,
@@ -214,6 +215,11 @@ export class InfaktInvoicingAdapter
       now,
       now,
     );
+    // Infakt has no separate seller-profile lookup or a source-document Infakt
+    // builds itself (it submits to KSeF natively) — `IssueInvoiceResult`'s
+    // optional `seller`/`sourceDocument` are for adapters that build their own
+    // fiscal document (e.g. KSeF's FA(3) XML); Infakt omits both.
+    return { record };
   }
 
   async getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
