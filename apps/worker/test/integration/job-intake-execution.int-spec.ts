@@ -14,6 +14,7 @@ import { createTestSyncJob, getSyncJobById } from './helpers/test-sync-job.helpe
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobRequest } from '@openlinker/core/sync';
+import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 import { randomUUID } from 'crypto';
 
 describe('Job Intake → Execution Integration', () => {
@@ -205,6 +206,47 @@ describe('Job Intake → Execution Integration', () => {
       const dbJob2 = await getSyncJobById(harness.getDataSource(), job2.id);
       expect(dbJob1?.status).toBe('running');
       expect(dbJob2?.status).toBe('running');
+    });
+
+    // Regression test for the timestamptz fix: nextRunAt/lockedAt were
+    // `timestamp without time zone`, making the due-job comparison
+    // timezone-dependent and causing due jobs to be skipped on non-UTC
+    // hosts. With `timestamptz` columns the comparison is an absolute
+    // instant regardless of the session's timezone.
+    it('should find due jobs created under a non-UTC Postgres session timezone', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+      });
+
+      const dataSource = harness.getDataSource();
+      const queryRunner = dataSource.createQueryRunner();
+      await queryRunner.connect();
+
+      let insertedId: string;
+      try {
+        await queryRunner.query(`SET TIME ZONE 'Europe/Warsaw'`);
+        const repository = queryRunner.manager.getRepository(SyncJobOrmEntity);
+        const saved = await repository.save(
+          repository.create({
+            jobType: 'master.product.syncByExternalId',
+            connectionId: connection.id,
+            payloadJson: { schemaVersion: 1, externalId: '1', objectType: 'Product' },
+            status: 'queued',
+            idempotencyKey: `test-tz-${randomUUID()}`,
+            attempts: 0,
+            maxAttempts: 10,
+            nextRunAt: new Date(),
+          }),
+        );
+        insertedId = saved.id;
+      } finally {
+        await queryRunner.release();
+      }
+
+      const lockedJobs = await jobRepository.findAndLockDueJobs(10, 'tz-regression-worker');
+
+      expect(lockedJobs.some((j) => j.id === insertedId)).toBe(true);
     });
   });
 
