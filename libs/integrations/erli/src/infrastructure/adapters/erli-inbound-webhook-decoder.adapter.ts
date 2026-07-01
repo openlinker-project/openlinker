@@ -96,11 +96,12 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
       action: 'route',
       envelope: {
         // `occurredAt` (Erli's own `updated` timestamp) is load-bearing here,
-        // not just advisory: it is what makes eventIds for the SAME order's
-        // successive deliveries (create, then cancel, …) distinct. Without it
-        // every delivery would hash to `${orderId}:orderStatusChanged` and the
-        // Postgres eventId-dedup gate would silently drop every delivery after
-        // the first for a given order.
+        // not just advisory: it is one of the fields (alongside `status`,
+        // see `deriveEventId`) that makes eventIds for the SAME order's
+        // successive deliveries (create, then cancel, ...) distinct. Without
+        // it every delivery would hash to `${orderId}:${status}:no-timestamp`
+        // and the Postgres eventId-dedup gate would collapse same-status
+        // repeats together.
         eventId: this.deriveEventId(record, orderId, bodyTimestamp),
         eventType,
         occurredAt,
@@ -121,15 +122,19 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
       return explicit;
     }
     // The hash basis intentionally never includes the "now" fallback used for
-    // the envelope's advisory `occurredAt` — that value is decode-time and
+    // the envelope's advisory `occurredAt` - that value is decode-time and
     // non-deterministic, so hashing it would produce a fresh eventId on every
-    // retried delivery and defeat the Postgres eventId-dedup gate. A body
-    // that carries no timestamp at all hashes on `orderId` alone: deliberately
-    // deterministic (retries of the same timestamp-less delivery dedupe
-    // together) at the cost of collapsing distinct timestamp-less events for
-    // the same order — an accepted, documented trade-off, not the silent
-    // regression a "now" basis would cause.
-    const basis = bodyTimestamp ? `${orderId}:${bodyTimestamp}` : orderId;
+    // retried delivery and defeat the Postgres eventId-dedup gate. `status` is
+    // folded in alongside the timestamp so a timestamp-less body still gets
+    // distinct eventIds across a real status change (e.g. created -> paid),
+    // rather than collapsing every timestamp-less delivery for the same order
+    // onto one eventId and relying solely on the reconciliation poll to catch
+    // the dropped ones. Retried deliveries of the identical body still hash
+    // to the same eventId (id + status + timestamp are all unchanged), so the
+    // dedup gate still catches true retries.
+    const status = this.asNonEmptyString(record['status']) ?? 'no-status';
+    const timestamp = bodyTimestamp ?? 'no-timestamp';
+    const basis = `${orderId}:${status}:${timestamp}`;
     return `erli-${createHash('sha256').update(basis).digest('hex').slice(0, 32)}`;
   }
 
