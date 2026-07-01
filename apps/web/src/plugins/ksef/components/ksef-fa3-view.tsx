@@ -9,7 +9,7 @@
  *   - Buyer identity (name + NIP)
  *   - Invoice number and issue date
  *   - Invoice lines table (line#, description, unit, qty, net price, net total, VAT rate)
- *   - VAT band summary (23%, 8%, 0%)
+ *   - VAT band summary (23%, 8%, 5%, 0%)
  *   - Grand total
  *   - KSeF assigned number (if present)
  *
@@ -89,6 +89,8 @@ function parseFa3Xml(xmlText: string): FaData | null {
   const vatTax23 = fa ? getText(fa, 'P_14_1') : null;
   const vatNet8 = fa ? getText(fa, 'P_13_2') : null;
   const vatTax8 = fa ? getText(fa, 'P_14_2') : null;
+  const vatNet5 = fa ? getText(fa, 'P_13_3') : null;
+  const vatTax5 = fa ? getText(fa, 'P_14_3') : null;
   const vatNet0 = fa ? getText(fa, 'P_13_5') : null;
   const vatTax0 = fa ? getText(fa, 'P_14_5') : null;
   const grandTotal = fa ? getText(fa, 'P_15') : null;
@@ -109,6 +111,8 @@ function parseFa3Xml(xmlText: string): FaData | null {
     vatTax23,
     vatNet8,
     vatTax8,
+    vatNet5,
+    vatTax5,
     vatNet0,
     vatTax0,
     grandTotal,
@@ -124,6 +128,7 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
   const hasVatBands =
     data.vatNet23 !== null ||
     data.vatNet8 !== null ||
+    data.vatNet5 !== null ||
     data.vatNet0 !== null;
 
   return (
@@ -248,6 +253,18 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
             <div className="slot-row">
               <div className="slot-row__label">8% {t('invoice.ksef.fa3VatTax', 'Tax')}</div>
               <span>{data.vatTax8}</span>
+            </div>
+          ) : null}
+          {data.vatNet5 !== null ? (
+            <div className="slot-row">
+              <div className="slot-row__label">5% {t('invoice.ksef.fa3VatNet', 'Net')}</div>
+              <span>{data.vatNet5}</span>
+            </div>
+          ) : null}
+          {data.vatTax5 !== null ? (
+            <div className="slot-row">
+              <div className="slot-row__label">5% {t('invoice.ksef.fa3VatTax', 'Tax')}</div>
+              <span>{data.vatTax5}</span>
             </div>
           ) : null}
           {data.vatNet0 !== null ? (

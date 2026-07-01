@@ -26,6 +26,8 @@ export interface FaData {
   vatTax23: string | null;
   vatNet8: string | null;
   vatTax8: string | null;
+  vatNet5: string | null;
+  vatTax5: string | null;
   vatNet0: string | null;
   vatTax0: string | null;
   grandTotal: string | null;
