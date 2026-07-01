@@ -380,6 +380,19 @@ fulfil) count:
 > configured for your deployment (see the
 > [architecture overview → Customer Identity Resolution](../../../../docs/architecture-overview.md#customer-identity-resolution)).
 
+### Order cancellation
+
+When a buyer or seller cancels an order on Erli, the next webhook/poll ingest
+picks up the `cancelled` status like any other status change. OpenLinker then
+does one extra thing automatically: because Erli decrements stock on purchase
+but does **not** restore it on cancel (see the [runbook's known
+quirks](./runbook.md#known-erli-quirks)), OpenLinker enqueues a compensating
+`marketplace.offer.stockRestore` job the first time an order transitions to
+`cancelled` — the worker resolves the connection's `OfferStockRestorer`
+capability and pushes the restored quantity back to Erli. This fires once per
+order (a later re-poll of an already-cancelled order is a no-op) and needs no
+operator action.
+
 ---
 
 ## Next steps
