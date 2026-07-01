@@ -65,22 +65,14 @@ export function createInfaktPlugin(): AdapterPlugin {
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      try {
-        const logger = new Logger(`Infakt:${connection.id}`);
-        const factory = new InfaktAdapterFactory();
-        const invoicingAdapter = await factory.createInvoicingAdapter(
-          connection,
-          host.credentialsResolver,
-          logger,
-        );
-        return dispatchCapability<T>(
-          capability,
-          { Invoicing: () => invoicingAdapter },
-          INFAKT_BRAND,
-        );
-      } catch (err) {
-        return Promise.reject(err as Error);
-      }
+      const logger = new Logger(`Infakt:${connection.id}`);
+      const factory = new InfaktAdapterFactory();
+      const invoicingAdapter = await factory.createInvoicingAdapter(
+        connection,
+        host.credentialsResolver,
+        logger,
+      );
+      return dispatchCapability<T>(capability, { Invoicing: () => invoicingAdapter }, INFAKT_BRAND);
     },
   };
 }

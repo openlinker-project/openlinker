@@ -62,6 +62,18 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
   }
 }
 
+/** Maps neutral DocumentType → Infakt's GET-by-uuid `invoice_type` query param. */
+function toInfaktInvoiceType(documentType: string): string {
+  switch (documentType) {
+    case 'corrected':
+      return 'corrective';
+    case 'proforma':
+      return 'proforma';
+    default:
+      return 'vat';
+  }
+}
+
 /** Maps neutral taxRate string to Infakt tax_symbol. */
 function toInfaktTaxSymbol(taxRate: string): string {
   // Common neutral→Infakt mapping; adapter owns this PL logic
@@ -143,7 +155,7 @@ export class InfaktInvoicingAdapter
       tax_symbol: toInfaktTaxSymbol(l.taxRate),
       quantity: l.quantity,
       unit: 'szt.',
-      unit_net_price: `${l.unitPriceGross / (1 + this.taxRateNumeric(l.taxRate))} ${currency ?? 'PLN'}`,
+      unit_net_price: `${(l.unitPriceGross / (1 + this.taxRateNumeric(l.taxRate))).toFixed(2)} ${currency ?? 'PLN'}`,
     }));
 
     const payload = {
@@ -193,34 +205,39 @@ export class InfaktInvoicingAdapter
       return null;
     }
 
-    try {
-      const invoice = await this.http.get<InfaktInvoice>(
-        `invoices/${providerInvoiceId}.json`,
-        { invoice_type: invoice_kind_to_type(invoice_uuid_kind(providerInvoiceId)) },
-      );
-      const now = new Date();
-      return new InvoiceRecord(
-        randomUUID(),
-        this.connectionId,
-        '',
-        INFAKT_PROVIDER_TYPE,
-        invoice.kind === 'corrective' ? 'corrected' : 'invoice',
-        'issued',
-        invoice.uuid,
-        invoice.number ?? null,
-        toRegulatoryStatus(invoice.ksef_data?.status ?? null),
-        invoice.ksef_data?.ksef_number ?? null,
-        null,
-        invoice.pdf_url ?? null,
-        invoice.invoice_date ? new Date(invoice.invoice_date) : now,
-        null,
-        now,
-        now,
-      );
-    } catch (err) {
-      if (err instanceof InfaktApiError && err.statusCode === 404) return null;
-      throw err;
+    // Kind is unknown ahead of the lookup (no InvoiceRecord to read documentType
+    // from); try the two kinds this adapter issues (`vat`, `corrective`) in turn.
+    for (const invoiceType of ['vat', 'corrective']) {
+      try {
+        const invoice = await this.http.get<InfaktInvoice>(
+          `invoices/${providerInvoiceId}.json`,
+          { invoice_type: invoiceType },
+        );
+        const now = new Date();
+        return new InvoiceRecord(
+          randomUUID(),
+          this.connectionId,
+          '',
+          INFAKT_PROVIDER_TYPE,
+          invoice.kind === 'corrective' ? 'corrected' : 'invoice',
+          'issued',
+          invoice.uuid,
+          invoice.number ?? null,
+          toRegulatoryStatus(invoice.ksef_data?.status ?? null),
+          invoice.ksef_data?.ksef_number ?? null,
+          null,
+          invoice.pdf_url ?? null,
+          invoice.invoice_date ? new Date(invoice.invoice_date) : now,
+          null,
+          now,
+          now,
+        );
+      } catch (err) {
+        if (err instanceof InfaktApiError && err.statusCode === 404) continue;
+        throw err;
+      }
     }
+    return null;
   }
 
   async getClearanceStatus(record: InvoiceRecord): Promise<RegulatoryClearanceResult> {
@@ -230,7 +247,7 @@ export class InfaktInvoicingAdapter
 
     const invoice = await this.http.get<InfaktInvoice>(
       `invoices/${record.providerInvoiceId}.json`,
-      { invoice_type: 'vat' },
+      { invoice_type: toInfaktInvoiceType(record.documentType) },
     );
 
     const ksefData = invoice.ksef_data;
@@ -255,8 +272,8 @@ export class InfaktInvoicingAdapter
       const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
       const corrQty = corrLine?.newQuantity ?? svc.quantity;
       const corrPrice = corrLine?.newUnitPriceGross
-        ? `${corrLine.newUnitPriceGross} PLN`
-        : `${svc.unit_net_price} PLN`;
+        ? `${corrLine.newUnitPriceGross.toFixed(2)} PLN`
+        : `${svc.unit_net_price.toFixed(2)} PLN`;
       return [
         // Original "before" row
         {
@@ -264,7 +281,7 @@ export class InfaktInvoicingAdapter
           tax_symbol: svc.tax_symbol,
           quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: `${svc.unit_net_price} PLN`,
+          unit_net_price: `${svc.unit_net_price.toFixed(2)} PLN`,
           group: idx + 1,
           correction: false,
         },
@@ -352,12 +369,4 @@ export class InfaktInvoicingAdapter
     if (!isNaN(n)) return n;
     return 0;
   }
-}
-
-// Infakt requires invoice_type query param on GET; for POC we default to 'vat'
-function invoice_uuid_kind(_uuid: string): string {
-  return 'vat';
-}
-function invoice_kind_to_type(kind: string): string {
-  return kind === 'corrective' ? 'corrective' : 'vat';
 }

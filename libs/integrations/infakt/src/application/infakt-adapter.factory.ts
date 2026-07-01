@@ -11,16 +11,10 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../infrastructure/http/infakt-http-client';
 import { InfaktInvoicingAdapter } from '../infrastructure/adapters/infakt-invoicing.adapter';
+import type { IInfaktAdapterFactory } from './interfaces/infakt-adapter.factory.interface';
+import type { InfaktCredentials, InfaktConnectionConfig } from '../domain/types/infakt-connection.types';
 
-interface InfaktCredentials {
-  apiKey: string;
-}
-
-interface InfaktConnectionConfig {
-  baseUrl?: string;
-}
-
-export class InfaktAdapterFactory {
+export class InfaktAdapterFactory implements IInfaktAdapterFactory {
   async createInvoicingAdapter(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
