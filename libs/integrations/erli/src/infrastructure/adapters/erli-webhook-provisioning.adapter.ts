@@ -43,6 +43,11 @@ import { erliHookPath, type ErliHookRegistrationBody } from './erli-webhook.type
 /** Webhook-secret provider key for Erli connections. */
 const ERLI_WEBHOOK_PROVIDER = 'erli';
 
+// Same-process loopback call to OL's own ingress — a short bound is enough,
+// and it keeps a hung self-test from blocking the admin-facing `install()`
+// call (mirrors the AbortController timeout pattern in `erli-http-client.ts`).
+const SELF_TEST_TIMEOUT_MS = 5_000;
+
 export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
   private readonly logger = new Logger(ErliWebhookProvisioningAdapter.name);
 
@@ -151,17 +156,25 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
    * successful self-test never enqueues a real `marketplace.order.sync` job.
    * Only a genuine signature failure (401) counts as "not triggered"; the
    * secret is never logged, only used in-memory for this one request.
+   *
+   * Bounded by `SELF_TEST_TIMEOUT_MS`: a hung or unreachable OL ingress must
+   * degrade to `testPingTriggered: false`, never block the caller — `install()`
+   * already succeeded by the time this runs, and the docstring's "non-fatal"
+   * promise only holds if a stalled request can't stall the response too.
    */
   private async selfTestPing(
     url: string,
     secret: string,
     connectionId: string,
   ): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SELF_TEST_TIMEOUT_MS);
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
         body: '{}',
+        signal: controller.signal,
       });
       const ok = response.status !== 401;
       this.logger.log(
@@ -170,12 +183,19 @@ export class ErliWebhookProvisioningAdapter implements WebhookProvisioningPort {
       );
       return ok;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const timedOut = controller.signal.aborted || (error as Error)?.name === 'AbortError';
+      const message = timedOut
+        ? `timed out after ${SELF_TEST_TIMEOUT_MS}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error);
       this.logger.warn(
         `Erli webhook self-test ping failed for connection ${connectionId} (non-fatal — ` +
           `install already succeeded): ${message}`,
       );
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
