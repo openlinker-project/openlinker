@@ -26,7 +26,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
-import { KSEF_ENVIRONMENT_VALUES, KSEF_FORMA_PLATNOSCI_VALUES } from '../../../features/connections';
+import { KSEF_ENVIRONMENT_VALUES, KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 
 const ENVIRONMENT_LABELS: Record<(typeof KSEF_ENVIRONMENT_VALUES)[number], string> = {
   test: 'Test (sandbox)',

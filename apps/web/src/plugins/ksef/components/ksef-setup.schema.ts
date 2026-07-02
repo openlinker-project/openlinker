@@ -33,13 +33,13 @@
  *     `db:<uuid>` reference (stored as the connection's `credentialsRef`); the
  *     secret value is never echoed back to the browser.
  *
- * @module features/connections/components
+ * @module plugins/ksef/components
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
-import { normalizeNip } from './ksef-nip';
-import { buildKsefSellerConfig } from './ksef-seller-config';
-export type { KsefSellerProfileInput } from './ksef-seller-config';
+import type { CreateConnectionInput } from '../../../features/connections';
+import { normalizeNip } from '../lib/ksef-nip';
+import { buildKsefSellerConfig } from '../lib/ksef-seller-config';
+export type { KsefSellerProfileInput } from '../lib/ksef-seller-config';
 
 export const KSEF_ADAPTER_KEY = 'ksef.publicapi.v2';
 
@@ -149,7 +149,7 @@ export const KSEF_SETUP_DEFAULT_VALUES: KsefSetupFormValues = {
 // module so the create path here and the edit path
 // (`edit-connection.schema.ts`) normalize + assemble the nested `config.seller`
 // shape through one source. Re-exported for back-compat with existing imports.
-export { buildKsefSellerConfig } from './ksef-seller-config';
+export { buildKsefSellerConfig } from '../lib/ksef-seller-config';
 
 export function toCreateConnectionInput(values: KsefSetupFormSubmission): CreateConnectionInput {
   const config: Record<string, unknown> = { env: values.environment };

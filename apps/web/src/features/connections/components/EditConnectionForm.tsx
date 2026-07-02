@@ -6,7 +6,7 @@ import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
-  editConnectionSchema,
+  buildEditConnectionSchema,
   mergeStructuredIntoConfig,
   toUpdateConnectionInput,
   type EditConnectionFormSubmission,
@@ -20,10 +20,9 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { usePlatform } from '../../../shared/plugins';
+import { usePlatform, type PluginEditConnectionFields } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
-import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -41,25 +40,16 @@ type StructuredField =
   | 'inpostPsModuleType'
   | 'subiektBridgeUrl'
   | 'subiektTriggerModel'
-  | 'ksefEnvironment'
-  | 'sellerNip'
-  | 'sellerName'
-  | 'sellerAddressLine1'
-  | 'sellerAddressLine2'
-  | 'sellerCity'
-  | 'sellerPostalCode'
-  | 'sellerCountryIso2'
-  | 'paymentFormaPlatnosci'
-  | 'paymentBankAccountNrRb'
-  | 'paymentBankAccountBankName'
-  | 'paymentBankAccountSwift'
-  | 'paymentTermDays'
-  | 'paymentSkontoConditions'
-  | 'paymentSkontoAmount'
-  | 'contextIdentifier'
   | 'inpostEnvironment'
   | 'inpostOrganizationId'
   | 'infaktPaymentMethod';
+
+/**
+ * Field names accepted by the per-field JSON sync: the host's own structured
+ * fields plus any plugin-contributed field names (#1330, declaration-merged
+ * into `PluginEditConnectionFields` — e.g. KSeF's seller/payment fields).
+ */
+type SyncableField = StructuredField | (keyof PluginEditConnectionFields & string);
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -99,12 +89,6 @@ function readTriggerModel(
   return typeof raw === 'string' && (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(raw)
     ? (raw as (typeof INVOICE_TRIGGER_MODEL_VALUES)[number])
     : '';
-}
-
-/** Read the KSeF environment out of `config.env` (#1152). */
-function readKsefEnvironment(config: Record<string, unknown>): '' | 'test' | 'demo' | 'prod' {
-  const value = config.env;
-  return value === 'test' || value === 'demo' || value === 'prod' ? value : '';
 }
 
 /** Read the InPost environment out of `config.environment` (#771). */
@@ -151,89 +135,6 @@ function readInpostSenderAddress(
       postCode: typeof address.postCode === 'string' ? address.postCode : '',
       countryCode: typeof address.countryCode === 'string' ? address.countryCode : '',
     },
-  };
-}
-
-/**
- * Read the KSeF seller config sub-object out of `config.seller` (#1223).
- * Returns a flat object of form-field values so the edit form can hydrate the
- * seller profile fields. Falls back to the old flat `config.sellerNip` for
- * connections saved before the nested shape was introduced.
- */
-function readKsefSeller(config: Record<string, unknown>): {
-  sellerNip: string;
-  sellerName: string;
-  sellerAddressLine1: string;
-  sellerAddressLine2: string;
-  sellerCity: string;
-  sellerPostalCode: string;
-  sellerCountryIso2: string;
-} {
-  const seller =
-    typeof config.seller === 'object' && config.seller !== null
-      ? (config.seller as Record<string, unknown>)
-      : {};
-  const address =
-    typeof seller.address === 'object' && seller.address !== null
-      ? (seller.address as Record<string, unknown>)
-      : {};
-  // Fallback: if config.seller.nip is absent, read legacy flat config.sellerNip.
-  const nip =
-    typeof seller.nip === 'string'
-      ? seller.nip
-      : typeof config.sellerNip === 'string'
-        ? config.sellerNip
-        : '';
-  return {
-    sellerNip: nip,
-    sellerName: typeof seller.name === 'string' ? seller.name : '',
-    sellerAddressLine1: typeof address.line1 === 'string' ? address.line1 : '',
-    sellerAddressLine2: typeof address.line2 === 'string' ? address.line2 : '',
-    sellerCity: typeof address.city === 'string' ? address.city : '',
-    sellerPostalCode: typeof address.postalCode === 'string' ? address.postalCode : '',
-    sellerCountryIso2: typeof address.countryIso2 === 'string' ? address.countryIso2 : '',
-  };
-}
-
-/**
- * Read the KSeF payment config sub-object out of `config.payment` (#1311).
- * Returns a flat object of form-field values so the edit form can hydrate the
- * payment fields. `paymentTermDays` is read back as a string (the form field's
- * shape); an absent numeric leaf reads as an empty string, matching the other
- * flat structured fields.
- */
-function readKsefPayment(config: Record<string, unknown>): {
-  paymentFormaPlatnosci: '' | (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number];
-  paymentBankAccountNrRb: string;
-  paymentBankAccountBankName: string;
-  paymentBankAccountSwift: string;
-  paymentTermDays: string;
-  paymentSkontoConditions: string;
-  paymentSkontoAmount: string;
-} {
-  const payment =
-    typeof config.payment === 'object' && config.payment !== null
-      ? (config.payment as Record<string, unknown>)
-      : {};
-  const bankAccount =
-    typeof payment.bankAccount === 'object' && payment.bankAccount !== null
-      ? (payment.bankAccount as Record<string, unknown>)
-      : {};
-  const skonto =
-    typeof payment.skonto === 'object' && payment.skonto !== null
-      ? (payment.skonto as Record<string, unknown>)
-      : {};
-  const formaPlatnosci = payment.formaPlatnosci;
-  return {
-    paymentFormaPlatnosci: (KSEF_FORMA_PLATNOSCI_VALUES as readonly unknown[]).includes(formaPlatnosci)
-      ? (formaPlatnosci as (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number])
-      : '',
-    paymentBankAccountNrRb: typeof bankAccount.nrRb === 'string' ? bankAccount.nrRb : '',
-    paymentBankAccountBankName: typeof bankAccount.bankName === 'string' ? bankAccount.bankName : '',
-    paymentBankAccountSwift: typeof bankAccount.swift === 'string' ? bankAccount.swift : '',
-    paymentTermDays: typeof payment.paymentTermDays === 'number' ? String(payment.paymentTermDays) : '',
-    paymentSkontoConditions: typeof skonto.conditions === 'string' ? skonto.conditions : '',
-    paymentSkontoAmount: typeof skonto.amount === 'string' ? skonto.amount : '',
   };
 }
 
@@ -343,6 +244,15 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const navigate = useNavigate();
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
+  // #1330 — the platform's non-render structured-config half: Zod schema
+  // fragment, read-side hydration, write-side assembly. Memoized on the plugin
+  // reference (stable from the registry) so the RHF resolver isn't rebuilt per
+  // render.
+  const connectionConfig = plugin?.connectionConfig;
+  const resolverSchema = useMemo(
+    () => buildEditConnectionSchema(connectionConfig),
+    [connectionConfig],
+  );
 
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
@@ -382,13 +292,6 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
       subiektTriggerModel: readTriggerModel(connection.config),
       subiektCapabilities: readSubiektCapabilities(connection.config),
-      // KSeF structured fields (#1152, #1223) — env from `config.env`; seller
-      // profile from nested `config.seller` (with legacy flat `config.sellerNip`
-      // fallback); context identifier from `config.contextIdentifier`.
-      ksefEnvironment: readKsefEnvironment(connection.config),
-      ...readKsefSeller(connection.config),
-      ...readKsefPayment(connection.config),
-      contextIdentifier: readString(connection.config, 'contextIdentifier'),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an
       // unrelated save doesn't blank the persisted InPost config.
@@ -397,8 +300,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       inpostSenderAddress: readInpostSenderAddress(connection.config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
+      // Plugin-owned structured fields (#1330) — the platform's contribution
+      // hydrates its own field slice (e.g. KSeF seller/payment) so an
+      // unrelated save doesn't blank the persisted platform config.
+      ...(connectionConfig?.readConfigToForm(connection.config) ?? {}),
     },
-    resolver: zodResolver(editConnectionSchema),
+    resolver: zodResolver(resolverSchema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -447,7 +354,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // a single JSON payload. Refuses to write when the JSON is unparseable so we
   // never discard the user's in-progress raw edits.
   function syncStructuredToJson(
-    field: StructuredField,
+    field: SyncableField,
     value: string,
     options: { markDirty?: boolean } = {},
   ): void {
@@ -458,7 +365,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue(field, value, { shouldDirty: markDirty });
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, { [field]: value });
+    const merged = mergeStructuredIntoConfig(parsed, { [field]: value }, connectionConfig);
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: markDirty });
   }
 
@@ -469,9 +376,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncSellerDefaultsToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      sellerDefaults: form.getValues('sellerDefaults'),
-    });
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { sellerDefaults: form.getValues('sellerDefaults') },
+      connectionConfig,
+    );
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -484,9 +393,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncSubiektCapabilitiesToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      subiektCapabilities: form.getValues('subiektCapabilities'),
-    });
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { subiektCapabilities: form.getValues('subiektCapabilities') },
+      connectionConfig,
+    );
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -497,9 +408,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncInpostSenderAddressToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      inpostSenderAddress: form.getValues('inpostSenderAddress'),
-    });
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { inpostSenderAddress: form.getValues('inpostSenderAddress') },
+      connectionConfig,
+    );
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -616,7 +529,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncStructuredToJson={(field, value, options) =>
-            syncStructuredToJson(field as StructuredField, value, options)
+            syncStructuredToJson(field as SyncableField, value, options)
           }
           syncObjectToJson={syncSubiektCapabilitiesToJson}
           syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}

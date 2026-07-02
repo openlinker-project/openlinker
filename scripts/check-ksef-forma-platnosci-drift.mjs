@@ -37,7 +37,7 @@ const DECLARATIONS = [
     constName: 'Fa3FormaPlatnosciValues',
   },
   {
-    file: 'apps/web/src/features/connections/components/ksef-setup.schema.ts',
+    file: 'apps/web/src/plugins/ksef/components/ksef-setup.schema.ts',
     constName: 'KSEF_FORMA_PLATNOSCI_VALUES',
   },
 ];

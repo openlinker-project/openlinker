@@ -15,6 +15,8 @@ export type {
   PlatformContribution,
   Platform,
   PlatformSetupCard,
+  ConnectionConfigContribution,
+  PluginEditConnectionFields,
   StructuredConfigSectionProps,
   ExtraConfigSectionProps,
   NavContribution,
