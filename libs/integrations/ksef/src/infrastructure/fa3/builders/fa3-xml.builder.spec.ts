@@ -475,14 +475,14 @@ describe('buildFa3Xml', () => {
       expect(xml).toContain('<RachunekBankowy><NrRB>61109010140000000099999999</NrRB></RachunekBankowy>');
     });
 
-    it('should emit RachunekBankowy with NrRB, NazwaBanku, and SWIFT when all are configured', () => {
+    it('should emit RachunekBankowy with NrRB, SWIFT, and NazwaBanku in XSD-mandated order when all are configured', () => {
       const input = b2bInput();
       input.payment = {
         bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
       };
       const xml = buildFa3Xml(input);
       expect(xml).toContain(
-        '<RachunekBankowy><NrRB>61109010140000000099999999</NrRB><NazwaBanku>Santander</NazwaBanku><SWIFT>WBKPPLPP</SWIFT></RachunekBankowy>',
+        '<RachunekBankowy><NrRB>61109010140000000099999999</NrRB><SWIFT>WBKPPLPP</SWIFT><NazwaBanku>Santander</NazwaBanku></RachunekBankowy>',
       );
     });
 

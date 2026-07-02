@@ -392,14 +392,19 @@ function platnoscNode(payment: Fa3PaymentInput | undefined): XmlNodeObject | und
   return Object.keys(node).length > 0 ? node : undefined;
 }
 
-/** `Platnosc/RachunekBankowy` (`TRachunekBankowy`, XSD line 1507) — `NrRB` required, others optional. */
+/**
+ * `Platnosc/RachunekBankowy` (`TRachunekBankowy`, XSD line 1507) — `NrRB`
+ * required; child order is XSD-mandated `NrRB` → `SWIFT` → `RachunekWlasnyBanku`
+ * → `NazwaBanku` → `OpisRachunku` (NOT `NazwaBanku` before `SWIFT`, despite that
+ * reading order feeling more natural).
+ */
 function rachunekBankowyNode(bankAccount: Fa3BankAccount): XmlNodeObject {
   const node: XmlNodeObject = { NrRB: bankAccount.nrRb };
-  if (bankAccount.bankName !== undefined) {
-    node.NazwaBanku = bankAccount.bankName;
-  }
   if (bankAccount.swift !== undefined) {
     node.SWIFT = bankAccount.swift;
+  }
+  if (bankAccount.bankName !== undefined) {
+    node.NazwaBanku = bankAccount.bankName;
   }
   return node;
 }
