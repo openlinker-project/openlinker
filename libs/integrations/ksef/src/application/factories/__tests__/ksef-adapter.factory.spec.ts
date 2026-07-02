@@ -63,11 +63,26 @@ describe('KsefAdapterFactory', () => {
     expect(adapters.invoicing).toBeDefined();
   });
 
-  it('should throw when the seller profile is missing', async () => {
+  it('should throw when the seller profile is missing (context NIP unresolvable)', async () => {
     const factory = new KsefAdapterFactory();
     await expect(
       factory.createAdapters(
         connection({ config: { env: 'test' } }),
+        idMapping,
+        resolver({
+          'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(KsefConfigException);
+  });
+
+  it('should throw when the seller profile has a NIP but a malformed address', async () => {
+    // NIP present → resolveContextNip passes; the rejection must come from
+    // resolveSeller's own guard, which runs after the auth material is built.
+    const factory = new KsefAdapterFactory();
+    await expect(
+      factory.createAdapters(
+        connection({ config: { env: 'test', seller: { nip: '1234567890', name: 'Acme Sp. z o.o.' } } }),
         idMapping,
         resolver({
           'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },

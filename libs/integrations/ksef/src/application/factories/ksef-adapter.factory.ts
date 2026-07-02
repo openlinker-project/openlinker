@@ -182,13 +182,15 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
 
   private resolveContextNip(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
-    const nip = config?.seller?.nip;
-    if (typeof nip !== 'string' || nip.trim().length === 0) {
+    const nip = config?.seller?.nip?.trim();
+    if (!nip) {
       throw new KsefConfigException(
         'KSeF connection has no seller NIP configured (required as the session context identifier)',
         connection.id,
       );
     }
+    // Trimmed — the value lands verbatim in the <ContextNip> XML element, so a
+    // hand-edited config row with stray whitespace must not leak into the handshake.
     return nip;
   }
 }
