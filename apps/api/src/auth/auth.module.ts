@@ -28,6 +28,8 @@ import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { RegistrationService } from './registration.service';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
+import { DemoModeService } from './demo-mode.service';
+import { DEMO_MODE_SERVICE_TOKEN } from './demo-mode.service.interface';
 
 @Module({
   imports: [
@@ -61,6 +63,8 @@ import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
     { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
     RegistrationService,
     { provide: REGISTRATION_SERVICE_TOKEN, useExisting: RegistrationService },
+    DemoModeService,
+    { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

@@ -38,6 +38,7 @@ import { ContentApiModule } from './content/content.module';
 import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { UsersApiModule } from './users/users.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { UsersApiModule } from './users/users.module';
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
+    SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
   ],
   controllers: [AppController],
   providers: [AppService],

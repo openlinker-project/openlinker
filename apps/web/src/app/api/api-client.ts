@@ -50,6 +50,7 @@ import {
   type WebhookDeliveriesApi,
 } from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { createUsersApi, type UsersApi } from '../../features/users/api/users.api';
+import { createSystemApi, type SystemApi } from '../../features/system/api/system.api';
 import { plugins } from '../../plugins';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
@@ -109,6 +110,7 @@ export interface CoreApiClient {
   requestBlob: ApiBlobRequest;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
+  system: SystemApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -259,6 +261,7 @@ export function createApiClient({
     requestBlob,
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
+    system: createSystemApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };
