@@ -45,12 +45,12 @@ export interface PublicKeyCertificate {
  * session via `crypto.randomBytes`. Held in memory only for the session
  * lifetime; never persisted.
  *
- * IV REUSE WARNING: `iv` is the SESSION-declared IV submitted once in the
- * open-session `EncryptionInfo.initializationVector`. It is **NOT** the IV used
- * to encrypt any document — `encryptDocument` generates a FRESH per-document IV
- * (carried in `EncryptedDocument.iv`) precisely to avoid CBC IV-reuse under the
- * shared session key. Never feed this `iv` into `encryptAesCbc`; doing so would
- * reuse one IV across every document in the session (a plaintext-structure leak).
+ * `iv` is both the session-declared IV (submitted to KSeF in
+ * `EncryptionInfo.initializationVector`) AND the IV used to encrypt every document
+ * in this session. KSeF has no per-document IV field on the `SendInvoiceRequest`
+ * wire — it uses the session IV declared at session-open time to decrypt all
+ * documents (confirmed by the CIRFMF C# reference: `EncryptBytesWithAES256(bytes,
+ * CipherKey, CipherIv)` with the same `CipherIv` across the batch).
  *
  * SECURITY: `key` and `iv` bytes must never be logged.
  */
@@ -74,9 +74,9 @@ export interface RsaWrappedKey {
 }
 
 /**
- * AES-256-CBC-encrypted document payload. `iv` accompanies the ciphertext
- * because each document is encrypted under a fresh random IV (the symmetric key
- * is reused per session, but CBC IV-reuse under the same key is unsafe).
+ * AES-256-CBC-encrypted document payload. `iv` accompanies the ciphertext for
+ * round-trip decryption support. Per the KSeF wire protocol all documents in a
+ * session share the same session IV (see `SymmetricKey.iv`).
  */
 export interface EncryptedDocument {
   /** Always `aes-256-cbc` (see `KSEF_AES_ALGORITHM`); carried for self-describing payloads. */
