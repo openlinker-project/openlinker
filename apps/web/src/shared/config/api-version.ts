@@ -3,9 +3,10 @@
  *
  * The backend serves every route under `/v1`; the client pins the API major it
  * targets. Single source for both URL builders (the api-client and the JWT
- * session adapter) so they can never drift when a future `/v2` ships. Backend
- * version-neutral routes (inbound webhooks, the Allegro OAuth callback) are not
- * called through the FE client, so a blanket prefix is safe.
+ * session adapter) so they can never drift when a future `/v2` ships. The one
+ * backend version-neutral route (the inbound `/webhooks` ingress) is never
+ * called through the FE client, so a blanket prefix is safe. (The Allegro OAuth
+ * callback IS versioned and IS called through this client — hence the prefix.)
  *
  * @module apps/web/src/shared/config
  */
