@@ -277,7 +277,18 @@ export const editConnectionSchema = z
     paymentFormaPlatnosci: z
       .union([z.enum(KSEF_FORMA_PLATNOSCI_VALUES), z.literal('')])
       .optional(),
-    paymentBankAccountNrRb: z.union([z.string().trim().max(34), z.literal('')]).optional(),
+    paymentBankAccountNrRb: z
+      .union([
+        z
+          .string()
+          .trim()
+          .max(34)
+          .refine((v) => v === '' || v.length >= 10, {
+            message: 'Bank account number must be 10-34 characters (per the FA(3) NrRB format).',
+          }),
+        z.literal(''),
+      ])
+      .optional(),
     paymentBankAccountBankName: z.union([z.string().trim().max(256), z.literal('')]).optional(),
     paymentBankAccountSwift: z.union([z.string().trim().max(16), z.literal('')]).optional(),
     paymentTermDays: z

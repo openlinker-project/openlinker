@@ -195,5 +195,23 @@ describe('KsefAdapterFactory', () => {
         resolvedPayment({ formaPlatnosci: '6', skonto: { conditions: 'text only' } }),
       ).toEqual({ formaPlatnosci: '6' });
     });
+
+    it('should drop an unknown formaPlatnosci code from a pre-validator connection', () => {
+      expect(
+        resolvedPayment({ formaPlatnosci: '9', bankAccount: { nrRb: '61109010140000000099999999' } }),
+      ).toEqual({ bankAccount: { nrRb: '61109010140000000099999999' } });
+    });
+
+    it('should drop a negative paymentTermDays from a pre-validator connection', () => {
+      expect(resolvedPayment({ formaPlatnosci: '1', paymentTermDays: -5 })).toEqual({
+        formaPlatnosci: '1',
+      });
+    });
+
+    it('should drop a non-integer paymentTermDays from a pre-validator connection', () => {
+      expect(resolvedPayment({ formaPlatnosci: '1', paymentTermDays: 14.5 })).toEqual({
+        formaPlatnosci: '1',
+      });
+    });
   });
 });

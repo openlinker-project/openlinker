@@ -7,8 +7,9 @@
  * present, #1291) so a mistyped rate is rejected at connection-save time
  * instead of surfacing as `UnmappedTaxRateException` at issuance, and an
  * optional `payment` check (#1311): `formaPlatnosci` must be a valid
- * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty when
- * `bankAccount` is set, `paymentTermDays` must be a non-negative integer, and
+ * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty and 10-34
+ * characters long (per the XSD `TNrRB` pattern) when `bankAccount` is set,
+ * `paymentTermDays` must be a non-negative integer, and
  * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
  * set (a partial skonto is otherwise silently dropped at issuance by the
  * factory's `resolvePayment`, so rejecting it at save time gives the operator
@@ -89,6 +90,11 @@ export class KsefConnectionConfigShapeValidatorAdapter
           issues.push({
             path: 'payment.bankAccount.nrRb',
             message: 'must be a non-empty string when bankAccount is set',
+          });
+        } else if (nrRb.trim().length < 10 || nrRb.trim().length > 34) {
+          issues.push({
+            path: 'payment.bankAccount.nrRb',
+            message: 'must be 10-34 characters long (per the FA(3) TNrRB pattern)',
           });
         }
       }

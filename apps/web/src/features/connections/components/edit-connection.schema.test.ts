@@ -477,6 +477,37 @@ describe('editConnectionSchema — KSeF postal code validation (#1223)', () => {
   });
 });
 
+describe('editConnectionSchema — KSeF payment bank account number length (#1311 tech-review)', () => {
+  const base = {
+    name: 'KSeF main',
+    configText: '{"env":"prod"}',
+  };
+
+  it('rejects a bank account number shorter than 10 characters', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentBankAccountNrRb: '123',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a bank account number at the 10-character lower bound', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentBankAccountNrRb: '1234567890',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('allows an empty bank account number for incremental save', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentBankAccountNrRb: '',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
   it('assembles the nested config.payment shape resolvePayment reads', () => {
     const result = mergeStructuredIntoConfig(

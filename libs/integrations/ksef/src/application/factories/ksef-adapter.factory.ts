@@ -40,7 +40,7 @@ import type {
   KsefPaymentConfig,
   KsefSellerConfig,
 } from '../../domain/types/ksef-connection.types';
-import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
+import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import type { IKsefAdapterFactory, KsefAdapters } from '../interfaces/ksef-adapter.factory.interface';
 
@@ -160,9 +160,12 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
    * builder's neutral `Fa3PaymentInput` shape. Unlike `resolveSeller`, an
    * absent/empty `config.payment` is a valid, common state — this returns
    * `undefined` rather than throwing, so the builder omits `Platnosc`
-   * entirely. Defensive against a malformed `bankAccount` (empty `nrRb`)
-   * slipping through pre-validator connections, mirroring
-   * `resolveDefaultTaxRate`'s defensive posture.
+   * entirely. Defensive against a malformed `bankAccount` (empty `nrRb`), an
+   * unknown `formaPlatnosci` code, or a negative/non-integer
+   * `paymentTermDays` slipping through pre-validator connections, mirroring
+   * `resolveDefaultTaxRate`'s defensive posture — each field is dropped
+   * rather than emitted verbatim if it fails the same check the
+   * `ksef.publicapi.v2` shape validator applies at save time.
    */
   private resolvePayment(connection: Connection): Fa3PaymentInput | undefined {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
@@ -171,7 +174,10 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       return undefined;
     }
     const result: Fa3PaymentInput = {};
-    if (payment.formaPlatnosci !== undefined) {
+    if (
+      payment.formaPlatnosci !== undefined &&
+      (KsefFormaPlatnosciValues as readonly string[]).includes(payment.formaPlatnosci)
+    ) {
       result.formaPlatnosci = payment.formaPlatnosci;
     }
     if (payment.bankAccount?.nrRb) {
@@ -181,7 +187,11 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         ...(payment.bankAccount.swift ? { swift: payment.bankAccount.swift } : {}),
       };
     }
-    if (payment.paymentTermDays !== undefined) {
+    if (
+      payment.paymentTermDays !== undefined &&
+      Number.isInteger(payment.paymentTermDays) &&
+      payment.paymentTermDays >= 0
+    ) {
       result.paymentTermDays = payment.paymentTermDays;
     }
     if (payment.skonto?.conditions && payment.skonto.amount) {

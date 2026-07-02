@@ -164,6 +164,37 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
     });
 
+    it('should reject a bankAccount.nrRb shorter than 10 characters', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { bankAccount: { nrRb: '123' } } }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [
+          { path: 'payment.bankAccount.nrRb', message: expect.stringContaining('10-34') },
+        ],
+      });
+    });
+
+    it('should reject a bankAccount.nrRb longer than 34 characters', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          payment: { bankAccount: { nrRb: '1'.repeat(35) } },
+        }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [
+          { path: 'payment.bankAccount.nrRb', message: expect.stringContaining('10-34') },
+        ],
+      });
+    });
+
+    it('should accept a bankAccount.nrRb at the 10-character lower bound', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { bankAccount: { nrRb: '1234567890' } } }),
+      ).resolves.toBeUndefined();
+    });
+
     it('should reject a negative paymentTermDays', async () => {
       await expect(
         validator.validate({ env: 'test', payment: { paymentTermDays: -1 } }),
