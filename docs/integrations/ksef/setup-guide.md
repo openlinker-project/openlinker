@@ -64,9 +64,11 @@ A KSeF connection authenticates in one of two modes (`credentials.authType`):
 | `ksef-token` | Static KSeF authorization-token flow (default for server-to-server). |
 | `qualified-seal` | X.509 qualified-seal (pieczęć kwalifikowana) signing flow. |
 
-The concrete secret is **never stored on the connection row**. Credentials carry
-an opaque `secretRef`; the host's `CredentialsResolverPort` resolves the actual
-token / seal material at adapter construction.
+The concrete secret is **never stored on the connection row**. The credentials
+payload (`{ authType, secret }`) is persisted in the encrypted integration
+credentials store under the connection's `credentialsRef` (`db:<uuid>`); the
+host's `CredentialsResolverPort` resolves the actual token / seal material at
+adapter construction.
 
 The handshake (token mode) is: request a **challenge** → **RSA-OAEP(SHA-256)-encrypt**
 the `(token|timestampMs)` blob under the MF **token-encryption** public key → submit it →
@@ -87,8 +89,9 @@ distinct.
    seal certificate (seal mode) for the seller NIP.
 3. Via the wizard, paste the raw secret into the **write-only** `credentials.secret`
    field. The platform persists it in the integration credentials store and assigns
-   the opaque `secretRef` (`db:<uuid>`) itself — you do **not** pre-provision a vault
-   reference. The secret value is never echoed back to the browser.
+   the connection's `credentialsRef` (`db:<uuid>`) itself — you do **not**
+   pre-provision a vault reference. The secret value is never echoed back to the
+   browser.
 
 ---
 
@@ -99,26 +102,21 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 | Field | Required | Collected by wizard | Description |
 |---|---|---|---|
 | `env` | ✅ | ✅ | `test` \| `demo` \| `prod`. Gated by the config-shape validator at connection create/update. |
+| `seller` | for issuance | ✅ | Seller profile (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`, optional `seller.defaultTaxRate` (neutral fallback tax-rate code, defaults to the PL standard rate). Optional at connection create; a connection without a well-formed `seller` fails fast at adapter construction and cannot issue. |
 
-> **Planned addition (C5) — seller profile.**
-> The issuance path (C4+) will require a `seller` block on the config — the full seller profile
-> (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address
-> { line1, line2?, city, postalCode, countryIso2 }`. This field does not exist on
-> `KsefConnectionConfig` yet; its shape validation and wizard collection are tracked
-> follow-ups that land alongside the C5 issuance work. Until then, `env` is the only
-> config field the server gates.
+> **Note — `seller.nip` is also the session context.** The token-auth handshake
+> authenticates in the context of `seller.nip` (`<ContextNip>`): KSeF's context
+> NIP is normally the seller's own NIP, and there is no separate secret carrying
+> it. The FE-additive `config.contextIdentifier` field (display / future
+> scoping) does **not** affect authentication.
 
-> **Note:** the seller's tax identifier (NIP) is deliberately not stored on the connection
-> config in C2. Per the config-shape validator's design, it travels with the issued document
-> rather than living on the connection row. The `seller` block (C5) will introduce it as
-> part of a structured seller-profile object, not as a bare `sellerNip` field.
-
-Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort`):
+Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort` from the
+connection's `credentialsRef`):
 
 | Field | Required | Description |
 |---|---|---|
 | `authType` | ✅ | `ksef-token` \| `qualified-seal`. |
-| `secretRef` | ✅ | Opaque reference to the secret in the credential store (never the secret value). Assigned by the platform — see [Obtaining credentials](#obtaining-credentials). |
+| `secret` | ✅ | The raw authentication secret (KSeF authorization token, or a qualified-seal reference), write-only through the wizard. Persisted encrypted in the credential store behind the connection's `credentialsRef` — see [Obtaining credentials](#obtaining-credentials). |
 
 ---
 
@@ -212,7 +210,7 @@ the table below covers both current gaps and explicitly out-of-scope items:
 | Not supported | Rationale |
 |---|---|
 | Issuance / clearance (C2 stub) | The `KsefInvoicingAdapter` is a stub — `issueInvoice`, `upsertCustomer`, and `submitForClearance` throw "not yet implemented". Mechanics land in C4. |
-| Seller profile on connection config | `KsefConnectionConfig` currently only carries `env`. The `seller` block (NIP, name, address) is a C5 addition; without it a connection cannot issue. |
+| Issuance without a seller profile | The `seller` block (NIP, name, address) on `KsefConnectionConfig` is required for issuance and for the token-auth session context; a connection without it fails fast at adapter construction. |
 | Receipts / paragony (B2C fiscal receipts) | KSeF covers structured invoices; receipts are a separate fiscal regime. An invoice to a buyer without a NIP **is** planned (FA(3) `BrakID`) once issuance ships. |
 | Batch (wsadowa) submission pipeline | The online (interactive) session flow is the C4 target; the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
 | Inbound invoice retrieval | OpenLinker is a transmitter, not a KSeF inbox reader; pulling received invoices is out of scope. |

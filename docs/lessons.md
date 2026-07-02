@@ -94,3 +94,11 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: Read the buyer-placed time from `lineItems[].boughtAt`. The PrestaShop equivalent is `date_add`.
 **Applies to**: `libs/integrations/allegro/src/infrastructure/adapters/allegro-order-source.adapter.ts`; `libs/core/src/orders/domain/types/incoming-order.types.ts`.
 **Source**: Allegro order-source adapter.
+
+## A credentials/config payload shape shared by FE, shape validator, and adapter factory needs one cross-layer test — per-layer green suites can all pass against divergent assumed shapes
+
+**Context**: KSeF connection create: the FE wizard sent `credentials: { authType, secret }` while the BE shape validator and adapter factory expected `{ authType, secretRef }` plus a second nested credentials lookup — every wizard-created KSeF connection failed at create with a 400.
+**Problem**: Each layer had green unit tests against its *own assumed* payload shape, so the contract drift between FE payload, credentials-shape validator, and adapter factory went unnoticed until a live end-to-end attempt. Nothing type-checks across the FE/BE wire boundary, and the validator + factory each hand-roll their expected shape independently.
+**Rule**: When a wire payload shape (credentials, connection config) is consumed by more than one layer, add at least one test that drives the real FE-produced payload through the BE validator and adapter factory together (or assert all layers against a single shared fixture) — do not rely on per-layer specs that each construct their own payload.
+**Applies to**: connection credentials/config shape validators (`plugin.register` validators), adapter factories in `libs/integrations/**`, FE connection-wizard schemas in `apps/web/src/features/connections/`.
+**Source**: #1318 / PR #1319.
