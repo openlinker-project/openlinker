@@ -21,7 +21,7 @@
  * @module apps/api/test/integration/invoicing
  */
 import { InvoiceRecordOrmEntity } from '@openlinker/core/invoicing/orm-entities';
-import { InvoiceRecordNotFoundException } from '@openlinker/core/invoicing';
+import { BuyerProfile, InvoiceRecordNotFoundException } from '@openlinker/core/invoicing';
 // Deep import of the infrastructure repository (host-only test seam): the
 // repository class is intentionally NOT on the bounded-context public barrel,
 // so we reach it via the `@openlinker/core/*` wildcard the same way the
@@ -99,6 +99,47 @@ describe('invoice_records persistence (integration)', () => {
     // Migration default applied without the app setting it explicitly.
     expect(found?.regulatoryStatus).toBe('not-applicable');
     expect(found?.clearanceReference).toBeNull();
+  });
+
+  it('#1297: round-trips the issuedLineSnapshot jsonb column (proves the migration column exists)', async () => {
+    const repository = new InvoiceRecordRepository(repo);
+    const buyer = new BuyerProfile(
+      'ACME Sp. z o.o.',
+      { scheme: 'pl-nip', value: '1234567890' },
+      { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+      'company',
+    );
+    const created = await repository.create({
+      connectionId: CONNECTION_ID,
+      orderId: 'ol_order_snap',
+      providerType: 'ksef',
+      documentType: 'invoice',
+      status: 'issued',
+      idempotencyKey: 'idem-snap-1',
+      issuedLineSnapshot: {
+        buyer,
+        currency: 'PLN',
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+      },
+    });
+
+    const found = await repository.findById(created.id);
+    expect(found?.issuedLineSnapshot).toEqual({
+      buyer: {
+        name: 'ACME Sp. z o.o.',
+        taxId: { scheme: 'pl-nip', value: '1234567890' },
+        address: { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+        type: 'company',
+      },
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+    });
+  });
+
+  it('defaults issuedLineSnapshot to null when not supplied', async () => {
+    const saved = await repo.save(row({ orderId: 'ol_order_snap_null' }));
+    const found = await repo.findOneOrFail({ where: { id: saved.id } });
+    expect(found.issuedLineSnapshot).toBeNull();
   });
 
   it('rejects a duplicate (connectionId, idempotencyKey) at the DB index', async () => {
