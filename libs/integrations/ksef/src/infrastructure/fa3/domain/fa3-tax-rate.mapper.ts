@@ -19,6 +19,14 @@ import { UnmappedTaxRateException } from '../../../domain/exceptions/fa3-builder
 import type { Fa3P12Value } from './fa3-schema.types';
 
 /**
+ * PL standard VAT rate — the connection-level fallback applied by the caller
+ * (`fa3-builder-input.mapper.ts`) to a line whose neutral `taxRate` is empty.
+ * `resolveP12` itself never applies this default; it stays a total,
+ * no-silent-default function per its own contract below.
+ */
+export const DEFAULT_FA3_TAX_RATE = '23';
+
+/**
  * Neutral tax-rate code → FA(3) `P_12`. Covers every one of the 10 `P_12`
  * values. Both the bare-percent forms (`23`) and the explicit zero-rate /
  * special-regime codes are accepted.
@@ -47,9 +55,8 @@ export const FA3_TAX_RATE_MAP: Readonly<Record<string, Fa3P12Value>> = {
  * @throws {UnmappedTaxRateException} when the code is unknown / empty.
  */
 export function resolveP12(neutralTaxRate: string): Fa3P12Value {
-  const mapped = FA3_TAX_RATE_MAP[neutralTaxRate];
-  if (mapped === undefined) {
+  if (!Object.prototype.hasOwnProperty.call(FA3_TAX_RATE_MAP, neutralTaxRate)) {
     throw new UnmappedTaxRateException(neutralTaxRate);
   }
-  return mapped;
+  return FA3_TAX_RATE_MAP[neutralTaxRate];
 }
