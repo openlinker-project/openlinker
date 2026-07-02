@@ -24,6 +24,7 @@ export type {
 export { CORE_PLATFORM_TYPES, CORE_CAPABILITY_VALUES } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';
+export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
@@ -34,18 +35,19 @@ export {
 } from './types/invoice-trigger-model.types';
 export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
 
+// Edit-connection schema seam (#1330) — composed by the host with a platform's
+// `ConnectionConfigContribution`; exported so plugin-local tests can exercise
+// their contribution through the same composition path the form uses.
+export {
+  buildEditConnectionSchema,
+  mergeStructuredIntoConfig,
+} from './components/edit-connection.schema';
+export type {
+  EditConnectionStructuredPatch,
+  EditConnectionFormValues,
+} from './components/edit-connection.schema';
+
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
-
-// KSeF connection-setup enums — re-exported so the KSeF plugin (plugins/ksef)
-// imports them through the feature's public barrel, not via a deep internal path.
-export {
-  KSEF_ENVIRONMENT_VALUES,
-  KSEF_AUTH_TYPE_VALUES,
-  KSEF_FORMA_PLATNOSCI_VALUES,
-  type KsefEnvironment,
-  type KsefAuthType,
-  type KsefFormaPlatnosci,
-} from './components/ksef-setup.schema';

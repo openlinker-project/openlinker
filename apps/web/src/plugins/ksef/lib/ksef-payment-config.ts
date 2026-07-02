@@ -12,7 +12,7 @@
  * siblings) and drops an emptied `bankAccount` / `skonto` / `payment` object so a
  * hollow config is never persisted.
  *
- * @module features/connections/components
+ * @module plugins/ksef/lib
  */
 import { normalizeNrRb } from './ksef-nrb';
 
