@@ -3,9 +3,9 @@
  *
  * @module plugins/infakt/components
  */
-import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import type { InvoiceRecord } from '../../../features/invoicing/api/invoicing.types';
 import { InfaktInvoiceDetailSection } from './infakt-invoice-detail-section';
 
@@ -120,5 +120,30 @@ describe('InfaktInvoiceDetailSection', () => {
       />,
     );
     expect(await screen.findByText('KSeF rejected this invoice.')).toBeInTheDocument();
+  });
+
+  it('calls downloadDocument with kind=rendered when Download PDF is clicked', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:mock');
+    URL.revokeObjectURL = vi.fn();
+    const downloadDocument = vi
+      .fn()
+      .mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
+    const apiClient = createMockApiClient({ invoicing: { downloadDocument } });
+
+    renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({
+          regulatoryStatus: 'accepted',
+          clearanceReference: '5260001246-20260625-A1B2-3D',
+        })}
+        connection={infaktConnection}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
+    await waitFor(() =>
+      expect(downloadDocument).toHaveBeenCalledWith('ol_invoice_test', 'rendered'),
+    );
   });
 });
