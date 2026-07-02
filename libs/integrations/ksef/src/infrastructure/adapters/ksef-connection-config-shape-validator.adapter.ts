@@ -6,7 +6,9 @@
  * `seller.defaultTaxRate` check (must be a known `FA3_TAX_RATE_MAP` key when
  * present, #1291) so a mistyped rate is rejected at connection-save time
  * instead of surfacing as `UnmappedTaxRateException` at issuance, and an
- * optional `payment` check (#1311): `formaPlatnosci` must be a valid
+ * optional `payment` check (#1311): `payment`, `payment.bankAccount` and
+ * `payment.skonto` must themselves be objects when present (a wrong-typed
+ * value would otherwise be silently dropped at issuance), `formaPlatnosci` must be a valid
  * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty and 10-34
  * characters long (per the XSD `TNrRB` pattern) when `bankAccount` is set,
  * `paymentTermDays` must be a non-negative integer, and
@@ -71,7 +73,12 @@ export class KsefConnectionConfigShapeValidatorAdapter
     }
 
     const payment = config.payment;
-    if (payment !== undefined && payment !== null && typeof payment === 'object') {
+    // A wrong-typed `payment` (or sub-object below) is rejected here rather
+    // than silently dropped at issuance by the factory's `resolvePayment` —
+    // this validator is the strict save-time gate.
+    if (payment !== undefined && (payment === null || typeof payment !== 'object')) {
+      issues.push({ path: 'payment', message: 'must be an object' });
+    } else if (payment !== undefined) {
       const p = payment as Record<string, unknown>;
       if (p.formaPlatnosci !== undefined) {
         if (
@@ -84,7 +91,9 @@ export class KsefConnectionConfigShapeValidatorAdapter
           });
         }
       }
-      if (p.bankAccount !== undefined && p.bankAccount !== null && typeof p.bankAccount === 'object') {
+      if (p.bankAccount !== undefined && (p.bankAccount === null || typeof p.bankAccount !== 'object')) {
+        issues.push({ path: 'payment.bankAccount', message: 'must be an object' });
+      } else if (p.bankAccount !== undefined) {
         const nrRb = (p.bankAccount as Record<string, unknown>).nrRb;
         if (typeof nrRb !== 'string' || nrRb.trim().length === 0) {
           issues.push({
@@ -109,7 +118,9 @@ export class KsefConnectionConfigShapeValidatorAdapter
           message: 'must be a non-negative integer',
         });
       }
-      if (p.skonto !== undefined && p.skonto !== null && typeof p.skonto === 'object') {
+      if (p.skonto !== undefined && (p.skonto === null || typeof p.skonto !== 'object')) {
+        issues.push({ path: 'payment.skonto', message: 'must be an object' });
+      } else if (p.skonto !== undefined) {
         const skonto = p.skonto as Record<string, unknown>;
         const hasConditions = typeof skonto.conditions === 'string' && skonto.conditions.trim().length > 0;
         const hasAmount = typeof skonto.amount === 'string' && skonto.amount.trim().length > 0;

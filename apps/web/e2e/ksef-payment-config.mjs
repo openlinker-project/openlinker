@@ -9,8 +9,10 @@
  *
  * Usage: node apps/web/e2e/ksef-payment-config.mjs
  * Env:
- *   WEB_BASE   web dev-server base (default http://localhost:5175)
+ *   WEB_BASE      web dev-server base (default http://localhost:5175)
  *   KSEF_CONN_ID  id of the KSeF connection to edit (required)
+ *   WEB_USER      login username (default admin, the dev-stack seed user)
+ *   WEB_PASSWORD  login password (default admin123)
  */
 import { chromium } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +22,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOTS = resolve(__dirname, '../../../docs/assets/ksef-1311-smoke');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:5175';
 const CONN_ID = process.env.KSEF_CONN_ID;
+const USER = process.env.WEB_USER ?? 'admin';
+const PASSWORD = process.env.WEB_PASSWORD ?? 'admin123';
 
 if (!CONN_ID) {
   console.error('KSEF_CONN_ID env var is required');
@@ -28,8 +32,8 @@ if (!CONN_ID) {
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin123');
+  await page.getByPlaceholder('Enter your username').fill(USER);
+  await page.getByPlaceholder('Enter your password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }

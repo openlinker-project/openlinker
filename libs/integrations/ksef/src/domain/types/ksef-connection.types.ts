@@ -62,6 +62,11 @@ export interface KsefSellerConfig {
  * `7` Mobilna. An `xsd:integer` restriction, so the wire value is a
  * numeric-string literal (mirrors the `Fa3TypKorektyValues` precedent in
  * `fa3-xml.types.ts`), not a free-text label.
+ *
+ * Declared three times by design (connection-config layer here, FA3 schema
+ * layer `Fa3FormaPlatnosciValues` in `fa3-schema.types.ts`, FE
+ * `KSEF_FORMA_PLATNOSCI_VALUES` in `ksef-setup.schema.ts`) — a future 8th
+ * code must be added in all three places.
  */
 export const KsefFormaPlatnosciValues = ['1', '2', '3', '4', '5', '6', '7'] as const;
 export type KsefFormaPlatnosci = (typeof KsefFormaPlatnosciValues)[number];

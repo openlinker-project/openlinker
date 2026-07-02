@@ -140,6 +140,38 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('should reject a non-object payment', async () => {
+      await expect(validator.validate({ env: 'test', payment: 'foo' })).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [{ path: 'payment', message: 'must be an object' }],
+      });
+    });
+
+    it('should reject a null payment', async () => {
+      await expect(validator.validate({ env: 'test', payment: null })).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [{ path: 'payment', message: 'must be an object' }],
+      });
+    });
+
+    it('should reject a non-object bankAccount', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { bankAccount: 'foo' } }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [{ path: 'payment.bankAccount', message: 'must be an object' }],
+      });
+    });
+
+    it('should reject a non-object skonto', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { skonto: 'foo' } }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [{ path: 'payment.skonto', message: 'must be an object' }],
+      });
+    });
+
     it('should reject an unknown formaPlatnosci value', async () => {
       await expect(
         validator.validate({ env: 'test', payment: { formaPlatnosci: '9' } }),

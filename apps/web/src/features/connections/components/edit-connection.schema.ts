@@ -3,6 +3,7 @@ import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { normalizeNip } from './ksef-nip';
+import { normalizeNrRb } from './ksef-nrb';
 import { applyKsefSellerToConfig } from './ksef-seller-config';
 import { applyKsefPaymentToConfig } from './ksef-payment-config';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
@@ -280,13 +281,15 @@ export const editConnectionSchema = z
     paymentFormaPlatnosci: z
       .union([z.enum(KSEF_FORMA_PLATNOSCI_VALUES), z.literal('')])
       .optional(),
+    // Whitespace-stripped via `normalizeNrRb` (mirrors the `normalizeNip`
+    // precedent) so the length bound counts the same characters the persisted
+    // wire value carries — a conventionally-spaced NRB paste stays valid.
     paymentBankAccountNrRb: z
       .union([
         z
           .string()
-          .trim()
-          .max(34)
-          .refine((v) => v === '' || v.length >= 10, {
+          .transform(normalizeNrRb)
+          .refine((v) => v === '' || (v.length >= 10 && v.length <= 34), {
             message: 'Bank account number must be 10-34 characters (per the FA(3) NrRB format).',
           }),
         z.literal(''),

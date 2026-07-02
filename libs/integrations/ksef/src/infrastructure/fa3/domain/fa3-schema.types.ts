@@ -66,6 +66,11 @@ export type Fa3KodWaluty = (typeof Fa3KodWalutyValues)[number];
  * | `5` | Kredyt (credit) |
  * | `6` | Przelew (bank transfer) |
  * | `7` | Mobilna (mobile payment) |
+ *
+ * Declared three times by design (FA3 schema layer here, connection-config
+ * layer `KsefFormaPlatnosciValues` in `ksef-connection.types.ts`, FE
+ * `KSEF_FORMA_PLATNOSCI_VALUES` in `ksef-setup.schema.ts`) — a future 8th
+ * code must be added in all three places.
  */
 export const Fa3FormaPlatnosciValues = ['1', '2', '3', '4', '5', '6', '7'] as const;
 export type Fa3FormaPlatnosci = (typeof Fa3FormaPlatnosciValues)[number];

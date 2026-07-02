@@ -506,6 +506,24 @@ describe('editConnectionSchema — KSeF payment bank account number length (#131
     });
     expect(result.success).toBe(true);
   });
+
+  it('counts the whitespace-stripped length for a conventionally-spaced NRB paste', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      // 26 digits + 6 inner spaces = 32 raw chars; stripped length is what
+      // the persisted wire value carries, so this must pass the 10-34 bound.
+      paymentBankAccountNrRb: '61 1090 1014 0000 0000 9999 9999',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a spaced paste whose stripped length is under 10', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentBankAccountNrRb: '12 34 56 78 9',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
@@ -525,7 +543,9 @@ describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
     expect(result.payment).toEqual({
       formaPlatnosci: '6',
       bankAccount: {
-        nrRb: '61 1090 1014 0000 0000 9999 9999',
+        // Whitespace-stripped by `normalizeNrRb` at assembly time — inner
+        // spaces never reach the persisted config or the FA(3) wire.
+        nrRb: '61109010140000000099999999',
         bankName: 'Santander',
         swift: 'WBKPPLPP',
       },

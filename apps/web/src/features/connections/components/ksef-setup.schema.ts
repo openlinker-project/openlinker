@@ -54,6 +54,9 @@ export type KsefAuthType = (typeof KSEF_AUTH_TYPE_VALUES)[number];
 /**
  * Mirrors `KsefFormaPlatnosciValues` (FA(3) `TFormaPlatnosci`, #1311) — the
  * connection-level default payment method emitted into `Platnosc/FormaPlatnosci`.
+ * Declared three times by design (FE here, plugin connection-config layer
+ * `ksef-connection.types.ts`, FA3 schema layer `fa3-schema.types.ts`) — a
+ * future 8th code must be added in all three places.
  */
 export const KSEF_FORMA_PLATNOSCI_VALUES = ['1', '2', '3', '4', '5', '6', '7'] as const;
 export type KsefFormaPlatnosci = (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number];

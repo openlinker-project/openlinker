@@ -14,6 +14,7 @@
  *
  * @module features/connections/components
  */
+import { normalizeNrRb } from './ksef-nrb';
 
 /**
  * Flat payment sub-fields collected by the edit-connection structured section.
@@ -92,7 +93,10 @@ export function applyKsefPaymentToConfig(
     setOrDeleteLeaf(payment, 'formaPlatnosci', normalizeTextLeaf(input.paymentFormaPlatnosci));
   }
   if (input.paymentBankAccountNrRb !== undefined) {
-    setOrDeleteLeaf(bankAccount, 'nrRb', normalizeTextLeaf(input.paymentBankAccountNrRb));
+    // Whitespace-stripped (not just trimmed): the UI placeholder suggests the
+    // spaced NRB format, but `NrRB` goes on the FA(3) wire verbatim and inner
+    // spaces would eat into the 34-char TNrRB budget.
+    setOrDeleteLeaf(bankAccount, 'nrRb', normalizeNrRb(input.paymentBankAccountNrRb));
   }
   if (input.paymentBankAccountBankName !== undefined) {
     setOrDeleteLeaf(bankAccount, 'bankName', normalizeTextLeaf(input.paymentBankAccountBankName));
