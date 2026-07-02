@@ -133,4 +133,67 @@ describe('KsefAdapterFactory', () => {
       expect(resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '   ' })).toBe('23');
     });
   });
+
+  describe('resolvePayment (#1311)', () => {
+    function resolvedPayment(
+      payment: Record<string, unknown> | undefined,
+    ): Record<string, unknown> | undefined {
+      const factory = new KsefAdapterFactory();
+      const resolve = (
+        factory as unknown as {
+          resolvePayment(c: Connection): Record<string, unknown> | undefined;
+        }
+      ).resolvePayment;
+      return resolve.call(
+        factory,
+        connection({ config: { env: 'test', seller: SELLER_CONFIG, payment } }),
+      );
+    }
+
+    it('should return undefined when the connection has no payment config', () => {
+      expect(resolvedPayment(undefined)).toBeUndefined();
+    });
+
+    it('should return undefined when payment is an empty object', () => {
+      expect(resolvedPayment({})).toBeUndefined();
+    });
+
+    it('should resolve a well-formed payment config', () => {
+      expect(
+        resolvedPayment({
+          formaPlatnosci: '6',
+          bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+          paymentTermDays: 14,
+          skonto: { conditions: '2% if paid within 7 days', amount: '2%' },
+        }),
+      ).toEqual({
+        formaPlatnosci: '6',
+        bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+        paymentTermDays: 14,
+        skonto: { conditions: '2% if paid within 7 days', amount: '2%' },
+      });
+    });
+
+    it('should drop a malformed bankAccount (empty nrRb) while keeping other configured fields', () => {
+      expect(
+        resolvedPayment({ formaPlatnosci: '1', bankAccount: { nrRb: '' } }),
+      ).toEqual({ formaPlatnosci: '1' });
+    });
+
+    it('should resolve formaPlatnosci-only (Gotówka, no bank account)', () => {
+      expect(resolvedPayment({ formaPlatnosci: '1' })).toEqual({ formaPlatnosci: '1' });
+    });
+
+    it('should resolve bankAccount-only (no payment method)', () => {
+      expect(resolvedPayment({ bankAccount: { nrRb: '61109010140000000099999999' } })).toEqual({
+        bankAccount: { nrRb: '61109010140000000099999999' },
+      });
+    });
+
+    it('should drop an incomplete skonto (missing amount)', () => {
+      expect(
+        resolvedPayment({ formaPlatnosci: '6', skonto: { conditions: 'text only' } }),
+      ).toEqual({ formaPlatnosci: '6' });
+    });
+  });
 });

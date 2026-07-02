@@ -23,6 +23,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { usePlatform } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -48,6 +49,13 @@ type StructuredField =
   | 'sellerCity'
   | 'sellerPostalCode'
   | 'sellerCountryIso2'
+  | 'paymentFormaPlatnosci'
+  | 'paymentBankAccountNrRb'
+  | 'paymentBankAccountBankName'
+  | 'paymentBankAccountSwift'
+  | 'paymentTermDays'
+  | 'paymentSkontoConditions'
+  | 'paymentSkontoAmount'
   | 'contextIdentifier'
   | 'inpostEnvironment'
   | 'inpostOrganizationId';
@@ -173,6 +181,48 @@ function readKsefSeller(config: Record<string, unknown>): {
     sellerCity: typeof address.city === 'string' ? address.city : '',
     sellerPostalCode: typeof address.postalCode === 'string' ? address.postalCode : '',
     sellerCountryIso2: typeof address.countryIso2 === 'string' ? address.countryIso2 : '',
+  };
+}
+
+/**
+ * Read the KSeF payment config sub-object out of `config.payment` (#1311).
+ * Returns a flat object of form-field values so the edit form can hydrate the
+ * payment fields. `paymentTermDays` is read back as a string (the form field's
+ * shape); an absent numeric leaf reads as an empty string, matching the other
+ * flat structured fields.
+ */
+function readKsefPayment(config: Record<string, unknown>): {
+  paymentFormaPlatnosci: '' | (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number];
+  paymentBankAccountNrRb: string;
+  paymentBankAccountBankName: string;
+  paymentBankAccountSwift: string;
+  paymentTermDays: string;
+  paymentSkontoConditions: string;
+  paymentSkontoAmount: string;
+} {
+  const payment =
+    typeof config.payment === 'object' && config.payment !== null
+      ? (config.payment as Record<string, unknown>)
+      : {};
+  const bankAccount =
+    typeof payment.bankAccount === 'object' && payment.bankAccount !== null
+      ? (payment.bankAccount as Record<string, unknown>)
+      : {};
+  const skonto =
+    typeof payment.skonto === 'object' && payment.skonto !== null
+      ? (payment.skonto as Record<string, unknown>)
+      : {};
+  const formaPlatnosci = payment.formaPlatnosci;
+  return {
+    paymentFormaPlatnosci: (KSEF_FORMA_PLATNOSCI_VALUES as readonly unknown[]).includes(formaPlatnosci)
+      ? (formaPlatnosci as (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number])
+      : '',
+    paymentBankAccountNrRb: typeof bankAccount.nrRb === 'string' ? bankAccount.nrRb : '',
+    paymentBankAccountBankName: typeof bankAccount.bankName === 'string' ? bankAccount.bankName : '',
+    paymentBankAccountSwift: typeof bankAccount.swift === 'string' ? bankAccount.swift : '',
+    paymentTermDays: typeof payment.paymentTermDays === 'number' ? String(payment.paymentTermDays) : '',
+    paymentSkontoConditions: typeof skonto.conditions === 'string' ? skonto.conditions : '',
+    paymentSkontoAmount: typeof skonto.amount === 'string' ? skonto.amount : '',
   };
 }
 
@@ -326,6 +376,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // fallback); context identifier from `config.contextIdentifier`.
       ksefEnvironment: readKsefEnvironment(connection.config),
       ...readKsefSeller(connection.config),
+      ...readKsefPayment(connection.config),
       contextIdentifier: readString(connection.config, 'contextIdentifier'),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an

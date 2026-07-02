@@ -29,7 +29,12 @@ import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
 import type { IFa3XmlBuilder } from '../../fa3/builders/fa3-xml-builder.port';
-import type { Fa3BuilderInput, RawFa3Xml, SellerProfile } from '../../fa3/domain/fa3-xml.types';
+import type {
+  Fa3BuilderInput,
+  Fa3PaymentInput,
+  RawFa3Xml,
+  SellerProfile,
+} from '../../fa3/domain/fa3-xml.types';
 
 const SELLER: SellerProfile = {
   nip: '1234567890',
@@ -171,7 +176,11 @@ function correctionCommand(overrides: Partial<IssueCorrectionCommand> = {}): Iss
   };
 }
 
-function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder): KsefInvoicingAdapter {
+function adapter(
+  http: FakeKsefHttpClient,
+  builder: IFa3XmlBuilder = fakeBuilder,
+  payment?: Fa3PaymentInput,
+): KsefInvoicingAdapter {
   return new KsefInvoicingAdapter(
     'conn-1',
     http,
@@ -179,6 +188,7 @@ function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder
     builder,
     SELLER,
     DEFAULT_TAX_RATE,
+    payment,
     () => new Date('2026-06-23T10:00:00.000Z'),
   );
 }
@@ -221,6 +231,27 @@ describe('KsefInvoicingAdapter', () => {
         `POST /sessions/online/${SESSION_REF}/close`,
         `GET /sessions/${SESSION_REF}`,
       ]);
+    });
+
+    it('should pass the resolved payment config through to the builder input (#1311)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const payment: Fa3PaymentInput = { formaPlatnosci: '6', paymentTermDays: 14 };
+
+      await adapter(http, builder, payment).issueInvoice(command());
+
+      expect(lastInput()?.payment).toEqual(payment);
+    });
+
+    it('should not set payment on the builder input when the adapter has none configured', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueInvoice(command());
+
+      expect(lastInput()?.payment).toBeUndefined();
     });
 
     it('should send the wrapped key + IV and both content hashes on submit', async () => {

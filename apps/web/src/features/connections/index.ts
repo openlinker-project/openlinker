@@ -44,6 +44,8 @@ export type { CapabilityTogglesSectionProps } from './components/CapabilityToggl
 export {
   KSEF_ENVIRONMENT_VALUES,
   KSEF_AUTH_TYPE_VALUES,
+  KSEF_FORMA_PLATNOSCI_VALUES,
   type KsefEnvironment,
   type KsefAuthType,
+  type KsefFormaPlatnosci,
 } from './components/ksef-setup.schema';

@@ -55,11 +55,52 @@ export interface KsefSellerConfig {
   defaultTaxRate?: string;
 }
 
+/**
+ * `TFormaPlatnosci` (FA(3) v1-0E XSD line 1324) — the payment-form enumeration:
+ * `1` Gotówka, `2` Karta, `3` Bon, `4` Czek, `5` Kredyt, `6` Przelew,
+ * `7` Mobilna. An `xsd:integer` restriction, so the wire value is a
+ * numeric-string literal (mirrors the `Fa3TypKorektyValues` precedent in
+ * `fa3-xml.types.ts`), not a free-text label.
+ */
+export const KsefFormaPlatnosciValues = ['1', '2', '3', '4', '5', '6', '7'] as const;
+export type KsefFormaPlatnosci = (typeof KsefFormaPlatnosciValues)[number];
+
+/**
+ * Manually-entered bank account (`Platnosc/RachunekBankowy`, #1311). KSeF/FA(3)
+ * has no bank-accounts-listing API — this is a plain per-connection config
+ * value the operator types in, not live-fetched (unlike inFakt's
+ * `BankAccountsReader` capability). `nrRb` mirrors the XSD's own
+ * required-others-optional shape (`TRachunekBankowy`, line 1507).
+ */
+export interface KsefBankAccountConfig {
+  nrRb: string;
+  bankName?: string;
+  swift?: string;
+}
+
+/**
+ * Connection-level default payment info (#1311) emitted into `Fa/Platnosc`
+ * when configured. Every field is independently optional — a Gotówka
+ * connection can still declare a default payment term, and a bank account can
+ * be set without a payment method. Omitted entirely (not emitted with
+ * guessed/empty values) when the connection has nothing configured.
+ */
+export interface KsefPaymentConfig {
+  formaPlatnosci?: KsefFormaPlatnosci;
+  bankAccount?: KsefBankAccountConfig;
+  /** Days until due, emitted as `Platnosc/TerminPlatnosci/TerminOpis/Ilosc`. */
+  paymentTermDays?: number;
+  /** Early-payment discount (`Platnosc/Skonto`) — both sub-fields free text. */
+  skonto?: { conditions: string; amount: string };
+}
+
 /** Non-secret config persisted on the connection row. */
 export interface KsefConnectionConfig {
   env: KsefEnvironment;
   /** Seller identity for issued documents (C5). Optional until a connection issues. */
   seller?: KsefSellerConfig;
+  /** Default payment info emitted into `Fa/Platnosc` (#1311). Optional. */
+  payment?: KsefPaymentConfig;
 }
 
 /**

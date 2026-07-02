@@ -476,3 +476,75 @@ describe('editConnectionSchema — KSeF postal code validation (#1223)', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
+  it('assembles the nested config.payment shape resolvePayment reads', () => {
+    const result = mergeStructuredIntoConfig(
+      { env: 'prod' },
+      {
+        paymentFormaPlatnosci: '6',
+        paymentBankAccountNrRb: '61 1090 1014 0000 0000 9999 9999',
+        paymentBankAccountBankName: 'Santander',
+        paymentBankAccountSwift: 'WBKPPLPP',
+        paymentTermDays: '14',
+        paymentSkontoConditions: '2% if paid within 7 days',
+        paymentSkontoAmount: '2%',
+      },
+    );
+    expect(result.payment).toEqual({
+      formaPlatnosci: '6',
+      bankAccount: {
+        nrRb: '61 1090 1014 0000 0000 9999 9999',
+        bankName: 'Santander',
+        swift: 'WBKPPLPP',
+      },
+      paymentTermDays: 14,
+      skonto: { conditions: '2% if paid within 7 days', amount: '2%' },
+    });
+    expect(result.env).toBe('prod');
+  });
+
+  it('assembles formaPlatnosci-only (Gotówka, no bank account)', () => {
+    const result = mergeStructuredIntoConfig({}, { paymentFormaPlatnosci: '1' });
+    expect(result.payment).toEqual({ formaPlatnosci: '1' });
+  });
+
+  it('assembles bankAccount-only when nrRb is set without a payment method', () => {
+    const result = mergeStructuredIntoConfig({}, { paymentBankAccountNrRb: '61109010140000000099999999' });
+    expect(result.payment).toEqual({ bankAccount: { nrRb: '61109010140000000099999999' } });
+  });
+
+  it('preserves untouched payment siblings on a single-field patch', () => {
+    const base = { payment: { formaPlatnosci: '6', paymentTermDays: 14 } };
+    const result = mergeStructuredIntoConfig(base, { paymentSkontoConditions: 'text', paymentSkontoAmount: '5%' });
+    expect(result.payment).toEqual({
+      formaPlatnosci: '6',
+      paymentTermDays: 14,
+      skonto: { conditions: 'text', amount: '5%' },
+    });
+  });
+
+  it('drops an emptied bankAccount object and an emptied payment object', () => {
+    const base = { payment: { bankAccount: { nrRb: '61109010140000000099999999' } } };
+    const result = mergeStructuredIntoConfig(base, { paymentBankAccountNrRb: '' });
+    expect('payment' in result).toBe(false);
+  });
+
+  it('does not persist an incomplete skonto (missing amount)', () => {
+    const result = mergeStructuredIntoConfig({}, { paymentSkontoConditions: 'text only' });
+    expect('payment' in result).toBe(false);
+  });
+
+  it('treats a non-numeric paymentTermDays as clearing the field', () => {
+    const base = { payment: { formaPlatnosci: '6', paymentTermDays: 14 } };
+    const result = mergeStructuredIntoConfig(base, { paymentTermDays: 'not-a-number' });
+    expect(result.payment).toEqual({ formaPlatnosci: '6' });
+  });
+
+  it('does not touch config.payment when no payment sub-field is on the patch', () => {
+    const base = { payment: { formaPlatnosci: '6' }, env: 'test' };
+    const result = mergeStructuredIntoConfig(base, { ksefEnvironment: 'demo' });
+    expect(result.payment).toEqual({ formaPlatnosci: '6' });
+    expect(result.env).toBe('demo');
+  });
+});

@@ -49,6 +49,13 @@ export type KsefEnvironment = (typeof KSEF_ENVIRONMENT_VALUES)[number];
 export const KSEF_AUTH_TYPE_VALUES = ['ksef-token', 'qualified-seal'] as const;
 export type KsefAuthType = (typeof KSEF_AUTH_TYPE_VALUES)[number];
 
+/**
+ * Mirrors `KsefFormaPlatnosciValues` (FA(3) `TFormaPlatnosci`, #1311) — the
+ * connection-level default payment method emitted into `Platnosc/FormaPlatnosci`.
+ */
+export const KSEF_FORMA_PLATNOSCI_VALUES = ['1', '2', '3', '4', '5', '6', '7'] as const;
+export type KsefFormaPlatnosci = (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number];
+
 // Polish NIP — 10 digits, optionally separated by dashes/spaces the operator
 // may paste. Stored normalised (digits only). Optional at the FE level because
 // the C2 config validator only requires `env`; the server is the strict gate.

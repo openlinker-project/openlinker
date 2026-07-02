@@ -395,6 +395,22 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
     - **Acceptance**: Doc updated; no code change.
     - **Dependencies**: Phase 2–4 complete (documents the shipped behavior, not the plan).
 
+### Phase 6: Smoke test + verification artifact
+
+**Goal**: Prove the shipped feature actually works end-to-end in a running app, and that the FE matches the design mockup — not just that unit tests pass in isolation. This is the same live-verification discipline used for the inFakt bank-account picker (#1308): start the real dev stack, drive the feature through the browser, and capture the evidence rather than asserting success from code review alone.
+
+**Steps**:
+
+15. **Live smoke test against a running KSeF connection**
+    - **Action**: Start the dev stack (`pnpm dev:stack:up`, `pnpm start:dev:api`, `pnpm start:dev:web`). Against a real (sandbox/test-environment) KSeF connection: (a) open the connection's edit screen and confirm the new payment fields render per Phase 5; (b) set a Przelew method + bank account + payment term + skonto, save, and confirm the connection config persists correctly; (c) switch to Gotówka and confirm the bank/term/skonto fields behave as designed (per the mockup's collapse behavior, if `InlineDisclosure` shipped) or simply remain independently editable (if not); (d) issue a real invoice on the payment-configured connection and pull the resulting FA(3) XML to confirm `Platnosc` is present with the expected sub-elements in the correct order; (e) issue an invoice on an unconfigured connection and confirm `Platnosc` is absent (regression check).
+    - **Acceptance**: All five checks pass against the running app, not just unit tests.
+    - **Dependencies**: Phases 1–5 complete and deployed to the local dev stack.
+
+16. **Produce a verification artifact with screenshots**
+    - **Action**: Capture screenshots of each state exercised in step 15 (edit-screen empty state, Przelew fully filled, Gotówka collapsed/independent state, the resulting invoice XML or its rendered detail view showing payment info) using the same throwaway-edit-then-revert Playwright screenshot pattern established for the inFakt artifact (`docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html`'s screenshots). Build an Artifact (HTML) placing each screenshot side-by-side with the corresponding mockup state, so a reviewer can visually confirm the shipped UI matches the design reference field-for-field (labels, order, description copy) rather than taking it on faith.
+    - **Acceptance**: Artifact published and linked from the PR description; every mockup state has a corresponding real-screenshot counterpart with no visible mismatch (or mismatches explicitly called out and justified).
+    - **Dependencies**: Step 15.
+
 ### Implementation Details
 
 **New Components**:
@@ -477,6 +493,8 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 - [ ] `FA3_IMPLEMENTATION_NOTES.md` updated.
 - [ ] Tests added per the strategy above.
 - [ ] No CORE ↔ Integration boundary violations.
+- [ ] Live smoke test against a running dev-stack KSeF connection performed (Phase 6, step 15).
+- [ ] Verification artifact with side-by-side mockup/real-screenshot comparisons published and linked from the PR (Phase 6, step 16).
 
 ---
 
@@ -494,3 +512,4 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 - [x] File structure matches standards.
 - [x] Plan is execution-ready.
 - [x] Plan is saved as markdown file.
+- [ ] Live smoke test + verification artifact produced before the PR is un-drafted/merged (Phase 6).

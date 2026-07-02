@@ -30,9 +30,11 @@ import {
   FA3_SYSTEM_CODE,
   FA3_WYBOR_NIE,
   FA3_WYBOR_TAK,
+  type Fa3BankAccount,
   type Fa3BuilderInput,
   type Fa3CorrectionContext,
   type Fa3Line,
+  type Fa3PaymentInput,
   type RawFa3Xml,
   type SellerProfile,
 } from '../domain/fa3-xml.types';
@@ -352,6 +354,57 @@ function adnotacjeNode(): XmlNodeObject {
 }
 
 /**
+ * The optional `Platnosc` block (XSD line 3281, a sibling of `FaWiersz` under
+ * `Fa` — NOT nested inside it). Child order is XSD-mandated:
+ * `TerminPlatnosci` → `FormaPlatnosci` → `RachunekBankowy` → `Skonto`
+ * (verified against the vendored FA(3) v1-0E XSD; NOT payment-method-first,
+ * despite that being the more intuitive reading order, #1311). Returns
+ * `undefined` when nothing is configured so `faNode` omits the element
+ * entirely rather than emit an empty one — existing connections keep
+ * byte-identical output.
+ */
+function platnoscNode(payment: Fa3PaymentInput | undefined): XmlNodeObject | undefined {
+  if (payment === undefined) {
+    return undefined;
+  }
+  const node: XmlNodeObject = {};
+  if (payment.paymentTermDays !== undefined) {
+    node.TerminPlatnosci = {
+      TerminOpis: {
+        Ilosc: payment.paymentTermDays,
+        Jednostka: 'dni',
+        ZdarzeniePoczatkowe: 'data wystawienia faktury',
+      },
+    };
+  }
+  if (payment.formaPlatnosci !== undefined) {
+    node.FormaPlatnosci = payment.formaPlatnosci;
+  }
+  if (payment.bankAccount !== undefined) {
+    node.RachunekBankowy = rachunekBankowyNode(payment.bankAccount);
+  }
+  if (payment.skonto !== undefined) {
+    node.Skonto = {
+      WarunkiSkonta: payment.skonto.conditions,
+      WysokoscSkonta: payment.skonto.amount,
+    };
+  }
+  return Object.keys(node).length > 0 ? node : undefined;
+}
+
+/** `Platnosc/RachunekBankowy` (`TRachunekBankowy`, XSD line 1507) — `NrRB` required, others optional. */
+function rachunekBankowyNode(bankAccount: Fa3BankAccount): XmlNodeObject {
+  const node: XmlNodeObject = { NrRB: bankAccount.nrRb };
+  if (bankAccount.bankName !== undefined) {
+    node.NazwaBanku = bankAccount.bankName;
+  }
+  if (bankAccount.swift !== undefined) {
+    node.SWIFT = bankAccount.swift;
+  }
+  return node;
+}
+
+/**
  * The invoice body (`Fa`). Elements are emitted in schema order (XSD line ~2439):
  * KodWaluty, P_1, P_2, the P_13_x/P_14_x VAT-band aggregates, P_15 grand total,
  * the required `Adnotacje`, the required `RodzajFaktury` (`VAT` for a plain sale,
@@ -395,6 +448,12 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     node.DaneFaKorygowanej = correctedInvoiceNode(correction);
   }
   node.FaWiersz = wiersze;
+  // `Platnosc` is a sibling of `FaWiersz` (XSD line 3281), emitted immediately
+  // after it — before the (currently unemitted) `WarunkiTransakcji`, #1311.
+  const platnosc = platnoscNode(input.payment);
+  if (platnosc !== undefined) {
+    node.Platnosc = platnosc;
+  }
   return node;
 }
 

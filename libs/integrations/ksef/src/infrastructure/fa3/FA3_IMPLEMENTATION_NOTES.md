@@ -42,6 +42,7 @@ RawFa3Xml (validated)
 | `Podmiot2` | Buyer identification choice (see Buyer ID resolution) |
 | `Fa` | `KodWaluty`, P_13/P_14/P_15 aggregates, `Adnotacje` (order ref) |
 | `FaWiersz` (×N) | One per line: name, quantity, unit price gross, `P_12` |
+| `Platnosc` (optional, #1311) | Connection-level payment defaults, sibling of `FaWiersz` (see Payment section below) |
 
 ## P_12 tax-rate mapping (all 10 values)
 
@@ -142,6 +143,37 @@ to the original — no KSeF string crosses into core.
 > Validation remains *structural* (well-formedness + the hand-written rule set);
 > MF example-pack compliance + live KSeF clearance stay deferred to C3+.
 > `KOR_ZAL`/`KOR_ROZ` (advance/settlement corrections) are a deferred follow-up.
+
+## Payment (`Platnosc` — #1311)
+
+`Platnosc` is a **sibling of `FaWiersz`** under `Fa` (XSD line 3281, `minOccurs="0"`)
+— NOT nested inside a line. It carries the connection's default payment method,
+bank account, payment term, and early-payment discount, resolved from
+`KsefConnectionConfig.payment` (`ksef-connection.types.ts`) — a plain,
+manually-entered per-connection config value. Unlike inFakt (#1303/#1308), KSeF
+has no live "list bank accounts" API, so there is no `BankAccountsReader`/
+`BankAccountDefaultSetter` capability here — the operator types the account in
+once and it is emitted as-is.
+
+`Platnosc` is emitted **only** when at least one sub-field is configured;
+otherwise it is omitted entirely (existing connections keep byte-identical
+output). The **XSD-mandated child order is not payment-method-first**:
+
+| Order | Element | Config source | Notes |
+|---|---|---|---|
+| 1 | `TerminPlatnosci/TerminOpis` | `payment.paymentTermDays` | `Ilosc` = days; `Jednostka` hardcoded to `'dni'`; `ZdarzeniePoczatkowe` hardcoded to `'data wystawienia faktury'` |
+| 2 | `FormaPlatnosci` | `payment.formaPlatnosci` (`TFormaPlatnosci`, `'1'`–`'7'`) | Gotówka/Karta/Bon/Czek/Kredyt/Przelew/Mobilna |
+| 3 | `RachunekBankowy` | `payment.bankAccount` | `NrRB` required if the sub-object is present at all; `NazwaBanku`/`SWIFT` optional |
+| 4 | `Skonto` | `payment.skonto` | `WarunkiSkonta` + `WysokoscSkonta`, both free text |
+
+Deliberately **out of scope** (schema supports them, no MVP need):
+`RachunekWlasnyBanku`/`OpisRachunku` (`TRachunekBankowy` sub-fields),
+`RachunekBankowyFaktora` (factoring accounts), and the per-invoice-fact fields
+`Zaplacono`/`DataZaplaty`/`ZnacznikZaplatyCzesciowej`/`ZaplataCzesciowa`/
+`LinkDoPlatnosci` (these describe a specific invoice's payment state — always
+blank for a new invoice — not a connection default). See
+[#1311](https://github.com/openlinker-project/openlinker/issues/1311) for the
+full field-scope audit and design mockup.
 
 ## Known limitations / deferred work
 

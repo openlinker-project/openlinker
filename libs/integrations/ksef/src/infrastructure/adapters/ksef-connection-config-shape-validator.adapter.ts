@@ -2,10 +2,13 @@
  * KSeF Connection Config Shape Validator
  *
  * Validates the non-secret config for a KSeF connection: a required `env`
- * selecting the target environment (`test` | `demo` | `prod`), plus an
- * optional `seller.defaultTaxRate` check (must be a known `FA3_TAX_RATE_MAP`
- * key when present, #1291) so a mistyped rate is rejected at connection-save
- * time instead of surfacing as `UnmappedTaxRateException` at issuance. The
+ * selecting the target environment (`test` | `demo` | `prod`), an optional
+ * `seller.defaultTaxRate` check (must be a known `FA3_TAX_RATE_MAP` key when
+ * present, #1291) so a mistyped rate is rejected at connection-save time
+ * instead of surfacing as `UnmappedTaxRateException` at issuance, and an
+ * optional `payment` check (#1311): `formaPlatnosci` must be a valid
+ * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty when
+ * `bankAccount` is set, `paymentTermDays` must be a non-negative integer. The
  * seller's tax identifier itself (`nip`/`name`/`address`) is intentionally
  * NOT validated here yet — a future pass tightens KSeF connection-shape
  * validation across all seller fields. Registered against
@@ -24,7 +27,7 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
-import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
+import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
 import { FA3_TAX_RATE_MAP } from '../fa3/domain/fa3-tax-rate.mapper';
 
 export class KsefConnectionConfigShapeValidatorAdapter
@@ -60,6 +63,42 @@ export class KsefConnectionConfigShapeValidatorAdapter
             message: `must be one of: ${Object.keys(FA3_TAX_RATE_MAP).join(', ')}`,
           });
         }
+      }
+    }
+
+    const payment = config.payment;
+    if (payment !== undefined && payment !== null && typeof payment === 'object') {
+      const p = payment as Record<string, unknown>;
+      if (p.formaPlatnosci !== undefined) {
+        if (
+          typeof p.formaPlatnosci !== 'string' ||
+          !(KsefFormaPlatnosciValues as readonly string[]).includes(p.formaPlatnosci)
+        ) {
+          issues.push({
+            path: 'payment.formaPlatnosci',
+            message: `must be one of: ${KsefFormaPlatnosciValues.join(', ')}`,
+          });
+        }
+      }
+      if (p.bankAccount !== undefined && p.bankAccount !== null && typeof p.bankAccount === 'object') {
+        const nrRb = (p.bankAccount as Record<string, unknown>).nrRb;
+        if (typeof nrRb !== 'string' || nrRb.trim().length === 0) {
+          issues.push({
+            path: 'payment.bankAccount.nrRb',
+            message: 'must be a non-empty string when bankAccount is set',
+          });
+        }
+      }
+      if (
+        p.paymentTermDays !== undefined &&
+        (typeof p.paymentTermDays !== 'number' ||
+          !Number.isInteger(p.paymentTermDays) ||
+          p.paymentTermDays < 0)
+      ) {
+        issues.push({
+          path: 'payment.paymentTermDays',
+          message: 'must be a non-negative integer',
+        });
       }
     }
 

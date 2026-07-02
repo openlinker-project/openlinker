@@ -31,12 +31,13 @@ import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
-import type { SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
+import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
   KsefConnectionConfig,
   KsefCredentials,
   KsefEnvironment,
+  KsefPaymentConfig,
   KsefSellerConfig,
 } from '../../domain/types/ksef-connection.types';
 import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
@@ -65,6 +66,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
 
     const seller = this.resolveSeller(connection);
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
+    const payment = this.resolvePayment(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -86,6 +88,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
+        payment,
       ),
     };
   }
@@ -150,6 +153,41 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
   private resolveDefaultTaxRate(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
     return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
+  }
+
+  /**
+   * Resolve the connection-level default payment info (#1311) into the
+   * builder's neutral `Fa3PaymentInput` shape. Unlike `resolveSeller`, an
+   * absent/empty `config.payment` is a valid, common state — this returns
+   * `undefined` rather than throwing, so the builder omits `Platnosc`
+   * entirely. Defensive against a malformed `bankAccount` (empty `nrRb`)
+   * slipping through pre-validator connections, mirroring
+   * `resolveDefaultTaxRate`'s defensive posture.
+   */
+  private resolvePayment(connection: Connection): Fa3PaymentInput | undefined {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const payment: KsefPaymentConfig | undefined = config?.payment;
+    if (!payment) {
+      return undefined;
+    }
+    const result: Fa3PaymentInput = {};
+    if (payment.formaPlatnosci !== undefined) {
+      result.formaPlatnosci = payment.formaPlatnosci;
+    }
+    if (payment.bankAccount?.nrRb) {
+      result.bankAccount = {
+        nrRb: payment.bankAccount.nrRb,
+        ...(payment.bankAccount.bankName ? { bankName: payment.bankAccount.bankName } : {}),
+        ...(payment.bankAccount.swift ? { swift: payment.bankAccount.swift } : {}),
+      };
+    }
+    if (payment.paymentTermDays !== undefined) {
+      result.paymentTermDays = payment.paymentTermDays;
+    }
+    if (payment.skonto?.conditions && payment.skonto.amount) {
+      result.skonto = payment.skonto;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
   }
 
   private async resolveCredentials(

@@ -4,6 +4,8 @@ import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { normalizeNip } from './ksef-nip';
 import { applyKsefSellerToConfig } from './ksef-seller-config';
+import { applyKsefPaymentToConfig } from './ksef-payment-config';
+import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -268,6 +270,24 @@ export const editConnectionSchema = z
       ])
       .optional(),
     contextIdentifier: z.union([z.string().trim().max(64), z.literal('')]).optional(),
+    // KSeF connection-level payment defaults → nested `config.payment.*` (#1311).
+    // Manually-entered (no live bank-accounts API, unlike inFakt) — see
+    // `ksef-payment-config.ts` for the assembly shape. All optional client-side
+    // for incremental save; the shape validator is the strict gate.
+    paymentFormaPlatnosci: z
+      .union([z.enum(KSEF_FORMA_PLATNOSCI_VALUES), z.literal('')])
+      .optional(),
+    paymentBankAccountNrRb: z.union([z.string().trim().max(34), z.literal('')]).optional(),
+    paymentBankAccountBankName: z.union([z.string().trim().max(256), z.literal('')]).optional(),
+    paymentBankAccountSwift: z.union([z.string().trim().max(16), z.literal('')]).optional(),
+    paymentTermDays: z
+      .union([
+        z.string().trim().regex(/^\d+$/, 'Payment term must be a non-negative whole number of days.'),
+        z.literal(''),
+      ])
+      .optional(),
+    paymentSkontoConditions: z.union([z.string().trim().max(512), z.literal('')]).optional(),
+    paymentSkontoAmount: z.union([z.string().trim().max(64), z.literal('')]).optional(),
     // InPost-only structured fields (#771). `inpostEnvironment` → flat
     // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
     // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
@@ -384,6 +404,21 @@ export interface StructuredConfigPatch {
   sellerCountryIso2?: string;
   /** KSeF context identifier — `config.contextIdentifier` (#1152). Empty clears. */
   contextIdentifier?: string;
+  /**
+   * KSeF connection-level payment defaults (#1311) — nested `config.payment.*`,
+   * assembled via `applyKsefPaymentToConfig` (`ksef-payment-config.ts`). Manually
+   * entered (no live bank-accounts API, unlike inFakt's #1303/#1308) — the
+   * operator types the method, bank account, term, and skonto in once. Empty
+   * string clears a leaf; the merge helper drops an emptied `bankAccount` /
+   * `skonto` / `payment` object so a hollow config is never persisted.
+   */
+  paymentFormaPlatnosci?: string;
+  paymentBankAccountNrRb?: string;
+  paymentBankAccountBankName?: string;
+  paymentBankAccountSwift?: string;
+  paymentTermDays?: string;
+  paymentSkontoConditions?: string;
+  paymentSkontoAmount?: string;
   /** InPost environment → flat `config.environment` (#771). Empty string clears the key. */
   inpostEnvironment?: 'sandbox' | 'production' | '';
   /** InPost organization id → flat `config.organizationId` (#771). Empty clears. */
@@ -553,6 +588,12 @@ export function mergeStructuredIntoConfig(
   const withSeller = applyKsefSellerToConfig(next, structured);
   if ('seller' in withSeller) next.seller = withSeller.seller;
   else delete next.seller;
+  // Payment assembly (#1311) follows the identical seam as seller assembly —
+  // `applyKsefPaymentToConfig` returns a new config; copy its payment
+  // resolution back onto `next` so non-payment keys are preserved.
+  const withPayment = applyKsefPaymentToConfig(next, structured);
+  if ('payment' in withPayment) next.payment = withPayment.payment;
+  else delete next.payment;
   if (structured.contextIdentifier !== undefined) {
     if (structured.contextIdentifier.length === 0) {
       delete next.contextIdentifier;

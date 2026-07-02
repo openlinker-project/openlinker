@@ -121,4 +121,74 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       });
     });
   });
+
+  describe('payment (#1311)', () => {
+    it('should resolve when payment is absent', async () => {
+      await expect(validator.validate({ env: 'test' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve for a fully-configured payment', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          payment: {
+            formaPlatnosci: '6',
+            bankAccount: { nrRb: '61109010140000000099999999' },
+            paymentTermDays: 14,
+          },
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject an unknown formaPlatnosci value', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { formaPlatnosci: '9' } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a non-string formaPlatnosci', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { formaPlatnosci: 6 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject an empty bankAccount.nrRb', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { bankAccount: { nrRb: '' } } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a whitespace-only bankAccount.nrRb', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { bankAccount: { nrRb: '   ' } } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a negative paymentTermDays', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { paymentTermDays: -1 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject a non-integer paymentTermDays', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { paymentTermDays: 14.5 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should accept paymentTermDays of 0', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { paymentTermDays: 0 } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should carry a flat { path, message } issue for payment.formaPlatnosci', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { formaPlatnosci: '9' } }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [{ path: 'payment.formaPlatnosci', message: expect.stringContaining('must be one of') }],
+      });
+    });
+  });
 });
