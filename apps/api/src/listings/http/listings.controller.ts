@@ -20,6 +20,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UnprocessableEntityException,
@@ -147,7 +148,9 @@ export class ListingsController {
   @ApiResponse({ status: 200, description: 'Offer mapping detail', type: OfferMappingResponseDto })
   @ApiResponse({ status: 404, description: 'Offer mapping not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getOfferMapping(@Param('id') id: string): Promise<OfferMappingResponseDto> {
+  async getOfferMapping(
+    @Param('id', new ParseUUIDPipe()) id: string
+  ): Promise<OfferMappingResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
       throw new NotFoundException(`Offer mapping not found: ${id}`);
@@ -202,7 +205,9 @@ export class ListingsController {
     status: 422,
     description: 'Adapter for this connection does not implement `OfferReader`',
   })
-  async getMarketplaceOffer(@Param('id') id: string): Promise<MarketplaceOfferResponseDto> {
+  async getMarketplaceOffer(
+    @Param('id', new ParseUUIDPipe()) id: string
+  ): Promise<MarketplaceOfferResponseDto> {
     const mapping = await this.offerMappingRepository.findById(id);
     if (!mapping) {
       throw new NotFoundException(`Offer mapping not found: ${id}`);
@@ -369,7 +374,7 @@ export class ListingsController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOfferCreationStatus(
     @Param('connectionId') connectionId: string,
-    @Param('offerCreationRecordId') offerCreationRecordId: string
+    @Param('offerCreationRecordId', new ParseUUIDPipe()) offerCreationRecordId: string
   ): Promise<OfferCreationStatusResponseDto> {
     const record = await this.offerCreationRecords.findById(offerCreationRecordId);
     if (!record || record.connectionId !== connectionId) {
