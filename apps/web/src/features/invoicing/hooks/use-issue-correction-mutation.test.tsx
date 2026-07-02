@@ -34,7 +34,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
 
 describe('useIssueCorrectionMutation', () => {
   it('calls issueCorrection and resolves to the corrected InvoiceRecord', async () => {
-    const correctionRecord = makeInvoiceRecord({ id: 'ol_invoice_cor', documentType: 'correction' });
+    const correctionRecord = makeInvoiceRecord({ id: 'ol_invoice_cor', documentType: 'corrected' });
     const issueCorrection = vi.fn().mockResolvedValue(correctionRecord);
 
     let capturedMutation: ReturnType<typeof useIssueCorrectionMutation> | undefined;

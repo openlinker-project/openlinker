@@ -43,6 +43,7 @@
   "devDependencies": {
     "@jest/test-sequencer": "29.7.0",
     "@nestjs/testing": "10.3.0",
+    "@openlinker/test-kit": "workspace:*",
     "@testcontainers/postgresql": "^10.9.0",
     "@testcontainers/redis": "^10.9.0",
     "@types/jest": "29.5.12",

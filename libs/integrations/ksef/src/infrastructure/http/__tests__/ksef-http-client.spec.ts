@@ -313,6 +313,36 @@ describe('KsefHttpClient', () => {
       expect(Array.from(res.data)).toEqual(Array.from(pdfBytes));
     });
 
+    it('should reject a binary response whose Content-Length exceeds the cap before reading', async () => {
+      const oversizedLength = 10 * 1024 * 1024 + 1;
+      const arrayBuffer = jest.fn();
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf', 'content-length': String(oversizedLength) }),
+        arrayBuffer,
+      } as unknown as Response);
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+
+      await expect(client.getExpectingBinary('/sessions/REF/upo')).rejects.toBeInstanceOf(
+        KsefApiException,
+      );
+      // The body is never read when Content-Length already exceeds the cap.
+      expect(arrayBuffer).not.toHaveBeenCalled();
+    });
+
+    it('should reject a binary response whose actual byte length exceeds the cap when Content-Length is absent', async () => {
+      const oversized = new Uint8Array(10 * 1024 * 1024 + 1);
+      fetchMock.mockResolvedValue(
+        new Response(oversized, { status: 200, headers: { 'content-type': 'application/pdf' } }),
+      );
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
+
+      await expect(client.getExpectingBinary('/sessions/REF/upo')).rejects.toBeInstanceOf(
+        KsefApiException,
+      );
+    });
+
     it('should throw KsefApiException on a non-JSON success body for a JSON call', async () => {
       fetchMock.mockResolvedValue(
         new Response('not-json{', { status: 200, headers: { 'content-type': 'application/json' } }),

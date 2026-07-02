@@ -30,6 +30,7 @@ import {
   Wait,
 } from 'testcontainers';
 import { MySqlContainer, type StartedMySqlContainer } from '@testcontainers/mysql';
+import { ciRunIdLabels } from '@openlinker/test-kit';
 
 export interface WooCommerceTestContainer {
   /** http://localhost:{random-port} */
@@ -66,12 +67,14 @@ export async function startWooCommerceContainer(): Promise<WooCommerceTestContai
       .withDatabase('woocommerce')
       .withUsername('woocommerce')
       .withUserPassword('woocommerce')
+      .withLabels(ciRunIdLabels())
       .start();
 
     console.log('[WC] MySQL ready. Starting WordPress+WooCommerce (warm: ~2min, cold: ~5min)...');
 
     wordpress = await new GenericContainer('bitnamilegacy/wordpress:6.7.1')
       .withNetwork(startedNetwork)
+      .withLabels(ciRunIdLabels())
       .withEnvironment({
         WORDPRESS_DATABASE_HOST: 'woocommerce-mysql-tc',
         WORDPRESS_DATABASE_PORT_NUMBER: '3306',

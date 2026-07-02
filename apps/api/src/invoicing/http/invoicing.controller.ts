@@ -6,9 +6,21 @@
  * buyer/lines); maps domain/adapter exceptions to operator-readable HTTP codes
  * without ever leaking internal/PII diagnostics.
  *
+ * Also exposes the issued-document content snapshot
+ * (`GET /invoices/:invoiceId/content`, §7.3 W2).
+ *
+ * Route ordering: the two-segment `/:invoiceId/upo` + `/:invoiceId/content` routes
+ * are declared before the single-segment `/:invoiceId` so the more-specific
+ * sub-resource paths always match first.
+ *
  * THIN controller: reaches the orders context through `IOrderRecordService` and
  * the invoice projection through `IInvoiceService` — NEVER a repository port
  * (per architecture-overview.md § Cross-context dependencies in core).
+ *
+ * Also exposes the UPO download endpoint (#1224, epic #1142 C15): neutral by
+ * design (ADR-026) — resolves the connection's `Invoicing` adapter, narrows to
+ * the `RegulatoryDocumentReader` sub-capability, and streams back the document
+ * blob without any KSeF/regime vocabulary.
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
  * we declare only `@Roles('admin')` + `@ApiBearerAuth()` — never a redundant
@@ -23,6 +35,7 @@ import {
   Body,
   Query,
   Param,
+  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
   Inject,
@@ -30,11 +43,20 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  AdapterNotFoundException,
+  CapabilityNotSupportedException,
+  CapabilityNotEnabledException,
+} from '@openlinker/core/integrations';
 import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
@@ -42,12 +64,19 @@ import {
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  RegulatoryDocumentKindValues,
+  UnsupportedRegulatoryDocumentKindError,
+  isRegulatoryDocumentReader,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
+  OriginalDocumentSnapshot,
   TaxIdentifier,
+  InvoicingPort,
+  RegulatoryDocumentKind,
+  StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
@@ -56,20 +85,34 @@ import {
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
-import {
-  AdapterNotFoundException,
-  CapabilityNotSupportedException,
-  CapabilityNotEnabledException,
-} from '@openlinker/core/integrations';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
+import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
+
+/** MIME → download-filename extension; the UPO is labelled by its real content type. */
+const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
+  'application/pdf': 'pdf',
+  'application/xml': 'xml',
+  'text/xml': 'xml',
+  'text/html': 'html',
+};
+
+function extensionForContentType(contentType: string): string {
+  const mime = contentType.toLowerCase().split(';', 1)[0]?.trim() ?? '';
+  return EXTENSION_BY_CONTENT_TYPE[mime] ?? 'bin';
+}
+
+/** Shared `:invoiceId` param pipe — 404 (not 400) on a malformed UUID, consistently across every route. */
+function invoiceIdPipe(): ParseUUIDPipe {
+  return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
+}
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -83,6 +126,8 @@ export class InvoicingController {
     private readonly invoiceService: IInvoiceService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
 
   @Post('invoices')
@@ -299,7 +344,7 @@ export class InvoicingController {
   @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async issueCorrection(
-    @Param('invoiceId') invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Body() dto: IssueCorrectionRequestDto,
   ): Promise<InvoiceRecordResponseDto> {
     const original = await this.invoiceService.getInvoiceById(invoiceId);
@@ -311,9 +356,38 @@ export class InvoicingController {
         `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
       );
     }
+    if (!original.providerInvoiceNumber || !original.issuedAt) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet`,
+      );
+    }
 
     let issued: InvoiceRecord;
     try {
+      // Some adapters (KSeF's FA(3) KOR) cannot correct via a delta — they must
+      // resubmit a COMPLETE corrected document. Rebuild the original document's
+      // buyer/currency/lines from the order snapshot, exactly like a keyless
+      // re-issue does in `retryOne` — the buyer tax id is not persisted on
+      // `InvoiceRecord`, so it is rebuilt as `buyerTaxId: null`, same accepted
+      // limitation (see `OriginalDocumentSnapshot`'s doc comment for the
+      // line-fidelity caveat too). Built UNCONDITIONALLY whenever the backing
+      // order is still available — regardless of whether the resolved
+      // connection's adapter actually needs it — rather than resolving the
+      // adapter here just to branch on it; adapters that only need deltas
+      // (Subiekt) simply ignore the field. The extra order fetch is cheap
+      // relative to the network round-trip `issueCorrection` makes next.
+      const orderRecord = await this.orders.getOrderRecord(original.orderId);
+      const originalDocument = orderRecord
+        ? this.buildOriginalDocumentSnapshot({
+            orderRecord,
+            connectionId: original.connectionId,
+            documentType: original.documentType,
+            clearanceReference: original.clearanceReference,
+            documentNumber: original.providerInvoiceNumber,
+            issuedAt: original.issuedAt,
+          })
+        : undefined;
+
       issued = await this.invoiceService.issueCorrection({
         connectionId: original.connectionId,
         orderId: original.orderId,
@@ -326,6 +400,7 @@ export class InvoicingController {
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
+        originalDocument,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -435,6 +510,55 @@ export class InvoicingController {
   }
 
   /**
+   * ISO 8601 calendar date only (`YYYY-MM-DD`). Anchored to UTC (matches the
+   * adapter-side `toIsoDate` precedent in `KsefInvoicingAdapter`) — a `Date`
+   * close to local midnight in a UTC+ timezone can report the previous day's
+   * calendar date. Acceptable here since the value only threads through as an
+   * opaque correction-linkage field, never rendered to an operator directly.
+   */
+  private toIsoDateOnly(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Rebuild the original document's buyer/currency/lines from the order
+   * snapshot for adapters (e.g. KSeF) that must resubmit a COMPLETE corrected
+   * document rather than apply a delta — mirrors `retryOne`'s keyless-re-issue
+   * reconstruction. The buyer tax id is not persisted on `InvoiceRecord`, so it
+   * is rebuilt as `buyerTaxId: null`, the same accepted limitation as re-issue.
+   * Takes a single options object (rather than positional params) so call
+   * sites can't accidentally transpose two same-typed fields (e.g.
+   * `documentNumber` / `clearanceReference`, both nullable strings).
+   */
+  private buildOriginalDocumentSnapshot(input: {
+    orderRecord: OrderRecord;
+    connectionId: string;
+    documentType: string;
+    clearanceReference: string | null;
+    documentNumber: string;
+    issuedAt: Date;
+  }): OriginalDocumentSnapshot {
+    const { orderRecord, connectionId, documentType, clearanceReference, documentNumber, issuedAt } =
+      input;
+    const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
+    const issueCmd = toIssueInvoiceCommand({
+      order,
+      connectionId,
+      buyerTaxId: null,
+      documentType: documentType.length > 0 ? documentType : undefined,
+    });
+    return {
+      buyer: issueCmd.buyer,
+      currency: issueCmd.currency,
+      documentType: issueCmd.documentType ?? 'invoice',
+      lines: issueCmd.lines,
+      clearanceReference,
+      documentNumber,
+      issueDate: this.toIsoDateOnly(issuedAt),
+    };
+  }
+
+  /**
    * Map issuance errors to operator-readable HTTP codes WITHOUT leaking
    * provider/PII diagnostics:
    *   - mapper pre-issue errors (bad buyer / net pricing) → 400 (client-fixable);
@@ -509,5 +633,226 @@ export class InvoicingController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
+  }
+
+  @Get('invoices/:invoiceId/content')
+  @ApiOperation({
+    summary: 'Get the issued-document content snapshot for an invoice',
+    description:
+      'Returns the neutral issued-document content (seller/buyer/lines/VAT/totals, §7.3) captured ' +
+      'at issue time. 404 when the invoice id is unknown; 409 when the invoice carries no content ' +
+      'snapshot yet (e.g. still pending, or issued by an adapter that did not capture content).',
+  })
+  @ApiResponse({ status: 200, description: 'Issued-document content', type: IssuedDocumentContentDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'No content snapshot available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getContent(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<IssuedDocumentContentDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!record.documentContent) {
+      throw new ConflictException(
+        `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`,
+      );
+    }
+    return IssuedDocumentContentDto.fromDomain(record.documentContent);
+  }
+
+  @Get('invoices/:invoiceId/document')
+  @ApiOperation({
+    summary: 'Download a regulatory document for an invoice by neutral kind',
+    description:
+      'Returns the neutral document bytes for an issued invoice by `kind`: `source` (the persisted ' +
+      'machine-readable source document — PL/KSeF: the FA(3) XML — served from the snapshot), ' +
+      '`rendered` (a human-readable rendering, when the provider produces one server-side), or ' +
+      '`confirmation` (the authority confirmation document — PL/KSeF: the UPO — equivalent to the ' +
+      'dedicated `/upo` route). `kind` defaults to `source`. 400 on an unknown kind; 404 when the ' +
+      'invoice id is unknown; 409 when the requested document is not available (not issued, no ' +
+      'snapshot, or the provider cannot produce it).',
+  })
+  @ApiQuery({ name: 'kind', enum: ['source', 'rendered', 'confirmation'], required: false })
+  @ApiProduces('application/xml', 'application/pdf', 'text/html')
+  @ApiResponse({ status: 200, description: 'Document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 400, description: 'Unknown document kind' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'Document not available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async downloadDocument(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Res() res: Response,
+    @Query('kind') kindParam?: string,
+  ): Promise<void> {
+    const kind = this.parseDocumentKind(kindParam);
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+
+    if (kind === 'source') {
+      // The source document is core-persisted (snapshotted at issue) — served
+      // straight from the record, no provider round-trip.
+      if (!record.sourceDocument) {
+        throw new ConflictException(
+          `No source document is available for invoice ${invoiceId} (status ${record.status})`,
+        );
+      }
+      this.streamStoredDocument(res, invoiceId, kind, record.sourceDocument);
+      return;
+    }
+
+    // `rendered` (and any future provider-served kind) goes through the adapter.
+    if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
+      throw new ConflictException(
+        `Document is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+      );
+    }
+    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+      record.connectionId,
+      'Invoicing',
+    );
+    if (!isRegulatoryDocumentReader(adapter)) {
+      throw new ConflictException(
+        `Invoice ${invoiceId} provider does not expose downloadable documents`,
+      );
+    }
+    try {
+      const document = await adapter.getRegulatoryDocument(record, kind);
+      this.streamBinaryDocument(res, invoiceId, kind, document.contentType, Buffer.from(document.content));
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} provider cannot produce a '${kind}' document`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  @Get('invoices/:invoiceId/upo')
+  @ApiOperation({
+    summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
+    description:
+      'Returns the neutral confirmation document bytes (XML/PDF, provider-dependent) for an ' +
+      'issued + cleared invoice record. 404 when the invoice id is unknown; 409 when the document ' +
+      'is not yet available (record not cleared, or its provider cannot return a confirmation).',
+  })
+  @ApiProduces('application/xml', 'application/pdf')
+  @ApiResponse({ status: 200, description: 'UPO document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'UPO not yet available for this invoice' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async downloadUpo(@Param('invoiceId', invoiceIdPipe()) invoiceId: string, @Res() res: Response): Promise<void> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
+      throw new ConflictException(
+        `UPO is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+      );
+    }
+
+    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+      record.connectionId,
+      'Invoicing',
+    );
+    if (!isRegulatoryDocumentReader(adapter)) {
+      throw new ConflictException(
+        `Invoice ${invoiceId} provider does not expose a confirmation document`,
+      );
+    }
+
+    // `@Res()` disables Nest's serializer (binary, not JSON). The adapter call
+    // runs FIRST so a thrown error still routes through the exception layer
+    // before any byte is written; `res.*` only ever runs on success.
+    try {
+      const document = await adapter.getRegulatoryDocument(record, 'confirmation');
+      this.streamBinaryDocument(res, invoiceId, 'confirmation', document.contentType, Buffer.from(document.content));
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} provider cannot produce a confirmation document`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  // Declared last: must not shadow the more specific
+  // `invoices/:invoiceId/upo` + `invoices/:invoiceId/content` sub-resources above.
+  @Get('invoices/:invoiceId')
+  @ApiOperation({
+    summary: 'Get an invoice record by id',
+    description:
+      'Returns the neutral full invoice record (status, provider ids, clearance, timestamps). ' +
+      '404 when the invoice id is unknown. The rich issued-document content lives behind ' +
+      '`GET /invoices/:invoiceId/content`.',
+  })
+  @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getInvoice(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<InvoiceRecordResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    return InvoiceRecordResponseDto.fromDomain(record);
+  }
+
+  /**
+   * Narrow the `?kind=` query to a `RegulatoryDocumentKind`, defaulting to
+   * `source`. `confirmation` is also reachable here (in addition to its
+   * dedicated `/upo` alias) — any of the three neutral kinds is valid.
+   */
+  private parseDocumentKind(raw: string | undefined): RegulatoryDocumentKind {
+    const value = raw ?? 'source';
+    if ((RegulatoryDocumentKindValues as readonly string[]).includes(value)) {
+      return value as RegulatoryDocumentKind;
+    }
+    throw new BadRequestException(
+      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.join(', ')}`,
+    );
+  }
+
+  /** Stream a core-persisted {@link StoredDocument} (base64-decoded) as an attachment. */
+  private streamStoredDocument(
+    res: Response,
+    invoiceId: string,
+    kind: RegulatoryDocumentKind,
+    document: StoredDocument,
+  ): void {
+    this.streamBinaryDocument(
+      res,
+      invoiceId,
+      kind,
+      document.contentType,
+      Buffer.from(document.contentBase64, 'base64'),
+    );
+  }
+
+  /**
+   * Set the binary download headers and send. `@Res()` disables Nest's JSON
+   * serializer; callers must run any throwing work BEFORE this so errors still
+   * route through the exception layer before a byte is written.
+   */
+  private streamBinaryDocument(
+    res: Response,
+    invoiceId: string,
+    kind: RegulatoryDocumentKind,
+    contentType: string,
+    body: Buffer,
+  ): void {
+    if (body.length > 20 * 1024 * 1024) {
+      throw new ConflictException(
+        `Document for invoice ${invoiceId} exceeds the 20 MB size limit (${body.length} bytes)`,
+      );
+    }
+    const safeContentType = contentType.length > 0 ? contentType : 'application/octet-stream';
+    const ext = extensionForContentType(safeContentType);
+    res.setHeader('Content-Type', safeContentType);
+    res.setHeader('Content-Disposition', `attachment; filename="ol-${kind}-${invoiceId}.${ext}"`);
+    res.send(body);
   }
 }

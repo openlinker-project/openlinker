@@ -25,6 +25,8 @@ import {
 import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
+  IssuedDocumentContent,
+  StoredDocument,
 } from '../../../domain/types/invoicing.types';
 import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
@@ -130,6 +132,22 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'boolean', default: false })
   hasBuyerTaxId!: boolean;
+
+  /**
+   * Neutral issued-document content snapshot (§7.3), captured at issue time.
+   * `null` until a document is issued (or when the adapter surfaces no content).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  documentContent!: IssuedDocumentContent | null;
+
+  /**
+   * Neutral persisted source document (PL/KSeF: the FA(3) XML) — provider MIME +
+   * base64 bytes — captured at issue time so `GET .../document?kind=source`
+   * re-serves it without a provider round-trip. `null` until issued (or when the
+   * adapter surfaces no source document).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  sourceDocument!: StoredDocument | null;
 
   @CreateDateColumn()
   createdAt!: Date;

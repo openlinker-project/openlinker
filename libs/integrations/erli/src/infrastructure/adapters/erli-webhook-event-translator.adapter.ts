@@ -1,10 +1,13 @@
 /**
  * Erli Webhook Event Translator Adapter (#996 / ADR-015)
  *
- * Decodes Erli's id-only inbound webhook events into neutral
- * `CanonicalInboundEvent`s. Pure transform — no I/O, no connection state, no DI.
- * Erli emits these order event types (#992-PROVISIONAL, isolated in
- * `erli-webhook.types.ts`):
+ * Decodes Erli's inbound webhook events into neutral `CanonicalInboundEvent`s.
+ * Pure transform — no I/O, no connection state, no DI. `ErliInboundWebhookDecoderAdapter`
+ * (#1081, native decoder — confirmed against the live sandbox, #992) always emits
+ * `orderStatusChanged`, since the real body carries no event-type discriminator to tell
+ * `orderCreated` apart, mapped below to canonical `updated`. The `orderCreated`
+ * branch is kept for defensiveness / forward-compat if a future decoder
+ * revision recovers a real discriminator — it is NOT reachable from today's decoder:
  *   - `orderCreated`       → canonical `{ domain: 'order', eventType: 'created' }`
  *   - `orderStatusChanged` → canonical `{ domain: 'order', eventType: 'updated' }`
  *
@@ -14,12 +17,12 @@
  * it NEVER throws (ADR-015 invariant 5).
  *
  * The order id is narrowed DEFENSIVELY from `unknown`: it originates from an
- * untrusted webhook body (especially in the future native-decoder path, the
- * load-bearing #992 follow-up), so anything that is not a non-empty string
- * yields `null` rather than a malformed event.
+ * untrusted webhook body, so anything that is not a non-empty string yields
+ * `null` rather than a malformed event.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link WebhookEventTranslatorPort} for the port interface
+ * @see {@link ErliInboundWebhookDecoderAdapter} for the decoder this translator consumes
  */
 import type { InboundWebhookEvent } from '@openlinker/core/events';
 import type {

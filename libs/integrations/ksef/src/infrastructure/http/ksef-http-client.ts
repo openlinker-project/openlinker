@@ -58,6 +58,14 @@ const DEFAULT_RETRY_CONFIG: KsefRetryConfig = {
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Hard ceiling on a binary response body (UPO confirmation documents). Caps both
+ * the advertised `Content-Length` and the actually-read byte length so a missing
+ * or mendacious header can't drive an unbounded `arrayBuffer()` read into memory.
+ * 10 MB comfortably exceeds any real UPO (XML/PDF) while bounding the blast radius.
+ */
+const MAX_BINARY_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+/**
  * Lazily runs the handshake (first authenticated request) and rotates the token
  * (proactive + reactive). Both callbacks are wired by the factory.
  */
@@ -96,6 +104,19 @@ export class KsefHttpClient implements IKsefHttpClient {
 
   async get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>> {
     return this.request<T>('GET', path, undefined, options, true);
+  }
+
+  async getExpectingBinary(
+    path: string,
+    options?: KsefHttpRequestOptions,
+  ): Promise<KsefBinaryResponse> {
+    const response = await this.request<Uint8Array>('GET', path, undefined, options, true, true);
+    return {
+      data: response.data,
+      contentType: response.headers['content-type'] ?? '',
+      status: response.status,
+      headers: response.headers,
+    };
   }
 
   async post<T = unknown>(
@@ -261,7 +282,16 @@ export class KsefHttpClient implements IKsefHttpClient {
       }
 
       if (expectBinary) {
-        const bytes = new Uint8Array(await response.arrayBuffer());
+        const advertised = Number(responseHeaders['content-length']);
+        if (Number.isFinite(advertised) && advertised > MAX_BINARY_RESPONSE_BYTES) {
+          throw new KsefApiException(
+            `KSeF binary response too large: ${advertised} bytes exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
+            response.status,
+            undefined,
+            url.toString(),
+          );
+        }
+        const bytes = await this.readBinaryBodyCapped(response, url.toString());
         return { data: bytes as unknown as T, status: response.status, headers: responseHeaders };
       }
 
@@ -297,6 +327,47 @@ export class KsefHttpClient implements IKsefHttpClient {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * Read a binary response body via the streaming reader, enforcing
+   * `MAX_BINARY_RESPONSE_BYTES` on the RUNNING total as chunks arrive. Closes
+   * the OOM vector the `Content-Length` pre-check leaves open when the header
+   * is absent or understates the true body size: the stream is cancelled the
+   * moment the cap is crossed, so an oversized body is never fully buffered.
+   */
+  private async readBinaryBodyCapped(response: Response, url: string): Promise<Uint8Array> {
+    const body = response.body;
+    if (!body) {
+      return new Uint8Array(0);
+    }
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      total += value.byteLength;
+      if (total > MAX_BINARY_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new KsefApiException(
+          `KSeF binary response too large: exceeds the ${MAX_BINARY_RESPONSE_BYTES}-byte cap`,
+          response.status,
+          undefined,
+          url,
+        );
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
 
   /**

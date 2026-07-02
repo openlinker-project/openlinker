@@ -25,12 +25,26 @@ import type {
   KsefHttpResponse,
 } from './ksef-http-client.types';
 
+export type { KsefBinaryResponse };
+
 export interface IKsefHttpClient {
   /**
    * GET — idempotent; transient `5xx`/network failures and `429` (with
    * `Retry-After` backoff) are retried. `4xx` (other than auth) fails fast.
    */
   get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>>;
+
+  /**
+   * GET but read the SUCCESS response as raw bytes (e.g. a UPO confirmation
+   * document). Same idempotent transient-retry policy as `get`; error responses
+   * are still parsed as the JSON KSeF error envelope through the shared error
+   * path. `path` may be a relative KSeF path or an absolute URL the status read
+   * already handed back (the client resolves both against its base).
+   */
+  getExpectingBinary(
+    path: string,
+    options?: KsefHttpRequestOptions,
+  ): Promise<KsefBinaryResponse>;
 
   /**
    * POST — non-idempotent by default: a `5xx`/network failure fails fast unless

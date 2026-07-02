@@ -8,14 +8,46 @@
  *
  * @module apps/api/src/invoicing/http/dto
  */
-import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, Min, ArrayMinSize } from 'class-validator';
+import type {
+  ValidatorConstraintInterface,
+  ValidationArguments} from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  Min,
+  ArrayMinSize,
+  Validate,
+  ValidatorConstraint
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/**
+ * Rejects a correction line that changes neither quantity nor price — a no-op
+ * row would be silently dropped as a KOR line with nothing to correct.
+ * Mirrors the invariant documented on {@link CorrectionLine} in
+ * `libs/core/src/invoicing/domain/types/invoicing.types.ts`.
+ */
+@ValidatorConstraint({ name: 'hasCorrectionDelta', async: false })
+class HasCorrectionDeltaConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    const line = args.object as CorrectionLineDto;
+    return line.newQuantity !== undefined || line.newUnitPriceGross !== undefined;
+  }
+
+  defaultMessage(): string {
+    return 'Each correction line must specify newQuantity and/or newUnitPriceGross';
+  }
+}
 
 export class CorrectionLineDto {
   @ApiProperty({ description: '1-based line number of the original invoice line to correct.' })
   @IsNumber()
   @Min(1)
+  @Validate(HasCorrectionDeltaConstraint)
   originalLineNumber!: number;
 
   @ApiPropertyOptional({ description: 'New quantity (post-correction). Omit to leave quantity unchanged.' })

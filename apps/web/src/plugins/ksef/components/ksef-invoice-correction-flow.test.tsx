@@ -211,9 +211,11 @@ describe('KsefInvoiceCorrectionFlow', () => {
     // Add a second line but leave it empty
     fireEvent.click(await screen.findByText(/Add line/i));
 
-    // Only fill line 1
+    // Only fill line 1 — line number plus a delta, so it's a valid (non-no-op) row
     const lineInputs = await screen.findAllByLabelText(/Line number/i);
     fireEvent.change(lineInputs[0], { target: { value: '2' } });
+    const qtyInputs = await screen.findAllByLabelText(/New qty, line/i);
+    fireEvent.change(qtyInputs[0], { target: { value: '3' } });
 
     fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
 
@@ -225,5 +227,29 @@ describe('KsefInvoiceCorrectionFlow', () => {
       expect(call[1].lines).toHaveLength(1);
       expect(call[1].lines[0].originalLineNumber).toBe(2);
     });
+  });
+
+  it('blocks submit when a filled line has neither new quantity nor new price', async () => {
+    const issueCorrection = vi.fn();
+
+    renderWithProviders(
+      <KsefInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={ksefConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection } }) },
+    );
+
+    const lineInputs = await screen.findAllByLabelText(/Line number/i);
+    fireEvent.change(lineInputs[0], { target: { value: '1' } });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
+
+    expect(
+      await screen.findByText(/Each line must specify a new quantity and\/or a new price/i),
+    ).toBeInTheDocument();
+    expect(issueCorrection).not.toHaveBeenCalled();
   });
 });
