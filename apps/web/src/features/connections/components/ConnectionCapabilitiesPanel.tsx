@@ -25,6 +25,7 @@ const CAPABILITY_HELP: Record<CoreCapability, string> = {
   OrderProcessorManager: 'Create and manage orders in this connection (typically the destination shop).',
   OrderSource: 'Fetch new orders from this connection (e.g. a marketplace).',
   OfferManager: 'Manage offers and listings on this marketplace connection.',
+  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
 };
 
 const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
@@ -112,9 +113,7 @@ export function ConnectionCapabilitiesPanel({
       ) : null}
 
       {supported.length === 0 ? (
-        <p className="muted-text">
-          This connection\u2019s adapter is not recognized. Capability toggles are unavailable.
-        </p>
+        <p className="muted-text">This connection has no capabilities available to toggle here.</p>
       ) : (
         <ul className="capability-list">
           {supported.map((capability) => {

@@ -48,6 +48,7 @@ const CAPABILITY_HELP: Record<CoreCapability, string> = {
   OrderSource:
     'Fetch new orders from this shop (disable if orders come from a marketplace instead).',
   OfferManager: 'Manage offers and listings on this marketplace.',
+  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
 };
 
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`

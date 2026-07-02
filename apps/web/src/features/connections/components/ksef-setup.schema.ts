@@ -150,8 +150,7 @@ export function toCreateConnectionInput(values: KsefSetupFormSubmission): Create
     platformType: 'ksef',
     adapterKey: KSEF_ADAPTER_KEY,
     // Capabilities default to the adapter manifest's set (`['Invoicing']`)
-    // server-side when omitted — `Invoicing` is not in the FE's well-known
-    // `CORE_CAPABILITY_VALUES`, so we deliberately do not send it.
+    // server-side when omitted, so the FE does not need to send them explicitly.
     config,
     // Write-only: `secret` never round-trips back to the browser.
     credentials: { authType: values.authType, secret: values.secret },

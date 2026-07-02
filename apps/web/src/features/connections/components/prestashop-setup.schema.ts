@@ -9,7 +9,7 @@
  * `db:<uuid>` reference automatically.
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../api/connections.types';
+import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 
 export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
 
@@ -70,15 +70,7 @@ export const prestashopSetupSchema = z.object({
     ])
     .optional(),
   enabledCapabilities: z
-    .array(
-      z.enum([
-        'ProductMaster',
-        'InventoryMaster',
-        'OrderProcessorManager',
-        'OrderSource',
-        'OfferManager',
-      ]),
-    )
+    .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
 });
 

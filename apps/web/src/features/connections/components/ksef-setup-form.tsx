@@ -10,8 +10,8 @@
  *   - Authentication secret (write-only — shown once, never echoed back)
  *
  * Mirrors the WooCommerce single-step shape. Capabilities are seeded silently
- * server-side from the adapter manifest (`['Invoicing']`); the FE does not send
- * them because `Invoicing` is not in the well-known `CORE_CAPABILITY_VALUES`.
+ * server-side from the adapter manifest (`['Invoicing']`); the FE does not need
+ * to send them explicitly.
  *
  * @module features/connections/components
  */

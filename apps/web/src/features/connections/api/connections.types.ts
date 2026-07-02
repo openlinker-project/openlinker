@@ -28,6 +28,8 @@ export const CORE_CAPABILITY_VALUES = [
   'OrderProcessorManager',
   'OrderSource',
   'OfferManager',
+  // Mirrors the backend's CoreCapabilityValues (ADR-026).
+  'Invoicing',
 ] as const;
 
 /**

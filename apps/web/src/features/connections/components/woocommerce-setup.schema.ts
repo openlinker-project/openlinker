@@ -10,7 +10,7 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../api/connections.types';
+import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 
 export const WOOCOMMERCE_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
@@ -52,15 +52,7 @@ export const woocommerceSetupSchema = z.object({
     .min(1, 'Consumer secret is required')
     .refine((v) => v.startsWith('cs_'), 'Consumer secret must start with cs_'),
   enabledCapabilities: z
-    .array(
-      z.enum([
-        'ProductMaster',
-        'InventoryMaster',
-        'OrderProcessorManager',
-        'OrderSource',
-        'OfferManager',
-      ]),
-    )
+    .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(WOOCOMMERCE_FALLBACK_CAPABILITIES),
 });
 
