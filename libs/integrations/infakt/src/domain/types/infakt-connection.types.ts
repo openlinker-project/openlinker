@@ -24,6 +24,19 @@ export interface InfaktCredentials {
 export const InfaktPaymentMethodValues = ['cash', 'transfer'] as const;
 export type InfaktPaymentMethod = (typeof InfaktPaymentMethodValues)[number];
 
+/**
+ * A specific inFakt bank account chosen by the operator (#1303 follow-up).
+ * Snapshotted at selection time — the adapter never re-fetches by `id` at
+ * invoice-issuance time, so a later edit/deletion of the account directly in
+ * inFakt does not affect issuance (accepted staleness risk; see the
+ * bank-account-picker implementation plan for the tradeoff).
+ */
+export interface InfaktBankAccountConfig {
+  id: number;
+  accountNumber: string;
+  bankName: string;
+}
+
 /** Non-secret config persisted on the connection row. */
 export interface InfaktConnectionConfig {
   baseUrl?: string;
@@ -33,4 +46,12 @@ export interface InfaktConnectionConfig {
    * {@link InfaktPaymentMethodValues} for the `'transfer'` prerequisite.
    */
   defaultPaymentMethod?: InfaktPaymentMethod;
+  /**
+   * Bank account stamped on `'transfer'` invoices (`bank_account`/`bank_name`
+   * fields). Ignored when `defaultPaymentMethod` is `'cash'`. Absent even
+   * when `defaultPaymentMethod` is `'transfer'` means the operator picked
+   * Transfer without a bank account on file — the adapter omits both fields
+   * and Infakt is left to reject the invoice as documented in #1303.
+   */
+  bankAccount?: InfaktBankAccountConfig;
 }

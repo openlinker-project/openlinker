@@ -233,6 +233,14 @@ export const editConnectionSchema = z
     // Infakt-only structured field surfacing `config.defaultPaymentMethod`
     // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
     infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
+    // Infakt-only bank-account snapshot surfacing `config.bankAccount`
+    // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the
+    // structured section fetches the live list and writes the whole object
+    // in one shot, never a sub-field at a time.
+    infaktBankAccount: z
+      .object({ id: z.number(), accountNumber: z.string(), bankName: z.string() })
+      .nullable()
+      .optional(),
     // InPost-only structured fields (#771). `inpostEnvironment` → flat
     // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
     // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
@@ -357,6 +365,12 @@ export type StructuredConfigPatch = {
    * Empty string clears the key (adapter falls back to `'cash'`).
    */
   infaktPaymentMethod?: string;
+  /**
+   * Infakt bank-account snapshot — `config.bankAccount` (#1303 follow-up).
+   * Whole-object field, like `sellerDefaults`/`inpostSenderAddress`. `null`
+   * (or absent) clears the key.
+   */
+  infaktBankAccount?: { id: number; accountNumber: string; bankName: string } | null;
   /** InPost environment → flat `config.environment` (#771). Empty string clears the key. */
   inpostEnvironment?: 'sandbox' | 'production' | '';
   /** InPost organization id → flat `config.organizationId` (#771). Empty clears. */
@@ -561,6 +575,16 @@ export function mergeStructuredIntoConfig(
       delete next.defaultPaymentMethod;
     } else {
       next.defaultPaymentMethod = structured.infaktPaymentMethod;
+    }
+  }
+  // Infakt bank-account snapshot (#1303 follow-up) — `config.bankAccount`.
+  // Whole-object field: `null`/absent clears the key, matching the
+  // `sellerDefaults`/`inpostSenderAddress` whole-object precedent.
+  if (structured.infaktBankAccount !== undefined) {
+    if (structured.infaktBankAccount === null) {
+      delete next.bankAccount;
+    } else {
+      next.bankAccount = structured.infaktBankAccount;
     }
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are

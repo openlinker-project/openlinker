@@ -14,6 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { InfaktSetupForm } from './infakt-setup-form';
+import type { BankAccount } from '../api/connections.types';
 
 describe('InfaktSetupForm', () => {
   afterEach(cleanup);
@@ -249,6 +250,119 @@ describe('InfaktSetupForm', () => {
     await waitFor(() => {
       const button = screen.getByRole('button', { name: /Connecting|Connect inFakt/ });
       expect(button).toBeDisabled();
+    });
+  });
+
+  describe('bank-account picker (#1303 follow-up)', () => {
+    async function createConnection(
+      getBankAccounts: (connectionId: string) => Promise<BankAccount[]>,
+      config: Record<string, unknown> = { defaultPaymentMethod: 'transfer' },
+      setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void> = vi
+        .fn()
+        .mockResolvedValue(undefined),
+    ): Promise<ReturnType<typeof vi.fn>> {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account', config });
+      const update = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account', config });
+      const apiClient = createMockApiClient({
+        connections: { create, update, getBankAccounts, setDefaultBankAccount },
+      });
+
+      renderWithProviders(<InfaktSetupForm />, { apiClient });
+
+      fireEvent.change(screen.getByLabelText('Connection name'), {
+        target: { value: 'My inFakt Account' },
+      });
+      fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+      await screen.findByRole('button', { name: 'Test connection' });
+      return update;
+    }
+
+    it('defaults to whichever account inFakt marks as default and persists it', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
+        { id: '2', accountNumber: '12 1090 1014 0000 0001 2345 6789', bankName: 'Santander', isDefault: true },
+      ]);
+      const update = await createConnection(getBankAccounts);
+
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      expect(select).toHaveValue('2');
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(
+          'conn-1',
+          expect.objectContaining({
+            config: expect.objectContaining({
+              bankAccount: {
+                id: 2,
+                accountNumber: '12 1090 1014 0000 0001 2345 6789',
+                bankName: 'Santander',
+              },
+            }),
+          }),
+        );
+      });
+    });
+
+    it('shows a Cash-only message and forces the payment method to cash when no accounts are found', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([]);
+      const update = await createConnection(getBankAccounts);
+
+      expect(
+        await screen.findByText(/No bank account is configured on this inFakt account/),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(
+          'conn-1',
+          expect.objectContaining({ config: expect.objectContaining({ defaultPaymentMethod: 'cash' }) }),
+        );
+      });
+    });
+
+    it('does not force cash when no accounts are found but cash was already selected', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([]);
+      const update = await createConnection(getBankAccounts, { defaultPaymentMethod: 'cash' });
+
+      await screen.findByText(/No bank account is configured on this inFakt account/);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('lets the operator switch between fetched bank accounts, syncing the new default to inFakt', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
+        { id: '2', accountNumber: '12 1090 1014 0000 0001 2345 6789', bankName: 'Santander', isDefault: false },
+      ]);
+      const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
+      const update = await createConnection(
+        getBankAccounts,
+        { defaultPaymentMethod: 'transfer' },
+        setDefaultBankAccount,
+      );
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      update.mockClear();
+
+      fireEvent.change(select, { target: { value: '2' } });
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(
+          'conn-1',
+          expect.objectContaining({
+            config: expect.objectContaining({
+              bankAccount: { id: 2, accountNumber: '12 1090 1014 0000 0001 2345 6789', bankName: 'Santander' },
+            }),
+          }),
+        );
+      });
+      expect(setDefaultBankAccount).toHaveBeenCalledWith('conn-1', '2');
+    });
+
+    it('shows a fallback message when the bank-accounts fetch fails', async () => {
+      const getBankAccounts = vi.fn().mockRejectedValue(new Error('501 Not Implemented'));
+      await createConnection(getBankAccounts);
+
+      expect(
+        await screen.findByText(/Couldn't check inFakt for bank accounts/),
+      ).toBeInTheDocument();
     });
   });
 });

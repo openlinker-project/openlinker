@@ -11,6 +11,7 @@ import { Test } from '@nestjs/testing';
 import {
   ConflictException,
   NotFoundException,
+  NotImplementedException,
   BadRequestException,
   BadGatewayException,
   UnprocessableEntityException,
@@ -1123,6 +1124,65 @@ describe('InvoicingController', () => {
         controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /connections/:connectionId/bank-accounts (#1303 follow-up)', () => {
+    it('should return the mapped bank-account list when the adapter implements BankAccountsReader', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn().mockResolvedValue([
+          {
+            id: '1',
+            accountNumber: '61 1140 2004 0000 3002 0135 5387',
+            bankName: 'mBank',
+            isDefault: true,
+          },
+        ]),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await controller.getBankAccounts('conn-infakt-1');
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-infakt-1', 'Invoicing');
+      expect(result).toEqual([
+        {
+          id: '1',
+          accountNumber: '61 1140 2004 0000 3002 0135 5387',
+          bankName: 'mBank',
+          isDefault: true,
+        },
+      ]);
+    });
+
+    it('should 501 when the adapter does not implement BankAccountsReader', async () => {
+      const adapter = {} as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.getBankAccounts('conn-ksef-1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+  });
+
+  describe('POST /connections/:connectionId/bank-accounts/:accountId/default (#1303 follow-up)', () => {
+    it('should call setDefaultBankAccount when the adapter implements BankAccountDefaultSetter', async () => {
+      const setDefaultBankAccount = jest.fn().mockResolvedValue(undefined);
+      const adapter = { setDefaultBankAccount } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await controller.setDefaultBankAccount('conn-infakt-1', '1');
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-infakt-1', 'Invoicing');
+      expect(setDefaultBankAccount).toHaveBeenCalledWith('1');
+    });
+
+    it('should 501 when the adapter does not implement BankAccountDefaultSetter', async () => {
+      const adapter = {} as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-ksef-1', '1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
     });
   });
 });

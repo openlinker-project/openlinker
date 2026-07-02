@@ -6,4 +6,5 @@ export const connectionsQueryKeys = {
     ['connections', 'list', filters?.platformType ?? 'all', filters?.status ?? 'all'] as const,
   detail: (connectionId: string) => ['connections', 'detail', connectionId] as const,
   diagnostics: (connectionId: string) => ['connections', 'diagnostics', connectionId] as const,
+  bankAccounts: (connectionId: string) => ['connections', 'bank-accounts', connectionId] as const,
 };

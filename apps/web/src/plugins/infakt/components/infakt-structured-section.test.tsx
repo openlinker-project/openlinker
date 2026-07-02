@@ -8,11 +8,12 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test component mocking requires flexible types */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders } from '../../../test/test-utils';
+import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { InfaktStructuredSection } from './infakt-structured-section';
+import type { BankAccount } from '../../../features/connections';
 
 describe('InfaktStructuredSection', () => {
   afterEach(cleanup);
@@ -204,5 +205,146 @@ describe('InfaktStructuredSection', () => {
     fireEvent.click(screen.getByText('Payment method for invoice:'));
 
     expect(screen.getByLabelText('Default payment method')).toBeDisabled();
+  });
+
+  describe('bank account (#1303 follow-up)', () => {
+    function renderWithTransferSelected(
+      getBankAccounts: (connectionId: string) => Promise<BankAccount[]>,
+    ): void {
+      const apiClient = createMockApiClient({ connections: { getBankAccounts } });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+    }
+
+    it('does not query bank accounts when cash is selected', () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([]);
+      const apiClient = createMockApiClient({ connections: { getBankAccounts } });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({ defaultValues: { baseUrl: '', infaktPaymentMethod: 'cash' } });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+
+      expect(getBankAccounts).not.toHaveBeenCalled();
+    });
+
+    it('renders a select of fetched bank accounts when transfer is selected', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
+        { id: '2', accountNumber: '12 1090 1014 0000 0001 2345 6789', bankName: 'Santander', isDefault: false },
+      ]);
+      renderWithTransferSelected(getBankAccounts);
+
+      expect(getBankAccounts).toHaveBeenCalledWith('conn-1');
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      expect(
+        screen.getByText('mBank — 61 1140 2004 0000 3002 0135 5387 (default in inFakt)'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Santander — 12 1090 1014 0000 0001 2345 6789')).toBeInTheDocument();
+      expect(select).toBeInTheDocument();
+    });
+
+    it('shows a Cash-only message and no select when no bank accounts are found', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([]);
+      renderWithTransferSelected(getBankAccounts);
+
+      expect(
+        await screen.findByText(/No bank account is configured on this inFakt account/),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
+    });
+
+    it('calls syncInfaktBankAccountToJson after setting the selected bank account', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
+      ]);
+      const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
+      const apiClient = createMockApiClient({ connections: { getBankAccounts, setDefaultBankAccount } });
+      const syncInfaktBankAccountToJson = vi.fn();
+      let capturedForm: ReturnType<typeof useForm> | null = null;
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+        });
+        capturedForm = form;
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={syncInfaktBankAccountToJson}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      fireEvent.change(select, { target: { value: '1' } });
+
+      await waitFor(() => {
+        expect(syncInfaktBankAccountToJson).toHaveBeenCalled();
+      });
+      expect(capturedForm!.getValues('infaktBankAccount')).toEqual({
+        id: 1,
+        accountNumber: '61 1140 2004 0000 3002 0135 5387',
+        bankName: 'mBank',
+      });
+      expect(setDefaultBankAccount).toHaveBeenCalledWith('conn-1', '1');
+    });
+
+    it('does not re-flag the account as default in inFakt when it already is one', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
+      ]);
+      const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
+      const apiClient = createMockApiClient({ connections: { getBankAccounts, setDefaultBankAccount } });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      fireEvent.change(select, { target: { value: '1' } });
+
+      await waitFor(() => {
+        expect(select).toHaveValue('1');
+      });
+      expect(setDefaultBankAccount).not.toHaveBeenCalled();
+    });
   });
 });
