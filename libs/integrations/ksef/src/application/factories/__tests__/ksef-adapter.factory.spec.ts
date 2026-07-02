@@ -88,7 +88,7 @@ describe('KsefAdapterFactory', () => {
           'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
         }),
       ),
-    ).rejects.toBeInstanceOf(KsefConfigException);
+    ).rejects.toThrow(/seller profile/);
   });
 
   it('should throw when the environment is missing/invalid', async () => {

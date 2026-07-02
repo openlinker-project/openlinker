@@ -65,8 +65,9 @@ export interface KsefConnectionConfig {
 
 /**
  * Credentials shape resolved via `CredentialsResolverPort` (C3). `secret` is
- * the raw authentication secret (KSeF authorization token, or a qualified-seal
- * reference) the operator supplies through the connection wizard; the host
+ * the raw authentication secret the operator supplies through the connection
+ * wizard — for `ksef-token` the KSeF authorization token; for `qualified-seal`
+ * a placeholder until C4 defines the seal material shape. The host
  * persists it in the integration credentials store behind `connection.credentialsRef`
  * and hands it back verbatim at adapter construction. There is no second,
  * nested credentials indirection — the resolver call on `credentialsRef` is

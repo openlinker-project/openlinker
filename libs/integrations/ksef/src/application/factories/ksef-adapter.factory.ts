@@ -120,9 +120,11 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         connection.id,
       );
     }
+    // Trimmed like resolveContextNip — both consumers (the <ContextNip>
+    // handshake and the FA(3) Podmiot1 block) must see one canonical value.
     return {
-      nip: seller.nip,
-      name: seller.name,
+      nip: seller.nip.trim(),
+      name: seller.name.trim(),
       address: {
         line1: address.line1,
         line2: address.line2 ?? null,
