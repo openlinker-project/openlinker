@@ -82,7 +82,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
-        payment,
+        { payment },
       ),
     };
   }
@@ -162,6 +162,13 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
    * `resolveDefaultTaxRate`'s defensive posture — each field is dropped
    * rather than emitted verbatim if it fails the same check the
    * `ksef.publicapi.v2` shape validator applies at save time.
+   *
+   * The required-together invariants are thus enforced in three layers (FE
+   * assembly, the shape validator, and here) — intentional defense-in-depth
+   * matching the `resolveSeller` precedent (PR #1317 review): each layer
+   * guards a different entry path (operator UI, API writes, pre-validator /
+   * out-of-band config rows), so none of the three can be dropped without
+   * reopening one of those paths.
    */
   private resolvePayment(connection: Connection): Fa3PaymentInput | undefined {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;

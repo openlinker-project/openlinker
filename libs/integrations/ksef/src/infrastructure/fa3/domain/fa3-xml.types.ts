@@ -156,6 +156,38 @@ export interface Fa3PaymentInput {
 }
 
 /**
+ * XSD-mandated child order of the `Fa/Platnosc` sequence (FA(3) v1-0E, XSD
+ * line 3281), restricted to the elements the builder can emit. The paid /
+ * partial-payment choice group (`Zaplacono`/`ZaplataCzesciowa`, which nests its
+ * own `FormaPlatnosci`) precedes these in the schema but is never emitted by
+ * OpenLinker, so it is deliberately excluded — including it would make the
+ * flat first-occurrence order check in `validateFa3Xml` false-positive on the
+ * nested `FormaPlatnosci`.
+ */
+export const FA3_PLATNOSC_CHILD_ORDER = [
+  'TerminPlatnosci',
+  'FormaPlatnosci',
+  'RachunekBankowy',
+  'RachunekBankowyFaktora',
+  'Skonto',
+  'LinkDoPlatnosci',
+] as const;
+
+/**
+ * XSD-mandated child order of `TRachunekBankowy` (XSD line 1507): the required
+ * `NrRB` and optional `SWIFT` form an inner sequence that precedes the
+ * remaining optional fields — notably `SWIFT` comes BEFORE `NazwaBanku`,
+ * despite the reverse reading order feeling more natural (PR #1317 review).
+ */
+export const FA3_RACHUNEK_BANKOWY_CHILD_ORDER = [
+  'NrRB',
+  'SWIFT',
+  'RachunekWlasnyBanku',
+  'NazwaBanku',
+  'OpisRachunku',
+] as const;
+
+/**
  * Fully-mapped builder input. The adapter produces this from a neutral
  * `IssueInvoiceCommand` (applying the tax-rate, buyer-id and currency mappers)
  * so the pure builder never re-runs country-specific mapping — it only lays out

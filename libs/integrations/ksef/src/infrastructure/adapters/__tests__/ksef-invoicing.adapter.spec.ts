@@ -188,8 +188,7 @@ function adapter(
     builder,
     SELLER,
     DEFAULT_TAX_RATE,
-    payment,
-    () => new Date('2026-06-23T10:00:00.000Z'),
+    { payment, now: () => new Date('2026-06-23T10:00:00.000Z') },
   );
 }
 

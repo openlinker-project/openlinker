@@ -105,6 +105,7 @@ import {
   type SendInvoiceResponse,
 } from './ksef-session.types';
 import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper';
+import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -121,6 +122,16 @@ export class KsefInvoicingAdapter
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
+  /**
+   * Resolved connection-level payment defaults (#1311) — `undefined` when the
+   * connection has none configured, in which case the builder omits
+   * `Platnosc` entirely.
+   */
+  private readonly payment: Fa3PaymentInput | undefined;
+
+  /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
+  private readonly now: () => Date;
+
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IKsefHttpClient,
@@ -133,16 +144,15 @@ export class KsefInvoicingAdapter
      */
     private readonly defaultTaxRate: string,
     /**
-     * Resolved connection-level payment defaults (#1311) — `undefined` when
-     * the connection has none configured, in which case the builder omits
-     * `Platnosc` entirely. Defaulted so existing call sites/tests that
-     * construct this adapter positionally without the new argument
-     * continue to compile.
+     * Trailing optional inputs (payment defaults #1311, injected clock) ride
+     * in an options bag so a future addition never shifts positional call
+     * sites (PR #1317 review).
      */
-    private readonly payment: Fa3PaymentInput | undefined = undefined,
-    /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
-    private readonly now: () => Date = (): Date => new Date(),
-  ) {}
+    options: KsefInvoicingAdapterOptions = {},
+  ) {
+    this.payment = options.payment;
+    this.now = options.now ?? ((): Date => new Date());
+  }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
