@@ -189,5 +189,12 @@ full field-scope audit and design mockup.
   regulations) are not yet caller-selectable; the neutral `CorrectionReference`
   carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
 - ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
+- ⏸ `Podmiot2` `JST` / `GV` flags are hard-coded to `2` ("no") in `buyerNode`.
+  Both elements are required by the XSD, and `2` is correct for the common
+  buyer — but a buyer that actually *is* a local-government (JST) subsidiary
+  unit or a VAT-group member would get a false declaration on a fiscal
+  document. The neutral `InvoiceParty` carries no field to express either
+  status; supporting such buyers needs a neutral-contract extension plus a
+  data source for the flag (PR #1317 review).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.

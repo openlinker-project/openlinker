@@ -193,6 +193,18 @@ describe('KsefAdapterFactory', () => {
       ).toEqual({ formaPlatnosci: '1' });
     });
 
+    it('should strip inner whitespace from a conventionally-spaced NRB on a pre-validator connection', () => {
+      expect(
+        resolvedPayment({ bankAccount: { nrRb: '61 1090 1014 0000 0000 9999 9999' } }),
+      ).toEqual({ bankAccount: { nrRb: '61109010140000000099999999' } });
+    });
+
+    it('should drop a whitespace-only nrRb rather than emit an empty NrRB', () => {
+      expect(
+        resolvedPayment({ formaPlatnosci: '1', bankAccount: { nrRb: '   ' } }),
+      ).toEqual({ formaPlatnosci: '1' });
+    });
+
     it('should resolve formaPlatnosci-only (Gotówka, no bank account)', () => {
       expect(resolvedPayment({ formaPlatnosci: '1' })).toEqual({ formaPlatnosci: '1' });
     });

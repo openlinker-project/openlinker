@@ -296,6 +296,9 @@ function buyerNode(input: Fa3BuilderInput): XmlNodeObject {
     Adres: addressNode(input.buyerAddress),
     // JST and GV are REQUIRED by the FA(3) XSD (no minOccurs="0").
     // 2 = "nie dotyczy" — not a JST subsidiary unit / not a VAT group member.
+    // KNOWN LIMITATION: hard-coded — a buyer that IS a JST unit / VAT-group
+    // member gets a false declaration; see FA3_IMPLEMENTATION_NOTES.md
+    // § Known limitations (PR #1317 review).
     JST: 2,
     GV: 2,
   };

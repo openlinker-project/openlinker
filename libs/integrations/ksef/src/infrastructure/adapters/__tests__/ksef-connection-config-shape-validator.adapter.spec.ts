@@ -196,6 +196,23 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
     });
 
+    it('should reject a bankAccount.nrRb containing inner whitespace', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          payment: { bankAccount: { nrRb: '61 1090 1014 0000 0000 0999 9999' } },
+        }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [
+          {
+            path: 'payment.bankAccount.nrRb',
+            message: expect.stringContaining('must not contain whitespace'),
+          },
+        ],
+      });
+    });
+
     it('should reject a bankAccount.nrRb shorter than 10 characters', async () => {
       await expect(
         validator.validate({ env: 'test', payment: { bankAccount: { nrRb: '123' } } }),

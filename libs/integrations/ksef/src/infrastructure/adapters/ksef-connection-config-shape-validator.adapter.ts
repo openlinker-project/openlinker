@@ -9,8 +9,11 @@
  * optional `payment` check (#1311): `payment`, `payment.bankAccount` and
  * `payment.skonto` must themselves be objects when present (a wrong-typed
  * value would otherwise be silently dropped at issuance), `formaPlatnosci` must be a valid
- * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty and 10-34
- * characters long (per the XSD `TNrRB` pattern) when `bankAccount` is set,
+ * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty, free of inner
+ * whitespace, and 10-34 characters long (per the XSD `TNrRB` pattern) when
+ * `bankAccount` is set — the FE strips whitespace via `normalizeNrRb` before
+ * submitting, but a direct API write bypasses that, and a spaced NRB would
+ * fail KSeF's `TNrRB` pattern at clearance,
  * `paymentTermDays` must be a non-negative integer, and
  * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
  * set (a partial skonto is otherwise silently dropped at issuance by the
@@ -99,6 +102,15 @@ export class KsefConnectionConfigShapeValidatorAdapter
           issues.push({
             path: 'payment.bankAccount.nrRb',
             message: 'must be a non-empty string when bankAccount is set',
+          });
+        } else if (/\s/.test(nrRb.trim())) {
+          // The FE strips whitespace at assembly time (`normalizeNrRb`); a
+          // direct API write must arrive already stripped — inner spaces
+          // would be emitted verbatim into <NrRB> and fail KSeF's TNrRB
+          // pattern at clearance (PR #1317 review).
+          issues.push({
+            path: 'payment.bankAccount.nrRb',
+            message: 'must not contain whitespace (submit the account number without spaces)',
           });
         } else if (nrRb.trim().length < 10 || nrRb.trim().length > 34) {
           issues.push({

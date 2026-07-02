@@ -183,11 +183,17 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     ) {
       result.formaPlatnosci = payment.formaPlatnosci;
     }
-    if (payment.bankAccount?.nrRb) {
+    // Whitespace-stripped defensively: the FE strips at assembly time and the
+    // shape validator rejects spaced values at save time, but a pre-validator
+    // config row could still carry a conventionally-spaced NRB — emitted
+    // verbatim it would fail KSeF's TNrRB pattern at clearance (PR #1317
+    // review). A whitespace-only value strips to '' and drops the block.
+    const nrRb = payment.bankAccount?.nrRb?.replace(/\s+/g, '');
+    if (nrRb) {
       result.bankAccount = {
-        nrRb: payment.bankAccount.nrRb,
-        ...(payment.bankAccount.bankName ? { bankName: payment.bankAccount.bankName } : {}),
-        ...(payment.bankAccount.swift ? { swift: payment.bankAccount.swift } : {}),
+        nrRb,
+        ...(payment.bankAccount?.bankName ? { bankName: payment.bankAccount.bankName } : {}),
+        ...(payment.bankAccount?.swift ? { swift: payment.bankAccount.swift } : {}),
       };
     }
     if (
