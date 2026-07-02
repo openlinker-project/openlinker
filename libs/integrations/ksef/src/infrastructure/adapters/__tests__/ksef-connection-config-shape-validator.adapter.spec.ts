@@ -262,6 +262,18 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('should accept paymentTermDays at the 999 upper bound', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { paymentTermDays: 999 } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a paymentTermDays above the 999 sanity cap', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { paymentTermDays: 1400 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
     it('should carry a flat { path, message } issue for payment.formaPlatnosci', async () => {
       await expect(
         validator.validate({ env: 'test', payment: { formaPlatnosci: '9' } }),

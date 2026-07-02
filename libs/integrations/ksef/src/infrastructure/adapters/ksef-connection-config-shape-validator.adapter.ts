@@ -14,7 +14,8 @@
  * `bankAccount` is set — the FE strips whitespace via `normalizeNrRb` before
  * submitting, but a direct API write bypasses that, and a spaced NRB would
  * fail KSeF's `TNrRB` pattern at clearance,
- * `paymentTermDays` must be a non-negative integer, and
+ * `paymentTermDays` must be an integer in 0-999 (sanity cap — the XSD `Ilosc`
+ * type is unbounded, so a fat-fingered term would otherwise reach the wire), and
  * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
  * set (a partial skonto is otherwise silently dropped at issuance by the
  * factory's `resolvePayment`, so rejecting it at save time gives the operator
@@ -119,15 +120,19 @@ export class KsefConnectionConfigShapeValidatorAdapter
           });
         }
       }
+      // Upper bound is a sanity cap (PR #1317 review): the XSD `Ilosc` type is
+      // unbounded so a fat-fingered `1400` would clear KSeF fine — but no real
+      // payment term needs four digits. Mirrored by the FE schema's 999 cap.
       if (
         p.paymentTermDays !== undefined &&
         (typeof p.paymentTermDays !== 'number' ||
           !Number.isInteger(p.paymentTermDays) ||
-          p.paymentTermDays < 0)
+          p.paymentTermDays < 0 ||
+          p.paymentTermDays > 999)
       ) {
         issues.push({
           path: 'payment.paymentTermDays',
-          message: 'must be a non-negative integer',
+          message: 'must be an integer between 0 and 999',
         });
       }
       if (p.skonto !== undefined && (p.skonto === null || typeof p.skonto !== 'object')) {

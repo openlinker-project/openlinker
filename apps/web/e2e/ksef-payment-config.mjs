@@ -5,7 +5,7 @@
  * connection edit screen, and captures screenshots at each payment-config
  * state (empty, Przelew fully filled, saved/persisted-after-reload, Gotówka).
  * Screenshots feed the verification artifact comparing shipped UI against
- * the design mockup at docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html.
+ * the design mockup at docs/plans/mockups/ksef-payment-platnosc.html.
  *
  * Usage: node apps/web/e2e/ksef-payment-config.mjs
  * Env:

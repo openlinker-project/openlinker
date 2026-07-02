@@ -385,7 +385,7 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 
 13. **Add fields to `ksef-structured-section.tsx`**
     - **File**: `apps/web/src/plugins/ksef/components/ksef-structured-section.tsx`
-    - **Action**: Append `FormField`s for the 7 flat fields after the existing "Context identifier" field, each wired via `form.watch(...)` / `syncStructuredToJson(...)` exactly like the existing seller fields. A `Select` for payment method (7 `KsefFormaPlatnosciValues` options with Polish labels — Gotówka/Karta/Bon/Czek/Kredyt/Przelew/Mobilna); plain `Input`s for the rest. If `InlineDisclosure` is available at implementation time, wrap the block (mirroring `infakt-structured-section.tsx`); otherwise leave as a flat continuation of the existing list. Each field's `description` prop credits its FA(3) target element (e.g. "Emitted as `Platnosc/TerminPlatnosci/TerminOpis`"), matching the mockup's copy at `docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html`.
+    - **Action**: Append `FormField`s for the 7 flat fields after the existing "Context identifier" field, each wired via `form.watch(...)` / `syncStructuredToJson(...)` exactly like the existing seller fields. A `Select` for payment method (7 `KsefFormaPlatnosciValues` options with Polish labels — Gotówka/Karta/Bon/Czek/Kredyt/Przelew/Mobilna); plain `Input`s for the rest. If `InlineDisclosure` is available at implementation time, wrap the block (mirroring `infakt-structured-section.tsx`); otherwise leave as a flat continuation of the existing list. Each field's `description` prop credits its FA(3) target element (e.g. "Emitted as `Platnosc/TerminPlatnosci/TerminOpis`"), matching the mockup's copy at `docs/plans/mockups/ksef-payment-platnosc.html`.
     - **Acceptance**: Component test (extend the existing KSeF structured-section test, or add one if none exists) — renders all 7 fields; typing in each calls `syncStructuredToJson` with the right key.
     - **Dependencies**: Steps 11, 12.
 
@@ -407,7 +407,7 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
     - **Dependencies**: Phases 1–5 complete and deployed to the local dev stack.
 
 16. **Produce a verification artifact with screenshots**
-    - **Action**: Capture screenshots of each state exercised in step 15 (edit-screen empty state, Przelew fully filled, Gotówka collapsed/independent state, the resulting invoice XML or its rendered detail view showing payment info) using the same throwaway-edit-then-revert Playwright screenshot pattern established for the inFakt artifact (`docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html`'s screenshots). Build an Artifact (HTML) placing each screenshot side-by-side with the corresponding mockup state, so a reviewer can visually confirm the shipped UI matches the design reference field-for-field (labels, order, description copy) rather than taking it on faith.
+    - **Action**: Capture screenshots of each state exercised in step 15 (edit-screen empty state, Przelew fully filled, Gotówka collapsed/independent state, the resulting invoice XML or its rendered detail view showing payment info) using the same throwaway-edit-then-revert Playwright screenshot pattern established for the inFakt artifact (`docs/plans/mockups/ksef-payment-platnosc.html`'s screenshots). Build an Artifact (HTML) placing each screenshot side-by-side with the corresponding mockup state, so a reviewer can visually confirm the shipped UI matches the design reference field-for-field (labels, order, description copy) rather than taking it on faith.
     - **Acceptance**: Artifact published and linked from the PR description; every mockup state has a corresponding real-screenshot counterpart with no visible mismatch (or mismatches explicitly called out and justified).
     - **Dependencies**: Step 15.
 
@@ -489,7 +489,7 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 - [x] No `Platnosc` element emitted when nothing is configured (existing connections unaffected).
 - [x] Emitted XML validates against `schemat_fa3_v1-0e.xsd` for both the with-payment and without-payment cases.
 - [x] `ksef-structured-section.tsx` exposes the new fields, matching the mockup's field order and copy.
-- [x] `docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html` committed (done as part of this plan).
+- [x] `docs/plans/mockups/ksef-payment-platnosc.html` committed (done as part of this plan).
 - [x] `FA3_IMPLEMENTATION_NOTES.md` updated.
 - [x] Tests added per the strategy above.
 - [x] No CORE ↔ Integration boundary violations.

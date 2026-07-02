@@ -297,9 +297,19 @@ export const editConnectionSchema = z
       .optional(),
     paymentBankAccountBankName: z.union([z.string().trim().max(256), z.literal('')]).optional(),
     paymentBankAccountSwift: z.union([z.string().trim().max(16), z.literal('')]).optional(),
+    // Capped at 999 days — the XSD `Ilosc` type is unbounded so an absurd
+    // value (a fat-fingered `1400`) would sail through to the wire; the cap
+    // catches the obvious typo while leaving every realistic term available.
+    // Mirrored by the BE shape validator's 0-999 bound.
     paymentTermDays: z
       .union([
-        z.string().trim().regex(/^\d+$/, 'Payment term must be a non-negative whole number of days.'),
+        z
+          .string()
+          .trim()
+          .regex(/^\d+$/, 'Payment term must be a non-negative whole number of days.')
+          .refine((v) => Number.parseInt(v, 10) <= 999, {
+            message: 'Payment term must be at most 999 days.',
+          }),
         z.literal(''),
       ])
       .optional(),
@@ -321,14 +331,36 @@ export const editConnectionSchema = z
     // unset/blank country on this partial-edit form is treated as PL; an explicit
     // non-PL country opts out of the check.
     const postalCode = (values.sellerPostalCode ?? '').trim();
-    if (postalCode.length === 0) return;
-    const countryIso2 = (values.sellerCountryIso2 ?? '').trim().toUpperCase();
-    const isDomesticPl = countryIso2 === '' || countryIso2 === 'PL';
-    if (isDomesticPl && !/^\d{2}-\d{3}$/.test(postalCode)) {
+    if (postalCode.length > 0) {
+      const countryIso2 = (values.sellerCountryIso2 ?? '').trim().toUpperCase();
+      const isDomesticPl = countryIso2 === '' || countryIso2 === 'PL';
+      if (isDomesticPl && !/^\d{2}-\d{3}$/.test(postalCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sellerPostalCode'],
+          message: 'Postal code must use the PL format NN-NNN.',
+        });
+      }
+    }
+    // KSeF skonto (early-payment discount) is a both-or-neither pair (#1311).
+    // The FE deliberately persists a partial pair into configText per keystroke
+    // (per-keystroke sync must never drop the first-typed field), so this check
+    // fires only at submit time and anchors the error on the missing field —
+    // otherwise the operator gets the BE shape validator's form-level 400.
+    // The BE validator stays the strict gate for direct API writes.
+    const skontoConditions = (values.paymentSkontoConditions ?? '').trim();
+    const skontoAmount = (values.paymentSkontoAmount ?? '').trim();
+    if (skontoConditions.length > 0 && skontoAmount.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['sellerPostalCode'],
-        message: 'Postal code must use the PL format NN-NNN.',
+        path: ['paymentSkontoAmount'],
+        message: 'Discount amount is required when discount conditions are set.',
+      });
+    } else if (skontoAmount.length > 0 && skontoConditions.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['paymentSkontoConditions'],
+        message: 'Discount conditions are required when a discount amount is set.',
       });
     }
   });

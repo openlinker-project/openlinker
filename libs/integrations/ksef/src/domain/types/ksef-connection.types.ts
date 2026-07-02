@@ -66,7 +66,9 @@ export interface KsefSellerConfig {
  * Declared three times by design (connection-config layer here, FA3 schema
  * layer `Fa3FormaPlatnosciValues` in `fa3-schema.types.ts`, FE
  * `KSEF_FORMA_PLATNOSCI_VALUES` in `ksef-setup.schema.ts`) — a future 8th
- * code must be added in all three places.
+ * code must be added in all three places. Drift is self-enforcing: the two
+ * in-package lists via `ksef-forma-platnosci-drift.spec.ts`, the FE list via
+ * the repo-level `scripts/check-ksef-forma-platnosci-drift.mjs` invariant.
  */
 export const KsefFormaPlatnosciValues = ['1', '2', '3', '4', '5', '6', '7'] as const;
 export type KsefFormaPlatnosci = (typeof KsefFormaPlatnosciValues)[number];

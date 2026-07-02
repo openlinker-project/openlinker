@@ -526,6 +526,72 @@ describe('editConnectionSchema — KSeF payment bank account number length (#131
   });
 });
 
+describe('editConnectionSchema — KSeF skonto both-or-neither (#1311 tech-review)', () => {
+  const base = {
+    name: 'KSeF main',
+    configText: '{"env":"prod"}',
+  };
+
+  it('accepts both skonto fields set', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentSkontoConditions: 'paid within 7 days',
+      paymentSkontoAmount: '2%',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts both skonto fields empty', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentSkontoConditions: '',
+      paymentSkontoAmount: '',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('anchors the error on the missing amount when only conditions are set', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentSkontoConditions: 'paid within 7 days',
+      paymentSkontoAmount: '',
+    });
+    expect(result.success).toBe(false);
+    expect(result.success ? [] : result.error.issues.map((i) => i.path.join('.'))).toContain(
+      'paymentSkontoAmount',
+    );
+  });
+
+  it('anchors the error on the missing conditions when only the amount is set', () => {
+    const result = editConnectionSchema.safeParse({
+      ...base,
+      paymentSkontoConditions: '',
+      paymentSkontoAmount: '2%',
+    });
+    expect(result.success).toBe(false);
+    expect(result.success ? [] : result.error.issues.map((i) => i.path.join('.'))).toContain(
+      'paymentSkontoConditions',
+    );
+  });
+});
+
+describe('editConnectionSchema — KSeF paymentTermDays sanity cap (#1311 tech-review)', () => {
+  const base = {
+    name: 'KSeF main',
+    configText: '{"env":"prod"}',
+  };
+
+  it('accepts a term at the 999 upper bound', () => {
+    const result = editConnectionSchema.safeParse({ ...base, paymentTermDays: '999' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a term above the 999 sanity cap', () => {
+    const result = editConnectionSchema.safeParse({ ...base, paymentTermDays: '1400' });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
   it('assembles the nested config.payment shape resolvePayment reads', () => {
     const result = mergeStructuredIntoConfig(

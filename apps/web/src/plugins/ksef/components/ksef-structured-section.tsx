@@ -263,7 +263,7 @@ export function KsefStructuredSection({
         label="Default payment term (days)"
         name="paymentTermDays"
         error={form.formState.errors.paymentTermDays?.message}
-        description="Emitted as Platnosc/TerminPlatnosci/TerminOpis (days from the issue date). Optional."
+        description="Emitted as Platnosc/TerminPlatnosci/TerminOpis (days from the issue date). Optional; max 999."
       >
         <Input
           value={form.watch('paymentTermDays') ?? ''}
@@ -278,7 +278,7 @@ export function KsefStructuredSection({
         label="Early-payment discount conditions"
         name="paymentSkontoConditions"
         error={form.formState.errors.paymentSkontoConditions?.message}
-        description="Emitted as Platnosc/Skonto/WarunkiSkonta. Optional."
+        description="Emitted as Platnosc/Skonto/WarunkiSkonta. Optional; required together with the discount amount."
       >
         <Input
           value={form.watch('paymentSkontoConditions') ?? ''}
@@ -293,7 +293,7 @@ export function KsefStructuredSection({
         label="Early-payment discount amount"
         name="paymentSkontoAmount"
         error={form.formState.errors.paymentSkontoAmount?.message}
-        description="Emitted as Platnosc/Skonto/WysokoscSkonta. Optional."
+        description="Emitted as Platnosc/Skonto/WysokoscSkonta. Optional; required together with the discount conditions."
       >
         <Input
           value={form.watch('paymentSkontoAmount') ?? ''}
