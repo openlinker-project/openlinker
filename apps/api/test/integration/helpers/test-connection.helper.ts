@@ -160,6 +160,26 @@ export async function createTestPrestashopDestinationConnection(
 }
 
 /**
+ * Delete a connection row created by `createTestPrestashopDestinationConnection`
+ * / `createTestAllegroSourceConnection`.
+ *
+ * Integration tests run with `maxWorkers: 1` against ONE shared Testcontainers
+ * Postgres for the whole CI run — a connection left `status: 'active'` after
+ * its backing per-suite testcontainer is torn down in `afterAll` stays visible
+ * to `OrderSyncService.resolveDestinations` (unscoped `OrderProcessorManager`
+ * fan-out) for every suite that runs afterward in the same process, producing
+ * an intermittent `fetch failed` against the dead container depending on Jest's
+ * file-execution order. Suites that create an `OrderProcessorManager`-capable
+ * connection MUST delete it here, not just stop the container.
+ */
+export async function deleteTestConnection(
+  dataSource: DataSource,
+  connectionId: string,
+): Promise<void> {
+  await dataSource.getRepository(ConnectionOrmEntity).delete({ id: connectionId });
+}
+
+/**
  * Seed an `integration_credentials` row directly. Encrypts the payload with
  * the same primitive the production repository uses (#709) so that downstream
  * decryption through `IntegrationCredentialRepository.getByRef` round-trips.
