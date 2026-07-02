@@ -6,10 +6,17 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters
  */
-import { isRegulatoryTransmitter } from '@openlinker/core/invoicing';
+import {
+  isCorrectionIssuer,
+  isRegulatoryDocumentReader,
+  isRegulatoryTransmitter,
+  UnsupportedRegulatoryDocumentKindError,
+} from '@openlinker/core/invoicing';
 import type {
   BuyerProfile as BuyerProfileType,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
+  OriginalDocumentSnapshot,
 } from '@openlinker/core/invoicing';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
@@ -137,6 +144,31 @@ function seedHappyPath(
     });
 }
 
+function originalDocument(overrides: Partial<OriginalDocumentSnapshot> = {}): OriginalDocumentSnapshot {
+  return {
+    buyer: buyer(),
+    currency: 'PLN',
+    documentType: 'invoice',
+    lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, taxRate: '23' }],
+    clearanceReference: '1111111111-20260501-ABCDEF-01',
+    documentNumber: 'FV/2026/05/0042',
+    issueDate: '2026-05-01',
+    ...overrides,
+  };
+}
+
+function correctionCommand(overrides: Partial<IssueCorrectionCommand> = {}): IssueCorrectionCommand {
+  return {
+    connectionId: 'conn-1',
+    orderId: 'ol_order_123',
+    originalProviderInvoiceId: `${SESSION_REF}:${INVOICE_REF}`,
+    reason: 'Customer returned 1 unit',
+    lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+    originalDocument: originalDocument(),
+    ...overrides,
+  };
+}
+
 function adapter(http: FakeKsefHttpClient, builder: IFa3XmlBuilder = fakeBuilder): KsefInvoicingAdapter {
   return new KsefInvoicingAdapter(
     'conn-1',
@@ -154,7 +186,22 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const record = await adapter(http).issueInvoice(command());
+      const { record, seller, sourceDocument } = await adapter(http).issueInvoice(command());
+
+      // The adapter surfaces the neutral seller block (scheme-tagged tax id) so
+      // the core InvoiceService can snapshot the issued-document content.
+      expect(seller).toEqual({
+        name: 'Acme Sp. z o.o.',
+        taxId: { scheme: 'pl-nip', value: '1234567890' },
+        address: SELLER.address,
+      });
+
+      // The built FA(3) XML rides back as a neutral base64 source document so core
+      // persists it for `GET .../document?kind=source` (#1224 W3).
+      expect(sourceDocument).toEqual({
+        contentType: 'application/xml',
+        contentBase64: Buffer.from('<Faktura>fake</Faktura>', 'utf-8').toString('base64'),
+      });
 
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
       expect(record.regulatoryStatus).toBe('submitted');
@@ -214,7 +261,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
 
       // 'invoice' is supported and needs no correction payload.
-      const record = await adapter(http).issueInvoice(command({ documentType: 'invoice' }));
+      const { record } = await adapter(http).issueInvoice(command({ documentType: 'invoice' }));
       expect(record.documentType).toBe('invoice');
     });
 
@@ -302,7 +349,7 @@ describe('KsefInvoicingAdapter', () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const record = await adapter(http).issueInvoice(command());
+      const { record } = await adapter(http).issueInvoice(command());
       // providerType is the neutral open string 'ksef' (the only allowed mention,
       // and it lives on the provider-type axis, not a leaked status/number).
       const serialized = JSON.stringify({
@@ -323,7 +370,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
       const { builder, lastInput } = capturingBuilder();
 
-      const record = await adapter(http, builder).issueInvoice(
+      const { record } = await adapter(http, builder).issueInvoice(
         command({
           documentType: 'corrected',
           correction: {
@@ -378,6 +425,74 @@ describe('KsefInvoicingAdapter', () => {
       );
 
       expect(lastInput()?.correction?.originalKsefNumber).toBeNull();
+    });
+  });
+
+  describe('issueCorrection (#1288)', () => {
+    it('should be exposed as CorrectionIssuer', () => {
+      expect(isCorrectionIssuer(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+
+    it('should delegate into the issueInvoice KOR path and submit a corrected document', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const record = await adapter(http, builder).issueCorrection(correctionCommand());
+
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      expect(paths).toEqual([
+        'POST /sessions/online',
+        `POST /sessions/online/${SESSION_REF}/invoices`,
+        `POST /sessions/online/${SESSION_REF}/close`,
+        `GET /sessions/${SESSION_REF}`,
+      ]);
+      expect(record.documentType).toBe('corrected');
+      expect(record.regulatoryStatus).toBe('submitted');
+      expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
+
+      const built = lastInput();
+      expect(built?.correction).toBeDefined();
+      expect(built?.correction?.originalKsefNumber).toBe('1111111111-20260501-ABCDEF-01');
+      expect(built?.correction?.originalInvoiceNumber).toBe('FV/2026/05/0042');
+      // The delta (newQuantity: 1) was applied onto the original line (qty 2).
+      expect(built?.correction?.correctedLines).toHaveLength(1);
+      expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
+    });
+
+    it('should apply newUnitPriceGross deltas while keeping name/taxRate from the original line', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ lines: [{ originalLineNumber: 1, newUnitPriceGross: 99.0 }] }),
+      );
+
+      const line = lastInput()?.correction?.correctedLines?.[0];
+      expect(line?.quantity).toBe(2); // unchanged (only price corrected)
+    });
+
+    it('should throw KsefInvalidCorrectionException when no originalDocument snapshot was supplied', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueCorrection(correctionCommand({ originalDocument: undefined })),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should throw KsefInvalidCorrectionException when originalLineNumber is out of range', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueCorrection(
+          correctionCommand({ lines: [{ originalLineNumber: 5, newQuantity: 1 }] }),
+        ),
+      ).rejects.toBeInstanceOf(KsefInvalidCorrectionException);
+      expect(http.calls).toHaveLength(0);
     });
   });
 
@@ -549,15 +664,107 @@ describe('KsefInvoicingAdapter', () => {
   describe('submitForClearance (#1150 / C6)', () => {
     it('should echo the submitted status (no-op — clearance is folded into issue)', async () => {
       const http = new FakeKsefHttpClient();
-      const issued = await (async (): Promise<InvoiceRecord> => {
-        seedHappyPath(http);
-        return adapter(http).issueInvoice(command());
-      })();
+      seedHappyPath(http);
+      const { record: issued } = await adapter(http).issueInvoice(command());
 
       const result = await adapter(new FakeKsefHttpClient()).submitForClearance(issued);
 
       expect(result.regulatoryStatus).toBe('submitted');
       expect(result.clearanceReference).toBeNull();
+    });
+  });
+
+  describe('getUpo (#1224 / C15)', () => {
+    const PROVIDER_INVOICE_ID = `${SESSION_REF}:${INVOICE_REF}`;
+    const UPO_PATH = `/sessions/${SESSION_REF}/invoices/${INVOICE_REF}/upo`;
+
+    function record(providerInvoiceId: string | null = PROVIDER_INVOICE_ID): InvoiceRecord {
+      return new InvoiceRecord(
+        'rec-1',
+        'conn-1',
+        'ol_order_123',
+        'ksef',
+        'invoice',
+        'issued',
+        providerInvoiceId,
+        null,
+        'accepted',
+        '5265877635-20250826-0100001AF629-AF',
+        null,
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        null,
+        new Date('2026-06-23T10:00:00.000Z'),
+        new Date('2026-06-23T10:00:00.000Z'),
+      );
+    }
+
+    it('should be true for the RegulatoryDocumentReader guard', () => {
+      expect(isRegulatoryDocumentReader(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+
+    it('should fetch the session-scoped UPO endpoint as binary and return neutral bytes', async () => {
+      const http = new FakeKsefHttpClient();
+      const bytes = new Uint8Array([60, 85, 80, 79, 62]);
+      http.seedBinaryGet(UPO_PATH, {
+        data: bytes,
+        contentType: 'application/xml',
+        status: 200,
+        headers: { 'content-type': 'application/xml' },
+      });
+
+      const result = await adapter(http).getRegulatoryDocument(record());
+
+      expect(result.content).toBe(bytes);
+      expect(result.contentType).toBe('application/xml');
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
+    });
+
+    it('should default the content type to application/xml when KSeF omits it', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seedBinaryGet(UPO_PATH, {
+        data: new Uint8Array([1]),
+        contentType: '',
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getRegulatoryDocument(record());
+
+      expect(result.contentType).toBe('application/xml');
+    });
+
+    it('should throw when the record carries no composite invoice reference', async () => {
+      await expect(adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(null))).rejects.toBeInstanceOf(
+        KsefSessionException,
+      );
+    });
+
+    it('should fetch UPO when kind is explicitly upo (back-compat default)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seedBinaryGet(UPO_PATH, {
+        data: new Uint8Array([1]),
+        contentType: 'application/xml',
+        status: 200,
+        headers: { 'content-type': 'application/xml' },
+      });
+
+      const result = await adapter(http).getRegulatoryDocument(record(), 'confirmation');
+
+      expect(result.contentType).toBe('application/xml');
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
+    });
+
+    it('should reject a rendered-kind request with UnsupportedRegulatoryDocumentKindError', async () => {
+      await expect(
+        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'rendered'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+
+    it('should reject a source-kind request via the adapter (core serves it from the snapshot)', async () => {
+      await expect(
+        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'source'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
     });
   });
 });

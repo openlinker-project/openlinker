@@ -143,6 +143,7 @@ describe('ErliWebhookProvisioningAdapter', () => {
 
       expect(result.testPingTriggered).toBe(false);
     });
+
     it('should report testPingTriggered=false (non-fatal) when the self-test request itself fails', async () => {
       fetchSpy.mockRejectedValue(new Error('ECONNREFUSED'));
 

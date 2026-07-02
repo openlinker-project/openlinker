@@ -2,11 +2,19 @@
  * KSeF Invoicing Adapter (#1149 / C5)
  *
  * Per-connection implementation of the neutral `InvoicingPort` + the
- * `RegulatoryTransmitter` sub-capability (ADR-002 / ADR-026) for the KSeF
- * provider. Wires the C3 transport (`IKsefHttpClient` + session crypto) and the
- * C4 FA(3) builder into the country-agnostic port: it consumes ONLY neutral
- * `@openlinker/core/invoicing` types and returns ONLY neutral results — no
- * KSeF/FA(3)/NIP/UPO string ever crosses back into core.
+ * `RegulatoryTransmitter` and `CorrectionIssuer` (#1288) sub-capabilities
+ * (ADR-002 / ADR-026) for the KSeF provider. Wires the C3 transport
+ * (`IKsefHttpClient` + session crypto) and the C4 FA(3) builder into the
+ * country-agnostic port: it consumes ONLY neutral `@openlinker/core/invoicing`
+ * types and returns ONLY neutral results — no KSeF/FA(3)/NIP/UPO string ever
+ * crosses back into core.
+ *
+ * `issueCorrection` (#1288) is a pure delegation into `issueInvoice`'s existing
+ * KOR path: KSeF has no delta-only correction primitive, so every correction
+ * resubmits a complete FA(3) document built from a caller-assembled
+ * `IssueCorrectionCommand.originalDocument` snapshot (buyer/currency/lines
+ * reconstructed by the caller from the order, since `InvoiceRecord` does not
+ * persist them) plus the per-line deltas.
  *
  * `getClearanceStatus` (#1150 / C6) is the read primitive the reconciliation
  * job (#1121) calls — it polls the per-invoice status, maps the KSeF status code
@@ -49,17 +57,27 @@
 import { createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
 import type {
+  CorrectionIssuer,
+  CorrectionLine,
   RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
+  InvoiceLine,
   InvoiceRecord as InvoiceRecordType,
   InvoicingPort,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
+  IssuedDocumentSeller,
+  RegulatoryDocument,
+  RegulatoryDocumentKind,
+  RegulatoryDocumentReader,
   RegulatoryTransmitter,
+  StoredDocument,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
@@ -91,7 +109,16 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
-export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitter {
+/** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
+const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
+
+export class KsefInvoicingAdapter
+  implements
+    InvoicingPort,
+    RegulatoryTransmitter,
+    RegulatoryDocumentReader,
+    CorrectionIssuer
+{
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
   constructor(
@@ -104,7 +131,7 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     private readonly now: () => Date = (): Date => new Date(),
   ) {}
 
-  async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecordType> {
+  async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
     // the subset getSupportedDocumentTypes advertises. Reject anything else up
     // front with a terminal exception so the service marks the record failed
@@ -177,7 +204,10 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     // 4. Neutral result. KSeF number is async (C6 reconciles) → clearanceReference null.
     //    providerInvoiceId packs BOTH the session ref and the invoice ref — the
     //    status/UPO read (C6) needs both for GET /sessions/{sref}/invoices/{iref}.
-    return new InvoiceRecord(
+    //    The result also carries the neutral seller block (resolved from the
+    //    connection's KsefSellerConfig) so the core InvoiceService can snapshot the
+    //    issued-document content without core ever seeing a NIP/KSeF wire detail.
+    const record = new InvoiceRecord(
       '', // persistence id is assigned by the core InvoiceService (#1118), not here.
       cmd.connectionId,
       cmd.orderId,
@@ -195,6 +225,116 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
       issuedAt,
       issuedAt,
     );
+    // Persist the FA(3) source XML as a neutral opaque blob so the core service can
+    // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
+    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+  }
+
+  /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
+  private toSourceDocument(xml: string): StoredDocument {
+    return {
+      contentType: 'application/xml',
+      contentBase64: Buffer.from(xml, 'utf-8').toString('base64'),
+    };
+  }
+
+  /**
+   * Map the adapter's PL seller config (Podmiot1: NIP + name + address) onto the
+   * neutral {@link IssuedDocumentSeller} the core content snapshot persists. The
+   * `pl-nip` scheme tag is the ONLY place the PL identifier system is named — it
+   * stays behind the adapter; core sees a scheme-tagged `TaxIdentifier`.
+   */
+  private toNeutralSeller(): IssuedDocumentSeller {
+    return {
+      name: this.seller.name,
+      taxId: { scheme: 'pl-nip', value: this.seller.nip },
+      address: {
+        ...this.seller.address,
+        line2: this.seller.address.line2 ?? null,
+      },
+    };
+  }
+
+  /**
+   * `CorrectionIssuer`. KSeF has no delta-only correction primitive — every KOR
+   * is a brand-new full FA(3) submission, so this is a PURE DELEGATION to the
+   * already-tested `issueInvoice` KOR path (zero duplicated session/XML-build
+   * logic): apply the per-line deltas onto the caller-assembled
+   * `originalDocument` snapshot, then issue a `corrected` document referencing
+   * the original. Throws `KsefInvalidCorrectionException` (terminal, no retry)
+   * when the caller could not assemble a snapshot — KSeF cannot resubmit a KOR
+   * without the full original buyer/currency/lines.
+   *
+   * `cmd.originalProviderInvoiceId` (the base-port `{sessionRef}:{invoiceRef}`
+   * composite this adapter's OWN `providerInvoiceId` packs, used by
+   * `getClearanceStatus` to poll a specific submission) is intentionally NOT
+   * read here — the KOR linkage KSeF actually needs (the authority-assigned
+   * KSeF number, human document number, issue date) travels on the neutral
+   * `originalDocument` snapshot instead, since that's the caller-assembled
+   * source of truth for what the original document looked like. The field
+   * stays on the base `IssueCorrectionCommand` for adapters (e.g. Subiekt)
+   * whose provider-native id IS the correction target.
+   */
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecordType> {
+    if (!cmd.originalDocument) {
+      throw new KsefInvalidCorrectionException(
+        `Cannot issue a KSeF correction for order ${cmd.orderId}: the original invoice ` +
+          'has no reconstructable document snapshot (buyer/currency/lines) to rebuild the corrected FA(3) from.',
+      );
+    }
+    const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
+    const issueCmd: IssueInvoiceCommand = {
+      connectionId: cmd.connectionId,
+      orderId: cmd.orderId,
+      buyer: cmd.originalDocument.buyer,
+      currency: cmd.originalDocument.currency,
+      // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
+      // `CorrectionReference`'s contract, the command's top-level `lines` carry
+      // the "before" state and `correction.correctedLines` carries the "after"
+      // state; the FA(3) mapper reads both to build the KOR's before/after rows.
+      lines: cmd.originalDocument.lines,
+      documentType: cmd.documentType ?? 'corrected',
+      correction: {
+        originalClearanceReference: cmd.originalDocument.clearanceReference,
+        originalDocumentNumber: cmd.originalDocument.documentNumber,
+        originalIssueDate: cmd.originalDocument.issueDate,
+        reason: cmd.reason ?? '',
+        correctedLines,
+      },
+      idempotencyKey: cmd.idempotencyKey,
+    };
+    // `CorrectionIssuer.issueCorrection` returns the plain neutral `InvoiceRecord`
+    // (unlike `issueInvoice`, which wraps it in `IssueInvoiceResult` alongside the
+    // optional seller/sourceDocument the UPO/document-retrieval flow needs).
+    const { record } = await this.issueInvoice(issueCmd);
+    return record;
+  }
+
+  /**
+   * Apply per-line deltas onto a copy of the original lines, keeping `name`/
+   * `taxRate` from the original (the delta carries only the changed
+   * `newQuantity`/`newUnitPriceGross`). `originalLineNumber` is 1-based per
+   * {@link CorrectionLine}'s contract.
+   */
+  private applyCorrectionDeltas(original: InvoiceLine[], deltas: CorrectionLine[]): InvoiceLine[] {
+    const corrected = original.map((line) => ({ ...line }));
+    for (const delta of deltas) {
+      const index = delta.originalLineNumber - 1;
+      const line = corrected[index];
+      if (!line) {
+        throw new KsefInvalidCorrectionException(
+          `Correction line references originalLineNumber ${delta.originalLineNumber}, ` +
+            `but the original document has only ${original.length} line(s)`,
+        );
+      }
+      if (delta.newQuantity !== undefined) {
+        line.quantity = delta.newQuantity;
+      }
+      if (delta.newUnitPriceGross !== undefined) {
+        line.unitPriceGross = delta.newUnitPriceGross;
+      }
+    }
+    return corrected;
   }
 
   /**
@@ -289,6 +429,44 @@ export class KsefInvoicingAdapter implements InvoicingPort, RegulatoryTransmitte
     }
 
     return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
+  }
+
+  /**
+   * `RegulatoryDocumentReader.getRegulatoryDocument` (#1224 / C15) — fetch the UPO confirmation
+   * document for a cleared invoice as neutral bytes. Decodes the composite
+   * `providerInvoiceId` into the session + invoice references and reads the
+   * session-scoped UPO endpoint (`GET /sessions/{sessionRef}/invoices/{invoiceRef}/upo`)
+   * as binary — the same authed path the clearance read uses, so no absolute-URL
+   * auth edge case. KSeF returns the UPO as XML (the official confirmation); the
+   * neutral `RegulatoryDocument` carries the provider-reported content type so the
+   * HTTP boundary streams it back verbatim. A `4xx`/`5xx` propagates as a thrown
+   * transport exception the controller maps (404/409/502); core sees only neutral
+   * bytes, never a KSeF/UPO wire detail.
+   */
+  async getRegulatoryDocument(
+    record: InvoiceRecordType,
+    kind: RegulatoryDocumentKind = 'confirmation',
+  ): Promise<RegulatoryDocument> {
+    // `source` is the persisted FA(3) XML served by the core service from the
+    // record snapshot, never via this adapter. `rendered` (server-side HTML/PDF
+    // visualization) is not a KSeF API capability — integrators render the FA(3)
+    // XML client-side via the official XSLT. Both are soft 409s, not failures.
+    if (kind !== 'confirmation') {
+      throw new UnsupportedRegulatoryDocumentKindError(kind);
+    }
+    const { sessionRef, invoiceRef } = this.resolveInvoiceReference(record);
+    const upoPath = `/sessions/${encodeURIComponent(sessionRef)}/invoices/${encodeURIComponent(
+      invoiceRef,
+    )}/upo`;
+    this.logger.log(
+      `Fetching UPO document (connection ${this.connectionId}, session ref ${sessionRef}, invoice ref ${invoiceRef})`,
+    );
+
+    const response = await this.httpClient.getExpectingBinary(upoPath);
+    return {
+      content: response.data,
+      contentType: response.contentType.length > 0 ? response.contentType : DEFAULT_UPO_CONTENT_TYPE,
+    };
   }
 
   /**

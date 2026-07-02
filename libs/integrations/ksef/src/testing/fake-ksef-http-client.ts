@@ -41,6 +41,12 @@ export class FakeKsefHttpClient implements IKsefHttpClient {
     return this;
   }
 
+  /** Seed a binary response for `GET path` (getExpectingBinary). */
+  seedBinaryGet(path: string, response: KsefBinaryResponse): this {
+    this.binaryResponses.set(this.key('GET', path), response);
+    return this;
+  }
+
   clear(): void {
     this.calls.length = 0;
     this.jsonResponses.clear();
@@ -70,6 +76,15 @@ export class FakeKsefHttpClient implements IKsefHttpClient {
     const response = this.binaryResponses.get(this.key('POST', path));
     if (!response) {
       return Promise.reject(new Error(`FakeKsefHttpClient: no binary response seeded for POST ${path}`));
+    }
+    return Promise.resolve(response);
+  }
+
+  getExpectingBinary(path: string, options?: KsefHttpRequestOptions): Promise<KsefBinaryResponse> {
+    this.calls.push({ method: 'GET', path, options });
+    const response = this.binaryResponses.get(this.key('GET', path));
+    if (!response) {
+      return Promise.reject(new Error(`FakeKsefHttpClient: no binary response seeded for GET ${path}`));
     }
     return Promise.resolve(response);
   }

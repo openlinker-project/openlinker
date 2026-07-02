@@ -162,6 +162,27 @@ describe('ErliInboundWebhookDecoderAdapter', () => {
       expect(created.envelope.eventId).not.toBe(cancelled.envelope.eventId);
     });
 
+    it('should produce distinct eventIds for a status change even when the body carries no timestamp', () => {
+      // Regression: a timestamp-less body used to hash on orderId alone, so
+      // the dedup gate would drop a later real status change for the same
+      // order. status is now folded into the hash basis too.
+      const created = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      const cancelled = decoder.extractEnvelope(makeBody({ status: 'cancelled' }), {});
+      expect(created.action).toBe('route');
+      expect(cancelled.action).toBe('route');
+      if (created.action !== 'route' || cancelled.action !== 'route') return;
+      expect(created.envelope.eventId).not.toBe(cancelled.envelope.eventId);
+    });
+
+    it('should produce the same eventId for a retried delivery of an identical timestamp-less body', () => {
+      const a = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      const b = decoder.extractEnvelope(makeBody({ status: 'purchased' }), {});
+      expect(a.action).toBe('route');
+      expect(b.action).toBe('route');
+      if (a.action !== 'route' || b.action !== 'route') return;
+      expect(a.envelope.eventId).toBe(b.envelope.eventId);
+    });
+
     it('should reject malformed JSON', () => {
       const result = decoder.extractEnvelope(Buffer.from('not json'), {});
       expect(result.action).toBe('reject');

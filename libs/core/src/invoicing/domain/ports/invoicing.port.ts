@@ -20,13 +20,19 @@ import type {
   DocumentType,
   GetInvoiceQuery,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '../types/invoicing.types';
 
 export interface InvoicingPort {
-  /** Issue a fiscal document for an order; returns the persisted projection. */
-  issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
+  /**
+   * Issue a fiscal document for an order; returns the neutral projection plus an
+   * optional adapter-resolved `seller` block (see {@link IssueInvoiceResult}). The
+   * adapter is a pure mechanism — persistence + the exactly-once dedup gate are
+   * owned by the core `InvoiceService`, which snapshots the issued-document content.
+   */
+  issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult>;
 
   /** Fetch an issued document by order id or provider id; `null` when absent. */
   getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null>;

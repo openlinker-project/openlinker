@@ -205,6 +205,114 @@ export interface CorrectionReference {
 }
 
 /**
+ * Seller party captured on an issued-document snapshot. Country-agnostic: the
+ * tax identity is a scheme-tagged {@link TaxIdentifier} (the adapter resolves it
+ * from its own connection config, e.g. a PL adapter emits `{ scheme: 'pl-nip' }`)
+ * — never a bare NIP. Mirrors {@link BuyerProfile}'s neutral shape minus the
+ * B2B/B2C `type` axis (a seller is always the issuing party).
+ */
+export interface IssuedDocumentSeller {
+  name: string;
+  taxId: TaxIdentifier;
+  address: BuyerAddress;
+}
+
+/**
+ * Buyer party as captured on an issued-document snapshot. `taxId` is `null` for a
+ * B2C buyer with no tax identity. The address reuses the neutral {@link BuyerAddress}.
+ */
+export interface IssuedDocumentBuyer {
+  name: string;
+  taxId: TaxIdentifier | null;
+  address: BuyerAddress;
+}
+
+/**
+ * One issued-document line snapshot. `unitNet`/`net`/`vat`/`gross` are the
+ * computed money values (core's `number` idiom); `taxRate` is the neutral string
+ * code echoed from the command (the provider resolves it to its regime).
+ */
+export interface IssuedDocumentLine {
+  name: string;
+  quantity: number;
+  unitNet: number;
+  taxRate: string;
+  net: number;
+  tax: number;
+  gross: number;
+}
+
+/** One tax-breakdown bucket, grouped by neutral `rate` code. */
+export interface TaxBreakdownEntry {
+  rate: string;
+  net: number;
+  tax: number;
+  gross: number;
+}
+
+/** Document money totals (sum across all lines). */
+export interface DocumentTotals {
+  net: number;
+  tax: number;
+  gross: number;
+}
+
+/** Neutral payment descriptor on an issued document; `null` fields when unknown. */
+export interface IssuedDocumentPayment {
+  method: string | null;
+  paidAt: string | null;
+}
+
+/**
+ * Neutral snapshot of an issued document's CONTENT, taken at issue time (ADR-026).
+ * It is a non-authoritative projection backing the FE "Invoice contents" card —
+ * the provider owns the authoritative document. No country/regulatory vocabulary
+ * appears here: `seller`/`buyer` carry scheme-tagged tax ids, `lines`/`taxBreakdown`
+ * use the neutral `taxRate` string codes, `currency` is ISO 4217, dates are ISO 8601.
+ * `seller` is `null` when the issuing adapter does not surface a seller block (it
+ * degrades gracefully rather than blocking the snapshot).
+ */
+export interface IssuedDocumentContent {
+  seller: IssuedDocumentSeller | null;
+  buyer: IssuedDocumentBuyer;
+  lines: IssuedDocumentLine[];
+  taxBreakdown: TaxBreakdownEntry[];
+  totals: DocumentTotals;
+  /** ISO 4217 currency code. */
+  currency: string;
+  /** ISO 8601 issue date; `null` when not yet known. */
+  issueDate: string | null;
+  /** ISO 8601 sale date; `null` when not provided. */
+  saleDate: string | null;
+  /** Payment descriptor; `null` when unknown. */
+  payment: IssuedDocumentPayment | null;
+}
+
+/**
+ * Neutral document kind a {@link RegulatoryDocumentReader} can fetch for a record.
+ * Country-agnostic (ADR-026):
+ *  - `confirmation` — the tax authority's confirmation/receipt document (PL: UPO).
+ *  - `source` — the machine-readable source document submitted to the authority
+ *    (PL: the FA(3) XML), persisted at issue time.
+ *  - `rendered` — a human-readable rendering (HTML/PDF) of the source document,
+ *    when the provider can produce one server-side.
+ */
+export const RegulatoryDocumentKindValues = ['confirmation', 'source', 'rendered'] as const;
+export type RegulatoryDocumentKind = (typeof RegulatoryDocumentKindValues)[number];
+
+/**
+ * Neutral persisted document blob — provider-reported MIME type + base64-encoded
+ * bytes. Used to snapshot a document (e.g. the issued source XML) at issue time so
+ * it can be re-served later without a provider round-trip. jsonb-friendly (no raw
+ * `Uint8Array`); the interface layer decodes the base64 to bytes when streaming.
+ */
+export interface StoredDocument {
+  contentType: string;
+  /** Base64-encoded document bytes. */
+  contentBase64: string;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -240,6 +348,49 @@ export interface CorrectionLine {
 }
 
 /**
+ * Best-effort reconstruction of the original document's issuance inputs,
+ * assembled by the CALLER (never by adapters) from the order the original
+ * document was issued for — mirroring how a keyless re-issue rebuilds its
+ * {@link IssueInvoiceCommand} from the order snapshot. Needed by adapters that
+ * must resubmit a COMPLETE corrected document rather than apply a delta (e.g.
+ * KSeF's FA(3) KOR, which has no delta-only correction primitive) — adapters
+ * that only need per-line deltas (Subiekt) never read this field.
+ *
+ * ACCEPTED LIMITATIONS (no persisted point-in-time snapshot exists today):
+ * - `buyer` tax id is not persisted on `InvoiceRecord`, so it is rebuilt as
+ *   `buyerTaxId: null` — same accepted limitation as a keyless re-issue.
+ * - `lines` are read off the order's CURRENT state, NOT a snapshot taken at
+ *   original-issuance time. If the order's items were modified after the
+ *   original document was issued (edited quantity/price, added/removed/
+ *   reordered line), `lines` — and therefore the `originalLineNumber`-indexed
+ *   correction deltas applied against it — may no longer match what the
+ *   provider actually has on file for the referenced original document.
+ *   Correcting an order that changed since its original issuance is UNSAFE
+ *   until `InvoiceRecord` persists the true issuance-time line snapshot.
+ *   Tracked by https://github.com/openlinker-project/openlinker/issues/1297.
+ */
+export interface OriginalDocumentSnapshot {
+  buyer: BuyerProfile;
+  /** ISO 4217 currency code, echoed from the original issue command. */
+  currency: string;
+  /**
+   * Neutral document type of the original document (open-world). Not
+   * currently read by any shipping `CorrectionIssuer` adapter (KSeF derives
+   * the corrected document's type from `IssueCorrectionCommand.documentType`
+   * instead) — carried for a future adapter that needs it.
+   */
+  documentType: string;
+  /** Reconstructed "before" lines of the original document — see the accepted-limitations note above. */
+  lines: InvoiceLine[];
+  /** Authority-assigned reference of the original document; `null` if never cleared. */
+  clearanceReference: string | null;
+  /** Human-facing sequential number of the original document. */
+  documentNumber: string;
+  /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
+  issueDate: string;
+}
+
+/**
  * Command to issue a correction of an already-issued document (ADR-026). Like
  * {@link IssueInvoiceCommand} it is a pure description of *what* to correct; the
  * port does not decide whether/when. `originalProviderInvoiceId` references the
@@ -247,6 +398,7 @@ export interface CorrectionLine {
  * carry the post-correction values per original line; `reason` is the free-text
  * correction reason. `documentType` is caller-supplied (open-world); the adapter
  * defaults it when absent. `idempotencyKey` backs exactly-once issuance.
+ * `originalDocument` is caller-assembled — see {@link OriginalDocumentSnapshot}.
  */
 export interface IssueCorrectionCommand {
   connectionId: string;
@@ -257,6 +409,30 @@ export interface IssueCorrectionCommand {
   reason?: string;
   lines: CorrectionLine[];
   idempotencyKey?: string;
+  /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
+  originalDocument?: OriginalDocumentSnapshot;
+}
+
+/**
+ * Result of {@link InvoicingPort.issueInvoice}. Wraps the neutral persisted
+ * projection (`record`) and an OPTIONAL `seller` block the adapter resolved from
+ * its own connection config (country-agnostic — the adapter maps its provider
+ * seller identity onto the neutral {@link IssuedDocumentSeller}). Adapters that do
+ * not surface a seller (e.g. a bridge that owns the document) omit it; the core
+ * content snapshot then persists `seller: null` and the content endpoint degrades
+ * gracefully.
+ */
+export interface IssueInvoiceResult {
+  record: InvoiceRecord;
+  seller?: IssuedDocumentSeller;
+  /**
+   * OPTIONAL machine-readable source document the adapter built and submitted to
+   * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque
+   * {@link StoredDocument} at issue time so `GET .../document?kind=source` can
+   * re-serve it without a provider round-trip. Adapters that do not expose a
+   * source document omit it.
+   */
+  sourceDocument?: StoredDocument;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -311,6 +487,10 @@ export interface CreateInvoiceRecordInput {
    * presence flag set on the write path; defaults `false` when omitted.
    */
   hasBuyerTaxId?: boolean;
+  /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
+  documentContent?: IssuedDocumentContent | null;
+  /** Persisted machine-readable source document (e.g. FA(3) XML); `null` when not captured. */
+  sourceDocument?: StoredDocument | null;
 }
 
 /**
@@ -352,7 +532,13 @@ export interface PaginatedInvoiceRecords {
   total: number;
 }
 
-/** Patch applied to an existing record after an issue / transmission attempt. */
+/**
+ * Patch applied to an existing record after an issue / transmission attempt.
+ * `sourceDocument` is write-once: the service sets it ONCE on the first successful
+ * `issued` patch (from the adapter's {@link IssueInvoiceResult}); the repository
+ * enforces at the persistence boundary that it is never overwritten once a snapshot
+ * is present.
+ */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
   /**
@@ -402,4 +588,14 @@ export interface InvoiceOutcomePatch {
    * the in-flight slot; cleared (`null`) on the terminal `issued`/`failed` patch.
    */
   leaseExpiresAt?: Date | null;
+  /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
+  documentContent?: IssuedDocumentContent | null;
+  /**
+   * Persisted machine-readable source document (e.g. FA(3) XML), captured at
+   * issue time from the adapter's {@link IssueInvoiceResult}. Write-once: set
+   * on the first successful `issued` patch; the repository guards against
+   * overwriting an existing snapshot. `null` when the adapter does not surface
+   * a source document.
+   */
+  sourceDocument?: StoredDocument | null;
 }
