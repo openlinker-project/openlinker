@@ -444,6 +444,10 @@ export function createMockApiClient(
       delete: vi.fn().mockResolvedValue(undefined),
       ...overrides.users,
     } as ApiClient['users'],
+    system: {
+      getConfig: vi.fn().mockResolvedValue({ demoMode: false }),
+      ...overrides.system,
+    } as ApiClient['system'],
   };
 
   // Fold plugin mock defaults, layering caller overrides per namespace. Caller
