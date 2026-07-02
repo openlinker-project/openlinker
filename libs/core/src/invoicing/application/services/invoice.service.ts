@@ -162,9 +162,11 @@ function rateFraction(taxRate: string): number {
  * post-correction ("after") line set (#1297). Deltas are keyed by 1-based
  * `originalLineNumber`; each present delta overrides `quantity`/`unitPriceGross`
  * on the matching line. Lines with no matching delta pass through unchanged; a
- * delta whose `originalLineNumber` is out of range is ignored (the adapter and
- * the shape validators own delta validation — this snapshot builder never
- * throws). Pure: no I/O, no mutation of the inputs.
+ * delta whose `originalLineNumber` is out of range is ignored, and duplicate
+ * deltas for the same line last-write-win via the `Map` (the adapter and the
+ * shape validators own delta validation — the HTTP boundary rejects duplicate
+ * `originalLineNumber`s outright, so neither case reaches here from the API;
+ * this snapshot builder never throws). Pure: no I/O, no mutation of the inputs.
  */
 function applyCorrectionDeltas(
   originalLines: readonly InvoiceLine[],

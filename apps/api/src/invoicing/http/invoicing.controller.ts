@@ -534,9 +534,13 @@ export class InvoicingController {
    * line snapshot (#1297) — the PRIMARY path. `buyer`/`currency`/`lines` come from
    * the snapshot (the lines AS ISSUED, including the true buyer tax id — no
    * `buyerTaxId: null` caveat and no order fetch); `documentType`/clearance/number/
-   * issue date come from the record itself. The snapshot's `buyer` round-trips
-   * from jsonb as a plain object, so it is re-wrapped into a real `BuyerProfile`
-   * to match the fallback path's output shape.
+   * issue date come from the record itself. Transitional exception: a snapshot
+   * persisted by a correction of a PRE-#1297 record was seeded from the fallback
+   * reconstruction, so its `taxId` is `null` — a one-hop degradation that
+   * self-heals for documents issued after the snapshot column existed. The
+   * snapshot's `buyer` round-trips from jsonb as a plain structural object
+   * (`IssuedSnapshotBuyer`), so it is re-wrapped into a real `BuyerProfile` to
+   * match the fallback path's output shape.
    */
   private buildSnapshotFromRecord(
     record: InvoiceRecord,

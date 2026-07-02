@@ -178,23 +178,36 @@ export interface InvoiceLine {
 }
 
 /**
+ * Structural buyer shape persisted inside {@link IssuedLineSnapshot}. Field-for-
+ * field the data shape of {@link BuyerProfile} (a live instance assigns to it
+ * directly), but typed structurally because the snapshot round-trips through
+ * jsonb, which strips the class prototype (the `isCompany` getter). Consumers
+ * that need a real `BuyerProfile` re-wrap it from these fields.
+ */
+export interface IssuedSnapshotBuyer {
+  name: string;
+  /** Scheme-tagged tax id; `null` when the buyer has none (typically B2C). */
+  taxId: TaxIdentifier | null;
+  address: BuyerAddress;
+  type: BuyerType;
+}
+
+/**
  * Issuance-time snapshot of the exact command inputs a correction needs to
  * reconstruct the original document (#1297). Persisted on `InvoiceRecord` when a
  * document is issued so a later correction diffs its `originalLineNumber`-indexed
  * deltas against the lines AS ISSUED, not the order's current (possibly-edited)
- * state. Neutral (ADR-026): reuses {@link BuyerProfile} + {@link InvoiceLine}; no
- * regime/provider vocabulary.
+ * state. Neutral (ADR-026): reuses the {@link BuyerProfile} data shape
+ * ({@link IssuedSnapshotBuyer}) + {@link InvoiceLine}; no regime/provider
+ * vocabulary.
  *
  * Only `buyer`/`currency`/`lines` live here — the corrected document's
  * `documentType`/clearance reference/number/issue date are read from the
  * `InvoiceRecord` itself when assembling an {@link OriginalDocumentSnapshot}.
- *
- * Persisted as jsonb, so on read `buyer` is a plain structural object (no
- * `BuyerProfile` class prototype / `isCompany` getter). Callers that need a real
- * `BuyerProfile` re-wrap it; consumers that read fields structurally do not.
  */
 export interface IssuedLineSnapshot {
-  buyer: BuyerProfile;
+  /** Buyer as issued — structural (jsonb round-trip), see {@link IssuedSnapshotBuyer}. */
+  buyer: IssuedSnapshotBuyer;
   /** ISO 4217 currency code, echoed from the issue command. */
   currency: string;
   /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate). */
