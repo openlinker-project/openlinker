@@ -625,7 +625,7 @@ describe('OrderIngestionService', () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
     });
 
-    it('should enqueue a stockRestore job once when an order transitions to cancelled', async () => {
+    it('should enqueue a stockRestore job when an order transitions to cancelled', async () => {
       orderSource.getOrder.mockResolvedValue(cancelledIncoming);
       // Prior record has a non-cancelled status → transition fires.
       orderRecordService.getOrderRecord.mockResolvedValue({
@@ -635,7 +635,10 @@ describe('OrderIngestionService', () => {
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
-      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      // Both the early-fire hook (before item resolution) and the post-persistOrder
+      // hook fire — both carry the same dedupeKey, so the job queue deduplicates
+      // them to a single job in production.
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(2);
       expect(jobQueue.enqueue).toHaveBeenCalledWith({
         type: 'marketplace.offer.stockRestore',
         connectionId,
@@ -644,13 +647,14 @@ describe('OrderIngestionService', () => {
       });
     });
 
-    it('should enqueue once when a first-seen order is already cancelled (no prior record)', async () => {
+    it('should enqueue when a first-seen order is already cancelled (no prior record)', async () => {
       orderSource.getOrder.mockResolvedValue(cancelledIncoming);
       orderRecordService.getOrderRecord.mockResolvedValue(null);
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
-      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      // Early-fire + post-persistOrder, same dedupeKey → one actual job in production.
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(2);
       expect(jobQueue.enqueue).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'marketplace.offer.stockRestore' })
       );
@@ -683,14 +687,16 @@ describe('OrderIngestionService', () => {
         sourceConnectionId: connectionId,
         orderSnapshot: { status: 'BOUGHT' },
       } as unknown as OrderRecord);
+      // The early-fire enqueue attempt fails; the second (post-persistOrder) succeeds.
       jobQueue.enqueue.mockRejectedValueOnce(new Error('redis down'));
 
       await expect(
         service.syncOrderFromSource(connectionId, externalOrderId)
       ).resolves.not.toThrow();
 
-      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
-      // Order is still persisted; only the restore was lost (and logged).
+      // 2 calls: early-fire (fails, swallowed) + post-persistOrder (succeeds).
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(2);
+      // Order is still persisted regardless of the early-fire failure.
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
     });
 
@@ -706,6 +712,46 @@ describe('OrderIngestionService', () => {
 
       expect(result).toEqual([]);
       expect(jobQueue.enqueue).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue stockRestore even when item resolution fails (early-fire, #1146)', async () => {
+      // Cancelled order with an unresolvable item — MissingOrderItemMappingError is
+      // thrown at Step 4 before persistOrder can run, which would have preempted the
+      // original post-persistOrder hook. The early-fire hook must still enqueue.
+      const cancelledWithItems = {
+        ...cancelledIncoming,
+        items: [
+          {
+            id: 'item-x',
+            productRef: { type: 'offer' as const, externalId: 'unmapped-offer' },
+            quantity: 1,
+            price: 9.99,
+          },
+        ],
+      };
+      orderSource.getOrder.mockResolvedValue(cancelledWithItems);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: false,
+        productRef: { type: 'offer', externalId: 'unmapped-offer' },
+        reason: 'no mapping',
+      });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey },
+      });
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
     });
   });

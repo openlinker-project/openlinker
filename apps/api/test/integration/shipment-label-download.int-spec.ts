@@ -96,7 +96,7 @@ describe('Shipment Label Download API Integration', () => {
   ): Promise<string> {
     const { sourceId } = await seedRoute();
     const created = await http
-      .post('/shipments/generate-label')
+      .post('/v1/shipments/generate-label')
       .set('Authorization', `Bearer ${token}`)
       .send({
         sourceConnectionId: sourceId,
@@ -117,7 +117,7 @@ describe('Shipment Label Download API Integration', () => {
       const id = await seedShipment(http, token, 'ol_order_label_1');
 
       const res = await http
-        .get(`/shipments/${id}/label`)
+        .get(`/v1/shipments/${id}/label`)
         .set('Authorization', `Bearer ${token}`)
         .buffer(true)
         .parse((response, cb) => {
@@ -139,13 +139,13 @@ describe('Shipment Label Download API Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .get('/shipments/ol_shipment_missing/label')
+        .get('/v1/shipments/ol_shipment_missing/label')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should 401 without auth', async () => {
-      await harness.getHttp().get('/shipments/ol_shipment_x/label').expect(401);
+      await harness.getHttp().get('/v1/shipments/ol_shipment_x/label').expect(401);
     });
   });
 });

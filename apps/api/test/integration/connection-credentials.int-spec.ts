@@ -54,7 +54,7 @@ describe('Connection Credentials Integration', () => {
       const dto = createPrestashopWizardConnectionDto({ name: 'Wizard Store' });
 
       const response = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(dto)
         .expect(201);
@@ -89,7 +89,7 @@ describe('Connection Credentials Integration', () => {
       });
 
       await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(dto)
         .expect(400);
@@ -105,7 +105,7 @@ describe('Connection Credentials Integration', () => {
       });
 
       await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(dto)
         .expect(400);
@@ -121,7 +121,7 @@ describe('Connection Credentials Integration', () => {
       });
 
       await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(dto)
         .expect(400);
@@ -135,7 +135,7 @@ describe('Connection Credentials Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const created = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(createPrestashopWizardConnectionDto())
         .expect(201);
@@ -144,7 +144,7 @@ describe('Connection Credentials Integration', () => {
       const refBefore = before!.credentialsRef;
 
       await http
-        .put(`/connections/${created.body.id}/credentials`)
+        .put(`/v1/connections/${created.body.id}/credentials`)
         .set('Authorization', `Bearer ${token}`)
         .send({ credentials: { webserviceApiKey: 'ROTATED_KEY' } })
         .expect(204);
@@ -170,7 +170,7 @@ describe('Connection Credentials Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const created = await http
-        .post('/connections')
+        .post('/v1/connections')
         .set('Authorization', `Bearer ${token}`)
         .send(createPrestashopConnectionDto({ credentialsRef: 'db:explicit-ref' }))
         .expect(201);
@@ -182,7 +182,7 @@ describe('Connection Credentials Integration', () => {
         .update({ id: created.body.id }, { credentialsRef: 'LEGACY_RAW_KEY' });
 
       await http
-        .put(`/connections/${created.body.id}/credentials`)
+        .put(`/v1/connections/${created.body.id}/credentials`)
         .set('Authorization', `Bearer ${token}`)
         .send({ credentials: { webserviceApiKey: 'X' } })
         .expect(400);

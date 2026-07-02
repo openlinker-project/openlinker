@@ -263,7 +263,7 @@ describe('Shipment Dispatch Notification Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const response = await http
-        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .post(`/v1/shipments/${shipmentId}/notify-dispatched`)
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -289,13 +289,13 @@ describe('Shipment Dispatch Notification Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const first = await http
-        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .post(`/v1/shipments/${shipmentId}/notify-dispatched`)
         .set('Authorization', `Bearer ${token}`);
       expect(first.status).toBe(200);
       expect(first.body.outcome).toBe('notified');
 
       const second = await http
-        .post(`/shipments/${shipmentId}/notify-dispatched`)
+        .post(`/v1/shipments/${shipmentId}/notify-dispatched`)
         .set('Authorization', `Bearer ${token}`);
       expect(second.status).toBe(200);
       expect(second.body).toEqual({
@@ -315,7 +315,7 @@ describe('Shipment Dispatch Notification Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const response = await http
-        .post('/shipments/ol_shipment_nonexistent/notify-dispatched')
+        .post('/v1/shipments/ol_shipment_nonexistent/notify-dispatched')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);

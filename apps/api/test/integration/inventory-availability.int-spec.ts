@@ -136,7 +136,7 @@ describe('GET /inventory/availability (#792 PR 2)', () => {
     });
 
     const response = await http
-      .get(`/inventory/availability?${params.toString()}`)
+      .get(`/v1/inventory/availability?${params.toString()}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -169,7 +169,7 @@ describe('GET /inventory/availability (#792 PR 2)', () => {
     const token = await loginAsAdmin(http, dataSource);
 
     await http
-      .get('/inventory/availability?productVariantIds=')
+      .get('/v1/inventory/availability?productVariantIds=')
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
@@ -182,14 +182,14 @@ describe('GET /inventory/availability (#792 PR 2)', () => {
     const ids = Array.from({ length: 201 }, (_, i) => `ol_variant_${i.toString()}`).join(',');
 
     await http
-      .get(`/inventory/availability?productVariantIds=${ids}`)
+      .get(`/v1/inventory/availability?productVariantIds=${ids}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
 
   it('returns 401 without an auth token', async () => {
     const http = harness.getHttp();
-    await http.get('/inventory/availability?productVariantIds=ol_variant_x').expect(401);
+    await http.get('/v1/inventory/availability?productVariantIds=ol_variant_x').expect(401);
   });
 
   it('preserves input order in the response items[]', async () => {
@@ -214,7 +214,7 @@ describe('GET /inventory/availability (#792 PR 2)', () => {
     });
 
     const response = await http
-      .get(`/inventory/availability?${params.toString()}`)
+      .get(`/v1/inventory/availability?${params.toString()}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 

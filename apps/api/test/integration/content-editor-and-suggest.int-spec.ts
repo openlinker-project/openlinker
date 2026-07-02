@@ -37,7 +37,7 @@ async function loginAsViewer(
     [username, `${username}@example.com`, passwordHash],
   );
   const response = await harness.getHttp()
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username, password: 'viewer-pass' })
     .expect(200);
   return response.body.access_token as string;
@@ -80,7 +80,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       const productId = await seedProduct(dataSource, 'get-empty');
 
       const response = await http
-        .get(`/products/${productId}/content`)
+        .get(`/v1/products/${productId}/content`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -104,7 +104,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       const productId = await seedProduct(dataSource, 'draft-1');
 
       const saved = await http
-        .post(`/products/${productId}/content/draft`)
+        .post(`/v1/products/${productId}/content/draft`)
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: null, fieldKey: 'description', value: 'my draft' })
         .expect(200);
@@ -115,19 +115,19 @@ describe('Content Editor + AI Suggest Integration', () => {
 
       // The state endpoint now reflects the draft.
       const state = await http
-        .get(`/products/${productId}/content`)
+        .get(`/v1/products/${productId}/content`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(state.body.master.draftValue).toBe('my draft');
 
       await http
-        .post(`/products/${productId}/content/discard`)
+        .post(`/v1/products/${productId}/content/discard`)
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: null, fieldKey: 'description' })
         .expect(204);
 
       const after = await http
-        .get(`/products/${productId}/content`)
+        .get(`/v1/products/${productId}/content`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(after.body.master.draftValue).toBeNull();
@@ -141,7 +141,7 @@ describe('Content Editor + AI Suggest Integration', () => {
 
       const oversized = 'x'.repeat(65537);
       await http
-        .post(`/products/${productId}/content/draft`)
+        .post(`/v1/products/${productId}/content/draft`)
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: null, fieldKey: 'description', value: oversized })
         .expect(400);
@@ -166,7 +166,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       // with a live PrestaShop adapter is covered by manual QA + the existing
       // integration-test pattern (live-creds gap).
       const response = await http
-        .post(`/products/${productId}/content/suggest`)
+        .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${token}`)
         .send({ channel: 'allegro', tone: 'casual' });
 
@@ -183,7 +183,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       const productId = await seedProduct(dataSource, 'suggest-tone-cap');
 
       await http
-        .post(`/products/${productId}/content/suggest`)
+        .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${token}`)
         .send({ channel: 'allegro', tone: 'x'.repeat(65) })
         .expect(400);
@@ -196,7 +196,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       const productId = await seedProduct(dataSource, 'suggest-instr-cap');
 
       await http
-        .post(`/products/${productId}/content/suggest`)
+        .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${token}`)
         .send({ channel: 'allegro', extraInstructions: 'x'.repeat(1025) })
         .expect(400);
@@ -211,7 +211,7 @@ describe('Content Editor + AI Suggest Integration', () => {
       const productId = await seedProduct(dataSource, 'publish-missing');
 
       await http
-        .post(`/products/${productId}/content/publish`)
+        .post(`/v1/products/${productId}/content/publish`)
         .set('Authorization', `Bearer ${token}`)
         .send({ connectionId: null, fieldKey: 'description' })
         .expect(404);
@@ -226,30 +226,30 @@ describe('Content Editor + AI Suggest Integration', () => {
       const viewerToken = await loginAsViewer(harness);
 
       await http
-        .get(`/products/${productId}/content`)
+        .get(`/v1/products/${productId}/content`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
 
       await http
-        .post(`/products/${productId}/content/draft`)
+        .post(`/v1/products/${productId}/content/draft`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ connectionId: null, fieldKey: 'description', value: 'x' })
         .expect(403);
 
       await http
-        .post(`/products/${productId}/content/discard`)
+        .post(`/v1/products/${productId}/content/discard`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ connectionId: null, fieldKey: 'description' })
         .expect(403);
 
       await http
-        .post(`/products/${productId}/content/publish`)
+        .post(`/v1/products/${productId}/content/publish`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ connectionId: null, fieldKey: 'description' })
         .expect(403);
 
       await http
-        .post(`/products/${productId}/content/suggest`)
+        .post(`/v1/products/${productId}/content/suggest`)
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ channel: 'allegro' })
         .expect(403);

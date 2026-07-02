@@ -17,6 +17,7 @@
  * request (refresh, logout). See `auth.cookies.ts` server-side for
  * the contract.
  */
+import { withApiVersion } from '../config/api-version';
 import type { SessionAdapter } from './session-adapter';
 import {
   ANONYMOUS_SESSION,
@@ -33,7 +34,9 @@ interface JwtBearerSessionAdapterConfig {
 }
 
 function buildUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/$/, '')}${path}`;
+  // The auth endpoints (`/auth/refresh`, `/auth/me`, `/auth/logout`) are served
+  // under `/v1` (#1133) — pin the same major via the shared prefix helper.
+  return `${baseUrl.replace(/\/$/, '')}${withApiVersion(path)}`;
 }
 
 function readCsrfCookie(): string | null {
