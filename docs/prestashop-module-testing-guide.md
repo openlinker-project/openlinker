@@ -220,7 +220,7 @@ Now create a connection in OpenLinker using the `credentialsRef` you configured:
 
 ```bash
 # Create connection (use the credentialsRef you set up above)
-curl -X POST http://localhost:3000/connections \
+curl -X POST http://localhost:3000/v1/connections \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test PrestaShop Store",
@@ -301,7 +301,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
    - Check diagnostics: pending count should decrease, delivered count should increase
 
 3. **If Failed**:
-   - Check OpenLinker API is running: `curl http://localhost:3000/health`
+   - Check OpenLinker API is running: `curl http://localhost:3000/v1/health`
    - Check network connectivity: `docker exec openlinker-prestashop curl -v http://host.docker.internal:3000`
    - Verify webhook secret matches exactly
    - Check OpenLinker logs for signature verification errors

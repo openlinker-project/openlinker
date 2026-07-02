@@ -56,7 +56,7 @@ describe('Listings Create-Offer API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .get(`/v1/listings/connections/${CONN_A}/offers/creation/${recordId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -77,7 +77,7 @@ describe('Listings Create-Offer API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/connections/${CONN_A}/offers/creation/00000000-0000-4000-8000-000000000000`)
+        .get(`/v1/listings/connections/${CONN_A}/offers/creation/00000000-0000-4000-8000-000000000000`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -108,7 +108,7 @@ describe('Listings Create-Offer API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .get(`/v1/listings/connections/${CONN_A}/offers/creation/${recordId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -126,7 +126,7 @@ describe('Listings Create-Offer API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .get(`/v1/listings/connections/${CONN_A}/offers/creation/${recordId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -141,7 +141,7 @@ describe('Listings Create-Offer API Integration', () => {
       const recordId = await createTestOfferCreationRecord(dataSource, { connectionId: CONN_B });
 
       await http
-        .get(`/listings/connections/${CONN_A}/offers/creation/${recordId}`)
+        .get(`/v1/listings/connections/${CONN_A}/offers/creation/${recordId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });

@@ -8,9 +8,9 @@
  *
  * @module apps/api/src/health
  */
-import type { InternalHealthResponse, DevStackHealthResponse } from './dev-stack-health.types';
+import type { InternalHealthReadiness, DevStackHealthResponse } from './dev-stack-health.types';
 
 export interface IDevStackHealthService {
-  checkInternalHealth(): Promise<InternalHealthResponse>;
+  checkInternalHealth(): Promise<InternalHealthReadiness>;
   checkDevStackHealth(): Promise<DevStackHealthResponse>;
 }

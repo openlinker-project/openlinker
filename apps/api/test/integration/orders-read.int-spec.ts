@@ -40,7 +40,7 @@ describe('Orders Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const response = await http
-        .get('/orders')
+        .get('/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -56,7 +56,7 @@ describe('Orders Read API Integration', () => {
       const order = await createTestOrderRecord(dataSource);
 
       const response = await http
-        .get('/orders')
+        .get('/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -82,7 +82,7 @@ describe('Orders Read API Integration', () => {
       await createTestOrderRecord(dataSource, { sourceConnectionId: otherConnectionId });
 
       const response = await http
-        .get(`/orders?sourceConnectionId=${targetConnectionId}`)
+        .get(`/v1/orders?sourceConnectionId=${targetConnectionId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -107,7 +107,7 @@ describe('Orders Read API Integration', () => {
       });
 
       const response = await http
-        .get('/orders?syncStatus=synced')
+        .get('/v1/orders?syncStatus=synced')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -124,7 +124,7 @@ describe('Orders Read API Integration', () => {
       }
 
       const page1 = await http
-        .get('/orders?limit=2&offset=0')
+        .get('/v1/orders?limit=2&offset=0')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -134,7 +134,7 @@ describe('Orders Read API Integration', () => {
       expect(page1.body.offset).toBe(0);
 
       const page2 = await http
-        .get('/orders?limit=2&offset=2')
+        .get('/v1/orders?limit=2&offset=2')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -153,7 +153,7 @@ describe('Orders Read API Integration', () => {
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/orders').expect(401);
+      await http.get('/v1/orders').expect(401);
     });
   });
 
@@ -169,7 +169,7 @@ describe('Orders Read API Integration', () => {
       await createTestOrderRecord(dataSource, { dispatchByAt: new Date(Date.now() - 60_000) });
 
       const response = await http
-        .get('/orders')
+        .get('/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -191,7 +191,7 @@ describe('Orders Read API Integration', () => {
       });
 
       const response = await http
-        .get('/orders')
+        .get('/v1/orders')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -208,14 +208,14 @@ describe('Orders Read API Integration', () => {
       await createTestOrderRecord(dataSource, { fulfillmentState: 'dispatched' });
 
       const overdue = await http
-        .get('/orders?slaState=overdue')
+        .get('/v1/orders?slaState=overdue')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(overdue.body.total).toBe(1);
       expect(overdue.body.items[0].slaState).toBe('overdue');
 
       const dispatched = await http
-        .get('/orders?fulfillmentState=dispatched')
+        .get('/v1/orders?fulfillmentState=dispatched')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(dispatched.body.total).toBe(1);
@@ -223,7 +223,7 @@ describe('Orders Read API Integration', () => {
 
       // not-shipped also matches NULL-column rows.
       const notShipped = await http
-        .get('/orders?fulfillmentState=not-shipped')
+        .get('/v1/orders?fulfillmentState=not-shipped')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(notShipped.body.total).toBe(1);
@@ -239,7 +239,7 @@ describe('Orders Read API Integration', () => {
       await createTestOrderRecord(dataSource, {});
 
       const response = await http
-        .get('/orders/sla-summary')
+        .get('/v1/orders/sla-summary')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -265,7 +265,7 @@ describe('Orders Read API Integration', () => {
       const order = await createTestOrderRecord(dataSource);
 
       const response = await http
-        .get(`/orders/${order.internalOrderId}`)
+        .get(`/v1/orders/${order.internalOrderId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -279,14 +279,14 @@ describe('Orders Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/orders/ol_order_nonexistent')
+        .get('/v1/orders/ol_order_nonexistent')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/orders/ol_order_nonexistent').expect(401);
+      await http.get('/v1/orders/ol_order_nonexistent').expect(401);
     });
   });
 });

@@ -119,7 +119,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .set('Authorization', `Bearer ${token}`)
         .send({
           connectionId: CONN_A,
@@ -137,7 +137,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const productIds = Array.from({ length: 101 }, (_, i) => `ol_variant_${i}`);
 
       await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .set('Authorization', `Bearer ${token}`)
         .send({
           connectionId: CONN_A,
@@ -153,7 +153,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .set('Authorization', `Bearer ${token}`)
         .send({
           connectionId: 'not-a-uuid',
@@ -174,7 +174,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .set('Authorization', `Bearer ${token}`)
         .send({
           connectionId: CONN_A, // valid UUID, no such connection seeded
@@ -188,7 +188,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const http = harness.getHttp();
 
       await http
-        .post('/listings/bulk-create')
+        .post('/v1/listings/bulk-create')
         .send({
           connectionId: CONN_A,
           productIds: ['ol_variant_a'],
@@ -224,7 +224,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/bulk-create/${batchId}`)
+        .get(`/v1/listings/bulk-create/${batchId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -260,7 +260,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/bulk-create/${batchId}`)
+        .get(`/v1/listings/bulk-create/${batchId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -283,7 +283,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       });
 
       const response = await http
-        .get(`/listings/bulk-create/${batchId}`)
+        .get(`/v1/listings/bulk-create/${batchId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -298,7 +298,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/bulk-create/${UNKNOWN_BATCH_ID}`)
+        .get(`/v1/listings/bulk-create/${UNKNOWN_BATCH_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -309,7 +309,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/listings/bulk-create/not-a-uuid')
+        .get('/v1/listings/bulk-create/not-a-uuid')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
     });
@@ -317,7 +317,7 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
     it('returns 401 without a bearer token', async () => {
       const http = harness.getHttp();
 
-      await http.get(`/listings/bulk-create/${UNKNOWN_BATCH_ID}`).expect(401);
+      await http.get(`/v1/listings/bulk-create/${UNKNOWN_BATCH_ID}`).expect(401);
     });
   });
 });

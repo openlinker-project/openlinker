@@ -42,7 +42,7 @@ describe('Connection Diagnostics API Integration', () => {
       const connection = await createTestConnection(dataSource);
 
       const response = await http
-        .get(`/connections/${connection.id}/diagnostics`)
+        .get(`/v1/connections/${connection.id}/diagnostics`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -73,7 +73,7 @@ describe('Connection Diagnostics API Integration', () => {
       });
 
       const response = await http
-        .get(`/connections/${connection.id}/diagnostics`)
+        .get(`/v1/connections/${connection.id}/diagnostics`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -93,14 +93,14 @@ describe('Connection Diagnostics API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/connections/00000000-0000-4000-8000-000000000000/diagnostics')
+        .get('/v1/connections/00000000-0000-4000-8000-000000000000/diagnostics')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/connections/00000000-0000-4000-8000-000000000000/diagnostics').expect(401);
+      await http.get('/v1/connections/00000000-0000-4000-8000-000000000000/diagnostics').expect(401);
     });
   });
 });
