@@ -39,6 +39,7 @@ import type {
   InfaktListResponse,
   InfaktSendToKsefResponse,
 } from '../../domain/types/infakt.types';
+import type { InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
 export const INFAKT_PROVIDER_TYPE = 'infakt';
 
@@ -123,11 +124,25 @@ function parseInfaktAmount(value: string): number {
 export class InfaktInvoicingAdapter
   implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
 {
+  /**
+   * Payment method sent on every issued invoice/correction (#1303) — a
+   * single per-connection setting both `issueInvoice` and `issueCorrection`
+   * read, so they can never disagree with each other again. Defaults to
+   * `'cash'` (production-safe, no prerequisite) when the connection has no
+   * `defaultPaymentMethod` configured. See
+   * `InfaktConnectionConfig.defaultPaymentMethod` for the `'transfer'`
+   * bank-account prerequisite.
+   */
+  private readonly paymentMethod: NonNullable<InfaktConnectionConfig['defaultPaymentMethod']>;
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IInfaktHttpClient,
     private readonly logger: LoggerPort,
-  ) {}
+    config: InfaktConnectionConfig = {},
+  ) {
+    this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
+  }
 
   getSupportedDocumentTypes(): DocumentType[] {
     return [...SUPPORTED_DOCUMENT_TYPES];
@@ -181,7 +196,8 @@ export class InfaktInvoicingAdapter
     const payload = {
       invoice: {
         kind,
-        payment_method: 'transfer',
+        // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        payment_method: this.paymentMethod,
         client_uuid: clientUuid,
         services,
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
@@ -338,7 +354,8 @@ export class InfaktInvoicingAdapter
     const payload = {
       invoice: {
         kind: 'corrective',
-        payment_method: 'cash',
+        // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        payment_method: this.paymentMethod,
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
         correction_reason_symbol: 'other',

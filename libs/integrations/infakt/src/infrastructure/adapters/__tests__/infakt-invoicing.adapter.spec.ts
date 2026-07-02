@@ -498,4 +498,89 @@ describe('InfaktInvoicingAdapter', () => {
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({ statusCode: 404 });
     });
   });
+
+  describe('payment_method (#1303)', () => {
+    const invoiceCmd: IssueInvoiceCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      buyer: buyer({ nip: '1234567890' }),
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      idempotencyKey: 'idem-1',
+    };
+    const correctionCmd: IssueCorrectionCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      originalProviderInvoiceId: 'inv-uuid-1',
+      reason: 'Zwrot towaru',
+      lines: [{ originalLineNumber: 1, newQuantity: 0 }],
+      idempotencyKey: 'idem-corr-1',
+    };
+
+    function seedIssueFixtures(): void {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
+        entities: [],
+        metainfo: { total_count: 0, next: null, previous: null },
+      });
+      http.seed('POST', 'clients.json', {
+        id: 1,
+        uuid: 'client-uuid-1',
+        name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: null,
+        street: null,
+        post_code: null,
+        country: null,
+      });
+      http.seed('POST', 'invoices.json', invoiceFixture());
+    }
+
+    function seedCorrectionFixtures(): void {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+    }
+
+    it('should default to cash on issueInvoice when the connection has no defaultPaymentMethod configured', async () => {
+      seedIssueFixtures();
+      await adapter.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({ invoice: expect.objectContaining({ payment_method: 'cash' }) });
+    });
+
+    it('should use the configured defaultPaymentMethod on issueInvoice', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+      });
+    });
+
+    it('should default to cash on issueCorrection when the connection has no defaultPaymentMethod configured', async () => {
+      seedCorrectionFixtures();
+      await adapter.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({ invoice: expect.objectContaining({ payment_method: 'cash' }) });
+    });
+
+    it('should use the same configured defaultPaymentMethod on issueCorrection as issueInvoice (no more disagreement)', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedCorrectionFixtures();
+      await configured.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+      });
+    });
+  });
 });
