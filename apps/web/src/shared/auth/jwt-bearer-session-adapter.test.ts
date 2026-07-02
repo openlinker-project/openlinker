@@ -223,7 +223,7 @@ describe('JwtBearerSessionAdapter', () => {
       await adapter.clearSession();
 
       const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('http://localhost:3000/auth/logout');
+      expect(url).toBe('http://localhost:3000/v1/auth/logout');
       expect(init.method).toBe('POST');
       expect(init.credentials).toBe('include');
 

@@ -76,7 +76,7 @@ describe('Order Destination Retry Integration', () => {
     );
 
     const response = await http
-      .post(`/orders/${orderRecord.internalOrderId}/destinations/${destConnection.id}/retry`)
+      .post(`/v1/orders/${orderRecord.internalOrderId}/destinations/${destConnection.id}/retry`)
       .set('Authorization', `Bearer ${token}`)
       .expect(202);
 
@@ -98,7 +98,7 @@ describe('Order Destination Retry Integration', () => {
 
     // Order row's destination flipped from 'failed' → 'pending'
     const detail = await http
-      .get(`/orders/${orderRecord.internalOrderId}`)
+      .get(`/v1/orders/${orderRecord.internalOrderId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     const row = detail.body.syncStatus.find(
@@ -137,7 +137,7 @@ describe('Order Destination Retry Integration', () => {
     });
 
     await http
-      .post(`/orders/${orderRecord.internalOrderId}/destinations/${destConnection.id}/retry`)
+      .post(`/v1/orders/${orderRecord.internalOrderId}/destinations/${destConnection.id}/retry`)
       .set('Authorization', `Bearer ${token}`)
       .expect(409);
 
@@ -154,7 +154,7 @@ describe('Order Destination Retry Integration', () => {
     const unknownConnectionId = '99999999-9999-4999-8999-999999999999';
 
     await http
-      .post(`/orders/ol_order_does_not_exist/destinations/${unknownConnectionId}/retry`)
+      .post(`/v1/orders/ol_order_does_not_exist/destinations/${unknownConnectionId}/retry`)
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
@@ -163,6 +163,6 @@ describe('Order Destination Retry Integration', () => {
     const http = harness.getHttp();
     const unknownConnectionId = '99999999-9999-4999-8999-999999999999';
 
-    await http.post(`/orders/ol_order_x/destinations/${unknownConnectionId}/retry`).expect(401);
+    await http.post(`/v1/orders/ol_order_x/destinations/${unknownConnectionId}/retry`).expect(401);
   });
 });

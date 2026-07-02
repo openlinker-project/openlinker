@@ -13,13 +13,16 @@ import {
   Param,
   Headers,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
   BadRequestException,
   UnauthorizedException,
   NotFoundException,
   PayloadTooLargeException,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiHeader } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
 import { WebhookService } from '../application/services/webhook.service';
@@ -31,7 +34,10 @@ import { Logger } from '@openlinker/shared/logging';
 
 @Public()
 @ApiTags('webhooks')
-@Controller('webhooks')
+// Version-neutral (#1133): external platforms provision `/webhooks/...` URLs and
+// the raw-body middleware is keyed on the literal `/webhooks` path — this ingress
+// must stay reachable without the `/v1` prefix.
+@Controller({ path: 'webhooks', version: VERSION_NEUTRAL })
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
   private readonly MAX_BODY_SIZE = 256 * 1024; // 256KB
@@ -57,6 +63,7 @@ export class WebhookController {
       'Provider-specific webhook signature. OL-module providers send `sha256=<hex>`; third-party providers use their own scheme + header (e.g. InPost `x-inpost-signature`, base64 HMAC). Resolved per-provider by the registered decoder.',
     required: false,
   })
+  @ApiResponse({ status: 200, description: 'Subscription-verification handshake echoed back' })
   @ApiResponse({ status: 202, description: 'Webhook accepted and queued for processing' })
   @ApiResponse({ status: 400, description: 'Invalid request payload or malformed data' })
   @ApiResponse({ status: 401, description: 'Invalid signature or timestamp out of window' })
@@ -67,7 +74,12 @@ export class WebhookController {
     @Param('connectionId') connectionId: string,
     @Headers() headers: Record<string, string>,
     @Req() req: RequestWithRawBody,
-  ): Promise<void> {
+    // Only usage of the raw Response object in this controller — needed to
+    // override the route's default 202 with 200 on the handshake-echo path
+    // (see the res.status(HttpStatus.OK) call below). Passthrough mode still
+    // lets Nest serialize the returned body as normal.
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Record<string, unknown> | void> {
     // No `@Body() WebhookRequestDto` — the body shape is the provider's, not
     // OL's (ADR-021). The per-provider decoder (resolved in WebhookService)
     // verifies + parses the raw bytes; the host OL-module default decoder still
@@ -100,7 +112,15 @@ export class WebhookController {
     }
 
     try {
-      await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
+      const result = await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
+      if (result !== undefined) {
+        // Handshake echo — verified live against Infakt's own "Zweryfikuj"
+        // button (2026-07-01): it reports "could not verify" on our default
+        // 202, but accepts 200. Every other outcome (route/ignore) keeps the
+        // route's default 202 via @HttpCode above.
+        res.status(HttpStatus.OK);
+      }
+      return result;
     } catch (error) {
       // Map domain exceptions to HTTP exceptions
       if (error instanceof WebhookDecodeException) {

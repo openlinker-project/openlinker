@@ -134,6 +134,40 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
     service = module.get(WebhookService);
   });
 
+  describe('subscription-verification handshake', () => {
+    it('returns the handshake echo body and short-circuits before verify/dedup/publish', async () => {
+      const handshakeDecoder: jest.Mocked<InboundWebhookDecoderPort> = {
+        ...decoder,
+        detectHandshake: jest.fn().mockReturnValue({ verification_code: 'abc123' }),
+      };
+      decoderRegistry.get.mockReturnValue(handshakeDecoder);
+
+      const result = await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(result).toEqual({ verification_code: 'abc123' });
+      expect(handshakeDecoder.verify).not.toHaveBeenCalled();
+      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+      expect(eventPublisher.publishInboundWebhook).not.toHaveBeenCalled();
+    });
+
+    it('proceeds to verify when detectHandshake returns null', async () => {
+      const nonHandshakeDecoder: jest.Mocked<InboundWebhookDecoderPort> = {
+        ...decoder,
+        detectHandshake: jest.fn().mockReturnValue(null),
+      };
+      decoderRegistry.get.mockReturnValue(nonHandshakeDecoder);
+      deliveryRepository.insertIfNew.mockResolvedValue({
+        isNew: true,
+        delivery: makeDelivery({ eventId: 'e1', provider, connectionId }),
+      });
+
+      const result = await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(result).toBeUndefined();
+      expect(nonHandshakeDecoder.verify).toHaveBeenCalled();
+    });
+  });
+
   describe('decoder dispatch + three-state decode', () => {
     it('publishes a routed event when the decoder verifies + routes and the row is new', async () => {
       deliveryRepository.insertIfNew.mockResolvedValue({

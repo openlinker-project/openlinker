@@ -39,7 +39,7 @@ async function loginAsViewer(
     [username, `${username}@example.com`, passwordHash],
   );
   const response = await harness.getHttp()
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username, password: 'viewer-pass' })
     .expect(200);
   return response.body.access_token as string;
@@ -66,7 +66,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const res = await http
-        .get('/ai-provider-settings')
+        .get('/v1/ai-provider-settings')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -88,7 +88,7 @@ describe('AI Provider Settings Integration', () => {
       const viewerToken = await loginAsViewer(harness);
 
       await http
-        .get('/ai-provider-settings')
+        .get('/v1/ai-provider-settings')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
     });
@@ -100,14 +100,14 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .put('/ai-provider-settings/keys/anthropic')
+        .put('/v1/ai-provider-settings/keys/anthropic')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: 'sk-ant-pretend-key-1234567890' })
         .expect(204);
 
       // GET reflects the new state — anthropic is configured from db.
       const res = await http
-        .get('/ai-provider-settings')
+        .get('/v1/ai-provider-settings')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       const anthropicRow = (res.body.providers as Array<{ provider: string }>).find(
@@ -125,7 +125,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const res = await http
-        .put('/ai-provider-settings/keys/fake')
+        .put('/v1/ai-provider-settings/keys/fake')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: 'sk-anything-pretend-1234567890' })
         .expect(400);
@@ -138,7 +138,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .put('/ai-provider-settings/keys/cohere')
+        .put('/v1/ai-provider-settings/keys/cohere')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: 'sk-cohere-pretend-1234567890' })
         .expect(404);
@@ -149,13 +149,13 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .put('/ai-provider-settings/keys/anthropic')
+        .put('/v1/ai-provider-settings/keys/anthropic')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: '' })
         .expect(400);
 
       await http
-        .put('/ai-provider-settings/keys/anthropic')
+        .put('/v1/ai-provider-settings/keys/anthropic')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: 'short' })
         .expect(400);
@@ -166,7 +166,7 @@ describe('AI Provider Settings Integration', () => {
       const viewerToken = await loginAsViewer(harness);
 
       await http
-        .put('/ai-provider-settings/keys/anthropic')
+        .put('/v1/ai-provider-settings/keys/anthropic')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ apiKey: 'sk-ant-pretend-1234567890' })
         .expect(403);
@@ -179,7 +179,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const res = await http
-        .delete('/ai-provider-settings/keys/fake')
+        .delete('/v1/ai-provider-settings/keys/fake')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
 
@@ -191,7 +191,7 @@ describe('AI Provider Settings Integration', () => {
       const viewerToken = await loginAsViewer(harness);
 
       await http
-        .delete('/ai-provider-settings/keys/anthropic')
+        .delete('/v1/ai-provider-settings/keys/anthropic')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
     });
@@ -203,7 +203,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       const res = await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${token}`)
         .send({ provider: 'anthropic' })
         .expect(422);
@@ -217,21 +217,21 @@ describe('AI Provider Settings Integration', () => {
 
       // Seed: store a key for openai.
       await http
-        .put('/ai-provider-settings/keys/openai')
+        .put('/v1/ai-provider-settings/keys/openai')
         .set('Authorization', `Bearer ${token}`)
         .send({ apiKey: 'sk-openai-pretend-1234567890' })
         .expect(204);
 
       // Activate openai.
       await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${token}`)
         .send({ provider: 'openai' })
         .expect(204);
 
       // GET reflects the change + the activeUpdated{At,By} fields are populated.
       const res = await http
-        .get('/ai-provider-settings')
+        .get('/v1/ai-provider-settings')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(res.body.activeProvider).toBe('openai');
@@ -247,13 +247,13 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${token}`)
         .send({ provider: 'fake' })
         .expect(204);
 
       const res = await http
-        .get('/ai-provider-settings')
+        .get('/v1/ai-provider-settings')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect(res.body.activeProvider).toBe('fake');
@@ -264,7 +264,7 @@ describe('AI Provider Settings Integration', () => {
       const token = await loginAsAdmin(http, harness.getDataSource());
 
       await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${token}`)
         .send({ provider: 'cohere' })
         .expect(400);
@@ -275,7 +275,7 @@ describe('AI Provider Settings Integration', () => {
       const viewerToken = await loginAsViewer(harness);
 
       await http
-        .put('/ai-provider-settings/active')
+        .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ provider: 'fake' })
         .expect(403);

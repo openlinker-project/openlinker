@@ -35,7 +35,7 @@ export async function loginAs(
   );
 
   const response = await http
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username, password })
     .expect(200);
 

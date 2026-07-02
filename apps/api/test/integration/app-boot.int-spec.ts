@@ -46,7 +46,7 @@ describe('App Boot Integration', () => {
   it('should respond to health endpoint', async () => {
     const http = harness.getHttp();
 
-    const response = await http.get('/health').expect(200);
+    const response = await http.get('/v1/health').expect(200);
 
     expect(response.body).toBeDefined();
   });

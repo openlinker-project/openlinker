@@ -68,5 +68,8 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
     bulkOfferRowSection: ErliBulkRowSectionLazy,
     // Shared single+bulk blocker: Erli requires ≥1 image (declared once).
     offerValidation: erliOfferValidation,
+    // Listing-detail: opt into the generic "Edit offer" drawer (#1215). The BE
+    // adapter already implements OfferFieldUpdater; this exposes the FE button.
+    supportsListingEdit: true,
   },
 });

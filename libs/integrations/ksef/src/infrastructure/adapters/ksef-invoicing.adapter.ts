@@ -127,6 +127,11 @@ export class KsefInvoicingAdapter
     private readonly sessionCrypto: KsefSessionCryptoService,
     private readonly fa3Builder: IFa3XmlBuilder,
     private readonly seller: SellerProfile,
+    /**
+     * Connection-resolved fallback `P_12` neutral code applied to any line
+     * whose neutral `taxRate` arrives empty (see `Fa3MappingContext.defaultTaxRate`).
+     */
+    private readonly defaultTaxRate: string,
     /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
     private readonly now: () => Date = (): Date => new Date(),
   ) {}
@@ -147,6 +152,7 @@ export class KsefInvoicingAdapter
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
+    this.warnOnEmptyTaxRateFallback(cmd);
 
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
@@ -160,6 +166,7 @@ export class KsefInvoicingAdapter
         // order id) before prod. Owned by the core InvoiceService numbering
         // follow-up (#1118), not the C6 clearance-read (#1150).
         invoiceNumber: cmd.orderId,
+        defaultTaxRate: this.defaultTaxRate,
       }),
     );
 
@@ -692,6 +699,25 @@ export class KsefInvoicingAdapter
       throw new KsefInvalidCorrectionException(
         "a correction payload was supplied but documentType is not 'corrected'" +
           ` (got ${cmd.documentType ?? 'undefined'})`,
+      );
+    }
+  }
+
+  /**
+   * The pure `mapToFa3BuilderInput` mapper cannot log, so the audit trail for
+   * the empty-`taxRate` → connection-`defaultTaxRate` substitution (#1290,
+   * #1291) lives here instead — a WARN per issuance whose command carries at
+   * least one line (plain or correction) with an empty neutral `taxRate`.
+   */
+  private warnOnEmptyTaxRateFallback(cmd: IssueInvoiceCommand): void {
+    const emptyLineCount =
+      cmd.lines.filter((line) => !line.taxRate).length +
+      (cmd.correction?.correctedLines.filter((line) => !line.taxRate).length ?? 0);
+    if (emptyLineCount > 0) {
+      this.logger.warn(
+        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) has ` +
+          `${emptyLineCount} line(s) with an empty neutral taxRate — falling back to the ` +
+          `connection default (${this.defaultTaxRate}).`,
       );
     }
   }

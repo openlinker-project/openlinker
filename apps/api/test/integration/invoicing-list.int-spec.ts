@@ -85,7 +85,7 @@ describe('Invoicing list (integration)', () => {
     const token = await loginAsAdmin(http, dataSource);
 
     const response = await http
-      .get('/invoices')
+      .get('/v1/invoices')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -96,7 +96,7 @@ describe('Invoicing list (integration)', () => {
 
   it('rejects an unauthenticated request', async () => {
     const http = harness.getHttp();
-    await http.get('/invoices').expect(401);
+    await http.get('/v1/invoices').expect(401);
   });
 
   it('filters by status', async () => {
@@ -108,7 +108,7 @@ describe('Invoicing list (integration)', () => {
     await seedInvoice(ds, { status: 'pending' });
 
     const response = await http
-      .get('/invoices?status=failed')
+      .get('/v1/invoices?status=failed')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -126,7 +126,7 @@ describe('Invoicing list (integration)', () => {
     await seedInvoice(ds, { connectionId: CONN_B });
 
     const response = await http
-      .get(`/invoices?connectionId=${CONN_B}`)
+      .get(`/v1/invoices?connectionId=${CONN_B}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -142,7 +142,7 @@ describe('Invoicing list (integration)', () => {
     await seedInvoice(ds, { regulatoryStatus: 'not-applicable' });
 
     const response = await http
-      .get('/invoices?regulatoryStatus=cleared')
+      .get('/v1/invoices?regulatoryStatus=cleared')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -159,7 +159,7 @@ describe('Invoicing list (integration)', () => {
     await seedInvoice(ds, { issuedAt: new Date('2026-07-15T00:00:00.000Z') });
 
     const response = await http
-      .get('/invoices?issuedFrom=2026-06-01T00:00:00.000Z&issuedTo=2026-06-30T00:00:00.000Z')
+      .get('/v1/invoices?issuedFrom=2026-06-01T00:00:00.000Z&issuedTo=2026-06-30T00:00:00.000Z')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -176,7 +176,7 @@ describe('Invoicing list (integration)', () => {
     }
 
     const response = await http
-      .get('/invoices?limit=2&offset=0')
+      .get('/v1/invoices?limit=2&offset=0')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -186,7 +186,7 @@ describe('Invoicing list (integration)', () => {
     expect(response.body.offset).toBe(0);
 
     const page2 = await http
-      .get('/invoices?limit=2&offset=2')
+      .get('/v1/invoices?limit=2&offset=2')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(page2.body.items).toHaveLength(1);
@@ -202,7 +202,7 @@ describe('Invoicing list (integration)', () => {
     });
 
     const response = await http
-      .get('/invoices')
+      .get('/v1/invoices')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -222,7 +222,7 @@ describe('Invoicing list (integration)', () => {
     // rejects it with a 400 rather than accepting-and-ignoring it (which would
     // mislead a caller into thinking results were filtered).
     await http
-      .get('/invoices?hasTaxId=true')
+      .get('/v1/invoices?hasTaxId=true')
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
@@ -260,7 +260,7 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
     });
 
     const found = await http
-      .get(`/orders/${order.internalOrderId}/invoice?connectionId=${INVOICING_CONN}`)
+      .get(`/v1/orders/${order.internalOrderId}/invoice?connectionId=${INVOICING_CONN}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(found.body.orderId).toBe(order.internalOrderId);
@@ -268,7 +268,7 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
 
     // Keying off the (wrong) source connection finds nothing.
     await http
-      .get(`/orders/${order.internalOrderId}/invoice?connectionId=${SOURCE_CONN}`)
+      .get(`/v1/orders/${order.internalOrderId}/invoice?connectionId=${SOURCE_CONN}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
@@ -280,7 +280,7 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
     const order = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_CONN });
 
     await http
-      .get(`/orders/${order.internalOrderId}/invoice`)
+      .get(`/v1/orders/${order.internalOrderId}/invoice`)
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
@@ -291,7 +291,7 @@ describe('GET /orders/:orderId/invoice (integration)', () => {
     const token = await loginAsAdmin(http, ds);
 
     await http
-      .get(`/orders/ol_order_missing/invoice?connectionId=${INVOICING_CONN}`)
+      .get(`/v1/orders/ol_order_missing/invoice?connectionId=${INVOICING_CONN}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });

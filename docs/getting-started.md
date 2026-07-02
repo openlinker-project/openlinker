@@ -94,7 +94,7 @@ pnpm start:dev:worker    # background sync jobs
 Health check:
 
 ```bash
-curl -s http://localhost:3000/health/dev-stack | jq .
+curl -s http://localhost:3000/v1/health/dev-stack | jq .
 ```
 
 Once the worker is running (`pnpm start:dev:worker`), the **System Health** panel at **http://localhost:4173** (dashboard) will show four tiles: PostgreSQL, Redis, PrestaShop, and Worker. The Worker tile confirms the background sync worker is alive; if it remains red after the worker starts, check the worker logs for errors.

@@ -145,6 +145,11 @@ export class AllegroController {
   }
 
   @Public()
+  // Versioned under /v1 like the rest of the API (#1133). This is an internal
+  // JSON endpoint the FE callback page calls with the auth code — NOT the
+  // browser redirect target. The Allegro-whitelisted redirect URI is the FE
+  // route `/integrations/allegro/connect/callback` (window.location.origin),
+  // which is unaffected by API versioning.
   @Get('oauth/callback')
   @ApiOperation({ summary: 'Handle Allegro OAuth callback' })
   @ApiQuery({ name: 'code', description: 'OAuth authorization code', required: true })

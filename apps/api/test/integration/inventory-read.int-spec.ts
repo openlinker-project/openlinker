@@ -40,7 +40,7 @@ describe('Inventory Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const response = await http
-        .get('/inventory')
+        .get('/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -59,7 +59,7 @@ describe('Inventory Read API Integration', () => {
       });
 
       const response = await http
-        .get('/inventory')
+        .get('/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -83,7 +83,7 @@ describe('Inventory Read API Integration', () => {
       await createTestInventoryItem(dataSource);
 
       const response = await http
-        .get(`/inventory?productId=${item1.productId}`)
+        .get(`/v1/inventory?productId=${item1.productId}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -100,7 +100,7 @@ describe('Inventory Read API Integration', () => {
       await createTestInventoryItem(dataSource, { locationId: 'warehouse-b' });
 
       const response = await http
-        .get('/inventory?locationId=warehouse-a')
+        .get('/v1/inventory?locationId=warehouse-a')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -118,7 +118,7 @@ describe('Inventory Read API Integration', () => {
       }
 
       const page1 = await http
-        .get('/inventory?limit=2&offset=0')
+        .get('/v1/inventory?limit=2&offset=0')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -128,7 +128,7 @@ describe('Inventory Read API Integration', () => {
       expect(page1.body.offset).toBe(0);
 
       const page2 = await http
-        .get('/inventory?limit=2&offset=2')
+        .get('/v1/inventory?limit=2&offset=2')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -143,7 +143,7 @@ describe('Inventory Read API Integration', () => {
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/inventory').expect(401);
+      await http.get('/v1/inventory').expect(401);
     });
 
     it('should surface the cover image URL from the parent product', async () => {
@@ -159,7 +159,7 @@ describe('Inventory Read API Integration', () => {
       });
 
       const response = await http
-        .get('/inventory')
+        .get('/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -176,7 +176,7 @@ describe('Inventory Read API Integration', () => {
       const item = await createTestInventoryItem(dataSource, undefined, { images: null });
 
       const response = await http
-        .get('/inventory')
+        .get('/v1/inventory')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -195,7 +195,7 @@ describe('Inventory Read API Integration', () => {
       const item = await createTestInventoryItem(dataSource, { availableQuantity: 7 });
 
       const response = await http
-        .get(`/inventory/${item.id}`)
+        .get(`/v1/inventory/${item.id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -209,14 +209,14 @@ describe('Inventory Read API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get('/inventory/ol_inventory_nonexistent')
+        .get('/v1/inventory/ol_inventory_nonexistent')
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
 
     it('should return 401 without token', async () => {
       const http = harness.getHttp();
-      await http.get('/inventory/ol_inventory_nonexistent').expect(401);
+      await http.get('/v1/inventory/ol_inventory_nonexistent').expect(401);
     });
   });
 });

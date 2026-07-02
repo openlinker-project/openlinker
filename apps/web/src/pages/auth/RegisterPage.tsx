@@ -2,21 +2,30 @@
  * Register Page
  *
  * Guest page at /register. Wraps RegisterForm inside the guest-page layout
- * (same shell used by the login/forgot-password pages).
+ * (same shell used by the login/forgot-password pages). In demo mode,
+ * accounts are auto-approved and the copy reflects the instant-access flow.
  *
  * @module pages/auth
  */
 import type { ReactElement } from 'react';
 import { RegisterForm } from '../../features/users';
+import { useSystemConfigQuery } from '../../features/system';
 
 export function RegisterPage(): ReactElement {
+  const systemConfigQuery = useSystemConfigQuery();
+  const demoMode = systemConfigQuery.data?.demoMode ?? false;
+
   return (
     <section className="guest-page">
-      <h1 className="guest-page__title">Request access</h1>
+      <h1 className="guest-page__title">
+        {demoMode ? 'Create a demo account' : 'Request access'}
+      </h1>
       <p className="guest-page__description">
-        Submit your details. An admin will review and approve your account.
+        {demoMode
+          ? 'Your account is activated instantly — no approval needed.'
+          : 'Submit your details. An admin will review and approve your account.'}
       </p>
-      <RegisterForm />
+      <RegisterForm demoMode={demoMode} />
     </section>
   );
 }

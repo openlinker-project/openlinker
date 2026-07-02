@@ -30,6 +30,7 @@ import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoici
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import type { SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
@@ -63,6 +64,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const authMaterial = await this.resolveAuthMaterial(connection, credentials, credentialsResolver);
 
     const seller = this.resolveSeller(connection);
+    const defaultTaxRate = this.resolveDefaultTaxRate(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -83,6 +85,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
+        defaultTaxRate,
       ),
     };
   }
@@ -134,6 +137,19 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         countryIso2: address.countryIso2,
       },
     };
+  }
+
+  /**
+   * Resolve the connection-level fallback `P_12` neutral code (adapter-scoped
+   * issuance policy, not seller identity — see `Fa3MappingContext.defaultTaxRate`).
+   * The `.trim() ||` fallback is defensive for configs saved before the
+   * `ksef.publicapi.v2` shape validator started rejecting a whitespace-only
+   * `seller.defaultTaxRate` (#1291) — a post-validation config can never
+   * actually hit the empty branch, but a pre-existing row could.
+   */
+  private resolveDefaultTaxRate(connection: Connection): string {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
   }
 
   private async resolveCredentials(
