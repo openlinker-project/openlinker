@@ -78,7 +78,11 @@ declare module '../../shared/plugins/plugin.types' {
  * form field is named `ksefEnvironment` to avoid colliding with DPD's flat
  * `environment` key.
  */
-const ksefSchemaShape = {
+// The explicit annotation keeps TS's excess-property check live on this
+// separate const (an un-annotated const referenced at `schemaShape:` below
+// would silently accept a typo'd or never-merged key — TS2561 only fires on
+// fresh/annotated literals).
+const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
   ksefEnvironment: z.union([z.enum(KSEF_ENVIRONMENT_VALUES), z.literal('')]).optional(),
   // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
   // dashes/spaces the operator may paste, then enforce 10 digits. Without this
