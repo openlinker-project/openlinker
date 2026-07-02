@@ -32,10 +32,10 @@ Resetting a cursor allows you to replay data from an earlier point.
 
 ```bash
 # Delete orders cursor for a connection
-curl -X DELETE http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors/allegro.orders.lastEventId
+curl -X DELETE http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/cursors/allegro.orders.lastEventId
 
 # Delete offers cursor for a connection
-curl -X DELETE http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors/allegro.offers.lastEventId
+curl -X DELETE http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/cursors/allegro.offers.lastEventId
 ```
 
 **Option 2: Direct database update**
@@ -74,10 +74,10 @@ WHERE connection_id = 'your-connection-id'
 
 ```bash
 # Check orders cursor value
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.orders.lastEventId
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.orders.lastEventId
 
 # Check offers cursor value
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.offers.lastEventId
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/cursors?cursorKey=allegro.offers.lastEventId
 ```
 
 **Response**:
@@ -110,7 +110,7 @@ Allegro API has rate limits. When exceeded, requests return HTTP 429 (Too Many R
 
 ```bash
 # Get failed jobs for a connection
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands?status=failed
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands?status=failed
 ```
 
 **Option 2: Check application logs**
@@ -146,7 +146,7 @@ Quantity update commands can fail for various reasons. Failed commands are persi
 
 ```bash
 # Get all failed commands for a connection
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands/failed
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands/failed
 ```
 
 **Response**:
@@ -169,7 +169,7 @@ curl http://localhost:3000/integrations/allegro/connections/{connectionId}/comma
 
 ```bash
 # Get command by ID
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands/{commandId}
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands/{commandId}
 ```
 
 ### Query Failed Commands in Database
@@ -214,7 +214,7 @@ Offer mappings link Allegro offers to internal OpenLinker products and variants.
 ### Create Mapping
 
 ```bash
-curl -X POST http://localhost:3000/integrations/offer-mappings \
+curl -X POST http://localhost:3000/v1/integrations/offer-mappings \
   -H "Content-Type: application/json" \
   -d '{
     "connectionId": "your-connection-id",
@@ -243,16 +243,16 @@ curl -X POST http://localhost:3000/integrations/offer-mappings \
 
 ```bash
 # List mappings for a connection
-curl http://localhost:3000/integrations/offer-mappings?connectionId={connectionId}
+curl http://localhost:3000/v1/integrations/offer-mappings?connectionId={connectionId}
 
 # List mappings for a product
-curl http://localhost:3000/integrations/offer-mappings?productId={productId}
+curl http://localhost:3000/v1/integrations/offer-mappings?productId={productId}
 ```
 
 ### Update Mapping
 
 ```bash
-curl -X PATCH http://localhost:3000/integrations/offer-mappings/{mappingId} \
+curl -X PATCH http://localhost:3000/v1/integrations/offer-mappings/{mappingId} \
   -H "Content-Type: application/json" \
   -d '{
     "internalProductId": "new-product-id",
@@ -263,7 +263,7 @@ curl -X PATCH http://localhost:3000/integrations/offer-mappings/{mappingId} \
 ### Delete Mapping
 
 ```bash
-curl -X DELETE http://localhost:3000/integrations/offer-mappings/{mappingId}
+curl -X DELETE http://localhost:3000/v1/integrations/offer-mappings/{mappingId}
 ```
 
 ### Query Mappings in Database
@@ -365,14 +365,14 @@ ORDER BY updated_at DESC;
 
 ```bash
 # Get poll jobs
-curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=marketplace.orders.poll
+curl http://localhost:3000/v1/sync/jobs?connectionId={connectionId}&jobType=marketplace.orders.poll
 ```
 
 **Step 2: Check order sync jobs**
 
 ```bash
 # Get order sync jobs
-curl http://localhost:3000/sync/jobs?connectionId={connectionId}&jobType=marketplace.order.sync
+curl http://localhost:3000/v1/sync/jobs?connectionId={connectionId}&jobType=marketplace.order.sync
 ```
 
 **Step 3: Check application logs**
@@ -390,12 +390,12 @@ Quantity update commands go through several states: `queued`, `accepted`, `rejec
 
 ```bash
 # Get all commands for a connection
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands
 
 # Get commands by status
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands?status=queued
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands?status=accepted
-curl http://localhost:3000/integrations/allegro/connections/{connectionId}/commands?status=failed
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands?status=queued
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands?status=accepted
+curl http://localhost:3000/v1/integrations/allegro/connections/{connectionId}/commands?status=failed
 ```
 
 ### Command Status Meanings

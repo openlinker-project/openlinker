@@ -24,7 +24,7 @@ async function loginAsViewer(
     [username, `${username}@example.com`, passwordHash],
   );
   const response = await harness.getHttp()
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username, password: 'viewer-pass' })
     .expect(200);
   return response.body.access_token as string;
@@ -59,7 +59,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Create v1 draft
     const createRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send(createPayload)
       .expect(201);
@@ -71,7 +71,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Update the draft
     const updateRes = await http
-      .patch(`/prompt-templates/${v1Id}`)
+      .patch(`/v1/prompt-templates/${v1Id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ systemPrompt: 'Sys v1 edited {{product.name}}' })
       .expect(200);
@@ -81,7 +81,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Publish v1
     const publishV1Res = await http
-      .post(`/prompt-templates/${v1Id}/publish`)
+      .post(`/v1/prompt-templates/${v1Id}/publish`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -90,7 +90,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Start v2 draft
     const v2CreateRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({ ...createPayload, systemPrompt: 'Sys v2 {{product.name}}' })
       .expect(201);
@@ -100,7 +100,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Publish v2 — asserts v1 gets archived
     const publishV2Res = await http
-      .post(`/prompt-templates/${v2Id}/publish`)
+      .post(`/v1/prompt-templates/${v2Id}/publish`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -108,14 +108,14 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // v1 should now be archived
     const v1AfterRes = await http
-      .get(`/prompt-templates/${v1Id}`)
+      .get(`/v1/prompt-templates/${v1Id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(v1AfterRes.body.state).toBe('archived');
 
     // Latest published is v2
     const latestRes = await http
-      .get('/prompt-templates/latest')
+      .get('/v1/prompt-templates/latest')
       .query({ key: 'test.template', channel: 'allegro' })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
@@ -124,7 +124,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Version history returns both, newest first
     const versionsRes = await http
-      .get('/prompt-templates/versions')
+      .get('/v1/prompt-templates/versions')
       .query({ key: 'test.template', channel: 'allegro' })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
@@ -134,7 +134,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Revert to v1 — produces a new draft at v3
     const revertRes = await http
-      .post('/prompt-templates/revert')
+      .post('/v1/prompt-templates/revert')
       .set('Authorization', `Bearer ${token}`)
       .send({ key: 'test.template', channel: 'allegro', version: 1 })
       .expect(201);
@@ -145,7 +145,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // List shows the latest (v3 draft) with hasDraft=true and publishedVersion=2
     const listRes = await http
-      .get('/prompt-templates')
+      .get('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(listRes.body).toHaveLength(1);
@@ -164,7 +164,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Create + publish a row
     const createRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'state.guard',
@@ -175,13 +175,13 @@ describe('Prompt Templates CRUD Integration', () => {
       })
       .expect(201);
     await http
-      .post(`/prompt-templates/${createRes.body.id}/publish`)
+      .post(`/v1/prompt-templates/${createRes.body.id}/publish`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     // Patch on a published row → 400
     await http
-      .patch(`/prompt-templates/${createRes.body.id}`)
+      .patch(`/v1/prompt-templates/${createRes.body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ systemPrompt: 'should-fail' })
       .expect(400);
@@ -192,7 +192,7 @@ describe('Prompt Templates CRUD Integration', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     const createRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'render.test',
@@ -207,7 +207,7 @@ describe('Prompt Templates CRUD Integration', () => {
       .expect(201);
 
     const renderRes = await http
-      .post(`/prompt-templates/${createRes.body.id}/render`)
+      .post(`/v1/prompt-templates/${createRes.body.id}/render`)
       .set('Authorization', `Bearer ${token}`)
       .send({ values: { name: 'Ada', item: 'cap' } })
       .expect(200);
@@ -223,7 +223,7 @@ describe('Prompt Templates CRUD Integration', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     const createRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'render.missing',
@@ -235,7 +235,7 @@ describe('Prompt Templates CRUD Integration', () => {
       .expect(201);
 
     await http
-      .post(`/prompt-templates/${createRes.body.id}/render`)
+      .post(`/v1/prompt-templates/${createRes.body.id}/render`)
       .set('Authorization', `Bearer ${token}`)
       .send({ values: {} })
       .expect(422);
@@ -246,12 +246,12 @@ describe('Prompt Templates CRUD Integration', () => {
     const viewerToken = await loginAsViewer(harness);
 
     await http
-      .get('/prompt-templates')
+      .get('/v1/prompt-templates')
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
 
     await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${viewerToken}`)
       .send({
         key: 'role.guard',
@@ -268,7 +268,7 @@ describe('Prompt Templates CRUD Integration', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     await http
-      .get('/prompt-templates/00000000-0000-0000-0000-000000000000')
+      .get('/v1/prompt-templates/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
@@ -281,7 +281,7 @@ describe('Prompt Templates CRUD Integration', () => {
     // value reaches the service verbatim and matches against the DB. No
     // rows are seeded for `'not-a-channel'`, so the response is 200 + [].
     const res = await http
-      .get('/prompt-templates')
+      .get('/v1/prompt-templates')
       .query({ channel: 'not-a-channel' })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
@@ -296,7 +296,7 @@ describe('Prompt Templates CRUD Integration', () => {
 
     // Two rows for the same key but different channels can both be published.
     const prestaRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'multi.channel',
@@ -307,12 +307,12 @@ describe('Prompt Templates CRUD Integration', () => {
       })
       .expect(201);
     await http
-      .post(`/prompt-templates/${prestaRes.body.id}/publish`)
+      .post(`/v1/prompt-templates/${prestaRes.body.id}/publish`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     const allegroRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'multi.channel',
@@ -323,13 +323,13 @@ describe('Prompt Templates CRUD Integration', () => {
       })
       .expect(201);
     await http
-      .post(`/prompt-templates/${allegroRes.body.id}/publish`)
+      .post(`/v1/prompt-templates/${allegroRes.body.id}/publish`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     // List shows both pairs, each with its own published row.
     const listRes = await http
-      .get('/prompt-templates')
+      .get('/v1/prompt-templates')
       .query({ key: 'multi.channel' })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
@@ -343,7 +343,7 @@ describe('Prompt Templates CRUD Integration', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     const createRes = await http
-      .post('/prompt-templates')
+      .post('/v1/prompt-templates')
       .set('Authorization', `Bearer ${token}`)
       .send({
         key: 'delete.test',
@@ -355,12 +355,12 @@ describe('Prompt Templates CRUD Integration', () => {
       .expect(201);
 
     await http
-      .delete(`/prompt-templates/${createRes.body.id}`)
+      .delete(`/v1/prompt-templates/${createRes.body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(204);
 
     await http
-      .get(`/prompt-templates/${createRes.body.id}`)
+      .get(`/v1/prompt-templates/${createRes.body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });

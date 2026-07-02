@@ -42,6 +42,8 @@ import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 import { CommandPaletteTrigger } from '../shared/ui/command-palette';
+import { DemoBanner } from '../shared/ui/demo-banner';
+import { useSystemConfigQuery } from '../features/system';
 
 interface SidebarNavProps {
   ariaLabel: string;
@@ -200,6 +202,8 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session, clearSession } = useSession();
   const { showToast } = useToast();
+  const systemConfigQuery = useSystemConfigQuery();
+  const demoMode = systemConfigQuery.data?.demoMode ?? false;
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
   // Initialize density at boot so <html data-density="..."> is set before
@@ -310,6 +314,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
             <UserChip username={username} email={email} onLogout={handleLogout} />
           ) : null}
         </header>
+
+        {demoMode ? <DemoBanner /> : null}
 
         {/* `key={location.pathname}` retriggers the .shell-content
             cross-fade animation on every route change (#775). */}

@@ -8,13 +8,16 @@
  * @module apps/api/src
  */
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { installNestLogger } from '@openlinker/shared/logging/nest';
 import { AppModule } from './app.module';
+import { APP_INFO_SERVICE_TOKEN } from './app-info/app-info.module';
+import type { IAppInfoService } from './app-info/app-info.service.interface';
+import { API_VERSION } from './app-info/app-info.types';
 import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
 import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 
@@ -80,11 +83,25 @@ async function bootstrap(): Promise<void> {
   // exception types, so registration order is irrelevant.
   app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
 
+  // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served
+  // under `/v1` by default. The inbound `/webhooks` ingress opts out via
+  // `VERSION_NEUTRAL` (externally-provisioned URL); the root `/` welcome route
+  // stays neutral too. Must run before Swagger's createDocument so operations
+  // render `/v1/...`.
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: API_VERSION,
+  });
+
+  // Single-source the product version reported by the version surface + Swagger.
+  const appInfoService = app.get<IAppInfoService>(APP_INFO_SERVICE_TOKEN);
+  const productVersion = appInfoService.getProductVersion();
+
   // Swagger API documentation
   const config = new DocumentBuilder()
     .setTitle('OpenLinker API')
     .setDescription('Open-source, modular, API-first e-commerce orchestration platform')
-    .setVersion('1.0')
+    .setVersion(productVersion)
     .addBearerAuth()
     .addTag('auth', 'Authentication endpoints')
     .addTag('connections', 'Connection management endpoints')

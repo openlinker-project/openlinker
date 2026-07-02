@@ -15,7 +15,11 @@ const DEFAULT_VALUES: LoginFormValues = {
   password: '',
 };
 
-export function LoginForm(): ReactElement {
+interface LoginFormProps {
+  demoMode?: boolean;
+}
+
+export function LoginForm({ demoMode = false }: LoginFormProps): ReactElement {
   const login = useLogin();
   const form = useForm<LoginFormValues>({
     defaultValues: DEFAULT_VALUES,
@@ -35,7 +39,14 @@ export function LoginForm(): ReactElement {
   });
 
   return (
-    <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)}>
+    <form className="form-card guest-form" onSubmit={(event) => void onSubmit(event)} noValidate>
+      {demoMode ? (
+        <div className="guest-form__demo-bar">
+          <strong>🔗 OpenLinker Demo</strong>
+          <span>Explore a live sandbox with read-only access</span>
+        </div>
+      ) : null}
+
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {login.error ? (
         <Alert tone="error" title="Login failed">
@@ -70,6 +81,17 @@ export function LoginForm(): ReactElement {
           Forgot password?
         </Link>
       </div>
+
+      {demoMode ? (
+        <>
+          <div className="guest-form__divider" aria-hidden="true">
+            new here?
+          </div>
+          <Link to="/register" className="button button--secondary guest-form__demo-register">
+            Create a free demo account →
+          </Link>
+        </>
+      ) : null}
     </form>
   );
 }

@@ -278,7 +278,22 @@ content fields. OpenLinker sends them to Erli via `updateOfferFields`
 (`PATCH /products/{id}`, sparse), enqueued as a `marketplace.offer.updateFields`
 job (HTTP 202 — async, like every Erli write).
 
-**API (today):**
+**From the UI:**
+
+1. Open the offer's **listing-detail page** (Listings → pick the Erli mapping).
+2. Click **Edit offer** in the page header — this opens the edit drawer with
+   **Title**, **Price** (PLN; the currency is read-only — Erli is PLN-only), and
+   **Description** fields.
+3. Fill one or more fields, then click **Save changes**. The button stays
+   disabled until you change something, so an empty save never hits the API.
+4. A **"Update dispatched"** toast confirms the change was queued as a
+   `marketplace.offer.updateFields` job; the drawer closes.
+
+You can draft the description with **Suggest with AI** — available once the offer
+is linked to a product variant (the suggestion uses the variant's master content,
+falling back to the master template when no Erli-specific template exists).
+
+**API (equivalent):**
 
 ```
 POST /listings/connections/{connectionId}/offers/{offerId}/fields
@@ -289,13 +304,11 @@ POST /listings/connections/{connectionId}/offers/{offerId}/fields
 
 At least one field is required; the response returns a `{ jobId }`.
 
-> **UI button is coming.** An **Edit offer** button on the listing-detail page
-> (price / title / description, with AI-assisted descriptions) is wired for other
-> platforms and tracked for Erli in **#1215** — until it ships, use the API above.
-
 > **Frozen fields.** If a field was edited directly in the Erli panel, Erli marks
 > it `frozen` and OpenLinker excludes it from the update (it won't overwrite a
-> seller's manual edit). See the [runbook](./runbook.md).
+> seller's manual edit) — the drawer still reports success even when a frozen
+> field is silently skipped. Surfacing skipped fields in the UI is a follow-up.
+> See the [runbook](./runbook.md).
 
 ---
 

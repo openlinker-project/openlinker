@@ -71,4 +71,47 @@ describe('RegisterForm', () => {
 
     expect(await screen.findByText('Username already taken')).toBeInTheDocument();
   });
+
+  describe('demo mode', () => {
+    it('should show the demo bar when demoMode is true', () => {
+      renderWithProviders(<RegisterForm demoMode />);
+
+      expect(screen.getByText(/OpenLinker Demo/i)).toBeInTheDocument();
+      expect(screen.getByText(/active immediately/i)).toBeInTheDocument();
+    });
+
+    it('should show the demo callout when demoMode is true', () => {
+      renderWithProviders(<RegisterForm demoMode />);
+
+      expect(screen.getByText(/demo mode active/i)).toBeInTheDocument();
+      expect(screen.getByText(/no approval needed/i)).toBeInTheDocument();
+    });
+
+    it('should show "Start exploring →" submit button when demoMode is true', () => {
+      renderWithProviders(<RegisterForm demoMode />);
+
+      expect(screen.getByRole('button', { name: /start exploring/i })).toBeInTheDocument();
+    });
+
+    it('should show "Request access" submit button when demoMode is false', () => {
+      renderWithProviders(<RegisterForm />);
+
+      expect(screen.getByRole('button', { name: /request access/i })).toBeInTheDocument();
+    });
+
+    it('should show demo success copy after registration in demo mode', async () => {
+      const mockApi = createMockApiClient({
+        auth: { register: vi.fn().mockResolvedValue({ ok: true }) },
+      });
+      renderWithProviders(<RegisterForm demoMode />, { apiClient: mockApi });
+
+      await userEvent.type(screen.getByLabelText(/username/i), 'demo_user');
+      await userEvent.type(screen.getByLabelText(/email/i), 'demo@test.com');
+      await userEvent.type(screen.getByLabelText('Password'), 'password123');
+      await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+      await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
+
+      expect(await screen.findByText(/demo account is ready/i)).toBeInTheDocument();
+    });
+  });
 });
