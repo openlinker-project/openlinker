@@ -10,10 +10,15 @@
  *
  * @module libs/integrations/infakt/src/testing
  */
-import type { IInfaktHttpClient } from '../infrastructure/http/infakt-http-client.interface';
+import type {
+  IInfaktHttpClient,
+  InfaktBinaryResponse,
+} from '../infrastructure/http/infakt-http-client.interface';
+
+type CallMethod = 'GET' | 'POST' | 'GET_BINARY';
 
 interface RecordedCall {
-  method: 'GET' | 'POST';
+  method: CallMethod;
   path: string;
   query?: Record<string, string>;
   body?: unknown;
@@ -31,8 +36,14 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return this;
   }
 
-  /** Seed a rejection (e.g. `InfaktApiError`) for `GET path` / `POST path`. */
-  seedError(method: 'GET' | 'POST', path: string, error: Error): this {
+  /** Seed a successful binary response for `getBinary(path)`. */
+  seedBinary(path: string, value: InfaktBinaryResponse): this {
+    this.responses.set(this.key('GET_BINARY', path), { kind: 'resolve', value });
+    return this;
+  }
+
+  /** Seed a rejection (e.g. `InfaktApiError`) for `GET path` / `POST path` / `getBinary(path)`. */
+  seedError(method: CallMethod, path: string, error: Error): this {
     this.responses.set(this.key(method, path), { kind: 'reject', error });
     return this;
   }
@@ -52,7 +63,12 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return this.resolve<T>('POST', path);
   }
 
-  private resolve<T>(method: 'GET' | 'POST', path: string): Promise<T> {
+  getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse> {
+    this.calls.push({ method: 'GET_BINARY', path, query });
+    return this.resolve<InfaktBinaryResponse>('GET_BINARY', path);
+  }
+
+  private resolve<T>(method: CallMethod, path: string): Promise<T> {
     const seeded = this.responses.get(this.key(method, path));
     if (!seeded) {
       return Promise.reject(
@@ -62,7 +78,7 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return seeded.kind === 'resolve' ? Promise.resolve(seeded.value as T) : Promise.reject(seeded.error);
   }
 
-  private key(method: 'GET' | 'POST', path: string): string {
+  private key(method: CallMethod, path: string): string {
     return `${method} ${path}`;
   }
 }
