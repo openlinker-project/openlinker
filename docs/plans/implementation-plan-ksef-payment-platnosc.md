@@ -484,17 +484,17 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 - Unit tests mock nothing external — `buildFa3Xml` is pure, `KsefAdapterFactory`/`KsefInvoicingAdapter` tests use in-memory `Connection` fixtures, matching existing KSeF test conventions.
 
 ### Acceptance Criteria (mirrors issue #1311)
-- [ ] `KsefConnectionConfig` carries an optional `payment` section (method, bank account, term, skonto).
-- [ ] `fa3-xml.builder.ts` emits a valid `Platnosc` element with only the configured sub-elements, in XSD-mandated child order.
-- [ ] No `Platnosc` element emitted when nothing is configured (existing connections unaffected).
-- [ ] Emitted XML validates against `schemat_fa3_v1-0e.xsd` for both the with-payment and without-payment cases.
-- [ ] `ksef-structured-section.tsx` exposes the new fields, matching the mockup's field order and copy.
-- [ ] `docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html` committed (done as part of this plan).
-- [ ] `FA3_IMPLEMENTATION_NOTES.md` updated.
-- [ ] Tests added per the strategy above.
-- [ ] No CORE ↔ Integration boundary violations.
-- [ ] Live smoke test against a running dev-stack KSeF connection performed (Phase 6, step 15).
-- [ ] Verification artifact with side-by-side mockup/real-screenshot comparisons published and linked from the PR (Phase 6, step 16).
+- [x] `KsefConnectionConfig` carries an optional `payment` section (method, bank account, term, skonto).
+- [x] `fa3-xml.builder.ts` emits a valid `Platnosc` element with only the configured sub-elements, in XSD-mandated child order.
+- [x] No `Platnosc` element emitted when nothing is configured (existing connections unaffected).
+- [x] Emitted XML validates against `schemat_fa3_v1-0e.xsd` for both the with-payment and without-payment cases.
+- [x] `ksef-structured-section.tsx` exposes the new fields, matching the mockup's field order and copy.
+- [x] `docs/plans/mockups/infakt-ksef-bank-account-payment-terms.html` committed (done as part of this plan).
+- [x] `FA3_IMPLEMENTATION_NOTES.md` updated.
+- [x] Tests added per the strategy above.
+- [x] No CORE ↔ Integration boundary violations.
+- [x] Live smoke test against a running dev-stack KSeF connection performed (Phase 6, step 15) — found and fixed a real persistence bug (see PR #1317 description).
+- [x] Verification artifact with side-by-side mockup/real-screenshot comparisons published and linked from the PR (Phase 6, step 16) — https://claude.ai/code/artifact/e42009f1-ec26-4529-b98c-35e3ab308e62
 
 ---
 
@@ -512,4 +512,4 @@ None — the vendored XSD and existing FA(3) builder code were sufficient; no ex
 - [x] File structure matches standards.
 - [x] Plan is execution-ready.
 - [x] Plan is saved as markdown file.
-- [ ] Live smoke test + verification artifact produced before the PR is un-drafted/merged (Phase 6).
+- [x] Live smoke test + verification artifact produced before the PR is un-drafted/merged (Phase 6).
