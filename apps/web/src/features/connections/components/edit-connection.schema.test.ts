@@ -561,9 +561,12 @@ describe('mergeStructuredIntoConfig — KSeF payment (#1311)', () => {
     expect('payment' in result).toBe(false);
   });
 
-  it('does not persist an incomplete skonto (missing amount)', () => {
+  it('persists an incomplete skonto (missing amount) so per-keystroke sync never drops the first-typed field', () => {
+    // Completeness (conditions+amount both present) is a save-time shape-validator
+    // / issuance-time resolvePayment concern, not a persistence gate (#1311
+    // smoke-test finding).
     const result = mergeStructuredIntoConfig({}, { paymentSkontoConditions: 'text only' });
-    expect('payment' in result).toBe(false);
+    expect(result.payment).toEqual({ skonto: { conditions: 'text only' } });
   });
 
   it('treats a non-numeric paymentTermDays as clearing the field', () => {
