@@ -76,9 +76,16 @@ export class KsefSessionCryptoService {
    * KSeF declares the IV once in `OpenOnlineSessionRequest.encryption.initializationVector`
    * and uses it to decrypt every document in the session. The `SendInvoiceRequest` wire
    * shape has no per-document IV field — KSeF cannot be told a different IV per document.
-   * Therefore all documents in a session MUST be encrypted with the same session IV
-   * (CIRFMF C# reference: `EncryptBytesWithAES256(invoice, CipherKey, CipherIv)` — the
-   * session `CipherIv` is reused across the batch, matching the declared value).
+   * Therefore all documents in a session MUST be encrypted with the same session IV.
+   *
+   * Spec confirmation of single-IV-per-session (PR #1317 review nit):
+   * - KSeF 2.0 OpenAPI (https://api-test.ksef.mf.gov.pl/docs/v2) — the session-open
+   *   `encryption.initializationVector` is the only IV anywhere on the wire.
+   * - Official session guide (https://github.com/CIRFMF/ksef-docs/blob/main/sesja-interaktywna.md)
+   *   — one 256-bit key + 128-bit IV generated at session open, used for the
+   *   documents sent within that session.
+   * - CIRFMF C# reference: `EncryptBytesWithAES256(invoice, CipherKey, CipherIv)` — the
+   *   session `CipherIv` is reused across the batch, matching the declared value.
    */
   encryptDocument(plaintext: string, context: SessionCryptoContext): EncryptedDocument {
     const { key, iv } = context.symmetricKey;

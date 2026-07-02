@@ -49,8 +49,16 @@ export interface PublicKeyCertificate {
  * `EncryptionInfo.initializationVector`) AND the IV used to encrypt every document
  * in this session. KSeF has no per-document IV field on the `SendInvoiceRequest`
  * wire — it uses the session IV declared at session-open time to decrypt all
- * documents (confirmed by the CIRFMF C# reference: `EncryptBytesWithAES256(bytes,
- * CipherKey, CipherIv)` with the same `CipherIv` across the batch).
+ * documents. Spec-level confirmation (PR #1317 review nit):
+ * - KSeF 2.0 OpenAPI (https://api-test.ksef.mf.gov.pl/docs/v2):
+ *   `OpenOnlineSessionRequest.encryption.initializationVector` is the only IV
+ *   on the wire; `SendInvoiceRequest` carries no per-document IV field.
+ * - Official session guide
+ *   (https://github.com/CIRFMF/ksef-docs/blob/main/sesja-interaktywna.md):
+ *   one 256-bit key + 128-bit IV generated at session open and used to
+ *   encrypt the documents sent within that session.
+ * - CIRFMF C# reference client: `EncryptBytesWithAES256(bytes, CipherKey,
+ *   CipherIv)` with the same `CipherIv` across the batch.
  *
  * SECURITY: `key` and `iv` bytes must never be logged.
  */
