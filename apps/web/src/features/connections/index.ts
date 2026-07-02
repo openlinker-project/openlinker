@@ -9,6 +9,7 @@
  * Same-feature internals continue to use relative imports as before.
  */
 export type {
+  BankAccount,
   Connection,
   ConnectionStatus,
   ConnectionFilters,
@@ -27,6 +28,8 @@ export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
+export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
+export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 
 export {
   INVOICE_TRIGGER_MODEL_VALUES,

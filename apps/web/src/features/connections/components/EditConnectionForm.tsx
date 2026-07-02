@@ -115,6 +115,23 @@ function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'tra
   return config.defaultPaymentMethod === 'transfer' ? 'transfer' : 'cash';
 }
 
+/** Read the Infakt bank-account snapshot out of `config.bankAccount` (#1303 follow-up). */
+function readInfaktBankAccount(
+  config: Record<string, unknown>,
+): { id: number; accountNumber: string; bankName: string } | null {
+  const raw = config.bankAccount;
+  if (
+    typeof raw !== 'object' ||
+    raw === null ||
+    typeof (raw as { id?: unknown }).id !== 'number' ||
+    typeof (raw as { accountNumber?: unknown }).accountNumber !== 'string' ||
+    typeof (raw as { bankName?: unknown }).bankName !== 'string'
+  ) {
+    return null;
+  }
+  return raw as { id: number; accountNumber: string; bankName: string };
+}
+
 /**
  * Read the InPost sender address out of `config.senderAddress` (#771). Returns
  * a fully-populated form shape — empty-string fields where the operator hasn't
@@ -346,6 +363,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       inpostSenderAddress: readInpostSenderAddress(connection.config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
+      infaktBankAccount: readInfaktBankAccount(connection.config),
     },
     resolver: zodResolver(editConnectionSchema),
   });
@@ -448,6 +466,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       inpostSenderAddress: form.getValues('inpostSenderAddress'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #1303 follow-up — re-serialize the whole `infaktBankAccount` snapshot into
+  // configText. Clone of `syncInpostSenderAddressToJson`: reads CURRENT form
+  // state, takes NO argument, and KEEPS the `!configIsParseable` early-return.
+  // The Infakt section MUST setValue('infaktBankAccount', …) BEFORE calling this.
+  function syncInfaktBankAccountToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      infaktBankAccount: form.getValues('infaktBankAccount'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -569,6 +600,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           }
           syncObjectToJson={syncSubiektCapabilitiesToJson}
           syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
+          syncInfaktBankAccountToJson={syncInfaktBankAccountToJson}
         />
       ) : null}
 

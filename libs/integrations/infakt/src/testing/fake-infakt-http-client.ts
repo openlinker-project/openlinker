@@ -12,8 +12,10 @@
  */
 import type { IInfaktHttpClient } from '../infrastructure/http/infakt-http-client.interface';
 
+type HttpMethod = 'GET' | 'POST' | 'PUT';
+
 interface RecordedCall {
-  method: 'GET' | 'POST';
+  method: HttpMethod;
   path: string;
   query?: Record<string, string>;
   body?: unknown;
@@ -25,14 +27,14 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
   readonly calls: RecordedCall[] = [];
   private readonly responses = new Map<string, SeededResult<unknown>>();
 
-  /** Seed a successful JSON response for `GET path` / `POST path`. */
-  seed<T>(method: 'GET' | 'POST', path: string, value: T): this {
+  /** Seed a successful JSON response for `GET path` / `POST path` / `PUT path`. */
+  seed<T>(method: HttpMethod, path: string, value: T): this {
     this.responses.set(this.key(method, path), { kind: 'resolve', value });
     return this;
   }
 
-  /** Seed a rejection (e.g. `InfaktApiError`) for `GET path` / `POST path`. */
-  seedError(method: 'GET' | 'POST', path: string, error: Error): this {
+  /** Seed a rejection (e.g. `InfaktApiError`) for `GET path` / `POST path` / `PUT path`. */
+  seedError(method: HttpMethod, path: string, error: Error): this {
     this.responses.set(this.key(method, path), { kind: 'reject', error });
     return this;
   }
@@ -52,7 +54,12 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return this.resolve<T>('POST', path);
   }
 
-  private resolve<T>(method: 'GET' | 'POST', path: string): Promise<T> {
+  put<T>(path: string, body?: unknown): Promise<T> {
+    this.calls.push({ method: 'PUT', path, body });
+    return this.resolve<T>('PUT', path);
+  }
+
+  private resolve<T>(method: HttpMethod, path: string): Promise<T> {
     const seeded = this.responses.get(this.key(method, path));
     if (!seeded) {
       return Promise.reject(
@@ -62,7 +69,7 @@ export class FakeInfaktHttpClient implements IInfaktHttpClient {
     return seeded.kind === 'resolve' ? Promise.resolve(seeded.value as T) : Promise.reject(seeded.error);
   }
 
-  private key(method: 'GET' | 'POST', path: string): string {
+  private key(method: HttpMethod, path: string): string {
     return `${method} ${path}`;
   }
 }

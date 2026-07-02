@@ -16,9 +16,12 @@
 import { randomUUID } from 'crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
+  BankAccountDefaultSetter,
+  BankAccountsReader,
   CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
+  InvoicingBankAccount,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
@@ -33,6 +36,7 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
+  InfaktBankAccount,
   InfaktClient,
   InfaktInvoice,
   InfaktKsefStatus,
@@ -122,7 +126,12 @@ function parseInfaktAmount(value: string): number {
 }
 
 export class InfaktInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements
+    InvoicingPort,
+    RegulatoryStatusReader,
+    CorrectionIssuer,
+    BankAccountsReader,
+    BankAccountDefaultSetter
 {
   /**
    * Payment method sent on every issued invoice/correction (#1303) — a
@@ -135,6 +144,15 @@ export class InfaktInvoicingAdapter
    */
   private readonly paymentMethod: NonNullable<InfaktConnectionConfig['defaultPaymentMethod']>;
 
+  /**
+   * Bank account stamped on `'transfer'` invoices (#1303 follow-up) — a
+   * snapshot chosen by the operator via `listBankAccounts()`, not re-fetched
+   * at issuance time. `undefined` when the operator hasn't picked one (or
+   * picked Cash) — `issueInvoice`/`issueCorrection` then omit the
+   * `bank_account`/`bank_name` fields entirely.
+   */
+  private readonly bankAccount: InfaktConnectionConfig['bankAccount'];
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IInfaktHttpClient,
@@ -142,6 +160,31 @@ export class InfaktInvoicingAdapter
     config: InfaktConnectionConfig = {},
   ) {
     this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
+    this.bankAccount = config.bankAccount;
+  }
+
+  /** List the seller's payable bank accounts known to inFakt (#1303 follow-up). */
+  async listBankAccounts(): Promise<InvoicingBankAccount[]> {
+    const response = await this.http.get<InfaktListResponse<InfaktBankAccount>>(
+      'bank_accounts.json',
+    );
+    return response.entities.map((account) => ({
+      id: String(account.id),
+      accountNumber: account.account_number,
+      bankName: account.bank_name,
+      isDefault: account.default,
+    }));
+  }
+
+  /**
+   * Mark `accountId` as the seller's default bank account in inFakt itself
+   * (#1303 follow-up) — keeps inFakt's own "default account" setting (visible
+   * in the seller's inFakt UI) in sync with the account OpenLinker stamps on
+   * `'transfer'` invoices, so the two never disagree about which account is
+   * "the" default.
+   */
+  async setDefaultBankAccount(accountId: string): Promise<void> {
+    await this.http.put(`bank_accounts/${accountId}.json`, { bank_account: { default: true } });
   }
 
   getSupportedDocumentTypes(): DocumentType[] {
@@ -200,6 +243,7 @@ export class InfaktInvoicingAdapter
         payment_method: this.paymentMethod,
         client_uuid: clientUuid,
         services,
+        ...this.bankAccountFields(),
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
       },
     };
@@ -356,6 +400,7 @@ export class InfaktInvoicingAdapter
         kind: 'corrective',
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
         payment_method: this.paymentMethod,
+        ...this.bankAccountFields(),
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
         correction_reason_symbol: 'other',
@@ -415,5 +460,18 @@ export class InfaktInvoicingAdapter
     } catch {
       return null;
     }
+  }
+
+  /**
+   * `bank_account`/`bank_name` invoice fields (#1303 follow-up) — only sent
+   * for `'transfer'` invoices with a configured `bankAccount` snapshot.
+   * `'cash'` invoices never carry these regardless of what's configured, and
+   * a `'transfer'` invoice with no configured account omits them too (the
+   * pre-existing #1303 behavior: Infakt rejects the invoice, surfacing the
+   * missing-prerequisite loudly rather than silently).
+   */
+  private bankAccountFields(): { bank_account: string; bank_name: string } | Record<string, never> {
+    if (this.paymentMethod !== 'transfer' || !this.bankAccount) return {};
+    return { bank_account: this.bankAccount.accountNumber, bank_name: this.bankAccount.bankName };
   }
 }

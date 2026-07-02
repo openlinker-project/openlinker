@@ -123,6 +123,34 @@ describe('InfaktHttpClient', () => {
     });
   });
 
+  describe('PUT', () => {
+    it('should attach the X-inFakt-ApiKey header and Content-Type', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '{"id":1,"default":true}'));
+      await client.put('bank_accounts/1.json', { bank_account: { default: true } });
+      const [, init] = fetchMock.mock.calls[0] as [
+        string,
+        { method: string; headers: Record<string, string>; body: string },
+      ];
+      expect(init.method).toBe('PUT');
+      expect(init.headers['X-inFakt-ApiKey']).toBe('test-api-key');
+      expect(init.headers['Content-Type']).toBe('application/json');
+    });
+
+    it('should serialize the request body as JSON', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '{}'));
+      const payload = { bank_account: { default: true } };
+      await client.put('bank_accounts/1.json', payload);
+      const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+      expect(JSON.parse(init.body)).toEqual(payload);
+    });
+
+    it('should deserialize the JSON response body', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(200, '{"id":1,"default":true}'));
+      const result = await client.put<{ id: number; default: boolean }>('bank_accounts/1.json', {});
+      expect(result).toEqual({ id: 1, default: true });
+    });
+  });
+
   describe('error handling', () => {
     it('should throw InfaktApiError on a non-2xx JSON response', async () => {
       fetchMock.mockResolvedValue(fakeResponse(422, '{"error":"invalid nip"}'));

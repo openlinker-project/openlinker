@@ -197,6 +197,15 @@ export interface StructuredConfigSectionProps {
    * unparseable, so the InPost section gates its inputs on `configIsParseable`.
    */
   syncInpostSenderAddressToJson?: () => void;
+  /**
+   * #1303 follow-up — whole-object serializer for the Infakt bank-account
+   * snapshot. Same shape as `syncInpostSenderAddressToJson` (no field
+   * argument; the host serializer reads current form state) but dedicated
+   * to `infaktBankAccount` so it can coexist with the other whole-object
+   * serializers on the same prop bag. The Infakt section MUST
+   * `setValue('infaktBankAccount', …)` BEFORE calling this.
+   */
+  syncInfaktBankAccountToJson?: () => void;
 }
 
 /**
