@@ -61,6 +61,7 @@ import {
 import {
   createTestAllegroSourceConnection,
   createTestPrestashopDestinationConnection,
+  deleteTestConnection,
 } from '../helpers/test-connection.helper';
 import { createIncomingOrderForCarrierMapping } from '../fixtures/incoming-order.fixtures';
 
@@ -271,8 +272,17 @@ describe('PrestaShop order fulfillment update (#858)', () => {
   }, 20 * 60_000);
 
   afterAll(async () => {
-    if (ps) {
-      await ps.cleanup();
+    try {
+      if (ps) {
+        await ps.cleanup();
+      }
+    } finally {
+      // Delete, don't just stop the container — see deleteTestConnection's
+      // docblock. This suite's own destination connection must not outlive
+      // its container for later suites in the same shared-DB run.
+      if (prestashopConnectionId) {
+        await deleteTestConnection(harness.getDataSource(), prestashopConnectionId);
+      }
     }
     // Restore the env var the suite mutated (maxWorkers:1 → leakage otherwise).
     if (INSTALL_OL_MODULE) {
