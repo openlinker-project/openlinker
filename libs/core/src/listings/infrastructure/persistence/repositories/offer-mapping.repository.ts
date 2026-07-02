@@ -9,7 +9,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import type { CoreEntityType } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { IdentifierMapping } from '@openlinker/core/identifier-mapping';
@@ -31,11 +31,24 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   ) {}
 
   async findById(id: string): Promise<IdentifierMapping | null> {
-    const entity = await this.repository.findOne({
-      where: { id, entityType: OFFER_ENTITY_TYPE },
-    });
-    if (!entity) return null;
-    return this.toDomain(entity);
+    try {
+      const entity = await this.repository.findOne({
+        where: { id, entityType: OFFER_ENTITY_TYPE },
+      });
+      if (!entity) return null;
+      return this.toDomain(entity);
+    } catch (error) {
+      // Handle invalid UUID format - PostgreSQL throws QueryFailedError
+      // when trying to query with a non-UUID string
+      if (
+        error instanceof QueryFailedError &&
+        'code' in error &&
+        error.code === '22P02' // PostgreSQL invalid input syntax error code
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async findMany(

@@ -9,6 +9,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 
 import { OfferCreationRecordRepository } from './offer-creation-record.repository';
 import { OfferCreationRecordOrmEntity } from '../entities/offer-creation-record.orm-entity';
@@ -187,6 +188,24 @@ describe('OfferCreationRecordRepository', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should return null when the driver raises a 22P02 QueryFailedError (invalid UUID)', async () => {
+      const error = new QueryFailedError('invalid input syntax for type uuid', [], '');
+      (error as QueryFailedError & { code?: string }).code = '22P02';
+      ormRepository.findOne.mockRejectedValue(error);
+
+      const result = await repository.findById('not-a-uuid');
+
+      expect(result).toBeNull();
+    });
+
+    it('should re-throw a QueryFailedError with a different code', async () => {
+      const error = new QueryFailedError('duplicate key value', [], '');
+      (error as QueryFailedError & { code?: string }).code = '23505';
+      ormRepository.findOne.mockRejectedValue(error);
+
+      await expect(repository.findById('rec-uuid')).rejects.toBe(error);
+    });
   });
 
   describe('findLatestByVariantAndConnection', () => {
@@ -309,6 +328,26 @@ describe('OfferCreationRecordRepository', () => {
       await expect(repository.updateStatus('missing', 'active')).rejects.toBeInstanceOf(
         OfferCreationRecordNotFoundException
       );
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw OfferCreationRecordNotFoundException when the driver raises a 22P02 QueryFailedError (invalid UUID)', async () => {
+      const error = new QueryFailedError('invalid input syntax for type uuid', [], '');
+      (error as QueryFailedError & { code?: string }).code = '22P02';
+      ormRepository.findOne.mockRejectedValue(error);
+
+      await expect(repository.updateStatus('not-a-uuid', 'active')).rejects.toBeInstanceOf(
+        OfferCreationRecordNotFoundException
+      );
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should re-throw a QueryFailedError with a different code', async () => {
+      const error = new QueryFailedError('duplicate key value', [], '');
+      (error as QueryFailedError & { code?: string }).code = '23505';
+      ormRepository.findOne.mockRejectedValue(error);
+
+      await expect(repository.updateStatus('rec-uuid', 'active')).rejects.toBe(error);
       expect(ormRepository.save).not.toHaveBeenCalled();
     });
   });

@@ -11,7 +11,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
 import { OfferCreationRecordNotFoundException } from '../../../domain/exceptions/offer-creation-record-not-found.exception';
@@ -39,8 +39,21 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
   }
 
   async findById(id: string): Promise<OfferCreationRecord | null> {
-    const entity = await this.repository.findOne({ where: { id } });
-    return entity ? this.toDomain(entity) : null;
+    try {
+      const entity = await this.repository.findOne({ where: { id } });
+      return entity ? this.toDomain(entity) : null;
+    } catch (error) {
+      // Handle invalid UUID format - PostgreSQL throws QueryFailedError
+      // when trying to query with a non-UUID string
+      if (
+        error instanceof QueryFailedError &&
+        'code' in error &&
+        error.code === '22P02' // PostgreSQL invalid input syntax error code
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async findLatestByVariantAndConnection(
@@ -69,7 +82,21 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     status: OfferCreationStatus,
     errors?: OfferCreationError[] | null
   ): Promise<OfferCreationRecord> {
-    const entity = await this.repository.findOne({ where: { id } });
+    let entity: OfferCreationRecordOrmEntity | null;
+    try {
+      entity = await this.repository.findOne({ where: { id } });
+    } catch (error) {
+      // Handle invalid UUID format - PostgreSQL throws QueryFailedError
+      // when trying to query with a non-UUID string
+      if (
+        error instanceof QueryFailedError &&
+        'code' in error &&
+        error.code === '22P02' // PostgreSQL invalid input syntax error code
+      ) {
+        throw new OfferCreationRecordNotFoundException(id);
+      }
+      throw error;
+    }
     if (!entity) {
       throw new OfferCreationRecordNotFoundException(id);
     }
