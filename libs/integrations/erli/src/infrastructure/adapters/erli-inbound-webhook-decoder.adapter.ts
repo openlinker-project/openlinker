@@ -63,7 +63,7 @@ export class ErliInboundWebhookDecoderAdapter implements InboundWebhookDecoderPo
     if (!timingSafeEqual(provided, expected)) {
       return { ok: false };
     }
-    // Erli does not send a signed timestamp header, so `timestampMs` is
+    // Erli does not send a signed timestamp header, so `timestampMs` is 
     // omitted intentionally — the host's replay-window check only fires when
     // the field is present.
     return { ok: true };
