@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { UsersPage } from './users-page';
-import type { UserListResponse, UserSummary } from '../../features/users/api/users.types';
+import type { UserListFilters, UserListResponse, UserSummary } from '../../features/users/api/users.types';
 
 function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
   return {
@@ -15,6 +15,12 @@ function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
+}
+
+function makeUsers(count: number, overrides: Partial<UserSummary> = {}): UserSummary[] {
+  return Array.from({ length: count }, (_, i) =>
+    makeUser({ id: `u${i}`, username: `user${i}`, ...overrides }),
+  );
 }
 
 describe('UsersPage', () => {
@@ -187,5 +193,86 @@ describe('UsersPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     expect(deleteUser).toHaveBeenCalledWith('u1');
+  });
+
+  describe('pagination (#1258)', () => {
+    it('should show "Page 1 of 2" with Previous disabled and Next enabled when total exceeds one page', async () => {
+      const listMock = vi.fn((filters?: UserListFilters) => {
+        if (filters?.status === 'pending') {
+          return Promise.resolve({ users: [], total: 0 });
+        }
+        return Promise.resolve({ users: makeUsers(25), total: 26 });
+      });
+      const mockApi = createMockApiClient({ users: { list: listMock } });
+      renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+      expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('should advance to the next page and disable Next once on the last page', async () => {
+      const listMock = vi.fn((filters?: UserListFilters) => {
+        if (filters?.status === 'pending') {
+          return Promise.resolve({ users: [], total: 0 });
+        }
+        const page = filters?.page ?? 0;
+        return Promise.resolve({
+          users: page === 0 ? makeUsers(25) : makeUsers(1, { id: 'u25', username: 'user25' }),
+          total: 26,
+        });
+      });
+      const mockApi = createMockApiClient({ users: { list: listMock } });
+      renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+      await screen.findByText('Page 1 of 2');
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+      expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument();
+      expect(listMock).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+    });
+
+    it('should reflect the backend total on the tab badge, not the loaded page row count', async () => {
+      const listMock = vi.fn((filters?: UserListFilters) => {
+        if (filters?.status === 'pending') {
+          return Promise.resolve({ users: [], total: 0 });
+        }
+        return Promise.resolve({ users: makeUsers(25), total: 40 });
+      });
+      const mockApi = createMockApiClient({ users: { list: listMock } });
+      renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+      const allTab = await screen.findByRole('tab', { name: /all users/i });
+      expect(await within(allTab).findByText('40')).toBeInTheDocument();
+    });
+
+    it("should preserve the Pending tab's page position when switching tabs and back", async () => {
+      const listMock = vi.fn((filters?: UserListFilters) => {
+        if (filters?.status === 'pending') {
+          const page = filters.page ?? 0;
+          return Promise.resolve({
+            users:
+              page === 0
+                ? makeUsers(25, { status: 'pending' })
+                : makeUsers(1, { id: 'u25', username: 'user25', status: 'pending' }),
+            total: 26,
+          });
+        }
+        return Promise.resolve({ users: [], total: 0 });
+      });
+      const mockApi = createMockApiClient({ users: { list: listMock } });
+      renderWithProviders(<UsersPage defaultTab="pending" />, { apiClient: mockApi });
+
+      await screen.findByText('Page 1 of 2');
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('tab', { name: /all users/i }));
+      await userEvent.click(screen.getByRole('tab', { name: /pending/i }));
+
+      expect(await screen.findByText('Page 2 of 2')).toBeInTheDocument();
+    });
   });
 });
