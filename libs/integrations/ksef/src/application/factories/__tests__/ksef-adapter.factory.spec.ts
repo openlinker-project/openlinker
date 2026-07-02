@@ -109,4 +109,28 @@ describe('KsefAdapterFactory', () => {
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });
+
+  describe('resolveDefaultTaxRate (#1290)', () => {
+    // Exercises the factory's own `resolveDefaultTaxRate` via private-method
+    // bracket access, rather than casting into the constructed adapter's
+    // internals to read a private field (#1291 NIT).
+    function resolvedDefaultTaxRate(sellerConfig: Record<string, unknown>): string {
+      const factory = new KsefAdapterFactory();
+      const resolve = (factory as unknown as { resolveDefaultTaxRate(c: Connection): string })
+        .resolveDefaultTaxRate;
+      return resolve.call(factory, connection({ config: { env: 'test', seller: sellerConfig } }));
+    }
+
+    it('should fall back to the PL standard rate when unconfigured', () => {
+      expect(resolvedDefaultTaxRate(SELLER_CONFIG)).toBe('23');
+    });
+
+    it('should use the connection-configured defaultTaxRate when present', () => {
+      expect(resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '8' })).toBe('8');
+    });
+
+    it('should fall back to the PL standard rate when defaultTaxRate is whitespace-only', () => {
+      expect(resolvedDefaultTaxRate({ ...SELLER_CONFIG, defaultTaxRate: '   ' })).toBe('23');
+    });
+  });
 });

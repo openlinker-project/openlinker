@@ -105,6 +105,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/dpd-polska/src/$1',
     ),
+    '^@openlinker/integrations-infakt$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/infakt/src/index.ts',
+    ),
+    '^@openlinker/integrations-infakt/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/infakt/src/$1',
+    ),
     '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
     '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },

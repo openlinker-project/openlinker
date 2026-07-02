@@ -119,6 +119,35 @@ describe('InboundRoutingPolicyService', () => {
     );
   });
 
+  it('should route an invoicing event to invoicing.regulatoryStatus.reconcile gated on Invoicing', async () => {
+    const outcome = await service.route(
+      event({ domain: 'invoicing', eventType: 'send_to_ksef_success', externalId: 'inv-1' }),
+      connection(['Invoicing']),
+      ['Invoicing'],
+      'evt-9'
+    );
+
+    expect(outcome.status).toBe('enqueued');
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: 'invoicing.regulatoryStatus.reconcile',
+        payload: { schemaVersion: 1, limit: 50 },
+      })
+    );
+  });
+
+  it('should not enqueue an invoicing event when Invoicing is not enabled', async () => {
+    const outcome = await service.route(
+      event({ domain: 'invoicing', eventType: 'send_to_ksef_success' }),
+      connection([]),
+      ['Invoicing'],
+      'evt-9'
+    );
+
+    expect(outcome).toEqual({ status: 'ungated', domain: 'invoicing', requiredCapability: 'Invoicing' });
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
   it('should not enqueue a shipment event when ShippingProviderManager is not enabled', async () => {
     const outcome = await service.route(
       event({ domain: 'shipment', eventType: 'tracking' }),

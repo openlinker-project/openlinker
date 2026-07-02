@@ -84,15 +84,36 @@ export interface InfaktWebhookTranslatorConfig {
 }
 
 export class InfaktWebhookTranslator {
+  /** Handshake pings send a short random token; caps the pre-verification echo (see `getVerificationEcho`). */
+  private static readonly MAX_VERIFICATION_CODE_LENGTH = 256;
+
   constructor(
     private readonly config: InfaktWebhookTranslatorConfig,
     private readonly logger: LoggerPort,
   ) {}
 
   /**
+   * Builds a translator for callers that only need the secret-independent
+   * parsing helpers (`getVerificationEcho`, `parse`, `toOlDomain`,
+   * `toKsefResource`) — never `verifySignature`, which is always constructed
+   * separately with the per-connection resolved secret.
+   */
+  static forParsing(logger: LoggerPort): InfaktWebhookTranslator {
+    return new InfaktWebhookTranslator({ secret: '' }, logger);
+  }
+
+  /**
    * Returns the verification_code echo body when Infakt sends a verification ping.
    * The OL webhook controller must respond with this JSON body to activate the webhook.
    * Returns null if the payload is not a verification ping.
+   *
+   * Gated on the absence of the `event` envelope: every signed delivery is
+   * `{ event, resource }` (see `parse`), while the handshake ping is the bare
+   * `{ verification_code }` shape. Without this guard, a signed event that
+   * happened to carry a string `verification_code` field would be
+   * mis-short-circuited here and never routed. `verification_code` is also
+   * length-capped — the handshake echo is returned pre-signature-verification,
+   * so an oversized value is rejected rather than reflected back verbatim.
    */
   getVerificationEcho(rawBody: Buffer): { verification_code: string } | null {
     try {
@@ -100,10 +121,14 @@ export class InfaktWebhookTranslator {
       if (
         typeof parsed === 'object' &&
         parsed !== null &&
+        !('event' in parsed) &&
         'verification_code' in parsed &&
         typeof (parsed as Record<string, unknown>)['verification_code'] === 'string'
       ) {
-        return { verification_code: (parsed as { verification_code: string }).verification_code };
+        const code = (parsed as { verification_code: string }).verification_code;
+        if (code.length <= InfaktWebhookTranslator.MAX_VERIFICATION_CODE_LENGTH) {
+          return { verification_code: code };
+        }
       }
     } catch {
       // not JSON

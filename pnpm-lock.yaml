@@ -121,6 +121,9 @@ importers:
       '@openlinker/integrations-erli':
         specifier: workspace:*
         version: link:../../libs/integrations/erli
+      '@openlinker/integrations-infakt':
+        specifier: workspace:*
+        version: link:../../libs/integrations/infakt
       '@openlinker/integrations-inpost':
         specifier: workspace:*
         version: link:../../libs/integrations/inpost
@@ -384,6 +387,9 @@ importers:
       '@openlinker/integrations-erli':
         specifier: workspace:*
         version: link:../../libs/integrations/erli
+      '@openlinker/integrations-infakt':
+        specifier: workspace:*
+        version: link:../../libs/integrations/infakt
       '@openlinker/integrations-inpost':
         specifier: workspace:*
         version: link:../../libs/integrations/inpost

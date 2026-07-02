@@ -1,8 +1,9 @@
 /**
  * KSeF Connection Config Shape Validator — unit tests
  *
- * Verifies the required `env` enum check (test/demo/prod) and the flat-issue
- * rejection payload, with neutral error messaging (#1144).
+ * Verifies the required `env` enum check (test/demo/prod), the optional
+ * `seller.defaultTaxRate` check against `FA3_TAX_RATE_MAP` (#1291), and the
+ * flat-issue rejection payload, with neutral error messaging (#1144).
  *
  * @module libs/integrations/ksef/src/infrastructure/adapters/__tests__
  */
@@ -56,6 +57,68 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
     await expect(validator.validate({ env: 'staging' })).rejects.toMatchObject({
       pluginName: 'KSeF',
       errors: [{ path: 'env', message: expect.stringContaining('must be one of') }],
+    });
+  });
+
+  describe('seller.defaultTaxRate', () => {
+    it('should resolve when seller.defaultTaxRate is a known FA3_TAX_RATE_MAP key', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: '23' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when seller.defaultTaxRate is absent', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: '1234567890' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when seller is absent entirely', async () => {
+      await expect(validator.validate({ env: 'test' })).resolves.toBeUndefined();
+    });
+
+    it('should reject when seller.defaultTaxRate is not a known FA3_TAX_RATE_MAP key', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: '23%' } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject when seller.defaultTaxRate is an empty string', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: '' } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject when seller.defaultTaxRate is whitespace-only', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: '   ' } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject when seller.defaultTaxRate is not a string', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: 23 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+      'should reject the inherited-prototype key %s (not a real FA3_TAX_RATE_MAP entry)',
+      async (protoKey) => {
+        await expect(
+          validator.validate({ env: 'test', seller: { defaultTaxRate: protoKey } }),
+        ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+      },
+    );
+
+    it('should carry a flat { path, message } issue for seller.defaultTaxRate', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { defaultTaxRate: '23%' } }),
+      ).rejects.toMatchObject({
+        pluginName: 'KSeF',
+        errors: [
+          { path: 'seller.defaultTaxRate', message: expect.stringContaining('must be one of') },
+        ],
+      });
     });
   });
 });
