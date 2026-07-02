@@ -23,13 +23,15 @@
  *     operator can save incremental progress); the server is the strict gate.
  *   - `config.contextIdentifier` is an FE-additive context field the operator
  *     supplies for display + future scoping; not gated by the C2 config
- *     validator yet (it only requires `env`).
+ *     validator yet (it only requires `env`). It does NOT affect
+ *     authentication — the token-auth session always uses `config.seller.nip`
+ *     as the KSeF context identifier.
  *   - `credentials.authType` → `KsefCredentials.authType`
  *     (`ksef-token` | `qualified-seal`).
  *   - `credentials.secret` carries the write-only secret the operator pastes.
  *     The API persists it in the integration credentials store and assigns a
- *     `db:<uuid>` reference (the BE's opaque `secretRef`); the secret value is
- *     never echoed back to the browser.
+ *     `db:<uuid>` reference (stored as the connection's `credentialsRef`); the
+ *     secret value is never echoed back to the browser.
  *
  * @module features/connections/components
  */

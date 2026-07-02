@@ -18,10 +18,24 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
-import type { FailureCode, InvoiceRecord } from '../api/invoicing.types';
+import type { FailureCode, InvoiceRecord, RegulatoryStatus } from '../api/invoicing.types';
 import type { InvoiceDisplayStatus } from '../components/invoice-status-badge';
 
 type Translate = (key: string, fallback: string) => string;
+
+export type RegCardTone = 'reg-card--info' | 'reg-card--success' | 'reg-card--error' | '';
+
+/**
+ * Severity-stripe tone for the shared `.reg-card` treatment (#1282). Shared
+ * by every per-provider `invoiceDetailSection` slot (KSeF, Subiekt, inFakt)
+ * so the status→tone mapping lives in exactly one place.
+ */
+export function regCardToneFor(status: RegulatoryStatus): RegCardTone {
+  if (status === 'submitted') return 'reg-card--info';
+  if (status === 'accepted') return 'reg-card--success';
+  if (status === 'rejected') return 'reg-card--error';
+  return '';
+}
 
 /**
  * Maps an `InvoiceRecord | null` (null = invoice-absent) to the FE display

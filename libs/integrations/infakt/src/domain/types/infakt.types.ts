@@ -72,8 +72,6 @@ export interface InfaktInvoice {
   client_id: number | null;
   client_uuid: string | null;
   services: InfaktInvoiceService[];
-  print_url: string | null;
-  pdf_url: string | null;
 }
 
 /** One line item on an Infakt invoice. */

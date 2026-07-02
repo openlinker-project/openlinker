@@ -19,6 +19,30 @@ function fakeResponse(status: number, body: string): Response {
   } as unknown as Response;
 }
 
+/** Fake `Response` exposing a streaming `.body.getReader()` for `getBinary`. */
+function fakeBinaryResponse(status: number, contentType: string, chunks: Uint8Array[]): Response {
+  let index = 0;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: (): Promise<string> => Promise.resolve(''),
+    headers: { get: (name: string): string | null => (name === 'content-type' ? contentType : null) },
+    body: {
+      getReader: () => ({
+        read: (): Promise<{ done: boolean; value?: Uint8Array }> => {
+          if (index < chunks.length) {
+            const value = chunks[index];
+            index += 1;
+            return Promise.resolve({ done: false, value });
+          }
+          return Promise.resolve({ done: true });
+        },
+        cancel: (): Promise<void> => Promise.resolve(),
+      }),
+    },
+  } as unknown as Response;
+}
+
 function fakeLogger(): jest.Mocked<LoggerPort> {
   return {
     log: jest.fn(),
@@ -150,6 +174,38 @@ describe('InfaktHttpClient', () => {
       fetchMock.mockResolvedValue(fakeResponse(404, '{"error":"not found"}'));
       await expect(client.get('invoices/missing.json')).rejects.toBeInstanceOf(InfaktApiError);
       expect(logger.warn).toHaveBeenCalled();
+    });
+  });
+
+  describe('getBinary', () => {
+    it('should stream the response body and report the content type (happy path)', async () => {
+      const chunk1 = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+      const chunk2 = new Uint8Array([0x2d, 0x31, 0x2e, 0x34]); // "-1.4"
+      fetchMock.mockResolvedValue(fakeBinaryResponse(200, 'application/pdf', [chunk1, chunk2]));
+
+      const result = await client.getBinary('invoices/abc/pdf.json', { document_type: 'original' });
+
+      expect(result.contentType).toBe('application/pdf');
+      expect(Array.from(result.data)).toEqual([...chunk1, ...chunk2]);
+      const [url] = fetchMock.mock.calls[0] as [string];
+      expect(url).toBe(`${INFAKT_DEFAULT_BASE_URL}/invoices/abc/pdf.json?document_type=original`);
+    });
+
+    it('should throw InfaktApiError on a non-2xx response', async () => {
+      fetchMock.mockResolvedValue(fakeResponse(404, '{"error":"not found"}'));
+      await expect(client.getBinary('invoices/missing/pdf.json')).rejects.toBeInstanceOf(
+        InfaktApiError,
+      );
+    });
+
+    it('should cap the response and throw InfaktApiError past the byte cap', async () => {
+      // Exceeds the client's 10 MB streaming cap in a single oversized chunk.
+      const oversized = new Uint8Array(10 * 1024 * 1024 + 1);
+      fetchMock.mockResolvedValue(fakeBinaryResponse(200, 'application/pdf', [oversized]));
+
+      await expect(client.getBinary('invoices/huge/pdf.json')).rejects.toMatchObject({
+        statusCode: 200,
+      });
     });
   });
 });

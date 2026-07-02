@@ -244,7 +244,7 @@ export function KsefSetupForm(): ReactElement {
         label="Context identifier"
         name="contextIdentifier"
         error={form.formState.errors.contextIdentifier?.message}
-        description="Optional KSeF subject/context identifier when issuing on behalf of a sub-unit."
+        description="Optional KSeF subject/context identifier for display and future scoping. Does not affect authentication — sessions always authenticate in the seller NIP context."
       >
         <Input
           {...form.register('contextIdentifier')}

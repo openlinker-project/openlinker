@@ -28,12 +28,15 @@ import type {
   IssueInvoiceResult,
   InvoicingPort,
   RegulatoryClearanceResult,
+  RegulatoryDocument,
+  RegulatoryDocumentKind,
+  RegulatoryDocumentReader,
   RegulatoryStatus,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -167,7 +170,7 @@ function fromGroszy(amountGroszy: number): number {
 }
 
 export class InfaktInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, RegulatoryDocumentReader
 {
   constructor(
     private readonly connectionId: string,
@@ -286,7 +289,11 @@ export class InfaktInvoicingAdapter
       toRegulatoryStatus(ksefResult.status),
       ksefResult.ksef_number,
       idempotencyKey ?? null,
-      invoice.pdf_url ?? null,
+      // Infakt's invoice resource carries no `pdf_url` field (verified live
+      // against the sandbox, #1321) — the real PDF path is
+      // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
+      // below, which hits the dedicated `pdf.json` endpoint.
+      null,
       now,
       null,
       now,
@@ -328,7 +335,11 @@ export class InfaktInvoicingAdapter
           toRegulatoryStatus(invoice.ksef_data?.status ?? null),
           invoice.ksef_data?.ksef_number ?? null,
           null,
-          invoice.pdf_url ?? null,
+          // Infakt's invoice resource carries no `pdf_url` field (verified live
+          // against the sandbox, #1321) — the real PDF path is
+          // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
+          // below, which hits the dedicated `pdf.json` endpoint.
+          null,
           invoice.invoice_date ? new Date(invoice.invoice_date) : now,
           null,
           now,
@@ -453,7 +464,11 @@ export class InfaktInvoicingAdapter
       toRegulatoryStatus(ksefResult.status),
       ksefResult.ksef_number,
       idempotencyKey ?? null,
-      invoice.pdf_url ?? null,
+      // Infakt's invoice resource carries no `pdf_url` field (verified live
+      // against the sandbox, #1321) — the real PDF path is
+      // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
+      // below, which hits the dedicated `pdf.json` endpoint.
+      null,
       now,
       null,
       now,
@@ -472,6 +487,34 @@ export class InfaktInvoicingAdapter
       `invoices/${invoiceUuid}/send_to_ksef.json`,
       {},
     );
+  }
+
+  /**
+   * `RegulatoryDocumentReader.getRegulatoryDocument` (#1321) — fetch the
+   * invoice PDF as neutral bytes. Infakt has no `pdf_url` field on the
+   * invoice resource (verified live against the sandbox); the real path is
+   * the dedicated `GET /invoices/{uuid}/pdf.json` endpoint, which returns the
+   * PDF binary directly. Infakt submits to KSeF natively and OL never builds
+   * or holds a KSeF confirmation (UPO) for this provider, so only `rendered`
+   * is supported — `confirmation`/`source` are soft 409s via
+   * `UnsupportedRegulatoryDocumentKindError`, mirroring KSeF's own adapter
+   * rejecting `rendered` the other way around.
+   */
+  async getRegulatoryDocument(
+    record: InvoiceRecord,
+    kind: RegulatoryDocumentKind = 'confirmation',
+  ): Promise<RegulatoryDocument> {
+    if (kind !== 'rendered') {
+      throw new UnsupportedRegulatoryDocumentKindError(kind);
+    }
+    const response = await this.http.getBinary(`invoices/${record.providerInvoiceId}/pdf.json`, {
+      document_type: 'original',
+      invoice_type: toInfaktInvoiceType(record.documentType),
+    });
+    return {
+      content: response.data,
+      contentType: response.contentType.length > 0 ? response.contentType : 'application/pdf',
+    };
   }
 
   // --- helpers ---
