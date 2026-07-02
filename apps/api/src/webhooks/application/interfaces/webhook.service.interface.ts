@@ -15,14 +15,18 @@ export interface IWebhookService {
    * Orchestrates the complete webhook processing flow:
    * 1. Resolve the per-provider decoder (default = OL-HMAC + WebhookRequestDto)
    * 2. Connection gate (exists, active, platformType matches)
-   * 3. Verify signature via the decoder; replay-check the normalized timestamp
-   * 4. Decode the body → route | ignore (202, no publish) | reject (400)
-   * 5. Dedup gate → publish event → record delivery
+   * 3. Subscription-verification handshake — if detected, return its echo
+   *    body immediately (no verify/dedup/publish)
+   * 4. Verify signature via the decoder; replay-check the normalized timestamp
+   * 5. Decode the body → route | ignore (202, no publish) | reject (400)
+   * 6. Dedup gate → publish event → record delivery
    *
    * @param provider - Provider identifier (e.g., 'prestashop', 'inpost')
    * @param connectionId - Connection identifier (UUID)
    * @param rawBody - Raw request body bytes (the decoder verifies + parses these)
    * @param headers - Request headers (provider-specific signature/timestamp/topic)
+   * @returns the handshake echo body when the request is a subscription
+   *   verification ping; otherwise resolves with no value
    * @throws WebhookAuthenticationException if signature/connection is invalid (401)
    * @throws WebhookReplayException if timestamp is out of window (401)
    * @throws WebhookDecodeException if the body can't be decoded (400)
@@ -32,5 +36,5 @@ export interface IWebhookService {
     connectionId: string,
     rawBody: Buffer,
     headers: Record<string, string>
-  ): Promise<void>;
+  ): Promise<Record<string, unknown> | void>;
 }

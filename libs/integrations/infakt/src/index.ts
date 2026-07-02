@@ -16,3 +16,8 @@ export type { InfaktInvoice, InfaktClient, InfaktKsefData, InfaktKsefStatus } fr
 export { InfaktConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/infakt-connection-config-shape-validator.adapter';
 export { InfaktConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/infakt-connection-credentials-shape-validator.adapter';
 export { InfaktRetryClassifierAdapter } from './infrastructure/adapters/infakt-retry-classifier.adapter';
+
+// Webhook ingress (#1281, ADR-021/ADR-015) — exported so host-side tests can
+// register the real adapters.
+export { InfaktInboundWebhookDecoderAdapter } from './infrastructure/adapters/infakt-inbound-webhook-decoder.adapter';
+export { InfaktWebhookEventTranslatorAdapter } from './infrastructure/adapters/infakt-webhook-event-translator.adapter';
