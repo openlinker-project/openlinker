@@ -236,6 +236,9 @@ export const editConnectionSchema = z
     // flat `config.sellerNip`). All optional client-side so the operator can save
     // incremental progress; the server is the strict gate.
     ksefEnvironment: z.union([z.enum(['test', 'demo', 'prod']), z.literal('')]).optional(),
+    // Infakt-only structured field surfacing `config.defaultPaymentMethod`
+    // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
+    infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
     // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
     // dashes/spaces the operator may paste, then enforce 10 digits. Without this
     // parity a value saved with separators on create fails the edit-schema check.
@@ -364,6 +367,11 @@ export interface StructuredConfigPatch {
   subiektCapabilities?: Record<string, boolean>;
   /** KSeF environment — `config.env` (#1152). Empty string clears the key. */
   ksefEnvironment?: string;
+  /**
+   * Infakt default payment method — `config.defaultPaymentMethod` (#1303).
+   * Empty string clears the key (adapter falls back to `'cash'`).
+   */
+  infaktPaymentMethod?: string;
   /**
    * KSeF seller-profile sub-fields (#1223). Each maps onto a leaf of the nested
    * `config.seller.{nip,name,address}` shape the adapter's `resolveSeller`
@@ -587,6 +595,16 @@ export function mergeStructuredIntoConfig(
       } else {
         next.senderAddress = pruned;
       }
+    }
+  }
+  // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
+  // The form field is named `infaktPaymentMethod` to avoid colliding with a
+  // future generic `paymentMethod` field on another platform.
+  if (structured.infaktPaymentMethod !== undefined) {
+    if (structured.infaktPaymentMethod.length === 0) {
+      delete next.defaultPaymentMethod;
+    } else {
+      next.defaultPaymentMethod = structured.infaktPaymentMethod;
     }
   }
   return next;

@@ -23,6 +23,12 @@ describe('InfaktSetupForm', () => {
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('API key')).toBeInTheDocument();
     expect(screen.getByLabelText('Base URL (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Default payment method')).toBeInTheDocument();
+  });
+
+  it('defaults the payment method to transfer', () => {
+    renderWithProviders(<InfaktSetupForm />);
+    expect(screen.getByLabelText('Default payment method')).toHaveValue('transfer');
   });
 
   it('requires connection name to be non-empty', async () => {
@@ -64,7 +70,7 @@ describe('InfaktSetupForm', () => {
     });
   });
 
-  it('submits the API key and omits config when no base URL is given', async () => {
+  it('submits the API key and a transfer-default config when no base URL is given', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -84,7 +90,7 @@ describe('InfaktSetupForm', () => {
           name: 'My inFakt Account',
           platformType: 'infakt',
           adapterKey: 'infakt.accounting.v1',
-          config: {},
+          config: { defaultPaymentMethod: 'transfer' },
           credentials: { apiKey: 'sk_test_123' },
         }),
       );
@@ -112,7 +118,33 @@ describe('InfaktSetupForm', () => {
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { baseUrl: 'https://sandbox.infakt.pl' },
+          config: { defaultPaymentMethod: 'transfer', baseUrl: 'https://sandbox.infakt.pl' },
+        }),
+      );
+    });
+  });
+
+  it('submits cash when selected in the payment method field', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account' });
+    const apiClient = createMockApiClient({ connections: { create } });
+
+    renderWithProviders(<InfaktSetupForm />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My inFakt Account' },
+    });
+    fireEvent.change(screen.getByLabelText('API key'), {
+      target: { value: 'sk_test_123' },
+    });
+    fireEvent.change(screen.getByLabelText('Default payment method'), {
+      target: { value: 'cash' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: { defaultPaymentMethod: 'cash' },
         }),
       );
     });
