@@ -69,7 +69,7 @@ import { UsersApiModule } from './users/users.module';
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
-    InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); imports core InvoicingModule + OrdersModule
+    InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -27,6 +27,13 @@ export interface InvoiceRecordRepositoryPort {
 
   findByOrderId(orderId: string, connectionId: string): Promise<InvoiceRecord | null>;
 
+  /**
+   * Find the most-recently-created record for an order across all connections.
+   * Backs the order-detail invoice projection (#1224) where the invoicing
+   * connection is not known to the caller; `null` when the order has no record.
+   */
+  findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null>;
+
   /** Read half of the exactly-once gate; `null` when no row holds the key. */
   findByIdempotencyKey(
     connectionId: string,

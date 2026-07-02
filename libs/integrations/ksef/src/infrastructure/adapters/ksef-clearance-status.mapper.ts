@@ -40,6 +40,7 @@ import {
   KSEF_STATUS_IN_PROGRESS,
   KSEF_STATUS_SUCCESS,
   KSEF_STATUS_REJECTED,
+  KSEF_STATUS_FA3_PROCESSING,
   KSEF_STATUS_BUSINESS_REJECTED,
   KSEF_SESSION_CLOSED_ZERO_VALID,
   KSEF_STATUS_PROCESSING_ERROR,
@@ -51,6 +52,7 @@ const logger = new Logger('KsefClearanceStatusMapper');
 const SUBMITTED_CODES: ReadonlySet<number> = new Set([
   KSEF_STATUS_PROCESSING_STARTED,
   KSEF_STATUS_IN_PROGRESS,
+  KSEF_STATUS_FA3_PROCESSING,
 ]);
 
 /** Known terminal business-rejection codes → `rejected` (non-retryable). */

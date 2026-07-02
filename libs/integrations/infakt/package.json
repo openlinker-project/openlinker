@@ -1,0 +1,52 @@
+{
+  "name": "@openlinker/integrations-infakt",
+  "version": "0.1.0",
+  "description": "Infakt SaaS accounting adapter for OpenLinker (invoicing + KSeF via Infakt)",
+  "license": "Apache-2.0",
+  "author": "OpenLinker",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "jest --config ./jest.config.mjs",
+    "test:watch": "jest --watch --config ./jest.config.mjs",
+    "test:cov": "jest --coverage --config ./jest.config.mjs",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "type-check": "tsc --noEmit",
+    "poc:sandbox": "ts-node -r tsconfig-paths/register scripts/poc-sandbox-test.ts"
+  },
+  "dependencies": {
+    "@openlinker/core": "workspace:*",
+    "@openlinker/plugin-sdk": "workspace:*",
+    "@openlinker/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "29.5.12",
+    "@types/node": "20.11.30",
+    "@typescript-eslint/eslint-plugin": "7.3.1",
+    "@typescript-eslint/parser": "7.3.1",
+    "eslint": "8.57.0",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.2",
+    "ts-node": "10.9.2",
+    "tsconfig-paths": "4.2.0",
+    "typescript": "5.4.3"
+  }
+}
