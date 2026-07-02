@@ -16,8 +16,8 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, timeout } from 'rxjs';
 import { RedisClientType } from 'redis';
+import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker';
 import type { IDevStackHealthService } from './dev-stack-health.service.interface';
-import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 import type {
   InternalHealthReadiness,
   DevStackHealthResponse,
