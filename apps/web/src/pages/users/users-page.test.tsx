@@ -99,6 +99,27 @@ describe('UsersPage', () => {
     expect(screen.getByRole('button', { name: 'Deactivate' })).toBeInTheDocument();
   });
 
+  it('should render role and actions as read-only for a pending user on the All users tab', async () => {
+    // PATCH /users/:id/role has no pending-status guard on the backend, so the
+    // auto-save role select must not appear for pending rows in this table —
+    // role assignment for an unapproved account belongs to the dedicated
+    // Approve flow on the Pending tab (see #1258 review).
+    const mockApi = createMockApiClient({
+      users: {
+        list: vi.fn().mockResolvedValue({
+          users: [makeUser({ id: 'u1', username: 'bob', status: 'pending' })],
+          total: 1,
+        }),
+      },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    await screen.findByText('bob');
+    expect(screen.queryByRole('combobox', { name: /change role/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.getByText('Review in Pending tab')).toBeInTheDocument();
+  });
+
   it('should call approve API with selected role when Approve clicked', async () => {
     const approveUser = vi.fn().mockResolvedValue(undefined);
     const mockApi = createMockApiClient({
@@ -246,6 +267,46 @@ describe('UsersPage', () => {
 
       const allTab = await screen.findByRole('tab', { name: /all users/i });
       expect(await within(allTab).findByText('40')).toBeInTheDocument();
+    });
+
+    it('should keep every managed user reachable via Next when pending rows are interleaved into All-tab pages', async () => {
+      // 20 pending + 40 managed = 60 total, unfiltered pageSize 25. Pending
+      // registrations are newest-first from the backend, so page 0 is mostly
+      // pending rows and the managed users spill onto pages 1 and 2 — the
+      // "All users" tab must paginate over the unfiltered total (60, 3 pages),
+      // not a client-derived "managed" total, or the tail of managed users
+      // becomes unreachable (see #1258 review).
+      const pendingUsers = makeUsers(20, { status: 'pending' });
+      const managedUsers = makeUsers(40, { status: 'active' }).map((u, i) => ({
+        ...u,
+        id: `m${i}`,
+        username: `managed${i}`,
+      }));
+      const listMock = vi.fn((filters?: UserListFilters) => {
+        if (filters?.status === 'pending') {
+          return Promise.resolve({ users: pendingUsers, total: 20 });
+        }
+        const page = filters?.page ?? 0;
+        const allUnfiltered = [...pendingUsers, ...managedUsers];
+        const start = page * 25;
+        return Promise.resolve({
+          users: allUnfiltered.slice(start, start + 25),
+          total: allUnfiltered.length,
+        });
+      });
+      const mockApi = createMockApiClient({ users: { list: listMock } });
+      renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+      expect(await screen.findByText('Page 1 of 3')).toBeInTheDocument();
+      expect(screen.getByText('managed0')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByText('Page 2 of 3')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByText('Page 3 of 3')).toBeInTheDocument();
+      expect(screen.getByText('managed39')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
 
     it("should preserve the Pending tab's page position when switching tabs and back", async () => {
