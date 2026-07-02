@@ -50,7 +50,8 @@ type StructuredField =
   | 'sellerCountryIso2'
   | 'contextIdentifier'
   | 'inpostEnvironment'
-  | 'inpostOrganizationId';
+  | 'inpostOrganizationId'
+  | 'infaktPaymentMethod';
 
 function readString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
@@ -102,6 +103,16 @@ function readKsefEnvironment(config: Record<string, unknown>): '' | 'test' | 'de
 function readInpostEnvironment(config: Record<string, unknown>): '' | 'sandbox' | 'production' {
   const value = config.environment;
   return value === 'sandbox' || value === 'production' ? value : '';
+}
+
+/**
+ * Read the Infakt default payment method out of `config.defaultPaymentMethod`
+ * (#1303). Absent keys hydrate to `'cash'` — the adapter's own fallback — so
+ * the select (and the disclosure summary reading it) always reflects what
+ * will actually be sent, never a blank/unset state.
+ */
+function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'transfer' {
+  return config.defaultPaymentMethod === 'transfer' ? 'transfer' : 'cash';
 }
 
 /**
@@ -333,6 +344,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       inpostEnvironment: readInpostEnvironment(connection.config),
       inpostOrganizationId: readString(connection.config, 'organizationId'),
       inpostSenderAddress: readInpostSenderAddress(connection.config),
+      // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
+      infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
     },
     resolver: zodResolver(editConnectionSchema),
   });

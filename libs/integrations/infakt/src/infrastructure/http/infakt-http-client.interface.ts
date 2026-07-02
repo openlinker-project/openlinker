@@ -12,7 +12,15 @@
  *
  * @module libs/integrations/infakt/src/infrastructure/http
  */
+/** Raw bytes + provider-reported content type for a binary (non-JSON) response. */
+export interface InfaktBinaryResponse {
+  data: Uint8Array;
+  contentType: string;
+}
+
 export interface IInfaktHttpClient {
   get<T>(path: string, query?: Record<string, string>): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
+  /** Fetch a binary response (e.g. a PDF) rather than parsing JSON. */
+  getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse>;
 }

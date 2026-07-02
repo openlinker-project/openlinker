@@ -11,7 +11,11 @@
  * @module libs/integrations/infakt/src/infrastructure/adapters/__tests__
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
-import { BuyerProfile, InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  BuyerProfile,
+  InvoiceRecord,
+  UnsupportedRegulatoryDocumentKindError,
+} from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand, IssueCorrectionCommand } from '@openlinker/core/invoicing';
 import { InfaktInvoicingAdapter, INFAKT_PROVIDER_TYPE } from '../infakt-invoicing.adapter';
 import { InfaktApiError } from '../../../domain/exceptions/infakt-api.error';
@@ -74,8 +78,6 @@ function invoiceFixture(overrides: Partial<InfaktInvoice> = {}): InfaktInvoice {
         group: null,
       },
     ],
-    print_url: null,
-    pdf_url: 'https://infakt.pl/inv-uuid-1.pdf',
     ...overrides,
   };
 }
@@ -259,7 +261,9 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record.providerInvoiceNumber).toBe('FV/1/2026');
       expect(record.status).toBe('issued');
       expect(record.idempotencyKey).toBe('idem-1');
-      expect(record.pdfUrl).toBe('https://infakt.pl/inv-uuid-1.pdf');
+      // Infakt's invoice resource carries no `pdf_url` field (#1321) — the
+      // real PDF is served via `RegulatoryDocumentReader.getRegulatoryDocument`.
+      expect(record.pdfUrl).toBeNull();
       // KSeF submission is inline now — the record reflects the send_to_ksef
       // response, not the (necessarily stale, pre-submission) invoice payload.
       expect(record.regulatoryStatus).toBe('submitted');
@@ -616,6 +620,70 @@ describe('InfaktInvoicingAdapter', () => {
         failureMode: 'in-doubt',
         statusCode: 500,
       });
+    });
+  });
+
+  describe('getRegulatoryDocument', () => {
+    function recordFixture(): InvoiceRecord {
+      const now = new Date('2026-07-01T12:00:00Z');
+      return new InvoiceRecord(
+        'record-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        'inv-uuid-1',
+        'FV/1/2026',
+        'accepted',
+        'ksef-number-1',
+        'idem-1',
+        null,
+        now,
+        null,
+        now,
+        now,
+      );
+    }
+
+    it('should fetch the PDF via the dedicated pdf.json endpoint (happy path)', async () => {
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+      http.seedBinary('invoices/inv-uuid-1/pdf.json', {
+        data: pdfBytes,
+        contentType: 'application/pdf',
+      });
+
+      const document = await adapter.getRegulatoryDocument(recordFixture(), 'rendered');
+
+      expect(document.content).toBe(pdfBytes);
+      expect(document.contentType).toBe('application/pdf');
+      const call = http.calls.find(
+        (c) => c.method === 'GET_BINARY' && c.path === 'invoices/inv-uuid-1/pdf.json',
+      );
+      expect(call?.query).toEqual({ document_type: 'original', invoice_type: 'vat' });
+    });
+
+    it('should default to application/pdf when Infakt reports no content type', async () => {
+      http.seedBinary('invoices/inv-uuid-1/pdf.json', {
+        data: new Uint8Array([1, 2, 3]),
+        contentType: '',
+      });
+
+      const document = await adapter.getRegulatoryDocument(recordFixture(), 'rendered');
+
+      expect(document.contentType).toBe('application/pdf');
+    });
+
+    it('should throw UnsupportedRegulatoryDocumentKindError for confirmation (Infakt has no UPO of its own)', async () => {
+      await expect(
+        adapter.getRegulatoryDocument(recordFixture(), 'confirmation'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+
+    it('should throw UnsupportedRegulatoryDocumentKindError for source', async () => {
+      await expect(
+        adapter.getRegulatoryDocument(recordFixture(), 'source'),
+      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
     });
   });
 });
