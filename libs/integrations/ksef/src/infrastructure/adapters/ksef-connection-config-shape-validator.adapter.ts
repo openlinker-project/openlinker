@@ -8,8 +8,11 @@
  * instead of surfacing as `UnmappedTaxRateException` at issuance, and an
  * optional `payment` check (#1311): `formaPlatnosci` must be a valid
  * `TFormaPlatnosci` code, `bankAccount.nrRb` must be non-empty when
- * `bankAccount` is set, `paymentTermDays` must be a non-negative integer. The
- * seller's tax identifier itself (`nip`/`name`/`address`) is intentionally
+ * `bankAccount` is set, `paymentTermDays` must be a non-negative integer, and
+ * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
+ * set (a partial skonto is otherwise silently dropped at issuance by the
+ * factory's `resolvePayment`, so rejecting it at save time gives the operator
+ * a clear error instead). The seller's tax identifier itself (`nip`/`name`/`address`) is intentionally
  * NOT validated here yet — a future pass tightens KSeF connection-shape
  * validation across all seller fields. Registered against
  * `ConnectionConfigShapeValidatorRegistryService` at `ksef.publicapi.v2`;
@@ -99,6 +102,17 @@ export class KsefConnectionConfigShapeValidatorAdapter
           path: 'payment.paymentTermDays',
           message: 'must be a non-negative integer',
         });
+      }
+      if (p.skonto !== undefined && p.skonto !== null && typeof p.skonto === 'object') {
+        const skonto = p.skonto as Record<string, unknown>;
+        const hasConditions = typeof skonto.conditions === 'string' && skonto.conditions.trim().length > 0;
+        const hasAmount = typeof skonto.amount === 'string' && skonto.amount.trim().length > 0;
+        if (!hasConditions || !hasAmount) {
+          issues.push({
+            path: 'payment.skonto',
+            message: 'both conditions and amount must be non-empty strings when skonto is set',
+          });
+        }
       }
     }
 

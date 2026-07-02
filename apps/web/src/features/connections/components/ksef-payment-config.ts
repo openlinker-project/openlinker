@@ -115,13 +115,20 @@ export function applyKsefPaymentToConfig(
     setOrDeleteLeaf(skonto, 'amount', normalizeTextLeaf(input.paymentSkontoAmount));
   }
 
-  if (Object.keys(bankAccount).length === 0 || bankAccount.nrRb === undefined) {
+  // Only drop a sub-object when NOTHING has been typed into it — never on a
+  // missing sibling field. `bankAccount.nrRb` being required and `skonto`
+  // needing both `conditions`+`amount` are save-time (shape validator) /
+  // issuance-time (factory `resolvePayment`) concerns; gating persistence on
+  // them here would silently discard whichever field the operator typed
+  // first, since each field syncs independently per keystroke (#1311 smoke
+  // test finding).
+  if (Object.keys(bankAccount).length === 0) {
     delete payment.bankAccount;
   } else {
     payment.bankAccount = bankAccount;
   }
 
-  if (skonto.conditions === undefined || skonto.amount === undefined) {
+  if (Object.keys(skonto).length === 0) {
     delete payment.skonto;
   } else {
     payment.skonto = skonto;

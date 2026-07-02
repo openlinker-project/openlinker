@@ -190,5 +190,32 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
         errors: [{ path: 'payment.formaPlatnosci', message: expect.stringContaining('must be one of') }],
       });
     });
+
+    it('should resolve for a fully-configured skonto', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          payment: { skonto: { conditions: '2% if paid within 7 days', amount: '2%' } },
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject skonto with conditions but no amount', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { skonto: { conditions: 'text' } } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject skonto with amount but no conditions', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { skonto: { amount: '2%' } } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should reject an empty skonto object', async () => {
+      await expect(
+        validator.validate({ env: 'test', payment: { skonto: {} } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
   });
 });
