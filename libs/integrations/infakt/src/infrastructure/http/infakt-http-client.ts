@@ -45,6 +45,16 @@ export class InfaktHttpClient implements IInfaktHttpClient {
     return this.parse<T>(res, 'POST', path);
   }
 
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const url = this.buildUrl(path);
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return this.parse<T>(res, 'PUT', path);
+  }
+
   private buildUrl(path: string, query?: Record<string, string>): string {
     const base = `${this.baseUrl}/${path.replace(/^\//, '')}`;
     if (!query || Object.keys(query).length === 0) return base;

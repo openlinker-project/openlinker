@@ -239,6 +239,14 @@ export const editConnectionSchema = z
     // Infakt-only structured field surfacing `config.defaultPaymentMethod`
     // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
     infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
+    // Infakt-only bank-account snapshot surfacing `config.bankAccount`
+    // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the
+    // structured section fetches the live list and writes the whole object
+    // in one shot, never a sub-field at a time.
+    infaktBankAccount: z
+      .object({ id: z.number(), accountNumber: z.string(), bankName: z.string() })
+      .nullable()
+      .optional(),
     // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
     // dashes/spaces the operator may paste, then enforce 10 digits. Without this
     // parity a value saved with separators on create fails the edit-schema check.
@@ -372,6 +380,12 @@ export interface StructuredConfigPatch {
    * Empty string clears the key (adapter falls back to `'cash'`).
    */
   infaktPaymentMethod?: string;
+  /**
+   * Infakt bank-account snapshot — `config.bankAccount` (#1303 follow-up).
+   * Whole-object field, like `sellerDefaults`/`inpostSenderAddress`. `null`
+   * (or absent) clears the key.
+   */
+  infaktBankAccount?: { id: number; accountNumber: string; bankName: string } | null;
   /**
    * KSeF seller-profile sub-fields (#1223). Each maps onto a leaf of the nested
    * `config.seller.{nip,name,address}` shape the adapter's `resolveSeller`
@@ -605,6 +619,16 @@ export function mergeStructuredIntoConfig(
       delete next.defaultPaymentMethod;
     } else {
       next.defaultPaymentMethod = structured.infaktPaymentMethod;
+    }
+  }
+  // Infakt bank-account snapshot (#1303 follow-up) — `config.bankAccount`.
+  // Whole-object field: `null`/absent clears the key, matching the
+  // `sellerDefaults`/`inpostSenderAddress` whole-object precedent.
+  if (structured.infaktBankAccount !== undefined) {
+    if (structured.infaktBankAccount === null) {
+      delete next.bankAccount;
+    } else {
+      next.bankAccount = structured.infaktBankAccount;
     }
   }
   return next;

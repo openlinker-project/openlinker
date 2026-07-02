@@ -1,4 +1,5 @@
 import type {
+  BankAccount,
   Connection,
   ConnectionDiagnostics,
   ConnectionFilters,
@@ -11,10 +12,12 @@ import type {
 export interface ConnectionsApi {
   create: (input: CreateConnectionInput) => Promise<Connection>;
   disable: (connectionId: string) => Promise<Connection>;
+  getBankAccounts: (connectionId: string) => Promise<BankAccount[]>;
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
+  setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
   updateCredentials: (
@@ -53,6 +56,14 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     disable(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}/disable`, {
         method: 'PATCH',
+      });
+    },
+    getBankAccounts(connectionId): Promise<BankAccount[]> {
+      return request<BankAccount[]>(`/connections/${connectionId}/bank-accounts`);
+    },
+    setDefaultBankAccount(connectionId, accountId): Promise<void> {
+      return request<void>(`/connections/${connectionId}/bank-accounts/${accountId}/default`, {
+        method: 'POST',
       });
     },
     getDiagnostics(connectionId): Promise<ConnectionDiagnostics> {
