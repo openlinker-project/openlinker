@@ -44,8 +44,14 @@ const DECLARATIONS = [
 
 function extractValues({ file, constName }) {
   const source = readFileSync(resolve(ROOT, file), 'utf8');
+  // Tolerant of an optional type annotation, arbitrary whitespace, and a
+  // Prettier multi-line wrap of the array (the `[^\]]` char class matches
+  // newlines) — PR #1317 review flagged the earlier single-line-only shape
+  // as brittle once an 8th code makes the array wrap.
   const match = source.match(
-    new RegExp(`export const ${constName} = \\[([^\\]]*)\\] as const;`),
+    new RegExp(
+      `export const ${constName}(?:\\s*:[^=]+?)?\\s*=\\s*\\[([^\\]]*)\\]\\s*as const;`,
+    ),
   );
   if (match === null) {
     console.error(
@@ -55,6 +61,8 @@ function extractValues({ file, constName }) {
     process.exit(1);
   }
   return match[1]
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .split(',')
     .map((token) => token.trim().replace(/^'(.*)'$/, '$1'))
     .filter((token) => token.length > 0);

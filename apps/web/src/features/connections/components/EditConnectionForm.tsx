@@ -20,7 +20,11 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { usePlatform, type PluginEditConnectionFields } from '../../../shared/plugins';
+import {
+  usePlatform,
+  readConfigString,
+  type PluginEditConnectionFields,
+} from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 
@@ -61,11 +65,6 @@ type StructuredField = (typeof HOST_STRUCTURED_FIELDS)[number];
  * into `PluginEditConnectionFields` — e.g. KSeF's seller/payment fields).
  */
 type SyncableField = StructuredField | (keyof PluginEditConnectionFields & string);
-
-function readString(config: Record<string, unknown>, key: string): string {
-  const value = config[key];
-  return typeof value === 'string' ? value : '';
-}
 
 /**
  * Read the WooCommerce unmanaged-stock cap out of `config.inventory` (#969 §7.3).
@@ -268,20 +267,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
       name: connection.name,
-      baseUrl: readString(connection.config, 'baseUrl'),
-      siteUrl: readString(connection.config, 'siteUrl'),
-      shopId: readString(connection.config, 'shopId'),
-      storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
+      baseUrl: readConfigString(connection.config, 'baseUrl'),
+      siteUrl: readConfigString(connection.config, 'siteUrl'),
+      shopId: readConfigString(connection.config, 'shopId'),
+      storefrontBaseUrl: readConfigString(connection.config, 'storefrontBaseUrl'),
       // #168 — pre-fill OL callback URL via the platform plugin when the
       // connection has none yet. Browser-context value, not server-trusted; the
       // BE doesn't derive this from request headers (host-header injection risk),
       // so the FE owns the convenience default. Operator can override for dev
       // (e.g. http://host.docker.internal:3000) by editing the field.
       openlinkerCallbackBaseUrl:
-        readString(connection.config, 'openlinkerCallbackBaseUrl') ||
+        readConfigString(connection.config, 'openlinkerCallbackBaseUrl') ||
         plugin?.getCallbackUrlDefault?.() ||
         '',
-      masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
+      masterCatalogConnectionId: readConfigString(connection.config, 'masterCatalogConnectionId'),
       // PS `defaultCarrierId` is persisted as a number; the form keeps it
       // as a string so the same `<Select>` primitive serves both this
       // field and the per-method mapping dropdown (#517).
@@ -300,14 +299,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // #759 — symmetric read-side hydration for the Subiekt fields, or an
       // existing connection renders empty and an unrelated save blanks the
       // persisted state (reverting the live getInvoiceTriggerModel consumer to 'manual').
-      subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
+      subiektBridgeUrl: readConfigString(connection.config, 'subiektBridgeUrl'),
       subiektTriggerModel: readTriggerModel(connection.config),
       subiektCapabilities: readSubiektCapabilities(connection.config),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an
       // unrelated save doesn't blank the persisted InPost config.
       inpostEnvironment: readInpostEnvironment(connection.config),
-      inpostOrganizationId: readString(connection.config, 'organizationId'),
+      inpostOrganizationId: readConfigString(connection.config, 'organizationId'),
       inpostSenderAddress: readInpostSenderAddress(connection.config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),

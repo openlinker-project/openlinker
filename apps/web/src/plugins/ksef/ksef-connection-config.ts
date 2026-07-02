@@ -27,6 +27,7 @@
  */
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
+import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
 import { normalizeNip } from './lib/ksef-nip';
 import { normalizeNrRb } from './lib/ksef-nrb';
 import { applyKsefSellerToConfig, type KsefSellerProfileInput } from './lib/ksef-seller-config';
@@ -160,9 +161,9 @@ function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx):
   // Empty stays allowed for incremental save. KSeF is PL-domestic, so an
   // unset/blank country on this partial-edit form is treated as PL; an explicit
   // non-PL country opts out of the check.
-  const postalCode = readPatchString(values, 'sellerPostalCode').trim();
+  const postalCode = readConfigString(values, 'sellerPostalCode').trim();
   if (postalCode.length > 0) {
-    const countryIso2 = readPatchString(values, 'sellerCountryIso2').trim().toUpperCase();
+    const countryIso2 = readConfigString(values, 'sellerCountryIso2').trim().toUpperCase();
     const isDomesticPl = countryIso2 === '' || countryIso2 === 'PL';
     if (isDomesticPl && !POLISH_POSTAL_CODE.test(postalCode)) {
       ctx.addIssue({
@@ -178,8 +179,8 @@ function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx):
   // fires only at submit time and anchors the error on the missing field —
   // otherwise the operator gets the BE shape validator's form-level 400.
   // The BE validator stays the strict gate for direct API writes.
-  const skontoConditions = readPatchString(values, 'paymentSkontoConditions').trim();
-  const skontoAmount = readPatchString(values, 'paymentSkontoAmount').trim();
+  const skontoConditions = readConfigString(values, 'paymentSkontoConditions').trim();
+  const skontoAmount = readConfigString(values, 'paymentSkontoAmount').trim();
   if (skontoConditions.length > 0 && skontoAmount.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -193,18 +194,6 @@ function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx):
       message: 'Discount conditions are required when a discount amount is set.',
     });
   }
-}
-
-/** Read a string leaf off an untyped patch/values bag; anything else reads as `''`. */
-function readPatchString(bag: Record<string, unknown>, key: string): string {
-  const value = bag[key];
-  return typeof value === 'string' ? value : '';
-}
-
-/** Read a string leaf off an untyped patch, preserving "absent" as `undefined`. */
-function readOptionalPatchString(bag: Record<string, unknown>, key: string): string | undefined {
-  const value = bag[key];
-  return typeof value === 'string' ? value : undefined;
 }
 
 /** Read the KSeF environment out of `config.env` (#1152). */
@@ -302,26 +291,26 @@ function readKsefPayment(config: Record<string, unknown>): {
 /** Rebuild the typed seller patch slice from an untyped structured patch. */
 function toSellerPatch(patch: Record<string, unknown>): KsefSellerProfileInput {
   return {
-    sellerNip: readOptionalPatchString(patch, 'sellerNip'),
-    sellerName: readOptionalPatchString(patch, 'sellerName'),
-    sellerAddressLine1: readOptionalPatchString(patch, 'sellerAddressLine1'),
-    sellerAddressLine2: readOptionalPatchString(patch, 'sellerAddressLine2'),
-    sellerCity: readOptionalPatchString(patch, 'sellerCity'),
-    sellerPostalCode: readOptionalPatchString(patch, 'sellerPostalCode'),
-    sellerCountryIso2: readOptionalPatchString(patch, 'sellerCountryIso2'),
+    sellerNip: readOptionalConfigString(patch, 'sellerNip'),
+    sellerName: readOptionalConfigString(patch, 'sellerName'),
+    sellerAddressLine1: readOptionalConfigString(patch, 'sellerAddressLine1'),
+    sellerAddressLine2: readOptionalConfigString(patch, 'sellerAddressLine2'),
+    sellerCity: readOptionalConfigString(patch, 'sellerCity'),
+    sellerPostalCode: readOptionalConfigString(patch, 'sellerPostalCode'),
+    sellerCountryIso2: readOptionalConfigString(patch, 'sellerCountryIso2'),
   };
 }
 
 /** Rebuild the typed payment patch slice from an untyped structured patch. */
 function toPaymentPatch(patch: Record<string, unknown>): KsefPaymentInput {
   return {
-    paymentFormaPlatnosci: readOptionalPatchString(patch, 'paymentFormaPlatnosci'),
-    paymentBankAccountNrRb: readOptionalPatchString(patch, 'paymentBankAccountNrRb'),
-    paymentBankAccountBankName: readOptionalPatchString(patch, 'paymentBankAccountBankName'),
-    paymentBankAccountSwift: readOptionalPatchString(patch, 'paymentBankAccountSwift'),
-    paymentTermDays: readOptionalPatchString(patch, 'paymentTermDays'),
-    paymentSkontoConditions: readOptionalPatchString(patch, 'paymentSkontoConditions'),
-    paymentSkontoAmount: readOptionalPatchString(patch, 'paymentSkontoAmount'),
+    paymentFormaPlatnosci: readOptionalConfigString(patch, 'paymentFormaPlatnosci'),
+    paymentBankAccountNrRb: readOptionalConfigString(patch, 'paymentBankAccountNrRb'),
+    paymentBankAccountBankName: readOptionalConfigString(patch, 'paymentBankAccountBankName'),
+    paymentBankAccountSwift: readOptionalConfigString(patch, 'paymentBankAccountSwift'),
+    paymentTermDays: readOptionalConfigString(patch, 'paymentTermDays'),
+    paymentSkontoConditions: readOptionalConfigString(patch, 'paymentSkontoConditions'),
+    paymentSkontoAmount: readOptionalConfigString(patch, 'paymentSkontoAmount'),
   };
 }
 
@@ -338,7 +327,7 @@ function applyKsefConfig(
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
   let next: Record<string, unknown> = { ...config };
-  const env = readOptionalPatchString(patch, 'ksefEnvironment');
+  const env = readOptionalConfigString(patch, 'ksefEnvironment');
   if (env !== undefined) {
     if (env.length === 0) {
       delete next.env;
@@ -346,7 +335,7 @@ function applyKsefConfig(
       next.env = env;
     }
   }
-  const contextIdentifier = readOptionalPatchString(patch, 'contextIdentifier');
+  const contextIdentifier = readOptionalConfigString(patch, 'contextIdentifier');
   if (contextIdentifier !== undefined) {
     if (contextIdentifier.length === 0) {
       delete next.contextIdentifier;
@@ -366,7 +355,7 @@ export const ksefConnectionConfig: ConnectionConfigContribution = {
     ksefEnvironment: readKsefEnvironment(config),
     ...readKsefSeller(config),
     ...readKsefPayment(config),
-    contextIdentifier: readPatchString(config, 'contextIdentifier'),
+    contextIdentifier: readConfigString(config, 'contextIdentifier'),
   }),
   applyToConfig: applyKsefConfig,
 };

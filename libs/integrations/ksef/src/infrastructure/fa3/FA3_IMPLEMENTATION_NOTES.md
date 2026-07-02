@@ -196,5 +196,16 @@ full field-scope audit and design mockup.
   document. The neutral `InvoiceParty` carries no field to express either
   status; supporting such buyers needs a neutral-contract extension plus a
   data source for the flag (PR #1317 review).
+- ⚠ AES-256-CBC session-IV reuse (PR #1317): `encryptDocument` reuses the
+  single session-declared IV for every document sent within one KSeF session.
+  Protocol-mandated - the wire carries exactly one IV, declared at session
+  open in `encryption.initializationVector`, and `SendInvoiceRequest` has no
+  per-document IV field (spec citations in `ksef-session-crypto.service.ts`).
+  Residual security trade-off: ciphertext is deterministic within a session -
+  two identical FA(3) documents produce identical ciphertext, and a shared
+  plaintext prefix is observable at CBC block granularity. Exposure is
+  bounded (ciphertext travels only over TLS to MF; the FA(3) header prefix is
+  public structure) and cannot be fixed client-side without breaking
+  server-side decryption (the observed status-430 rejection of per-document IVs).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
