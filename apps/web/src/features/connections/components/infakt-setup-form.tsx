@@ -5,6 +5,7 @@
  *   - Connection name
  *   - inFakt API key (the only credential)
  *   - Optional advanced base URL override (config) — sandbox vs. production
+ *   - Default payment method sent on every issued invoice/correction (#1303)
  *
  * Mirrors `ErliSetupForm`: one credential, no capabilities step (capabilities
  * default silently to the adapter manifest's supported set on the omitted
@@ -35,6 +36,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 export function InfaktSetupForm(): ReactElement {
@@ -155,6 +157,24 @@ export function InfaktSetupForm(): ReactElement {
           autoComplete="off"
           invalid={Boolean(form.formState.errors.baseUrl)}
         />
+      </FormField>
+
+      <FormField
+        label="Default payment method"
+        name="defaultPaymentMethod"
+        error={form.formState.errors.defaultPaymentMethod?.message}
+        description={
+          '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
+          'inFakt account. Leave "Cash" unless you have confirmed that prerequisite.'
+        }
+      >
+        <Select
+          {...form.register('defaultPaymentMethod')}
+          invalid={Boolean(form.formState.errors.defaultPaymentMethod)}
+        >
+          <option value="cash">Cash</option>
+          <option value="transfer">Transfer</option>
+        </Select>
       </FormField>
 
       {createdConnectionId ? (
