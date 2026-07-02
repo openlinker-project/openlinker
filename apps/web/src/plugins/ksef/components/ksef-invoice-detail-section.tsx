@@ -25,6 +25,7 @@ import {
   useKsefUpoPreview,
   useKsefFa3,
 } from '../../../features/invoicing';
+import { KsefFa3View } from './ksef-fa3-view';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -67,7 +68,7 @@ export function KsefInvoiceDetailSection({
 
   // UPO and FA(3) are available only once the authority has accepted the invoice —
   // that's the terminal success state where the UPO document and issued FA(3) exist.
-  const canUseUpo = invoice.regulatoryStatus === 'accepted';
+  const isAccepted = invoice.regulatoryStatus === 'accepted';
 
   async function handlePreviewUpo(): Promise<void> {
     const ok = await upoPreview.open(invoice.id);
@@ -164,12 +165,12 @@ export function KsefInvoiceDetailSection({
               {t('invoice.ksef.upoLabel', 'Official receipt (UPO)')}
             </div>
             <div className="slot-row__hint">
-              {canUseUpo
+              {isAccepted
                 ? t('invoice.ksef.upoHint', 'Proof of clearance')
                 : t('invoice.ksef.upoHintPending', 'Available once cleared')}
             </div>
           </div>
-          {canUseUpo ? (
+          {isAccepted ? (
             <span className="slot-row__actions">
               <Button
                 tone="ghost"
@@ -197,7 +198,7 @@ export function KsefInvoiceDetailSection({
           )}
         </div>
 
-        {canUseUpo ? (
+        {isAccepted ? (
           <>
             <div className="slot-row">
               <div>
@@ -238,16 +239,8 @@ export function KsefInvoiceDetailSection({
               </span>
               {fa3.viewError ? (
                 <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
-              ) : fa3.viewObjectUrl ? (
-                <iframe
-                  className="doc-preview__frame"
-                  src={fa3.viewObjectUrl}
-                  title={t('invoice.ksef.fa3FrameTitle', 'FA(3) document preview')}
-                  // blob: URL inherits the app origin, so framing it without restrictions
-                  // would allow scripts from the invoice document to run with app privileges.
-                  // sandbox="" blocks all scripts while still rendering the document.
-                  sandbox=""
-                />
+              ) : fa3.viewText !== null ? (
+                <KsefFa3View xmlText={fa3.viewText} />
               ) : (
                 <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
               )}

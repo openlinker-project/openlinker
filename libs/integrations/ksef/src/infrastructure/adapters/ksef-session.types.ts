@@ -109,6 +109,8 @@ export const KSEF_STATUS_PROCESSING_STARTED = 100;
 export const KSEF_STATUS_IN_PROGRESS = 150;
 export const KSEF_STATUS_SUCCESS = 200;
 export const KSEF_STATUS_REJECTED = 400;
+/** FA(3) XSD secondary schema validation in progress — non-terminal, keep polling. */
+export const KSEF_STATUS_FA3_PROCESSING = 430;
 export const KSEF_STATUS_BUSINESS_REJECTED = 440;
 export const KSEF_SESSION_CLOSED_ZERO_VALID = 445;
 export const KSEF_STATUS_PROCESSING_ERROR = 550;

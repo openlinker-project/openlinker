@@ -648,7 +648,7 @@ Parity matrix — what changes across sizes:
 
 Rules:
 
-- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and virtualized tables' column-overflow area. `RawPayloadPanel` also scrolls vertically when content exceeds its `max-height` cap (#390).
+- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and a table's own column-overflow area (`.data-table__container`, `overflow-x: auto` — both the virtualized scroller and the plain container). Dense tables (e.g. an 8-column invoices list) grow to their natural content width and scroll horizontally within that container rather than crushing columns; simple 2–4 column tables stay at `100%` width with no scrollbar since their natural width never exceeds the container. `RawPayloadPanel` also scrolls vertically when content exceeds its `max-height` cap (#390).
 - **Tap targets ≥ 44 px** on mobile for every interactive element (`.btn--sm` grows to 36 px min on touch; icon buttons to 40 px).
 - Text must remain readable at `13 px` body — no shrinking below that on mobile.
 - Status banners stack their action buttons below the body on mobile instead of pushing off-screen.

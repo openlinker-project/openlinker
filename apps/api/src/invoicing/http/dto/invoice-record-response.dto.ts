@@ -1,5 +1,5 @@
 /**
- * Invoice Record Response DTO (#1119)
+ * Invoice Record Response DTO (#1119, #1224)
  *
  * Outbound projection of an `InvoiceRecord`. Fields are enumerated explicitly
  * (never spread from the entity) so the response surface is intentional. Two
@@ -8,6 +8,13 @@
  *   - `errorMessage`   — INTERNAL-ONLY, PII-tainted diagnostic (may echo
  *                        provider buyer data). Never returned to API callers;
  *                        operators read it via the authenticated GET path only.
+ *
+ * Neutral (#1224, ADR-026) full-record view returned by `GET /invoices/:invoiceId`,
+ * backing the FE invoice detail page. Mirrors the `InvoiceRecord` projection minus
+ * infrastructure-only fields: `errorMessage`/`idempotencyKey` stay OMITTED, and
+ * the rich issued-document content lives behind `GET /invoices/:invoiceId/content`.
+ * No regime/provider vocabulary crosses here — `regulatoryStatus` is the neutral
+ * CTC clearance lifecycle, `clearanceReference` an opaque authority reference.
  *
  * @module apps/api/src/invoicing/http/dto
  */
@@ -19,9 +26,11 @@ import type {
 import {
   InvoiceFailureCodeValues,
   InvoiceFailureModeValues,
+  InvoiceRecord,
   InvoiceStatus,
   InvoiceStatusValues,
   RegulatoryStatus,
+  RegulatoryStatusValues,
 } from '@openlinker/core/invoicing';
 
 export class InvoiceRecordResponseDto {
@@ -51,7 +60,10 @@ export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Provider-assigned document number', nullable: true })
   providerInvoiceNumber!: string | null;
 
-  @ApiProperty({ description: 'Neutral CTC clearance status' })
+  @ApiProperty({
+    enum: RegulatoryStatusValues,
+    description: 'Neutral CTC clearance lifecycle status',
+  })
   regulatoryStatus!: RegulatoryStatus;
 
   @ApiProperty({ description: 'Authority-assigned clearance reference', nullable: true })
@@ -91,4 +103,26 @@ export class InvoiceRecordResponseDto {
 
   @ApiProperty({ description: 'Record last-update time (ISO 8601)' })
   updatedAt!: string;
+
+  static fromDomain(record: InvoiceRecord): InvoiceRecordResponseDto {
+    const dto = new InvoiceRecordResponseDto();
+    dto.id = record.id;
+    dto.connectionId = record.connectionId;
+    dto.orderId = record.orderId;
+    dto.providerType = record.providerType;
+    dto.documentType = record.documentType;
+    dto.status = record.status;
+    dto.providerInvoiceId = record.providerInvoiceId;
+    dto.providerInvoiceNumber = record.providerInvoiceNumber;
+    dto.regulatoryStatus = record.regulatoryStatus;
+    dto.clearanceReference = record.clearanceReference;
+    dto.pdfUrl = record.pdfUrl;
+    dto.failureMode = record.failureMode;
+    dto.failureCode = record.failureCode;
+    dto.failureReason = record.failureReason;
+    dto.issuedAt = record.issuedAt ? record.issuedAt.toISOString() : null;
+    dto.createdAt = record.createdAt.toISOString();
+    dto.updatedAt = record.updatedAt.toISOString();
+    return dto;
+  }
 }

@@ -24,6 +24,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import type { UpoPreviewKind, UpoPreviewState } from './ksef-upo-preview.types';
+
+export type { UpoPreviewKind } from './ksef-upo-preview.types';
 
 /** Previewable MIME types and the neutral preview kind each maps to. */
 const PREVIEW_KIND_BY_MIME: Readonly<Record<string, 'pdf' | 'xml'>> = {
@@ -32,16 +35,9 @@ const PREVIEW_KIND_BY_MIME: Readonly<Record<string, 'pdf' | 'xml'>> = {
   'text/xml': 'xml',
 };
 
-export type UpoPreviewKind = 'pdf' | 'xml' | 'unsupported';
-
 function previewKindForBlob(blob: Blob): UpoPreviewKind {
   const mime = blob.type.toLowerCase().split(';', 1)[0]?.trim() ?? '';
   return PREVIEW_KIND_BY_MIME[mime] ?? 'unsupported';
-}
-
-interface UpoPreviewState {
-  objectUrl: string;
-  kind: UpoPreviewKind;
 }
 
 interface UseKsefUpoPreview {
