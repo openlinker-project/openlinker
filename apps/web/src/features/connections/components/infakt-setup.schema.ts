@@ -46,11 +46,10 @@ export const INFAKT_SETUP_DEFAULT_VALUES: InfaktSetupFormValues = {
   name: '',
   apiKey: '',
   baseUrl: '',
-  // Transfer is the common case for online-shop invoicing; cash stays one
-  // click away in the select. See infakt-invoicing.adapter.ts for the
-  // separate, unrelated adapter-side fallback (used only when a connection's
-  // config predates this field and carries no explicit value at all).
-  defaultPaymentMethod: 'transfer',
+  // Cash is fiscal-safe by default — transfer 422s on inFakt unless a bank
+  // account is configured (see the help copy below and on the edit section).
+  // Matches the adapter's own fallback in infakt-invoicing.adapter.ts.
+  defaultPaymentMethod: 'cash',
 };
 
 export function toCreateConnectionInput(values: InfaktSetupFormSubmission): CreateConnectionInput {
