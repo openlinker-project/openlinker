@@ -87,6 +87,7 @@ import {
 import {
   createTestAllegroSourceConnection,
   createTestPrestashopDestinationConnection,
+  deleteTestConnection,
   seedCarrierMappings,
 } from '../helpers/test-connection.helper';
 import { createIncomingOrderForCarrierMapping } from '../fixtures/incoming-order.fixtures';
@@ -320,8 +321,17 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
   }, 20 * 60_000);
 
   afterAll(async () => {
-    if (ps) {
-      await ps.cleanup();
+    try {
+      if (ps) {
+        await ps.cleanup();
+      }
+    } finally {
+      // Delete, don't just stop the container — see deleteTestConnection's
+      // docblock. This suite's own destination connection must not outlive
+      // its container for later suites in the same shared-DB run.
+      if (prestashopConnectionId) {
+        await deleteTestConnection(harness.getDataSource(), prestashopConnectionId);
+      }
     }
     // Restore the env var the suite mutated. Even though Jest's worker model
     // for integration tests is `maxWorkers: 1`, leaving the secret in
