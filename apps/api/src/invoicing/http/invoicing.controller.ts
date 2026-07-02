@@ -553,10 +553,13 @@ export class InvoicingController {
       documentType: record.documentType.length > 0 ? record.documentType : 'invoice',
       lines: snapshot.lines,
       clearanceReference: record.clearanceReference,
-      // Guarded by the caller: this path only runs after the endpoint asserted
-      // `providerInvoiceNumber` and `issuedAt` are non-null.
-      documentNumber: record.providerInvoiceNumber ?? '',
-      issueDate: record.issuedAt ? this.toIsoDateOnly(record.issuedAt) : '',
+      // Non-null assertions (not `?? ''` / ternary fallbacks): the caller already
+      // asserts `providerInvoiceNumber` and `issuedAt` are non-null before this
+      // path runs, so masking a future guard regression behind an empty string
+      // would silently produce an invalid document number / issue date instead
+      // of surfacing the broken invariant.
+      documentNumber: record.providerInvoiceNumber!,
+      issueDate: this.toIsoDateOnly(record.issuedAt!),
     };
   }
 
