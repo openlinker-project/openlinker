@@ -76,3 +76,7 @@ export { BulkActionBar } from './bulk-action-bar';
 export type { BulkActionBarProps } from './bulk-action-bar';
 export { CheckboxCell } from './checkbox-cell';
 export type { CheckboxCellProps } from './checkbox-cell';
+
+// ── Disclosure (#1303) ───────────────────────────────────────────────
+export { InlineDisclosure } from './inline-disclosure';
+export type { InlineDisclosureProps } from './inline-disclosure';
