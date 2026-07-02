@@ -28,7 +28,7 @@
 import type { ComponentType } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { RouteObject } from 'react-router-dom';
-import type { RefinementCtx, ZodRawShape } from 'zod';
+import type { RefinementCtx, ZodType } from 'zod';
 
 import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { Role } from '../../app/nav-registry.types';
@@ -182,6 +182,18 @@ export interface PlatformSetupCard {
 export interface PluginEditConnectionFields {}
 
 /**
+ * Keys of `ConnectionConfigContribution.schemaShape`, constrained to the
+ * field names plugins declaration-merge into `PluginEditConnectionFields`.
+ * Ties the Zod fragment to the typed form fields at compile time - a plugin
+ * cannot ship a schema entry for a field it never merged (which would be an
+ * unvalidated, untyped `register()` path), and TS flags a typo'd key at the
+ * contribution literal instead of failing silently at runtime.
+ */
+export type PluginConnectionConfigSchemaShape = {
+  [K in keyof PluginEditConnectionFields]?: ZodType;
+};
+
+/**
  * Per-platform connection-config contribution (#1330). The non-render half of
  * a platform's structured-config editing: the render half is
  * `StructuredConfigSection`; this bag owns the Zod schema fragment, the
@@ -192,11 +204,13 @@ export interface PluginEditConnectionFields {}
  */
 export interface ConnectionConfigContribution {
   /**
-   * Zod raw shape merged into the edit-connection schema when editing a
-   * connection of this platform. Field names must match the keys the plugin
-   * merges into `PluginEditConnectionFields`.
+   * Zod field fragment merged into the edit-connection schema when editing a
+   * connection of this platform. The keys are compiler-constrained to the
+   * names the plugin merges into `PluginEditConnectionFields`, so a schema
+   * entry without a matching declaration-merged form field is a type error
+   * (an unmerged key would otherwise produce an untyped `register()` path).
    */
-  schemaShape: ZodRawShape;
+  schemaShape: PluginConnectionConfigSchemaShape;
   /**
    * Optional cross-field checks applied via `superRefine` on the composed
    * schema (e.g. KSeF's skonto both-or-neither pair).

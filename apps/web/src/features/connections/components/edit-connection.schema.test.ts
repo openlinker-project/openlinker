@@ -4,9 +4,18 @@ import {
   buildEditConnectionSchema,
   editConnectionSchema,
   mergeStructuredIntoConfig,
-  type EditConnectionStructuredPatch,
 } from './edit-connection.schema';
 import type { ConnectionConfigContribution } from '../../../shared/plugins';
+
+// Augment the plugin field surface for the duration of this test file so the
+// synthetic `acmeToken` fixture type-checks against the keyof-constrained
+// `schemaShape` - the same declaration-merging seam real plugins use
+// (mirrors the `shopify` namespace fixture in `plugin-registry.test.ts`).
+declare module '../../../shared/plugins/plugin.types' {
+  interface PluginEditConnectionFields {
+    acmeToken?: string;
+  }
+}
 
 describe('mergeStructuredIntoConfig', () => {
   it('writes a new baseUrl into an empty config', () => {
@@ -383,9 +392,7 @@ describe('buildEditConnectionSchema / mergeStructuredIntoConfig — plugin contr
   it('leaves the config untouched beyond base clauses when no contribution is supplied', () => {
     const result = mergeStructuredIntoConfig(
       { token: 'keep' },
-      // The synthetic key is not declaration-merged (test-local contribution),
-      // so it needs an explicit widening to the patch type.
-      { acmeToken: 'acme-new' } as EditConnectionStructuredPatch,
+      { acmeToken: 'acme-new' },
     );
     expect(result).toEqual({ token: 'keep' });
   });
@@ -393,7 +400,7 @@ describe('buildEditConnectionSchema / mergeStructuredIntoConfig — plugin contr
   it("runs the contribution's applyToConfig as the final assembly pass", () => {
     const result = mergeStructuredIntoConfig(
       { baseUrl: 'https://old.example.com', custom: true },
-      { baseUrl: 'https://new.example.com', acmeToken: 'acme-new' } as EditConnectionStructuredPatch,
+      { baseUrl: 'https://new.example.com', acmeToken: 'acme-new' },
       contribution,
     );
     expect(result).toEqual({

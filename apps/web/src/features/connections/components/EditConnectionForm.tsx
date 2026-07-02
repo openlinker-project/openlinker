@@ -28,21 +28,31 @@ interface EditConnectionFormProps {
   connection: Connection;
 }
 
-type StructuredField =
-  | 'baseUrl'
-  | 'siteUrl'
-  | 'shopId'
-  | 'storefrontBaseUrl'
-  | 'openlinkerCallbackBaseUrl'
-  | 'masterCatalogConnectionId'
-  | 'defaultCarrierId'
-  | 'unmanagedStockQuantity'
-  | 'inpostPsModuleType'
-  | 'subiektBridgeUrl'
-  | 'subiektTriggerModel'
-  | 'inpostEnvironment'
-  | 'inpostOrganizationId'
-  | 'infaktPaymentMethod';
+/**
+ * Host-owned structured fields with an explicit merge clause in
+ * `mergeStructuredIntoConfig`. Kept as a runtime array (`as const` + derived
+ * union) so `syncStructuredToJson` can detect a plugin field synced with no
+ * `connectionConfig` contribution to assemble it - the silent-drop
+ * misconfiguration #1330 exists to prevent.
+ */
+const HOST_STRUCTURED_FIELDS = [
+  'baseUrl',
+  'siteUrl',
+  'shopId',
+  'storefrontBaseUrl',
+  'openlinkerCallbackBaseUrl',
+  'masterCatalogConnectionId',
+  'defaultCarrierId',
+  'unmanagedStockQuantity',
+  'inpostPsModuleType',
+  'subiektBridgeUrl',
+  'subiektTriggerModel',
+  'inpostEnvironment',
+  'inpostOrganizationId',
+  'infaktPaymentMethod',
+] as const;
+
+type StructuredField = (typeof HOST_STRUCTURED_FIELDS)[number];
 
 /**
  * Field names accepted by the per-field JSON sync: the host's own structured
@@ -359,6 +369,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     options: { markDirty?: boolean } = {},
   ): void {
     const markDirty = options.markDirty ?? true;
+    if (
+      import.meta.env.DEV &&
+      connectionConfig === undefined &&
+      !(HOST_STRUCTURED_FIELDS as readonly string[]).includes(field)
+    ) {
+      // Dev-only misconfiguration signal (#1330): a plugin section synced a
+      // field that has no host merge clause, and its platform ships no
+      // `connectionConfig` contribution to assemble it - the value would be
+      // silently dropped from the config JSON.
+      console.warn(
+        `[EditConnectionForm] Structured field "${field}" has no host merge clause and platform "${connection.platformType}" contributes no connectionConfig - the value will not be persisted into the config JSON.`,
+      );
+    }
     if (markDirty && field === 'masterCatalogConnectionId') {
       operatorTouchedCatalogRef.current = true;
     }

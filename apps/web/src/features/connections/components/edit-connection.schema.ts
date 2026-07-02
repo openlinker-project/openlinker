@@ -268,8 +268,12 @@ export type EditConnectionFormSubmission = z.output<typeof editConnectionSchema>
 export function buildEditConnectionSchema(
   contribution?: ConnectionConfigContribution,
 ): z.ZodType<EditConnectionFormSubmission, EditConnectionFormValues> {
+  // `schemaShape` is keyed by `keyof PluginEditConnectionFields` (a mapped
+  // type whose values may read as `| undefined`), so it needs a structural
+  // cast to the `ZodRawShape` that `.extend()` accepts - key/field agreement
+  // is already compiler-enforced at the contribution literal.
   const objectSchema = contribution
-    ? editConnectionSchema.extend(contribution.schemaShape)
+    ? editConnectionSchema.extend(contribution.schemaShape as z.ZodRawShape)
     : editConnectionSchema;
   const refine = contribution?.superRefine;
   const composed = refine ? objectSchema.superRefine((values, ctx) => refine(values, ctx)) : objectSchema;
@@ -562,7 +566,7 @@ export function mergeStructuredIntoConfig(
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch
   // semantics as the host clauses above.
-  return contribution ? contribution.applyToConfig(next, { ...structured }) : next;
+  return contribution ? contribution.applyToConfig(next, structured) : next;
 }
 
 function pruneEmptySellerDefaults(
