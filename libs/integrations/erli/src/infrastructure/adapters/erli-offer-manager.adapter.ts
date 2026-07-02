@@ -106,6 +106,7 @@ import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
+import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
@@ -116,16 +117,6 @@ import type {
   ErliProductPatchBody,
   ErliProductResource,
 } from './erli-product.types';
-
-/**
- * Seller-keyed product-id allowlist. The id is interpolated into the request
- * path, so it MUST exclude `/`, `?`, `#`, and `..` (path-traversal / injection)
- * regardless of any future #992 charset change; `encodeURIComponent` is the
- * backstop. Today the id is the OL internal variant id — if #992 switches the
- * seller-key format, this pattern AND {@link ErliOfferManagerAdapter.resolveErliProductId}
- * must change in lockstep (a mismatch fails closed: updates throw, never send).
- */
-const ERLI_PRODUCT_ID_PATTERN = /^ol_variant_[a-f0-9]{32}$/;
 
 /**
  * Maps OL patch-body keys to the Erli field name carried in

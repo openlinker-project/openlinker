@@ -45,10 +45,13 @@
  *   `PATCH /orders/{id}/status { status: 'sent' }` (the enum has no `dispatched`;
  *   `sent` is the dispatch state), then register an external shipment via
  *   `POST /shipping/external` ONLY when a waybill is present.
- * - **`cancelled`** — reported `unsupported`: Erli's order-status enum has no
- *   operator-driven cancel verb, and the compensating stock-restore (#997 Half B)
- *   lives in `ErliOfferManagerAdapter.restoreStockOnCancellation`, wired by the
- *   future cancel-observe hook (Q-T2 / #1146), NOT by this status writeback.
+ * - **`cancelled`** — absolute stock-restore (#1198 / #997 Half A): fetches the
+ *   cancelled order, resolves master-authoritative stock per offer from
+ *   `IInventoryQueryService.getAvailabilityByVariantIds`, and delegates
+ *   absolute-set writes to `ErliOfferManagerAdapter.restoreStockOnCancellation`
+ *   (which calls `updateOfferQuantity` and honours the frozen-stock cache).
+ *   Reports `unsupported` when either `offerManager` or `inventoryQuery` was not
+ *   wired (pre-#1198 callers / tests that don't provide those deps).
  *
  * #992 RELEASE GATE (#1086 review): the endpoint/verb/status token are
  * #992-PROVISIONAL (`erli-fulfillment.types.ts`). To avoid writing to an
@@ -83,7 +86,14 @@ import type {
   OrderStatusWriteback,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
+import type {
+  OfferManagerPort,
+  OfferStockRestorer,
+  OfferStockRestoreTarget,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliOrderDispatchRejectedException } from '../../domain/exceptions/erli-order-dispatch-rejected.exception';
 import {
@@ -94,6 +104,7 @@ import {
   type ErliOrderStatusBody,
 } from './erli-fulfillment.types';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
+import type { ErliHttpResponse } from '../http/erli-http-client.types';
 import { mapErliOrderToIncomingOrder } from './erli-order.mapper';
 import type { ErliOrder, ErliOrderStatus } from './erli-order.types';
 import {
@@ -126,10 +137,16 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    * Shares the per-connection `ErliHttpClient` with the sibling
    * `ErliOfferManagerAdapter` (both built by `ErliAdapterFactory.createAdapters`).
    * No `IdentifierMappingPort`: identity resolution is downstream in core (#995).
+   *
+   * `offerManager` and `inventoryQuery` power the #1198 `cancelled` stock-restore
+   * path. Both are optional so unit-test bootstraps and the pre-#1198 factory
+   * callers stay valid; absent means that path reports `unsupported`.
    */
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IErliHttpClient,
+    private readonly offerManager?: OfferManagerPort & OfferStockRestorer,
+    private readonly inventoryQuery?: IInventoryQueryService,
   ) {}
 
   /**
@@ -139,7 +156,7 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    * wave so the cursor never gets stuck.
    */
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
-    let response;
+    let response: ErliHttpResponse<unknown>;
     try {
       // `GET /inbox` returns up to 500 unread events as a TOP-LEVEL ARRAY and
       // takes no query params (the unread cap is server-fixed).
@@ -264,9 +281,14 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    *   #992-gated default-OFF: when the gate is off, reported `unsupported`
    *   (surfaced, not a silent success) so the relay/operator sees nothing was
    *   propagated to the live order. A write failure is reported `rejected`.
-   * - `cancelled` → `unsupported`: Erli has no operator-driven cancel verb; the
-   *   compensating stock-restore is `ErliOfferManagerAdapter.restoreStockOnCancellation`,
-   *   wired by the future cancel-observe hook (Q-T2 / #1146), not this writeback.
+   * - `cancelled` → absolute stock-restore (#1198 / #997 Half A): fetches the
+   *   order to read its line items, resolves master-authoritative stock per variant
+   *   via `inventoryQuery`, and delegates absolute-set writes to `offerManager`
+   *   (`ErliOfferManagerAdapter.restoreStockOnCancellation` → `updateOfferQuantity`,
+   *   which already honours the frozen-stock cache). Reports `unsupported` when
+   *   either `offerManager` or `inventoryQuery` is absent (pre-wired callers and
+   *   tests that don't set up those deps), `applied` on success, `rejected` on any
+   *   error (order-fetch failure, inventory-read failure, or stock-write failure).
    *
    * `externalOrderId` is resolved upstream by the relay (this adapter does no
    * identifier mapping). Log hygiene: NEVER log `trackingNumber` / `externalOrderId`
@@ -274,12 +296,24 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     if (event.type === 'cancelled') {
-      return {
-        outcome: 'unsupported',
-        detail:
-          'Erli has no operator-driven order-cancel writeback; stock-restore is the ' +
-          'offer-adapter compensating path wired by the Q-T2 cancel-observe hook (#1146).',
-      };
+      if (!this.offerManager || !this.inventoryQuery) {
+        return {
+          outcome: 'unsupported',
+          detail:
+            'Erli cancelled stock-restore is not wired: offerManager or inventoryQuery is absent.',
+        };
+      }
+      try {
+        await this.restockOnCancellation(event.externalOrderId, this.offerManager, this.inventoryQuery);
+        return { outcome: 'applied' };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `OrderStatusWriteback 'cancelled' (stock-restore) rejected for Erli order ` +
+            `(connection: ${this.connectionId}): ${detail}`,
+        );
+        return { outcome: 'rejected', detail };
+      }
     }
 
     // event.type === 'dispatched'
@@ -311,6 +345,76 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
       );
       return { outcome: 'rejected', detail };
     }
+  }
+
+  /**
+   * Fetch the order, resolve master-authoritative stock per variant, and issue
+   * absolute-set stock-restore writes via the shared offer-manager reference.
+   *
+   * Why this does not delegate to the core `OfferStockRestoreService`:
+   * The relay delivers only `externalOrderId` (no `internalOrderId`), so the
+   * core service's `getOrderRecord(internalOrderId)` path is unavailable here.
+   * Additionally, Erli ID duality — `item.externalId` is simultaneously the OL
+   * internal variant id (inventory key) AND the Erli offer path key — eliminates
+   * both the `identifier_mappings` lookup and the `offer_mappings` lookup that
+   * `OfferStockRestoreService` performs. Fetching the raw order and reading
+   * directly from `getAvailabilityByVariantIds` is therefore shorter, and the
+   * two code paths are mutually exclusive: the relay fires only when the
+   * destination (PrestaShop) cancels and the relay propagates back to Erli;
+   * the core service fires via the `marketplace.offer.stockRestore` job for
+   * buyer-initiated inbox cancellations where `internalOrderId` is known.
+   *
+   * Absolute-set semantics: master is authoritative including 0, so a sold-out
+   * variant restores to 0 rather than being backfilled. The frozen-stock check
+   * lives inside `updateOfferQuantity` (via `restoreStockOnCancellation`) and
+   * silently skips seller-frozen offers — consistent with ADR-025 §4b.
+   *
+   * Throws on order-fetch failure, inventory-read failure, or write failure.
+   * `write('cancelled')` catches and maps to `rejected`.
+   */
+  private async restockOnCancellation(
+    externalOrderId: string,
+    offerManager: OfferManagerPort & OfferStockRestorer,
+    inventoryQuery: IInventoryQueryService,
+  ): Promise<void> {
+    // 1. Fetch the order to learn which offer IDs need restocking.
+    let response: ErliHttpResponse<unknown>;
+    try {
+      response = await this.httpClient.get<unknown>(erliOrderPath(externalOrderId));
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch Erli order for stock-restore: ${(error as Error).message}`,
+      );
+    }
+    const order = assertErliOrder(response.data);
+
+    // Collect unique OL-managed offer IDs. Dedupe across items (split-line
+    // quantities) and filter to only `ol_variant_*` IDs — items whose
+    // `externalId` doesn't match the pattern were not created by OL (e.g.
+    // pre-existing Erli listings) and must be skipped rather than causing
+    // `productPath` to throw `ErliConfigException` for the whole restore.
+    const offerIds = [...new Set(order.items.map((item) => item.externalId))]
+      .filter((id) => ERLI_PRODUCT_ID_PATTERN.test(id));
+    if (offerIds.length === 0) {
+      return;
+    }
+
+    // 2. Resolve master-authoritative stock per variant. Key by `productVariantId`
+    //    — output order is NOT guaranteed to match input order, so positional
+    //    indexing would silently assign wrong quantities. `?? 0` is the zero-fill
+    //    safety net for any variant id the service doesn't return a row for.
+    const availability = await inventoryQuery.getAvailabilityByVariantIds(offerIds);
+    const stockByVariantId = new Map(
+      availability.map((row) => [row.productVariantId, row.totalAvailable]),
+    );
+
+    // 3. Build restore targets and dispatch via the shared offer-manager reference.
+    //    Absolute-set: master is authoritative including 0.
+    const targets: OfferStockRestoreTarget[] = offerIds.map((offerId) => ({
+      externalOfferId: offerId,
+      quantity: stockByVariantId.get(offerId) ?? 0,
+    }));
+    await offerManager.restoreStockOnCancellation(targets);
   }
 
   /**

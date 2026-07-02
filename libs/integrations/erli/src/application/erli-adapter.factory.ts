@@ -14,6 +14,7 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { CachePort } from '@openlinker/shared';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
@@ -50,26 +51,40 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
    * method (rather than the constructor as Allegro does) because Erli's factory
    * is constructed argument-less inside `createCapabilityAdapter` — an Erli-local
    * choice; the cache still arrives from `host.cache` either way.
+   *
+   * `inventoryQuery` enables the #1198 `OrderStatusWriteback` `cancelled`
+   * stock-restore path in `ErliOrderSourceAdapter`. Optional — absent means that
+   * path reports `unsupported` (same fail-open posture as `cache`).
    */
   async createAdapters(
     connection: Connection,
     _identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
     cache?: CachePort,
+    inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters> {
     const httpClient = await this.createHttpClient(connection, credentialsResolver);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
+    // Construct the offer manager first so its reference can be shared with the
+    // order-source adapter (which needs it for the `cancelled` stock-restore path).
+    const offerManager = new ErliOfferManagerAdapter(
+      connection.id,
+      ERLI_ADAPTER_KEY,
+      httpClient,
+      config.defaultDispatchTime,
+      cache,
+    );
     return {
-      offerManager: new ErliOfferManagerAdapter(
-        connection.id,
-        ERLI_ADAPTER_KEY,
-        httpClient,
-        config.defaultDispatchTime,
-        cache,
-      ),
+      offerManager,
       // Shares the one per-connection HTTP client with the offer adapter, exactly
       // as Allegro shares one client across its order-source + offer adapters.
-      orderSource: new ErliOrderSourceAdapter(connection.id, httpClient),
+      // Also shares the offer-manager reference for the stock-restore writeback.
+      orderSource: new ErliOrderSourceAdapter(
+        connection.id,
+        httpClient,
+        offerManager,
+        inventoryQuery,
+      ),
     };
   }
 
