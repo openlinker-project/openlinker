@@ -55,7 +55,7 @@ describe('Listings Seller-Policies API Integration', () => {
     await createTestSellerPoliciesCache(dataSource, { connectionId: CONN, policies });
 
     const response = await http
-      .get(`/listings/connections/${CONN}/seller-policies`)
+      .get(`/v1/listings/connections/${CONN}/seller-policies`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 

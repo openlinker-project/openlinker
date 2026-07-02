@@ -21,6 +21,7 @@ import {
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import type { IRegistrationService } from './registration.service.interface';
+import { DEMO_MODE_SERVICE_TOKEN, type IDemoModeService } from './demo-mode.service.interface';
 
 const BCRYPT_COST = 10;
 
@@ -31,7 +32,9 @@ export class RegistrationService implements IRegistrationService {
   constructor(
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepository: UserRepositoryPort,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @Inject(DEMO_MODE_SERVICE_TOKEN)
+    private readonly demoModeService: IDemoModeService,
   ) {}
 
   async register(username: string, email: string, password: string): Promise<void> {
@@ -53,14 +56,21 @@ export class RegistrationService implements IRegistrationService {
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+    const demoMode = this.demoModeService.isDemoModeEnabled();
     await this.userRepository.save({
       username,
       email,
       passwordHash,
       role: 'viewer',
-      status: 'pending',
+      // Demo mode: activate immediately so the user can log in right away.
+      // Normal mode: pending admin approval per the #1125 approval flow.
+      status: demoMode ? 'active' : 'pending',
     });
 
-    this.logger.log(`New user registered and pending approval: ${username}`);
+    if (demoMode) {
+      this.logger.log(`Demo account registered and auto-activated: ${username}`);
+    } else {
+      this.logger.log(`New user registered and pending approval: ${username}`);
+    }
   }
 }

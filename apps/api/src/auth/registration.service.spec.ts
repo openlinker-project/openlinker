@@ -5,6 +5,7 @@
  */
 import type { ConfigService } from '@nestjs/config';
 import { RegistrationService } from './registration.service';
+import type { IDemoModeService } from './demo-mode.service.interface';
 import {
   RegistrationDisabledException,
   UserAlreadyExistsException,
@@ -21,6 +22,10 @@ const makeConfig = (enabled: string): ConfigService =>
       key === 'OL_REGISTRATION_ENABLED' ? enabled : defaultValue
     ),
   }) as unknown as ConfigService;
+
+const makeDemoService = (enabled: boolean): IDemoModeService => ({
+  isDemoModeEnabled: () => enabled,
+});
 
 const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   findByUsername: jest.fn(),
@@ -41,7 +46,7 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
 describe('RegistrationService', () => {
   it('should throw RegistrationDisabledException when registration is disabled', async () => {
     const repo = makeRepo();
-    const service = new RegistrationService(repo, makeConfig('false'));
+    const service = new RegistrationService(repo, makeConfig('false'), makeDemoService(false));
 
     await expect(service.register('alice', 'alice@test.com', 'pass123')).rejects.toThrow(
       RegistrationDisabledException
@@ -53,7 +58,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(makeUser('alice'));
     repo.findByEmail.mockResolvedValue(null);
-    const service = new RegistrationService(repo, makeConfig('true'));
+    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
 
     await expect(service.register('alice', 'newemail@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -65,7 +70,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(makeUser('bob'));
-    const service = new RegistrationService(repo, makeConfig('true'));
+    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
 
     await expect(service.register('alice', 'bob@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -73,12 +78,12 @@ describe('RegistrationService', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
-  it('should save user in pending status with viewer role when registration succeeds', async () => {
+  it('should save user in pending status with viewer role when demo mode is off', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
-    const service = new RegistrationService(repo, makeConfig('true'));
+    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
 
     await service.register('alice', 'alice@test.com', 'pass123');
 
@@ -89,5 +94,20 @@ describe('RegistrationService', () => {
     expect(saved.role).toBe('viewer');
     expect(saved.status).toBe('pending');
     expect(saved.passwordHash).not.toBe('pass123');
+  });
+
+  it('should save user in active status when demo mode is on', async () => {
+    const repo = makeRepo();
+    repo.findByUsername.mockResolvedValue(null);
+    repo.findByEmail.mockResolvedValue(null);
+    repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(true));
+
+    await service.register('demo_user', 'demo@test.com', 'pass123');
+
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    const saved = repo.save.mock.calls[0][0];
+    expect(saved.status).toBe('active');
+    expect(saved.role).toBe('viewer');
   });
 });

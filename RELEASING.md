@@ -6,8 +6,8 @@ npm-package contract lives in [PUBLIC_API.md](./PUBLIC_API.md). This document is
 the operational how-to.
 
 > **Status:** the product release line described here is the agreed target.
-> Tooling (release-please) and the first tag land in #1137; `/v1` API
-> versioning lands in #1133. Until those merge, there are no tags yet.
+> `/v1` API versioning has shipped (#1133). Tooling (release-please) and the
+> first tag land in #1137; until that merges, there are no tags yet.
 
 ## The four version axes
 

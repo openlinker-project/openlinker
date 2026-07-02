@@ -12,6 +12,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AppInfoModule } from './app-info/app-info.module';
 import { DatabaseModule } from '@openlinker/shared/database';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { CacheModule } from '@openlinker/shared/cache';
@@ -37,6 +38,7 @@ import { ContentApiModule } from './content/content.module';
 import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { UsersApiModule } from './users/users.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -48,6 +50,7 @@ import { UsersApiModule } from './users/users.module';
     DatabaseModule,
     RedisConfigModule,
     CacheModule,
+    AppInfoModule, // Runtime product + API version surface for GET /v1/health (#1133)
     HealthModule,
     AuthModule,
     IdentifierMappingModule,
@@ -70,6 +73,7 @@ import { UsersApiModule } from './users/users.module';
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
+    SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
   ],
   controllers: [AppController],
   providers: [AppService],

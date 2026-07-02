@@ -19,7 +19,7 @@ import { RedisClientType } from 'redis';
 import type { IDevStackHealthService } from './dev-stack-health.service.interface';
 import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 import type {
-  InternalHealthResponse,
+  InternalHealthReadiness,
   DevStackHealthResponse,
   ServiceHealth,
   ServiceStatus,
@@ -42,7 +42,7 @@ export class DevStackHealthService implements IDevStackHealthService {
     private readonly configService: ConfigService
   ) {}
 
-  async checkInternalHealth(): Promise<InternalHealthResponse> {
+  async checkInternalHealth(): Promise<InternalHealthReadiness> {
     const services = {
       postgres: await this.checkPostgres(),
       redis: await this.checkRedis(),

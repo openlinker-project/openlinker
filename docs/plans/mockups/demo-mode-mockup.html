@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#1127 — Demo Mode · UI Mockups</title>
+<style>
+/* ============================================================
+   OpenLinker cockpit tokens (light) — from apps/web/src/index.css
+   ============================================================ */
+:root {
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-info: oklch(55% 0.16 240);
+  --status-info-soft: oklch(96% 0.03 240);
+  --status-info-border: oklch(82% 0.08 240);
+  --status-info-fg: oklch(35% 0.12 240);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-neutral-soft: oklch(95% 0.005 80);
+  --status-neutral-border: oklch(85% 0.008 80);
+  --status-neutral-fg: oklch(38% 0.010 80);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+  --shadow-sm: 0 1px 2px oklch(20% 0.01 80 / 0.06);
+  --shadow-md: 0 4px 14px oklch(20% 0.01 80 / 0.08);
+  --shadow-lg: 0 12px 40px oklch(20% 0.01 80 / 0.14);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---- Mockup scaffold ---- */
+.sheet { max-width: 1200px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); }
+.sheet__title { font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 var(--space-1); }
+.sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-6); }
+.spec-eyebrow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted);
+  margin: var(--space-7) 0 var(--space-3); display: flex; align-items: center; gap: var(--space-3);
+}
+.spec-eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.note { font-size: 12px; color: var(--text-muted); margin: var(--space-2) 0 0; font-style: italic; }
+.stage {
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  display: flex; gap: var(--space-5); flex-wrap: wrap; align-items: flex-start;
+}
+.stage--center { justify-content: center; }
+.stage--col { flex-direction: column; }
+
+/* ============================================================
+   Primitives
+   ============================================================ */
+.button {
+  font: inherit; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-md); border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 7px 14px; font-size: 13px; line-height: 18px;
+  white-space: nowrap;
+}
+.button--primary { background: var(--accent-primary); color: var(--text-on-primary); border-color: var(--accent-primary); }
+.button--ghost { background: transparent; color: var(--text-primary); border-color: var(--border-default); }
+.button--info { background: var(--status-info-soft); color: var(--status-info-fg); border-color: var(--status-info-border); font-weight: 600; }
+.button--sm { padding: 4px 10px; font-size: 12px; }
+.button--block { width: 100%; justify-content: center; }
+
+.input {
+  font: inherit; font-size: 13px; width: 100%;
+  padding: 7px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface); color: var(--text-primary);
+  outline: none;
+}
+.form-row { margin-bottom: var(--space-3); }
+.form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: var(--radius-pill); white-space: nowrap;
+}
+.badge--admin { background: var(--accent-primary-soft); color: oklch(44% 0.16 50); border: 1px solid var(--accent-primary-border); }
+.badge--operator { background: oklch(96% 0.04 130); color: oklch(36% 0.12 130); border: 1px solid oklch(85% 0.08 130); }
+.badge--readonly { background: var(--status-neutral-soft); color: var(--status-neutral-fg); border: 1px solid var(--status-neutral-border); }
+.badge--pending { background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); }
+.badge--active { background: var(--status-success-soft); color: var(--status-success-fg); border: 1px solid var(--status-success-border); }
+.badge--info { background: var(--status-info-soft); color: var(--status-info-fg); border: 1px solid var(--status-info-border); }
+
+/* ============================================================
+   App-shell simulation
+   ============================================================ */
+.app-shell {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-md);
+  background: var(--bg-canvas);
+  width: 100%;
+}
+.shell-frame {
+  display: flex;
+  flex: 1;
+  min-height: 380px;
+}
+
+/* sidebar */
+.shell-sidebar {
+  width: 210px;
+  flex-shrink: 0;
+  background: var(--bg-shell);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) 0 var(--space-3);
+}
+.sidebar-brand {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+.sidebar-logo { width: 22px; height: 22px; background: var(--accent-primary); border-radius: 5px; flex-shrink: 0; }
+.sidebar-brand-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.sidebar-section { padding: var(--space-2) var(--space-3) 0; }
+.sidebar-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-muted); margin-bottom: var(--space-1); }
+.sidebar-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 5px var(--space-2); border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--text-secondary); margin-bottom: 1px; cursor: default;
+}
+.sidebar-item--active { background: var(--bg-surface); color: var(--text-primary); font-weight: 500; box-shadow: var(--shadow-sm); }
+.sidebar-dot { width: 14px; height: 14px; border-radius: 3px; background: var(--border-default); flex-shrink: 0; }
+
+/* topbar */
+.shell-topbar {
+  height: 44px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.topbar-crumb { font-size: 12px; color: var(--text-muted); }
+.topbar-crumb strong { color: var(--text-primary); }
+.topbar-spacer { flex: 1; }
+.topbar-user { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--text-secondary); }
+.user-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--status-info-soft); border: 1px solid var(--status-info-border); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--status-info-fg); flex-shrink: 0; }
+.user-avatar--admin { background: var(--accent-primary-soft); border-color: var(--accent-primary-border); color: oklch(44% 0.16 50); }
+
+/* demo banner */
+.demo-banner {
+  background: var(--status-info-soft);
+  border-bottom: 1px solid var(--status-info-border);
+  padding: 7px var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--status-info-fg);
+  flex-shrink: 0;
+}
+.demo-banner strong { font-weight: 600; }
+
+/* main content area */
+.shell-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-canvas);
+}
+.shell-content { flex: 1; padding: var(--space-4); overflow: auto; }
+.content-placeholder {
+  height: 100%;
+  min-height: 240px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-default);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 12px;
+}
+
+/* ============================================================
+   Auth card (login / register)
+   ============================================================ */
+.auth-card {
+  width: 360px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.auth-card-demo-bar {
+  background: var(--status-info-soft);
+  border-bottom: 1px solid var(--status-info-border);
+  padding: var(--space-3) var(--space-4);
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 2px;
+}
+.auth-card-demo-bar strong { font-size: 13px; font-weight: 700; color: var(--status-info-fg); }
+.auth-card-demo-bar span { font-size: 12px; color: var(--status-info-fg); opacity: 0.8; }
+
+.auth-callout {
+  margin: 0 var(--space-4) var(--space-4);
+  background: var(--status-info-soft);
+  border: 1px solid var(--status-info-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-3);
+  font-size: 12px;
+  color: var(--status-info-fg);
+  display: flex; gap: var(--space-2); align-items: flex-start;
+}
+.auth-callout-icon { font-size: 14px; flex-shrink: 0; line-height: 1.2; }
+
+.auth-body { padding: var(--space-4); }
+.auth-title { font-size: 18px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.01em; }
+.auth-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 var(--space-4); }
+
+.auth-divider {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.auth-divider span { font-size: 11px; color: var(--text-muted); }
+
+.auth-footer { text-align: center; font-size: 12px; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-4); border-top: 1px solid var(--border-subtle); }
+.auth-footer a { color: var(--text-link); text-decoration: none; font-weight: 500; }
+
+/* ============================================================
+   Users table (admin view)
+   ============================================================ */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex; align-items: center; gap: var(--space-3);
+  background: var(--bg-surface);
+}
+.card-title { font-size: 14px; font-weight: 600; margin: 0; }
+.card-spacer { flex: 1; }
+.tab-row {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 var(--space-4);
+  background: var(--bg-surface);
+}
+.tab {
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px; color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; cursor: default;
+}
+.tab--active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--accent-primary); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  padding: var(--space-2) var(--space-4);
+  text-align: left; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted); background: var(--bg-surface-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.data-table td {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.user-name-cell { display: flex; flex-direction: column; gap: 1px; }
+.user-name-cell strong { font-weight: 500; }
+.user-name-cell span { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, monospace; }
+
+/* ============================================================
+   Comparison grid
+   ============================================================ */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.compare-label {
+  font-family: ui-monospace, monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted);
+  margin-bottom: var(--space-2); padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface-muted); border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle); text-align: center;
+}
+
+/* ============================================================
+   Spec notes
+   ============================================================ */
+.spec-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.spec-table th {
+  padding: 7px var(--space-3); text-align: left; font-weight: 600;
+  color: var(--text-secondary); background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+}
+.spec-table td {
+  padding: 7px var(--space-3); border: 1px solid var(--border-subtle);
+  color: var(--text-primary); vertical-align: top;
+}
+.spec-table td code {
+  font-family: ui-monospace, monospace; font-size: 11.5px;
+  background: var(--bg-surface-muted); padding: 1px 5px;
+  border-radius: 3px; border: 1px solid var(--border-subtle);
+}
+.change-badge {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: var(--radius-pill); margin-left: 6px;
+  background: oklch(95% 0.06 300); color: oklch(38% 0.14 300);
+  border: 1px solid oklch(82% 0.10 300); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.removed-badge {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: var(--radius-pill); margin-left: 6px;
+  background: var(--status-error-soft); color: var(--status-error-fg);
+  border: 1px solid var(--status-error-border); text-transform: uppercase; letter-spacing: 0.06em;
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <h1 class="sheet__title">#1127 — Demo Mode · UI Mockups</h1>
+  <p class="sheet__sub">
+    Updated post-#1124 (read-only role hardening) and #1125 (registration + user management).
+    Covers: (A) in-app demo banner · (B) login page with demo entry · (C) registration page in demo mode · (D) admin users page.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCENARIO A — In-app demo banner
+  ══════════════════════════════════════════════════════════ -->
+  <div class="spec-eyebrow">Scenario A — Authenticated shell · demo banner</div>
+
+  <div class="stage stage--col">
+    <div class="app-shell">
+      <div class="shell-frame">
+        <!-- Sidebar -->
+        <nav class="shell-sidebar">
+          <div class="sidebar-brand">
+            <div class="sidebar-logo"></div>
+            <span class="sidebar-brand-name">OpenLinker</span>
+          </div>
+          <div class="sidebar-section">
+            <div class="sidebar-section-label">Operations</div>
+            <div class="sidebar-item sidebar-item--active"><div class="sidebar-dot"></div> Orders</div>
+            <div class="sidebar-item"><div class="sidebar-dot"></div> Products</div>
+            <div class="sidebar-item"><div class="sidebar-dot"></div> Inventory</div>
+            <div class="sidebar-item"><div class="sidebar-dot"></div> Listings</div>
+          </div>
+          <div class="sidebar-section">
+            <div class="sidebar-section-label">Setup</div>
+            <div class="sidebar-item"><div class="sidebar-dot"></div> Connections</div>
+            <div class="sidebar-item"><div class="sidebar-dot"></div> Sync Jobs</div>
+          </div>
+          <!-- No Admin section for read-only users — hidden by #1124 nav gating -->
+        </nav>
+
+        <!-- Main area -->
+        <div class="shell-main">
+          <!-- Topbar -->
+          <div class="shell-topbar">
+            <span class="topbar-crumb">Operations / <strong>Orders</strong></span>
+            <div class="topbar-spacer"></div>
+            <div class="topbar-user">
+              <div class="user-avatar">DU</div>
+              <span>demo_a4f8e2</span>
+              <span class="badge badge--readonly">read-only</span>
+            </div>
+          </div>
+
+          <!-- DEMO BANNER — full-width, below topbar -->
+          <div class="demo-banner">
+            <span>🔒</span>
+            <span><strong>Demo mode — read-only.</strong> You can explore all data; write actions are disabled.</span>
+          </div>
+
+          <!-- Content -->
+          <div class="shell-content">
+            <div class="content-placeholder">← page content unchanged (write controls hidden by read-only role)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      Banner: rendered in <code>AppShell</code> when <code>systemConfig.demoMode === true</code> (from <code>GET /system/config</code>).
+      User role is <code>read-only</code> — write actions hidden by <code>usePermission()</code> hook (shipped in #1124).
+      No dismiss — persistent for the session. Admin nav group absent for read-only users (role-gated sidebar items from #1124).
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCENARIO B — Login page in demo mode
+  ══════════════════════════════════════════════════════════ -->
+  <div class="spec-eyebrow">Scenario B — Login page · demo mode on vs off</div>
+
+  <div class="stage">
+    <div class="compare-grid" style="width:100%;">
+
+      <!-- Demo mode ON -->
+      <div>
+        <div class="compare-label">OL_DEMO_MODE=true</div>
+        <div class="auth-card">
+          <div class="auth-card-demo-bar">
+            <strong>🔗 OpenLinker Demo</strong>
+            <span>Explore a live sandbox with read-only access</span>
+          </div>
+          <div class="auth-body">
+            <p class="auth-title">Sign in</p>
+            <p class="auth-sub">Use your credentials to access OpenLinker</p>
+            <div class="form-row">
+              <label class="form-label">Username</label>
+              <input class="input" placeholder="username" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Password</label>
+              <input class="input" placeholder="••••••••" type="password" readonly />
+            </div>
+            <button class="button button--primary button--block">Sign in</button>
+            <div class="auth-divider"><span>new here?</span></div>
+            <button class="button button--info button--block">Create a free demo account →</button>
+          </div>
+          <div class="auth-footer">
+            Takes you to <a href="#">/register</a> — your account is auto-approved instantly.
+          </div>
+        </div>
+      </div>
+
+      <!-- Demo mode OFF -->
+      <div>
+        <div class="compare-label">OL_DEMO_MODE=false (production install)</div>
+        <div class="auth-card">
+          <div class="auth-body">
+            <p class="auth-title">Sign in</p>
+            <p class="auth-sub">Use your credentials to access OpenLinker</p>
+            <div class="form-row">
+              <label class="form-label">Username</label>
+              <input class="input" placeholder="username" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Password</label>
+              <input class="input" placeholder="••••••••" type="password" readonly />
+            </div>
+            <button class="button button--primary button--block">Sign in</button>
+          </div>
+        </div>
+        <p class="note">No changes. Demo bar and register link are completely absent.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="note">
+    "Create a free demo account →" navigates to <code>/register</code> — the standard registration page, which has a demo-mode callout (Scenario C).
+    <span class="removed-badge">removed</span> The old <code>POST /auth/demo-session</code> bypass endpoint is gone — the registration flow handles demo entry via auto-approve.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCENARIO C — Registration page in demo mode
+  ══════════════════════════════════════════════════════════ -->
+  <div class="spec-eyebrow">Scenario C — /register page · demo mode callout <span class="change-badge">new</span></div>
+
+  <div class="stage">
+    <div class="compare-grid" style="width:100%;">
+
+      <!-- Register: demo mode ON -->
+      <div>
+        <div class="compare-label">OL_DEMO_MODE=true — auto-approved on submit</div>
+        <div class="auth-card">
+          <div class="auth-card-demo-bar">
+            <strong>🔗 OpenLinker Demo</strong>
+            <span>Your account will be active immediately</span>
+          </div>
+          <div class="auth-body">
+            <p class="auth-title">Create an account</p>
+            <p class="auth-sub">Join the demo to explore OpenLinker</p>
+          </div>
+          <!-- Demo auto-approve callout -->
+          <div class="auth-callout">
+            <span class="auth-callout-icon">⚡</span>
+            <div>
+              <strong>Demo mode active</strong> — no approval needed.
+              Your account is set to <strong>read-only</strong> and activated instantly. You'll land directly in the app.
+            </div>
+          </div>
+          <div class="auth-body" style="padding-top:0;">
+            <div class="form-row">
+              <label class="form-label">Username</label>
+              <input class="input" placeholder="choose a username" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Email</label>
+              <input class="input" placeholder="you@example.com" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Password</label>
+              <input class="input" placeholder="••••••••" type="password" readonly />
+            </div>
+            <button class="button button--primary button--block">Start exploring →</button>
+          </div>
+          <div class="auth-footer">
+            Already have an account? <a href="#">Sign in</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Register: demo mode OFF -->
+      <div>
+        <div class="compare-label">OL_DEMO_MODE=false (OL_REGISTRATION_ENABLED=true)</div>
+        <div class="auth-card">
+          <div class="auth-body">
+            <p class="auth-title">Create an account</p>
+            <p class="auth-sub">Request access to your OpenLinker instance</p>
+            <div class="form-row">
+              <label class="form-label">Username</label>
+              <input class="input" placeholder="choose a username" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Email</label>
+              <input class="input" placeholder="you@example.com" readonly />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Password</label>
+              <input class="input" placeholder="••••••••" type="password" readonly />
+            </div>
+            <button class="button button--primary button--block">Request access</button>
+          </div>
+          <div class="auth-footer">
+            Already have an account? <a href="#">Sign in</a>
+          </div>
+        </div>
+        <p class="note">Normal install: pending approval. Admin sees the request in Users → Pending tab.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="note">
+    Demo mode: <code>RegistrationService.register()</code> checks <code>isDemoModeEnabled()</code> — if true, sets <code>status: 'active'</code> and <code>role: 'read-only'</code> immediately, skipping the pending→approve flow.
+    The FE shows the callout when <code>GET /system/config → demoMode: true</code>.
+    Submit button copy changes to "Start exploring →" to signal the instant-access experience.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCENARIO D — Admin users page (already built by #1125)
+  ══════════════════════════════════════════════════════════ -->
+  <div class="spec-eyebrow">Scenario D — Admin · Users page · demo users visible <span class="change-badge">no UI change needed</span></div>
+
+  <div class="stage stage--col">
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Users</h2>
+        <div class="card-spacer"></div>
+        <button class="button button--ghost button--sm">Invite user</button>
+      </div>
+      <div class="tab-row">
+        <div class="tab tab--active">All users</div>
+        <div class="tab">Pending <span class="badge badge--pending" style="margin-left:4px;">1</span></div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="user-name-cell"><strong>admin</strong><span>admin@example.com</span></div></td>
+              <td><span class="badge badge--admin">admin</span></td>
+              <td><span class="badge badge--active">active</span></td>
+              <td style="color:var(--text-muted); font-size:12px;">2025-01-12</td>
+              <td style="text-align:right;"><button class="button button--ghost button--sm">Manage</button></td>
+            </tr>
+            <tr>
+              <td><div class="user-name-cell"><strong>demo_a4f8e2</strong><span>demo_a4f8e2@demo.local</span></div></td>
+              <td><span class="badge badge--readonly">read-only</span></td>
+              <td><span class="badge badge--active">active</span></td>
+              <td style="color:var(--text-muted); font-size:12px;">2026-06-29</td>
+              <td style="text-align:right;"><button class="button button--ghost button--sm">Manage</button></td>
+            </tr>
+            <tr>
+              <td><div class="user-name-cell"><strong>demo_c91b33</strong><span>demo_c91b33@demo.local</span></div></td>
+              <td><span class="badge badge--readonly">read-only</span></td>
+              <td><span class="badge badge--active">active</span></td>
+              <td style="color:var(--text-muted); font-size:12px;">2026-06-29</td>
+              <td style="text-align:right;"><button class="button button--ghost button--sm">Manage</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="note">
+      No changes to the admin Users page — demo users appear as standard <code>read-only</code> active users.
+      Admin can manage (deactivate / change role) demo users just like any other user.
+      The Users page was shipped by #1125 and requires zero changes for demo mode.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Implementation notes
+  ══════════════════════════════════════════════════════════ -->
+  <div class="spec-eyebrow">Implementation notes — what changed vs the pre-#1124/#1125 plan</div>
+
+  <div class="stage stage--col">
+    <table class="spec-table">
+      <thead>
+        <tr>
+          <th>Decision</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>POST /auth/demo-session</code> <span class="removed-badge">removed</span></td>
+          <td>
+            Replaced by the standard <code>POST /auth/register</code> flow with auto-approve.
+            #1125 ships full registration infrastructure — a bypass endpoint duplicates logic and bypasses the new status/approval model.
+          </td>
+        </tr>
+        <tr>
+          <td>Role: <code>viewer</code> → <code>read-only</code></td>
+          <td>
+            Shape B from <code>docs/specs/product-spec-1123-rbac-depth.md</code> settled on <code>read-only</code> as the canonical role name.
+            <code>viewer</code> was pre-spec terminology; all references updated.
+          </td>
+        </tr>
+        <tr>
+          <td><code>RegistrationService.register()</code> checks <code>DemoModeService.isDemoModeEnabled()</code></td>
+          <td>
+            When true: sets <code>status: 'active'</code>, <code>role: 'read-only'</code> on the new user, and skips the pending queue entirely.
+            When false: normal <code>status: 'pending'</code> flow from #1125 — no change.
+            This is the single integration point: no new controller endpoint needed.
+          </td>
+        </tr>
+        <tr>
+          <td>Register page callout driven by <code>GET /system/config → demoMode</code></td>
+          <td>
+            Same server-side flag as the in-app banner. FE fetches once on startup with <code>staleTime: Infinity</code>.
+            Callout and button copy adapt to <code>demoMode</code> — zero dead UI in production installs.
+          </td>
+        </tr>
+        <tr>
+          <td>Demo banner condition: <code>systemConfig.demoMode === true</code></td>
+          <td>
+            Shown to any authenticated user when demo mode is on — not gated on role.
+            Admins exploring their own demo instance also see it (useful reminder).
+            The <code>read-only</code> role itself is what disables write affordances (via <code>usePermission()</code>), not the banner.
+          </td>
+        </tr>
+        <tr>
+          <td>Admin nav hidden for <code>read-only</code> users (existing)</td>
+          <td>
+            Shipped by #1124 — role-gated sidebar items. Demo users never see the Admin section.
+            No additional demo-specific nav changes needed.
+          </td>
+        </tr>
+        <tr>
+          <td>Login page demo bar + register link</td>
+          <td>
+            Replaces the old "Launch demo session" button that called <code>POST /auth/demo-session</code>.
+            New flow: info bar sets context → "Create a free demo account →" navigates to <code>/register</code>.
+            Simpler: reuses the registration page rather than a new endpoint.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

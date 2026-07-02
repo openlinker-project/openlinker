@@ -167,7 +167,7 @@ const SKIP_WC_INTEGRATION =
     // POST /listings/bulk-create — returns 202 ACCEPTED per the controller spec.
     // connectionId = Allegro destination; productIds = OL internal variant IDs.
     const submitRes = await http
-      .post('/listings/bulk-create')
+      .post('/v1/listings/bulk-create')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
         connectionId: allegroConnectionId,
@@ -196,7 +196,7 @@ const SKIP_WC_INTEGRATION =
     // Submit the S variant as the primary; the submit service expands it to
     // both S and M offers (multi-variant fan-out, #824). totalCount = 2.
     const submitRes = await http
-      .post('/listings/bulk-create')
+      .post('/v1/listings/bulk-create')
       .set('Authorization', `Bearer ${authToken}`)
       .send({
         connectionId: allegroConnectionId,

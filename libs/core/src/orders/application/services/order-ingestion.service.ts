@@ -264,6 +264,38 @@ export class OrderIngestionService implements IOrderIngestionService {
       sourceEventId ?? null
     );
 
+    // Early-fire cancellation hook (#1146): enqueue the stock-restore job
+    // immediately after the raw snapshot is persisted and BEFORE item resolution
+    // so the signal is never lost when MissingOrderItemMappingError is thrown at
+    // Step 4 (which would preempt the post-persistOrder hook below). The
+    // dedupeKey is identical to the Step-5 hook's, so a successful item
+    // resolution that also reaches the hook below produces a harmless no-op
+    // re-enqueue. The worker processes this job asynchronously — by the time it
+    // runs, persistOrder will have completed (if items resolved) and the snapshot
+    // will carry variantIds; if items never resolve, OfferStockRestoreService
+    // will no-op (no variantIds in the raw snapshot) and the job stays visible
+    // in the dead-letter queue for operator inspection.
+    if (incoming.status === 'cancelled' && priorStatus !== 'cancelled') {
+      try {
+        await this.jobQueue.enqueue({
+          type: 'marketplace.offer.stockRestore',
+          connectionId,
+          payload: {
+            schemaVersion: 1,
+            internalOrderId,
+          },
+          options: {
+            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+          },
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to enqueue stock-restore job (early-fire) for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; marketplace stock will NOT be auto-restored`,
+          (error as Error).stack,
+        );
+      }
+    }
+
     // Step 3: attempt item resolution (non-throwing)
     const resolvedItems: Order['items'] = [];
     const unresolvedRefs: Array<{ itemId: string; reason: string }> = [];

@@ -48,7 +48,7 @@ async function seedAdminAndLogin(harness: IntegrationTestHarness, username = 'ad
 
   const response = await harness
     .getHttp()
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username, password: 'test-password' })
     .expect(200);
 
@@ -94,7 +94,7 @@ describe('Auth Refresh Integration (#710)', () => {
 
       const response = await harness
         .getHttp()
-        .post('/auth/login')
+        .post('/v1/auth/login')
         .send({ username: 'admin', password: 'test-password' })
         .expect(200);
 
@@ -137,7 +137,7 @@ describe('Auth Refresh Integration (#710)', () => {
 
       const refreshResponse = await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(200);
@@ -160,7 +160,7 @@ describe('Auth Refresh Integration (#710)', () => {
 
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         // no X-CSRF-Token header
         .expect(403);
@@ -171,7 +171,7 @@ describe('Auth Refresh Integration (#710)', () => {
 
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', 'tampered-value')
         .expect(403);
@@ -183,7 +183,7 @@ describe('Auth Refresh Integration (#710)', () => {
       // Rotate once — this revokes `initial.refreshCookie` with reason `rotated`.
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(200);
@@ -191,7 +191,7 @@ describe('Auth Refresh Integration (#710)', () => {
       // Now replay the OLD cookie — should trip reuse-detection.
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(401);
@@ -216,7 +216,7 @@ describe('Auth Refresh Integration (#710)', () => {
       // Send only the CSRF cookie/header, no ol_refresh.
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', `${COOKIE_CSRF}=${initial.csrfValue}`)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(401);
@@ -229,7 +229,7 @@ describe('Auth Refresh Integration (#710)', () => {
 
       await harness
         .getHttp()
-        .post('/auth/logout')
+        .post('/v1/auth/logout')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(204);
@@ -238,7 +238,7 @@ describe('Auth Refresh Integration (#710)', () => {
       // (or returns 401 directly because it's revoked).
       await harness
         .getHttp()
-        .post('/auth/refresh')
+        .post('/v1/auth/refresh')
         .set('Cookie', initial.cookieHeader)
         .set('X-CSRF-Token', initial.csrfValue)
         .expect(401);
@@ -255,7 +255,7 @@ describe('Auth Refresh Integration (#710)', () => {
       const initial = await seedAdminAndLogin(harness);
       await harness
         .getHttp()
-        .post('/auth/logout')
+        .post('/v1/auth/logout')
         .set('Cookie', initial.cookieHeader)
         .expect(403);
     });

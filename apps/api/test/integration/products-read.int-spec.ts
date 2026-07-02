@@ -107,7 +107,7 @@ describe('Products Read API Integration — currency persistence', () => {
     const seeded = await seedProduct(dataSource, { currency: 'PLN' });
 
     const response = await http
-      .get('/products')
+      .get('/v1/products')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -126,7 +126,7 @@ describe('Products Read API Integration — currency persistence', () => {
     const seeded = await seedProduct(dataSource, { currency: null });
 
     const response = await http
-      .get('/products')
+      .get('/v1/products')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -146,7 +146,7 @@ describe('Products Read API Integration — currency persistence', () => {
     await seedVariant(dataSource, { productId: product.id, price: 19.99 });
 
     const response = await http
-      .get(`/products/${product.id}`)
+      .get(`/v1/products/${product.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -163,7 +163,7 @@ describe('Products Read API Integration — currency persistence', () => {
     await seedVariant(dataSource, { productId: product.id, price: null });
 
     const response = await http
-      .get(`/products/${product.id}`)
+      .get(`/v1/products/${product.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -192,7 +192,7 @@ describe('Products Read API Integration — currency persistence', () => {
     await repo.upsert(domainProduct);
 
     const response = await http
-      .get('/products')
+      .get('/v1/products')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 

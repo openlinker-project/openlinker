@@ -20,6 +20,7 @@ import {
   UnauthorizedException,
   NotFoundException,
   PayloadTooLargeException,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiHeader } from '@nestjs/swagger';
@@ -33,7 +34,10 @@ import { Logger } from '@openlinker/shared/logging';
 
 @Public()
 @ApiTags('webhooks')
-@Controller('webhooks')
+// Version-neutral (#1133): external platforms provision `/webhooks/...` URLs and
+// the raw-body middleware is keyed on the literal `/webhooks` path — this ingress
+// must stay reachable without the `/v1` prefix.
+@Controller({ path: 'webhooks', version: VERSION_NEUTRAL })
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
   private readonly MAX_BODY_SIZE = 256 * 1024; // 256KB
