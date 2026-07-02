@@ -2,12 +2,14 @@
  * Users Management Page
  *
  * Admin-only page for listing, approving, rejecting, and managing user accounts.
- * Two tabs: "All users" (active + deactivated) and "Pending" (approval queue).
+ * Two tabs: "All users" (every account, including pending — read-only there)
+ * and "Pending" (dedicated approval queue with Approve/Reject actions).
  *
  * @module pages/users
  */
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shared/ui/tabs';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -35,6 +37,16 @@ const STATUS_TONE: Record<UserStatus, StatusBadgeTone> = {
   deactivated: 'neutral',
 };
 
+const PAGE_SIZE = 25;
+
+// Guards against a malformed `?allPage=abc` / `?pendingPage=abc` producing
+// NaN, which would otherwise be sent straight through to the API as the
+// `page` filter.
+function readPageParam(raw: string | null): number {
+  const parsed = Number(raw ?? '0');
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 0;
+}
+
 interface UsersPageProps {
   defaultTab?: 'all' | 'pending';
 }
@@ -46,7 +58,45 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   const { session } = useSession();
   const currentUserId = session.user?.id ?? null;
 
-  const usersQuery = useUsersQuery({ status: undefined });
+  // Per-tab page state lives in the URL (docs/frontend-architecture.md § URL
+  // State) so each tab's position is bookmarkable and switching tabs never
+  // resets the other tab's page.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const allPage = readPageParam(searchParams.get('allPage'));
+  const pendingPage = readPageParam(searchParams.get('pendingPage'));
+
+  function setAllPage(next: number): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === 0) {
+        p.delete('allPage');
+      } else {
+        p.set('allPage', String(next));
+      }
+      return p;
+    });
+  }
+
+  function setPendingPage(next: number): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === 0) {
+        p.delete('pendingPage');
+      } else {
+        p.set('pendingPage', String(next));
+      }
+      return p;
+    });
+  }
+
+  // Two independent server-paginated queries (#1258). "All users" has no
+  // status filter, so its rows (and total) include pending registrations —
+  // filtering them out client-side would desync the page count from what the
+  // unfiltered query actually paginates over, stranding managed users on
+  // pages beyond a client-computed pageCount. "Pending" applies an exact
+  // server-side status filter and is unaffected.
+  const allUsersQuery = useUsersQuery({ page: allPage, pageSize: PAGE_SIZE });
+  const pendingUsersQuery = useUsersQuery({ status: 'pending', page: pendingPage, pageSize: PAGE_SIZE });
   const approveMutation = useApproveUserMutation();
   const rejectMutation = useRejectUserMutation();
   const updateRoleMutation = useUpdateRoleMutation();
@@ -54,9 +104,10 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
   const reactivateMutation = useReactivateUserMutation();
   const deleteMutation = useDeleteUserMutation();
 
-  const allUsers = usersQuery.data?.users ?? [];
-  const pendingUsers = allUsers.filter((u) => u.status === 'pending');
-  const managedUsers = allUsers.filter((u) => u.status !== 'pending');
+  const allUsers = allUsersQuery.data?.users ?? [];
+  const pendingUsers = pendingUsersQuery.data?.users ?? [];
+  const pendingTotal = pendingUsersQuery.data?.total ?? 0;
+  const allTotal = allUsersQuery.data?.total ?? 0;
 
   const getRoleForPending = (userId: string): UserRole => pendingRoles[userId] ?? 'viewer';
 
@@ -189,8 +240,12 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     },
   ], [pendingRoles, approveMutation.isPending, rejectMutation.isPending]);
 
-  // Columns for the All users tab: status badge, inline role select (auto-save), member since, actions
-  const managedColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
+  // Columns for the All users tab: status badge, inline role select (auto-save),
+  // member since, actions. Pending rows render role/actions read-only — role
+  // assignment and removal for an unapproved account go through the dedicated
+  // Approve/Reject flow on the Pending tab, not this auto-save control (the
+  // backend's PATCH /users/:id/role has no pending-status guard).
+  const allUsersColumns = useMemo<DataTableColumn<UserSummary>[]>(() => [
     {
       id: 'username',
       header: 'Username',
@@ -212,7 +267,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       id: 'role',
       header: 'Role',
       cell: (row) =>
-        row.id === currentUserId ? (
+        row.id === currentUserId || row.status === 'pending' ? (
           <span className="cell-meta">{row.role}</span>
         ) : (
           <Select
@@ -242,6 +297,9 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       header: 'Actions',
       cell: (row) => {
         if (row.id === currentUserId) return null;
+        if (row.status === 'pending') {
+          return <span className="text-muted">Review in Pending tab</span>;
+        }
         return (
           <div className="table-actions">
             {row.status === 'active' && (
@@ -277,42 +335,65 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     },
   ], [currentUserId, updateRoleMutation.isPending, deactivateMutation.isPending, reactivateMutation.isPending]);
 
+  function renderPagination(page: number, setPage: (next: number) => void, total: number): ReactElement | null {
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (pageCount <= 1) return null;
+    return (
+      <div className="pagination">
+        <span className="text-muted">
+          Page {page + 1} of {pageCount}
+        </span>
+        <div className="pagination__actions">
+          <Button disabled={page <= 0} onClick={() => setPage(page - 1)}>
+            Previous
+          </Button>
+          <Button disabled={page + 1 >= pageCount} onClick={() => setPage(page + 1)}>
+            Next
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   function renderAllContent(): ReactElement {
-    if (usersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;
-    if (usersQuery.error) {
+    if (allUsersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;
+    if (allUsersQuery.error) {
       return (
         <ErrorState
           title="Unable to load users"
-          message={usersQuery.error.message}
-          action={<Button onClick={() => void usersQuery.refetch()}>Retry</Button>}
+          message={allUsersQuery.error.message}
+          action={<Button onClick={() => void allUsersQuery.refetch()}>Retry</Button>}
         />
       );
     }
-    if (managedUsers.length === 0) {
-      return <EmptyState title="No users found" message="No active or deactivated users." />;
+    if (allTotal === 0) {
+      return <EmptyState title="No users found" message="No users have registered yet." />;
     }
     return (
-      <DataTable
-        caption="All users"
-        rows={managedUsers}
-        columns={managedColumns}
-        rowKey={(u) => u.id}
-      />
+      <>
+        <DataTable
+          caption="All users"
+          rows={allUsers}
+          columns={allUsersColumns}
+          rowKey={(u) => u.id}
+        />
+        {renderPagination(allPage, setAllPage, allTotal)}
+      </>
     );
   }
 
   function renderPendingContent(): ReactElement {
-    if (usersQuery.isLoading) return <DataTableSkeleton columns={5} rows={3} />;
-    if (usersQuery.error) {
+    if (pendingUsersQuery.isLoading) return <DataTableSkeleton columns={5} rows={3} />;
+    if (pendingUsersQuery.error) {
       return (
         <ErrorState
           title="Unable to load users"
-          message={usersQuery.error.message}
-          action={<Button onClick={() => void usersQuery.refetch()}>Retry</Button>}
+          message={pendingUsersQuery.error.message}
+          action={<Button onClick={() => void pendingUsersQuery.refetch()}>Retry</Button>}
         />
       );
     }
-    if (pendingUsers.length === 0) {
+    if (pendingTotal === 0) {
       return (
         <EmptyState
           title="No pending registrations"
@@ -321,12 +402,15 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       );
     }
     return (
-      <DataTable
-        caption="Pending registrations"
-        rows={pendingUsers}
-        columns={pendingColumns}
-        rowKey={(u) => u.id}
-      />
+      <>
+        <DataTable
+          caption="Pending registrations"
+          rows={pendingUsers}
+          columns={pendingColumns}
+          rowKey={(u) => u.id}
+        />
+        {renderPagination(pendingPage, setPendingPage, pendingTotal)}
+      </>
     );
   }
 
@@ -342,14 +426,14 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         <TabsList>
           <TabsTrigger value="all">
             All users
-            {managedUsers.length > 0 && (
-              <span className="tabs__count">{managedUsers.length}</span>
+            {allTotal > 0 && (
+              <span className="tabs__count">{allTotal}</span>
             )}
           </TabsTrigger>
           <TabsTrigger value="pending">
             Pending
-            {pendingUsers.length > 0 && (
-              <span className="tabs__count">{pendingUsers.length}</span>
+            {pendingTotal > 0 && (
+              <span className="tabs__count">{pendingTotal}</span>
             )}
           </TabsTrigger>
         </TabsList>
