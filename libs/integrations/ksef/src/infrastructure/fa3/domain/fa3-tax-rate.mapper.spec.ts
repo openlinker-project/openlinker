@@ -35,4 +35,11 @@ describe('resolveP12', () => {
   it('should throw UnmappedTaxRateException on an empty rate', () => {
     expect(() => resolveP12('')).toThrow(UnmappedTaxRateException);
   });
+
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'should throw UnmappedTaxRateException on the inherited-prototype key %s (#1291)',
+    (protoKey) => {
+      expect(() => resolveP12(protoKey)).toThrow(UnmappedTaxRateException);
+    },
+  );
 });
