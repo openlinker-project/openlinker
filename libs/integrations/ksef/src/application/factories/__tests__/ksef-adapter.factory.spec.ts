@@ -57,8 +57,7 @@ describe('KsefAdapterFactory', () => {
       connection(),
       idMapping,
       resolver({
-        'ref:ksef': { authType: 'ksef-token', secretRef: 'ref:secret' },
-        'ref:secret': { token: 'TKN', contextNip: '1234567890' },
+        'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
       }),
     );
     expect(adapters.invoicing).toBeDefined();
@@ -71,8 +70,7 @@ describe('KsefAdapterFactory', () => {
         connection({ config: { env: 'test' } }),
         idMapping,
         resolver({
-          'ref:ksef': { authType: 'ksef-token', secretRef: 'ref:secret' },
-          'ref:secret': { token: 'TKN', contextNip: '1234567890' },
+          'ref:ksef': { authType: 'ksef-token', secret: 'super-secret-token' },
         }),
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
@@ -105,7 +103,7 @@ describe('KsefAdapterFactory', () => {
       factory.createAdapters(
         connection(),
         idMapping,
-        resolver({ 'ref:ksef': { authType: 'qualified-seal', secretRef: 'ref:cert' } }),
+        resolver({ 'ref:ksef': { authType: 'qualified-seal', secret: 'ref:cert' } }),
       ),
     ).rejects.toBeInstanceOf(KsefConfigException);
   });

@@ -45,12 +45,6 @@ import type { IKsefAdapterFactory, KsefAdapters } from '../interfaces/ksef-adapt
 
 export type { KsefAdapters };
 
-/** Resolved ksef-token secret shape behind `secretRef` (host-decrypted). */
-interface KsefResolvedTokenSecret {
-  token: string;
-  contextNip: string;
-}
-
 export class KsefAdapterFactory implements IKsefAdapterFactory {
   constructor(private readonly cache?: CachePort) {}
 
@@ -61,7 +55,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
   ): Promise<KsefAdapters> {
     const env = this.resolveEnvironment(connection);
     const credentials = await this.resolveCredentials(connection, credentialsResolver);
-    const authMaterial = await this.resolveAuthMaterial(connection, credentials, credentialsResolver);
+    const authMaterial = this.resolveAuthMaterial(connection, credentials);
 
     const seller = this.resolveSeller(connection);
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
@@ -160,17 +154,21 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       throw new KsefConfigException('KSeF connection has no credentialsRef', connection.id);
     }
     const credentials = await credentialsResolver.get<KsefCredentials>(connection.credentialsRef);
-    if (!credentials?.authType || !credentials?.secretRef) {
-      throw new KsefConfigException('KSeF credentials missing authType or secretRef', connection.id);
+    if (!credentials?.authType || !credentials?.secret) {
+      throw new KsefConfigException('KSeF credentials missing authType or secret', connection.id);
     }
     return credentials;
   }
 
-  private async resolveAuthMaterial(
-    connection: Connection,
-    credentials: KsefCredentials,
-    credentialsResolver: CredentialsResolverPort,
-  ): Promise<KsefTokenAuthMaterial> {
+  /**
+   * Builds the token auth material from the single resolved credentials
+   * payload. `contextNip` is the KSeF session-context identifier the XML
+   * handshake requires — sourced from the connection's seller profile
+   * (`config.seller.nip`, already collected by the setup wizard) rather than a
+   * second credentials lookup: KSeF's context NIP is normally the seller's own
+   * NIP, and there is no separate secret carrying it.
+   */
+  private resolveAuthMaterial(connection: Connection, credentials: KsefCredentials): KsefTokenAuthMaterial {
     if (credentials.authType !== 'ksef-token') {
       // Qualified-seal needs real X.509/HSM material — deferred to C4.
       throw new KsefConfigException(
@@ -178,10 +176,19 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         connection.id,
       );
     }
-    const secret = await credentialsResolver.get<KsefResolvedTokenSecret>(credentials.secretRef);
-    if (!secret?.token || !secret?.contextNip) {
-      throw new KsefConfigException('KSeF token secret missing token or contextNip', connection.id);
+    const contextNip = this.resolveContextNip(connection);
+    return { authType: 'ksef-token', token: credentials.secret, contextNip };
+  }
+
+  private resolveContextNip(connection: Connection): string {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const nip = config?.seller?.nip;
+    if (typeof nip !== 'string' || nip.trim().length === 0) {
+      throw new KsefConfigException(
+        'KSeF connection has no seller NIP configured (required as the session context identifier)',
+        connection.id,
+      );
     }
-    return { authType: 'ksef-token', token: secret.token, contextNip: secret.contextNip };
+    return nip;
   }
 }
