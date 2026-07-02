@@ -89,7 +89,7 @@ async function loginAsViewer(harness: IntegrationTestHarness): Promise<string> {
     ]);
   const response = await harness
     .getHttp()
-    .post('/auth/login')
+    .post('/v1/auth/login')
     .send({ username: 'viewer', password: 'viewer-pass' })
     .expect(200);
   return (response.body as { access_token: string }).access_token;
@@ -142,7 +142,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
     const record = await seedInvoiceRecord(dataSource, { connectionId: connection.id });
 
     const res = await http
-      .get(`/invoices/${record.id}/upo`)
+      .get(`/v1/invoices/${record.id}/upo`)
       .set('Authorization', `Bearer ${token}`)
       .buffer(true)
       .parse((response, callback) => {
@@ -162,7 +162,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
     const token = await loginAsAdmin(http, harness.getDataSource());
 
     await http
-      .get('/invoices/11111111-1111-1111-1111-111111111111/upo')
+      .get('/v1/invoices/11111111-1111-1111-1111-111111111111/upo')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
@@ -183,7 +183,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
     });
 
     await http
-      .get(`/invoices/${record.id}/upo`)
+      .get(`/v1/invoices/${record.id}/upo`)
       .set('Authorization', `Bearer ${token}`)
       .expect(409);
   });
@@ -200,7 +200,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
     const viewerToken = await loginAsViewer(harness);
 
     await http
-      .get(`/invoices/${record.id}/upo`)
+      .get(`/v1/invoices/${record.id}/upo`)
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
   });

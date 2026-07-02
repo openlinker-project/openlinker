@@ -18,6 +18,7 @@
  * @module app/api
  * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
+import { withApiVersion } from '../../shared/config/api-version';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
   createAiProviderSettingsApi,
@@ -49,6 +50,7 @@ import {
   type WebhookDeliveriesApi,
 } from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { createUsersApi, type UsersApi } from '../../features/users/api/users.api';
+import { createSystemApi, type SystemApi } from '../../features/system/api/system.api';
 import { plugins } from '../../plugins';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
@@ -108,6 +110,7 @@ export interface CoreApiClient {
   requestBlob: ApiBlobRequest;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
+  system: SystemApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -115,7 +118,9 @@ export interface CoreApiClient {
 export type ApiClient = CoreApiClient & PluginApiNamespaces;
 
 function buildUrl(baseUrl: string, path: string): string {
-  return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).toString();
+  // Root-absolute paths intentionally resolve against the base ORIGIN, so the
+  // `/v1` version segment (#1133) must live in the path, not the base URL.
+  return new URL(withApiVersion(path), `${baseUrl.replace(/\/$/, '')}/`).toString();
 }
 
 async function readResponseBody(response: Response): Promise<unknown> {
@@ -256,6 +261,7 @@ export function createApiClient({
     requestBlob,
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
+    system: createSystemApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

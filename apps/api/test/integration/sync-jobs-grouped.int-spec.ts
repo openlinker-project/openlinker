@@ -36,7 +36,7 @@ describe('Sync Jobs Grouped API Integration', () => {
   describe('GET /sync/jobs/grouped', () => {
     it('should require authentication', async () => {
       const http = harness.getHttp();
-      await http.get('/sync/jobs/grouped?status=dead').expect(401);
+      await http.get('/v1/sync/jobs/grouped?status=dead').expect(401);
     });
 
     it('should return empty groups when no matching jobs exist', async () => {
@@ -45,7 +45,7 @@ describe('Sync Jobs Grouped API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       const response = await http
-        .get('/sync/jobs/grouped?status=dead')
+        .get('/v1/sync/jobs/grouped?status=dead')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -78,7 +78,7 @@ describe('Sync Jobs Grouped API Integration', () => {
       });
 
       const response = await http
-        .get('/sync/jobs/grouped?status=dead')
+        .get('/v1/sync/jobs/grouped?status=dead')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -124,7 +124,7 @@ describe('Sync Jobs Grouped API Integration', () => {
       });
 
       const response = await http
-        .get('/sync/jobs/grouped?status=dead')
+        .get('/v1/sync/jobs/grouped?status=dead')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -152,7 +152,7 @@ describe('Sync Jobs Grouped API Integration', () => {
       });
 
       const response = await http
-        .get(`/sync/jobs/grouped?status=dead&connectionId=${CONNECTION_A}`)
+        .get(`/v1/sync/jobs/grouped?status=dead&connectionId=${CONNECTION_A}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -178,7 +178,7 @@ describe('Sync Jobs Grouped API Integration', () => {
       });
 
       const response = await http
-        .get('/sync/jobs/grouped?status=dead')
+        .get('/v1/sync/jobs/grouped?status=dead')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 

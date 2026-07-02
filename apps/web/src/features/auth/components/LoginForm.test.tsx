@@ -86,4 +86,37 @@ describe('LoginForm', () => {
 
     expect(await container.findByText('Signing in...')).toBeInTheDocument();
   });
+
+  describe('demo mode', () => {
+    it('should show the demo bar when demoMode is true', () => {
+      const view = renderWithProviders(<LoginForm demoMode />);
+      const container = within(view.container);
+
+      expect(container.getByText(/OpenLinker Demo/i)).toBeInTheDocument();
+      expect(container.getByText(/live sandbox/i)).toBeInTheDocument();
+    });
+
+    it('should not show the demo bar when demoMode is false', () => {
+      const view = renderWithProviders(<LoginForm demoMode={false} />);
+      const container = within(view.container);
+
+      expect(container.queryByText(/OpenLinker Demo/i)).not.toBeInTheDocument();
+    });
+
+    it('should show the register link when demoMode is true', () => {
+      const view = renderWithProviders(<LoginForm demoMode />);
+      const container = within(view.container);
+
+      const link = container.getByRole('link', { name: /create a free demo account/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/register');
+    });
+
+    it('should not show the register link when demoMode is false', () => {
+      const view = renderWithProviders(<LoginForm demoMode={false} />);
+      const container = within(view.container);
+
+      expect(container.queryByRole('link', { name: /create a free demo account/i })).not.toBeInTheDocument();
+    });
+  });
 });

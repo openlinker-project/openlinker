@@ -43,7 +43,7 @@ describe('Connection Capabilities Integration', () => {
     const dataSource = harness.getDataSource();
     const authToken = token ?? (await loginAsAdmin(http, dataSource));
     const response = await http
-      .post('/connections')
+      .post('/v1/connections')
       .set('Authorization', `Bearer ${authToken}`)
       .send(body)
       .expect(201);
@@ -85,7 +85,7 @@ describe('Connection Capabilities Integration', () => {
       enabledCapabilities: ['ProductMaster', 'OfferManager'], // Marketplace not supported by prestashop.webservice.v1
     } as Record<string, unknown>);
 
-    await http.post('/connections').set('Authorization', `Bearer ${token}`).send(dto).expect(400);
+    await http.post('/v1/connections').set('Authorization', `Bearer ${token}`).send(dto).expect(400);
   });
 
   it('allows PATCH to narrow enabledCapabilities', async () => {
@@ -99,7 +99,7 @@ describe('Connection Capabilities Integration', () => {
     );
 
     const updated = await http
-      .patch(`/connections/${created.id}`)
+      .patch(`/v1/connections/${created.id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ enabledCapabilities: ['ProductMaster'] })
       .expect(200);
@@ -126,7 +126,7 @@ describe('Connection Capabilities Integration', () => {
     );
 
     await http
-      .patch(`/connections/${created.id}`)
+      .patch(`/v1/connections/${created.id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ adapterKey: 'prestashop.webservice.v2' })
       .expect(400);
@@ -143,7 +143,7 @@ describe('Connection Capabilities Integration', () => {
     );
 
     await http
-      .patch(`/connections/${created.id}`)
+      .patch(`/v1/connections/${created.id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ enabledCapabilities: ['OfferManager'] })
       .expect(400);

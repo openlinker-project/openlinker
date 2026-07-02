@@ -282,7 +282,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
       const streamLenBefore = await redis.xLen('jobs.sync').catch(() => 0);
 
       const response = await http
-        .post(`/listings/bulk-create/${batchId}/retry-failed`)
+        .post(`/v1/listings/bulk-create/${batchId}/retry-failed`)
         .set('Authorization', `Bearer ${token}`)
         .expect(202);
 
@@ -339,7 +339,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post(`/listings/bulk-create/${UNKNOWN_BATCH_ID}/retry-failed`)
+        .post(`/v1/listings/bulk-create/${UNKNOWN_BATCH_ID}/retry-failed`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -357,7 +357,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
       });
 
       await http
-        .post(`/listings/bulk-create/${batchId}/retry-failed`)
+        .post(`/v1/listings/bulk-create/${batchId}/retry-failed`)
         .set('Authorization', `Bearer ${token}`)
         .expect(409);
     });
@@ -368,7 +368,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .post('/listings/bulk-create/not-a-uuid/retry-failed')
+        .post('/v1/listings/bulk-create/not-a-uuid/retry-failed')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
     });
@@ -377,7 +377,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
       const http = harness.getHttp();
       const batchId = randomUUID();
 
-      await http.post(`/listings/bulk-create/${batchId}/retry-failed`).expect(401);
+      await http.post(`/v1/listings/bulk-create/${batchId}/retry-failed`).expect(401);
     });
   });
 
@@ -496,7 +496,7 @@ describe('Listings Bulk Offer-Creation Retry-Failed API Integration', () => {
 
       // POST retry-failed.
       const retryResponse = await http
-        .post(`/listings/bulk-create/${batchId}/retry-failed`)
+        .post(`/v1/listings/bulk-create/${batchId}/retry-failed`)
         .set('Authorization', `Bearer ${token}`)
         .expect(202);
 

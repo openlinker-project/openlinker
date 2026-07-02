@@ -60,6 +60,9 @@ describe('erliPlugin', () => {
       expect(erliPlugin.platform?.bulkOfferConfigSection?.isComplete).toBeInstanceOf(Function);
       expect(erliPlugin.platform?.offerValidation?.blockers.length).toBeGreaterThan(0);
     });
+    it('supports listing edit — Edit offer button enabled (#1215)', () => {
+      expect(erliPlugin.platform?.supportsListingEdit).toBe(true);
+    });
   });
 
   describe('registration', () => {
