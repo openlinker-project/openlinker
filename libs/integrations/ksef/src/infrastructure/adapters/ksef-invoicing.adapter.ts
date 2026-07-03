@@ -82,7 +82,7 @@ import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
 import type { IFa3XmlBuilder } from '../fa3/builders/fa3-xml-builder.port';
-import type { SellerProfile } from '../fa3/domain/fa3-xml.types';
+import type { Fa3PaymentInput, SellerProfile } from '../fa3/domain/fa3-xml.types';
 import {
   FA3_FORM_CODE,
   FA3_SCHEMA_VERSION,
@@ -105,6 +105,7 @@ import {
   type SendInvoiceResponse,
 } from './ksef-session.types';
 import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper';
+import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -121,6 +122,16 @@ export class KsefInvoicingAdapter
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
+  /**
+   * Resolved connection-level payment defaults (#1311) — `undefined` when the
+   * connection has none configured, in which case the builder omits
+   * `Platnosc` entirely.
+   */
+  private readonly payment: Fa3PaymentInput | undefined;
+
+  /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
+  private readonly now: () => Date;
+
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IKsefHttpClient,
@@ -132,9 +143,16 @@ export class KsefInvoicingAdapter
      * whose neutral `taxRate` arrives empty (see `Fa3MappingContext.defaultTaxRate`).
      */
     private readonly defaultTaxRate: string,
-    /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
-    private readonly now: () => Date = (): Date => new Date(),
-  ) {}
+    /**
+     * Trailing optional inputs (payment defaults #1311, injected clock) ride
+     * in an options bag so a future addition never shifts positional call
+     * sites (PR #1317 review).
+     */
+    options: KsefInvoicingAdapterOptions = {},
+  ) {
+    this.payment = options.payment;
+    this.now = options.now ?? ((): Date => new Date());
+  }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
@@ -167,6 +185,7 @@ export class KsefInvoicingAdapter
         // follow-up (#1118), not the C6 clearance-read (#1150).
         invoiceNumber: cmd.orderId,
         defaultTaxRate: this.defaultTaxRate,
+        payment: this.payment,
       }),
     );
 
