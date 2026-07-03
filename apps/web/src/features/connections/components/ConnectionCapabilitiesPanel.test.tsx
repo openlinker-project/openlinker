@@ -93,7 +93,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText('API update failed')).toBeInTheDocument();
   });
 
-  it('shows a notice when adapter is unknown (no supported capabilities)', () => {
+  it('shows a notice when there are no supported capabilities', () => {
     const connection: Connection = {
       ...sampleConnection,
       supportedCapabilities: [],
@@ -101,6 +101,33 @@ describe('ConnectionCapabilitiesPanel', () => {
     };
     renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
-    expect(screen.getByText(/adapter is not recognized/)).toBeInTheDocument();
+    expect(screen.getByText(/no capabilities available to toggle/)).toBeInTheDocument();
+  });
+
+  it('renders a checkbox for an Invoicing-only connection instead of the fallback notice', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['Invoicing'],
+      enabledCapabilities: ['Invoicing'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /Invoicing/ })).toBeChecked();
+    expect(screen.getByText(/1 of 1 enabled/)).toBeInTheDocument();
+    expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
+  });
+
+  it('renders togglable checkboxes for ProductPublisher and CategoryProvisioner (shop-listing caps)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductPublisher', 'CategoryProvisioner'],
+      enabledCapabilities: ['ProductPublisher'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /CategoryProvisioner/ })).not.toBeChecked();
+    expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
+    expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
 });

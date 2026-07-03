@@ -39,6 +39,6 @@ export class InfaktAdapterFactory implements IInfaktAdapterFactory {
       logger,
     );
 
-    return new InfaktInvoicingAdapter(connection.id, httpClient, logger);
+    return new InfaktInvoicingAdapter(connection.id, httpClient, logger, config);
   }
 }
