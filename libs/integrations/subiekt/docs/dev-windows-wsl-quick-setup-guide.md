@@ -186,9 +186,9 @@ set `Port=5005` and `Auth.Enabled=false`. Worked-example values on this machine:
   "Port": 5005,
   "Auth": { "Enabled": false },
   "Sfera": {
-    "BinariesDir": "C:\\Users\\42zer\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\Binaries",
-    "ConfigDir":   "C:\\Users\\42zer\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
-    "TempDir":     "C:\\Users\\42zer\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
+    "BinariesDir": "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\Binaries",
+    "ConfigDir":   "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
+    "TempDir":     "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
     "SqlServer":   "localhost\\INSERTNEXO",
     "SqlDatabase": "Nexo_Demo_1",
     "SqlUseWindowsAuth": true,
@@ -379,7 +379,7 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 | Windows → WSL services | `http://localhost:<port>` (WSL `localhostForwarding`) | - |
 
 **Values that vary per machine:** the WSL gateway IP (`172.26.96.1` here), the Sfera
-`BinariesDir`/`ConfigDir`/`TempDir` deployment folder, the Windows username (`42zer` here),
+`BinariesDir`/`ConfigDir`/`TempDir` deployment folder, the Windows username (`{{USER_NAME}}` here),
 and the Nexo database name (`Nexo_Demo_1` here). The port numbers above are fixed by the repo
 config.
 
