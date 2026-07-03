@@ -18,14 +18,27 @@ Two cookies are set at login and rotated at every refresh:
 | `ol_refresh` | yes      | The refresh-token value itself.                           |
 | `ol_csrf`    | no       | Mirror for the double-submit CSRF check.                  |
 
-Both cookies share the same `Path=/auth` so a single `Set-Cookie`
-round-trip covers `/auth/refresh` and `/auth/logout`. They are not
-sent to non-auth routes, but they ARE sent to `/auth/me`,
-`/auth/forgot-password`, and `/auth/reset-password` (broader path
-in exchange for one cookie pair instead of two). The cookies remain
-`HttpOnly` (`ol_refresh`) and `SameSite=Strict` (production), so the
-broader path widens the exfiltration surface only marginally — see
-#710 review for the documented trade-off.
+The two cookies carry different `Path` scopes:
+
+- `ol_refresh` is scoped to the **versioned auth subtree** —
+  `Path=/v1/auth`, derived in code from `API_VERSION_LABEL` so it
+  always matches the actual mount point of `AuthController` under
+  URI versioning (#1133/#1327). It is not sent to non-auth routes,
+  but it IS sent to `/v1/auth/me`, `/v1/auth/forgot-password`, and
+  `/v1/auth/reset-password` (broader path in exchange for a single
+  cookie; it stays `HttpOnly` and `SameSite=Strict` in production,
+  so the wider path widens the exfiltration surface only marginally
+  — see #710 review for the documented trade-off).
+- `ol_csrf` is scoped to `Path=/` (#748): the SPA must read it via
+  `document.cookie` from any route, and `document.cookie` only
+  exposes cookies whose Path prefixes the current document URL.
+
+Historical note: both cookies originally shared `Path=/auth`. That
+scope broke `ol_csrf` reads outside `/auth/*` (#748) and, after the
+`/v1` API-versioning migration, stopped `ol_refresh` from ever being
+sent to `/v1/auth/refresh` — logging users out on every page reload
+(#1327). Login/refresh/logout proactively clear stale copies at the
+legacy `/auth` path, so returning browsers self-heal.
 
 ## SameSite policy
 
@@ -47,7 +60,7 @@ to production.
 `SameSite=Strict` is incompatible with deployments where the FE and
 API live on different origins (e.g. `app.example.com` →
 `api.example.com`): the browser drops the cookie on every
-cross-origin fetch, so `/auth/refresh` never receives `ol_refresh`
+cross-origin fetch, so `/v1/auth/refresh` never receives `ol_refresh`
 and silently fails. If your prod deploy is cross-origin, set
 `OL_COOKIE_SAMESITE=lax` explicitly. Defense-in-depth in that
 configuration leans on the CSRF double-submit guard and the
@@ -97,7 +110,7 @@ What the flow does **not** protect:
   control. Password-reset rate-limiting + MFA are the relevant
   defenses.
 - **CSRF on non-cookie endpoints**. The `CsrfGuard` runs only on
-  `/auth/refresh` and `/auth/logout`. State-mutating endpoints that
+  `/v1/auth/refresh` and `/v1/auth/logout`. State-mutating endpoints that
   rely on `Authorization: Bearer …` aren't CSRF-exposed because the
   bearer header is not auto-attached by the browser.
 - **Server compromise**. If the API host is rooted, every active
