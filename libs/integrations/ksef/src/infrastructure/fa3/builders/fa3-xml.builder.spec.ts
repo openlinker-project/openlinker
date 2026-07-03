@@ -424,4 +424,90 @@ describe('buildFa3Xml', () => {
       expect(xml).not.toMatch(/<P_8B>[^<]*e[+-]/i);
     });
   });
+
+  describe('Platnosc (#1311)', () => {
+    it('should NOT emit Platnosc when input.payment is undefined', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).not.toMatch(/<Platnosc>/);
+    });
+
+    it('should emit Platnosc as a sibling of FaWiersz, after it', () => {
+      const input = b2bInput();
+      input.payment = { formaPlatnosci: '6' };
+      const xml = buildFa3Xml(input);
+      expect(xml).toMatch(/<\/FaWiersz>[^]*<Platnosc>/);
+    });
+
+    it('should emit only FormaPlatnosci when that is the only configured field (Gotówka, no bank account)', () => {
+      const input = b2bInput();
+      input.payment = { formaPlatnosci: '1' };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<Platnosc><FormaPlatnosci>1</FormaPlatnosci></Platnosc>');
+    });
+
+    it('should emit the full Platnosc block in XSD-mandated child order: TerminPlatnosci, FormaPlatnosci, RachunekBankowy, Skonto', () => {
+      const input = b2bInput();
+      input.payment = {
+        formaPlatnosci: '6',
+        bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+        paymentTermDays: 14,
+        skonto: { conditions: '2% if paid within 7 days', amount: '2%' },
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toMatch(
+        /<Platnosc><TerminPlatnosci>[^]*<\/TerminPlatnosci><FormaPlatnosci>6<\/FormaPlatnosci><RachunekBankowy>[^]*<\/RachunekBankowy><Skonto>[^]*<\/Skonto><\/Platnosc>/,
+      );
+    });
+
+    it('should emit TerminPlatnosci/TerminOpis with the hardcoded "dni" unit and issue-date starting event', () => {
+      const input = b2bInput();
+      input.payment = { paymentTermDays: 30 };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain(
+        '<TerminPlatnosci><TerminOpis><Ilosc>30</Ilosc><Jednostka>dni</Jednostka><ZdarzeniePoczatkowe>data wystawienia faktury</ZdarzeniePoczatkowe></TerminOpis></TerminPlatnosci>',
+      );
+    });
+
+    it('should emit RachunekBankowy with only NrRB when bankName/swift are absent', () => {
+      const input = b2bInput();
+      input.payment = { bankAccount: { nrRb: '61109010140000000099999999' } };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<RachunekBankowy><NrRB>61109010140000000099999999</NrRB></RachunekBankowy>');
+    });
+
+    it('should emit RachunekBankowy with NrRB, SWIFT, and NazwaBanku in XSD-mandated order when all are configured', () => {
+      const input = b2bInput();
+      input.payment = {
+        bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain(
+        '<RachunekBankowy><NrRB>61109010140000000099999999</NrRB><SWIFT>WBKPPLPP</SWIFT><NazwaBanku>Santander</NazwaBanku></RachunekBankowy>',
+      );
+    });
+
+    it('should emit Skonto with WarunkiSkonta and WysokoscSkonta', () => {
+      const input = b2bInput();
+      input.payment = { skonto: { conditions: '2% if paid within 7 days', amount: '2%' } };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain(
+        '<Skonto><WarunkiSkonta>2% if paid within 7 days</WarunkiSkonta><WysokoscSkonta>2%</WysokoscSkonta></Skonto>',
+      );
+    });
+
+    it('should pass the structural FA(3) validator with a fully-configured Platnosc', () => {
+      const input = b2bInput();
+      input.payment = {
+        formaPlatnosci: '6',
+        bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+        paymentTermDays: 14,
+        skonto: { conditions: '2% if paid within 7 days', amount: '2%' },
+      };
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+
+    it('should pass the structural FA(3) validator without Platnosc (existing-connection case)', () => {
+      expect(() => validateFa3Xml(buildFa3Xml(b2bInput()))).not.toThrow();
+    });
+  });
 });

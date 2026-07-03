@@ -53,16 +53,18 @@ describe('KsefSessionCryptoService', () => {
     expect(svc.decryptDocument(encrypted, ctx)).toBe(plaintext);
   });
 
-  it('should use a fresh IV per document (no CBC IV reuse under the session key)', async () => {
+  it('should encrypt all documents with the session IV (KSeF declares one IV per session)', async () => {
     const svc = service();
     const ctx = await svc.initializeSession();
     const a = svc.encryptDocument('<Faktura>A</Faktura>', ctx);
     const b = svc.encryptDocument('<Faktura>A</Faktura>', ctx);
 
-    // Distinct IVs → identical plaintext encrypts to distinct ciphertext.
-    expect(Array.from(a.iv)).not.toEqual(Array.from(b.iv));
-    expect(Array.from(a.ciphertext)).not.toEqual(Array.from(b.ciphertext));
-    // Each document still decrypts with its own carried IV.
+    // KSeF has no per-document IV field — all documents use the session IV.
+    expect(Array.from(a.iv)).toEqual(Array.from(ctx.symmetricKey.iv));
+    expect(Array.from(b.iv)).toEqual(Array.from(ctx.symmetricKey.iv));
+    // Same plaintext + same IV → same ciphertext (deterministic under session IV).
+    expect(Array.from(a.ciphertext)).toEqual(Array.from(b.ciphertext));
+    // Round-trip still works.
     expect(svc.decryptDocument(a, ctx)).toBe('<Faktura>A</Faktura>');
     expect(svc.decryptDocument(b, ctx)).toBe('<Faktura>A</Faktura>');
   });

@@ -262,15 +262,9 @@ export async function startPrestashopContainer(
         // Network teardown is best-effort — if Docker has already pruned it,
         // nothing else this test owns is affected.
       });
-      // Remove the bind-mount tmpdir last — PS containers running as root
-      // sometimes leave files owned by the container's user; force-remove
-      // ignores the resulting EPERM if any. Best-effort; a leaked /tmp dir
-      // doesn't affect correctness.
-      try {
-        rmSync(psDataDir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
+      // Remove the bind-mount tmpdir last — see removePsDataDir for why this
+      // must go through a root container rather than a plain rmSync (#1321).
+      removePsDataDir(psDataDir);
     };
 
     return {
@@ -321,12 +315,48 @@ export async function startPrestashopContainer(
     await network.stop().catch(() => {
       /* best-effort */
     });
-    try {
-      rmSync(psDataDir, { recursive: true, force: true });
-    } catch {
-      /* best-effort */
-    }
+    removePsDataDir(psDataDir);
     throw err;
+  }
+}
+
+/**
+ * Remove the PS bind-mount data dir, including root-owned content (#1321).
+ *
+ * PS runs as root inside its container, so the ~1GB source tree it copies
+ * into the bind-mount is root-owned — an unprivileged rmSync gets EPERM and
+ * silently leaks the whole dir. Worse, on a runner-in-docker CI host the
+ * bind-mount source path is resolved by the HOST daemon, so the data lives
+ * on the host's /tmp where this process can't even see it, and those leaks
+ * accumulate until the host root fs is full ("no space left on device" at
+ * containerd task creation). Deleting through a root container mounted on
+ * the same path frees the bytes in both topologies; rmSync then removes
+ * this process's local dir. The empty host-side dir left on
+ * runner-in-docker setups is reaped by the CI sweep step.
+ */
+function removePsDataDir(psDataDir: string): void {
+  try {
+    execFileSync(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '-v',
+        `${psDataDir}:/ps-data`,
+        'alpine',
+        'sh',
+        '-c',
+        'find /ps-data -mindepth 1 -delete',
+      ],
+      { stdio: 'ignore', timeout: 60_000 }
+    );
+  } catch {
+    /* best-effort — fall through to rmSync for whatever is locally visible */
+  }
+  try {
+    rmSync(psDataDir, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
   }
 }
 

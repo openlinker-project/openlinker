@@ -15,6 +15,8 @@ export type {
   PlatformContribution,
   Platform,
   PlatformSetupCard,
+  ConnectionConfigContribution,
+  PluginEditConnectionFields,
   StructuredConfigSectionProps,
   ExtraConfigSectionProps,
   NavContribution,
@@ -34,6 +36,7 @@ export type {
   InvoiceDetailSectionProps,
   InvoiceCorrectionFlowProps,
 } from './plugin.types';
+export { readConfigString, readOptionalConfigString } from './config-readers';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';
 export { usePlatforms } from './use-platforms';
 export { usePlatform } from './use-platform';

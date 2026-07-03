@@ -52,3 +52,27 @@ export type Fa3P12Value = (typeof Fa3P12Values)[number];
  */
 export const Fa3KodWalutyValues = ['PLN', 'EUR', 'USD', 'GBP', 'CZK'] as const;
 export type Fa3KodWaluty = (typeof Fa3KodWalutyValues)[number];
+
+/**
+ * FA(3) `TFormaPlatnosci` payment-form codes (XSD line 1324, `xsd:integer`
+ * restriction — the wire value is a numeric-string literal, not a label):
+ *
+ * | Value | Meaning |
+ * |---|---|
+ * | `1` | Gotówka (cash) |
+ * | `2` | Karta (card) |
+ * | `3` | Bon (voucher) |
+ * | `4` | Czek (cheque) |
+ * | `5` | Kredyt (credit) |
+ * | `6` | Przelew (bank transfer) |
+ * | `7` | Mobilna (mobile payment) |
+ *
+ * Declared three times by design (FA3 schema layer here, connection-config
+ * layer `KsefFormaPlatnosciValues` in `ksef-connection.types.ts`, FE
+ * `KSEF_FORMA_PLATNOSCI_VALUES` in `ksef-setup.schema.ts`) — a future 8th
+ * code must be added in all three places. Drift is self-enforcing: the two
+ * in-package lists via `ksef-forma-platnosci-drift.spec.ts`, the FE list via
+ * the repo-level `scripts/check-ksef-forma-platnosci-drift.mjs` invariant.
+ */
+export const Fa3FormaPlatnosciValues = ['1', '2', '3', '4', '5', '6', '7'] as const;
+export type Fa3FormaPlatnosci = (typeof Fa3FormaPlatnosciValues)[number];

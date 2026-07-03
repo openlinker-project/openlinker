@@ -74,3 +74,20 @@ describe('mapToFa3BuilderInput — tax-rate fallback', () => {
     expect(result.correction?.correctedLines[0].p12).toBe('8');
   });
 });
+
+describe('mapToFa3BuilderInput — payment (#1311)', () => {
+  it('should NOT set payment on the builder input when the context has none', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT);
+    expect(result.payment).toBeUndefined();
+    expect('payment' in result).toBe(false);
+  });
+
+  it('should pass the context payment through to the builder input unchanged', () => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: { formaPlatnosci: '6', paymentTermDays: 14 },
+    };
+    const result = mapToFa3BuilderInput(baseCommand('23'), context);
+    expect(result.payment).toEqual({ formaPlatnosci: '6', paymentTermDays: 14 });
+  });
+});
