@@ -17,12 +17,21 @@ const base: InvoicingPort = {
 };
 
 describe('isBankAccountDefaultSetter', () => {
-  it('returns true when the adapter implements setDefaultBankAccount', () => {
+  it('returns true when the adapter implements setDefaultBankAccount and the inherited listBankAccounts', () => {
     const setter: InvoicingPort & BankAccountDefaultSetter = {
       ...base,
+      listBankAccounts: jest.fn(),
       setDefaultBankAccount: jest.fn(),
     };
     expect(isBankAccountDefaultSetter(setter)).toBe(true);
+  });
+
+  it('returns false when the adapter exposes setDefaultBankAccount without the inherited listBankAccounts', () => {
+    const setterOnly = {
+      ...base,
+      setDefaultBankAccount: jest.fn(),
+    };
+    expect(isBankAccountDefaultSetter(setterOnly)).toBe(false);
   });
 
   it('returns false on a base InvoicingPort without default-setting support', () => {

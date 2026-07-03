@@ -213,7 +213,14 @@ export class InfaktInvoicingAdapter
     this.bankAccount = config.bankAccount;
   }
 
-  /** List the seller's payable bank accounts known to inFakt (#1303 follow-up). */
+  /**
+   * List the seller's payable bank accounts known to inFakt (#1303 follow-up).
+   *
+   * Reads only the FIRST page of `bank_accounts.json` (inFakt's default page
+   * size, 10) — accepted v1 scope: sellers realistically hold a handful of
+   * accounts, and the picker degrades gracefully (the saved snapshot keeps
+   * being stamped) if one ever falls off the page.
+   */
   async listBankAccounts(): Promise<InvoicingBankAccount[]> {
     const response = await this.http.get<InfaktListResponse<InfaktBankAccount>>(
       'bank_accounts.json',

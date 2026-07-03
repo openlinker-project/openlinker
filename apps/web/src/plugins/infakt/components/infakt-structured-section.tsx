@@ -147,7 +147,16 @@ export function InfaktStructuredSection({
               Couldn't check inFakt for bank accounts — invoices will use whatever was last saved.
             </p>
           ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
-            <FormField label="Bank account for Transfer invoices" name="infaktBankAccount">
+            <FormField
+              label="Bank account for Transfer invoices"
+              name="infaktBankAccount"
+              description={
+                bankAccount && !bankAccountsQuery.data.some((a) => a.id === bankAccount.id)
+                  ? `The saved account (${bankAccount.accountNumber}) no longer exists in inFakt — ` +
+                    'invoices keep stamping the saved snapshot until you pick a current account.'
+                  : undefined
+              }
+            >
               <Select
                 value={bankAccount ? bankAccount.id : ''}
                 onChange={(event) => onBankAccountChange(event.target.value)}

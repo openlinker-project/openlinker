@@ -152,25 +152,27 @@ export class InvoicingController {
   @ApiResponse({ status: 200, type: [BankAccountResponseDto] })
   @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountsReader' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async getBankAccounts(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
   ): Promise<BankAccountResponseDto[]> {
-    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
-      connectionId,
-      'Invoicing',
-    );
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
     if (!isBankAccountsReader(adapter)) {
       throw new NotImplementedException(
         `Adapter for connection ${connectionId} does not implement BankAccountsReader`,
       );
     }
-    const accounts = await adapter.listBankAccounts();
-    return accounts.map((account) => ({
-      id: account.id,
-      accountNumber: account.accountNumber,
-      bankName: account.bankName,
-      isDefault: account.isDefault,
-    }));
+    try {
+      const accounts = await adapter.listBankAccounts();
+      return accounts.map((account) => ({
+        id: account.id,
+        accountNumber: account.accountNumber,
+        bankName: account.bankName,
+        isDefault: account.isDefault,
+      }));
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'listBankAccounts');
+    }
   }
 
   @Post('connections/:connectionId/bank-accounts/:accountId/default')
@@ -186,20 +188,55 @@ export class InvoicingController {
   @ApiResponse({ status: 204, description: 'Default account updated' })
   @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountDefaultSetter' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async setDefaultBankAccount(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
     @Param('accountId') accountId: string,
   ): Promise<void> {
-    const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
-      connectionId,
-      'Invoicing',
-    );
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
     if (!isBankAccountDefaultSetter(adapter)) {
       throw new NotImplementedException(
         `Adapter for connection ${connectionId} does not implement BankAccountDefaultSetter`,
       );
     }
-    await adapter.setDefaultBankAccount(accountId);
+    try {
+      await adapter.setDefaultBankAccount(accountId);
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'setDefaultBankAccount');
+    }
+  }
+
+  /**
+   * Resolve the connection's Invoicing adapter for the bank-account proxy
+   * endpoints. `AdapterNotFoundException` → 502 (provider unavailable),
+   * mirroring the issuance path's mapping, instead of surfacing as a generic
+   * 500; connection / capability-configuration errors propagate uncaught for
+   * the global filter to classify (404 etc.).
+   */
+  private async resolveInvoicingAdapter(connectionId: string): Promise<InvoicingPort> {
+    try {
+      return await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+        connectionId,
+        'Invoicing',
+      );
+    } catch (error) {
+      if (error instanceof AdapterNotFoundException) {
+        throw new BadGatewayException('Invoicing provider is unavailable');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The bank-account endpoints are pure provider proxies, so a live provider
+   * call failing is upstream trouble, not a server bug — map it to 502 with a
+   * generic message. Provider error text is logged, never returned (same PII
+   * posture as `toHttpException`).
+   */
+  private toProviderBadGateway(error: unknown, operation: string): Error {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Invoicing provider ${operation} failed: ${message}`);
+    return new BadGatewayException('Invoicing provider request failed');
   }
 
   @Post('invoices')

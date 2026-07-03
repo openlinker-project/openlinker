@@ -265,6 +265,41 @@ describe('InfaktStructuredSection', () => {
       expect(select).toBeInTheDocument();
     });
 
+    it('warns when the saved account no longer exists in the live inFakt list', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
+      ]);
+      const apiClient = createMockApiClient({ connections: { getBankAccounts } });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: {
+            baseUrl: '',
+            infaktPaymentMethod: 'transfer',
+            infaktBankAccount: {
+              id: '99',
+              accountNumber: '00 0000 0000 0000 0000 0000 0000',
+              bankName: 'Deleted Bank',
+            },
+          },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+
+      expect(
+        await screen.findByText(/no longer exists in inFakt/),
+      ).toBeInTheDocument();
+    });
+
     it('shows a Cash-only message and no select when no bank accounts are found', async () => {
       const getBankAccounts = vi.fn().mockResolvedValue([]);
       renderWithTransferSelected(getBankAccounts);

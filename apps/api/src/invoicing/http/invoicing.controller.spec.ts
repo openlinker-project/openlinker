@@ -1162,12 +1162,35 @@ describe('InvoicingController', () => {
         NotImplementedException,
       );
     });
+
+    it('should 502 when the adapter cannot be constructed (AdapterNotFoundException)', async () => {
+      integrations.getCapabilityAdapter.mockRejectedValue(new AdapterNotFoundException('infakt'));
+
+      await expect(controller.getBankAccounts('conn-infakt-1')).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+    });
+
+    it('should 502 with a generic message when the live provider call fails', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn().mockRejectedValue(new Error('inFakt 500: seller NIP 123')),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const rejection = controller.getBankAccounts('conn-infakt-1');
+      await expect(rejection).rejects.toBeInstanceOf(BadGatewayException);
+      // Provider error text must never be echoed back (PII posture).
+      await expect(rejection).rejects.not.toThrow(/NIP 123/);
+    });
   });
 
   describe('POST /connections/:connectionId/bank-accounts/:accountId/default (#1303 follow-up)', () => {
     it('should call setDefaultBankAccount when the adapter implements BankAccountDefaultSetter', async () => {
       const setDefaultBankAccount = jest.fn().mockResolvedValue(undefined);
-      const adapter = { setDefaultBankAccount } as unknown as InvoicingPort;
+      const adapter = {
+        listBankAccounts: jest.fn(),
+        setDefaultBankAccount,
+      } as unknown as InvoicingPort;
       integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
       await controller.setDefaultBankAccount('conn-infakt-1', '1');
@@ -1182,6 +1205,27 @@ describe('InvoicingController', () => {
 
       await expect(controller.setDefaultBankAccount('conn-ksef-1', '1')).rejects.toBeInstanceOf(
         NotImplementedException,
+      );
+    });
+
+    it('should 501 when the adapter exposes the setter without the inherited lister (guard requires both)', async () => {
+      const adapter = { setDefaultBankAccount: jest.fn() } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-partial-1', '1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+
+    it('should 502 when the live provider call fails', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn(),
+        setDefaultBankAccount: jest.fn().mockRejectedValue(new Error('inFakt 503')),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-infakt-1', '1')).rejects.toBeInstanceOf(
+        BadGatewayException,
       );
     });
   });

@@ -316,12 +316,30 @@ describe('InfaktSetupForm', () => {
         await screen.findByText(/No bank account is configured on this inFakt account/),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
+      // The form control must agree with the persisted fallback — not keep
+      // showing "Transfer" while the server issues everything as cash.
+      expect(screen.getByLabelText('Default payment method')).toHaveValue('cash');
       await waitFor(() => {
         expect(update).toHaveBeenCalledWith(
           'conn-1',
           expect.objectContaining({ config: expect.objectContaining({ defaultPaymentMethod: 'cash' }) }),
         );
       });
+    });
+
+    it('locks the payment-method select once the connection is created', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
+      ]);
+      await createConnection(getBankAccounts);
+
+      // Post-create picks would never be persisted (the create payload is
+      // already sent) — the select locks and points at the edit screen instead
+      // of silently drifting from the server config.
+      expect(screen.getByLabelText('Default payment method')).toBeDisabled();
+      expect(
+        screen.getByText(/change the payment method from the connection's edit screen/i),
+      ).toBeInTheDocument();
     });
 
     it('hides the picker entirely and does not fetch accounts when cash is selected', async () => {

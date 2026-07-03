@@ -52,6 +52,10 @@ export function InfaktSetupForm(): ReactElement {
   const [createdConnection, setCreatedConnection] = useState<Connection | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
+  // inFakt reported zero bank accounts, so the auto-apply effect forced the
+  // payment method back to Cash — kept as state so the explanation stays
+  // visible after the Transfer-gated picker section unmounts.
+  const [forcedCashNoAccounts, setForcedCashNoAccounts] = useState(false);
   // Guards the auto-apply-default effect so it fires once per created
   // connection, not on every re-render once the bank-accounts query resolves.
   const bankAccountDefaultApplied = useRef(false);
@@ -150,6 +154,11 @@ export function InfaktSetupForm(): ReactElement {
         { onError: (error) => showBankAccountSaveError(error) },
       );
     } else if (currentConfig.defaultPaymentMethod === 'transfer') {
+      // Keep the (now read-only) form control in agreement with what is
+      // persisted — without the setValue the select would keep showing
+      // "Transfer" while the server issues everything as cash.
+      setForcedCashNoAccounts(true);
+      form.setValue('defaultPaymentMethod', 'cash');
       updateConnection.mutate(
         {
           connectionId: createdConnection.id,
@@ -164,6 +173,7 @@ export function InfaktSetupForm(): ReactElement {
     bankAccountsQuery.data,
     updateConnection,
     showBankAccountSaveError,
+    form,
   ]);
 
   const onBankAccountChange = (accountId: string): void => {
@@ -276,14 +286,18 @@ export function InfaktSetupForm(): ReactElement {
         name="defaultPaymentMethod"
         error={form.formState.errors.defaultPaymentMethod?.message}
         description={
-          '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
-          'inFakt account. Choosing a specific bank account unlocks after connecting — it ' +
-          'defaults to whichever account is set as default in inFakt, or falls back to Cash ' +
-          'if none exist.'
+          createdConnection
+            ? 'Locked now that the connection is created — change the payment method from ' +
+              "the connection's edit screen (post-create changes here would not be saved)."
+            : '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
+              'inFakt account. Choosing a specific bank account unlocks after connecting — it ' +
+              'defaults to whichever account is set as default in inFakt, or falls back to Cash ' +
+              'if none exist.'
         }
       >
         <Select
           {...form.register('defaultPaymentMethod')}
+          disabled={createdConnection !== null}
           invalid={Boolean(form.formState.errors.defaultPaymentMethod)}
         >
           <option value="cash">Cash</option>
@@ -317,13 +331,19 @@ export function InfaktSetupForm(): ReactElement {
                   ))}
                 </Select>
               </FormField>
-            ) : (
-              <p className="muted-text">
-                No bank account is configured on this inFakt account, so <strong>Transfer</strong>{' '}
-                isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account
-                in your inFakt settings, then reopen this connection to pick it.
-              </p>
-            )
+            ) : null
+          ) : null}
+
+          {/* Rendered outside the Transfer gate: the zero-accounts fallback
+              flips the form's own payment method to Cash, which unmounts the
+              gated section above — the explanation must survive that. */}
+          {forcedCashNoAccounts ? (
+            <p className="muted-text">
+              No bank account is configured on this inFakt account, so <strong>Transfer</strong>{' '}
+              isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account in
+              your inFakt settings, then switch the payment method from the connection's edit
+              screen.
+            </p>
           ) : null}
 
           {testResult ? (
