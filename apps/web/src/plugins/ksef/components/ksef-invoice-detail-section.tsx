@@ -21,6 +21,7 @@ import type { ReactElement } from 'react';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
   RegulatoryStatusBadge,
+  regCardToneFor,
   useKsefUpoDownload,
   useKsefUpoPreview,
   useKsefFa3,
@@ -127,7 +128,11 @@ export function KsefInvoiceDetailSection({
 
   return (
     <>
-      <section className="invoice-detail-section invoice-detail-section--ksef">
+      <section
+        className={`invoice-detail-section invoice-detail-section--ksef reg-card ${regCardToneFor(
+          invoice.regulatoryStatus,
+        )}`.trim()}
+      >
         <h4 className="invoice-detail-section__title">
           {t('invoice.ksef.sectionTitle', 'KSeF · National e-Invoicing System')}
         </h4>

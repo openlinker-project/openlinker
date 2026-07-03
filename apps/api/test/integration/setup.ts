@@ -30,8 +30,8 @@ const harness = createIntegrationTestHarness({
   configureApp: (app) => {
     app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
-    // `/v1` routing prod serves. Version-neutral routes (/webhooks, the Allegro
-    // OAuth callback) stay reachable without the prefix.
+    // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
+    // ingress and the root `/`) stay reachable without the prefix.
     app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   },
   configureBodyParser: (app) => {

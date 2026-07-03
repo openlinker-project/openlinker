@@ -10,9 +10,10 @@
  * `resolveIssueErrorMessage`, `DocumentTypeSelect`, and `DOCUMENT_TYPE_LABEL_FALLBACK`
  * stay internal (only used by the panel itself or tests that deep-import them).
  *
- * Exception: `RegulatoryStatusBadge` is exported so per-provider
- * `invoiceDetailSection` slot components (e.g. `plugins/ksef`) can reuse
- * the neutral badge without duplicating the tone/label mapping.
+ * Exception: `RegulatoryStatusBadge` and `regCardToneFor` are exported so
+ * per-provider `invoiceDetailSection` slot components (KSeF, Subiekt,
+ * inFakt) can reuse the neutral badge and `.reg-card` tone mapping without
+ * duplicating either.
  *
  * @module apps/web/src/features/invoicing
  */
@@ -21,6 +22,7 @@ export { InvoiceTimeline } from './components/invoice-timeline';
 export { InvoiceStatusBadge } from './components/invoice-status-badge';
 export type { InvoiceDisplayStatus } from './components/invoice-status-badge';
 export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
+export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
@@ -35,6 +37,7 @@ export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
 export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { useKsefFa3 } from './hooks/use-ksef-fa3';
+export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 export { InvoiceStatusValues, RegulatoryStatusValues } from './api/invoicing.types';
 export type {

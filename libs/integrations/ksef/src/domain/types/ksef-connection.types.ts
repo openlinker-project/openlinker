@@ -4,9 +4,10 @@
  * Per-connection non-secret config + credentials shapes for the KSeF plugin.
  * These are adapter-internal (the only place provider-specific terminology is
  * allowed per ADR-026); core never sees them. The config carries the target
- * KSeF environment; credentials carry the authentication mode plus an opaque
- * `secretRef` the host's `CredentialsResolverPort` resolves at adapter boot
- * (C3) — the secret value itself is never stored on the connection.
+ * KSeF environment; credentials carry the authentication mode plus the raw
+ * `secret` the host's `CredentialsResolverPort` resolves (as the full
+ * credentials payload behind `connection.credentialsRef`) at adapter boot
+ * (C3) — the secret value itself is never stored on the connection row.
  *
  * @module libs/integrations/ksef/src/domain/types
  */
@@ -22,7 +23,7 @@ export type KsefEnvironment = (typeof KsefEnvironmentValues)[number];
 /**
  * Authentication mode for a KSeF connection. `ksef-token` is the static
  * authorization-token flow; `qualified-seal` is the X.509 qualified-seal
- * signing flow. The concrete credential material lives behind `secretRef`,
+ * signing flow. The concrete credential material lives in `KsefCredentials.secret`,
  * resolved at adapter construction (C3) — never on the connection row.
  */
 export const KsefAuthTypeValues = ['ksef-token', 'qualified-seal'] as const;
@@ -63,11 +64,16 @@ export interface KsefConnectionConfig {
 }
 
 /**
- * Credentials shape resolved via `CredentialsResolverPort` (C3). `secretRef` is
- * an opaque reference (e.g. a vault/secret-store key) — never the secret value
- * itself; validators check only that it is a non-empty string.
+ * Credentials shape resolved via `CredentialsResolverPort` (C3). `secret` is
+ * the raw authentication secret the operator supplies through the connection
+ * wizard — for `ksef-token` the KSeF authorization token; for `qualified-seal`
+ * a placeholder until C4 defines the seal material shape. The host
+ * persists it in the integration credentials store behind `connection.credentialsRef`
+ * and hands it back verbatim at adapter construction. There is no second,
+ * nested credentials indirection — the resolver call on `credentialsRef` is
+ * the only lookup.
  */
 export interface KsefCredentials {
   authType: KsefAuthType;
-  secretRef: string;
+  secret: string;
 }

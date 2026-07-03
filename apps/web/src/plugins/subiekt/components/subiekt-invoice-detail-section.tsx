@@ -13,6 +13,7 @@ import { useTranslation } from '../../../shared/i18n';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins/plugin.types';
 import {
   RegulatoryStatusBadge,
+  regCardToneFor,
   type RegulatoryStatus,
 } from '../../../features/invoicing';
 
@@ -29,7 +30,9 @@ export function SubiektInvoiceDetailSection({
   if (!hasRegulatoryData && !hasPdf) return null;
 
   return (
-    <section className="detail-section">
+    <section
+      className={`detail-section reg-card ${regCardToneFor(invoice.regulatoryStatus)}`.trim()}
+    >
       <h2 className="detail-section__title">
         {t('subiekt.invoice.detail.title', 'Regulatory status')}
       </h2>
