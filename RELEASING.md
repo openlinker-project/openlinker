@@ -109,6 +109,15 @@ the tag + GitHub Release. You never hand-tag again.
   baseline is hand-formatted, so eyeball the first insertion) before merging.
 - Per-package changelogs do not exist yet — they arrive with npm publishing
   (Changesets), as separate files for a different audience (plugin authors).
+- **openlinker.io/changelog** renders this repo's GitHub Releases at build time.
+  On a cut release (`steps.release.outputs.release_created`), `release-please.yml`
+  fires a `repository_dispatch` (`event_type: product-release`) to
+  `openlinker-project/openlinker-website` so its `deploy.yml` redeploys prod with
+  the new notes. This needs a repo Actions secret **`WEBSITE_DISPATCH_TOKEN`** — a
+  fine-grained PAT scoped to `openlinker-website` with **Contents: read & write**
+  (the `POST /dispatches` endpoint rides the contents permission). The step
+  skips with a `::notice::` if the secret is absent, so the workflow is safe to
+  run before the secret is provisioned.
 
 ## Demo deployments
 
