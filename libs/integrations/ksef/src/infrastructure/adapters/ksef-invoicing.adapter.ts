@@ -167,6 +167,15 @@ export class KsefInvoicingAdapter
     this.assertCorrectionConsistency(cmd);
 
     const issuedAt = this.now();
+    // The FA(3) P_2 document number. Single source for BOTH the XML builder's
+    // `invoiceNumber` and the persisted `InvoiceRecord.providerInvoiceNumber` —
+    // the correction precondition (#1289) matches on the persisted value, so the
+    // two must never diverge (#1338).
+    // TODO: replace the orderId placeholder with a real per-seller sequential
+    // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
+    // order id) before prod. Owned by the core InvoiceService numbering
+    // follow-up (#1118), not the C6 clearance-read (#1150).
+    const documentNumber = cmd.orderId;
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
@@ -179,11 +188,7 @@ export class KsefInvoicingAdapter
         seller: this.seller,
         issueDate: this.toIsoDate(issuedAt),
         generatedAt: issuedAt.toISOString(),
-        // TODO: replace the orderId placeholder with a real per-seller sequential
-        // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
-        // order id) before prod. Owned by the core InvoiceService numbering
-        // follow-up (#1118), not the C6 clearance-read (#1150).
-        invoiceNumber: cmd.orderId,
+        invoiceNumber: documentNumber,
         defaultTaxRate: this.defaultTaxRate,
         payment: this.payment,
       }),
@@ -241,11 +246,10 @@ export class KsefInvoicingAdapter
       this.resolveDocumentType(cmd.documentType),
       'issued',
       encodeProviderInvoiceId(sessionRef, invoiceReference),
-      // The FA(3) P_2 document number - the same value the XML builder stamps
-      // (`invoiceNumber: cmd.orderId`). Leaving this null made the correction
-      // precondition in the HTTP controller (#1289) reject every KSeF KOR
-      // with "missing document number / issue date" (#1338).
-      cmd.orderId,
+      // Leaving this null made the correction precondition in the HTTP
+      // controller (#1289) reject every KSeF KOR with "missing document
+      // number / issue date" (#1338).
+      documentNumber,
       'submitted',
       null,
       cmd.idempotencyKey ?? null,
