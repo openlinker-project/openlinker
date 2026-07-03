@@ -207,6 +207,13 @@ jobs:
           if ! command -v gh >/dev/null 2>&1; then
             echo "::warning::gh CLI not found on this runner — orphan sweep will use the 90-minute age gate for every container instead of the precise run-status check"
           fi
+          # Diagnostic snapshot before cleanup — #1321's first cleanup attempt
+          # reclaimed 0B across volume/image/builder prune while the job still
+          # failed with "no space left on device", so the actual disk hog is
+          # unconfirmed. Logging this baseline lets the next failure be
+          # diagnosed from CI output alone, without runner shell access.
+          echo "--- docker system df (before cleanup) ---"
+          docker system df -v || true
           CUTOFF_EPOCH=$(( $(date -u +%s) - 5400 ))
           readarray -t CANDIDATES < <(docker ps -aq --filter "label=org.testcontainers=true")
           STALE=()
@@ -255,19 +262,30 @@ jobs:
           # Volume prune carries the same unconditional safety guarantee as
           # network prune above — Docker refuses to remove a volume still
           # attached to any container, running or stopped, regardless of run
-          # ownership. This catches volumes orphaned by sweep runs that
-          # predate the `-v` flag above (#1321).
-          docker volume prune -f --filter "label=org.testcontainers=true" || true
-          # Image/builder prune are also safe under concurrency without a
-          # run-ownership check: `-f` (no `-a`) only ever removes dangling
-          # (untagged, unreferenced) image layers and unused build-cache
-          # entries — Docker can't remove a tagged image or cache entry a
-          # live container from another concurrent job still references.
-          # Left unbounded, both accumulate indefinitely on this persistent
-          # self-hosted runner and were the actual cause of "no space left
-          # on device" failures unrelated to any test's own code (#1321).
-          docker image prune -f || true
+          # ownership. No label filter here (unlike network prune above):
+          # anonymous volumes do NOT inherit the labels of the container that
+          # created them, so a `--filter "label=org.testcontainers=true"`
+          # matches zero volumes in practice (confirmed: 0B reclaimed on the
+          # first attempt, #1321) — an unfiltered prune is still scoped
+          # correctly by Docker's own "unattached" rule.
+          docker volume prune -f || true
+          # Image/builder prune are safe under concurrency without a
+          # run-ownership check: Docker can't remove an image or cache entry
+          # a live container from another concurrent job still references,
+          # regardless of the flags below.
+          #
+          # `-a`: removes ALL unused images, not just dangling (untagged)
+          # ones. Plain `docker image prune -f` reclaimed 0B on the first
+          # attempt (#1321) — this runner had zero dangling images, meaning
+          # the real disk pressure is old-but-tagged image versions (past
+          # postgres/redis/mysql/prestashop/woocommerce pulls) that only
+          # `-a` touches. Worst case for a concurrent job: it re-pulls an
+          # image it needs (slower start), never a failure — Docker always
+          # re-fetches a missing tag rather than erroring.
+          docker image prune -af || true
           docker builder prune -f || true
+          echo "--- docker system df (after cleanup) ---"
+          docker system df -v || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build libs (workspace glob — auto-discovers new packages)
