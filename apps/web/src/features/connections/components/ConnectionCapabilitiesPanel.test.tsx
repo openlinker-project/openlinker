@@ -116,4 +116,18 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText(/1 of 1 enabled/)).toBeInTheDocument();
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
   });
+
+  it('renders togglable checkboxes for ProductPublisher and CategoryProvisioner (shop-listing caps)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductPublisher', 'CategoryProvisioner'],
+      enabledCapabilities: ['ProductPublisher'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /CategoryProvisioner/ })).not.toBeChecked();
+    expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
+    expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
+  });
 });

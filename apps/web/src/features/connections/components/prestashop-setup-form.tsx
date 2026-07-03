@@ -48,6 +48,8 @@ const CAPABILITY_HELP: Record<CoreCapability, string> = {
   OrderSource:
     'Fetch new orders from this shop (disable if orders come from a marketplace instead).',
   OfferManager: 'Manage offers and listings on this marketplace.',
+  ProductPublisher: 'Publish and manage shop listings owned by this connection (cross-platform listing).',
+  CategoryProvisioner: 'Create or resolve destination categories when publishing listings to this connection.',
   Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
 };
 
