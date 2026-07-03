@@ -46,6 +46,7 @@ import type {
   InfaktListResponse,
   InfaktSendToKsefResponse,
 } from '../../domain/types/infakt.types';
+import type { InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
 export const INFAKT_PROVIDER_TYPE = 'infakt';
 
@@ -172,11 +173,25 @@ function fromGroszy(amountGroszy: number): number {
 export class InfaktInvoicingAdapter
   implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, RegulatoryDocumentReader
 {
+  /**
+   * Payment method sent on every issued invoice/correction (#1303) — a
+   * single per-connection setting both `issueInvoice` and `issueCorrection`
+   * read, so they can never disagree with each other again. Defaults to
+   * `'cash'` (production-safe, no prerequisite) when the connection has no
+   * `defaultPaymentMethod` configured. See
+   * `InfaktConnectionConfig.defaultPaymentMethod` for the `'transfer'`
+   * bank-account prerequisite.
+   */
+  private readonly paymentMethod: NonNullable<InfaktConnectionConfig['defaultPaymentMethod']>;
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IInfaktHttpClient,
     private readonly logger: LoggerPort,
-  ) {}
+    config: InfaktConnectionConfig = {},
+  ) {
+    this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
+  }
 
   getSupportedDocumentTypes(): DocumentType[] {
     return [...SUPPORTED_DOCUMENT_TYPES];
@@ -234,11 +249,8 @@ export class InfaktInvoicingAdapter
     const payload = {
       invoice: {
         kind,
-        // 'cash' is the sandbox/production-safe default confirmed live
-        // (2026-06-30 POC) — 'transfer' is rejected unless the seller has a
-        // bank account configured in Infakt (`bank_account`/`bank_name`
-        // required), which OL has no way to know or configure per-connection.
-        payment_method: 'cash',
+        // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        payment_method: this.paymentMethod,
         // Infakt's invoices.json wants the NUMERIC client id, not the client
         // uuid — verified live (2026-07-01): `client_uuid` is silently
         // ignored and the request 422s with "client_id required".
@@ -420,7 +432,8 @@ export class InfaktInvoicingAdapter
     const payload = {
       invoice: {
         kind: 'corrective',
-        payment_method: 'cash',
+        // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
         // live (2026-07-01): omitting it 422s with "client_id required". The
         // original invoice already carries the numeric id, so no extra
