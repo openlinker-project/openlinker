@@ -120,7 +120,7 @@ the capability breakdown.
 
 ---
 
-## Part 2a - Configure invoice payment details (FA(3) Platnosc)
+## Part 2a — Configure invoice payment details (FA(3) Platnosc)
 
 Optionally, give the connection default payment details - once set, every
 invoice issued through this connection carries them as the FA(3) **Platnosc**

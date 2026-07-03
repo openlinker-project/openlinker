@@ -25,6 +25,7 @@ import { annotate, clearAnnotations } from './annotate.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOTS = resolve(__dirname, '../../../libs/integrations/woocommerce/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
+const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
 const API_BASE = process.env.API_BASE ?? 'http://localhost:3000';
 const SITE_URL = process.env.WC_SITE_URL ?? 'https://localhost:8443';
 const CONSUMER_KEY = process.env.WC_CONSUMER_KEY;
@@ -39,7 +40,7 @@ if (!CONSUMER_KEY || !CONSUMER_SECRET) {
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin123');
+  await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }
@@ -123,7 +124,7 @@ try {
   const loginRes = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    body: JSON.stringify({ username: 'admin', password: ADMIN_PASSWORD }),
   });
   const { access_token: token } = await loginRes.json();
   async function enqueue(jobType) {

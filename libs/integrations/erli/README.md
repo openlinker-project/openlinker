@@ -14,7 +14,7 @@ Erli marketplace adapter for OpenLinker — offer management and order ingestion
 
 | Capability | Key sub-capabilities |
 |---|---|
-| `OfferManager` | `OfferCreator`, `OfferLister`, `OfferFieldUpdater`, `OfferQuantityBatchUpdater` |
+| `OfferManager` | `OfferCreator`, `OfferFieldUpdater`, `OfferStatusReader`, `OfferStockRestorer`, `TaxonomyBorrower` |
 | `OrderSource` | `listOrderFeed` (cursor-based), `getOrder` |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
