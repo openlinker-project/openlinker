@@ -24,62 +24,51 @@ Connects OpenLinker to the **KSeF REST API v2** to:
 
 | Capability | Sub-capabilities |
 |---|---|
-| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status), `RegulatoryStatusReader` (read status only) |
+| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status), `RegulatoryStatusReader` (read status only), `RegulatoryDocumentReader` (download the UPO receipt), `CorrectionIssuer` (issue FA(3) KOR corrections) |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
 ## Credentials & config
 
-**Credentials** (stored encrypted, set via the connection wizard or `PUT /connections/:id/credentials`):
+**Credentials** (stored encrypted, set via the connection wizard or `PUT /connections/:id/credentials`; shape: `KsefCredentials`):
 
 ```json
 {
-  "token": "<KSeF authorisation token>",
-  "authType": "ksef-token"
+  "authType": "ksef-token",
+  "secret": "<KSeF authorisation token>"
 }
 ```
 
 `authType` is either `"ksef-token"` (API token from the KSeF portal) or `"qualified-seal"`
 (qualified electronic seal — requires a certificate flow not covered by the wizard).
+`secret` is the raw authentication secret for the selected mode; it is write-only and
+never echoed back.
 
-**Config** (set in the connection wizard or `config` field):
+**Config** (set in the connection wizard or `config` field; shape: `KsefConnectionConfig`):
 
 ```json
 {
-  "environment": "test",
-  "nip": "9999999999",
-  "sellerName": "Acme Sp. z o.o.",
-  "sellerAddress": {
-    "street": "ul. Testowa 1",
-    "city": "Warszawa",
-    "postalCode": "00-001"
+  "env": "test",
+  "seller": {
+    "nip": "9999999999",
+    "name": "Acme Sp. z o.o.",
+    "address": {
+      "line1": "ul. Testowa 1",
+      "city": "Warszawa",
+      "postalCode": "00-001",
+      "countryIso2": "PL"
+    }
   }
 }
 ```
 
 | Field | Values | Notes |
 |---|---|---|
-| `environment` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/v2`; `demo` → `api-demo.ksef.mf.gov.pl/v2`; `prod` → `api.ksef.mf.gov.pl/v2` |
-| `nip` | Polish tax ID (NIP) of the seller | |
-| `sellerName` | Legal name | Required for FA(3) header |
-| `sellerAddress` | Street, city, postalCode | Required for FA(3) header |
+| `env` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/v2`; `demo` → `api-demo.ksef.mf.gov.pl/v2`; `prod` → `api.ksef.mf.gov.pl/v2` |
+| `seller` | Object | Seller identity (`Podmiot1`) stamped on every FA(3): `nip`, `name`, `address { line1, line2?, city, postalCode, countryIso2 }`, optional `defaultTaxRate`. Optional at create time, required before the connection can issue |
+| `payment` | Object (optional) | Default payment details emitted as the FA(3) `Platnosc` block: `formaPlatnosci`, `paymentTermDays`, `bankAccount { nrRb, bankName?, swift? }`, `skonto { amount, conditions }`. See [docs/setup-guide.md](./docs/setup-guide.md) |
 
 ## Documentation
 
 - **Operator tutorial** — [docs/tutorial.md](./docs/tutorial.md) — complete A-to-Z setup guide with screenshots
 - **Developer setup guide** — [docs/setup-guide.md](./docs/setup-guide.md)
-
-## Source layout
-
-```
-src/
-├── ksef.constants.ts               # KSEF_ADAPTER_KEY, KSEF_BRAND
-├── ksef-plugin.ts                  # Plugin descriptor + manifest
-├── ksef-integration.module.ts      # NestJS module (wires DI)
-└── infrastructure/
-    └── adapters/
-        ├── ksef-invoicing.adapter.ts          # InvoicingPort + RegulatoryTransmitter
-        ├── ksef-http-client.ts                # Authenticated KSeF HTTP client
-        ├── ksef-auth-session.ts               # RSA-OAEP session challenge/response
-        └── fa3-xml-builder.ts                 # FA(3) XSD-valid XML builder
-```

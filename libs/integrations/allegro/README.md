@@ -22,17 +22,24 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ## Credentials & config
 
-Authentication uses **OAuth 2.0 device flow**. Credentials are stored as an encrypted
-token set (access + refresh token) managed by the adapter's token-refresh cycle.
+Authentication uses the **OAuth 2.0 authorization-code flow** (browser redirect through
+Allegro's consent screen). Credentials are stored as an encrypted token set
+(access + refresh token) managed by the adapter's token-refresh cycle.
 
 **Config**:
 ```json
 {
-  "sandbox": false
+  "environment": "production"
 }
 ```
 
-`sandbox: true` targets `api.allegro.pl.allegrosandbox.pl` for testing.
+| Field | Values | Notes |
+|---|---|---|
+| `environment` | `"sandbox"` \| `"production"` | `sandbox` targets `api.allegro.pl.allegrosandbox.pl`; `production` targets `api.allegro.pl` |
+| `apiBaseUrl` | URL (optional) | Explicit API base-URL override; defaults from `environment` |
+| `masterCatalogConnectionId` | UUID (optional) | Master-catalog connection used for barcode-scoped offer linking |
+| `sellerDefaults` | Object (optional) | Offer-creation defaults: ship-from `location`, `responsibleProducerId`, GPSR `safetyInformation` |
+| `sellerId` | String (optional) | Allegro seller/account id captured at OAuth completion; used by the same-seller re-auth guard |
 
 ## Notable implementation details
 

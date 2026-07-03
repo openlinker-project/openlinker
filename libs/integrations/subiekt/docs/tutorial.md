@@ -161,43 +161,14 @@ Click the connection to view its detail page:
 > `Credentials JSON = { "bridgeToken": "<token>" }`,
 > `Config JSON = { "bridgeBaseUrl": "http://<host>:5005" }`.
 
-## Part 2b - Payment method, bank account & cash register (optional)
-
-Subiekt can stamp fiscal defaults on every invoice this connection issues: the **payment
-method**, the seller **bank account** (for transfers), and the **cash register** (Stanowisko
-Kasowe). Set them once and every issued faktura carries them.
-
-Edit the connection (**Connections -> My Subiekt -> Edit**) and open the **Payment method for
-invoice** section. Set **Default payment method** to `Transfer` to reveal the **bank account**
-picker - the list is loaded live from Subiekt, so you pick a real account by name and number.
-(Accounts are grouped by owner/platnik; a warning appears if the install has more than one
-seller platnik.)
-
-![Subiekt connection - Transfer selected, live bank-account picker](./assets/28-ol-subiekt-payment-bank.png)
-
-The **Cash register (Stanowisko Kasowe)** picker is also loaded live. Note the help line: the
-branch (Oddzial) is fixed to the bridge session's Centrala and is not switchable per invoice,
-so you only choose the cash register.
-
-![Subiekt connection - Stanowisko Kasowe picker + Centrala help line](./assets/29-ol-subiekt-cash-register.png)
-
-Click **Save changes**. From now on, invoices issued through this connection use these
-defaults: a `Transfer` invoice books the amount to Subiekt's deferred-payment bucket and
-carries the chosen bank account, and the chosen cash register lands on the document.
-
-> **These defaults apply to a faktura (FV), not a paragon.** If the order has no buyer NIP,
-> OpenLinker issues a **paragon (PA)** and the payment selection is rejected (the bridge
-> returns 422). Issue a faktura (buyer with NIP, or pick **Invoice (faktura)** in Part 4) for
-> the payment method / bank account / cash register to take effect.
-
 ---
 
 ## Part 3 — Get an order into OpenLinker
 
 Orders flow into OpenLinker from any configured source connection (PrestaShop,
 Allegro, WooCommerce, Erli, …). For a B2B faktura, the buyer address must
-include a **NIP** (Polish VAT number) — OpenLinker reads this to auto-select
-the `VAT` document type.
+include a **NIP** (Polish VAT number) - Subiekt needs it on the issued
+document. You pick the document type yourself in Part 4.
 
 For a quick test with PrestaShop:
 
@@ -230,8 +201,9 @@ through.
 
 After selecting the connection, the panel loads the invoice state. If no invoice
 exists yet, it shows the document-type dropdown and the **Issue invoice** button.
-OpenLinker pre-selects **Invoice (faktura VAT)** when the buyer address contains
-a NIP.
+The dropdown always defaults to **Invoice (faktura)** - it is NOT derived from the
+buyer's NIP, so check the selection matches the order (Invoice for a B2B buyer
+with a NIP, Receipt for B2C) before issuing.
 
 ![Invoice panel — connection selected, "Issue invoice" button ready](./assets/23-ol-invoice-panel-ready-to-issue.png)
 
@@ -269,12 +241,13 @@ bridge returns one).
 
 ## Part 7 — B2C receipt (paragon) variant
 
-An order placed by an individual buyer (no NIP in the address) becomes a
-**paragon** (PA). Create an order for a customer without a VAT number.
+An order placed by an individual buyer (no NIP in the address) should be issued
+as a **paragon** (PA). Create an order for a customer without a VAT number.
 
-OpenLinker auto-selects **Receipt (paragon)** in the document-type dropdown.
-Click **Issue invoice** — the bridge routes the command to Sfera as a paragon
-issuance.
+In the Invoice panel, manually select **Receipt (paragon)** in the document-type
+dropdown - the dropdown defaults to Invoice (faktura) and OpenLinker does NOT
+switch it for you based on the missing NIP. Then click **Issue invoice** - the
+bridge routes the command to Sfera as a paragon issuance.
 
 The Issued state shows a `PA …` document number instead of `FS …`.
 

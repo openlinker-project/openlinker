@@ -30,13 +30,28 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 **Config**:
 ```json
 {
-  "organizationId": 12345,
-  "sandbox": false
+  "environment": "production",
+  "organizationId": "12345",
+  "senderAddress": {
+    "name": "Acme Sp. z o.o.",
+    "email": "magazyn@example.com",
+    "phone": "+48123456789",
+    "address": {
+      "street": "ul. Testowa",
+      "buildingNumber": "1",
+      "city": "Warszawa",
+      "postCode": "00-001",
+      "countryCode": "PL"
+    }
+  }
 }
 ```
 
-`sandbox: true` targets `sandbox-api-shipx.easypack24.net` for testing.
-The `organizationId` is visible in the ShipX dashboard or API response (`/v1/organizations`).
+| Field | Values | Notes |
+|---|---|---|
+| `environment` | `"sandbox"` \| `"production"` | `sandbox` targets `sandbox-api-shipx-pl.easypack24.net`; `production` targets `api-shipx-pl.easypack24.net` |
+| `organizationId` | Numeric **string** | Visible in the ShipX dashboard or via `/v1/organizations` |
+| `senderAddress` | Object (**required**) | Ship-from contact: `email`, `phone`, and `address { street, buildingNumber, city, postCode (PL format NN-NNN), countryCode (ISO alpha-2) }` are required; `name` optional |
 
 ## Documentation
 

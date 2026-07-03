@@ -336,16 +336,7 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 1. **Bridge reachable from WSL:** `curl -s http://<gateway-IP>:5005/health` →
    `sferaSession:"valid"`, `subiekt:"reachable"`.
 2. **Connection test** passes in the OpenLinker UI.
-3. **Bridge-backed pickers render.** The OpenLinker API proxies two bridge reads
-   server-side, used by the connection-edit UI pickers (payment-method / bank-account /
-   Stanowisko-Kasowe):
-   - `GET /v1/integrations/subiekt/connections/{id}/bank-accounts`
-   - `GET /v1/integrations/subiekt/connections/{id}/cash-registers`
-
-   On this worked example they returned the bridge's live **5 bank accounts** and
-   **4 cash registers** from `Nexo_Demo_1`, and the connection-edit form rendered them in the
-   pickers.
-4. **Full invoice flow.** Create a PrestaShop order (see the
+3. **Full invoice flow.** Create a PrestaShop order (see the
    [setup guide, Part C](./setup-guide.md#part-c--get-an-order-prestashop-example)), let
    OpenLinker ingest it, then issue the invoice from the order screen. The document appears
    in Subiekt nexo (**Dokumenty → Sprzedaży**) and on OpenLinker's `/invoices` list.

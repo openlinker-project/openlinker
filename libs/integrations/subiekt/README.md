@@ -13,8 +13,11 @@ Subiekt nexo is installed — which translates it into Sfera SDK business operat
 OpenLinker  →  HTTPS + Bearer  →  Subiekt Bridge  →  Sfera SDK  →  Subiekt nexo
 ```
 
-Document type is driven by the buyer's tax ID: an order **with** a NIP becomes a
-**faktura** (FS); **without** one it becomes a **paragon** (PA).
+Document type is driven by the buyer's tax ID **only on the auto-issue path**
+(when no explicit `documentType` is supplied): an order **with** a NIP becomes a
+**faktura** (FS); **without** one it becomes a **paragon** (PA). In the manual
+Invoice panel the operator picks the document type explicitly - the UI defaults
+to Invoice (faktura) and does not derive the type from the NIP.
 
 ## Adapter
 
@@ -26,9 +29,9 @@ Document type is driven by the buyer's tax ID: an order **with** a NIP becomes a
 
 ## Capabilities
 
-| Capability | Notes |
+| Capability | Sub-capabilities |
 |---|---|
-| `Invoicing` | Issue faktura / paragon; read document status and KSeF regulatory badge |
+| `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document) |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
@@ -76,7 +79,7 @@ dotnet run -c Release --project bridge/Subiekt.Bridge.Api
 ```
 
 A healthy bridge prints `Now listening on: https://…:5005` and `Sfera: zalogowano`.
-Smoke-test: `curl -k https://<bridge-host>:5005/health` → `{"status":"ok","sferaSession":"valid","subiekt":"reachable"}`.
+Smoke-test: `curl -k https://<bridge-host>:5005/health` → `{"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}`.
 
 See the bridge repo's `docs/DEPLOYMENT.md` for TLS, firewall, and SQL config.
 
@@ -85,15 +88,3 @@ See the bridge repo's `docs/DEPLOYMENT.md` for TLS, firewall, and SQL config.
 - **Operator tutorial** — [docs/tutorial.md](./docs/tutorial.md) — complete A-to-Z setup guide with screenshots
 - **Developer setup guide** — [docs/setup-guide.md](./docs/setup-guide.md)
 - **Operations runbook** — [docs/runbook.md](./docs/runbook.md)
-
-## Source layout
-
-```
-src/
-├── subiekt-plugin.ts               # Plugin descriptor + manifest
-├── subiekt-integration.module.ts   # NestJS module
-└── infrastructure/
-    └── adapters/
-        ├── subiekt-invoicing.adapter.ts   # InvoicingPort implementation
-        └── subiekt-http-client.ts         # HTTPS client with Bearer auth
-```

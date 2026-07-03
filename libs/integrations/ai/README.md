@@ -29,11 +29,13 @@ interface AiCompletionPort {
 
 | Provider | SDK package | Model |
 |---|---|---|
-| `anthropic` | `@ai-sdk/anthropic` | Claude (configured via `OL_AI_MODEL` or DB setting) |
-| `openai` | `@ai-sdk/openai` | GPT-4o (configured via `OL_AI_MODEL` or DB setting) |
+| `anthropic` | `@ai-sdk/anthropic` | Configured via the `OL_AI_DEFAULT_MODEL` env var (default `claude-opus-4-7`) |
+| `openai` | `@ai-sdk/openai` | Configured via the `OL_AI_OPENAI_MODEL` env var (default `gpt-4o-mini`) |
 
-Provider API keys are stored in the encrypted `integration_credentials` table under
-`ref = ai-provider:{provider}`. Switch the active provider via `PUT /ai-provider-settings/active`.
+The model is env-only - there is no database setting for it; the only DB-persisted
+setting is the **active provider**. Provider API keys are stored in the encrypted
+`integration_credentials` table under `ref = ai-provider:{provider}`. Switch the
+active provider via `PUT /ai-provider-settings/active`.
 
 ## Testing
 

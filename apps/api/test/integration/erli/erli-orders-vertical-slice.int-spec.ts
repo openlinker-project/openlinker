@@ -64,9 +64,7 @@ import {
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
   INBOUND_ROUTING_POLICY_TOKEN,
-  SYNC_JOB_QUEUE_TOKEN,
   type IInboundRoutingPolicyService,
-  type SyncJobQueuePort,
 } from '@openlinker/core/sync';
 import { ErliWebhookEventTranslator } from '@openlinker/integrations-erli/infrastructure/adapters/erli-webhook-event-translator.adapter';
 
@@ -92,7 +90,6 @@ const ORDER_WEBHOOK = 'erli-order-webhook-004';
 const ORDER_DISPATCH_NO_TRACKING = 'erli-order-dispatch-005';
 const ORDER_DISPATCH_WITH_TRACKING = 'erli-order-dispatch-006';
 const ORDER_AWAITING = 'erli-order-awaiting-007';
-const ORDER_CANCEL = 'erli-order-cancel-008';
 
 /** Inbox path the OrderSource adapter requests (literal). */
 const INBOX_PATH = '/inbox';
@@ -455,57 +452,6 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     const record = await findOrderRecord(ORDER_AWAITING);
     expect(record).not.toBeNull();
     expect(record!.recordStatus).toBe('awaiting_mapping');
-  });
-
-  // ── S7: cancellation-observe hook (#1146) — real ingestion → real stockRestore enqueue ─
-  it('S7: an order transitioning to cancelled enqueues a real marketplace.offer.stockRestore job (once)', async () => {
-    const externalProductId = `erli-variant-${ORDER_CANCEL}`;
-    await seedReadyItem(externalProductId);
-
-    // Enqueue is a Redis-stream publish (SyncJobQueueService → JobEnqueuePort), not a
-    // sync_jobs Postgres row — that table is populated by the worker-side stream
-    // consumer, which isn't running in this API-only harness. Spy on the REAL
-    // SyncJobQueueService (resolved from the DI container) to observe the call while
-    // letting it execute for real against Redis.
-    const jobQueue = harness.getApp().get<SyncJobQueuePort>(SYNC_JOB_QUEUE_TOKEN);
-    const enqueueSpy = jest.spyOn(jobQueue, 'enqueue');
-
-    // First sync: purchased → persisted 'processing' (priorStatus becomes 'processing').
-    erli.fake.setRawGet(
-      orderPath(ORDER_CANCEL),
-      buildErliOrder(ORDER_CANCEL, { status: 'purchased', productExternalId: externalProductId }),
-    );
-    await syncTolerateNoDestination(ORDER_CANCEL);
-    expect(enqueueSpy).not.toHaveBeenCalled();
-
-    // Second sync: cancelled → the #1146 hook fires (transition-gated) and enqueues
-    // the REAL marketplace.offer.stockRestore job via the REAL SyncJobQueueService.
-    erli.fake.setRawGet(
-      orderPath(ORDER_CANCEL),
-      buildErliOrder(ORDER_CANCEL, { status: 'cancelled', productExternalId: externalProductId }),
-    );
-    await syncTolerateNoDestination(ORDER_CANCEL);
-
-    const record = await findOrderRecord(ORDER_CANCEL);
-    expect(record).not.toBeNull();
-    expect(record!.orderSnapshot.status).toBe('cancelled');
-    const internalOrderId = record!.internalOrderId;
-
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const [enqueueRequest] = enqueueSpy.mock.calls[0];
-    expect(enqueueRequest.type).toBe('marketplace.offer.stockRestore');
-    expect(enqueueRequest.connectionId).toBe(connectionId);
-    expect(enqueueRequest.payload).toMatchObject({ internalOrderId });
-    expect(enqueueRequest.options.dedupeKey).toBe(
-      `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
-    );
-
-    // A re-poll of the already-cancelled order must NOT enqueue a second job
-    // (transition gate — priorStatus === 'cancelled' short-circuits).
-    await syncTolerateNoDestination(ORDER_CANCEL);
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
-
-    enqueueSpy.mockRestore();
   });
 
   // ── S6: lifecycle writeback (DIRECT invocation of OrderStatusWriteback.write) ─

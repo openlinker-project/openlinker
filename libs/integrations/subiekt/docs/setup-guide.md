@@ -83,7 +83,7 @@ Full detail lives in the bridge repo's `docs/DEPLOYMENT.md`. The essentials:
 
 > A healthy bridge prints `Now listening on: https://…:5005` and a Sfera login line
 > (`Sfera: zalogowano`) on start, and `/health` returns
-> `{"status":"ok","sferaSession":"valid","subiekt":"reachable"}`. OpenLinker's
+> `{"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}`. OpenLinker's
 > **Test connection** (Part B) exercises this same `/health` probe end-to-end.
 
 ---
@@ -150,41 +150,6 @@ the settings. Everything you set in the wizard is editable here, plus:
 - **Adapter key** — `subiekt.invoicing.v1` (inferred from the platform; rarely changed).
 
 Click **Save changes**.
-
-### Default payment method, bank account & cash register
-
-The connection settings also carry the **fiscal defaults** OpenLinker stamps on every invoice
-it issues through this connection. Open the **Payment method for invoice** section in the edit
-form:
-
-![Subiekt connection - Transfer selected with the live bank-account picker](./assets/28-ol-subiekt-payment-bank.png)
-
-- **Default payment method** - `Cash` or `Transfer`. Sent on every issued invoice. Leave
-  `Cash` unless the seller has a bank account configured in Subiekt.
-- **Bank account for Transfer invoices** (shown only for `Transfer`) - populated **live from
-  Subiekt** (the bridge's `GET /api/bank-accounts`), so you pick a real account by name and
-  number. Accounts are grouped by owner (**platnik**); if the install has more than one seller
-  platnik a warning is shown, because OpenLinker cannot yet guarantee the picked account
-  matches the payer the document is issued under. Picking a non-default account also sets it as
-  Subiekt's default account.
-- **Cash register (Stanowisko Kasowe)** - populated live from `GET /api/cash-registers`. The
-  branch (**Oddzial**) is **not** selectable per invoice: it is fixed to the bridge session's
-  business context (Centrala), so a help line states this and only the cash register (station)
-  is chosen.
-
-![Subiekt connection - Stanowisko Kasowe picker with the Centrala help line](./assets/29-ol-subiekt-cash-register.png)
-
-> **These defaults require a faktura (FV).** An explicit payment selection is applied only to
-> an **Invoice (faktura)**; a **Receipt (paragon, PA)** rejects it (the bridge returns 422,
-> "explicit payment selection is not supported for a paragon"). A paragon is derived when the
-> buyer has no NIP, so for these defaults to take effect issue a faktura (buyer with a NIP, or
-> pick **Invoice** in Part D). Verified live: `Transfer` moves the amount to Subiekt's
-> deferred-payment bucket, and a chosen Stanowisko Kasowe lands on the document (distinct from
-> the session default).
-
-Advanced-mode config keys for the same three fields: `defaultPaymentMethod` (`"cash"` |
-`"transfer"`), `bankAccountId` (number, from `GET /api/bank-accounts`), and
-`defaultStanowiskoKasoweId` (number, from `GET /api/cash-registers`).
 
 ---
 
