@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { createMockApiClient, findToastTitle, renderWithProviders } from '../../../test/test-utils';
 import { InfaktStructuredSection } from './infakt-structured-section';
 import type { BankAccount } from '../../../features/connections';
 
@@ -275,12 +275,15 @@ describe('InfaktStructuredSection', () => {
       expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
     });
 
-    it('calls syncInfaktBankAccountToJson after setting the selected bank account', async () => {
+    it('calls syncInfaktBankAccountToJson, persists the config eagerly, then flips the inFakt default', async () => {
       const getBankAccounts = vi.fn().mockResolvedValue([
         { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
       ]);
       const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
-      const apiClient = createMockApiClient({ connections: { getBankAccounts, setDefaultBankAccount } });
+      const update = vi.fn().mockResolvedValue({ id: 'conn-1' });
+      const apiClient = createMockApiClient({
+        connections: { getBankAccounts, setDefaultBankAccount, update },
+      });
       const syncInfaktBankAccountToJson = vi.fn();
       let capturedForm: ReturnType<typeof useForm> | null = null;
       const TestComponent = (): ReactElement => {
@@ -290,7 +293,7 @@ describe('InfaktStructuredSection', () => {
         capturedForm = form;
         return (
           <InfaktStructuredSection
-            connection={{ id: 'conn-1' } as any}
+            connection={{ id: 'conn-1', config: { defaultPaymentMethod: 'transfer' } } as any}
             form={form as any}
             configIsParseable={true}
             syncStructuredToJson={vi.fn()}
@@ -308,11 +311,29 @@ describe('InfaktStructuredSection', () => {
         expect(syncInfaktBankAccountToJson).toHaveBeenCalled();
       });
       expect(capturedForm!.getValues('infaktBankAccount')).toEqual({
-        id: 1,
+        id: '1',
         accountNumber: '61 1140 2004 0000 3002 0135 5387',
         bankName: 'mBank',
       });
-      expect(setDefaultBankAccount).toHaveBeenCalledWith('conn-1', '1');
+      // Eager persist — the pick must not wait for Save changes (#1310 review).
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(
+          'conn-1',
+          expect.objectContaining({
+            config: expect.objectContaining({
+              defaultPaymentMethod: 'transfer',
+              bankAccount: {
+                id: '1',
+                accountNumber: '61 1140 2004 0000 3002 0135 5387',
+                bankName: 'mBank',
+              },
+            }),
+          }),
+        );
+      });
+      await waitFor(() => {
+        expect(setDefaultBankAccount).toHaveBeenCalledWith('conn-1', '1');
+      });
     });
 
     it('does not re-flag the account as default in inFakt when it already is one', async () => {
@@ -320,7 +341,10 @@ describe('InfaktStructuredSection', () => {
         { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: true },
       ]);
       const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
-      const apiClient = createMockApiClient({ connections: { getBankAccounts, setDefaultBankAccount } });
+      const update = vi.fn().mockResolvedValue({ id: 'conn-1' });
+      const apiClient = createMockApiClient({
+        connections: { getBankAccounts, setDefaultBankAccount, update },
+      });
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
           defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
@@ -342,9 +366,76 @@ describe('InfaktStructuredSection', () => {
       fireEvent.change(select, { target: { value: '1' } });
 
       await waitFor(() => {
-        expect(select).toHaveValue('1');
+        expect(update).toHaveBeenCalled();
       });
       expect(setDefaultBankAccount).not.toHaveBeenCalled();
+    });
+
+    it('shows an error toast and skips the inFakt default flip when the eager persist fails', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
+      ]);
+      const setDefaultBankAccount = vi.fn().mockResolvedValue(undefined);
+      const update = vi.fn().mockRejectedValue(new Error('500 Internal Server Error'));
+      const apiClient = createMockApiClient({
+        connections: { getBankAccounts, setDefaultBankAccount, update },
+      });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      fireEvent.change(select, { target: { value: '1' } });
+
+      expect(await findToastTitle('Could not save the bank account')).toBeInTheDocument();
+      expect(setDefaultBankAccount).not.toHaveBeenCalled();
+    });
+
+    it('shows an error toast when flipping the inFakt default fails', async () => {
+      const getBankAccounts = vi.fn().mockResolvedValue([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
+      ]);
+      const setDefaultBankAccount = vi.fn().mockRejectedValue(new Error('502 Bad Gateway'));
+      const update = vi.fn().mockResolvedValue({ id: 'conn-1' });
+      const apiClient = createMockApiClient({
+        connections: { getBankAccounts, setDefaultBankAccount, update },
+      });
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: 'conn-1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+            syncInfaktBankAccountToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />, { apiClient });
+      fireEvent.click(screen.getByText('Payment method for invoice:'));
+
+      const select = await screen.findByLabelText('Bank account for Transfer invoices');
+      fireEvent.change(select, { target: { value: '1' } });
+
+      expect(
+        await findToastTitle('Could not update the inFakt default account'),
+      ).toBeInTheDocument();
     });
   });
 });

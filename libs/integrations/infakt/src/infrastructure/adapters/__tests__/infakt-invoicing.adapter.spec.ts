@@ -858,12 +858,13 @@ describe('InfaktInvoicingAdapter', () => {
         country: null,
       });
       http.seed('POST', 'invoices.json', invoiceFixture());
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
     }
 
     it('should attach bank_account/bank_name when transfer and a bank account are configured', async () => {
       const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
         defaultPaymentMethod: 'transfer',
-        bankAccount: { id: 1, accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
+        bankAccount: { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
       });
       seedIssueFixtures();
       await configured.issueInvoice(invoiceCmd);
@@ -893,7 +894,7 @@ describe('InfaktInvoicingAdapter', () => {
     it('should omit bank_account/bank_name for cash even when a bank account is configured', async () => {
       const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
         defaultPaymentMethod: 'cash',
-        bankAccount: { id: 1, accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
+        bankAccount: { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
       });
       seedIssueFixtures();
       await configured.issueInvoice(invoiceCmd);

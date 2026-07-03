@@ -29,6 +29,7 @@ export { useCreateConnectionMutation } from './hooks/use-create-connection-mutat
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
+export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 

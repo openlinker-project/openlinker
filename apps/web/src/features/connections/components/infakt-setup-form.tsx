@@ -16,7 +16,7 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -57,14 +57,18 @@ export function InfaktSetupForm(): ReactElement {
   const bankAccountDefaultApplied = useRef(false);
 
   const createdConnectionId = createdConnection?.id ?? null;
-  const bankAccountsQuery = useBankAccountsQuery(createdConnectionId ?? undefined, {
-    enabled: createdConnectionId !== null,
-  });
 
   const form = useForm<InfaktSetupFormValues, undefined, InfaktSetupFormSubmission>({
     defaultValues: INFAKT_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(infaktSetupSchema),
     mode: 'onBlur',
+  });
+
+  // Mirrors the edit screen's gating (#1310 review): the picker (and the
+  // account fetch behind it) only matter when Transfer is selected.
+  const paymentMethodIsTransfer = form.watch('defaultPaymentMethod') === 'transfer';
+  const bankAccountsQuery = useBankAccountsQuery(createdConnectionId ?? undefined, {
+    enabled: createdConnectionId !== null && paymentMethodIsTransfer,
   });
 
   // Abandon-prevention.
@@ -97,6 +101,20 @@ export function InfaktSetupForm(): ReactElement {
     }
   });
 
+  // A failed auto-apply / pick would otherwise silently drop the account the
+  // UI shows as selected — surface it so the operator can retry from the edit
+  // screen.
+  const showBankAccountSaveError = useCallback(
+    (error: Error): void => {
+      showToast({
+        tone: 'error',
+        title: 'Could not save the bank account',
+        description: `The selection was not persisted — re-pick it from the connection's edit screen. ${error.message}`,
+      });
+    },
+    [showToast],
+  );
+
   // Bank-account default (#1303 follow-up) — the select is locked until the
   // connection exists (the server needs the saved API key to call inFakt).
   // Once the live list resolves: ≥1 accounts picks whichever inFakt itself
@@ -115,46 +133,66 @@ export function InfaktSetupForm(): ReactElement {
     if (accounts.length > 0) {
       const defaultAccount = accounts.find((a) => a.isDefault) ?? accounts[0]!;
       setSelectedBankAccountId(defaultAccount.id);
-      void updateConnection.mutateAsync({
-        connectionId: createdConnection.id,
-        input: {
-          config: {
-            ...currentConfig,
-            bankAccount: {
-              id: Number(defaultAccount.id),
-              accountNumber: defaultAccount.accountNumber,
-              bankName: defaultAccount.bankName,
+      updateConnection.mutate(
+        {
+          connectionId: createdConnection.id,
+          input: {
+            config: {
+              ...currentConfig,
+              bankAccount: {
+                id: defaultAccount.id,
+                accountNumber: defaultAccount.accountNumber,
+                bankName: defaultAccount.bankName,
+              },
             },
           },
         },
-      });
+        { onError: (error) => showBankAccountSaveError(error) },
+      );
     } else if (currentConfig.defaultPaymentMethod === 'transfer') {
-      void updateConnection.mutateAsync({
-        connectionId: createdConnection.id,
-        input: { config: { ...currentConfig, defaultPaymentMethod: 'cash' } },
-      });
+      updateConnection.mutate(
+        {
+          connectionId: createdConnection.id,
+          input: { config: { ...currentConfig, defaultPaymentMethod: 'cash' } },
+        },
+        { onError: (error) => showBankAccountSaveError(error) },
+      );
     }
-  }, [createdConnection, bankAccountsQuery.isSuccess, bankAccountsQuery.data, updateConnection]);
+  }, [
+    createdConnection,
+    bankAccountsQuery.isSuccess,
+    bankAccountsQuery.data,
+    updateConnection,
+    showBankAccountSaveError,
+  ]);
 
   const onBankAccountChange = (accountId: string): void => {
     if (!createdConnection) return;
     setSelectedBankAccountId(accountId);
     const account = (bankAccountsQuery.data ?? []).find((a) => a.id === accountId);
     if (!account) return;
-    void updateConnection.mutateAsync({
-      connectionId: createdConnection.id,
-      input: {
-        config: {
-          ...(createdConnection.config ?? {}),
-          bankAccount: { id: Number(account.id), accountNumber: account.accountNumber, bankName: account.bankName },
+    // Persist OL's config first; flip inFakt's own "default account" only
+    // after that persist succeeds, so a failure can't leave the two sides
+    // disagreeing about which account is "the" default.
+    updateConnection.mutate(
+      {
+        connectionId: createdConnection.id,
+        input: {
+          config: {
+            ...(createdConnection.config ?? {}),
+            bankAccount: { id: account.id, accountNumber: account.accountNumber, bankName: account.bankName },
+          },
         },
       },
-    });
-    // Keep inFakt's own "default account" setting in sync with the operator's
-    // pick, so the two never disagree about which account is "the" default.
-    if (!account.isDefault) {
-      void setDefaultBankAccount.mutateAsync({ connectionId: createdConnection.id, accountId });
-    }
+      {
+        onSuccess: () => {
+          if (!account.isDefault) {
+            setDefaultBankAccount.mutate({ connectionId: createdConnection.id, accountId });
+          }
+        },
+        onError: (error) => showBankAccountSaveError(error),
+      },
+    );
   };
 
   const onTest = async (): Promise<void> => {
@@ -255,9 +293,10 @@ export function InfaktSetupForm(): ReactElement {
 
       {createdConnection ? (
         <>
-          <div className="form-field">
-            <span className="form-field__label">Payment method</span>
-            {bankAccountsQuery.isLoading ? (
+          {/* Bank-account picker — gated on Transfer, mirroring the edit
+              screen (a bank account is only stamped on Transfer invoices). */}
+          {paymentMethodIsTransfer ? (
+            bankAccountsQuery.isLoading ? (
               <p className="muted-text">Checking inFakt for bank accounts…</p>
             ) : bankAccountsQuery.isError ? (
               <p className="muted-text">
@@ -284,8 +323,8 @@ export function InfaktSetupForm(): ReactElement {
                 isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account
                 in your inFakt settings, then reopen this connection to pick it.
               </p>
-            )}
-          </div>
+            )
+          ) : null}
 
           {testResult ? (
             <Alert

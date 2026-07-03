@@ -231,7 +231,8 @@ export class InfaktInvoicingAdapter
    * (#1303 follow-up) — keeps inFakt's own "default account" setting (visible
    * in the seller's inFakt UI) in sync with the account OpenLinker stamps on
    * `'transfer'` invoices, so the two never disagree about which account is
-   * "the" default.
+   * "the" default. PUTs `{ default: true }` on the new account only — inFakt
+   * clears the previous default server-side, so no second call is needed.
    */
   async setDefaultBankAccount(accountId: string): Promise<void> {
     await this.http.put(`bank_accounts/${accountId}.json`, { bank_account: { default: true } });

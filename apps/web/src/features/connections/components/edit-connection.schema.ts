@@ -238,7 +238,7 @@ export const editConnectionSchema = z
     // structured section fetches the live list and writes the whole object
     // in one shot, never a sub-field at a time.
     infaktBankAccount: z
-      .object({ id: z.number(), accountNumber: z.string(), bankName: z.string() })
+      .object({ id: z.string(), accountNumber: z.string(), bankName: z.string() })
       .nullable()
       .optional(),
     // InPost-only structured fields (#771). `inpostEnvironment` → flat
@@ -370,7 +370,7 @@ export type StructuredConfigPatch = {
    * Whole-object field, like `sellerDefaults`/`inpostSenderAddress`. `null`
    * (or absent) clears the key.
    */
-  infaktBankAccount?: { id: number; accountNumber: string; bankName: string } | null;
+  infaktBankAccount?: { id: string; accountNumber: string; bankName: string } | null;
   /** InPost environment → flat `config.environment` (#771). Empty string clears the key. */
   inpostEnvironment?: 'sandbox' | 'production' | '';
   /** InPost organization id → flat `config.organizationId` (#771). Empty clears. */

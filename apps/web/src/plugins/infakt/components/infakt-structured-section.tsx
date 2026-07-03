@@ -15,9 +15,11 @@
  *   - Bank account (`config.bankAccount`, #1303 follow-up) — only shown
  *     when Transfer is selected; live-fetched via `useBankAccountsQuery`. No
  *     select at all when inFakt reports zero accounts — Transfer isn't a
- *     viable choice without one. Picking a non-default account also calls
- *     `useSetDefaultBankAccountMutation` so inFakt's own "default account"
- *     setting stays in sync with the operator's choice.
+ *     viable choice without one. A pick persists `config.bankAccount`
+ *     eagerly (not on Save) and only then flips inFakt's own "default
+ *     account" via `useSetDefaultBankAccountMutation` — both sides commit
+ *     together, so abandoning the edit form (or a failed Save) can never
+ *     leave inFakt flipped while OL still stamps the old account.
  *
  * Credentials (the API key) are NOT edited here — they live in the
  * write-only `InfaktCredentialsPanel`.
@@ -30,7 +32,12 @@ import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
-import { useBankAccountsQuery, useSetDefaultBankAccountMutation } from '../../../features/connections';
+import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  useBankAccountsQuery,
+  useSetDefaultBankAccountMutation,
+  useUpdateConnectionMutation,
+} from '../../../features/connections';
 
 const PAYMENT_METHOD_LABELS: Record<'cash' | 'transfer', string> = {
   cash: 'Cash',
@@ -53,21 +60,44 @@ export function InfaktStructuredSection({
 
   const bankAccountsQuery = useBankAccountsQuery(connection.id, { enabled: isTransfer });
   const setDefaultBankAccount = useSetDefaultBankAccountMutation();
+  const updateConnection = useUpdateConnectionMutation();
+  const { showToast } = useToast();
 
   function onBankAccountChange(accountId: string): void {
     const account = (bankAccountsQuery.data ?? []).find((a) => a.id === accountId);
     if (!account) return;
-    form.setValue(
-      'infaktBankAccount',
-      { id: Number(account.id), accountNumber: account.accountNumber, bankName: account.bankName },
-      { shouldDirty: true },
-    );
+    const snapshot = {
+      id: account.id,
+      accountNumber: account.accountNumber,
+      bankName: account.bankName,
+    };
+    form.setValue('infaktBankAccount', snapshot, { shouldDirty: true });
     syncInfaktBankAccountToJson?.();
-    // Keep inFakt's own "default account" setting in sync with the
-    // operator's pick, so the two never disagree about which is "the" default.
-    if (!account.isDefault) {
-      void setDefaultBankAccount.mutateAsync({ connectionId: connection.id, accountId });
-    }
+    // Persist `config.bankAccount` eagerly (from the server-side config
+    // snapshot, so unrelated unsaved form edits don't leak), and flip
+    // inFakt's own "default account" only after that persist succeeds —
+    // otherwise abandoning the edit form would leave inFakt's default
+    // flipped while OL still stamps the previous account on invoices.
+    updateConnection.mutate(
+      {
+        connectionId: connection.id,
+        input: { config: { ...(connection.config ?? {}), bankAccount: snapshot } },
+      },
+      {
+        onSuccess: () => {
+          if (!account.isDefault) {
+            setDefaultBankAccount.mutate({ connectionId: connection.id, accountId });
+          }
+        },
+        onError: (error) => {
+          showToast({
+            tone: 'error',
+            title: 'Could not save the bank account',
+            description: `The selection was not persisted — pick it again or use Save changes. ${error.message}`,
+          });
+        },
+      },
+    );
   }
 
   return (
@@ -119,7 +149,7 @@ export function InfaktStructuredSection({
           ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
             <FormField label="Bank account for Transfer invoices" name="infaktBankAccount">
               <Select
-                value={bankAccount ? String(bankAccount.id) : ''}
+                value={bankAccount ? bankAccount.id : ''}
                 onChange={(event) => onBankAccountChange(event.target.value)}
                 disabled={!configIsParseable}
               >

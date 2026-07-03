@@ -32,7 +32,8 @@ export type InfaktPaymentMethod = (typeof InfaktPaymentMethodValues)[number];
  * bank-account-picker implementation plan for the tradeoff).
  */
 export interface InfaktBankAccountConfig {
-  id: number;
+  /** Provider-native account id, kept as a string to match `InvoicingBankAccount.id`. */
+  id: string;
   accountNumber: string;
   bankName: string;
 }

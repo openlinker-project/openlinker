@@ -117,21 +117,31 @@ function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'tra
   return config.defaultPaymentMethod === 'transfer' ? 'transfer' : 'cash';
 }
 
-/** Read the Infakt bank-account snapshot out of `config.bankAccount` (#1303 follow-up). */
+/**
+ * Read the Infakt bank-account snapshot out of `config.bankAccount` (#1303
+ * follow-up). `id` is a string end-to-end (matching the neutral
+ * `InvoicingBankAccount.id`); a legacy numeric `id` persisted by an earlier
+ * build is coerced so the select still preselects it.
+ */
 function readInfaktBankAccount(
   config: Record<string, unknown>,
-): { id: number; accountNumber: string; bankName: string } | null {
+): { id: string; accountNumber: string; bankName: string } | null {
   const raw = config.bankAccount;
   if (
     typeof raw !== 'object' ||
     raw === null ||
-    typeof (raw as { id?: unknown }).id !== 'number' ||
     typeof (raw as { accountNumber?: unknown }).accountNumber !== 'string' ||
     typeof (raw as { bankName?: unknown }).bankName !== 'string'
   ) {
     return null;
   }
-  return raw as { id: number; accountNumber: string; bankName: string };
+  const id = (raw as { id?: unknown }).id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    id: String(id),
+    accountNumber: (raw as { accountNumber: string }).accountNumber,
+    bankName: (raw as { bankName: string }).bankName,
+  };
 }
 
 /**
