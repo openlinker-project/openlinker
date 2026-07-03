@@ -120,6 +120,11 @@ function invoiceIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
 }
 
+/** Shared `:connectionId` param pipe — 400 on a malformed UUID, so a bad path id never reaches the DB uuid cast (#1313). */
+function connectionIdPipe(): ParseUUIDPipe {
+  return new ParseUUIDPipe({ version: '4' });
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
@@ -148,7 +153,7 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountsReader' })
   async getBankAccounts(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
   ): Promise<BankAccountResponseDto[]> {
     const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
       connectionId,
@@ -182,7 +187,7 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountDefaultSetter' })
   async setDefaultBankAccount(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
     @Param('accountId') accountId: string,
   ): Promise<void> {
     const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(

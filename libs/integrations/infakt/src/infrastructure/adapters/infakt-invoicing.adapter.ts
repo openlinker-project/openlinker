@@ -235,7 +235,9 @@ export class InfaktInvoicingAdapter
    * clears the previous default server-side, so no second call is needed.
    */
   async setDefaultBankAccount(accountId: string): Promise<void> {
-    await this.http.put(`bank_accounts/${accountId}.json`, { bank_account: { default: true } });
+    await this.http.put(`bank_accounts/${encodeURIComponent(accountId)}.json`, {
+      bank_account: { default: true },
+    });
   }
 
   getSupportedDocumentTypes(): DocumentType[] {
