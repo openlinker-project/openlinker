@@ -42,6 +42,7 @@ RawFa3Xml (validated)
 | `Podmiot2` | Buyer identification choice (see Buyer ID resolution) |
 | `Fa` | `KodWaluty`, P_13/P_14/P_15 aggregates, `Adnotacje` (order ref) |
 | `FaWiersz` (×N) | One per line: name, quantity, unit price gross, `P_12` |
+| `Platnosc` (optional, #1311) | Connection-level payment defaults, sibling of `FaWiersz` (see Payment section below) |
 
 ## P_12 tax-rate mapping (all 10 values)
 
@@ -143,6 +144,37 @@ to the original — no KSeF string crosses into core.
 > MF example-pack compliance + live KSeF clearance stay deferred to C3+.
 > `KOR_ZAL`/`KOR_ROZ` (advance/settlement corrections) are a deferred follow-up.
 
+## Payment (`Platnosc` — #1311)
+
+`Platnosc` is a **sibling of `FaWiersz`** under `Fa` (XSD line 3281, `minOccurs="0"`)
+— NOT nested inside a line. It carries the connection's default payment method,
+bank account, payment term, and early-payment discount, resolved from
+`KsefConnectionConfig.payment` (`ksef-connection.types.ts`) — a plain,
+manually-entered per-connection config value. Unlike inFakt (#1303/#1308), KSeF
+has no live "list bank accounts" API, so there is no `BankAccountsReader`/
+`BankAccountDefaultSetter` capability here — the operator types the account in
+once and it is emitted as-is.
+
+`Platnosc` is emitted **only** when at least one sub-field is configured;
+otherwise it is omitted entirely (existing connections keep byte-identical
+output). The **XSD-mandated child order is not payment-method-first**:
+
+| Order | Element | Config source | Notes |
+|---|---|---|---|
+| 1 | `TerminPlatnosci/TerminOpis` | `payment.paymentTermDays` | `Ilosc` = days; `Jednostka` hardcoded to `'dni'`; `ZdarzeniePoczatkowe` hardcoded to `'data wystawienia faktury'` |
+| 2 | `FormaPlatnosci` | `payment.formaPlatnosci` (`TFormaPlatnosci`, `'1'`–`'7'`) | Gotówka/Karta/Bon/Czek/Kredyt/Przelew/Mobilna |
+| 3 | `RachunekBankowy` | `payment.bankAccount` | `NrRB` required if the sub-object is present at all; `NazwaBanku`/`SWIFT` optional |
+| 4 | `Skonto` | `payment.skonto` | `WarunkiSkonta` + `WysokoscSkonta`, both free text |
+
+Deliberately **out of scope** (schema supports them, no MVP need):
+`RachunekWlasnyBanku`/`OpisRachunku` (`TRachunekBankowy` sub-fields),
+`RachunekBankowyFaktora` (factoring accounts), and the per-invoice-fact fields
+`Zaplacono`/`DataZaplaty`/`ZnacznikZaplatyCzesciowej`/`ZaplataCzesciowa`/
+`LinkDoPlatnosci` (these describe a specific invoice's payment state — always
+blank for a new invoice — not a connection default). See
+[#1311](https://github.com/openlinker-project/openlinker/issues/1311) for the
+full field-scope audit and design mockup.
+
 ## Known limitations / deferred work
 
 - ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —
@@ -157,5 +189,23 @@ to the original — no KSeF string crosses into core.
   regulations) are not yet caller-selectable; the neutral `CorrectionReference`
   carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
 - ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
+- ⏸ `Podmiot2` `JST` / `GV` flags are hard-coded to `2` ("no") in `buyerNode`.
+  Both elements are required by the XSD, and `2` is correct for the common
+  buyer — but a buyer that actually *is* a local-government (JST) subsidiary
+  unit or a VAT-group member would get a false declaration on a fiscal
+  document. The neutral `InvoiceParty` carries no field to express either
+  status; supporting such buyers needs a neutral-contract extension plus a
+  data source for the flag (PR #1317 review).
+- ⚠ AES-256-CBC session-IV reuse (PR #1317): `encryptDocument` reuses the
+  single session-declared IV for every document sent within one KSeF session.
+  Protocol-mandated - the wire carries exactly one IV, declared at session
+  open in `encryption.initializationVector`, and `SendInvoiceRequest` has no
+  per-document IV field (spec citations in `ksef-session-crypto.service.ts`).
+  Residual security trade-off: ciphertext is deterministic within a session -
+  two identical FA(3) documents produce identical ciphertext, and a shared
+  plaintext prefix is observable at CBC block granularity. Exposure is
+  bounded (ciphertext travels only over TLS to MF; the FA(3) header prefix is
+  public structure) and cannot be fixed client-side without breaking
+  server-side decryption (the observed status-430 rejection of per-document IVs).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.

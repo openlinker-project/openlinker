@@ -4,7 +4,7 @@
  * Single source of truth for assembling the nested `config.seller` shape the
  * KSeF adapter's `resolveSeller` reads (`{ nip, name, address: { line1, line2?,
  * city, postalCode, countryIso2 } }`, #1223). Both the create path
- * (`ksef-setup.schema.ts`) and the edit path (`edit-connection.schema.ts`)
+ * (`ksef-setup.schema.ts`) and the edit path (`ksef-connection-config.ts`)
  * consume this module so the persisted shape — and the per-leaf normalization
  * rules (NIP digits-only, name/address trim, country uppercase) — cannot drift
  * between the two flows.
@@ -19,14 +19,14 @@
  * NIP is the canonical `config.seller.nip` location — there is no flat
  * `config.sellerNip`.
  *
- * @module features/connections/components
+ * @module plugins/ksef/lib
  */
 import { normalizeNip } from './ksef-nip';
 
 /**
  * Flat seller-profile sub-fields collected by the wizard. Shared between the
  * create path (`ksef-setup.schema.ts`) and the edit path
- * (`edit-connection.schema.ts`) so both flows assemble the identical nested
+ * (`ksef-connection-config.ts`) so both flows assemble the identical nested
  * `config.seller` shape.
  */
 export interface KsefSellerProfileInput {

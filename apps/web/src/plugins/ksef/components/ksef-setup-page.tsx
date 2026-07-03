@@ -1,12 +1,12 @@
 /**
  * KSeF Setup Page
  *
- * Page wrapper for the guided KSeF (Polish national e-invoicing) connection
+ * Plugin-owned page wrapper for the guided KSeF (Polish national e-invoicing) connection
  * wizard.
  */
 import type { ReactElement } from 'react';
-import { KsefSetupForm } from '../../features/connections/components/ksef-setup-form';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { KsefSetupForm } from './ksef-setup-form';
+import { PageLayout } from '../../../shared/ui/page-layout';
 
 export function KsefSetupPage(): ReactElement {
   return (

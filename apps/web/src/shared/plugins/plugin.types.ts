@@ -28,6 +28,7 @@
 import type { ComponentType } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { RouteObject } from 'react-router-dom';
+import type { RefinementCtx, ZodType } from 'zod';
 
 import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { Role } from '../../app/nav-registry.types';
@@ -162,6 +163,77 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+}
+
+/**
+ * Plugin-contributed edit-connection form fields (#1330).
+ *
+ * TS declaration-merging seam, mirroring the `PluginApiNamespaces` precedent
+ * (#605): a plugin that contributes a `ConnectionConfigContribution` also
+ * augments this interface with the form-field names its Zod fragment adds, so
+ * `form.register('sellerNip')` etc. stay statically typed inside the plugin's
+ * `StructuredConfigSection`. Every merged field MUST be optional — the base
+ * form (and every other platform's form) never carries it.
+ *
+ * The merge block enters the TS import graph through the plugin's entry in
+ * `apps/web/src/plugins/index.ts`, same as `apiNamespaces`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface -- declaration-merging target; plugins populate it
+export interface PluginEditConnectionFields {}
+
+/**
+ * Keys of `ConnectionConfigContribution.schemaShape`, constrained to the
+ * field names plugins declaration-merge into `PluginEditConnectionFields`.
+ * Ties the Zod fragment to the typed form fields at compile time - a plugin
+ * cannot ship a schema entry for a field it never merged (which would be an
+ * unvalidated, untyped `register()` path), and TS flags a typo'd key at the
+ * contribution literal instead of failing silently at runtime.
+ */
+export type PluginConnectionConfigSchemaShape = {
+  [K in keyof PluginEditConnectionFields]?: ZodType;
+};
+
+/**
+ * Per-platform connection-config contribution (#1330). The non-render half of
+ * a platform's structured-config editing: the render half is
+ * `StructuredConfigSection`; this bag owns the Zod schema fragment, the
+ * read-side hydration, and the write-side config assembly. Consumed by
+ * `EditConnectionForm` (composed resolver + `defaultValues`) and
+ * `mergeStructuredIntoConfig` (assembly pass). Absent ⇒ the platform has no
+ * structured-config fields beyond the shared base schema.
+ */
+export interface ConnectionConfigContribution {
+  /**
+   * Zod field fragment merged into the edit-connection schema when editing a
+   * connection of this platform. The keys are compiler-constrained to the
+   * names the plugin merges into `PluginEditConnectionFields`, so a schema
+   * entry without a matching declaration-merged form field is a type error
+   * (an unmerged key would otherwise produce an untyped `register()` path).
+   */
+  schemaShape: PluginConnectionConfigSchemaShape;
+  /**
+   * Optional cross-field checks applied via `superRefine` on the composed
+   * schema (e.g. KSeF's skonto both-or-neither pair).
+   */
+  superRefine?: (values: Record<string, unknown>, ctx: RefinementCtx) => void;
+  /**
+   * Hydrate this platform's form fields from a stored config (read side).
+   * Must return a fully-populated slice — empty strings where the operator
+   * hasn't filled a field yet — so RHF `register()` paths need no per-field
+   * undefined guards.
+   */
+  readConfigToForm: (config: Record<string, unknown>) => Partial<PluginEditConnectionFields>;
+  /**
+   * Merge a PARTIAL structured patch into the config, returning a new config
+   * (write side — assembly/normalization). Called per keystroke with
+   * single-field patches: it MUST NOT drop sibling leaves absent from the
+   * patch, and MUST preserve unknown config keys (the operator's raw-JSON
+   * additions).
+   */
+  applyToConfig: (
+    config: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) => Record<string, unknown>;
 }
 
 /**
@@ -406,6 +478,17 @@ export interface PlatformContribution {
   getCallbackUrlDefault?: () => string | undefined;
   /** Edit-connection: render the platform-specific structured config inputs. */
   StructuredConfigSection?: ComponentType<StructuredConfigSectionProps>;
+  /**
+   * Edit-connection: the non-render half of the platform's structured-config
+   * editing (#1330) — Zod schema fragment, read-side hydration, write-side
+   * config assembly. Consumed by `EditConnectionForm` when composing the
+   * resolver schema / default values, and threaded into
+   * `mergeStructuredIntoConfig` for the per-keystroke JSON sync. A platform
+   * that renders a `StructuredConfigSection` with its own form fields must
+   * also contribute this bag (and merge its field names into
+   * `PluginEditConnectionFields`).
+   */
+  connectionConfig?: ConnectionConfigContribution;
   /**
    * #759 — adapter-provided capability-toggle descriptors. The generic
    * `CapabilityTogglesSection` renders one on/off switch per entry and
