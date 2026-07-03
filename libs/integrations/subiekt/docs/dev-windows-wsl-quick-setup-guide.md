@@ -228,6 +228,19 @@ Run the bridge through `dotnet`:
 dotnet Subiekt.Bridge.Api.dll
 ```
 
+**Optional - launch it from WSL** (fun: keeps everything except the Subiekt nexo desktop app
+in one WSL terminal). The bridge still runs **natively on Windows**; `powershell.exe` just
+drives it from your WSL shell:
+
+```bash
+# from WSL - starts the Windows bridge in the background, logs to a file you can tail
+powershell.exe -NoProfile -Command '$env:ASPNETCORE_ENVIRONMENT="Development"; Start-Process dotnet -ArgumentList "Subiekt.Bridge.Api.dll" -WorkingDirectory "C:\subiekt-bridge-run" -RedirectStandardOutput "C:\subiekt-bridge-run\bridge.log" -WindowStyle Hidden'
+
+# then connect Sfera + check health from WSL too (via the gateway IP, see Step 4):
+curl -sX POST http://172.26.96.1:5005/api/session/connect
+curl -s     http://172.26.96.1:5005/health
+```
+
 **Do NOT double-click / launch `Subiekt.Bridge.Api.exe`.** The project is
 `net8.0-windows` with `UseWPF=true`, so the apphost is a **WinExe (GUI subsystem) with no
 console** - it produces **zero stdout/stderr**, so startup failures are completely silent.
