@@ -36,6 +36,33 @@ jobs:
       # Pinned by commit SHA (not the mutable v4 tag) because this workflow holds
       # contents+pull-requests write — supply-chain hygiene for third-party actions.
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # openlinker.io/changelog renders this repo's GitHub Releases at build time.
+      # A tag pushed by release-please's default GITHUB_TOKEN can't re-trigger a
+      # separate workflow (RELEASING.md § CD trigger caveat), so poke the website
+      # repo directly — but only when a Release was actually cut (the Release PR
+      # merged), not on the every-push Release-PR refresh.
+      - name: Notify website of new release
+        if: ${{ steps.release.outputs.release_created }}
+        # Best-effort: the tag + GitHub Release are already created by the step
+        # above, so a failed dispatch (expired PAT, website repo down) must not
+        # red-X an otherwise-successful release. --fail-with-body still logs the
+        # error for debugging, and the changelog refreshes on the next site deploy.
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::WEBSITE_DISPATCH_TOKEN not set — skipping website redeploy dispatch"
+            exit 0
+          fi
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/openlinker-project/openlinker-website/dispatches \
+            -d "{\"event_type\":\"product-release\",\"client_payload\":{\"tag\":\"$TAG\"}}"
