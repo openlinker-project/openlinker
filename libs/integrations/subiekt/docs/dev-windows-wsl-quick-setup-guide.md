@@ -75,21 +75,45 @@ pnpm dev:stack:up            # postgres, redis, mysql, phpmyadmin, prestashop
 pnpm dev:stack:seed-prestashop   # seed currency + demo products into PrestaShop
 ```
 
+> **This is the dev shortcut.** For the authoritative shop setup (webservice API key,
+> catalog sync, category mapping, order ingestion) follow the canonical
+> [Getting Started guide](../../../../docs/getting-started.md). The notes below are just the
+> minimum to get PrestaShop actually serving so OpenLinker can talk to it - no hand-waving.
+
+PrestaShop runs an **unattended install on first boot (~2-3 min)**. Wait for it, then verify:
+
+```bash
+curl -sI http://localhost:8080 | head -1     # expect: HTTP/1.1 302 Found (redirect to /en/)
+```
+
+On the first `docker compose up`, the post-install scripts in `docker/prestashop/post-install/`
+run automatically and do real work (this is what trips people up - it is NOT a bare install):
+
+- **rename the random `/admin{hash}/` folder to a stable `/admin-dev/`** so the back office URL is predictable,
+- set **PLN** as the default currency,
+- replace the upstream demo catalogue with **5 fixtures** sourced from real Allegro listings
+  (the ones the barcode-linking / synthetic-variant tests exercise).
+
+Re-seed any time (e.g. after breaking PS data during testing) with `pnpm dev:stack:seed-prestashop`.
+A product you hand-add in the PS admin survives a re-seed **only** if its reference is prefixed
+`OP-` (operator-preserve); anything else is treated as demo data and wiped.
+
 The stack (from `docker-compose.yml`):
 
 | Service | URL / port | Notes |
 |---|---|---|
-| PrestaShop storefront + back office | `http://localhost:8080` | `PS_DOMAIN=localhost:8080`, admin folder `admin` |
-| PrestaShop admin login | see below | `ADMIN_MAIL=demo@prestashop.com`, `ADMIN_PASSWD=prestashop_demo` |
+| PrestaShop storefront | `http://localhost:8080` | 302-redirects to `/en/` once installed |
+| PrestaShop back office | `http://localhost:8080/admin-dev/` | login `demo@prestashop.com` / `prestashop_demo` |
 | phpMyAdmin | `http://localhost:8081` | user `root` / password `root` |
 | Postgres (OpenLinker DB) | `localhost:5432` | `postgres` / `postgres`, db `openlinker` |
 | Redis | `localhost:6379` | |
 | MySQL (PrestaShop DB) | `localhost:3306` | `prestashop` / `prestashop` |
 
-> **PrestaShop admin folder.** The compose sets `PS_FOLDER_ADMIN=admin`, but PrestaShop
-> randomizes the admin folder on install and the post-install script renames it back.
-> If `http://localhost:8080/admin` 404s, check the actual folder name on your machine
-> (list `admin*` folders in the container: `docker compose exec prestashop ls /var/www/html | grep -i admin`).
+> **Back office URL.** The post-install `10-rename-admin.sh` renames PrestaShop's random
+> admin folder to a **stable `/admin-dev/`**, so the back office is always at
+> `http://localhost:8080/admin-dev/` - you do not have to hunt for a hashed folder name.
+> If the URL still shows `/install`, the unattended install has not finished yet: wait a
+> minute or watch `docker compose logs -f prestashop` (progress lines are tagged `[ps-post-install]`).
 
 ---
 
@@ -346,7 +370,7 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 |---|---|---|
 | OpenLinker API | `http://localhost:3000` (base path `/v1`, e.g. `/v1/health`) | WSL |
 | OpenLinker web (Vite) | `http://localhost:4173` | WSL |
-| PrestaShop | `http://localhost:8080` | WSL (Docker) |
+| PrestaShop (storefront / back office) | `http://localhost:8080` / `http://localhost:8080/admin-dev/` | WSL (Docker) |
 | phpMyAdmin | `http://localhost:8081` | WSL (Docker) |
 | Postgres / Redis / MySQL | `localhost:5432` / `6379` / `3306` | WSL (Docker) |
 | Subiekt bridge (from Windows) | `http://127.0.0.1:5005` | Windows |
@@ -366,3 +390,4 @@ config.
 - [Subiekt setup guide](./setup-guide.md) - operator-facing bridge + connection setup, TLS/auth.
 - [Subiekt runbook](./runbook.md) - version matrix, config keys, troubleshooting reference.
 - [Subiekt tutorial](./tutorial.md) - full order → invoice → verify walkthrough.
+- [Getting Started](../../../../docs/getting-started.md) - canonical clean-machine setup (PrestaShop + Allegro, catalog + category mapping).
