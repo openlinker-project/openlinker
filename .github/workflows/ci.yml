@@ -249,47 +249,6 @@ jobs:
           # a network that still has containers attached, regardless of age
           # or which run created it.
           docker network prune -f --filter "label=org.testcontainers=true" || true
-          # Sweep leaked PS bind-mount data dirs (#1321). The PS harness
-          # bind-mounts /tmp/ol-ps-data-* (a host path, resolved by the host
-          # daemon) onto /var/www/html and PS writes ~1GB into it as root.
-          # The in-process cleanup now empties it through a root container,
-          # but a SIGKILLed/cancelled run never reaches that cleanup — this
-          # reaps the leftovers. The `ol-ps-data-` prefix is unique to this
-          # repo's mkdtemp call, and `-mmin +90` (double this job's timeout,
-          # same gate as the container sweep above) can never match a
-          # concurrently running job's live dir.
-          docker run --rm -v /tmp:/host-tmp alpine sh -c \
-            'find /host-tmp -maxdepth 1 -name "ol-ps-data-*" -mmin +90 -exec rm -rf {} +' || true
-      - name: Disk diagnostics - host /tmp ol-ps-data-* leak probe (temporary, #1321)
-        # Read-only probe for the suspected root cause of the recurring
-        # "no space left on device" failures: the PrestaShop test harness
-        # bind-mounts a mkdtemp dir (prefix `ol-ps-data-`) onto /var/www/html
-        # and PS writes ~1GB into it AS ROOT. The rmSync cleanup in
-        # prestashop-container.helper.ts runs unprivileged (EPERM ignored),
-        # and on a runner-in-docker host the bind-mount source resolves on
-        # the HOST daemon's /tmp - so leaked dirs are invisible to both
-        # `docker system df` and the container sweep above. The alpine
-        # container below mounts the host's /tmp to count/size them.
-        run: |
-          echo "== df -h (runner view; overlay ~= host root fs) =="
-          df -h || true
-          echo "== docker system df =="
-          docker system df || true
-          echo "== host /tmp ol-ps-data-* probe (via host-daemon bind-mount) =="
-          docker run --rm -v /tmp:/host-tmp alpine sh -c '
-            set -- /host-tmp/ol-ps-data-*
-            if [ -e "$1" ]; then
-              echo "ol-ps-data-* dirs on host /tmp: $#"
-              du -sh "$@" 2>/dev/null | tail -20
-              echo "-- total --"
-              du -sch "$@" 2>/dev/null | tail -1
-              echo "-- oldest / newest (mtime) --"
-              ls -dtr "$@" | head -1 | xargs ls -ld
-              ls -dt "$@" | head -1 | xargs ls -ld
-            else
-              echo "ol-ps-data-* dirs on host /tmp: 0"
-            fi
-          ' || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build libs (workspace glob — auto-discovers new packages)
