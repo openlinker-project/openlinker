@@ -129,3 +129,12 @@ export interface InfaktSendToKsefResponse {
     request_finished_at: string | null;
   };
 }
+
+/** Wire shape for `GET /bank_accounts.json` entries (#1303 follow-up). */
+export interface InfaktBankAccount {
+  id: number;
+  account_number: string;
+  bank_name: string;
+  /** inFakt's own "set as default account" flag — surfaced live (2026-07-02). */
+  default: boolean;
+}

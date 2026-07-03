@@ -115,13 +115,16 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PickupPointFinder` | Search the carrier's pickup points / lockers (e.g. Paczkomat). | `findPickupPoints` | `isPickupPointFinder` |
 | `ShipmentCanceller` | Cancel / void a registered shipment. | `cancelShipment` | `isShipmentCanceller` |
 
-### `InvoicingPort` (invoicing) — 3
+### `InvoicingPort` (invoicing) — 6
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `RegulatoryStatusReader` | Read the clearance status of a previously-submitted document. | `getClearanceStatus` | `isRegulatoryStatusReader` |
 | `RegulatoryTransmitter` *(extends `RegulatoryStatusReader`)* | Submit a document to the tax authority for clearance (+ read its status). | `submitForClearance` | `isRegulatoryTransmitter` |
+| `RegulatoryDocumentReader` | Retrieve the authority's confirmation document (e.g. the PL UPO) or a rendered view for a cleared document. | `getRegulatoryDocument` | `isRegulatoryDocumentReader` |
 | `CorrectionIssuer` | Issue a correcting document (e.g. KSeF `KOR`) against an original. | `issueCorrection` | `isCorrectionIssuer` |
+| `BankAccountsReader` | List the seller's payable bank accounts known to the provider (live picker for Transfer invoices). | `listBankAccounts` | `isBankAccountsReader` |
+| `BankAccountDefaultSetter` *(extends `BankAccountsReader`)* | Mark an account as the provider's own default, keeping it in sync with the account OL stamps on Transfer invoices. | `setDefaultBankAccount` | `isBankAccountDefaultSetter` |
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.

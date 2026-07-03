@@ -16,13 +16,16 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
-import type { ConnectionTestResult } from '../api/connections.types';
+import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
+import { useBankAccountsQuery } from '../hooks/use-bank-accounts-query';
+import { usePickBankAccount } from '../hooks/use-pick-bank-account';
+import type { Connection, ConnectionTestResult } from '../api/connections.types';
 import {
   INFAKT_SETUP_DEFAULT_VALUES,
   infaktSetupSchema,
@@ -42,15 +45,41 @@ import { useToast } from '../../../shared/ui/toast-provider';
 export function InfaktSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
+  const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
+  const [createdConnection, setCreatedConnection] = useState<Connection | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
+  // inFakt reported zero bank accounts, so the auto-apply effect forced the
+  // payment method back to Cash — kept as state so the explanation stays
+  // visible after the Transfer-gated picker section unmounts.
+  const [forcedCashNoAccounts, setForcedCashNoAccounts] = useState(false);
+  // Guards the auto-apply-default effect so it fires once per created
+  // connection, not on every re-render once the bank-accounts query resolves.
+  const bankAccountDefaultApplied = useRef(false);
+
+  const createdConnectionId = createdConnection?.id ?? null;
 
   const form = useForm<InfaktSetupFormValues, undefined, InfaktSetupFormSubmission>({
     defaultValues: INFAKT_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(infaktSetupSchema),
     mode: 'onBlur',
+  });
+
+  // Mirrors the edit screen's gating (#1310 review): the picker (and the
+  // account fetch behind it) only matter when Transfer is selected.
+  const paymentMethodIsTransfer = form.watch('defaultPaymentMethod') === 'transfer';
+  const bankAccountsQuery = useBankAccountsQuery(createdConnectionId ?? undefined, {
+    enabled: createdConnectionId !== null && paymentMethodIsTransfer,
+  });
+  // Shared persist-then-flip choreography (#1310 review) — both the auto-apply
+  // effect and a manual pick route through it, so a failed persist can never
+  // leave inFakt's default flipped while OL still stamps the old account, and
+  // `isPending` disables the Select to block a double-pick race.
+  const { pickAccount, isPending: bankAccountPickPending } = usePickBankAccount({
+    connectionId: createdConnectionId ?? '',
+    persistErrorHint: "re-pick it from the connection's edit screen.",
   });
 
   // Abandon-prevention.
@@ -72,7 +101,7 @@ export function InfaktSetupForm(): ReactElement {
     try {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
-      setCreatedConnectionId(created.id);
+      setCreatedConnection(created);
       showToast({
         tone: 'success',
         title: 'Connection created',
@@ -82,6 +111,78 @@ export function InfaktSetupForm(): ReactElement {
       return;
     }
   });
+
+  // Bank-account default (#1303 follow-up) — the select is locked until the
+  // connection exists (the server needs the saved API key to call inFakt).
+  // Once the live list resolves: ≥1 accounts picks whichever inFakt itself
+  // marks as `isDefault` (falling back to the first entry if none is marked,
+  // though inFakt always reports exactly one); 0 accounts forces the payment
+  // method back to Cash (Transfer isn't viable without one), even if the
+  // operator picked Transfer before the connection was created.
+  useEffect(() => {
+    if (!createdConnection || !bankAccountsQuery.isSuccess || bankAccountDefaultApplied.current) {
+      return;
+    }
+    bankAccountDefaultApplied.current = true;
+    const accounts = bankAccountsQuery.data;
+    const currentConfig = createdConnection.config ?? {};
+
+    if (accounts.length > 0) {
+      const defaultAccount = accounts.find((a) => a.isDefault) ?? accounts[0]!;
+      setSelectedBankAccountId(defaultAccount.id);
+      // Route through the shared choreography so the fallback-to-first branch
+      // (no account flagged default) also syncs inFakt's own default, instead
+      // of persisting OL's snapshot while inFakt keeps pointing elsewhere
+      // (#1310 review, finding 7).
+      pickAccount(defaultAccount, currentConfig);
+    } else if (currentConfig.defaultPaymentMethod === 'transfer') {
+      // Keep the (now read-only) form control in agreement with what is
+      // persisted — without the setValue the select would keep showing
+      // "Transfer" while the server issues everything as cash.
+      setForcedCashNoAccounts(true);
+      form.setValue('defaultPaymentMethod', 'cash');
+      updateConnection.mutate(
+        {
+          connectionId: createdConnection.id,
+          input: { config: { ...currentConfig, defaultPaymentMethod: 'cash' } },
+        },
+        {
+          onError: (error) => {
+            // The optimistic Cash flip failed to persist: the server still
+            // holds Transfer, so revert the UI rather than leave it asserting a
+            // Cash state the server rejected (#1310 review, finding 3). The
+            // operator recovers from the edit screen, per the toast.
+            setForcedCashNoAccounts(false);
+            form.setValue('defaultPaymentMethod', 'transfer');
+            showToast({
+              tone: 'error',
+              title: 'Could not switch the payment method to Cash',
+              description:
+                'inFakt has no bank account for Transfer invoices, but switching this ' +
+                "connection to Cash didn't save - change the payment method from the " +
+                `connection's edit screen. ${error.message}`,
+            });
+          },
+        },
+      );
+    }
+  }, [
+    createdConnection,
+    bankAccountsQuery.isSuccess,
+    bankAccountsQuery.data,
+    updateConnection,
+    pickAccount,
+    showToast,
+    form,
+  ]);
+
+  const onBankAccountChange = (accountId: string): void => {
+    if (!createdConnection) return;
+    setSelectedBankAccountId(accountId);
+    const account = (bankAccountsQuery.data ?? []).find((a) => a.id === accountId);
+    if (!account) return;
+    pickAccount(account, createdConnection.config ?? {});
+  };
 
   const onTest = async (): Promise<void> => {
     if (!createdConnectionId) return;
@@ -164,12 +265,18 @@ export function InfaktSetupForm(): ReactElement {
         name="defaultPaymentMethod"
         error={form.formState.errors.defaultPaymentMethod?.message}
         description={
-          '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
-          'inFakt account. Leave "Cash" unless you have confirmed that prerequisite.'
+          createdConnection
+            ? 'Locked now that the connection is created — change the payment method from ' +
+              "the connection's edit screen (post-create changes here would not be saved)."
+            : '"Transfer" 422s on inFakt unless a bank account is configured on the seller’s ' +
+              'inFakt account. Choosing a specific bank account unlocks after connecting — it ' +
+              'defaults to whichever account is set as default in inFakt, or falls back to Cash ' +
+              'if none exist.'
         }
       >
         <Select
           {...form.register('defaultPaymentMethod')}
+          disabled={createdConnection !== null}
           invalid={Boolean(form.formState.errors.defaultPaymentMethod)}
         >
           <option value="cash">Cash</option>
@@ -177,8 +284,53 @@ export function InfaktSetupForm(): ReactElement {
         </Select>
       </FormField>
 
-      {createdConnectionId ? (
+      {createdConnection ? (
         <>
+          {/* Bank-account picker — gated on Transfer, mirroring the edit
+              screen (a bank account is only stamped on Transfer invoices). */}
+          {paymentMethodIsTransfer ? (
+            bankAccountsQuery.isLoading ? (
+              <p className="muted-text">Checking inFakt for bank accounts…</p>
+            ) : bankAccountsQuery.isError ? (
+              <p className="muted-text">
+                Couldn't reach inFakt to list bank accounts. This connection stays on{' '}
+                <strong>Transfer</strong>, so invoices will keep being issued as Transfer and
+                may be rejected by inFakt until you pick a bank account from the connection's
+                edit screen.
+              </p>
+            ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
+              <FormField label="Bank account for Transfer invoices" name="bankAccount">
+                <Select
+                  value={selectedBankAccountId ?? ''}
+                  onChange={(event) => onBankAccountChange(event.target.value)}
+                  disabled={bankAccountPickPending}
+                >
+                  <option value="" disabled>
+                    Select a bank account…
+                  </option>
+                  {bankAccountsQuery.data.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.bankName} — {account.accountNumber}
+                      {account.isDefault ? ' (default in inFakt)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            ) : null
+          ) : null}
+
+          {/* Rendered outside the Transfer gate: the zero-accounts fallback
+              flips the form's own payment method to Cash, which unmounts the
+              gated section above — the explanation must survive that. */}
+          {forcedCashNoAccounts ? (
+            <p className="muted-text">
+              No bank account is configured on this inFakt account, so <strong>Transfer</strong>{' '}
+              isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account in
+              your inFakt settings, then switch the payment method from the connection's edit
+              screen.
+            </p>
+          ) : null}
+
           {testResult ? (
             <Alert
               tone={testResult.success ? 'success' : 'error'}
