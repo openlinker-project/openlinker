@@ -24,7 +24,7 @@ const seller: SellerProfile = {
   address: { line1: 'ul. Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
 };
 
-function builtDoc(): RawFa3Xml {
+function builtDoc(payment?: Fa3BuilderInput['payment']): RawFa3Xml {
   const input: Fa3BuilderInput = {
     seller,
     buyer: { kind: 'nip', nip: '9876543210' },
@@ -35,9 +35,17 @@ function builtDoc(): RawFa3Xml {
     invoiceNumber: 'FV/2026/06/0001',
     generatedAt: '2026-06-23T10:15:30Z',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
+    ...(payment !== undefined ? { payment } : {}),
   };
   return buildFa3Xml(input);
 }
+
+const fullPayment: Fa3BuilderInput['payment'] = {
+  formaPlatnosci: '6',
+  bankAccount: { nrRb: '61109010140000000099999999', bankName: 'Santander', swift: 'WBKPPLPP' },
+  paymentTermDays: 14,
+  skonto: { conditions: '2% at 7 days', amount: '2%' },
+};
 
 describe('validateFa3Xml', () => {
   it('should return normally for a document produced by the builder', () => {
@@ -98,6 +106,62 @@ describe('validateFa3Xml', () => {
     // valid; the token guard must NOT reject `np II`.
     const doc = builtDoc().replace(/<P_12>[^<]*<\/P_12>/, '<P_12>np II</P_12>') as RawFa3Xml;
     expect(() => validateFa3Xml(doc)).not.toThrow();
+  });
+
+  it('should accept a builder-produced document with a fully-configured Platnosc', () => {
+    expect(() => validateFa3Xml(builtDoc(fullPayment))).not.toThrow();
+  });
+
+  it('should reject a Platnosc whose FormaPlatnosci precedes TerminPlatnosci', () => {
+    // Simulate the pre-#1317 "method-first" ordering bug by swapping the two
+    // leading Platnosc children in a builder-produced document.
+    const doc = builtDoc(fullPayment);
+    const bad = doc.replace(
+      /(<TerminPlatnosci>[^]*?<\/TerminPlatnosci>)(<FormaPlatnosci>[^<]*<\/FormaPlatnosci>)/,
+      '$2$1',
+    ) as RawFa3Xml;
+    expect(bad).not.toEqual(doc);
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/Platnosc/FormaPlatnosci');
+    }
+  });
+
+  it('should reject a RachunekBankowy that emits NazwaBanku before SWIFT (the PR #1317 blocker shape)', () => {
+    const doc = builtDoc(fullPayment);
+    const bad = doc.replace(
+      /(<SWIFT>[^<]*<\/SWIFT>)(<NazwaBanku>[^<]*<\/NazwaBanku>)/,
+      '$2$1',
+    ) as RawFa3Xml;
+    expect(bad).not.toEqual(doc);
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      // The canonically-later element (`NazwaBanku`) is the one found out of
+      // place, so the issue is anchored to it.
+      expect(paths).toContain('/Faktura/Fa/Platnosc/RachunekBankowy/NazwaBanku');
+    }
+  });
+
+  it('should reject a RachunekBankowy without NrRB', () => {
+    const doc = builtDoc(fullPayment);
+    const bad = doc.replace(/<NrRB>[^<]*<\/NrRB>/, '') as RawFa3Xml;
+    expect(bad).not.toEqual(doc);
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/Platnosc/RachunekBankowy/NrRB');
+    }
   });
 
   it('should not embed the raw XML in the exception message', () => {

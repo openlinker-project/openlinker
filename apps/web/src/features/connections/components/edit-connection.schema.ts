@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import type {
+  ConnectionConfigContribution,
+  PluginEditConnectionFields,
+} from '../../../shared/plugins';
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
-import { normalizeNip } from './ksef-nip';
-import { applyKsefSellerToConfig } from './ksef-seller-config';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -228,49 +230,9 @@ export const editConnectionSchema = z
     subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
     // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
     subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
-    // KSeF-only structured fields surfacing `config.env` / `config.seller.{nip,name,address}` /
-    // `config.contextIdentifier` (#1152, #1223). `ksefEnvironment` maps to the BE C2
-    // `KsefConnectionConfig.env` enum (the one config-validator-gated field). The
-    // seller-profile fields assemble the nested `config.seller` shape the adapter's
-    // `resolveSeller` requires for issuance — this is the canonical NIP location (no
-    // flat `config.sellerNip`). All optional client-side so the operator can save
-    // incremental progress; the server is the strict gate.
-    ksefEnvironment: z.union([z.enum(['test', 'demo', 'prod']), z.literal('')]).optional(),
     // Infakt-only structured field surfacing `config.defaultPaymentMethod`
     // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
     infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
-    // NIP normalization mirrors the setup wizard (`ksef-setup.schema.ts`): strip
-    // dashes/spaces the operator may paste, then enforce 10 digits. Without this
-    // parity a value saved with separators on create fails the edit-schema check.
-    sellerNip: z
-      .union([
-        z
-          .string()
-          .transform(normalizeNip)
-          .refine((v) => v === '' || /^\d{10}$/.test(v), {
-            message: 'Seller NIP must be 10 digits.',
-          }),
-        z.literal(''),
-      ])
-      .optional(),
-    sellerName: z.union([z.string().trim().max(512), z.literal('')]).optional(),
-    sellerAddressLine1: z.union([z.string().trim().max(512), z.literal('')]).optional(),
-    sellerAddressLine2: z.union([z.string().trim().max(512), z.literal('')]).optional(),
-    sellerCity: z.union([z.string().trim().max(256), z.literal('')]).optional(),
-    sellerPostalCode: z.union([z.string().trim().max(32), z.literal('')]).optional(),
-    sellerCountryIso2: z
-      .union([
-        z
-          .string()
-          .trim()
-          .transform((value) => value.toUpperCase())
-          .refine((v) => v === '' || /^[A-Z]{2}$/.test(v), {
-            message: 'Country must be a 2-letter ISO code (e.g. PL).',
-          }),
-        z.literal(''),
-      ])
-      .optional(),
-    contextIdentifier: z.union([z.string().trim().max(64), z.literal('')]).optional(),
     // InPost-only structured fields (#771). `inpostEnvironment` → flat
     // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
     // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
@@ -280,27 +242,45 @@ export const editConnectionSchema = z
     inpostEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
     inpostOrganizationId: z.string().trim().optional(),
     inpostSenderAddress: inpostSenderAddressSchema.optional(),
-  })
-  .superRefine((values, ctx) => {
-    // KSeF postal code is PL-format-gated (#1223), matching the create wizard.
-    // Empty stays allowed for incremental save. KSeF is PL-domestic, so an
-    // unset/blank country on this partial-edit form is treated as PL; an explicit
-    // non-PL country opts out of the check.
-    const postalCode = (values.sellerPostalCode ?? '').trim();
-    if (postalCode.length === 0) return;
-    const countryIso2 = (values.sellerCountryIso2 ?? '').trim().toUpperCase();
-    const isDomesticPl = countryIso2 === '' || countryIso2 === 'PL';
-    if (isDomesticPl && !/^\d{2}-\d{3}$/.test(postalCode)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['sellerPostalCode'],
-        message: 'Postal code must use the PL format NN-NNN.',
-      });
-    }
   });
 
-export type EditConnectionFormValues = z.input<typeof editConnectionSchema>;
-export type EditConnectionFormSubmission = z.output<typeof editConnectionSchema>;
+/**
+ * Form value types are widened with `PluginEditConnectionFields` (#1330) — the
+ * declaration-merging seam plugins populate with the field names their
+ * `ConnectionConfigContribution.schemaShape` adds. All merged fields are
+ * optional, so base-only usage (and every non-contributing platform) is
+ * unaffected.
+ */
+export type EditConnectionFormValues = z.input<typeof editConnectionSchema> &
+  Partial<PluginEditConnectionFields>;
+export type EditConnectionFormSubmission = z.output<typeof editConnectionSchema> &
+  Partial<PluginEditConnectionFields>;
+
+/**
+ * Compose the edit-connection resolver schema for one connection (#1330). The
+ * shared base carries the platform-neutral fields plus the not-yet-migrated
+ * inline platform fields; a platform's `ConnectionConfigContribution` (resolved
+ * via `usePlatform(connection.platformType)`) extends it with that platform's
+ * own field fragment and optional cross-field `superRefine` checks. Only the
+ * edited connection's platform matters at edit time, so composition happens at
+ * render time — never from a `features → plugins` import.
+ */
+export function buildEditConnectionSchema(
+  contribution?: ConnectionConfigContribution,
+): z.ZodType<EditConnectionFormSubmission, EditConnectionFormValues> {
+  // `schemaShape` is keyed by `keyof PluginEditConnectionFields` (a mapped
+  // type whose values may read as `| undefined`), so it needs a structural
+  // cast to the `ZodRawShape` that `.extend()` accepts - key/field agreement
+  // is already compiler-enforced at the contribution literal.
+  const objectSchema = contribution
+    ? editConnectionSchema.extend(contribution.schemaShape as z.ZodRawShape)
+    : editConnectionSchema;
+  const refine = contribution?.superRefine;
+  const composed = refine ? objectSchema.superRefine((values, ctx) => refine(values, ctx)) : objectSchema;
+  // The extended shape is opaque to the static base types; the contribution's
+  // declaration-merged fields make the runtime and static views agree.
+  return composed as unknown as z.ZodType<EditConnectionFormSubmission, EditConnectionFormValues>;
+}
 
 export function toUpdateConnectionInput(values: EditConnectionFormSubmission): UpdateConnectionInput {
   return {
@@ -310,7 +290,14 @@ export function toUpdateConnectionInput(values: EditConnectionFormSubmission): U
   };
 }
 
-export interface StructuredConfigPatch {
+/**
+ * Structured patch merged into the raw config JSON. Declared as a type alias
+ * (not an interface) so it carries an implicit index signature — plugin
+ * sections sync their own field names through the same
+ * `mergeStructuredIntoConfig` path, and their patches flow through to the
+ * platform's `ConnectionConfigContribution.applyToConfig` (#1330).
+ */
+export type StructuredConfigPatch = {
   baseUrl?: string;
   /** WooCommerce store root URL — `config.siteUrl` (#975). */
   siteUrl?: string;
@@ -365,33 +352,11 @@ export interface StructuredConfigPatch {
    * Mirrors the `sellerDefaults` whole-object seam.
    */
   subiektCapabilities?: Record<string, boolean>;
-  /** KSeF environment — `config.env` (#1152). Empty string clears the key. */
-  ksefEnvironment?: string;
   /**
    * Infakt default payment method — `config.defaultPaymentMethod` (#1303).
    * Empty string clears the key (adapter falls back to `'cash'`).
    */
   infaktPaymentMethod?: string;
-  /**
-   * KSeF seller-profile sub-fields (#1223). Each maps onto a leaf of the nested
-   * `config.seller.{nip,name,address}` shape the adapter's `resolveSeller`
-   * reads. Empty string clears that leaf; the merge helper drops an emptied
-   * `address` / `seller` object so a hollow profile is never persisted. NIP is
-   * normalised to digits only, matching the create path.
-   *
-   * The read-side counterpart is `readKsefSeller()` in `EditConnectionForm.tsx`,
-   * which hydrates from `config.seller.*` (with a legacy flat `config.sellerNip`
-   * fallback for connections saved before the nested shape was introduced).
-   */
-  sellerNip?: string;
-  sellerName?: string;
-  sellerAddressLine1?: string;
-  sellerAddressLine2?: string;
-  sellerCity?: string;
-  sellerPostalCode?: string;
-  sellerCountryIso2?: string;
-  /** KSeF context identifier — `config.contextIdentifier` (#1152). Empty clears. */
-  contextIdentifier?: string;
   /** InPost environment → flat `config.environment` (#771). Empty string clears the key. */
   inpostEnvironment?: 'sandbox' | 'production' | '';
   /** InPost organization id → flat `config.organizationId` (#771). Empty clears. */
@@ -403,16 +368,31 @@ export interface StructuredConfigPatch {
    * an all-empty pruned object also drops the key (delete-on-empty).
    */
   inpostSenderAddress?: InpostSenderAddressFormValues | null;
-}
+};
+
+/**
+ * The patch shape `mergeStructuredIntoConfig` accepts: the host's own
+ * structured keys plus any plugin-contributed field names (#1330,
+ * declaration-merged into `PluginEditConnectionFields`) — those ride through
+ * to the platform contribution's `applyToConfig`.
+ */
+export type EditConnectionStructuredPatch = StructuredConfigPatch &
+  Partial<PluginEditConnectionFields>;
 
 /**
  * Merge structured inputs into a raw config object. Preserves unknown keys so
  * operators can still drop in custom config fields via the JSON view without
  * losing them when the structured form re-serializes.
+ *
+ * When the edited connection's platform ships a
+ * `ConnectionConfigContribution` (#1330), its `applyToConfig` runs as the
+ * final pass so plugin-owned fields on the patch are assembled by the plugin,
+ * with the same partial-patch semantics (untouched siblings preserved).
  */
 export function mergeStructuredIntoConfig(
   base: Record<string, unknown>,
-  structured: StructuredConfigPatch,
+  structured: EditConnectionStructuredPatch,
+  contribution?: ConnectionConfigContribution,
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...base };
   if (structured.baseUrl !== undefined) {
@@ -544,30 +524,6 @@ export function mergeStructuredIntoConfig(
       next.capabilities = enabled;
     }
   }
-  // KSeF structured fields — map onto `config.{env,seller,contextIdentifier}`.
-  // `env` is the wire key (matching the BE `KsefConnectionConfig.env`); the form
-  // field is named `ksefEnvironment` to avoid colliding with DPD's `environment`.
-  if (structured.ksefEnvironment !== undefined) {
-    if (structured.ksefEnvironment.length === 0) {
-      delete next.env;
-    } else {
-      next.env = structured.ksefEnvironment;
-    }
-  }
-  // Seller assembly + leaf normalization is shared with the create path via
-  // `applyKsefSellerToConfig` (#1223). It returns a new config; copy its seller
-  // resolution back onto `next` (set or delete) so the surrounding merge of
-  // non-seller keys is preserved.
-  const withSeller = applyKsefSellerToConfig(next, structured);
-  if ('seller' in withSeller) next.seller = withSeller.seller;
-  else delete next.seller;
-  if (structured.contextIdentifier !== undefined) {
-    if (structured.contextIdentifier.length === 0) {
-      delete next.contextIdentifier;
-    } else {
-      next.contextIdentifier = structured.contextIdentifier;
-    }
-  }
   // InPost structured fields (#771). `inpostEnvironment`/`inpostOrganizationId`
   // are flat (delete-on-empty); `inpostSenderAddress` is a whole-object pruned
   // into `config.senderAddress` (clone of the `sellerDefaults` seam).
@@ -607,7 +563,10 @@ export function mergeStructuredIntoConfig(
       next.defaultPaymentMethod = structured.infaktPaymentMethod;
     }
   }
-  return next;
+  // Platform-owned assembly pass (#1330): plugin field names on the patch are
+  // assembled by the platform contribution with the same partial-patch
+  // semantics as the host clauses above.
+  return contribution ? contribution.applyToConfig(next, structured) : next;
 }
 
 function pruneEmptySellerDefaults(

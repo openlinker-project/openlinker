@@ -46,7 +46,7 @@ describe('Listings Invalid Path-Id API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/${NON_UUID_ID}`)
+        .get(`/v1/listings/${NON_UUID_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
     });
@@ -57,7 +57,7 @@ describe('Listings Invalid Path-Id API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/${VALID_ABSENT_UUID}`)
+        .get(`/v1/listings/${VALID_ABSENT_UUID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
@@ -70,7 +70,7 @@ describe('Listings Invalid Path-Id API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/${NON_UUID_ID}/offer`)
+        .get(`/v1/listings/${NON_UUID_ID}/offer`)
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
     });
@@ -83,7 +83,7 @@ describe('Listings Invalid Path-Id API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/connections/${VALID_CONNECTION_UUID}/offers/creation/${NON_UUID_ID}`)
+        .get(`/v1/listings/connections/${VALID_CONNECTION_UUID}/offers/creation/${NON_UUID_ID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
     });
@@ -94,7 +94,7 @@ describe('Listings Invalid Path-Id API Integration', () => {
       const token = await loginAsAdmin(http, dataSource);
 
       await http
-        .get(`/listings/connections/${NON_UUID_ID}/offers/creation/${VALID_ABSENT_UUID}`)
+        .get(`/v1/listings/connections/${NON_UUID_ID}/offers/creation/${VALID_ABSENT_UUID}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(404);
     });
