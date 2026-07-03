@@ -4,6 +4,25 @@
 - **Layer**: DX / Infrastructure (CI + release config; no app code, no migration)
 - **Branch**: `1137-release-please-plumbing`
 
+> **Post-review amendment (2026-07-03, #1339).** The PR review found the
+> §3 option-(A) value stale and two doc/config drifts; the shipped tree
+> supersedes the sections below on these points (left as written for the
+> historical record):
+>
+> 1. **`bootstrap-sha` moved from `333a39b1` to the main tip at merge time**
+>    (`e6298374` as of the fix) — option (A)'s *policy* ("current main tip")
+>    held, but the concrete SHA had gone stale as #1309/#1317/#1329/#1320/#1331
+>    merged, which would have made the first post-merge run open a `0.2.0`
+>    Release PR double-crediting the curated baseline. Re-bump again if `main`
+>    advances before the PR merges.
+> 2. **§2.1's `"package-name": "openlinker"` was dropped from the shipped
+>    config** — redundant with `release-type: node`, which derives the name
+>    from the root `package.json`.
+> 3. Shipped beyond the plan: the CHANGELOG/RELEASING pre-1.0 bump-semantics
+>    wording was corrected to match the config, the `v0.1.0` tag recipe now
+>    tags the `bootstrap-sha` commit explicitly, and
+>    `googleapis/release-please-action` is pinned by commit SHA.
+
 ## 1. Goal
 
 Install the **product release-line machinery** (release-please, single-package/root

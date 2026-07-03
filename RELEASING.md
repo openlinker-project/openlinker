@@ -39,7 +39,10 @@ Trunk-based / GitHub Flow (see [CONTRIBUTING.md](./CONTRIBUTING.md)):
   fixes (this matches `bump-minor-pre-major: true` +
   `bump-patch-for-minor-pre-major: false` in `release-please-config.json`).
   Promotion to `1.0.0` is when the public surface and plugin SDK are committed
-  (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy).
+  (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy). Note the **npm
+  package axis has its own, different pre-1.0 convention** (patch = strictly
+  additive, per PUBLIC_API.md) — the two axes version independently (see the
+  table above), so the policies deliberately don't match.
 - Conventional Commits drive the bump: `feat:` → minor, `fix:` → patch,
   `feat!:` / `BREAKING CHANGE:` → major (pre-1.0: a `0.x` minor).
 - Tags are `vX.Y.Z` (and `vX.Y.Z-rc.N` for release candidates).

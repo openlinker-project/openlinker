@@ -118,4 +118,6 @@ Content:
 - Architecture Decision Records, per-context engineering standards, and
   per-integration setup guides.
 
+<!-- This link goes live when the maintainer cuts the one-time v0.1.0 tag —
+     see RELEASING.md § Cutting the first tag. Until then it intentionally 404s. -->
 [0.1.0]: https://github.com/openlinker-project/openlinker/releases/tag/v0.1.0
