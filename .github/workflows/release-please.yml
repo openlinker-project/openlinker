@@ -1,0 +1,41 @@
+name: release-please
+
+# Product release line (Axis 1 of ADR-029). On every push to main, release-please
+# reads Conventional Commits since the last release and keeps an open
+# "chore: release X.Y.Z" PR updated with the version bump + CHANGELOG.md. Merging
+# that PR is what tags vX.Y.Z + creates the GitHub Release — nothing releases here
+# until a maintainer merges it. See RELEASING.md.
+#
+# The 0.1.0 baseline is hand-established (curated CHANGELOG + manifest); release-please
+# manages 0.2.0 onward. It reads commits after `bootstrap-sha` (release-please-config.json).
+on:
+  push:
+    branches: [main]
+
+# release-please needs to open/update the Release PR and, on merge, push the tag +
+# GitHub Release. The default GITHUB_TOKEN suffices for this; a PAT / GitHub App
+# token is only required later to make the tag *re-trigger* a separate CD workflow
+# (deferred — see RELEASING.md § CD trigger caveat).
+permissions:
+  contents: write
+  pull-requests: write
+
+# Never let two release-please runs race the Release PR.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    # GitHub-hosted on purpose — this job only parses commits and edits
+    # package.json / CHANGELOG.md / the manifest, so it never needs a self-hosted
+    # slot or the repo's toolchain (no pnpm install, no build).
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned by commit SHA (not the mutable v4 tag) because this workflow holds
+      # contents+pull-requests write — supply-chain hygiene for third-party actions.
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

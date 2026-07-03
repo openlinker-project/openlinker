@@ -5,9 +5,11 @@ How OpenLinker is versioned, tagged, and released. The *why* lives in
 npm-package contract lives in [PUBLIC_API.md](./PUBLIC_API.md). This document is
 the operational how-to.
 
-> **Status:** the product release line described here is the agreed target.
-> `/v1` API versioning has shipped (#1133). Tooling (release-please) and the
-> first tag land in #1137; until that merges, there are no tags yet.
+> **Status:** `/v1` API versioning (#1133) and the **release-please tooling**
+> (#1137) have shipped. `0.1.0` is the hand-curated baseline (see
+> [CHANGELOG.md](./CHANGELOG.md)); release-please manages `0.2.0` onward.
+> **There is no `v0.1.0` git tag yet** — cutting it is a deliberate one-time step
+> (see [Cutting the first tag](#cutting-the-first-tag-v010-baseline) below).
 
 ## The four version axes
 
@@ -32,10 +34,15 @@ Trunk-based / GitHub Flow (see [CONTRIBUTING.md](./CONTRIBUTING.md)):
 
 ## Versioning policy
 
-- **Product** follows SemVer with the pre-1.0 `0.x` convention: while `0.x`, the
-  **minor** segment is the pseudo-major (breaking) and **patch** is the
-  pseudo-minor (additive). Promotion to `1.0.0` is when the public surface and
-  plugin SDK are committed (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy).
+- **Product** follows SemVer with the pre-1.0 `0.x` convention: while `0.x`,
+  **minor** carries new features *and* breaking changes, and **patch** carries
+  fixes (this matches `bump-minor-pre-major: true` +
+  `bump-patch-for-minor-pre-major: false` in `release-please-config.json`).
+  Promotion to `1.0.0` is when the public surface and plugin SDK are committed
+  (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy). Note the **npm
+  package axis has its own, different pre-1.0 convention** (patch = strictly
+  additive, per PUBLIC_API.md) — the two axes version independently (see the
+  table above), so the policies deliberately don't match.
 - Conventional Commits drive the bump: `feat:` → minor, `fix:` → patch,
   `feat!:` / `BREAKING CHANGE:` → major (pre-1.0: a `0.x` minor).
 - Tags are `vX.Y.Z` (and `vX.Y.Z-rc.N` for release candidates).
@@ -57,13 +64,49 @@ Commits.
 > will not trigger a *separate* workflow. Either run the deploy steps in the same
 > job (gated on `steps.release.outputs.release_created`), or authenticate
 > release-please with a PAT / GitHub App token so the tag push re-triggers
-> `on: push: tags`.
+> `on: push: tags`. (`cd.yml` deploy wiring is deferred until deploy targets exist.)
+
+## Cutting the first tag (`v0.1.0` baseline)
+
+`0.1.0` is a **hand-established baseline**, not a release-please-generated one:
+its `CHANGELOG.md` entry is hand-curated (a readable snapshot of the integrations
+and features that shipped before automated releases), and
+`.release-please-manifest.json` records `"." : "0.1.0"` so release-please treats it
+as already released and never rewrites that section.
+
+Because release-please won't cut a version it considers already released, the
+`v0.1.0` **git tag is created by hand, once, whenever you're ready** — there's no
+rush, and nothing depends on doing it now:
+
+```bash
+# Tag the exact commit recorded as `bootstrap-sha` in release-please-config.json —
+# NOT the current main tip. Once a v0.1.0 tag + GitHub Release exist, release-please
+# parses commits from that tag's commit (bootstrap-sha is only the no-release-found
+# fallback), so tagging a later commit would silently drop everything between
+# bootstrap-sha and the tag from the generated 0.2.0 changelog.
+git fetch origin main
+git tag -a v0.1.0 <bootstrap-sha from release-please-config.json> -m "v0.1.0"
+git push origin v0.1.0
+# then create a GitHub Release for v0.1.0, pasting the 0.1.0 CHANGELOG section.
+# If a 0.2.0 Release PR is already open when you do this, re-check its commit
+# range afterward — creating the release moves release-please's parse boundary.
+```
+
+From then on it's fully automated: the next `feat:`/`fix:` merged after the
+`bootstrap-sha` in `release-please-config.json` makes release-please open a
+`0.2.0` (or `0.1.1`) Release PR, which — when you merge it — writes the generated
+`CHANGELOG` section **above** the curated `0.1.0`, bumps the version, and pushes
+the tag + GitHub Release. You never hand-tag again.
 
 ## CHANGELOG
 
 - `CHANGELOG.md` (repo root) is the single product changelog, Keep-a-Changelog
-  style, **generated** by release-please from Conventional Commits. Don't
-  hand-edit it.
+  style. The `0.1.0` section is the **hand-curated baseline** (see above); every
+  section from `0.2.0` on is **generated** by release-please from Conventional
+  Commits — don't hand-edit those.
+- When the **first** automated Release PR (`0.2.0`) opens, sanity-check that
+  release-please prepended its section cleanly *above* the curated `0.1.0` (the
+  baseline is hand-formatted, so eyeball the first insertion) before merging.
 - Per-package changelogs do not exist yet — they arrive with npm publishing
   (Changesets), as separate files for a different audience (plugin authors).
 
