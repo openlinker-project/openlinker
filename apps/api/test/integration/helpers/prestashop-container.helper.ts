@@ -164,16 +164,6 @@ export interface StartPrestashopContainerOptions {
 export async function startPrestashopContainer(
   options: StartPrestashopContainerOptions = {}
 ): Promise<PrestashopTestContainer> {
-  // Diagnostic bracket around each suite's heaviest resource usage (#1321):
-  // a full `apps/api` run boots 4 of these suite-scoped PS+MySQL pairs
-  // sequentially (maxWorkers: 1), and Ryuk is disabled on the self-hosted CI
-  // runner — so a suite that times out before reaching its own `cleanup()`
-  // leaks disk for the rest of that same run with no visibility into which
-  // suite did it. Logging usage here (start) and in `cleanup()` (end) lets a
-  // future "no space left on device" mid-run failure be attributed to a
-  // specific suite from CI output alone.
-  logDockerDiskUsage('before PS+MySQL boot');
-
   // Track started resources so we can tear them down on a partial-start
   // failure. `beforeAll` swallows post-throw teardown (Jest skips `afterAll`
   // when setup throws), so without this guard a failed PS boot would leak
@@ -275,7 +265,6 @@ export async function startPrestashopContainer(
       // Remove the bind-mount tmpdir last — see removePsDataDir for why this
       // must go through a root container rather than a plain rmSync (#1321).
       removePsDataDir(psDataDir);
-      logDockerDiskUsage('after cleanup');
     };
 
     return {
@@ -658,28 +647,6 @@ async function dumpPrestashopAppLogs(prestashop: StartedTestContainer): Promise<
     console.error(`${tag} exec failed (container may have already exited): ${formatError(err)}`);
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
-}
-
-/**
- * Log `docker system df` (non-verbose — totals only, cheap) with a caller
- * label. Best-effort: a diagnostic step must never fail the suite it's
- * instrumenting. See the call sites in {@link startPrestashopContainer} /
- * its `cleanup()` for why this exists (#1321).
- */
-function logDockerDiskUsage(label: string): void {
-  try {
-    const out = execFileSync('docker', ['system', 'df'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 10_000,
-    });
-    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
-    console.error(`[prestashop-container disk-usage] ${label}:\n${out.toString('utf8')}`);
-  } catch (err) {
-    // eslint-disable-next-line no-console -- CLI / one-shot script: stdout is the user-facing channel
-    console.error(
-      `[prestashop-container disk-usage] ${label}: docker system df failed: ${formatError(err)}`
-    );
   }
 }
 
