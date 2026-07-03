@@ -360,7 +360,8 @@ export class InvoicingController {
     }
     if (!original.providerInvoiceNumber || !original.issuedAt) {
       throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet`,
+        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet, ` +
+          `or it was issued before the provider stamped its document number and needs a one-off backfill (#1338)`,
       );
     }
 

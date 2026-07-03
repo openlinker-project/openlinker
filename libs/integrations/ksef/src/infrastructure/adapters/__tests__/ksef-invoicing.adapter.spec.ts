@@ -486,6 +486,10 @@ describe('KsefInvoicingAdapter', () => {
       expect(record.documentType).toBe('corrected');
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
+      // The KOR's own P_2 must land on the correction record too — the
+      // correction path is the primary consumer of the #1289 precondition
+      // this unblocks, so guard it explicitly, not just via delegation (#1338).
+      expect(record.providerInvoiceNumber).toBe('ol_order_123');
 
       const built = lastInput();
       expect(built?.correction).toBeDefined();
