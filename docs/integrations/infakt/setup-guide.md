@@ -20,6 +20,12 @@ full rationale behind that design.
 | `Invoicing` (`issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) | ✅ | Document types: `invoice`, `corrected`, `proforma`, `prepayment`. |
 | `RegulatoryStatusReader` (`getClearanceStatus`) | ✅ | Reads `ksef_data.status` off the stored invoice. **Not** `RegulatoryTransmitter` — inFakt submits to KSeF itself; OL has no submit primitive to call. |
 | `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a `corrective` invoice against `POST /invoices.json` with a before/after line-pair payload. |
+| `BankAccountsReader` (`listBankAccounts`) + `BankAccountDefaultSetter` (`setDefaultBankAccount`) | ✅ | Backs the live bank-account picker for `Transfer` invoices - accounts are fetched from `GET /bank_accounts.json`, and the picked account is synced back as the inFakt default. |
+| `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) | ✅ | Fetches the inFakt-rendered invoice PDF - powers the **Download PDF** button on the invoice detail page. |
+
+The connection detail page shows the enabled capability roles for the connection:
+
+![inFakt capability panel](../../../libs/integrations/infakt/docs/assets/19-infakt-capability-panel.png)
 
 - **adapterKey:** `infakt.accounting.v1`
 - **platformType:** `infakt`
@@ -56,10 +62,19 @@ The guided wizard (`/connections/new/infakt`) collects:
 | Connection name | ✅ | A label to identify this inFakt account in OpenLinker. |
 | API key | ✅ | The credential from [Prerequisites](#prerequisites). Stored encrypted server-side; never echoed back to the browser after creation. |
 | Base URL (optional) | ❌ | Advanced override for sandbox testing. Must use HTTPS. Leave blank to use inFakt's production API. |
+| Default payment method | ❌ | `Cash` or `Transfer` - the `payment_method` stamped on every invoice issued through this connection. Leave it untouched to fall back to `Cash`. `Transfer` is rejected (422) by inFakt unless a bank account is configured on the seller's inFakt account. |
 
 ![inFakt wizard, empty](../../../libs/integrations/infakt/docs/assets/01-infakt-wizard-empty.png)
 
 ![inFakt wizard, filled in](../../../libs/integrations/infakt/docs/assets/02-infakt-wizard-filled.png)
+
+When **Transfer** is selected, the connection also carries a **bank account for
+Transfer invoices**. The picker for a specific account unlocks once the connection
+exists (the API key is needed to query inFakt): OL fetches the account list live from
+inFakt and defaults to whichever account is marked default there, falling back to
+`Cash` if the inFakt account has no bank accounts at all. The issued document really
+carries this configuration - invoices land in inFakt with `payment_method: transfer`
+and the picked account's number and bank name.
 
 After submitting, the connection is created and a **Test connection** affordance
 appears — use it to confirm the API key is valid before relying on the connection.
@@ -69,6 +84,17 @@ appears — use it to confirm the API key is valid before relying on the connect
 ![Connection test passed](../../../libs/integrations/infakt/docs/assets/04-infakt-connection-test-ok.png)
 
 ![Connections list with inFakt](../../../libs/integrations/infakt/docs/assets/05-connections-list-with-infakt.png)
+
+Both payment fields stay editable after creation. On the connection **Edit** form,
+the **Payment method for invoice** disclosure exposes the same **Default payment
+method** select plus a **Bank account for Transfer invoices** picker populated live
+from inFakt. Picking a different account persists it eagerly and syncs it back as the
+default account in inFakt, so the connection config and the inFakt account never
+drift apart.
+
+![Edit form, payment method disclosure](../../../libs/integrations/infakt/docs/assets/06-infakt-edit-payment-section.png)
+
+![Edit form, changed bank account persisted](../../../libs/integrations/infakt/docs/assets/07-infakt-edit-bank-persisted.png)
 
 ---
 
@@ -139,10 +165,19 @@ auto-provisioning). Set it up manually:
 
    ![Invoice detail page](../../../libs/integrations/infakt/docs/assets/13-invoice-detail-page.png)
 
+6. Download the invoice PDF. On the accepted invoice detail page, the **Download
+   PDF** button in the KSeF clearance panel fetches the invoice as rendered by
+   inFakt.
+
+   ![Download PDF on the accepted invoice](../../../libs/integrations/infakt/docs/assets/18-invoice-pdf-download.png)
+
 ### Correcting an invoice
 
 Use **Issue correction** on an already-issued invoice to file a `corrective` document.
-Pick the line(s) to correct and the new quantity/price.
+Pick the line(s) to correct and the new quantity/price. Correction deltas diff
+against the invoice lines as issued (the issuance-time snapshot persisted with the
+invoice record, #1297), not against the order's current state - editing the order
+after issuance does not shift the correction baseline.
 
 ![Correction dialog, empty](../../../libs/integrations/infakt/docs/assets/14-correction-modal-empty.png)
 

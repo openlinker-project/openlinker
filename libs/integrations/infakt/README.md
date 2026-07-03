@@ -15,7 +15,7 @@ KSeF clearance-status reads through inFakt's own native KSeF integration.
 
 | Capability | Key sub-capabilities |
 |---|---|
-| `Invoicing` | `InvoicingPort` (`issueInvoice`, `getInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`), `RegulatoryStatusReader` (`getClearanceStatus`), `CorrectionIssuer` (`issueCorrection`) |
+| `Invoicing` | `InvoicingPort` (`issueInvoice`, `getInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`), `RegulatoryStatusReader` (`getClearanceStatus`), `CorrectionIssuer` (`issueCorrection`), `BankAccountsReader` (`listBankAccounts`), `BankAccountDefaultSetter` (`setDefaultBankAccount`), `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) |
 
 `RegulatoryTransmitter` is deliberately **not** implemented — see
 [ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md). inFakt
@@ -59,6 +59,18 @@ Authentication uses a **static API key** (no OAuth).
 - **Corrections**: `issueCorrection` fetches the original invoice, then submits a
   `corrective` document carrying a before/after row pair per corrected line
   (`correction: false` / `correction: true`).
+- **Per-connection default payment method** (#1309): `config.defaultPaymentMethod`
+  (`cash | transfer`) is stamped as `payment_method` on every issued document;
+  unset falls back to `cash`. `transfer` 422s on inFakt unless the seller's account
+  has a bank account configured.
+- **Bank-account picker with live inFakt default sync** (#1310): `BankAccountsReader.
+  listBankAccounts()` (`GET /bank_accounts.json`) feeds the wizard and edit-form
+  picker; the picked account is snapshotted into `config.bankAccount` and pushed back
+  as the inFakt default via `BankAccountDefaultSetter.setDefaultBankAccount()`.
+  `transfer` invoices carry the snapshot's `bank_account` / `bank_name` fields.
+- **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
+  (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
+  the **Download PDF** button on the accepted invoice detail page.
 - **Inbound webhooks**: `InfaktWebhookTranslator` verifies
   `X-Infakt-Signature` (HMAC-SHA256 over the raw body) and handles inFakt's
   subscription-verification handshake (`{"verification_code": "..."}` echo). Only
