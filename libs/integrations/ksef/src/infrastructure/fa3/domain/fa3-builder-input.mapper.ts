@@ -20,6 +20,7 @@ import type {
   Fa3BuilderInput,
   Fa3CorrectionContext,
   Fa3Line,
+  Fa3PaymentInput,
   SellerProfile,
 } from './fa3-xml.types';
 import { resolveBuyerIdentity } from './fa3-buyer-id.mapper';
@@ -52,6 +53,12 @@ export interface Fa3MappingContext {
    * even though both are resolved from the same connection config.
    */
   defaultTaxRate: string;
+  /**
+   * Resolved connection-level payment defaults (#1311) — `undefined` when the
+   * connection has none configured, in which case the builder omits
+   * `Platnosc` entirely.
+   */
+  payment?: Fa3PaymentInput;
 }
 
 /**
@@ -77,6 +84,7 @@ export function mapToFa3BuilderInput(
     ...(cmd.correction !== undefined
       ? { correction: mapCorrection(cmd.correction, context.defaultTaxRate) }
       : {}),
+    ...(context.payment !== undefined ? { payment: context.payment } : {}),
   };
 }
 

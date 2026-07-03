@@ -33,13 +33,13 @@
  *     `db:<uuid>` reference (stored as the connection's `credentialsRef`); the
  *     secret value is never echoed back to the browser.
  *
- * @module features/connections/components
+ * @module plugins/ksef/components
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
-import { normalizeNip } from './ksef-nip';
-import { buildKsefSellerConfig } from './ksef-seller-config';
-export type { KsefSellerProfileInput } from './ksef-seller-config';
+import type { CreateConnectionInput } from '../../../features/connections';
+import { normalizeNip } from '../lib/ksef-nip';
+import { buildKsefSellerConfig } from '../lib/ksef-seller-config';
+export type { KsefSellerProfileInput } from '../lib/ksef-seller-config';
 
 export const KSEF_ADAPTER_KEY = 'ksef.publicapi.v2';
 
@@ -50,6 +50,18 @@ export type KsefEnvironment = (typeof KSEF_ENVIRONMENT_VALUES)[number];
 /** Mirrors `KsefAuthTypeValues` (C2). */
 export const KSEF_AUTH_TYPE_VALUES = ['ksef-token', 'qualified-seal'] as const;
 export type KsefAuthType = (typeof KSEF_AUTH_TYPE_VALUES)[number];
+
+/**
+ * Mirrors `KsefFormaPlatnosciValues` (FA(3) `TFormaPlatnosci`, #1311) — the
+ * connection-level default payment method emitted into `Platnosc/FormaPlatnosci`.
+ * Declared three times by design (FE here, plugin connection-config layer
+ * `ksef-connection.types.ts`, FA3 schema layer `fa3-schema.types.ts`) — a
+ * future 8th code must be added in all three places. Drift against this list
+ * is caught by the repo-level `scripts/check-ksef-forma-platnosci-drift.mjs`
+ * invariant (`pnpm check:invariants`).
+ */
+export const KSEF_FORMA_PLATNOSCI_VALUES = ['1', '2', '3', '4', '5', '6', '7'] as const;
+export type KsefFormaPlatnosci = (typeof KSEF_FORMA_PLATNOSCI_VALUES)[number];
 
 // Polish NIP — 10 digits, optionally separated by dashes/spaces the operator
 // may paste. Stored normalised (digits only). Optional at the FE level because
@@ -137,7 +149,7 @@ export const KSEF_SETUP_DEFAULT_VALUES: KsefSetupFormValues = {
 // module so the create path here and the edit path
 // (`edit-connection.schema.ts`) normalize + assemble the nested `config.seller`
 // shape through one source. Re-exported for back-compat with existing imports.
-export { buildKsefSellerConfig } from './ksef-seller-config';
+export { buildKsefSellerConfig } from '../lib/ksef-seller-config';
 
 export function toCreateConnectionInput(values: KsefSetupFormSubmission): CreateConnectionInput {
   const config: Record<string, unknown> = { env: values.environment };
