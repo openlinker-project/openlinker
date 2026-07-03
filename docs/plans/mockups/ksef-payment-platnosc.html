@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>KSeF payment section — design mockup (#1311)</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --border: #262b33;
+    --text: #e7eaee;
+    --text-dim: #9aa3b0;
+    --accent: #ff6a2b;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 40px 24px 80px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 32px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .disclosure-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95rem;
+    cursor: default;
+  }
+  .disclosure-summary .value { color: var(--accent); font-family: var(--mono); }
+  .field { margin-top: 18px; }
+  .field label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: var(--text); }
+  .field .desc { font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; }
+  .field .desc code { font-family: var(--mono); color: #c9d1e0; }
+  input, select {
+    width: 100%;
+    background: #0e1116;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+  input[type="text"].mono { font-family: var(--mono); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .state-label {
+    display: inline-block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-bottom: 12px;
+  }
+  .collapsed-note {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-top: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KSeF connection — payment section (design mockup)</h1>
+  <p class="sub">Referenced from issue #1311. Built against the real InlineDisclosure / FormField primitives, screenshotted, then reverted — this file is the static reference for implementation.</p>
+
+  <div class="panel">
+    <span class="state-label">Przelew selected</span>
+    <div class="disclosure-summary">
+      <span>Payment method for invoice</span>
+      <span class="value">Przelew</span>
+    </div>
+
+    <div class="field">
+      <label>Default payment method</label>
+      <select><option>Przelew</option></select>
+      <div class="desc">Emitted as <code>Platnosc/FormaPlatnosci</code> (<code>TFormaPlatnosci</code>). Full 7-value enum: Gotówka, Karta, Bon, Czek, Kredyt, Przelew, Mobilna.</div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label>Bank account number</label>
+        <input class="mono" type="text" value="61 1090 1014 0000 0000 9999 9999" />
+        <div class="desc">Emitted as <code>RachunekBankowy/NrRB</code>. Required within <code>RachunekBankowy</code> if present at all.</div>
+      </div>
+      <div class="field">
+        <label>Bank name</label>
+        <input type="text" value="Santander Bank Polska" />
+        <div class="desc">Emitted as <code>RachunekBankowy/NazwaBanku</code>. Optional.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>SWIFT</label>
+      <input class="mono" type="text" value="WBKPPLPP" />
+      <div class="desc">Emitted as <code>RachunekBankowy/SWIFT</code>. Optional — real value for foreign-currency transfers.</div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label>Default payment term (days)</label>
+        <input type="text" value="14" />
+        <div class="desc">Emitted as <code>Platnosc/TerminPlatnosci/TerminOpis</code> (<code>Ilosc</code> + <code>Jednostka</code>='dni' + <code>ZdarzeniePoczatkowe</code>='data wystawienia faktury').</div>
+      </div>
+      <div class="field">
+        <label>Early-payment discount (skonto)</label>
+        <input type="text" value="2% if paid within 7 days" />
+        <div class="desc">Emitted as <code>Platnosc/Skonto/WarunkiSkonta</code> + <code>WysokoscSkonta</code>. Both free text.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <span class="state-label">Gotówka selected</span>
+    <div class="disclosure-summary">
+      <span>Payment method for invoice</span>
+      <span class="value">Gotówka</span>
+    </div>
+    <div class="field">
+      <label>Default payment method</label>
+      <select><option>Gotówka</option></select>
+      <div class="desc">Emitted as <code>Platnosc/FormaPlatnosci</code>.</div>
+    </div>
+    <p class="collapsed-note">Bank account, SWIFT, payment term, and skonto fields collapse away — they don't apply without a Przelew-family method. Payment term and skonto stay independently settable regardless of method in the real implementation (a Gotówka connection can still declare a default term), but the mockup groups them under Przelew here since that's the common case.</p>
+  </div>
+</div>
+</body>
+</html>

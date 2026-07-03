@@ -11,6 +11,7 @@
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { BuyerProfile } from '@openlinker/core/invoicing';
 import { INFAKT_DEFAULT_BASE_URL } from '../../infrastructure/http/infakt-http-client';
 import { InfaktAdapterFactory } from '../infakt-adapter.factory';
 
@@ -108,5 +109,36 @@ describe('InfaktAdapterFactory', () => {
     await expect(
       factory.createInvoicingAdapter(connection({ credentialsRef: '' }), resolver, logger),
     ).rejects.toThrow(/no credentialsRef/);
+  });
+
+  it('should thread connection.config.defaultPaymentMethod into the constructed adapter (#1303)', async () => {
+    // fetchMock resolves every call with a generic `{}` (see okResponse) —
+    // sufficient here since we only assert the outbound request body for
+    // the invoices.json POST, not the parsed response.
+    const resolver = resolverFor({ apiKey: 'k' });
+    const adapter = await factory.createInvoicingAdapter(
+      connection({ config: { defaultPaymentMethod: 'transfer' } }),
+      resolver,
+      logger,
+    );
+    await adapter
+      .issueInvoice({
+        connectionId: 'conn-1',
+        orderId: 'order-1',
+        buyer: new BuyerProfile(
+          'Acme',
+          null,
+          { line1: 'Testowa 1', line2: null, city: 'Warszawa', postalCode: '00-001', countryIso2: 'PL' },
+          'private',
+        ),
+        currency: 'PLN',
+        lines: [],
+      })
+      .catch(() => undefined);
+
+    type PostCall = [url: string, init: { body: string }];
+    const invoiceCall = (fetchMock.mock.calls as PostCall[]).find(([url]) => url.includes('invoices.json'));
+    const body = JSON.parse(invoiceCall![1].body) as { invoice: { payment_method: string } };
+    expect(body.invoice.payment_method).toBe('transfer');
   });
 });

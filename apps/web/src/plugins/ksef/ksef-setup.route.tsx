@@ -10,7 +10,7 @@ export const ksefSetupRoute: RouteObject = {
   path: 'connections/new/ksef',
   handle: { crumb: { group: 'Platform', title: 'Connect KSeF' } } satisfies RouteCrumbHandle,
   lazy: async () => {
-    const { KsefSetupPage } = await import('../../pages/connections/ksef-setup-page');
+    const { KsefSetupPage } = await import('./components/ksef-setup-page');
     return { Component: KsefSetupPage };
   },
 };

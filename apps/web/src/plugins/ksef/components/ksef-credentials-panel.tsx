@@ -15,10 +15,8 @@
  */
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { Connection } from '../../../features/connections';
-import {
-  useUpdateConnectionCredentialsMutation,
-  KSEF_AUTH_TYPE_VALUES,
-} from '../../../features/connections';
+import { useUpdateConnectionCredentialsMutation } from '../../../features/connections';
+import { KSEF_AUTH_TYPE_VALUES } from './ksef-setup.schema';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';

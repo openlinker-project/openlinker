@@ -12,8 +12,8 @@ import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
+import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker';
 import type { IWorkerHeartbeatService } from './worker-heartbeat.service.interface';
-import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker/worker-health.constants';
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TTL_SECONDS = 120;

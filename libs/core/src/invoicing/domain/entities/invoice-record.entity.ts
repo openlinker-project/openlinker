@@ -18,6 +18,7 @@ import type {
   InvoiceFailureMode,
   InvoiceStatus,
   IssuedDocumentContent,
+  IssuedLineSnapshot,
   RegulatoryStatus,
   StoredDocument,
 } from '../types/invoicing.types';
@@ -90,6 +91,15 @@ export class InvoiceRecord {
      * `GET /invoices/:id/document?kind=source`.
      */
     public readonly sourceDocument: StoredDocument | null = null,
+    /**
+     * Neutral issuance-time line snapshot (#1297) — the exact `{ buyer, currency,
+     * lines }` a correction reconstructs the original document from, captured at
+     * issue time so a KOR (or any complete-resubmit correction) diffs against the
+     * lines AS ISSUED rather than the order's current state. `null` for rows
+     * issued before this column existed (they fall back to order-derived
+     * reconstruction) or when no snapshot was captured.
+     */
+    public readonly issuedLineSnapshot: IssuedLineSnapshot | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

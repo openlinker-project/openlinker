@@ -9,7 +9,7 @@
  * `db:<uuid>` reference automatically.
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../api/connections.types';
+import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 
 export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
 
@@ -17,6 +17,14 @@ export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
  * Fallback set used only when the adapter registry cannot be queried (network
  * failure, stale cache, etc.). The source of truth is the `/adapters` endpoint
  * consumed by the wizard via `useAdaptersQuery`.
+ *
+ * Also doubles as `PRESTASHOP_SETUP_DEFAULT_VALUES.enabledCapabilities` below —
+ * an intentionally minimal default. The ADR-024 shop-listing capabilities
+ * (`ProductPublisher`, `CategoryProvisioner`) still render as checkboxes once
+ * real adapter metadata loads, but start unchecked here; the operator opts in
+ * explicitly rather than the wizard reseeding from the manifest (contrast with
+ * `WoocommerceSetupForm`, which reseeds `enabledCapabilities` from the
+ * adapter's `supportedCapabilities` on load).
  */
 export const PRESTASHOP_FALLBACK_CAPABILITIES: CoreCapability[] = [
   'ProductMaster',
@@ -70,15 +78,7 @@ export const prestashopSetupSchema = z.object({
     ])
     .optional(),
   enabledCapabilities: z
-    .array(
-      z.enum([
-        'ProductMaster',
-        'InventoryMaster',
-        'OrderProcessorManager',
-        'OrderSource',
-        'OfferManager',
-      ]),
-    )
+    .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
 });
 

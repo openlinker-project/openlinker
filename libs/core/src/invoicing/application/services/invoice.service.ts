@@ -35,16 +35,19 @@ import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplica
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type {
+  CorrectionLine,
   GetInvoiceByOrderQuery,
   InvoiceFailureCode,
   InvoiceFailureMode,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
+  InvoiceLine,
   IssueCorrectionCommand,
   IssuedDocumentContent,
   IssuedDocumentLine,
   IssuedDocumentSeller,
+  IssuedLineSnapshot,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
   TaxBreakdownEntry,
@@ -152,6 +155,38 @@ function round2(value: number): number {
 function rateFraction(taxRate: string): number {
   const parsed = Number.parseFloat(taxRate);
   return Number.isFinite(parsed) ? parsed / 100 : 0;
+}
+
+/**
+ * Apply correction deltas to the original ("before") lines, producing the
+ * post-correction ("after") line set (#1297). Deltas are keyed by 1-based
+ * `originalLineNumber`; each present delta overrides `quantity`/`unitPriceGross`
+ * on the matching line. Lines with no matching delta pass through unchanged; a
+ * delta whose `originalLineNumber` is out of range is ignored, and duplicate
+ * deltas for the same line last-write-win via the `Map` (the adapter and the
+ * shape validators own delta validation — the HTTP boundary rejects duplicate
+ * `originalLineNumber`s outright, so neither case reaches here from the API;
+ * this snapshot builder never throws). Pure: no I/O, no mutation of the inputs.
+ */
+function applyCorrectionDeltas(
+  originalLines: readonly InvoiceLine[],
+  deltas: readonly CorrectionLine[],
+): InvoiceLine[] {
+  const byLineNumber = new Map<number, CorrectionLine>();
+  for (const delta of deltas) {
+    byLineNumber.set(delta.originalLineNumber, delta);
+  }
+  return originalLines.map((line, index) => {
+    const delta = byLineNumber.get(index + 1);
+    if (!delta) {
+      return line;
+    }
+    return {
+      ...line,
+      quantity: delta.newQuantity ?? line.quantity,
+      unitPriceGross: delta.newUnitPriceGross ?? line.unitPriceGross,
+    };
+  });
 }
 
 @Injectable()
@@ -332,6 +367,14 @@ export class InvoiceService implements IInvoiceService {
 
     const { record: issued, seller, sourceDocument } = issueResult;
     const documentContent = this.buildContent(cmd, issued, seller ?? null);
+    // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
+    // later correction diffs against the lines AS ISSUED, not the order's current
+    // state. Verbatim from the command — no recomputation.
+    const issuedLineSnapshot: IssuedLineSnapshot = {
+      buyer: cmd.buyer,
+      currency: cmd.currency,
+      lines: cmd.lines,
+    };
 
     const patch: InvoiceOutcomePatch = {
       status: 'issued',
@@ -363,6 +406,8 @@ export class InvoiceService implements IInvoiceService {
       // `undefined` when the adapter does not surface one — leaves the column
       // null and the endpoint 409s gracefully.
       sourceDocument: sourceDocument ?? null,
+      // #1297: persist the issuance-time line snapshot on the same issued patch.
+      issuedLineSnapshot,
     };
     return this.repo.updateOutcome(recordId, patch);
   }
@@ -495,6 +540,20 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
+    // #1297: snapshot the correction's OWN post-correction ("after") lines so a
+    // correction-of-correction diffs against them, not the live order. Derived
+    // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
+    // the "before" state) with the per-line deltas applied. Only when the caller
+    // supplied `originalDocument` (order still resolvable); absent → persist null
+    // and the next correction falls back to order-derived reconstruction.
+    const issuedLineSnapshot: IssuedLineSnapshot | null = cmd.originalDocument
+      ? {
+          buyer: cmd.originalDocument.buyer,
+          currency: cmd.originalDocument.currency,
+          lines: applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines),
+        }
+      : null;
+
     return this.repo.updateOutcome(pending.id, {
       status: 'issued',
       providerType: issued.providerType,
@@ -510,6 +569,7 @@ export class InvoiceService implements IInvoiceService {
       failureCode: null,
       failureReason: null,
       leaseExpiresAt: null,
+      issuedLineSnapshot,
     });
   }
 

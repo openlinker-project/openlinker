@@ -10,16 +10,16 @@
  *   - Authentication secret (write-only — shown once, never echoed back)
  *
  * Mirrors the WooCommerce single-step shape. Capabilities are seeded silently
- * server-side from the adapter manifest (`['Invoicing']`); the FE does not send
- * them because `Invoicing` is not in the well-known `CORE_CAPABILITY_VALUES`.
+ * server-side from the adapter manifest (`['Invoicing']`); the FE does not need
+ * to send them explicitly.
  *
- * @module features/connections/components
+ * @module plugins/ksef/components
  */
 import { useEffect, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
+import { useCreateConnectionMutation } from '../../../features/connections';
 import {
   KSEF_AUTH_TYPE_VALUES,
   KSEF_ENVIRONMENT_VALUES,

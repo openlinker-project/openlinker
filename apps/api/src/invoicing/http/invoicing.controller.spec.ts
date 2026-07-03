@@ -20,6 +20,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
   UnsupportedRegulatoryDocumentKindError,
+  BuyerProfile,
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
@@ -621,6 +622,83 @@ describe('InvoicingController', () => {
       );
 
       await expect(controller.issueCorrection(invoiceId, dto)).rejects.toThrow();
+    });
+
+    // #1297 — with a persisted issuance-time snapshot on the document being
+    // corrected, the controller assembles `originalDocument` from it and skips
+    // the order fetch entirely.
+    const snapshotBuyer = new BuyerProfile(
+      'ACME Sp. z o.o.',
+      { scheme: 'pl-nip', value: '1234567890' },
+      { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+      'company',
+    );
+    const issuedSnapshot = {
+      buyer: snapshotBuyer,
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+    };
+
+    it('#1297: prefers the persisted issuedLineSnapshot and does NOT fetch the order', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ issuedLineSnapshot: issuedSnapshot, clearanceReference: 'KSEF-ORIG' }),
+      );
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(orders.getOrderRecord).not.toHaveBeenCalled();
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({
+            currency: 'PLN',
+            documentType: 'invoice',
+            clearanceReference: 'KSEF-ORIG',
+            documentNumber: 'FV/2026/1',
+            issueDate: '2026-06-23',
+            // Lines come from the snapshot (AS ISSUED), not the order.
+            lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+            // Buyer is re-wrapped into a real BuyerProfile with the true tax id.
+            buyer: expect.objectContaining({
+              name: 'ACME Sp. z o.o.',
+              taxId: { scheme: 'pl-nip', value: '1234567890' },
+              type: 'company',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('#1297: correction-of-correction reads the prior correction record own snapshot', async () => {
+      const priorCorrectionSnapshot = {
+        buyer: snapshotBuyer,
+        currency: 'PLN',
+        // Post-correction lines of the prior correction.
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 90, taxRate: '23' }],
+      };
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({
+          documentType: 'corrected',
+          issuedLineSnapshot: priorCorrectionSnapshot,
+        }),
+      );
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(orders.getOrderRecord).not.toHaveBeenCalled();
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({
+            documentType: 'corrected',
+            lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 90, taxRate: '23' }],
+          }),
+        }),
+      );
     });
   });
 
