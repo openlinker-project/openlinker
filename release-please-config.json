@@ -3,7 +3,7 @@
   "release-type": "node",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": false,
-  "bootstrap-sha": "333a39b1e3b9affecfb44dd96389542085cd0d6a",
+  "bootstrap-sha": "e629837428712a432644893cbbe97dbfc7ea67ab",
   "include-component-in-tag": false,
   "packages": {
     ".": {

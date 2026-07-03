@@ -34,10 +34,12 @@ Trunk-based / GitHub Flow (see [CONTRIBUTING.md](./CONTRIBUTING.md)):
 
 ## Versioning policy
 
-- **Product** follows SemVer with the pre-1.0 `0.x` convention: while `0.x`, the
-  **minor** segment is the pseudo-major (breaking) and **patch** is the
-  pseudo-minor (additive). Promotion to `1.0.0` is when the public surface and
-  plugin SDK are committed (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy).
+- **Product** follows SemVer with the pre-1.0 `0.x` convention: while `0.x`,
+  **minor** carries new features *and* breaking changes, and **patch** carries
+  fixes (this matches `bump-minor-pre-major: true` +
+  `bump-patch-for-minor-pre-major: false` in `release-please-config.json`).
+  Promotion to `1.0.0` is when the public surface and plugin SDK are committed
+  (see [PUBLIC_API.md](./PUBLIC_API.md) § Versioning policy).
 - Conventional Commits drive the bump: `feat:` → minor, `fix:` → patch,
   `feat!:` / `BREAKING CHANGE:` → major (pre-1.0: a `0.x` minor).
 - Tags are `vX.Y.Z` (and `vX.Y.Z-rc.N` for release candidates).
@@ -74,10 +76,17 @@ Because release-please won't cut a version it considers already released, the
 rush, and nothing depends on doing it now:
 
 ```bash
-git checkout main && git pull
-git tag -a v0.1.0 -m "v0.1.0"
+# Tag the exact commit recorded as `bootstrap-sha` in release-please-config.json —
+# NOT the current main tip. Once a v0.1.0 tag + GitHub Release exist, release-please
+# parses commits from that tag's commit (bootstrap-sha is only the no-release-found
+# fallback), so tagging a later commit would silently drop everything between
+# bootstrap-sha and the tag from the generated 0.2.0 changelog.
+git fetch origin main
+git tag -a v0.1.0 <bootstrap-sha from release-please-config.json> -m "v0.1.0"
 git push origin v0.1.0
 # then create a GitHub Release for v0.1.0, pasting the 0.1.0 CHANGELOG section.
+# If a 0.2.0 Release PR is already open when you do this, re-check its commit
+# range afterward — creating the release moves release-please's parse boundary.
 ```
 
 From then on it's fully automated: the next `feat:`/`fix:` merged after the
