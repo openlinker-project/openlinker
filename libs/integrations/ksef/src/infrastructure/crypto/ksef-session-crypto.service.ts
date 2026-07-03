@@ -71,16 +71,24 @@ export class KsefSessionCryptoService {
   }
 
   /**
-   * Encrypt a document body with the session's AES key and a FRESH per-document
-   * IV. The wrapped symmetric key is reused across the batch, but the IV must be
-   * unique per encryption — CBC IV reuse under the same key leaks plaintext
-   * structure. The IV travels alongside the ciphertext in the `EncryptedDocument`
-   * envelope (and is read back by `decryptDocument`), so it need not be the
-   * session IV.
+   * Encrypt a document body with the session's AES key and the SESSION IV.
+   *
+   * KSeF declares the IV once in `OpenOnlineSessionRequest.encryption.initializationVector`
+   * and uses it to decrypt every document in the session. The `SendInvoiceRequest` wire
+   * shape has no per-document IV field — KSeF cannot be told a different IV per document.
+   * Therefore all documents in a session MUST be encrypted with the same session IV.
+   *
+   * Spec confirmation of single-IV-per-session (PR #1317 review nit):
+   * - KSeF 2.0 OpenAPI (https://api-test.ksef.mf.gov.pl/docs/v2) — the session-open
+   *   `encryption.initializationVector` is the only IV anywhere on the wire.
+   * - Official session guide (https://github.com/CIRFMF/ksef-docs/blob/main/sesja-interaktywna.md)
+   *   — one 256-bit key + 128-bit IV generated at session open, used for the
+   *   documents sent within that session.
+   * - CIRFMF C# reference: `EncryptBytesWithAES256(invoice, CipherKey, CipherIv)` — the
+   *   session `CipherIv` is reused across the batch, matching the declared value.
    */
   encryptDocument(plaintext: string, context: SessionCryptoContext): EncryptedDocument {
-    const { key } = context.symmetricKey;
-    const iv = this.generateIv();
+    const { key, iv } = context.symmetricKey;
     return {
       algorithm: KSEF_AES_ALGORITHM,
       ciphertext: encryptAesCbc(plaintext, key, iv),
@@ -88,7 +96,7 @@ export class KsefSessionCryptoService {
     };
   }
 
-  /** Decrypt a document body with the session's AES key + the document's IV. */
+  /** Decrypt a document body with the session's AES key + IV. */
   decryptDocument(encrypted: EncryptedDocument, context: SessionCryptoContext): string {
     return decryptAesCbc(encrypted.ciphertext, context.symmetricKey.key, encrypted.iv);
   }

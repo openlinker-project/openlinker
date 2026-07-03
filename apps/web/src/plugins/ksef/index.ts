@@ -26,6 +26,7 @@ import { KsefCredentialsPanel } from './components/ksef-credentials-panel';
 import { KsefInvoiceCorrectionFlow } from './components/ksef-invoice-correction-flow';
 import { KsefInvoiceDetailSection } from './components/ksef-invoice-detail-section';
 import { KsefStructuredSection } from './components/ksef-structured-section';
+import { ksefConnectionConfig } from './ksef-connection-config';
 import { ksefSetupRoute } from './ksef-setup.route';
 
 export const ksefPlugin: OpenLinkerPlugin = definePlugin({
@@ -44,6 +45,7 @@ export const ksefPlugin: OpenLinkerPlugin = definePlugin({
       badge: 'e-Invoicing',
     },
     StructuredConfigSection: KsefStructuredSection,
+    connectionConfig: ksefConnectionConfig,
     CredentialsPanel: KsefCredentialsPanel,
     invoiceDetailSection: KsefInvoiceDetailSection,
     invoiceCorrectionFlow: KsefInvoiceCorrectionFlow,

@@ -12,6 +12,7 @@
  * @module plugins
  */
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { createApiClient, type ApiRequest, type PluginApiNamespaces } from '../app/api/api-client';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
@@ -184,6 +185,36 @@ describe('plugin registry', () => {
       expect(() => {
         assertUniquePluginInvariants(duplicates);
       }).toThrow(/Duplicate plugin platformType: "shared"/);
+    });
+
+    it('assertUniquePluginInvariants throws when two plugins contribute the same connection-config field name', () => {
+      // #1330 - plugin form fields land in the single flat
+      // `PluginEditConnectionFields` interface, and TS silently accepts
+      // same-type declaration merges, so a cross-plugin field-name collision
+      // has no compile-time signal. The runtime guard catches it at module
+      // load. `sellerNip` is a real KSeF-merged key, so the fixture
+      // type-checks against the keyof-constrained `schemaShape`.
+      const collidingContribution = {
+        schemaShape: { sellerNip: z.string().optional() },
+        readConfigToForm: (): Record<string, never> => ({}),
+        applyToConfig: (config: Record<string, unknown>): Record<string, unknown> => config,
+      };
+      const colliders = [
+        definePlugin({
+          id: 'plugin-a',
+          platformType: 'platform-a',
+          platform: { displayName: 'A', connectionConfig: collidingContribution },
+        }),
+        definePlugin({
+          id: 'plugin-b',
+          platformType: 'platform-b',
+          platform: { displayName: 'B', connectionConfig: collidingContribution },
+        }),
+      ];
+
+      expect(() => {
+        assertUniquePluginInvariants(colliders);
+      }).toThrow(/Duplicate connection-config field name: "sellerNip".*"plugin-a".*"plugin-b"/);
     });
 
     it('assertUniquePluginInvariants throws when platform is set without platformType', () => {
