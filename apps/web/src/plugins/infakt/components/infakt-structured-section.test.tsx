@@ -300,12 +300,30 @@ describe('InfaktStructuredSection', () => {
       ).toBeInTheDocument();
     });
 
-    it('shows a Cash-only message and no select when no bank accounts are found', async () => {
+    it('warns Transfer is not viable and points to Cash when no bank accounts are found', async () => {
       const getBankAccounts = vi.fn().mockResolvedValue([]);
       renderWithTransferSelected(getBankAccounts);
 
+      // #1310 review, finding 2: this surface does not auto-persist a Cash
+      // fallback, so the copy must not claim "invoices will use Cash" — it
+      // states the saved method is still Transfer and points to the fix.
       expect(
         await screen.findByText(/No bank account is configured on this inFakt account/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/saved payment method is still Transfer/),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
+    });
+
+    it('shows a last-saved fallback message when the bank-accounts fetch fails', async () => {
+      // #1310 review, finding 11: the edit screen stamps the last-saved
+      // snapshot on a fetch failure, so its copy is accurate — pin it.
+      const getBankAccounts = vi.fn().mockRejectedValue(new Error('503 Service Unavailable'));
+      renderWithTransferSelected(getBankAccounts);
+
+      expect(
+        await screen.findByText(/invoices will use whatever was last saved/),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText('Bank account for Transfer invoices')).not.toBeInTheDocument();
     });

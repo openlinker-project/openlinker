@@ -36,6 +36,7 @@ import {
   Query,
   Param,
   ParseUUIDPipe,
+  type PipeTransform,
   HttpCode,
   HttpStatus,
   Inject,
@@ -125,6 +126,23 @@ function connectionIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({ version: '4' });
 }
 
+/**
+ * `:accountId` param pipe — 400 on an empty/whitespace id (#1310 review). The
+ * adapter already `encodeURIComponent`s the id before the provider PUT, so this
+ * is a contract guard (a blank segment never reaches the provider), not the
+ * injection defence, and it holds for any future `BankAccountDefaultSetter`.
+ */
+function accountIdPipe(): PipeTransform<string, string> {
+  return {
+    transform(value: string): string {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new BadRequestException('accountId must be a non-empty string');
+      }
+      return value;
+    },
+  };
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
@@ -191,7 +209,7 @@ export class InvoicingController {
   @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async setDefaultBankAccount(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
-    @Param('accountId') accountId: string,
+    @Param('accountId', accountIdPipe()) accountId: string,
   ): Promise<void> {
     const adapter = await this.resolveInvoicingAdapter(connectionId);
     if (!isBankAccountDefaultSetter(adapter)) {

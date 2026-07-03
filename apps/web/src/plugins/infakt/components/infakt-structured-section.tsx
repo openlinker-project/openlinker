@@ -17,9 +17,17 @@
  *     select at all when inFakt reports zero accounts — Transfer isn't a
  *     viable choice without one. A pick persists `config.bankAccount`
  *     eagerly (not on Save) and only then flips inFakt's own "default
- *     account" via `useSetDefaultBankAccountMutation` — both sides commit
- *     together, so abandoning the edit form (or a failed Save) can never
- *     leave inFakt flipped while OL still stamps the old account.
+ *     account" via the shared `usePickBankAccount` choreography — both sides
+ *     commit together, so abandoning the edit form (or a failed Save) can
+ *     never leave inFakt flipped while OL still stamps the old account.
+ *
+ * Note: the picker gates on the *unsaved* `infaktPaymentMethod` form value,
+ * so an operator who flips Cash→Transfer in the form (without Save) and then
+ * picks an account triggers the eager persist + inFakt default flip while the
+ * persisted method is still Cash. This is accepted: it is the natural setup
+ * order (pick the account you're about to save Transfer for), a Cash adapter
+ * ignores `config.bankAccount`, and the pick is persisted server-side anyway,
+ * so nothing drifts (#1310 review, finding 8).
  *
  * Credentials (the API key) are NOT edited here — they live in the
  * write-only `InfaktCredentialsPanel`.
@@ -32,12 +40,7 @@ import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
-import { useToast } from '../../../shared/ui/toast-provider';
-import {
-  useBankAccountsQuery,
-  useSetDefaultBankAccountMutation,
-  useUpdateConnectionMutation,
-} from '../../../features/connections';
+import { useBankAccountsQuery, usePickBankAccount } from '../../../features/connections';
 
 const PAYMENT_METHOD_LABELS: Record<'cash' | 'transfer', string> = {
   cash: 'Cash',
@@ -59,9 +62,12 @@ export function InfaktStructuredSection({
   const bankAccount = form.watch('infaktBankAccount') ?? null;
 
   const bankAccountsQuery = useBankAccountsQuery(connection.id, { enabled: isTransfer });
-  const setDefaultBankAccount = useSetDefaultBankAccountMutation();
-  const updateConnection = useUpdateConnectionMutation();
-  const { showToast } = useToast();
+  // Shared persist-then-flip choreography (#1310 review) — see the file header
+  // for the eager-persist / abandon-safety invariant it enforces.
+  const { pickAccount, isPending: bankAccountPickPending } = usePickBankAccount({
+    connectionId: connection.id,
+    persistErrorHint: 'pick it again or use Save changes.',
+  });
 
   function onBankAccountChange(accountId: string): void {
     const account = (bankAccountsQuery.data ?? []).find((a) => a.id === accountId);
@@ -73,31 +79,9 @@ export function InfaktStructuredSection({
     };
     form.setValue('infaktBankAccount', snapshot, { shouldDirty: true });
     syncInfaktBankAccountToJson?.();
-    // Persist `config.bankAccount` eagerly (from the server-side config
-    // snapshot, so unrelated unsaved form edits don't leak), and flip
-    // inFakt's own "default account" only after that persist succeeds —
-    // otherwise abandoning the edit form would leave inFakt's default
-    // flipped while OL still stamps the previous account on invoices.
-    updateConnection.mutate(
-      {
-        connectionId: connection.id,
-        input: { config: { ...(connection.config ?? {}), bankAccount: snapshot } },
-      },
-      {
-        onSuccess: () => {
-          if (!account.isDefault) {
-            setDefaultBankAccount.mutate({ connectionId: connection.id, accountId });
-          }
-        },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: 'Could not save the bank account',
-            description: `The selection was not persisted — pick it again or use Save changes. ${error.message}`,
-          });
-        },
-      },
-    );
+    // Persist from the server-side config snapshot (so unrelated unsaved form
+    // edits don't leak) and flip inFakt's default only after that succeeds.
+    pickAccount(account, connection.config ?? {});
   }
 
   return (
@@ -160,7 +144,7 @@ export function InfaktStructuredSection({
               <Select
                 value={bankAccount ? bankAccount.id : ''}
                 onChange={(event) => onBankAccountChange(event.target.value)}
-                disabled={!configIsParseable}
+                disabled={!configIsParseable || bankAccountPickPending}
               >
                 <option value="" disabled>
                   Select a bank account…
@@ -175,9 +159,11 @@ export function InfaktStructuredSection({
             </FormField>
           ) : (
             <p className="muted-text">
-              No bank account is configured on this inFakt account, so <strong>Transfer</strong>{' '}
-              isn't available yet — invoices will use <strong>Cash</strong>. Add a bank account in
-              your inFakt settings, then reload this page to pick it.
+              No bank account is configured on this inFakt account, so{' '}
+              <strong>Transfer</strong> isn't viable yet. This connection's saved payment method
+              is still Transfer, so invoices may be rejected by inFakt - switch the payment
+              method to Cash above, or add a bank account in your inFakt settings and reload this
+              page to pick it.
             </p>
           )
         ) : null}

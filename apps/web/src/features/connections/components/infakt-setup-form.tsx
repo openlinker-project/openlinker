@@ -16,7 +16,7 @@
  *
  * @module features/connections/components
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -24,7 +24,7 @@ import { useCreateConnectionMutation } from '../hooks/use-create-connection-muta
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useBankAccountsQuery } from '../hooks/use-bank-accounts-query';
-import { useSetDefaultBankAccountMutation } from '../hooks/use-set-default-bank-account-mutation';
+import { usePickBankAccount } from '../hooks/use-pick-bank-account';
 import type { Connection, ConnectionTestResult } from '../api/connections.types';
 import {
   INFAKT_SETUP_DEFAULT_VALUES,
@@ -46,7 +46,6 @@ export function InfaktSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const updateConnection = useUpdateConnectionMutation();
-  const setDefaultBankAccount = useSetDefaultBankAccountMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [createdConnection, setCreatedConnection] = useState<Connection | null>(null);
@@ -73,6 +72,14 @@ export function InfaktSetupForm(): ReactElement {
   const paymentMethodIsTransfer = form.watch('defaultPaymentMethod') === 'transfer';
   const bankAccountsQuery = useBankAccountsQuery(createdConnectionId ?? undefined, {
     enabled: createdConnectionId !== null && paymentMethodIsTransfer,
+  });
+  // Shared persist-then-flip choreography (#1310 review) — both the auto-apply
+  // effect and a manual pick route through it, so a failed persist can never
+  // leave inFakt's default flipped while OL still stamps the old account, and
+  // `isPending` disables the Select to block a double-pick race.
+  const { pickAccount, isPending: bankAccountPickPending } = usePickBankAccount({
+    connectionId: createdConnectionId ?? '',
+    persistErrorHint: "re-pick it from the connection's edit screen.",
   });
 
   // Abandon-prevention.
@@ -105,20 +112,6 @@ export function InfaktSetupForm(): ReactElement {
     }
   });
 
-  // A failed auto-apply / pick would otherwise silently drop the account the
-  // UI shows as selected — surface it so the operator can retry from the edit
-  // screen.
-  const showBankAccountSaveError = useCallback(
-    (error: Error): void => {
-      showToast({
-        tone: 'error',
-        title: 'Could not save the bank account',
-        description: `The selection was not persisted — re-pick it from the connection's edit screen. ${error.message}`,
-      });
-    },
-    [showToast],
-  );
-
   // Bank-account default (#1303 follow-up) — the select is locked until the
   // connection exists (the server needs the saved API key to call inFakt).
   // Once the live list resolves: ≥1 accounts picks whichever inFakt itself
@@ -137,22 +130,11 @@ export function InfaktSetupForm(): ReactElement {
     if (accounts.length > 0) {
       const defaultAccount = accounts.find((a) => a.isDefault) ?? accounts[0]!;
       setSelectedBankAccountId(defaultAccount.id);
-      updateConnection.mutate(
-        {
-          connectionId: createdConnection.id,
-          input: {
-            config: {
-              ...currentConfig,
-              bankAccount: {
-                id: defaultAccount.id,
-                accountNumber: defaultAccount.accountNumber,
-                bankName: defaultAccount.bankName,
-              },
-            },
-          },
-        },
-        { onError: (error) => showBankAccountSaveError(error) },
-      );
+      // Route through the shared choreography so the fallback-to-first branch
+      // (no account flagged default) also syncs inFakt's own default, instead
+      // of persisting OL's snapshot while inFakt keeps pointing elsewhere
+      // (#1310 review, finding 7).
+      pickAccount(defaultAccount, currentConfig);
     } else if (currentConfig.defaultPaymentMethod === 'transfer') {
       // Keep the (now read-only) form control in agreement with what is
       // persisted — without the setValue the select would keep showing
@@ -164,7 +146,24 @@ export function InfaktSetupForm(): ReactElement {
           connectionId: createdConnection.id,
           input: { config: { ...currentConfig, defaultPaymentMethod: 'cash' } },
         },
-        { onError: (error) => showBankAccountSaveError(error) },
+        {
+          onError: (error) => {
+            // The optimistic Cash flip failed to persist: the server still
+            // holds Transfer, so revert the UI rather than leave it asserting a
+            // Cash state the server rejected (#1310 review, finding 3). The
+            // operator recovers from the edit screen, per the toast.
+            setForcedCashNoAccounts(false);
+            form.setValue('defaultPaymentMethod', 'transfer');
+            showToast({
+              tone: 'error',
+              title: 'Could not switch the payment method to Cash',
+              description:
+                'inFakt has no bank account for Transfer invoices, but switching this ' +
+                "connection to Cash didn't save - change the payment method from the " +
+                `connection's edit screen. ${error.message}`,
+            });
+          },
+        },
       );
     }
   }, [
@@ -172,7 +171,8 @@ export function InfaktSetupForm(): ReactElement {
     bankAccountsQuery.isSuccess,
     bankAccountsQuery.data,
     updateConnection,
-    showBankAccountSaveError,
+    pickAccount,
+    showToast,
     form,
   ]);
 
@@ -181,28 +181,7 @@ export function InfaktSetupForm(): ReactElement {
     setSelectedBankAccountId(accountId);
     const account = (bankAccountsQuery.data ?? []).find((a) => a.id === accountId);
     if (!account) return;
-    // Persist OL's config first; flip inFakt's own "default account" only
-    // after that persist succeeds, so a failure can't leave the two sides
-    // disagreeing about which account is "the" default.
-    updateConnection.mutate(
-      {
-        connectionId: createdConnection.id,
-        input: {
-          config: {
-            ...(createdConnection.config ?? {}),
-            bankAccount: { id: account.id, accountNumber: account.accountNumber, bankName: account.bankName },
-          },
-        },
-      },
-      {
-        onSuccess: () => {
-          if (!account.isDefault) {
-            setDefaultBankAccount.mutate({ connectionId: createdConnection.id, accountId });
-          }
-        },
-        onError: (error) => showBankAccountSaveError(error),
-      },
-    );
+    pickAccount(account, createdConnection.config ?? {});
   };
 
   const onTest = async (): Promise<void> => {
@@ -314,15 +293,21 @@ export function InfaktSetupForm(): ReactElement {
               <p className="muted-text">Checking inFakt for bank accounts…</p>
             ) : bankAccountsQuery.isError ? (
               <p className="muted-text">
-                Couldn't check inFakt for bank accounts — invoices will use{' '}
-                <strong>Cash</strong> until you retry from the connection's edit screen.
+                Couldn't reach inFakt to list bank accounts. This connection stays on{' '}
+                <strong>Transfer</strong>, so invoices will keep being issued as Transfer and
+                may be rejected by inFakt until you pick a bank account from the connection's
+                edit screen.
               </p>
             ) : bankAccountsQuery.data && bankAccountsQuery.data.length > 0 ? (
               <FormField label="Bank account for Transfer invoices" name="bankAccount">
                 <Select
                   value={selectedBankAccountId ?? ''}
                   onChange={(event) => onBankAccountChange(event.target.value)}
+                  disabled={bankAccountPickPending}
                 >
+                  <option value="" disabled>
+                    Select a bank account…
+                  </option>
                   {bankAccountsQuery.data.map((account) => (
                     <option key={account.id} value={account.id}>
                       {account.bankName} — {account.accountNumber}

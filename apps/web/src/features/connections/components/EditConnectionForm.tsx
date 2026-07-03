@@ -123,7 +123,9 @@ function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'tra
  * `InvoicingBankAccount.id`); a legacy numeric `id` persisted by an earlier
  * build is coerced so the select still preselects it.
  */
-function readInfaktBankAccount(
+// Exported for unit testing the legacy-id coercion / shape-guard seam
+// (#1310 review, finding 6); consumed only via the component's `defaultValues`.
+export function readInfaktBankAccount(
   config: Record<string, unknown>,
 ): { id: string; accountNumber: string; bankName: string } | null {
   const raw = config.bankAccount;

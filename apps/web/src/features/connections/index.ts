@@ -32,6 +32,7 @@ export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-conne
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
+export { usePickBankAccount } from './hooks/use-pick-bank-account';
 
 export {
   INVOICE_TRIGGER_MODEL_VALUES,
