@@ -216,6 +216,9 @@ describe('KsefInvoicingAdapter', () => {
       });
 
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
+      // The FA(3) P_2 document number must land on the record - the correction
+      // precondition (#1289) requires it; null here broke every KSeF KOR (#1338).
+      expect(record.providerInvoiceNumber).toBe('ol_order_123');
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.clearanceReference).toBeNull();
       expect(record.status).toBe('issued');

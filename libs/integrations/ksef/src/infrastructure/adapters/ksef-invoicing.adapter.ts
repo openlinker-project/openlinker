@@ -241,7 +241,11 @@ export class KsefInvoicingAdapter
       this.resolveDocumentType(cmd.documentType),
       'issued',
       encodeProviderInvoiceId(sessionRef, invoiceReference),
-      null,
+      // The FA(3) P_2 document number - the same value the XML builder stamps
+      // (`invoiceNumber: cmd.orderId`). Leaving this null made the correction
+      // precondition in the HTTP controller (#1289) reject every KSeF KOR
+      // with "missing document number / issue date" (#1338).
+      cmd.orderId,
       'submitted',
       null,
       cmd.idempotencyKey ?? null,
