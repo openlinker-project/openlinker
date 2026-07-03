@@ -28,6 +28,12 @@ export const CORE_CAPABILITY_VALUES = [
   'OrderProcessorManager',
   'OrderSource',
   'OfferManager',
+  // Shop-listing (ADR-024): 'ProductPublisher' resolves a ShopProductManagerPort,
+  // 'CategoryProvisioner' is its provision sub-capability.
+  'ProductPublisher',
+  'CategoryProvisioner',
+  // Invoicing (ADR-026).
+  'Invoicing',
 ] as const;
 
 /**

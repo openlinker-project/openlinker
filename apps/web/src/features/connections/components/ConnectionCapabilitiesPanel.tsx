@@ -25,6 +25,9 @@ const CAPABILITY_HELP: Record<CoreCapability, string> = {
   OrderProcessorManager: 'Create and manage orders in this connection (typically the destination shop).',
   OrderSource: 'Fetch new orders from this connection (e.g. a marketplace).',
   OfferManager: 'Manage offers and listings on this marketplace connection.',
+  ProductPublisher: 'Publish and manage shop listings owned by this connection (cross-platform listing).',
+  CategoryProvisioner: 'Create or resolve destination categories when publishing listings to this connection.',
+  Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
 };
 
 const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
@@ -40,11 +43,18 @@ export function ConnectionCapabilitiesPanel({
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
 
-  // Today the panel only renders well-known core capabilities. Plugin-registered
-  // capabilities (#576) are valid on the connection entity but not editable from
-  // this UI yet — the backend's request DTO is still strict on CoreCapabilityValues
-  // (see plan §3.1). When the runtime-aware DTO validator follow-up lands, this
-  // narrow can be removed.
+  // Today the panel only renders the well-known core capabilities (the
+  // CoreCapabilityValues set, mirrored here as CORE_CAPABILITY_VALUES).
+  // Plugin-registered capabilities beyond that set (#576) are valid on the
+  // connection entity but not editable from this UI yet — the backend's request
+  // DTO is strict on CoreCapabilityValues (see plan §3.1). When the
+  // runtime-aware DTO validator follow-up lands, this narrow can be removed.
+  //
+  // Hazard: handleToggle below saves `enabledCapabilities` as exactly this
+  // filtered `enabled` set, so toggling any checkbox here on a connection that
+  // also has a non-core capability enabled (e.g. a plugin-registered
+  // ShippingProviderManager) silently drops that capability from the saved
+  // list. Tracked under the same #576 follow-up.
   const supported = connection.supportedCapabilities.filter(isCoreCapability);
   const enabled = new Set(connection.enabledCapabilities.filter(isCoreCapability));
 
@@ -112,9 +122,7 @@ export function ConnectionCapabilitiesPanel({
       ) : null}
 
       {supported.length === 0 ? (
-        <p className="muted-text">
-          This connection\u2019s adapter is not recognized. Capability toggles are unavailable.
-        </p>
+        <p className="muted-text">This connection has no capabilities available to toggle here.</p>
       ) : (
         <ul className="capability-list">
           {supported.map((capability) => {
