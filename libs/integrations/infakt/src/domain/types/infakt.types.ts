@@ -126,8 +126,9 @@ export interface InfaktListResponse<T> {
  *
  * The corrective endpoint's wire formats DIFFER from invoices.json (verified
  * live, 2026-07-03): `unit_net_price` is a decimal "amount currency" STRING
- * (e.g. `"811.37 PLN"`) and `quantity` is a STRING (e.g. `"1.0"` / `"0"`) —
- * sending the invoices.json integer-groszy / numeric-quantity shapes here
+ * (e.g. `"811.37 PLN"`) and `quantity` is an integer-or-decimal STRING (the
+ * adapter sends `String(quantity)`, e.g. `"1"` / `"0"`) — sending the
+ * invoices.json integer-groszy / numeric-quantity shapes here
  * 500s. Rows come in pairs per `group`: `correction: false` (original values)
  * then `correction: true` (corrected values).
  */

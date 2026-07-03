@@ -176,6 +176,10 @@ function fromGroszy(amountGroszy: number): number {
  * format: a dot-decimal "amount currency" STRING like `"811.37 PLN"`.
  * Verified live (2026-07-03): corrective_invoices.json 500s on the
  * invoices.json integer-groszy shape — the two endpoints' formats DIFFER.
+ *
+ * PLN-only assumption: the currency suffix is hardcoded to " PLN" because
+ * inFakt is a Polish-only provider and `InfaktInvoice` carries no currency
+ * field to read a per-document currency from.
  */
 function groszyToAmountString(amountGroszy: number): string {
   return `${(amountGroszy / 100).toFixed(2)} PLN`;
@@ -354,8 +358,11 @@ export class InfaktInvoicingAdapter
     // (verified live, 2026-07-03). Try the plain-invoice path first, then
     // fall back to `corrective_invoices/{uuid}.json`.
     const lookups: ReadonlyArray<{ path: string; query?: Record<string, string> }> = [
-      { path: `invoices/${providerInvoiceId}.json`, query: { invoice_type: 'vat' } },
-      { path: `corrective_invoices/${providerInvoiceId}.json` },
+      {
+        path: `invoices/${encodeURIComponent(providerInvoiceId)}.json`,
+        query: { invoice_type: 'vat' },
+      },
+      { path: `corrective_invoices/${encodeURIComponent(providerInvoiceId)}.json` },
     ];
     for (const lookup of lookups) {
       try {
@@ -401,11 +408,14 @@ export class InfaktInvoicingAdapter
     // poll must branch on the record's documentType.
     const invoice = isCorrectionRecord(record.documentType)
       ? await this.http.get<InfaktInvoice>(
-          `corrective_invoices/${record.providerInvoiceId}.json`,
+          `corrective_invoices/${encodeURIComponent(record.providerInvoiceId)}.json`,
         )
-      : await this.http.get<InfaktInvoice>(`invoices/${record.providerInvoiceId}.json`, {
-          invoice_type: toInfaktInvoiceType(record.documentType),
-        });
+      : await this.http.get<InfaktInvoice>(
+          `invoices/${encodeURIComponent(record.providerInvoiceId)}.json`,
+          {
+            invoice_type: toInfaktInvoiceType(record.documentType),
+          },
+        );
 
     const ksefData = invoice.ksef_data;
     return {
@@ -420,7 +430,7 @@ export class InfaktInvoicingAdapter
 
     // Fetch original to build the before/after service arrays
     const original = await this.http.get<InfaktInvoice>(
-      `invoices/${originalProviderInvoiceId}.json`,
+      `invoices/${encodeURIComponent(originalProviderInvoiceId)}.json`,
       { invoice_type: 'vat' },
     );
 
@@ -496,11 +506,16 @@ export class InfaktInvoicingAdapter
     // Belt-and-suspenders for the silent-downgrade class of bug (#1337): if
     // the provider created anything other than a real correction, fail loudly
     // instead of persisting a record that claims a corrective linkage the
-    // document doesn't have.
+    // document doesn't have. Status 502 (not 4xx) is deliberate: a document WAS
+    // created here (just of the wrong kind), so this is `failureMode: 'in-doubt'`
+    // — a 4xx `'rejected'` would tell core "no document exists, safe to
+    // re-attempt", which could spawn a SECOND orphaned corrective on retry
+    // (the corrective external_id dedup is unverified — see the retry-safety
+    // note below). `in-doubt` forces manual review instead of an auto-retry loop.
     if (invoice.kind !== 'correction') {
       throw new InfaktApiError(
         `Infakt returned kind "${invoice.kind}" instead of "correction" for corrective_invoices.json — document ${invoice.uuid} is not a correction of ${original.number ?? originalProviderInvoiceId}`,
-        422,
+        502,
         invoice,
       );
     }
@@ -562,7 +577,7 @@ export class InfaktInvoicingAdapter
     resource: 'invoices' | 'corrective_invoices' = 'invoices',
   ): Promise<InfaktSendToKsefResponse> {
     return this.http.post<InfaktSendToKsefResponse>(
-      `${resource}/${invoiceUuid}/send_to_ksef.json`,
+      `${resource}/${encodeURIComponent(invoiceUuid)}/send_to_ksef.json`,
       {},
     );
   }
@@ -591,13 +606,16 @@ export class InfaktInvoicingAdapter
     // to the invoice pdf.json call; not yet live-verified for corrections.
     const response = isCorrectionRecord(record.documentType)
       ? await this.http.getBinary(
-          `corrective_invoices/${record.providerInvoiceId}/pdf.json`,
+          `corrective_invoices/${encodeURIComponent(String(record.providerInvoiceId))}/pdf.json`,
           { document_type: 'original' },
         )
-      : await this.http.getBinary(`invoices/${record.providerInvoiceId}/pdf.json`, {
-          document_type: 'original',
-          invoice_type: toInfaktInvoiceType(record.documentType),
-        });
+      : await this.http.getBinary(
+          `invoices/${encodeURIComponent(String(record.providerInvoiceId))}/pdf.json`,
+          {
+            document_type: 'original',
+            invoice_type: toInfaktInvoiceType(record.documentType),
+          },
+        );
     return {
       content: response.data,
       contentType: response.contentType.length > 0 ? response.contentType : 'application/pdf',

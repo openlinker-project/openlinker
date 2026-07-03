@@ -617,9 +617,11 @@ describe('InfaktInvoicingAdapter', () => {
       ).toBe(true);
     });
 
-    it('should throw an InfaktApiError with failureMode: rejected when the provider downgrades the document kind (#1337)', async () => {
+    it('should throw an InfaktApiError with failureMode: in-doubt when the provider downgrades the document kind (#1337)', async () => {
       // Belt-and-suspenders for the silent-downgrade class of bug: a created
-      // document whose kind is not 'correction' has no corrective linkage.
+      // document whose kind is not 'correction' has no corrective linkage. A
+      // document WAS created here (wrong kind), so this is `in-doubt` (5xx),
+      // not `rejected` — re-attempting could spawn a second orphaned corrective.
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seed(
         'POST',
@@ -629,7 +631,7 @@ describe('InfaktInvoicingAdapter', () => {
 
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
         name: 'InfaktApiError',
-        failureMode: 'rejected',
+        failureMode: 'in-doubt',
       });
       // The downgraded document must never be submitted to KSeF.
       expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
