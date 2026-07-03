@@ -314,6 +314,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
     entity.documentContent = input.documentContent ?? null;
     entity.sourceDocument = input.sourceDocument ?? null;
+    entity.issuedLineSnapshot = input.issuedLineSnapshot ?? null;
     return entity;
   }
 
@@ -342,6 +343,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.hasBuyerTaxId,
       entity.documentContent,
       entity.sourceDocument,
+      entity.issuedLineSnapshot,
     );
   }
 }

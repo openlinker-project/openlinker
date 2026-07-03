@@ -18,11 +18,15 @@ import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-rec
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import type {
+  InvoiceLine,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
   IssuedDocumentContent,
   IssuedDocumentSeller,
+  OriginalDocumentSnapshot,
 } from '../../domain/types/invoicing.types';
+import type { CorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
 import {
   InvoiceService,
@@ -246,6 +250,23 @@ describe('InvoiceService', () => {
         sourceDocument: null,
       }));
       expect(result).toBe(finalRecord);
+    });
+
+    it('(a3) #1297: snapshots the issue-command buyer/currency/lines verbatim on the issued patch', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      const cmd = makeCmd();
+      await service.issueInvoice(cmd);
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          issuedLineSnapshot: { buyer: cmd.buyer, currency: cmd.currency, lines: cmd.lines },
+        }),
+      );
     });
 
     it('(a2) backfills authoritative providerType + adapter-derived documentType onto the projection (keyless / no documentType)', async () => {
@@ -750,6 +771,128 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ sourceDocument: null }),
+      );
+    });
+  });
+
+  // #1297 — the issued patch of a correction persists the correction's OWN
+  // post-correction ("after") line snapshot, computed from the caller-assembled
+  // original snapshot + the per-line deltas, so a correction-of-correction diffs
+  // against it.
+  describe('issueCorrection (#1297 snapshot)', () => {
+    let correctionAdapter: jest.Mocked<InvoicingPort & CorrectionIssuer>;
+
+    // "Before" lines of the original document, as issued.
+    const originalLines: InvoiceLine[] = [
+      { name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' },
+      { name: 'Gadget', quantity: 1, unitPriceGross: 50, taxRate: '23' },
+    ];
+
+    function makeOriginalDocument(): OriginalDocumentSnapshot {
+      return {
+        buyer: makeBuyer(),
+        currency: 'PLN',
+        documentType: 'invoice',
+        lines: originalLines,
+        clearanceReference: 'KSEF-ORIG',
+        documentNumber: 'FV/2026/1',
+        issueDate: '2026-06-22',
+      };
+    }
+
+    function makeCorrectionCmd(
+      overrides: Partial<IssueCorrectionCommand> = {},
+    ): IssueCorrectionCommand {
+      return {
+        connectionId: CONNECTION,
+        orderId: ORDER,
+        originalProviderInvoiceId: 'PROV-123',
+        documentType: 'corrected',
+        reason: 'price adjustment',
+        lines: [{ originalLineNumber: 1, newUnitPriceGross: 90 }],
+        idempotencyKey: 'corr-key-1',
+        originalDocument: makeOriginalDocument(),
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      correctionAdapter = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn(),
+        issueCorrection: jest.fn().mockResolvedValue(
+          makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+        ),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(correctionAdapter);
+      repo.create.mockResolvedValue(
+        makeRecord({ id: 'corr-rec', status: 'pending', documentType: 'corrected' }),
+      );
+      repo.updateOutcome.mockResolvedValue(
+        makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+      );
+    });
+
+    it('persists the post-correction "after" lines: matched delta overrides, unmatched line unchanged', async () => {
+      await service.issueCorrection(makeCorrectionCmd());
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          status: 'issued',
+          issuedLineSnapshot: {
+            buyer: makeBuyer(),
+            currency: 'PLN',
+            lines: [
+              // Line 1: unitPriceGross overridden 100 -> 90, quantity kept.
+              { name: 'Widget', quantity: 2, unitPriceGross: 90, taxRate: '23' },
+              // Line 2: no delta -> unchanged.
+              { name: 'Gadget', quantity: 1, unitPriceGross: 50, taxRate: '23' },
+            ],
+          },
+        }),
+      );
+    });
+
+    it('applies a quantity delta and leaves price untouched', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ lines: [{ originalLineNumber: 2, newQuantity: 5 }] }),
+      );
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({
+            lines: [
+              { name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' },
+              { name: 'Gadget', quantity: 5, unitPriceGross: 50, taxRate: '23' },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('ignores a delta whose originalLineNumber is out of range (never throws)', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ lines: [{ originalLineNumber: 99, newQuantity: 3 }] }),
+      );
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ lines: originalLines }),
+        }),
+      );
+    });
+
+    it('persists a null snapshot when the caller supplied no originalDocument', async () => {
+      await service.issueCorrection(makeCorrectionCmd({ originalDocument: undefined }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ issuedLineSnapshot: null }),
       );
     });
   });

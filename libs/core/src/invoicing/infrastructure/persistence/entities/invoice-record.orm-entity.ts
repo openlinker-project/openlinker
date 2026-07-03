@@ -26,6 +26,7 @@ import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
   IssuedDocumentContent,
+  IssuedLineSnapshot,
   StoredDocument,
 } from '../../../domain/types/invoicing.types';
 import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
@@ -148,6 +149,14 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   sourceDocument!: StoredDocument | null;
+
+  /**
+   * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`
+   * as issued, so a later correction diffs its deltas against the issued lines
+   * rather than the order's current state. `null` for pre-migration rows.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  issuedLineSnapshot!: IssuedLineSnapshot | null;
 
   @CreateDateColumn()
   createdAt!: Date;
