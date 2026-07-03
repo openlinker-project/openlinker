@@ -100,6 +100,7 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 |---|---|---|---|
 | `env` | ✅ | ✅ | `test` \| `demo` \| `prod`. Gated by the config-shape validator at connection create/update. |
 | `seller` | ✅ for issuance | ✅ | Seller identity (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`. Optional at connection-create time, but required before the connection can issue. |
+| `payment` | optional | ✅ (edit form) | Default payment details (#1311) emitted as the FA(3) `Platnosc` block on every issued invoice: `payment.formaPlatnosci` (payment-method code → `FormaPlatnosci`), `payment.paymentTermDays` (due date computed from the issue date → `TerminPlatnosci`), `payment.bankAccount { nrRb, bankName?, swift? }` (→ `RachunekBankowy`), and `payment.skonto { amount, conditions }` (early-payment discount → `Skonto`; both sub-fields required together). Omitting `formaPlatnosci` leaves payment info off issued invoices entirely. |
 
 > **Note:** the seller's tax identifier lives on the connection's `seller.nip`
 > field, not as a bare top-level `sellerNip` — it travels as part of the
@@ -193,6 +194,17 @@ fixed copy of the same document) and is **not** used by the regular KOR flow.
 KSeF has no delta-only correction primitive — every correction resubmits a
 complete FA(3) document, so `CorrectionIssuer.issueCorrection` is a pure
 delegation into the same online-session issuance path as `issueInvoice`.
+
+**Issuance-time line snapshot (#1297).** The core `InvoiceRecord` persists an
+`issuedLineSnapshot` (buyer, currency, lines) captured when the document was
+issued (or, for a correction, the correction's own post-correction lines). The
+HTTP controller assembles `IssueCorrectionCommand.originalDocument` from that
+snapshot, so the `originalLineNumber`-indexed deltas diff against the lines
+*as issued* - a later edit to the backing order does not change what the KOR
+corrects, and a correction-of-correction diffs against the prior correction's
+own lines. Only records issued before the snapshot column existed fall back to
+rebuilding `originalDocument` from the order's *current* state (the pre-#1297
+path, with its `buyerTaxId: null` and line-fidelity caveats).
 
 ---
 

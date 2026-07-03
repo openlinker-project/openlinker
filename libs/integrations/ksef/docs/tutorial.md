@@ -120,6 +120,46 @@ the capability breakdown.
 
 ---
 
+## Part 2a - Configure invoice payment details (FA(3) Platnosc)
+
+Optionally, give the connection default payment details - once set, every
+invoice issued through this connection carries them as the FA(3) **Platnosc**
+block (`TerminPlatnosci`, `FormaPlatnosci`, `RachunekBankowy`, `Skonto`), so
+the buyer sees how and where to pay directly on the structured invoice.
+
+On the connection detail page click **Edit connection**. Scroll down past the
+seller-address fields - the payment section starts at **Default payment
+method**. Each field's helper text names the exact FA(3) `Platnosc` element it
+is emitted as; all fields are optional, and leaving the payment method at
+`(not set)` keeps payment info off issued invoices entirely.
+
+![Edit connection - payment section, all fields empty](./assets/2a-payment-empty.png)
+
+Fill in the section:
+
+- **Default payment method** - pick `Przelew (bank transfer)` from the
+  dropdown (emitted as `FormaPlatnosci`).
+- **Bank account number** - the seller's account number (NRB, emitted as
+  `RachunekBankowy/NrRB`).
+- **Bank name** - e.g. `Santander Bank Polska` (`RachunekBankowy/NazwaBanku`).
+- **SWIFT** - e.g. `WBKPPLPP` (`RachunekBankowy/SWIFT`; mainly for
+  foreign-currency transfers).
+- **Default payment term (days)** - e.g. `14`; the due date is computed as
+  this many days from the issue date (`TerminPlatnosci`).
+- **Early-payment discount (skonto)** - optional pair: the discount **amount**
+  (e.g. `2%`, `Skonto/WysokoscSkonta`) and its **conditions** (e.g.
+  `2% if paid within 7 days`, `Skonto/WarunkiSkonta`). If you fill one, fill
+  both.
+
+![Edit connection - payment section filled in with Przelew](./assets/2a-payment-przelew-filled.png)
+
+Click **Save changes**. Reopen the Edit form to confirm the values persisted -
+they will be stamped onto every invoice you issue from Part 4 onwards.
+
+![Edit connection - payment section persisted after reload](./assets/2a-payment-persisted.png)
+
+---
+
 ## Part 3 — Get a B2B order into OpenLinker
 
 Orders flow into OpenLinker automatically from any configured source connection
@@ -203,6 +243,13 @@ KSeF has no delta-only correction primitive — OpenLinker rebuilds the
 **complete** corrected FA(3) document from the original (buyer, currency, all
 lines) with your changes applied, and submits it referencing the original
 document number and KSeF clearance number.
+
+> **Corrections diff against the invoice as issued.** OpenLinker persists a
+> snapshot of the invoice lines at issuance time (#1297), and your correction
+> deltas are applied against that snapshot - not against the order's current
+> state. If the order was edited after the invoice went out, the KOR still
+> corrects the original issued values. Only invoices issued before this
+> feature existed fall back to rebuilding from the order's current state.
 
 ![Correction submitted — new document type "corrected", clearance pending](./assets/17-ol-correction-issued.png)
 

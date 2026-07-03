@@ -10,6 +10,7 @@ Connects OpenLinker to the **KSeF REST API v2** to:
 - Issue FA(3) VAT invoices and correction invoices (KOR) for ingested orders.
 - Submit issued documents to MF clearance asynchronously (submit → poll → UPO).
 - Read the regulatory clearance status (`submitted → cleared → accepted | rejected`).
+- Stamp per-connection default payment details (method, term, bank account, skonto) onto every issued invoice as the FA(3) `Platnosc` block.
 
 ## Adapter
 
