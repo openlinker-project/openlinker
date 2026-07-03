@@ -43,12 +43,18 @@ export function ConnectionCapabilitiesPanel({
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
 
-  // Today the panel only renders the well-known core capabilities (the full
-  // 8-member CoreCapabilityValues set, mirrored here as CORE_CAPABILITY_VALUES).
+  // Today the panel only renders the well-known core capabilities (the
+  // CoreCapabilityValues set, mirrored here as CORE_CAPABILITY_VALUES).
   // Plugin-registered capabilities beyond that set (#576) are valid on the
   // connection entity but not editable from this UI yet — the backend's request
   // DTO is strict on CoreCapabilityValues (see plan §3.1). When the
   // runtime-aware DTO validator follow-up lands, this narrow can be removed.
+  //
+  // Hazard: handleToggle below saves `enabledCapabilities` as exactly this
+  // filtered `enabled` set, so toggling any checkbox here on a connection that
+  // also has a non-core capability enabled (e.g. a plugin-registered
+  // ShippingProviderManager) silently drops that capability from the saved
+  // list. Tracked under the same #576 follow-up.
   const supported = connection.supportedCapabilities.filter(isCoreCapability);
   const enabled = new Set(connection.enabledCapabilities.filter(isCoreCapability));
 

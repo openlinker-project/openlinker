@@ -17,6 +17,14 @@ export const PRESTASHOP_ADAPTER_KEY = 'prestashop.webservice.v1';
  * Fallback set used only when the adapter registry cannot be queried (network
  * failure, stale cache, etc.). The source of truth is the `/adapters` endpoint
  * consumed by the wizard via `useAdaptersQuery`.
+ *
+ * Also doubles as `PRESTASHOP_SETUP_DEFAULT_VALUES.enabledCapabilities` below —
+ * an intentionally minimal default. The ADR-024 shop-listing capabilities
+ * (`ProductPublisher`, `CategoryProvisioner`) still render as checkboxes once
+ * real adapter metadata loads, but start unchecked here; the operator opts in
+ * explicitly rather than the wizard reseeding from the manifest (contrast with
+ * `WoocommerceSetupForm`, which reseeds `enabledCapabilities` from the
+ * adapter's `supportedCapabilities` on load).
  */
 export const PRESTASHOP_FALLBACK_CAPABILITIES: CoreCapability[] = [
   'ProductMaster',

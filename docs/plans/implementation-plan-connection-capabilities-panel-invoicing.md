@@ -1,9 +1,47 @@
 # Implementation Plan: Fix Misleading "Adapter Not Recognized" Copy in ConnectionCapabilitiesPanel
 
 **Date**: 2026-07-02
-**Status**: Draft
+**Status**: Draft (scope amended 2026-07-03 — see note below)
 **Estimated Effort**: 1–2 hours
 **Issue**: [#1287](https://github.com/openlinker-project/openlinker/issues/1287)
+
+---
+
+## Scope Amendment (2026-07-03)
+
+PR review ([#1320](https://github.com/openlinker-project/openlinker/pull/1320)) found that the
+§2 "Out of Scope" premise below — "No in-tree adapter currently declares either capability"
+(`ProductPublisher` / `CategoryProvisioner`) — was **factually wrong at the time the plan was
+written**: both `libs/integrations/prestashop/src/prestashop-plugin.ts` and
+`libs/integrations/woocommerce/src/woocommerce-plugin.ts` already declare both capabilities
+(ADR-024). That means the same drift bug this plan fixes for `Invoicing` was live for two more
+capabilities on two real, shipping adapters — not a hypothetical future case.
+
+Scope was amended in-flight to widen `CORE_CAPABILITY_VALUES` with `'ProductPublisher'` and
+`'CategoryProvisioner'` in the same PR, add their `CAPABILITY_HELP` entries in both exhaustive
+maps (`ConnectionCapabilitiesPanel.tsx`, `prestashop-setup-form.tsx`), and add a regression test —
+shipped in commit `ab8f2cb3` ("fix(web): widen CoreCapability with
+ProductPublisher/CategoryProvisioner"). The rest of this plan (Invoicing fix, fallback-copy
+rewrite, KSeF comment touch-ups) shipped as originally scoped. §2 and §5 below are left as
+originally written for the historical record; treat this note as the authoritative statement of
+what actually shipped.
+
+**Behavior change surfaced by the widen (verified low-risk, but real):** `woocommerce-setup-form.tsx`
+seeds `enabledCapabilities` from `adapter.supportedCapabilities` filtered through
+`CORE_CAPABILITY_VALUES` (`woocommerce-setup-form.tsx:51-59`). Before this PR, that filter stripped
+`ProductPublisher` / `CategoryProvisioner` out of the seed even though the WooCommerce manifest
+declares both; after the widen, every **new** WooCommerce connection created via the FE now seeds
+both as enabled by default — a silent behavior change, not something this plan or its PR
+description called out at the time. The PrestaShop wizard is unaffected the same way: its
+capabilities step defaults from a static `PRESTASHOP_FALLBACK_CAPABILITIES` list
+(`prestashop-setup.schema.ts`) rather than reseeding from the manifest, so the two new PrestaShop
+checkboxes render **unchecked** by default — meaning PrestaShop and WooCommerce now visibly
+disagree on the ADR-024 capability defaults for identical manifest declarations. This was assessed
+as low-risk (every `ProductPublisher` consumer is a user-initiated publish flow; no scheduler
+enumerates connections by this capability, and enabling it by default for WooCommerce aligns
+FE-created connections with how the backend already defaults `enabledCapabilities` when the field
+is omitted, per §4 above) but should have been called out explicitly in the original PR
+description.
 
 ---
 

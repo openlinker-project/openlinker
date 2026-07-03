@@ -4,6 +4,30 @@
 **Issue**: [#1287](https://github.com/openlinker-project/openlinker/issues/1287)
 **Date**: 2026-07-02
 
+## Post-Review Correction (2026-07-03)
+
+PR review ([#1320](https://github.com/openlinker-project/openlinker/pull/1320)) found two factual
+errors in this analysis, both since corrected in the shipped code (not in the prose below, which
+is left as originally written for the historical record):
+
+1. **The `ProductPublisher`/`CategoryProvisioner` deferral (line 20, endorsing the plan's §5) was
+   wrong.** Both capabilities are declared today by `libs/integrations/prestashop/src/prestashop-plugin.ts:67-74`
+   and `libs/integrations/woocommerce/src/woocommerce-plugin.ts` (ADR-024) — this was not checked
+   against those files before the "correctly scopes out" / "correctly deferred" language below was
+   written. The gap was closed in the same PR (commit `ab8f2cb3`) rather than deferred. See the
+   plan's own Scope Amendment note for the full correction.
+2. **"No Infakt FE setup form exists yet" (line 51) was wrong.** `infakt-setup-form.tsx` and
+   `infakt-setup.schema.ts` already exist under `apps/web/src/features/connections/components/`.
+   The conclusion still holds for a different reason: Infakt's setup form has no capabilities step
+   and its `enabledCapabilities`-omission comment doesn't cite the stale `CORE_CAPABILITY_VALUES`
+   premise (unlike the two KSeF comments this plan targets), so it genuinely needed no touch-up —
+   just not for the reason stated.
+3. **The KSeF file paths cited in § Open Questions #1 below (`apps/web/src/features/connections/components/ksef-setup-form.tsx` and `ksef-setup.schema.ts`) were wrong.** Both files actually live under
+   `apps/web/src/plugins/ksef/components/` — KSeF is a plugin-contributed setup form, not a
+   host-owned `features/connections` component. The comment-touch-up recommendation itself was
+   still correct and was applied at the right (plugin) path in the shipped commit; only the path
+   cited in this analysis was stale.
+
 ## Verdict: READY
 
 No reuse collisions, no contract breaks. The plan's own research was independently re-verified against the live tree and confirmed accurate in every claim checked. One low-severity documentation-staleness item was found that the plan did not mention; it does not block implementation.
