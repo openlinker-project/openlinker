@@ -63,6 +63,33 @@ export class CorrectionLineDto {
   newUnitPriceGross?: number;
 }
 
+/**
+ * Rejects two correction lines targeting the same `originalLineNumber` (#1297
+ * review): duplicates would silently last-write-win in the persisted "after"
+ * snapshot (`applyCorrectionDeltas`) while the provider may compute something
+ * else — ambiguous input, so it is refused at the boundary instead.
+ */
+@ValidatorConstraint({ name: 'uniqueOriginalLineNumbers', async: false })
+class UniqueOriginalLineNumbersConstraint implements ValidatorConstraintInterface {
+  validate(lines: unknown): boolean {
+    if (!Array.isArray(lines)) {
+      return true; // shape errors are reported by @IsArray / @ValidateNested
+    }
+    const seen = new Set<number>();
+    for (const line of lines as CorrectionLineDto[]) {
+      if (seen.has(line?.originalLineNumber)) {
+        return false;
+      }
+      seen.add(line?.originalLineNumber);
+    }
+    return true;
+  }
+
+  defaultMessage(): string {
+    return 'Correction lines must not repeat the same originalLineNumber';
+  }
+}
+
 export class IssueCorrectionRequestDto {
   @ApiPropertyOptional({ description: 'Free-text reason for correction (e.g. partial return).' })
   @IsString()
@@ -72,6 +99,7 @@ export class IssueCorrectionRequestDto {
   @ApiProperty({ type: [CorrectionLineDto], description: 'Per-line corrections — at least one line must be present.' })
   @IsArray()
   @ArrayMinSize(1)
+  @Validate(UniqueOriginalLineNumbersConstraint)
   @ValidateNested({ each: true })
   @Type(() => CorrectionLineDto)
   lines!: CorrectionLineDto[];
