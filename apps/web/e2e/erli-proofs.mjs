@@ -2,7 +2,7 @@
  * Erli setup-guide captures (cropped).
  *
  * Drives the running web app (:4173) as the bootstrap admin and captures tight,
- * cropped screenshots of the Erli flow for docs/integrations/erli/setup-guide.md:
+ * cropped screenshots of the Erli flow for libs/integrations/erli/docs/setup-guide.md:
  *   20/21 are panel shots (separate script: erli-panel.mjs)
  *   22 — the created Erli offer row in OL Listings (cropped to the row)
  *   23 — the OL inventory value after a PrestaShop stock change (cropped)
@@ -18,15 +18,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/erli');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/erli/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
-const VARIANT = 'ol_variant_2dab6f6bd3a542b3b6e86a1bc6696150';
+const ADMIN_USERNAME = process.env.OL_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
+// Author-local default; override via env for your own environment.
 const ERLI_ORDER_ID = process.env.ERLI_ORDER_ID ?? 'ol_order_0b951671b4584d7f97b7866c58665f9c';
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill(ADMIN_USERNAME);
+  await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }

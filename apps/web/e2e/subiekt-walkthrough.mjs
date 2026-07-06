@@ -3,8 +3,8 @@
  *
  * Drives the running web app (:4173) with a real browser, logs in as the
  * bootstrap admin, and captures a screenshot at EACH step of the Subiekt
- * guided connection wizard (#1199) into docs/assets/subiekt/ (used by
- * docs/integrations/subiekt/setup-guide.md). Captures every meaningful click
+ * guided connection wizard (#1199) into libs/integrations/subiekt/docs/assets/ (used by
+ * libs/integrations/subiekt/docs/setup-guide.md). Captures every meaningful click
  * (exhaustiveness mandate) — empty form, each field filled, created, tested.
  * Run with the dev stack + API + web up, and the Subiekt bridge reachable.
  *
@@ -20,16 +20,19 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/subiekt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/subiekt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
+// Author-local default (a WSL host IP); override via env for your own environment.
 const BRIDGE_URL = process.env.SUBIEKT_BRIDGE_URL ?? 'https://172.26.96.1:5005';
+const ADMIN_USERNAME = process.env.OL_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
 const BRIDGE_TOKEN = process.env.SUBIEKT_BRIDGE_TOKEN ?? '';
 const CONN_NAME = process.env.SUBIEKT_CONN_NAME ?? 'My Subiekt';
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill(ADMIN_USERNAME);
+  await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }
