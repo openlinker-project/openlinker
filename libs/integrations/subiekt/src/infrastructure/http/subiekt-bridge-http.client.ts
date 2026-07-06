@@ -43,8 +43,11 @@ import type {
   BridgeIssueInvoiceResponse,
   BridgeKorektaRequest,
   BridgeKorektaResponse,
+  BridgeListBankAccountsResponse,
+  BridgeListCashRegistersResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
+  BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from '../../bridge/subiekt-bridge.types';
@@ -97,6 +100,18 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
   /** Templated by `providerInvoiceId`; the bridge route is `GET /api/invoices/{id}/status`. */
   invoiceStatus: (providerInvoiceId: string): string =>
     `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
+  /** Bank-account discovery; the bridge route is `GET /api/bank-accounts` (#1324). */
+  bankAccounts: '/api/bank-accounts',
+  /**
+   * Default bank-account selector, templated by the numeric account id. The
+   * bridge route is `PUT /api/bank-accounts/{id}/default` (#1324).
+   */
+  setDefaultBankAccount: (id: number): string => `/api/bank-accounts/${id}/default`,
+  /**
+   * Stanowisko Kasowe (cash register) discovery. The bridge route is
+   * `GET /api/cash-registers` (#1324).
+   */
+  cashRegisters: '/api/cash-registers',
   health: '/health',
 } as const;
 
@@ -191,6 +206,23 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     };
   }
 
+  async listBankAccounts(): Promise<BridgeListBankAccountsResponse> {
+    return this.getJson<BridgeListBankAccountsResponse>(SUBIEKT_BRIDGE_ENDPOINTS.bankAccounts);
+  }
+
+  async setDefaultBankAccount(
+    bankAccountId: number,
+  ): Promise<BridgeSetDefaultBankAccountResponse> {
+    return this.putJson<BridgeSetDefaultBankAccountResponse>(
+      SUBIEKT_BRIDGE_ENDPOINTS.setDefaultBankAccount(bankAccountId),
+      {},
+    );
+  }
+
+  async listCashRegisters(): Promise<BridgeListCashRegistersResponse> {
+    return this.getJson<BridgeListCashRegistersResponse>(SUBIEKT_BRIDGE_ENDPOINTS.cashRegisters);
+  }
+
   /**
    * Connectivity probe for the connection tester. Issues `GET /health` and
    * resolves when the bridge is reachable (any non-transport response, incl. a
@@ -229,11 +261,19 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     return this.request<T>('POST', path, body);
   }
 
+  private async putJson<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>('PUT', path, body);
+  }
+
   private async getJson<T>(path: string): Promise<T> {
     return this.request<T>('GET', path, undefined);
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body: unknown): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body: unknown,
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);

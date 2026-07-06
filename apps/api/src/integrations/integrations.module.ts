@@ -22,6 +22,7 @@ import { apiPlugins } from '../plugins';
 import { ConnectionController } from './http/connection.controller';
 import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
+import { SubiektController } from './http/subiekt.controller';
 import { ConnectionService } from './application/services/connection.service';
 import { OAuthConnectionService } from './application/services/oauth-connection.service';
 import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-connection.service.interface';
@@ -34,7 +35,7 @@ import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-c
     RedisConfigModule, // Required for OAuth state storage
     PluginRegistryModule.forRoot({ plugins: apiPlugins }),
   ],
-  controllers: [ConnectionController, AdapterController, AllegroController],
+  controllers: [ConnectionController, AdapterController, AllegroController, SubiektController],
   providers: [
     ConnectionService,
     // Neutral OAuth orchestration (#859). Allegro's OAuth knowledge (URLs,

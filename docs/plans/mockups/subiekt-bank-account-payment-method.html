@@ -1,0 +1,416 @@
+<title>Subiekt — payment method &amp; bank account (mockup, #1324)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* ── Tokens, copied verbatim from apps/web/src/index.css (light mode) ──
+     IBM Plex Sans/Mono approximated with the same system-ui fallback stack
+     already declared in --font-sans/--font-mono — the Artifact CSP blocks
+     webfont loading, so this mockup intentionally does not @font-face a
+     substitute rather than risk a silent, less-accurate fallback. */
+  :root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+    --bg-canvas: oklch(99% 0.003 80);
+    --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #ffffff;
+    --bg-surface-muted: oklch(96% 0.005 80);
+    --bg-surface-hover: oklch(93% 0.006 80);
+
+    --border-subtle: oklch(93.5% 0.006 80);
+    --border-default: oklch(88% 0.008 80);
+    --border-strong: oklch(78% 0.01 80);
+    --border-focus: oklch(68% 0.18 50);
+
+    --text-primary: oklch(20% 0.012 80);
+    --text-secondary: oklch(38% 0.01 80);
+    --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80);
+
+    --accent-primary: oklch(68% 0.18 50);
+    --accent-primary-soft: oklch(96% 0.04 60);
+    --accent-primary-border: oklch(85% 0.1 55);
+    --accent-ring: oklch(68% 0.18 50 / 0.3);
+
+    --status-info: oklch(56% 0.14 245);
+    --status-info-soft: oklch(96% 0.03 245);
+    --status-info-border: oklch(85% 0.08 245);
+    --status-info-fg: oklch(40% 0.12 245);
+
+    --status-success: oklch(54% 0.14 150);
+    --status-success-soft: oklch(96% 0.04 150);
+    --status-success-fg: oklch(36% 0.12 150);
+
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-pill: 9999px;
+
+    --duration-fast: 120ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg-shell);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--space-7) var(--space-5) var(--space-8);
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .page-head { display: grid; gap: var(--space-2); }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  h1 { margin: 0; font-size: 1.375rem; font-weight: 650; letter-spacing: -0.012em; text-wrap: balance; }
+  .lede { margin: 0; color: var(--text-secondary); max-width: 62ch; }
+  .lede code { font-family: var(--font-mono); font-size: 0.92em; background: var(--bg-surface-muted); padding: 0.08em 0.35em; border-radius: 4px; }
+
+  /* ── the connection edit-form context the new section lives inside ── */
+  .form-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  .form-card__title {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .form-card__body { padding: var(--space-5); display: grid; gap: var(--space-4); }
+
+  .form-field { display: grid; gap: var(--space-2); }
+  .form-field__label { font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); }
+  .form-field__description { margin: 0; color: var(--text-muted); font-size: 0.75rem; }
+
+  .control, select {
+    width: 100%;
+    height: 2rem;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 0 var(--space-3);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    box-shadow: var(--shadow-xs);
+  }
+  select {
+    appearance: none;
+    padding-right: var(--space-7);
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+      linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+    background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 8px) calc(50% - 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  select:disabled, .control:disabled { background: var(--bg-surface-muted); color: var(--text-disabled); }
+
+  .capability-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; color: var(--text-secondary);
+  }
+  .capability-row:first-of-type { border-top: none; }
+  .switch { width: 30px; height: 17px; border-radius: var(--radius-pill); background: var(--bg-surface-muted); border: 1px solid var(--border-default); position: relative; flex-shrink: 0; }
+  .switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-xs); }
+  .switch--on { background: var(--accent-primary); border-color: var(--accent-primary); }
+  .switch--on::after { left: 15px; }
+
+  /* ── Inline Disclosure — copied verbatim from index.css ── */
+  .inline-disclosure {
+    border: 1px dashed var(--accent-primary-border);
+    background: var(--accent-primary-soft);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+  }
+  .inline-disclosure__summary { cursor: pointer; list-style: none; font-size: 0.85rem; color: var(--text-primary); }
+  .inline-disclosure__summary::-webkit-details-marker { display: none; }
+  .inline-disclosure__summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+  .inline-disclosure__label { color: var(--text-secondary); }
+  .inline-disclosure__value { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+  .inline-disclosure__cta { color: var(--accent-primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; font-weight: 600; }
+  .inline-disclosure__panel { margin-top: var(--space-3); display: grid; gap: var(--space-4); }
+
+  .muted-text { margin: 0; color: var(--text-secondary); font-size: 0.8125rem; }
+
+  /* ── skeleton loading row ── */
+  .skeleton-line {
+    height: 2rem; border-radius: var(--radius-md);
+    background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton-line { animation: none; } }
+
+  /* ── multi-payer account option group + caption ── */
+  .account-owner-group { font-weight: 600; font-family: var(--font-sans); font-style: normal; color: var(--text-secondary); }
+
+  .owner-caption {
+    display: flex; align-items: flex-start; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--status-info-soft);
+    border: 1px solid var(--status-info-border);
+    border-radius: var(--radius-sm);
+    color: var(--status-info-fg);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+  .owner-caption__icon {
+    flex-shrink: 0; width: 15px; height: 15px; margin-top: 1px;
+  }
+
+  .picked-account-chip {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+  }
+  .picked-account-chip__meta { display: grid; gap: 2px; }
+  .picked-account-chip__number { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-primary); }
+  .picked-account-chip__owner { font-size: 0.72rem; color: var(--text-muted); }
+  .payer-pill {
+    font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
+    padding: 2px 8px; border-radius: var(--radius-pill);
+    background: var(--bg-surface); border: 1px solid var(--border-strong); color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  /* ── state-sheet scaffolding ── */
+  .state {
+    display: grid; grid-template-columns: 148px 1fr; gap: var(--space-5);
+    padding: var(--space-5) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .state:first-of-type { border-top: none; padding-top: 0; }
+  .state__meta { display: grid; gap: var(--space-2); align-content: start; }
+  .state__index { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-disabled); }
+  .state__title { font-weight: 600; font-size: 0.8125rem; }
+  .state__note { margin: 0; color: var(--text-muted); font-size: 0.72rem; line-height: 1.5; }
+
+  @media (max-width: 640px) {
+    .state { grid-template-columns: 1fr; }
+    .state__meta { padding-bottom: var(--space-1); }
+  }
+</style>
+
+<div class="page">
+  <header class="page-head">
+    <span class="eyebrow">Connection settings mockup · issue #1324</span>
+    <h1>Subiekt — payment method &amp; bank account</h1>
+    <p class="lede">
+      Five states of the same <code>&lt;InlineDisclosure&gt;</code> block, added to
+      <code>subiekt-structured-section.tsx</code> below the existing "Invoice trigger" field —
+      the identical pattern already shipped for inFakt, extended for Subiekt's multi-payer
+      reality (bridge PR&nbsp;#4 / <code>openlinker-subiekt-bridge#3</code>).
+    </p>
+  </header>
+
+  <section class="form-card">
+    <div class="form-card__title">Edit connection — Magazyn Główny (Subiekt)</div>
+    <div class="form-card__body">
+      <div class="form-field">
+        <div class="form-field__label">Bridge URL</div>
+        <input class="control" value="https://10.20.4.11:5005" disabled />
+      </div>
+
+      <div class="form-field">
+        <div class="form-field__label">Invoice trigger</div>
+        <select disabled><option>On order paid</option></select>
+      </div>
+
+      <!-- ══════════════ STATE 1 — collapsed ══════════════ -->
+      <div class="state">
+        <div class="state__meta">
+          <span class="state__index">01</span>
+          <span class="state__title">Collapsed</span>
+          <p class="state__note">Default rendering — most operators never open this.</p>
+        </div>
+        <details class="inline-disclosure">
+          <summary class="inline-disclosure__summary">
+            <span class="inline-disclosure__label">Payment method for invoice:</span>
+            <span class="inline-disclosure__value">Cash</span>
+            <span class="inline-disclosure__cta">Change →</span>
+          </summary>
+        </details>
+      </div>
+
+      <!-- ══════════════ STATE 2 — expanded, Cash ══════════════ -->
+      <div class="state">
+        <div class="state__meta">
+          <span class="state__index">02</span>
+          <span class="state__title">Expanded — Cash</span>
+          <p class="state__note">No account picker; nothing else to configure.</p>
+        </div>
+        <details class="inline-disclosure" open>
+          <summary class="inline-disclosure__summary">
+            <span class="inline-disclosure__label">Payment method for invoice:</span>
+            <span class="inline-disclosure__value">Cash</span>
+            <span class="inline-disclosure__cta">Change →</span>
+          </summary>
+          <div class="inline-disclosure__panel">
+            <div class="form-field">
+              <div class="form-field__label">Default payment method</div>
+              <select><option selected>Cash</option><option>Transfer</option></select>
+              <p class="form-field__description" style="margin:0;color:var(--text-muted);font-size:0.75rem;">
+                Sent as <code style="font-family:var(--font-mono);">paymentMethod: "cash"</code> on every issued invoice.
+              </p>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ══════════════ STATE 3 — expanded, Transfer, loading ══════════════ -->
+      <div class="state">
+        <div class="state__meta">
+          <span class="state__index">03</span>
+          <span class="state__title">Transfer — loading</span>
+          <p class="state__note"><code style="font-family:var(--font-mono);">useBankAccountsQuery</code> in flight.</p>
+        </div>
+        <details class="inline-disclosure" open>
+          <summary class="inline-disclosure__summary">
+            <span class="inline-disclosure__label">Payment method for invoice:</span>
+            <span class="inline-disclosure__value">Transfer</span>
+            <span class="inline-disclosure__cta">Change →</span>
+          </summary>
+          <div class="inline-disclosure__panel">
+            <div class="form-field">
+              <div class="form-field__label">Default payment method</div>
+              <select><option>Cash</option><option selected>Transfer</option></select>
+            </div>
+            <div class="form-field">
+              <div class="form-field__label">Bank account for transfer invoices</div>
+              <div class="skeleton-line"></div>
+              <p class="muted-text" style="font-size:0.75rem;color:var(--text-muted);">Checking Subiekt for bank accounts…</p>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ══════════════ STATE 4 — expanded, Transfer, loaded, multi-payer ══════════════ -->
+      <div class="state">
+        <div class="state__meta">
+          <span class="state__index">04</span>
+          <span class="state__title">Transfer — loaded, multi-payer</span>
+          <p class="state__note">
+            Accounts grouped by owning płatnik (<code style="font-family:var(--font-mono);">ownerName</code>,
+            bridge PR&nbsp;#4). Info caption flags the unresolved routing gap
+            (<code style="font-family:var(--font-mono);">#3</code>) without alarming.
+          </p>
+        </div>
+        <details class="inline-disclosure" open>
+          <summary class="inline-disclosure__summary">
+            <span class="inline-disclosure__label">Payment method for invoice:</span>
+            <span class="inline-disclosure__value">Transfer</span>
+            <span class="inline-disclosure__cta">Change →</span>
+          </summary>
+          <div class="inline-disclosure__panel">
+            <div class="form-field">
+              <div class="form-field__label">Default payment method</div>
+              <select><option>Cash</option><option selected>Transfer</option></select>
+            </div>
+
+            <div class="form-field">
+              <div class="form-field__label">Bank account for transfer invoices</div>
+              <select>
+                <optgroup class="account-owner-group" label="Moja Firma Sp. z o.o.">
+                  <option selected>mBank — 38 2490 •••• 5035 (default in Subiekt)</option>
+                  <option>ING — 12 1050 •••• 8817</option>
+                </optgroup>
+                <optgroup class="account-owner-group" label="Oddział Kraków Sp. z o.o.">
+                  <option>PKO BP — 61 1020 •••• 2461</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div class="picked-account-chip">
+              <div class="picked-account-chip__meta">
+                <span class="picked-account-chip__number">mBank · 38 2490 0005 7898 4745 0552 5035</span>
+                <span class="picked-account-chip__owner">Owned by Moja Firma Sp. z o.o.</span>
+              </div>
+              <span class="payer-pill">Default in Subiekt</span>
+            </div>
+
+            <div class="owner-caption">
+              <svg class="owner-caption__icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3" />
+                <path d="M8 7.2v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
+              </svg>
+              <span>
+                Accounts are listed by płatnik because this Subiekt install has more than one.
+                The bridge can't yet confirm which płatnik a given invoice is issued under, so the
+                account shown here isn't guaranteed to match — this will tighten once
+                <code style="font-family:var(--font-mono);">openlinker-subiekt-bridge#3</code> ships an invoice-side selector.
+              </span>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ══════════════ STATE 5 — expanded, Transfer, empty ══════════════ -->
+      <div class="state">
+        <div class="state__meta">
+          <span class="state__index">05</span>
+          <span class="state__title">Transfer — no accounts</span>
+          <p class="state__note">Zero accounts across every płatnik; falls back to Subiekt's own default form.</p>
+        </div>
+        <details class="inline-disclosure" open>
+          <summary class="inline-disclosure__summary">
+            <span class="inline-disclosure__label">Payment method for invoice:</span>
+            <span class="inline-disclosure__value">Transfer</span>
+            <span class="inline-disclosure__cta">Change →</span>
+          </summary>
+          <div class="inline-disclosure__panel">
+            <div class="form-field">
+              <div class="form-field__label">Default payment method</div>
+              <select><option>Cash</option><option selected>Transfer</option></select>
+            </div>
+            <p class="muted-text" style="font-size:0.8125rem;color:var(--text-secondary);">
+              No bank account is configured in Subiekt for any płatnik, so <strong>Transfer</strong> isn't
+              available to select yet — invoices will use whatever form Subiekt applies by default.
+              Add an account under Konfiguracja systemu → Rachunki bankowe, then reload this page.
+            </p>
+          </div>
+        </details>
+      </div>
+
+      <div class="capability-row"><span>Order sync</span><span class="switch switch--on"></span></div>
+      <div class="capability-row"><span>Invoice regulatory read</span><span class="switch"></span></div>
+    </div>
+  </section>
+</div>

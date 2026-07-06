@@ -7,4 +7,8 @@ export const connectionsQueryKeys = {
   detail: (connectionId: string) => ['connections', 'detail', connectionId] as const,
   diagnostics: (connectionId: string) => ['connections', 'diagnostics', connectionId] as const,
   bankAccounts: (connectionId: string) => ['connections', 'bank-accounts', connectionId] as const,
+  subiektBankAccounts: (connectionId: string) =>
+    ['connections', 'subiekt-bank-accounts', connectionId] as const,
+  subiektCashRegisters: (connectionId: string) =>
+    ['connections', 'subiekt-cash-registers', connectionId] as const,
 };

@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/erli');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/erli/docs/assets');
 const BASE = process.env.ERLI_PANEL_BASE ?? 'https://sandbox.erli.dev';
 const USER = process.env.ERLI_PANEL_USER;
 const PASS = process.env.ERLI_PANEL_PASS;

@@ -363,8 +363,29 @@ describe('InfaktInvoicingAdapter', () => {
       expect(result?.providerInvoiceId).toBe('inv-uuid-1');
     });
 
-    it('should return null on a 404 (error path)', async () => {
+    it('should fall back to corrective_invoices when the invoices path 404s (corrective uuid, #1337)', async () => {
+      // GET /invoices/{uuid}.json returns 404 for corrective uuids (verified
+      // live, 2026-07-03) — the corrective resource is the only read path.
+      http.seedError('GET', 'invoices/corr-uuid-1.json', new InfaktApiError('not found', 404, {}));
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }),
+      );
+
+      const result = await adapter.getInvoice({ providerInvoiceId: 'corr-uuid-1' });
+
+      expect(result?.providerInvoiceId).toBe('corr-uuid-1');
+      expect(result?.documentType).toBe('corrected');
+    });
+
+    it('should return null on a 404 from both resources (error path)', async () => {
       http.seedError('GET', 'invoices/missing.json', new InfaktApiError('not found', 404, {}));
+      http.seedError(
+        'GET',
+        'corrective_invoices/missing.json',
+        new InfaktApiError('not found', 404, {}),
+      );
 
       const result = await adapter.getInvoice({ providerInvoiceId: 'missing' });
 
@@ -447,6 +468,52 @@ describe('InfaktInvoicingAdapter', () => {
       const result = await adapter.getClearanceStatus(record);
 
       expect(result.regulatoryStatus).toBe(expected);
+    });
+
+    it('should read corrective_invoices/{uuid}.json for a corrected record (#1337)', async () => {
+      // The invoices/… path 404s for corrective uuids (verified live,
+      // 2026-07-03) — the reconcile job's poll must branch on documentType.
+      const record = new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'corrected',
+        'issued',
+        'corr-uuid-1',
+        'FK/1/2026',
+        'submitted',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({
+          uuid: 'corr-uuid-1',
+          kind: 'correction',
+          ksef_data: {
+            request_uuid: 'req-1',
+            ksef_number: 'KSeF-KOR-1',
+            status: 'success',
+            status_description: null,
+            timestamps: { request_created_at: null, request_finished_at: null },
+          },
+        }),
+      );
+
+      const result = await adapter.getClearanceStatus(record);
+
+      expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'KSeF-KOR-1' });
+      expect(
+        http.calls.some((c) => c.method === 'GET' && c.path === 'corrective_invoices/corr-uuid-1.json'),
+      ).toBe(true);
+      expect(http.calls.some((c) => c.path.startsWith('invoices/'))).toBe(false);
     });
 
     it('should return not-applicable when the invoice has no ksef_data', async () => {
@@ -590,12 +657,20 @@ describe('InfaktInvoicingAdapter', () => {
       idempotencyKey: 'idem-corr-1',
     };
 
-    it('should issue a correction and return an InvoiceRecord (happy path)', async () => {
+    it('should POST to corrective_invoices.json with the corrective_invoice wrapper and corrected_* fields (happy path, #1337)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      // Posting kind:'corrective' to invoices.json made Infakt SILENTLY create
+      // a plain, unlinked VAT invoice — the dedicated corrective endpoint is
+      // the only path that yields a real correction (verified live, 2026-07-03).
+      http.seed(
+        'POST',
+        'corrective_invoices.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction', corrected_invoice_number: 'FV/1/2026' }),
+      );
       // A correction is its own KSeF document — needs its own send_to_ksef
-      // kick, same as the original (verified live, 2026-07-01).
-      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+      // kick through the corrective resource (invoices/… 404s for corrective
+      // uuids; verified live, 2026-07-03).
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       const record = await adapter.issueCorrection(baseCmd);
 
@@ -604,67 +679,123 @@ describe('InfaktInvoicingAdapter', () => {
       expect(record.idempotencyKey).toBe('idem-corr-1');
       expect(record.regulatoryStatus).toBe('submitted');
 
+      expect(http.calls.some((c) => c.method === 'POST' && c.path === 'invoices.json')).toBe(false);
+      const invoiceCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
       // Verified live against the real Infakt v3 sandbox (2026-07-01):
       // omitting client_id on a corrective invoice 422s with "client_id
       // required" — the original invoice's own client_id must be forwarded.
-      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
       expect(invoiceCall?.body).toMatchObject({
-        invoice: expect.objectContaining({ client_id: 1 }),
+        corrective_invoice: expect.objectContaining({
+          client_id: 1,
+          corrected_invoice_number: 'FV/1/2026',
+          corrected_invoice_date: '2026-07-01',
+          correction_reason: 'Zwrot towaru',
+          correction_reason_symbol: 'other',
+        }),
       });
       expect(
-        http.calls.some((c) => c.method === 'POST' && c.path === 'invoices/corr-uuid-1/send_to_ksef.json'),
+        http.calls.some(
+          (c) => c.method === 'POST' && c.path === 'corrective_invoices/corr-uuid-1/send_to_ksef.json',
+        ),
       ).toBe(true);
     });
 
-    it('should carry the original unit_net_price (plain integer groszy) through for the untouched-line fallback', async () => {
-      // Infakt's wire format is a plain integer count of groszy (#1293 review
-      // finding — the earlier "amount currency" string assumption understated
-      // every invoice ~100x); baseCmd's line carries no newUnitPriceGross, so
-      // both the "before" row and the fallback "after" row go through this path.
+    it('should throw an InfaktApiError with failureMode: in-doubt when the provider downgrades the document kind (#1337)', async () => {
+      // Belt-and-suspenders for the silent-downgrade class of bug: a created
+      // document whose kind is not 'correction' has no corrective linkage. A
+      // document WAS created here (wrong kind), so this is `in-doubt` (5xx),
+      // not `rejected` — re-attempting could spawn a second orphaned corrective.
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
-      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+      http.seed(
+        'POST',
+        'corrective_invoices.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'vat' }),
+      );
+
+      await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
+        name: 'InfaktApiError',
+        failureMode: 'in-doubt',
+      });
+      // The downgraded document must never be submitted to KSeF.
+      expect(http.calls.some((c) => c.path.endsWith('send_to_ksef.json'))).toBe(false);
+    });
+
+    it('should send string quantities and "X.XX PLN" unit_net_price strings, paired per string group (#1337)', async () => {
+      // corrective_invoices.json's wire formats DIFFER from invoices.json
+      // (verified live, 2026-07-03): integer groszy / numeric quantity 500
+      // here; the decimal "amount currency" string + string quantity are the
+      // only accepted shapes. baseCmd's line carries no newUnitPriceGross, so
+      // both the "before" row and the fallback "after" row carry the
+      // original's 100.00 PLN net.
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       await adapter.issueCorrection(baseCmd);
 
-      const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const postCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
       const body = postCall?.body as {
-        invoice: { services: { unit_net_price: number; correction: boolean }[] };
+        corrective_invoice: {
+          services: { unit_net_price: string; quantity: string; group: string; correction: boolean }[];
+        };
       };
-      expect(body.invoice.services.find((s) => s.correction === false)?.unit_net_price).toBe(
-        10000,
-      );
-      expect(body.invoice.services.find((s) => s.correction === true)?.unit_net_price).toBe(
-        10000,
-      );
+      const beforeRow = body.corrective_invoice.services.find((s) => s.correction === false);
+      const afterRow = body.corrective_invoice.services.find((s) => s.correction === true);
+      expect(beforeRow).toMatchObject({ unit_net_price: '100.00 PLN', quantity: '1', group: '1' });
+      // baseCmd zeroes the line's quantity (newQuantity: 0).
+      expect(afterRow).toMatchObject({ unit_net_price: '100.00 PLN', quantity: '0', group: '1' });
     });
 
-    it('should convert a price-changing correction line from gross to net, in groszy (#1292 review)', async () => {
+    it('should convert a price-changing correction line from gross to net PLN string (#1292 review)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
-      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
       await adapter.issueCorrection({
         ...baseCmd,
         lines: [{ originalLineNumber: 1, newUnitPriceGross: 61.5 }],
       });
 
-      const postCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const postCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
       const body = postCall?.body as {
-        invoice: { services: { unit_net_price: number; correction: boolean }[] };
+        corrective_invoice: { services: { unit_net_price: string; correction: boolean }[] };
       };
-      const correctedRow = body.invoice.services.find((s) => s.correction === true);
-      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net PLN = 5000 groszy —
-      // was previously written straight through as "61.50 PLN" (61500 groszy
-      // if naively converted), overstating the net price.
-      expect(correctedRow?.unit_net_price).toBe(5000);
+      const correctedRow = body.corrective_invoice.services.find((s) => s.correction === true);
+      // 61.5 gross / 1.23 (tax_symbol '23') = 50.00 net PLN.
+      expect(correctedRow?.unit_net_price).toBe('50.00 PLN');
+    });
+
+    it('should honour a correction to 0.00 PLN instead of falling back to the original price (#1342 review)', async () => {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+
+      await adapter.issueCorrection({
+        ...baseCmd,
+        lines: [{ originalLineNumber: 1, newUnitPriceGross: 0 }],
+      });
+
+      const postCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
+      const body = postCall?.body as {
+        corrective_invoice: { services: { unit_net_price: string; correction: boolean }[] };
+      };
+      const correctedRow = body.corrective_invoice.services.find((s) => s.correction === true);
+      expect(correctedRow?.unit_net_price).toBe('0.00 PLN');
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seedError(
         'POST',
-        'invoices.json',
+        'corrective_invoices.json',
         new InfaktApiError('Infakt rejected the correction', 422, { error: 'bad correction' }),
       );
 
@@ -676,7 +807,7 @@ describe('InfaktInvoicingAdapter', () => {
 
     it('should propagate a 500 InfaktApiError with failureMode: in-doubt (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seedError('POST', 'invoices.json', new InfaktApiError('server error', 500, {}));
+      http.seedError('POST', 'corrective_invoices.json', new InfaktApiError('server error', 500, {}));
 
       await expect(adapter.issueCorrection(baseCmd)).rejects.toMatchObject({
         failureMode: 'in-doubt',
@@ -694,10 +825,10 @@ describe('InfaktInvoicingAdapter', () => {
       // Same orphaned-draft risk as issueInvoice's equivalent case — the
       // corrective draft succeeds but the explicit KSeF submission kick fails.
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
       http.seedError(
         'POST',
-        'invoices/corr-uuid-1/send_to_ksef.json',
+        'corrective_invoices/corr-uuid-1/send_to_ksef.json',
         new InfaktApiError('Infakt server error', 500, { error: 'internal' }),
       );
 
@@ -746,6 +877,41 @@ describe('InfaktInvoicingAdapter', () => {
         (c) => c.method === 'GET_BINARY' && c.path === 'invoices/inv-uuid-1/pdf.json',
       );
       expect(call?.query).toEqual({ document_type: 'original', invoice_type: 'vat' });
+    });
+
+    it('should fetch a corrected record PDF via the corrective_invoices resource (#1337)', async () => {
+      const now = new Date('2026-07-03T12:00:00Z');
+      const record = new InvoiceRecord(
+        'record-2',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'corrected',
+        'issued',
+        'corr-uuid-1',
+        'FK/1/2026',
+        'accepted',
+        'ksef-number-2',
+        'idem-corr-1',
+        null,
+        now,
+        null,
+        now,
+        now,
+      );
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+      http.seedBinary('corrective_invoices/corr-uuid-1/pdf.json', {
+        data: pdfBytes,
+        contentType: 'application/pdf',
+      });
+
+      const document = await adapter.getRegulatoryDocument(record, 'rendered');
+
+      expect(document.content).toBe(pdfBytes);
+      const call = http.calls.find(
+        (c) => c.method === 'GET_BINARY' && c.path === 'corrective_invoices/corr-uuid-1/pdf.json',
+      );
+      expect(call?.query).toEqual({ document_type: 'original' });
     });
 
     it('should default to application/pdf when Infakt reports no content type', async () => {
@@ -813,9 +979,10 @@ describe('InfaktInvoicingAdapter', () => {
 
     function seedCorrectionFixtures(): void {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
-      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      // corrections go through the dedicated corrective_invoices resource (#1337)
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
       // a correction is its own KSeF document - issueCorrection submits it inline
-      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
     }
 
     it('should default to cash on issueInvoice when the connection has no defaultPaymentMethod configured', async () => {
@@ -843,8 +1010,12 @@ describe('InfaktInvoicingAdapter', () => {
       seedCorrectionFixtures();
       await adapter.issueCorrection(correctionCmd);
 
-      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
-      expect(invoiceCall?.body).toMatchObject({ invoice: expect.objectContaining({ payment_method: 'cash' }) });
+      const invoiceCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
+      expect(invoiceCall?.body).toMatchObject({
+        corrective_invoice: expect.objectContaining({ payment_method: 'cash' }),
+      });
     });
 
     it('should use the same configured defaultPaymentMethod on issueCorrection as issueInvoice (no more disagreement)', async () => {
@@ -854,9 +1025,11 @@ describe('InfaktInvoicingAdapter', () => {
       seedCorrectionFixtures();
       await configured.issueCorrection(correctionCmd);
 
-      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const invoiceCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
       expect(invoiceCall?.body).toMatchObject({
-        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+        corrective_invoice: expect.objectContaining({ payment_method: 'transfer' }),
       });
     });
   });
