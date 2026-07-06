@@ -15,8 +15,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class BackfillKsefProviderInvoiceNumber1818000000004 implements MigrationInterface {
-  name = 'BackfillKsefProviderInvoiceNumber1818000000004';
+export class BackfillKsefProviderInvoiceNumber1818000000005 implements MigrationInterface {
+  name = 'BackfillKsefProviderInvoiceNumber1818000000005';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
