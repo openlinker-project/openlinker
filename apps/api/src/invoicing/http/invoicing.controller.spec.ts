@@ -922,6 +922,109 @@ describe('InvoicingController', () => {
     });
   });
 
+  describe('bulkIssueInvoices (#1355)', () => {
+    const CONN = 'conn_1';
+
+    it('should issue for orders with no existing invoice, keyed deterministically and buyerTaxId null', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ id: 'inv_new', status: 'issued' }));
+
+      const res = await controller.bulkIssueInvoices({ connectionId: CONN, orderIds: ['ol_order_1'] });
+
+      expect(res.issued).toBe(1);
+      expect(res.skipped).toBe(0);
+      expect(res.failed).toBe(0);
+      expect(res.results).toEqual([{ orderId: 'ol_order_1', outcome: 'issued', invoiceId: 'inv_new' }]);
+      expect(invoiceService.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: 'invoice:conn_1:ol_order_1',
+          buyer: expect.objectContaining({ taxId: null }),
+        }),
+      );
+    });
+
+    it('should skip an order that already has an issued invoice (idempotent — no re-issue)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(makeInvoiceRecord({ id: 'inv_done', status: 'issued' }));
+
+      const res = await controller.bulkIssueInvoices({ connectionId: CONN, orderIds: ['ol_order_1'] });
+
+      expect(res.issued).toBe(0);
+      expect(res.skipped).toBe(1);
+      expect(res.results[0]).toEqual({
+        orderId: 'ol_order_1',
+        outcome: 'skipped',
+        invoiceId: 'inv_done',
+        reason: expect.stringContaining('already issued'),
+      });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should skip an order whose invoice is in progress (pending / live issuing lease)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice
+        .mockResolvedValueOnce(makeInvoiceRecord({ status: 'pending' }))
+        .mockResolvedValueOnce(
+          makeInvoiceRecord({ status: 'issuing', leaseExpiresAt: new Date(Date.now() + 60_000) }),
+        );
+
+      const res = await controller.bulkIssueInvoices({
+        connectionId: CONN,
+        orderIds: ['ol_order_1', 'ol_order_2'],
+      });
+
+      expect(res.skipped).toBe(2);
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should mark a missing order as failed with a not-found reason', async () => {
+      orders.getOrderRecord.mockResolvedValue(null);
+
+      const res = await controller.bulkIssueInvoices({ connectionId: CONN, orderIds: ['ol_missing'] });
+
+      expect(res.failed).toBe(1);
+      expect(res.results[0].outcome).toBe('failed');
+      expect(res.results[0].reason).toContain('Order not found');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should capture a provider rejection as failed without aborting the rest of the batch', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice
+        .mockRejectedValueOnce(new Error('provider blew up'))
+        .mockResolvedValueOnce(makeInvoiceRecord({ id: 'inv_ok', status: 'issued' }));
+
+      const res = await controller.bulkIssueInvoices({
+        connectionId: CONN,
+        orderIds: ['ol_order_bad', 'ol_order_good'],
+      });
+
+      expect(res.issued).toBe(1);
+      expect(res.failed).toBe(1);
+      const failed = res.results.find((r) => r.orderId === 'ol_order_bad');
+      expect(failed?.outcome).toBe('failed');
+      // The neutral reason never echoes the raw provider message.
+      expect(failed?.reason).not.toContain('provider blew up');
+      expect(failed?.reason).toContain('correlationId');
+    });
+
+    it('should de-duplicate repeated order ids so an order is issued at most once', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+
+      const res = await controller.bulkIssueInvoices({
+        connectionId: CONN,
+        orderIds: ['ol_order_1', 'ol_order_1'],
+      });
+
+      expect(res.results).toHaveLength(1);
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // ---- UPO download endpoint tests (#1224) ----------------------------------------
 
   describe('GET /invoices/:invoiceId/upo', () => {
