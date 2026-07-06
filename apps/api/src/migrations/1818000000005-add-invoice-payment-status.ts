@@ -14,8 +14,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoicePaymentStatus1818000000004 implements MigrationInterface {
-  name = 'AddInvoicePaymentStatus1818000000004';
+export class AddInvoicePaymentStatus1818000000005 implements MigrationInterface {
+  name = 'AddInvoicePaymentStatus1818000000005';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
