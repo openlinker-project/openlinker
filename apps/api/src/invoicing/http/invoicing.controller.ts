@@ -36,6 +36,7 @@ import {
   Query,
   Param,
   ParseUUIDPipe,
+  type PipeTransform,
   HttpCode,
   HttpStatus,
   Inject,
@@ -43,6 +44,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  NotImplementedException,
   Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -68,6 +70,8 @@ import {
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
   BuyerProfile,
+  isBankAccountsReader,
+  isBankAccountDefaultSetter,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -97,6 +101,7 @@ import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
+import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -116,6 +121,28 @@ function invoiceIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
 }
 
+/** Shared `:connectionId` param pipe — 400 on a malformed UUID, so a bad path id never reaches the DB uuid cast (#1313). */
+function connectionIdPipe(): ParseUUIDPipe {
+  return new ParseUUIDPipe({ version: '4' });
+}
+
+/**
+ * `:accountId` param pipe — 400 on an empty/whitespace id (#1310 review). The
+ * adapter already `encodeURIComponent`s the id before the provider PUT, so this
+ * is a contract guard (a blank segment never reaches the provider), not the
+ * injection defence, and it holds for any future `BankAccountDefaultSetter`.
+ */
+function accountIdPipe(): PipeTransform<string, string> {
+  return {
+    transform(value: string): string {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new BadRequestException('accountId must be a non-empty string');
+      }
+      return value;
+    },
+  };
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
@@ -131,6 +158,104 @@ export class InvoicingController {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
   ) {}
+
+  @Get('connections/:connectionId/bank-accounts')
+  @ApiOperation({
+    summary: "List the connection's provider bank accounts (#1303 follow-up)",
+    description:
+      "Resolves the connection's Invoicing adapter and, if it implements BankAccountsReader, " +
+      "returns the seller's payable bank accounts (e.g. for picking one to stamp on Transfer " +
+      'invoices). 501 when the adapter has no bank-account concept.',
+  })
+  @ApiResponse({ status: 200, type: [BankAccountResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountsReader' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async getBankAccounts(
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
+  ): Promise<BankAccountResponseDto[]> {
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
+    if (!isBankAccountsReader(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement BankAccountsReader`,
+      );
+    }
+    try {
+      const accounts = await adapter.listBankAccounts();
+      return accounts.map((account) => ({
+        id: account.id,
+        accountNumber: account.accountNumber,
+        bankName: account.bankName,
+        isDefault: account.isDefault,
+      }));
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'listBankAccounts');
+    }
+  }
+
+  @Post('connections/:connectionId/bank-accounts/:accountId/default')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Mark a bank account as the provider's default (#1303 follow-up)",
+    description:
+      "Resolves the connection's Invoicing adapter and, if it implements " +
+      'BankAccountDefaultSetter, marks accountId as the default with the provider (e.g. ' +
+      "inFakt's own account settings) — keeps the provider's default in sync with the " +
+      "account OpenLinker stamps on Transfer invoices. 501 when the adapter doesn't support it.",
+  })
+  @ApiResponse({ status: 204, description: 'Default account updated' })
+  @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountDefaultSetter' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async setDefaultBankAccount(
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
+    @Param('accountId', accountIdPipe()) accountId: string,
+  ): Promise<void> {
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
+    if (!isBankAccountDefaultSetter(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement BankAccountDefaultSetter`,
+      );
+    }
+    try {
+      await adapter.setDefaultBankAccount(accountId);
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'setDefaultBankAccount');
+    }
+  }
+
+  /**
+   * Resolve the connection's Invoicing adapter for the bank-account proxy
+   * endpoints. `AdapterNotFoundException` → 502 (provider unavailable),
+   * mirroring the issuance path's mapping, instead of surfacing as a generic
+   * 500; connection / capability-configuration errors propagate uncaught for
+   * the global filter to classify (404 etc.).
+   */
+  private async resolveInvoicingAdapter(connectionId: string): Promise<InvoicingPort> {
+    try {
+      return await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+        connectionId,
+        'Invoicing',
+      );
+    } catch (error) {
+      if (error instanceof AdapterNotFoundException) {
+        throw new BadGatewayException('Invoicing provider is unavailable');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The bank-account endpoints are pure provider proxies, so a live provider
+   * call failing is upstream trouble, not a server bug — map it to 502 with a
+   * generic message. Provider error text is logged, never returned (same PII
+   * posture as `toHttpException`).
+   */
+  private toProviderBadGateway(error: unknown, operation: string): Error {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Invoicing provider ${operation} failed: ${message}`);
+    return new BadGatewayException('Invoicing provider request failed');
+  }
 
   @Post('invoices')
   @HttpCode(HttpStatus.CREATED)

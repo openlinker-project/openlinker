@@ -1,6 +1,7 @@
 # OpenLinker
 
 [![CI](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/package-json/v/openlinker-project/openlinker?label=version)](./CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
 
@@ -10,7 +11,7 @@
 
 If you sell on your own shop *and* on marketplaces like Allegro, you've already lived the pain: orders coming in from multiple places, inventory drifting between channels, manually rewriting product descriptions for every listing, customer data scattered across systems. The usual answers are SaaS channel managers (you pay forever and your data lives on their servers) or custom scripts (fragile and yours to maintain alone). OpenLinker is the third option: a self-hosted, open-source orchestration platform that does the same job, on your servers, with your data, with code you can read and extend.
 
-> **Status: alpha, pre-1.0.** First public release is in progress. Expect rough edges; report them.
+> **Status: alpha, pre-1.0.** Expect rough edges; report them.
 
 <p align="center">
   <picture>

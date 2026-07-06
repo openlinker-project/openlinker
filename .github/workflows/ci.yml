@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     # `ready_for_review` so the heavy jobs (gated on `draft == false`) fire the
     # moment a draft is marked ready — without it a dev would need an empty push
     # to trigger full CI on un-drafting. Re-stating the default trio is required:
@@ -54,7 +54,7 @@ jobs:
     runs-on: self-hosted
     needs: changes
     # Skip while draft, and skip when only docs/compose changed. Always run on
-    # push (post-merge to main/develop) where there's no PR draft context.
+    # push (post-merge to main) where there's no PR draft context.
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
