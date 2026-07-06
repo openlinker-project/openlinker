@@ -48,6 +48,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # First-boot init (~60s: creates the prestashop db/user) must not be
+      # counted against the retry window, or a slower host marks MySQL
+      # unhealthy and aborts the dependent prestashop/phpmyadmin services (#1368).
+      start_period: 180s
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest

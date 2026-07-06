@@ -29,6 +29,15 @@ services:
       # bootstrap-admin.service.ts).
       NODE_ENV: production
       OL_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # CORS allow-list must include the browser origin the web UI is served
+      # from (the `web` service publishes :8090), or login fails with a
+      # "NetworkError when attempting to fetch resource" (#1368). The API
+      # default is only http://localhost:4173 (apps/api/src/main.ts).
+      OL_CORS_ORIGIN: http://localhost:8090
+      # Required by migration 1795000000000-encrypt-integration-credentials and
+      # for decrypting connection credentials at runtime. Operator-supplied via
+      # .env (see .env.example); `:?` fails the boot with a clear message if unset.
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
     # Drop the dev-stack source bind-mounts — the demo runs the built image,
     # not the working tree. (Without !reset, Compose merges volumes by target
     # path and the mounts would survive the override.)
@@ -55,6 +64,9 @@ services:
       # Required by shared PII config (libs/shared/src/config/pii-config.ts) —
       # order-ingestion jobs hash customer identifiers in the worker.
       OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
+      # Same encryption key the api/migrate services use — the worker decrypts
+      # connection credentials when running sync jobs (#1368).
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +112,10 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       DB_DATABASE: openlinker
+      # migration 1795000000000-encrypt-integration-credentials fails closed
+      # under NODE_ENV=production when this is unset, rolling back and exiting 1
+      # — which blocks the gated api/worker and aborts the whole demo (#1368).
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
     restart: 'no'
     depends_on:
       postgres:
