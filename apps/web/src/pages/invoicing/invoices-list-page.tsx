@@ -33,6 +33,7 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useTranslation } from '../../shared/i18n';
 import { useRetryInvoicesMutation } from '../../features/invoicing/hooks/use-retry-invoices-mutation';
+import { useBulkIssueInvoicesMutation } from '../../features/invoicing/hooks/use-bulk-issue-invoices-mutation';
 import { deriveInvoiceDisplayStatus } from '../../features/invoicing/lib/derive-invoice-display';
 import {
   useInvoicesQuery,
@@ -111,6 +112,17 @@ export function InvoicesListPage(): ReactElement {
   const [retryBanner, setRetryBanner] = useState<{ retried: number; skipped: number } | null>(null);
   const retryMutation = useRetryInvoicesMutation();
 
+  // Bulk-issue state (#1355) — a second batch action reusing the same selection
+  // + BulkActionBar. Issues invoices for the selected rows' orders; idempotent
+  // per (connection, order) server-side.
+  const [issueDialogOpen, setIssueDialogOpen] = useState(false);
+  const [issueBanner, setIssueBanner] = useState<{
+    issued: number;
+    skipped: number;
+    failed: number;
+  } | null>(null);
+  const bulkIssueMutation = useBulkIssueInvoicesMutation();
+
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -153,6 +165,43 @@ export function InvoicesListPage(): ReactElement {
         },
       },
     );
+  }
+
+  // Bulk-issue fans out one call per invoicing connection: the endpoint takes a
+  // single connectionId + orderIds[], and the selection can span connections. We
+  // derive (orderId, connectionId) from the loaded rows intersected with the
+  // selection (a re-submit is idempotent server-side, so an order already issued
+  // just comes back `skipped`). Selection beyond the current page is not resolved
+  // here — a deferred follow-up if bulk issue needs to cross pages.
+  async function handleIssueConfirm(): Promise<void> {
+    const rows = query.data?.items ?? [];
+    const selectedRows = rows.filter((r) => selected.has(r.id));
+    const orderIdsByConnection = new Map<string, Set<string>>();
+    for (const row of selectedRows) {
+      const set = orderIdsByConnection.get(row.connectionId) ?? new Set<string>();
+      set.add(row.orderId);
+      orderIdsByConnection.set(row.connectionId, set);
+    }
+
+    let issued = 0;
+    let skipped = 0;
+    let failed = 0;
+    try {
+      for (const [conn, orderIdSet] of orderIdsByConnection) {
+        const result = await bulkIssueMutation.mutateAsync({
+          connectionId: conn,
+          orderIds: Array.from(orderIdSet),
+        });
+        issued += result.issued;
+        skipped += result.skipped;
+        failed += result.failed;
+      }
+      setIssueBanner({ issued, skipped, failed });
+      setSelected(new Set());
+      setIssueDialogOpen(false);
+    } catch {
+      setIssueDialogOpen(false);
+    }
   }
 
   const columns: DataTableColumn<InvoiceRecord>[] = [
@@ -259,6 +308,34 @@ export function InvoicesListPage(): ReactElement {
         'Issued, pending, and failed invoices across connections, with regulatory (KSeF) status.',
       )}
     >
+      {retryMutation.error ? (
+        <Alert tone="error" className="invoice-list__retry-error">
+          {t('invoice.bulk.retryError', 'Batch retry failed:')} {retryMutation.error.message}
+          <Button
+            tone="secondary"
+            className="button--sm"
+            style={{ marginLeft: 'var(--space-2)' }}
+            onClick={() => retryMutation.reset()}
+          >
+            {t('invoice.bulk.dismiss', 'Dismiss')}
+          </Button>
+        </Alert>
+      ) : null}
+
+      {bulkIssueMutation.error ? (
+        <Alert tone="error" className="invoice-list__issue-error">
+          {t('invoice.bulk.issueError', 'Bulk issue failed:')} {bulkIssueMutation.error.message}
+          <Button
+            tone="secondary"
+            className="button--sm"
+            style={{ marginLeft: 'var(--space-2)' }}
+            onClick={() => bulkIssueMutation.reset()}
+          >
+            {t('invoice.bulk.dismiss', 'Dismiss')}
+          </Button>
+        </Alert>
+      ) : null}
+
       {retryBanner ? (
         <Alert tone="success" className="invoice-list__retry-banner">
           {t('invoice.bulk.retryResult', 'Batch retry complete.')}{' '}
@@ -271,8 +348,31 @@ export function InvoicesListPage(): ReactElement {
           <Button
             tone="secondary"
             className="button--sm"
-            style={{ marginLeft: '8px' }}
+            style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => setRetryBanner(null)}
+          >
+            {t('invoice.bulk.dismiss', 'Dismiss')}
+          </Button>
+        </Alert>
+      ) : null}
+
+      {issueBanner ? (
+        <Alert tone="success" className="invoice-list__issue-banner">
+          {t('invoice.bulk.issueResult', 'Bulk issue complete.')}{' '}
+          {issueBanner.issued > 0
+            ? t('invoice.bulk.issued', `${issueBanner.issued} issued.`)
+            : null}{' '}
+          {issueBanner.skipped > 0
+            ? t('invoice.bulk.issueSkipped', `${issueBanner.skipped} skipped (already issued or in progress).`)
+            : null}{' '}
+          {issueBanner.failed > 0
+            ? t('invoice.bulk.issueFailed', `${issueBanner.failed} failed.`)
+            : null}
+          <Button
+            tone="secondary"
+            className="button--sm"
+            style={{ marginLeft: 'var(--space-2)' }}
+            onClick={() => setIssueBanner(null)}
           >
             {t('invoice.bulk.dismiss', 'Dismiss')}
           </Button>
@@ -426,6 +526,14 @@ export function InvoicesListPage(): ReactElement {
               {t('invoice.bulk.clear', 'Clear selection')}
             </Button>
             <Button
+              tone="secondary"
+              className="button--sm"
+              disabled={bulkIssueMutation.isPending}
+              onClick={() => setIssueDialogOpen(true)}
+            >
+              {t('invoice.bulk.issue', 'Issue invoices')}
+            </Button>
+            <Button
               tone="primary"
               className="button--sm"
               disabled={retryMutation.isPending}
@@ -450,6 +558,22 @@ export function InvoicesListPage(): ReactElement {
         tone="default"
         isConfirming={retryMutation.isPending}
         onConfirm={handleRetryConfirm}
+      />
+
+      <ConfirmDialog
+        open={issueDialogOpen}
+        onOpenChange={setIssueDialogOpen}
+        title={t('invoice.bulk.issueConfirmTitle', 'Issue invoices')}
+        description={t(
+          'invoice.bulk.issueConfirmBody',
+          `Issue invoices for the ${selected.size} selected order(s)? Orders that already have ` +
+            `an issued invoice (or one in progress) are skipped; issuance is idempotent per order.`,
+        )}
+        confirmLabel={t('invoice.bulk.issueConfirmAction', 'Issue')}
+        cancelLabel={t('invoice.bulk.issueCancel', 'Cancel')}
+        tone="default"
+        isConfirming={bulkIssueMutation.isPending}
+        onConfirm={() => void handleIssueConfirm()}
       />
     </PageLayout>
   );

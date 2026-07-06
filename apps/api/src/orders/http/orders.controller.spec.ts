@@ -72,6 +72,7 @@ describe('OrdersController', () => {
       getInvoice: jest.fn(),
       issueCorrection: jest.fn(),
       listInvoices: jest.fn(),
+      applyRegulatoryClearance: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

@@ -22,10 +22,12 @@ export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
 export * from './domain/ports/capabilities/payment-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
+export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';
 export * from './domain/ports/capabilities/bank-account-default-setter.capability';
+export * from './domain/ports/capabilities/invoice-email-sender.capability';
 export * from './domain/ports/invoice-record-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';

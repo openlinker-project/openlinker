@@ -14,6 +14,8 @@
  * @module apps/web/src/features/invoicing/api
  */
 import type {
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
   InvoiceFilters,
   InvoicePagination,
   InvoiceRecord,
@@ -22,6 +24,8 @@ import type {
   PaginatedInvoices,
   RetryInvoicesInput,
   RetryInvoicesResult,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
 } from './invoicing.types';
 
 export interface InvoicingApi {
@@ -39,8 +43,26 @@ export interface InvoicingApi {
   /** `POST /invoices/retry` — batch retry of failed+rejected records (W6 #1245).
    *  The server gates eligibility; non-eligible ids are skipped per-id. */
   retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
+  /** `POST /invoices/bulk-issue` — issue invoices for a list of order ids on one
+   *  connection (#1355). Fans out over the single issue primitive; idempotent
+   *  per (connection, order). Returns a per-id summary. */
+  bulkIssue: (input: BulkIssueInvoicesInput) => Promise<BulkIssueInvoicesResult>;
   /** `POST /invoices/:invoiceId/correct` — issue a correcting document (#1241). */
   issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
+  /**
+   * `POST /invoices/:invoiceId/resend-to-ksef` (#1356) — re-send a rejected
+   * invoice to the tax authority and return the refreshed record. Server gates
+   * to `regulatoryStatus === 'rejected'` (409 otherwise) and to adapters that
+   * implement the neutral RegulatoryResubmitter capability (501 otherwise).
+   */
+  resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>;
+  /**
+   * `POST /invoices/:invoiceId/send-email` (#1353) — trigger the provider to
+   * render + email the issued invoice to the buyer. 501 when the connection's
+   * Invoicing adapter cannot send email. Neutral: keyed on the internal
+   * `invoice.id`, never on platform type (ADR-026).
+   */
+  sendEmail: (invoiceId: string, input: SendInvoiceEmailInput) => Promise<SendInvoiceEmailResult>;
   /**
    * `GET /invoices/:invoiceId/upo` (#1234) — fetch the official UPO confirmation
    * document for a cleared/accepted e-invoice as a Blob. Content type is
@@ -112,12 +134,35 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         body: JSON.stringify(input),
       });
     },
+    bulkIssue(input): Promise<BulkIssueInvoicesResult> {
+      return request<BulkIssueInvoicesResult>('/invoices/bulk-issue', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
     issueCorrection(invoiceId, input): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/correct`, {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
       });
+    },
+    resendToKsef(invoiceId): Promise<InvoiceRecord> {
+      return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/resend-to-ksef`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+      });
+    },
+    sendEmail(invoiceId, input): Promise<SendInvoiceEmailResult> {
+      return request<SendInvoiceEmailResult>(
+        `/invoices/${encodeURIComponent(invoiceId)}/send-email`,
+        {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(input),
+        },
+      );
     },
     downloadUpo(invoiceId): Promise<Blob> {
       return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
