@@ -44,16 +44,18 @@ if ((int) Configuration::get('PS_CANONICAL_REDIRECT') !== 0) {
 }
 
 // 2. Register a container-reachable shop_url row (idempotent).
-$existing = ShopUrl::getShopUrls($mainShopId);
-$alreadyPresent = false;
-if ($existing) {
-    foreach ($existing as $row) {
-        if ($row['domain'] === CONTAINER_DOMAIN || $row['domain_ssl'] === CONTAINER_DOMAIN) {
-            $alreadyPresent = true;
-            break;
-        }
-    }
-}
+// Check via a direct DB query rather than ShopUrl::getShopUrls(): under
+// PrestaShop 9 that returns ShopUrl *objects*, so array access ($row['domain'])
+// throws a fatal ("Cannot use object of type ShopUrl as array") that aborts the
+// whole post-install run (and, with `set -e` in the wrapper, the container boot).
+// Db::getValue() appends its own trailing `LIMIT 1` internally (via getRow()) —
+// do not add one here, or PrestaShop emits `... LIMIT 1 LIMIT 1` (syntax error).
+$alreadyPresent = (bool) Db::getInstance()->getValue(
+    'SELECT 1 FROM `' . _DB_PREFIX_ . 'shop_url`'
+    . ' WHERE `id_shop` = ' . (int) $mainShopId
+    . ' AND (`domain` = "' . pSQL(CONTAINER_DOMAIN) . '"'
+    . ' OR `domain_ssl` = "' . pSQL(CONTAINER_DOMAIN) . '")'
+);
 
 if ($alreadyPresent) {
     echo "* ShopUrl for domain '" . CONTAINER_DOMAIN . "' already exists; nothing to do\n";
