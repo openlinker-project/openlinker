@@ -61,12 +61,15 @@ Compose files.
 
 ### Create your `.env`
 
-`.env` is gitignored — never commit real secrets. Copy the template and set the
-key **in place** (editing the value, not appending a second line):
+`.env` is gitignored — never commit real secrets. `.env.example` ships an empty
+`OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=` line, so drop it and append the
+generated value instead of `>> .env` directly — appending onto the example as-is
+would leave two lines with the same key (harmless, since env-file parsing is
+last-wins, but confusing to anyone editing `.env` by hand):
 
 ```bash
-cp .env.example .env
-sed -i "s|^OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=.*|OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=$(openssl rand -base64 32)|" .env
+grep -v '^OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=' .env.example > .env
+echo "OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env
 ```
 
 Example resulting `.env` (the value below is an example — generate your own):

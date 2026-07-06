@@ -44,11 +44,16 @@ if ((int) Configuration::get('PS_CANONICAL_REDIRECT') !== 0) {
 }
 
 // 2. Register a container-reachable shop_url row (idempotent).
+// ShopUrl::getShopUrls() returns a PrestaShopCollection of ShopUrl *objects*
+// under PrestaShop 9 (not arrays as in earlier versions) - array access
+// ($row['domain']) throws a fatal ("Cannot use object of type ShopUrl as
+// array") that aborts the whole post-install run (and, with `set -e` in the
+// wrapper, the container boot). Use property access instead.
 $existing = ShopUrl::getShopUrls($mainShopId);
 $alreadyPresent = false;
 if ($existing) {
     foreach ($existing as $row) {
-        if ($row['domain'] === CONTAINER_DOMAIN || $row['domain_ssl'] === CONTAINER_DOMAIN) {
+        if ($row->domain === CONTAINER_DOMAIN || $row->domain_ssl === CONTAINER_DOMAIN) {
             $alreadyPresent = true;
             break;
         }

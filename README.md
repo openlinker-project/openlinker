@@ -235,7 +235,11 @@ git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
 
 # Required pre-step: provide the credentials encryption key (not committable).
-cp .env.example .env
+# .env.example already ships an empty OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=
+# line, so drop it and append the generated one instead of `>> .env`, which
+# would leave two lines with the same key (harmless — env-file parsing is
+# last-wins — but confusing to anyone editing .env by hand).
+grep -v '^OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=' .env.example > .env
 echo "OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env
 
 pnpm demo:up        # builds the images and starts everything (first run takes a while)
