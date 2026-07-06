@@ -15,6 +15,13 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml ./
 COPY .npmrc ./
 COPY pnpm-lock.yaml* ./
+# NOTE: this list is hand-enumerated to match every `@openlinker/*` entry in
+# apps/api/package.json + apps/worker/package.json ("workspace:*" deps). A new
+# plugin package MUST be added here (and to the matching --from=base COPY dist
+# lists below) or `pnpm install` fails to resolve its "workspace:*" reference
+# and the image build breaks (the #1365 review class of bug, cf. #916/#917).
+# `docker build --target base .` in CI (see .github/workflows/ci.yml) catches
+# a missed addition immediately.
 COPY apps/api/package.json ./apps/api/
 COPY libs/core/package.json ./libs/core/
 COPY libs/shared/package.json ./libs/shared/
@@ -49,6 +56,8 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Copy package files
+# NOTE: same enumerated list as the `base` stage above — keep both in sync
+# with apps/api/package.json + apps/worker/package.json.
 COPY package.json pnpm-workspace.yaml ./
 COPY .npmrc ./
 COPY pnpm-lock.yaml ./
@@ -76,6 +85,8 @@ RUN npm install -g pnpm@9 && \
     pnpm install --prod --ignore-scripts
 
 # Copy built application and dependencies
+# NOTE: same enumerated package set as the `base` stage's manifest COPY list
+# above — add a plugin's dist here whenever it's added there.
 COPY --from=base /app/apps/api/dist ./apps/api/dist
 COPY --from=base /app/libs/core/dist ./libs/core/dist
 COPY --from=base /app/libs/shared/dist ./libs/shared/dist
@@ -104,6 +115,11 @@ CMD ["node", "apps/api/dist/apps/api/src/main.js"]
 # Worker stage — extends the production layer set (same libs dist + node_modules)
 # with the worker's own compiled output and entrypoint. The worker exposes no
 # HTTP surface (NestFactory.createApplicationContext), so no EXPOSE.
+#
+# This carries the full API image (apps/api/dist + its node_modules) that the
+# worker never runs, plus a dev-inclusive worker install — accepted bloat for
+# a demo overlay; a leaner dedicated worker base is a follow-up if this image
+# is ever used outside the demo.
 FROM production AS worker
 
 COPY --from=base /app/apps/worker/dist ./apps/worker/dist

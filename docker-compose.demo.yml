@@ -38,6 +38,16 @@ services:
       # for decrypting connection credentials at runtime. Operator-supplied via
       # .env (see .env.example); `:?` fails the boot with a clear message if unset.
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
+    # Loopback-bound, overriding base's `3000:3000` — the demo image ships
+    # default admin/admin credentials with no redaction, so a multi-homed/LAN
+    # host must not expose it beyond localhost. The browser reaches it at
+    # localhost:3000 regardless (see the `web` service's VITE_API_BASE_URL
+    # below), so this is transparent to the operator.
+    # `!override` (not a plain list, which Compose would merge/append) replaces
+    # base's binding outright — otherwise both the unbound and loopback-bound
+    # publishes would coexist and fail to bind the same host port twice.
+    ports: !override
+      - '127.0.0.1:3000:3000'
     # Drop the dev-stack source bind-mounts — the demo runs the built image,
     # not the working tree. (Without !reset, Compose merges volumes by target
     # path and the mounts would survive the override.)
@@ -86,7 +96,9 @@ services:
     container_name: openlinker-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
-      - '8090:80'
+      # Loopback-bound: the demo ships default admin/admin credentials with no
+      # redaction, so a multi-homed/LAN host must not expose it beyond localhost.
+      - '127.0.0.1:8090:80'
     depends_on:
       - api
 
