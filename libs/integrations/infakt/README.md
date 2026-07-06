@@ -39,12 +39,20 @@ Authentication uses a **static API key** (no OAuth).
 **Config** (`InfaktConnectionConfig`, non-secret, persisted on the connection row):
 ```json
 {
-  "baseUrl": "https://api.infakt.pl"
+  "baseUrl": "https://api.infakt.pl",
+  "defaultPaymentMethod": "transfer",
+  "bankAccount": {
+    "id": "12345",
+    "accountNumber": "PL00 0000 0000 0000 0000 0000 0000",
+    "bankName": "mBank"
+  }
 }
 ```
 
 `baseUrl` is optional — omit it to use inFakt's production API
 (`INFAKT_DEFAULT_BASE_URL`); override it to point at a sandbox host.
+`defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
+omit both to fall back to `cash` with no stamped account.
 
 ## Notable implementation details
 

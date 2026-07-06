@@ -6,6 +6,18 @@
 
 ---
 
+## Retarget addendum (2026-07-06)
+
+The plan below was written against a stacked-branch layout that no longer holds:
+PR #1307 now targets `main` directly rather than `1282-infakt-fe-plugin`, and its
+prerequisites (#1281, #1282, #1309, #1310) have all merged. The PR's diff also grew
+four screenshots (`06`-`07`, wizard/edit-form payment-method + bank-picker shots)
+that this plan's original "no new screenshots" constraint did not anticipate - both
+came from documenting features that landed after this plan was written. Constraints
+below are historical context, not current scope.
+
+---
+
 ## 1. Task Summary
 
 **Objective**: Document the architectural decision behind inFakt's KSeF-intermediary

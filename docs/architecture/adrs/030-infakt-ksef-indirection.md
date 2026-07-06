@@ -40,7 +40,7 @@ lifecycle, entirely outside OL's control.
 - **Status polling via `getClearanceStatus()`.** The adapter reads
   `GET /invoices/{uuid}.json` and maps `invoice.ksef_data.status`
   (`pending | sent | success | error`) onto the neutral `RegulatoryStatus`
-  (`submitted | submitted | cleared | rejected`; absent `ksef_data` → `not-applicable`).
+  (`submitted | submitted | accepted | rejected`; absent `ksef_data` → `not-applicable`).
 - **Webhooks are a push-notification shortcut, not a transport.** inFakt fires
   `send_to_ksef_success` / `send_to_ksef_error` webhooks the moment its own KSeF
   submission resolves. `InfaktInboundWebhookDecoderAdapter` (ADR-021) decodes these

@@ -119,20 +119,30 @@ auto-provisioning). Set it up manually:
    to confirm the endpoint is live. OL's webhook decoder echoes the same code back
    automatically; the subscription activates once inFakt sees the matching echo.
 5. **Secret**: OL and inFakt must share the same HMAC secret to verify
-   `X-Infakt-Signature` on every delivery. In OL, go to the connection's detail page
-   and use **Rotate webhook secret** to generate one (shown exactly once — copy it
-   immediately). Paste that same value into inFakt's webhook subscription secret field.
+   `X-Infakt-Signature` on every delivery. OL does not yet have a frontend affordance
+   for this - rotate the secret via the API instead:
+
+   ```bash
+   curl -X POST "https://<your-ol-host>/v1/connections/{connectionId}/webhooks/secret/rotate" \
+     -H "Authorization: Bearer <your-ol-jwt>"
+   ```
+
+   The response (201) returns the new secret **once** - copy it immediately, it is
+   never retrievable again.
 
 ![inFakt webhooks list](../../../libs/integrations/infakt/docs/assets/if3-infakt-webhooks-list.png)
 
 ![inFakt webhook subscription form](../../../libs/integrations/infakt/docs/assets/if4-infakt-webhook-form.png)
 
-> **If inFakt does not let you set a custom secret** for the subscription (some
-> providers only display an auto-generated one), copy inFakt's generated value and use
-> it as the OL-side secret instead — there is currently no endpoint to set the OL
-> webhook secret to an arbitrary caller-supplied value, only to rotate to a new
-> randomly-generated one. This is a known gap; see
-> [Troubleshooting](#troubleshooting) if signatures don't match after setup.
+> **The secret-exchange direction into inFakt is unverified.** The screenshot above
+> shows inFakt's own "New webhook" form, which as shipped exposes URL, description,
+> a payload-format option, event checkboxes, and the account password - **no secret
+> field**. It is not yet confirmed how (or whether) inFakt lets an operator paste in
+> OL's rotated secret for a given subscription. The likely path, if inFakt exposes one
+> elsewhere in its webhook settings, is to copy the OL-rotated secret into it; failing
+> that, copy inFakt's own generated value (if it has one) and use it as the OL-side
+> secret instead. This is a known gap; see [Troubleshooting](#troubleshooting) if
+> signatures don't match after setup.
 
 ---
 
