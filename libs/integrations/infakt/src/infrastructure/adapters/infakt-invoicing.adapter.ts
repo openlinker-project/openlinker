@@ -90,18 +90,31 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
 }
 
 /**
+ * The Infakt settlement tokens this adapter recognises, verified against the
+ * two Infakt meta dictionaries (live 2026-07):
+ *   - invoice `status` (`invoice_statuses`): `draft` | `sent` | `printed` | `paid`
+ *   - payment status (`payment_statuses`):  `paid` | `unpaid` | `partial_payment`
+ *                                           | `payment_not_applicable`
+ * A part-settled document surfaces as a `partial`/`partly` token (e.g.
+ * `partial_payment`, `partly_paid`); full settlement as `paid`. Matching against
+ * these known tokens (rather than a bare `=== 'paid'`) makes future drift in the
+ * Infakt vocabulary explicit here instead of silently mis-classifying.
+ */
+const INFAKT_PAID_TOKENS: readonly string[] = ['paid'];
+const INFAKT_PARTIAL_TOKENS: readonly string[] = ['partial', 'partly'];
+
+/**
  * Maps Infakt's invoice `status` (+ `paid_date`) → neutral PaymentStatus (#1354).
  *
- * Infakt's payment states surface on the invoice `status` string. `paid` is the
- * fully-settled terminal; a `partly`/`partial` variant means part-settled;
- * everything else (`draft`/`sent`/`printed`/…) is treated as `unpaid`. A present
- * `paid_date` with a non-`paid` status is a defensive fallback to `paid`, since
- * Infakt only stamps that date when the document has been settled.
+ * Precedence: an explicit `paid` token wins; a `partial`/`partly` token is
+ * part-settled; a present `paid_date` with any other status is a defensive
+ * fallback to `paid` (Infakt only stamps that date once the document is
+ * settled); everything else (`draft`/`sent`/`printed`/…) is `unpaid`.
  */
 function toPaymentStatus(invoice: InfaktInvoice): PaymentStatus {
   const status = (invoice.status ?? '').toLowerCase();
-  if (status === 'paid') return 'paid';
-  if (status.includes('partial') || status.includes('partly')) return 'partially-paid';
+  if (INFAKT_PAID_TOKENS.includes(status)) return 'paid';
+  if (INFAKT_PARTIAL_TOKENS.some((token) => status.includes(token))) return 'partially-paid';
   if (invoice.paid_date) return 'paid';
   return 'unpaid';
 }

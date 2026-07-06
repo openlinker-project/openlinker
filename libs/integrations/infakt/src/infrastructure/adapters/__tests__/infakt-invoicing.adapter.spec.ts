@@ -548,7 +548,12 @@ describe('InfaktInvoicingAdapter', () => {
     it.each([
       ['paid', null, 'paid'],
       ['partly_paid', null, 'partially-paid'],
+      // `partial_payment` is Infakt's payment_statuses-dictionary token; the
+      // substring match must classify it the same as `partly_paid`.
+      ['partial_payment', null, 'partially-paid'],
       ['sent', null, 'unpaid'],
+      ['draft', null, 'unpaid'],
+      ['printed', null, 'unpaid'],
       // A present paid_date with a non-paid status still resolves to paid.
       ['printed', '2026-07-05', 'paid'],
     ] as const)(
