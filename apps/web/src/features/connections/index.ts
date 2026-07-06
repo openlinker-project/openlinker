@@ -10,6 +10,8 @@
  */
 export type {
   BankAccount,
+  SubiektBankAccount,
+  SubiektCashRegister,
   Connection,
   ConnectionStatus,
   ConnectionFilters,
@@ -33,6 +35,8 @@ export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutat
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
+export { useSubiektBankAccountsQuery } from './hooks/use-subiekt-bank-accounts-query';
+export { useSubiektCashRegistersQuery } from './hooks/use-subiekt-cash-registers-query';
 
 export {
   INVOICE_TRIGGER_MODEL_VALUES,

@@ -43,14 +43,14 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | Integration | Role | Status |
 |---|---|---|
 | **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
-| **[WooCommerce](./libs/integrations/woocommerce/)** *([guide](./docs/integrations/woocommerce/setup-guide.md))* | Shop *(source + destination + inventory)* | ✅ Live |
-| **[Allegro](./libs/integrations/allegro/)** | Marketplace *(source + offers + shipping)* | ✅ Live |
-| **[Erli](./libs/integrations/erli/)** *([guide](./docs/integrations/erli/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
+| **[WooCommerce](./libs/integrations/woocommerce/)** *([guide](./libs/integrations/woocommerce/docs/setup-guide.md))* | Shop *(source + destination + inventory)* | ✅ Live |
+| **[Allegro](./libs/integrations/allegro/)** *([guide](./libs/integrations/allegro/docs/setup-guide.md))* | Marketplace *(source + offers + shipping)* | ✅ Live |
+| **[Erli](./libs/integrations/erli/)** *([guide](./libs/integrations/erli/docs/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
-| **[InPost](./libs/integrations/inpost/)** *([guide](./docs/integrations/inpost/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
-| **[DPD](./libs/integrations/dpd-polska/)** *([guide](./docs/integrations/dpd-polska/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
-| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./docs/integrations/subiekt/setup-guide.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
-| **[KSeF](./libs/integrations/ksef/)** *([guide](./docs/integrations/ksef/setup-guide.md))* | Invoicing *(Polish national e-invoicing)* | 🚧 In progress |
+| **[InPost](./libs/integrations/inpost/)** *([guide](./libs/integrations/inpost/docs/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
+| **[DPD](./libs/integrations/dpd-polska/)** *([guide](./libs/integrations/dpd-polska/docs/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
+| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
+| **[KSeF](./libs/integrations/ksef/)** *([guide](./libs/integrations/ksef/docs/setup-guide.md) · [tutorial](./libs/integrations/ksef/docs/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | 🚧 In progress |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
@@ -282,7 +282,7 @@ Then follow [`docs/getting-started.md`](./docs/getting-started.md) — a walkthr
 
 The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in containers — you do not need any of those installed locally.
 
-**WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080). Run `pnpm dev:stack:wc-credentials` after startup to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./docs/integrations/woocommerce/setup-guide.md) for full configuration steps.
+**WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080). Run `pnpm dev:stack:wc-credentials` after startup to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./libs/integrations/woocommerce/docs/setup-guide.md) for full configuration steps.
 
 ---
 

@@ -10,7 +10,7 @@ This directory is an **archive**. One file per implementation plan, kept after t
 
 - Active work tracking — that's GitHub issues.
 - Architectural decisions — those go in `docs/architecture-overview.md` and `docs/engineering-standards.md`.
-- Operational runbooks — those go in `docs/integrations/<platform>/` or `docs/webhooks/`.
+- Operational runbooks — those go in `libs/integrations/<platform>/docs/` or `docs/webhooks/`.
 
 ## Reading a plan from this archive
 
