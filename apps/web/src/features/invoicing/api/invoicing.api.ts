@@ -24,6 +24,8 @@ import type {
   PaginatedInvoices,
   RetryInvoicesInput,
   RetryInvoicesResult,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
 } from './invoicing.types';
 
 export interface InvoicingApi {
@@ -54,6 +56,13 @@ export interface InvoicingApi {
    * implement the neutral RegulatoryResubmitter capability (501 otherwise).
    */
   resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>;
+  /**
+   * `POST /invoices/:invoiceId/send-email` (#1353) — trigger the provider to
+   * render + email the issued invoice to the buyer. 501 when the connection's
+   * Invoicing adapter cannot send email. Neutral: keyed on the internal
+   * `invoice.id`, never on platform type (ADR-026).
+   */
+  sendEmail: (invoiceId: string, input: SendInvoiceEmailInput) => Promise<SendInvoiceEmailResult>;
   /**
    * `GET /invoices/:invoiceId/upo` (#1234) — fetch the official UPO confirmation
    * document for a cleared/accepted e-invoice as a Blob. Content type is
@@ -144,6 +153,16 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         method: 'POST',
         headers: JSON_HEADERS,
       });
+    },
+    sendEmail(invoiceId, input): Promise<SendInvoiceEmailResult> {
+      return request<SendInvoiceEmailResult>(
+        `/invoices/${encodeURIComponent(invoiceId)}/send-email`,
+        {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(input),
+        },
+      );
     },
     downloadUpo(invoiceId): Promise<Blob> {
       return requestBlob(`/invoices/${encodeURIComponent(invoiceId)}/upo`);
