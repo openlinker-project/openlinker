@@ -228,6 +228,8 @@ OpenLinker is moving fast and publicly. See [recent activity](https://github.com
 
 Want to click through OpenLinker without setting up a dev environment? The demo overlay boots the **entire stack in Docker** — PostgreSQL, Redis, MySQL, a seeded PrestaShop, and the full OpenLinker app tier (API + Worker + admin UI) — from a clean checkout:
 
+> For a full step-by-step walkthrough (example `.env`, PrestaShop + Allegro connection wiring, end-to-end verification, and troubleshooting) see the [One-Command Demo Setup Guide](./docs/one-command-demo-setup-guide.md).
+
 ```bash
 git clone https://github.com/openlinker-project/openlinker.git
 cd openlinker
