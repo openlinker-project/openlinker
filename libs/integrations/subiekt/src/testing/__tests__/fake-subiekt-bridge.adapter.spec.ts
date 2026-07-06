@@ -83,5 +83,71 @@ describe('FakeSubiektBridgeAdapter', () => {
       expect(res.providerInvoiceNumber).toBe('FV-MOCK-001');
       expect(res.regulatoryStatus).toBe('sent');
     });
+
+    describe('discovery methods (#1324)', () => {
+      it('should list >=2 bank accounts, exactly one default, and a distinct ownerPodmiotId', async () => {
+        const res = await fake.listBankAccounts();
+        expect(res.count).toBe(res.accounts.length);
+        expect(res.accounts.length).toBeGreaterThanOrEqual(2);
+        expect(res.accounts.filter((a) => a.isDefault)).toHaveLength(1);
+        const owners = new Set(res.accounts.map((a) => a.ownerPodmiotId));
+        expect(owners.size).toBeGreaterThanOrEqual(2);
+      });
+
+      it('should flip the default when setDefaultBankAccount targets a seeded id', async () => {
+        const before = await fake.listBankAccounts();
+        const nonDefault = before.accounts.find((a) => !a.isDefault);
+        expect(nonDefault).toBeDefined();
+        const res = await fake.setDefaultBankAccount(nonDefault!.id);
+        expect(res).toEqual({ bankAccountId: nonDefault!.id, isDefault: true });
+        const after = await fake.listBankAccounts();
+        expect(after.accounts.filter((a) => a.isDefault)).toHaveLength(1);
+        expect(after.accounts.find((a) => a.isDefault)?.id).toBe(nonDefault!.id);
+      });
+
+      it('should reject setDefaultBankAccount with SubiektRejectedError for an unknown id', async () => {
+        await expect(fake.setDefaultBankAccount(999_999)).rejects.toBeInstanceOf(
+          SubiektRejectedError,
+        );
+      });
+
+      it('should list cash registers with a mix of linked and unlinked (oddzialId: null)', async () => {
+        const res = await fake.listCashRegisters();
+        expect(res.count).toBe(res.cashRegisters.length);
+        expect(res.cashRegisters.some((c) => c.oddzialId === null)).toBe(true);
+        expect(res.cashRegisters.some((c) => c.oddzialId !== null)).toBe(true);
+      });
+
+      it('should reject discovery calls when a bridge-unreachable failure is seeded', async () => {
+        fake.seedFailure('bridge-unreachable');
+        await expect(fake.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+        await expect(fake.listCashRegisters()).rejects.toBeInstanceOf(
+          SubiektBridgeUnreachableError,
+        );
+      });
+
+      it('should honour seeded discovery data and reset it on clear()', async () => {
+        fake.seedBankAccounts([
+          {
+            id: 5,
+            name: 'Solo',
+            number: null,
+            bankNumber: null,
+            description: null,
+            currency: 'PLN',
+            isVatAccount: false,
+            isDefault: true,
+            ownerPodmiotId: 1,
+            ownerName: null,
+          },
+        ]);
+        fake.seedCashRegisters([{ id: 9, name: 'Only register', symbol: null, oddzialId: 9 }]);
+        expect((await fake.listBankAccounts()).count).toBe(1);
+        expect((await fake.listCashRegisters()).count).toBe(1);
+        fake.clear();
+        expect((await fake.listBankAccounts()).accounts.length).toBeGreaterThanOrEqual(2);
+        expect((await fake.listCashRegisters()).cashRegisters.length).toBeGreaterThanOrEqual(2);
+      });
+    });
   });
 });

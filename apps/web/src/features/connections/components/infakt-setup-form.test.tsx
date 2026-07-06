@@ -435,7 +435,7 @@ describe('InfaktSetupForm', () => {
       fireEvent.change(select, { target: { value: '2' } });
 
       expect(
-        await findToastTitle('Could not update the inFakt default account'),
+        await findToastTitle('Could not update the default account'),
       ).toBeInTheDocument();
     });
 

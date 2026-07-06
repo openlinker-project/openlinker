@@ -119,6 +119,38 @@ export interface BankAccount {
 }
 
 /**
+ * Owner-aware bank account from the Subiekt-specific route
+ * `GET /integrations/subiekt/connections/:id/bank-accounts` (#1324). Distinct
+ * from the neutral {@link BankAccount} served by the capability-generic
+ * InvoicingController: it carries `ownerPodmiotId`/`ownerName` so the Subiekt
+ * FE can group accounts by payer and show the payer-routing warning only when
+ * more than one seller Podmiot is present. Kept Subiekt-local (no core
+ * capability) because no other provider has a multi-payer concept.
+ */
+export interface SubiektBankAccount {
+  id: string;
+  accountNumber: string;
+  bankName: string;
+  isDefault: boolean;
+  ownerPodmiotId: number;
+  ownerName: string | null;
+}
+
+/**
+ * Cash register (Stanowisko Kasowe) from
+ * `GET /integrations/subiekt/connections/:id/cash-registers` (#1324). A real,
+ * working per-document selector. `oddzialId` is an informational branch tag
+ * only — the Oddział axis itself is NOT selectable (it is bound read-only to
+ * the bridge's logged-in Sfera session; see issue #1324 Part B / decision 8b).
+ */
+export interface SubiektCashRegister {
+  id: number;
+  name: string | null;
+  symbol: string | null;
+  oddzialId: number | null;
+}
+
+/**
  * Response from `POST /connections/:id/webhooks/install` (#168). Reports whether
  * the WS push and the synchronous test ping both completed.
  */
