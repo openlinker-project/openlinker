@@ -28,9 +28,12 @@
 import { randomUUID } from 'crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
+  BankAccountDefaultSetter,
+  BankAccountsReader,
   CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
+  InvoicingBankAccount,
   InvoicingPort,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
@@ -41,7 +44,16 @@ import type {
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
+import type { BridgeIssueInvoiceRequest } from '../../bridge/subiekt-bridge.types';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
+import type {
+  SubiektConnectionConfig,
+  SubiektPaymentMethod,
+} from '../../domain/types/subiekt-connection-config.types';
+import type {
+  SubiektBankAccountView,
+  SubiektCashRegisterView,
+} from '../../domain/types/subiekt-invoicing-views.types';
 import {
   SubiektBridgeUnreachableError,
   SubiektRejectedError,
@@ -98,13 +110,38 @@ function readRetryability(error: SubiektBridgeUnreachableError): SubiektTranspor
 }
 
 export class SubiektInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements
+    InvoicingPort,
+    RegulatoryStatusReader,
+    CorrectionIssuer,
+    BankAccountsReader,
+    BankAccountDefaultSetter
 {
+  /**
+   * Connection-level defaults (#1324). All OPTIONAL — an unset field means the
+   * adapter sends nothing for it (the true additive/no-regression path); it is
+   * NOT defaulted to `'cash'`. `paymentFields()`/`cashRegisterFields()` enforce
+   * the fiscal-safe omission rules the bridge would otherwise 422 on. There is
+   * no Oddział (branch) default: the Sfera session binds the branch read-only to
+   * the logged-in bridge session, so a per-request override is impossible.
+   */
+  private readonly paymentMethod?: SubiektPaymentMethod;
+  private readonly bankAccountId?: number;
+  private readonly stanowiskoKasoweId?: number;
+
   constructor(
     private readonly bridge: SubiektBridgeClient,
     private readonly connectionId: string,
     private readonly logger: LoggerPort,
-  ) {}
+    // Only the optional defaults are read here; `bridgeBaseUrl`/`timeoutMs`
+    // are the HTTP client's concern — accept a `Partial` so the `= {}` default
+    // keeps the existing 3-arg call sites (tests) working without a cast.
+    config: Partial<SubiektConnectionConfig> = {},
+  ) {
+    this.paymentMethod = config.defaultPaymentMethod;
+    this.bankAccountId = config.bankAccountId;
+    this.stanowiskoKasoweId = config.defaultStanowiskoKasoweId;
+  }
 
   /**
    * Issue a fiscal document. Derives the neutral doctype (NIP rule) when absent,
@@ -136,6 +173,12 @@ export class SubiektInvoicingAdapter
         // the bridge auto-upserts it and bills it in one unit of work.
         buyer: toBridgeBuyer(cmd.buyer),
         lines: toBridgeLines(cmd.lines),
+        // Connection-level payment + cash-register selection (#1324). Both
+        // helpers return `{}` when unset (or when a combination the bridge would
+        // 422 is only half-configured), so an unconfigured connection produces a
+        // request byte-identical to the pre-#1324 behavior.
+        ...this.paymentFields(),
+        ...this.cashRegisterFields(),
       });
 
       if (response.state === 'failed') {
@@ -382,6 +425,137 @@ export class SubiektInvoicingAdapter
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
+  }
+
+  /**
+   * List the seller's bank accounts as the NEUTRAL `InvoicingBankAccount[]`
+   * (the generic `BankAccountsReader` core-capability seam consumed by the
+   * capability-generic API surface, #1324). Deliberately DROPS the bridge's
+   * `ownerPodmiotId`/`ownerName` — the neutral core type has no owner concept
+   * (it is shared with inFakt/KSeF, which have no multi-Podmiot install), so
+   * surfacing owner data here would leak Subiekt-specific vocabulary into
+   * `libs/core`. Owner-aware consumers use `listBankAccountsWithOwner` instead.
+   */
+  async listBankAccounts(): Promise<InvoicingBankAccount[]> {
+    try {
+      const response = await this.bridge.listBankAccounts();
+      return response.accounts.map((a) => ({
+        id: String(a.id),
+        accountNumber: a.number ?? '',
+        bankName: a.name ?? '',
+        isDefault: a.isDefault,
+      }));
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /** Mark `accountId` as the seller's default bank account with the provider. */
+  async setDefaultBankAccount(accountId: string): Promise<void> {
+    // Guard the string→int coercion: a non-numeric id would otherwise POST to
+    // `/api/bank-accounts/NaN/default`. Fail with the config domain error instead.
+    const numericId = Number(accountId);
+    if (!Number.isInteger(numericId) || numericId < 1) {
+      throw new SubiektConfigException(
+        'bank account id must be a positive integer',
+        'accountId',
+        accountId,
+      );
+    }
+    try {
+      await this.bridge.setDefaultBankAccount(numericId);
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Owner-aware bank-account variant (Subiekt-local, NOT a core capability,
+   * #1324 decision 6). Returns the full bridge shape incl. `ownerPodmiotId`/
+   * `ownerName` so the Subiekt-specific controller/FE can group accounts by
+   * payer and render the >1-owner payer-routing warning. Not exposed on the
+   * neutral `BankAccountsReader` surface.
+   */
+  async listBankAccountsWithOwner(): Promise<SubiektBankAccountView[]> {
+    try {
+      const response = await this.bridge.listBankAccounts();
+      return response.accounts.map((a) => ({
+        id: String(a.id),
+        accountNumber: a.number ?? '',
+        bankName: a.name ?? '',
+        isDefault: a.isDefault,
+        ownerPodmiotId: a.ownerPodmiotId,
+        ownerName: a.ownerName,
+      }));
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * List the seller's Stanowiska Kasowe (cash registers) — Subiekt-local, no
+   * core capability (#1324 decision 2). Mapped 1:1 from the bridge; `oddzialId`
+   * stays `number | null` (`null` = unlinked register; a non-null value is the
+   * register's informational branch tag, a display label only).
+   */
+  async listCashRegisters(): Promise<SubiektCashRegisterView[]> {
+    try {
+      const response = await this.bridge.listCashRegisters();
+      return response.cashRegisters.map((c) => ({
+        id: c.id,
+        name: c.name,
+        symbol: c.symbol,
+        oddzialId: c.oddzialId,
+      }));
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Build the additive payment-selection fields for an issue-invoice request
+   * (#1324). Fiscal-safe omission mirrors the bridge's `PaymentSelection`
+   * rules so a half-configured connection never sends a request the bridge
+   * would 422:
+   *   - no `paymentMethod` configured        -> `{}` (send nothing; legacy path)
+   *   - `transfer` without a `bankAccountId`  -> `{}` (never send an incomplete transfer)
+   *   - `transfer` with a `bankAccountId`     -> `{ paymentMethod: 'transfer', bankAccountId }`
+   *   - `cash`                                -> `{ paymentMethod: 'cash' }`
+   */
+  private paymentFields(): Partial<
+    Pick<BridgeIssueInvoiceRequest, 'paymentMethod' | 'bankAccountId'>
+  > {
+    if (!this.paymentMethod) {
+      return {};
+    }
+    if (this.paymentMethod === 'transfer') {
+      if (this.bankAccountId === undefined) {
+        // Observable misconfiguration: nothing prevents saving `transfer` with
+        // no bank account, and the omission silently downgrades to the bridge
+        // default. Warn so the half-configured state is visible in logs.
+        this.logger.warn(
+          'Subiekt connection is configured for transfer payment but has no bankAccountId; omitting payment fields (bridge default applies)',
+          { connectionId: this.connectionId },
+        );
+        return {};
+      }
+      return { paymentMethod: 'transfer', bankAccountId: this.bankAccountId };
+    }
+    return { paymentMethod: 'cash' };
+  }
+
+  /**
+   * Build the additive cash-register field for an issue-invoice request (#1324).
+   * The Oddział (branch) axis was cut: the Sfera session binds the branch
+   * read-only to the logged-in bridge session, so `stanowiskoKasoweId` is the
+   * only real per-document routing field.
+   *   - `stanowiskoKasoweId` configured -> `{ stanowiskoKasoweId }`;
+   *   - unset                           -> `{}` (legacy path).
+   */
+  private cashRegisterFields(): Partial<Pick<BridgeIssueInvoiceRequest, 'stanowiskoKasoweId'>> {
+    return this.stanowiskoKasoweId !== undefined
+      ? { stanowiskoKasoweId: this.stanowiskoKasoweId }
+      : {};
   }
 
   /** Neutral document types this provider issues. */

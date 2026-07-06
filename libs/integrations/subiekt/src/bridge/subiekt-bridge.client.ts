@@ -18,6 +18,9 @@ import type {
   BridgeIssueInvoiceResponse,
   BridgeKorektaRequest,
   BridgeKorektaResponse,
+  BridgeListBankAccountsResponse,
+  BridgeListCashRegistersResponse,
+  BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from './subiekt-bridge.types';
@@ -39,4 +42,24 @@ export interface SubiektBridgeClient {
 
   /** Read the current state of a previously-issued document. */
   getInvoiceStatus(req: BridgeInvoiceStatusRequest): Promise<BridgeInvoiceStatusResponse>;
+
+  /**
+   * List the seller's bank accounts (rachunki bankowe), each tagged with its
+   * owning Podmiot on a multi-payer install. The REAL bridge route is
+   * `GET /api/bank-accounts` (#1324).
+   */
+  listBankAccounts(): Promise<BridgeListBankAccountsResponse>;
+
+  /**
+   * Mark a bank account as the seller's default. Idempotent (re-selecting the
+   * current default is a no-op success). The REAL bridge route is
+   * `PUT /api/bank-accounts/{id}/default` (#1324).
+   */
+  setDefaultBankAccount(bankAccountId: number): Promise<BridgeSetDefaultBankAccountResponse>;
+
+  /**
+   * List the seller's Stanowiska Kasowe (cash registers). The REAL bridge route
+   * is `GET /api/cash-registers` (#1324).
+   */
+  listCashRegisters(): Promise<BridgeListCashRegistersResponse>;
 }
