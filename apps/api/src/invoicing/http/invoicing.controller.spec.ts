@@ -1298,5 +1298,20 @@ describe('InvoicingController', () => {
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[redacted-email]'));
       warnSpy.mockRestore();
     });
+
+    it('should scrub a plus-aliased buyer email from the warn log on a provider failure', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const sendByEmail = jest
+        .fn()
+        .mockRejectedValue(new Error('inFakt 500: buyer bob+invoices@secret.pl'));
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail } as unknown as InvoicingPort);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(controller.sendInvoiceEmail('inv_1', {})).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.not.stringContaining('bob+invoices@secret.pl'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[redacted-email]'));
+      warnSpy.mockRestore();
+    });
   });
 });

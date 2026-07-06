@@ -261,6 +261,8 @@ export class InvoicingController {
    */
   private toProviderBadGateway(error: unknown, operation: string, contextId?: string): Error {
     const message = error instanceof Error ? error.message : String(error);
+    // Best-effort PII scrub for logging hygiene, not exhaustive RFC 5322
+    // validation — quoted-string / special-character local-parts won't match.
     const scrubbed = message.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]');
     const suffix = contextId ? ` (${contextId})` : '';
     this.logger.warn(`Invoicing provider ${operation} failed${suffix}: ${scrubbed}`);
