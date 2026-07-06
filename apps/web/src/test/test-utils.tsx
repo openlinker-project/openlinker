@@ -247,6 +247,9 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
+      // #1355 — bulk issue default: nothing issued, so the /invoices list page
+      // bulk-issue path doesn't hit `undefined` once `bulkIssue` is added.
+      bulkIssue: vi.fn().mockResolvedValue({ issued: 0, skipped: 0, failed: 0, results: [] }),
       issueCorrection: vi.fn().mockResolvedValue(null),
       // #1234 — resolves to an empty PDF blob by default so tests that invoke the
       // UPO preview/download path don't hit `undefined`.

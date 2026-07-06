@@ -14,6 +14,8 @@
  * @module apps/web/src/features/invoicing/api
  */
 import type {
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
   InvoiceFilters,
   InvoicePagination,
   InvoiceRecord,
@@ -39,6 +41,10 @@ export interface InvoicingApi {
   /** `POST /invoices/retry` — batch retry of failed+rejected records (W6 #1245).
    *  The server gates eligibility; non-eligible ids are skipped per-id. */
   retry: (input: RetryInvoicesInput) => Promise<RetryInvoicesResult>;
+  /** `POST /invoices/bulk-issue` — issue invoices for a list of order ids on one
+   *  connection (#1355). Fans out over the single issue primitive; idempotent
+   *  per (connection, order). Returns a per-id summary. */
+  bulkIssue: (input: BulkIssueInvoicesInput) => Promise<BulkIssueInvoicesResult>;
   /** `POST /invoices/:invoiceId/correct` — issue a correcting document (#1241). */
   issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
   /**
@@ -114,6 +120,13 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
     },
     retry(input): Promise<RetryInvoicesResult> {
       return request<RetryInvoicesResult>('/invoices/retry', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(input),
+      });
+    },
+    bulkIssue(input): Promise<BulkIssueInvoicesResult> {
+      return request<BulkIssueInvoicesResult>('/invoices/bulk-issue', {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),

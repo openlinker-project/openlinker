@@ -29,6 +29,7 @@ export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
+export { useBulkIssueInvoicesMutation } from './hooks/use-bulk-issue-invoices-mutation';
 export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
@@ -56,6 +57,10 @@ export type {
   RetryInvoicesResult,
   RetryInvoiceResult,
   RetryOutcome,
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
+  BulkIssueInvoiceResult,
+  BulkIssueOutcome,
   CorrectionLineInput,
   IssueCorrectionInput,
 } from './api/invoicing.types';
