@@ -21,6 +21,7 @@ export interface InfaktBinaryResponse {
 export interface IInfaktHttpClient {
   get<T>(path: string, query?: Record<string, string>): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
+  put<T>(path: string, body: unknown): Promise<T>;
   /** Fetch a binary response (e.g. a PDF) rather than parsing JSON. */
   getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse>;
 }

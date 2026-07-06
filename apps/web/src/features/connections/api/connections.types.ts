@@ -28,6 +28,12 @@ export const CORE_CAPABILITY_VALUES = [
   'OrderProcessorManager',
   'OrderSource',
   'OfferManager',
+  // Shop-listing (ADR-024): 'ProductPublisher' resolves a ShopProductManagerPort,
+  // 'CategoryProvisioner' is its provision sub-capability.
+  'ProductPublisher',
+  'CategoryProvisioner',
+  // Invoicing (ADR-026).
+  'Invoicing',
 ] as const;
 
 /**
@@ -98,6 +104,18 @@ export interface ConnectionTestResult {
   status?: number;
   message: string;
   latencyMs: number;
+}
+
+/**
+ * Entry from `GET /connections/:id/bank-accounts` (#1303 follow-up). Only
+ * meaningful for connections whose Invoicing adapter implements
+ * BankAccountsReader (today: Infakt).
+ */
+export interface BankAccount {
+  id: string;
+  accountNumber: string;
+  bankName: string;
+  isDefault: boolean;
 }
 
 /**

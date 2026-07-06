@@ -20,7 +20,12 @@ import type { IssueInvoiceCommand, IssueCorrectionCommand } from '@openlinker/co
 import { InfaktInvoicingAdapter, INFAKT_PROVIDER_TYPE } from '../infakt-invoicing.adapter';
 import { InfaktApiError } from '../../../domain/exceptions/infakt-api.error';
 import { FakeInfaktHttpClient } from '../../../testing/fake-infakt-http-client';
-import type { InfaktInvoice, InfaktClient, InfaktListResponse } from '../../../domain/types/infakt.types';
+import type {
+  InfaktInvoice,
+  InfaktClient,
+  InfaktListResponse,
+  InfaktBankAccount,
+} from '../../../domain/types/infakt.types';
 
 function fakeLogger(): jest.Mocked<LoggerPort> {
   return { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -684,6 +689,220 @@ describe('InfaktInvoicingAdapter', () => {
       await expect(
         adapter.getRegulatoryDocument(recordFixture(), 'source'),
       ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+  });
+
+  describe('payment_method (#1303)', () => {
+    const invoiceCmd: IssueInvoiceCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      buyer: buyer({ nip: '1234567890' }),
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      idempotencyKey: 'idem-1',
+    };
+    const correctionCmd: IssueCorrectionCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      originalProviderInvoiceId: 'inv-uuid-1',
+      reason: 'Zwrot towaru',
+      lines: [{ originalLineNumber: 1, newQuantity: 0 }],
+      idempotencyKey: 'idem-corr-1',
+    };
+
+    function seedIssueFixtures(): void {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
+        entities: [],
+        metainfo: { total_count: 0, next: null, previous: null },
+      });
+      http.seed('POST', 'clients.json', {
+        id: 1,
+        uuid: 'client-uuid-1',
+        name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: null,
+        street: null,
+        post_code: null,
+        country: null,
+      });
+      http.seed('POST', 'invoices.json', invoiceFixture());
+      // issuing IS submitting for Infakt - issueInvoice calls send_to_ksef inline
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    function seedCorrectionFixtures(): void {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'corrective' }));
+      // a correction is its own KSeF document - issueCorrection submits it inline
+      http.seed('POST', 'invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    it('should default to cash on issueInvoice when the connection has no defaultPaymentMethod configured', async () => {
+      seedIssueFixtures();
+      await adapter.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({ invoice: expect.objectContaining({ payment_method: 'cash' }) });
+    });
+
+    it('should use the configured defaultPaymentMethod on issueInvoice', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+      });
+    });
+
+    it('should default to cash on issueCorrection when the connection has no defaultPaymentMethod configured', async () => {
+      seedCorrectionFixtures();
+      await adapter.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({ invoice: expect.objectContaining({ payment_method: 'cash' }) });
+    });
+
+    it('should use the same configured defaultPaymentMethod on issueCorrection as issueInvoice (no more disagreement)', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedCorrectionFixtures();
+      await configured.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+      });
+    });
+  });
+
+  describe('bank accounts (#1303 follow-up)', () => {
+    it('should map the bank-accounts list from snake_case to camelCase, including the default flag', async () => {
+      http.seed<InfaktListResponse<InfaktBankAccount>>('GET', 'bank_accounts.json', {
+        entities: [
+          {
+            id: 1,
+            account_number: '61 1140 2004 0000 3002 0135 5387',
+            bank_name: 'mBank',
+            default: false,
+          },
+          {
+            id: 2,
+            account_number: '12 1090 1014 0000 0001 2345 6789',
+            bank_name: 'Santander',
+            default: true,
+          },
+        ],
+        metainfo: { total_count: 2, next: null, previous: null },
+      });
+
+      const accounts = await adapter.listBankAccounts();
+
+      expect(accounts).toEqual([
+        { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank', isDefault: false },
+        { id: '2', accountNumber: '12 1090 1014 0000 0001 2345 6789', bankName: 'Santander', isDefault: true },
+      ]);
+    });
+
+    it('should return an empty array when inFakt has no bank accounts configured', async () => {
+      http.seed<InfaktListResponse<unknown>>('GET', 'bank_accounts.json', {
+        entities: [],
+        metainfo: { total_count: 0, next: null, previous: null },
+      });
+
+      await expect(adapter.listBankAccounts()).resolves.toEqual([]);
+    });
+
+    it('should PUT the account as default in inFakt', async () => {
+      http.seed('PUT', 'bank_accounts/54946.json', {
+        id: 54946,
+        bank_name: 'Testowy Bank',
+        account_number: '49915000093326449042496767',
+        default: true,
+      });
+
+      await adapter.setDefaultBankAccount('54946');
+
+      const putCall = http.calls.find((c) => c.method === 'PUT' && c.path === 'bank_accounts/54946.json');
+      expect(putCall?.body).toEqual({ bank_account: { default: true } });
+    });
+
+    const invoiceCmd: IssueInvoiceCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      buyer: buyer({ nip: '1234567890' }),
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      idempotencyKey: 'idem-1',
+    };
+
+    function seedIssueFixtures(): void {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
+        entities: [],
+        metainfo: { total_count: 0, next: null, previous: null },
+      });
+      http.seed('POST', 'clients.json', {
+        id: 1,
+        uuid: 'client-uuid-1',
+        name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: null,
+        street: null,
+        post_code: null,
+        country: null,
+      });
+      http.seed('POST', 'invoices.json', invoiceFixture());
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    it('should attach bank_account/bank_name when transfer and a bank account are configured', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+        bankAccount: { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({
+          bank_account: '61 1140 2004 0000 3002 0135 5387',
+          bank_name: 'mBank',
+        }),
+      });
+    });
+
+    it('should omit bank_account/bank_name when transfer is chosen without a configured bank account', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = invoiceCall?.body as { invoice: Record<string, unknown> };
+      expect(body.invoice.bank_account).toBeUndefined();
+      expect(body.invoice.bank_name).toBeUndefined();
+    });
+
+    it('should omit bank_account/bank_name for cash even when a bank account is configured', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'cash',
+        bankAccount: { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = invoiceCall?.body as { invoice: Record<string, unknown> };
+      expect(body.invoice.bank_account).toBeUndefined();
+      expect(body.invoice.bank_name).toBeUndefined();
     });
   });
 });

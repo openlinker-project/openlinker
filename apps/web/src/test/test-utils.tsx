@@ -120,6 +120,8 @@ export function createMockApiClient(
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
+      getBankAccounts: vi.fn().mockResolvedValue([]),
+      setDefaultBankAccount: vi.fn().mockResolvedValue(undefined),
       getDiagnostics: vi.fn().mockResolvedValue({
         connectionId: 'conn_1',
         connectionName: 'Main PrestaShop Store',

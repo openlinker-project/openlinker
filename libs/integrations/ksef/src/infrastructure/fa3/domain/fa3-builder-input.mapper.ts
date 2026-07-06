@@ -15,14 +15,21 @@
  *
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
  */
-import type { CorrectionReference, InvoiceLine, IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import type {
+  BuyerAddress,
+  CorrectionReference,
+  InvoiceLine,
+  IssueInvoiceCommand,
+} from '@openlinker/core/invoicing';
 import type {
   Fa3BuilderInput,
   Fa3CorrectionContext,
   Fa3Line,
+  Fa3PaymentInput,
   SellerProfile,
 } from './fa3-xml.types';
 import { resolveBuyerIdentity } from './fa3-buyer-id.mapper';
+import { resolveKodKraju } from './fa3-country-code.mapper';
 import { resolveKodWaluty } from './fa3-currency.mapper';
 import { resolveP12 } from './fa3-tax-rate.mapper';
 
@@ -52,6 +59,12 @@ export interface Fa3MappingContext {
    * even though both are resolved from the same connection config.
    */
   defaultTaxRate: string;
+  /**
+   * Resolved connection-level payment defaults (#1311) — `undefined` when the
+   * connection has none configured, in which case the builder omits
+   * `Platnosc` entirely.
+   */
+  payment?: Fa3PaymentInput;
 }
 
 /**
@@ -65,10 +78,13 @@ export function mapToFa3BuilderInput(
   context: Fa3MappingContext,
 ): Fa3BuilderInput {
   return {
-    seller: context.seller,
+    seller: {
+      ...context.seller,
+      address: normalizeAddressCountry(context.seller.address),
+    },
     buyer: resolveBuyerIdentity(cmd.buyer.taxId),
     buyerName: cmd.buyer.name,
-    buyerAddress: cmd.buyer.address,
+    buyerAddress: normalizeAddressCountry(cmd.buyer.address),
     currency: resolveKodWaluty(cmd.currency),
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
@@ -77,6 +93,7 @@ export function mapToFa3BuilderInput(
     ...(cmd.correction !== undefined
       ? { correction: mapCorrection(cmd.correction, context.defaultTaxRate) }
       : {}),
+    ...(context.payment !== undefined ? { payment: context.payment } : {}),
   };
 }
 
@@ -87,6 +104,18 @@ export function mapToFa3BuilderInput(
  * non-empty rate is never overridden, so a genuine unmapped/mis-keyed code
  * still surfaces loudly via `resolveP12`'s throw.
  */
+/**
+ * Return the address with its `countryIso2` resolved to a valid FA(3)
+ * `KodKraju` (trim + uppercase + `TKodKraju` membership check). Source
+ * adapters may deliver lowercase ISO codes; the FA(3) schema accepts only the
+ * uppercase closed enumeration, so this normalises before the builder emits
+ * `<KodKraju>`. Throws `UnsupportedCountryCodeException` on an unknown code -
+ * a deterministic build fault raised before any submit.
+ */
+function normalizeAddressCountry(address: BuyerAddress): BuyerAddress {
+  return { ...address, countryIso2: resolveKodKraju(address.countryIso2) };
+}
+
 function mapLine(line: InvoiceLine, defaultTaxRate: string): Fa3Line {
   return {
     name: line.name,

@@ -6,7 +6,7 @@ import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
-  editConnectionSchema,
+  buildEditConnectionSchema,
   mergeStructuredIntoConfig,
   toUpdateConnectionInput,
   type EditConnectionFormSubmission,
@@ -20,7 +20,11 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { usePlatform } from '../../../shared/plugins';
+import {
+  usePlatform,
+  readConfigString,
+  type PluginEditConnectionFields,
+} from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 
@@ -28,35 +32,39 @@ interface EditConnectionFormProps {
   connection: Connection;
 }
 
-type StructuredField =
-  | 'baseUrl'
-  | 'siteUrl'
-  | 'shopId'
-  | 'storefrontBaseUrl'
-  | 'openlinkerCallbackBaseUrl'
-  | 'masterCatalogConnectionId'
-  | 'defaultCarrierId'
-  | 'unmanagedStockQuantity'
-  | 'inpostPsModuleType'
-  | 'subiektBridgeUrl'
-  | 'subiektTriggerModel'
-  | 'ksefEnvironment'
-  | 'sellerNip'
-  | 'sellerName'
-  | 'sellerAddressLine1'
-  | 'sellerAddressLine2'
-  | 'sellerCity'
-  | 'sellerPostalCode'
-  | 'sellerCountryIso2'
-  | 'contextIdentifier'
-  | 'inpostEnvironment'
-  | 'inpostOrganizationId'
-  | 'infaktPaymentMethod';
+/**
+ * Host-owned structured fields with an explicit merge clause in
+ * `mergeStructuredIntoConfig`. Kept as a runtime array (`as const` + derived
+ * union) so `syncStructuredToJson` can detect a plugin field synced with no
+ * `connectionConfig` contribution to assemble it (or a contribution whose
+ * `schemaShape` never declares the field) - the silent-drop misconfiguration
+ * #1330 exists to prevent.
+ */
+const HOST_STRUCTURED_FIELDS = [
+  'baseUrl',
+  'siteUrl',
+  'shopId',
+  'storefrontBaseUrl',
+  'openlinkerCallbackBaseUrl',
+  'masterCatalogConnectionId',
+  'defaultCarrierId',
+  'unmanagedStockQuantity',
+  'inpostPsModuleType',
+  'subiektBridgeUrl',
+  'subiektTriggerModel',
+  'inpostEnvironment',
+  'inpostOrganizationId',
+  'infaktPaymentMethod',
+] as const;
 
-function readString(config: Record<string, unknown>, key: string): string {
-  const value = config[key];
-  return typeof value === 'string' ? value : '';
-}
+type StructuredField = (typeof HOST_STRUCTURED_FIELDS)[number];
+
+/**
+ * Field names accepted by the per-field JSON sync: the host's own structured
+ * fields plus any plugin-contributed field names (#1330, declaration-merged
+ * into `PluginEditConnectionFields` — e.g. KSeF's seller/payment fields).
+ */
+type SyncableField = StructuredField | (keyof PluginEditConnectionFields & string);
 
 /**
  * Read the WooCommerce unmanaged-stock cap out of `config.inventory` (#969 §7.3).
@@ -93,12 +101,6 @@ function readTriggerModel(
     : '';
 }
 
-/** Read the KSeF environment out of `config.env` (#1152). */
-function readKsefEnvironment(config: Record<string, unknown>): '' | 'test' | 'demo' | 'prod' {
-  const value = config.env;
-  return value === 'test' || value === 'demo' || value === 'prod' ? value : '';
-}
-
 /** Read the InPost environment out of `config.environment` (#771). */
 function readInpostEnvironment(config: Record<string, unknown>): '' | 'sandbox' | 'production' {
   const value = config.environment;
@@ -113,6 +115,35 @@ function readInpostEnvironment(config: Record<string, unknown>): '' | 'sandbox' 
  */
 function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'transfer' {
   return config.defaultPaymentMethod === 'transfer' ? 'transfer' : 'cash';
+}
+
+/**
+ * Read the Infakt bank-account snapshot out of `config.bankAccount` (#1303
+ * follow-up). `id` is a string end-to-end (matching the neutral
+ * `InvoicingBankAccount.id`); a legacy numeric `id` persisted by an earlier
+ * build is coerced so the select still preselects it.
+ */
+// Exported for unit testing the legacy-id coercion / shape-guard seam
+// (#1310 review, finding 6); consumed only via the component's `defaultValues`.
+export function readInfaktBankAccount(
+  config: Record<string, unknown>,
+): { id: string; accountNumber: string; bankName: string } | null {
+  const raw = config.bankAccount;
+  if (
+    typeof raw !== 'object' ||
+    raw === null ||
+    typeof (raw as { accountNumber?: unknown }).accountNumber !== 'string' ||
+    typeof (raw as { bankName?: unknown }).bankName !== 'string'
+  ) {
+    return null;
+  }
+  const id = (raw as { id?: unknown }).id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    id: String(id),
+    accountNumber: (raw as { accountNumber: string }).accountNumber,
+    bankName: (raw as { bankName: string }).bankName,
+  };
 }
 
 /**
@@ -143,47 +174,6 @@ function readInpostSenderAddress(
       postCode: typeof address.postCode === 'string' ? address.postCode : '',
       countryCode: typeof address.countryCode === 'string' ? address.countryCode : '',
     },
-  };
-}
-
-/**
- * Read the KSeF seller config sub-object out of `config.seller` (#1223).
- * Returns a flat object of form-field values so the edit form can hydrate the
- * seller profile fields. Falls back to the old flat `config.sellerNip` for
- * connections saved before the nested shape was introduced.
- */
-function readKsefSeller(config: Record<string, unknown>): {
-  sellerNip: string;
-  sellerName: string;
-  sellerAddressLine1: string;
-  sellerAddressLine2: string;
-  sellerCity: string;
-  sellerPostalCode: string;
-  sellerCountryIso2: string;
-} {
-  const seller =
-    typeof config.seller === 'object' && config.seller !== null
-      ? (config.seller as Record<string, unknown>)
-      : {};
-  const address =
-    typeof seller.address === 'object' && seller.address !== null
-      ? (seller.address as Record<string, unknown>)
-      : {};
-  // Fallback: if config.seller.nip is absent, read legacy flat config.sellerNip.
-  const nip =
-    typeof seller.nip === 'string'
-      ? seller.nip
-      : typeof config.sellerNip === 'string'
-        ? config.sellerNip
-        : '';
-  return {
-    sellerNip: nip,
-    sellerName: typeof seller.name === 'string' ? seller.name : '',
-    sellerAddressLine1: typeof address.line1 === 'string' ? address.line1 : '',
-    sellerAddressLine2: typeof address.line2 === 'string' ? address.line2 : '',
-    sellerCity: typeof address.city === 'string' ? address.city : '',
-    sellerPostalCode: typeof address.postalCode === 'string' ? address.postalCode : '',
-    sellerCountryIso2: typeof address.countryIso2 === 'string' ? address.countryIso2 : '',
   };
 }
 
@@ -293,24 +283,33 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const navigate = useNavigate();
   const [showRawJson, setShowRawJson] = useState(false);
   const plugin = usePlatform(connection.platformType);
+  // #1330 — the platform's non-render structured-config half: Zod schema
+  // fragment, read-side hydration, write-side assembly. Memoized on the plugin
+  // reference (stable from the registry) so the RHF resolver isn't rebuilt per
+  // render.
+  const connectionConfig = plugin?.connectionConfig;
+  const resolverSchema = useMemo(
+    () => buildEditConnectionSchema(connectionConfig),
+    [connectionConfig],
+  );
 
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
       name: connection.name,
-      baseUrl: readString(connection.config, 'baseUrl'),
-      siteUrl: readString(connection.config, 'siteUrl'),
-      shopId: readString(connection.config, 'shopId'),
-      storefrontBaseUrl: readString(connection.config, 'storefrontBaseUrl'),
+      baseUrl: readConfigString(connection.config, 'baseUrl'),
+      siteUrl: readConfigString(connection.config, 'siteUrl'),
+      shopId: readConfigString(connection.config, 'shopId'),
+      storefrontBaseUrl: readConfigString(connection.config, 'storefrontBaseUrl'),
       // #168 — pre-fill OL callback URL via the platform plugin when the
       // connection has none yet. Browser-context value, not server-trusted; the
       // BE doesn't derive this from request headers (host-header injection risk),
       // so the FE owns the convenience default. Operator can override for dev
       // (e.g. http://host.docker.internal:3000) by editing the field.
       openlinkerCallbackBaseUrl:
-        readString(connection.config, 'openlinkerCallbackBaseUrl') ||
+        readConfigString(connection.config, 'openlinkerCallbackBaseUrl') ||
         plugin?.getCallbackUrlDefault?.() ||
         '',
-      masterCatalogConnectionId: readString(connection.config, 'masterCatalogConnectionId'),
+      masterCatalogConnectionId: readConfigString(connection.config, 'masterCatalogConnectionId'),
       // PS `defaultCarrierId` is persisted as a number; the form keeps it
       // as a string so the same `<Select>` primitive serves both this
       // field and the per-method mapping dropdown (#517).
@@ -329,25 +328,24 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // #759 — symmetric read-side hydration for the Subiekt fields, or an
       // existing connection renders empty and an unrelated save blanks the
       // persisted state (reverting the live getInvoiceTriggerModel consumer to 'manual').
-      subiektBridgeUrl: readString(connection.config, 'subiektBridgeUrl'),
+      subiektBridgeUrl: readConfigString(connection.config, 'subiektBridgeUrl'),
       subiektTriggerModel: readTriggerModel(connection.config),
       subiektCapabilities: readSubiektCapabilities(connection.config),
-      // KSeF structured fields (#1152, #1223) — env from `config.env`; seller
-      // profile from nested `config.seller` (with legacy flat `config.sellerNip`
-      // fallback); context identifier from `config.contextIdentifier`.
-      ksefEnvironment: readKsefEnvironment(connection.config),
-      ...readKsefSeller(connection.config),
-      contextIdentifier: readString(connection.config, 'contextIdentifier'),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an
       // unrelated save doesn't blank the persisted InPost config.
       inpostEnvironment: readInpostEnvironment(connection.config),
-      inpostOrganizationId: readString(connection.config, 'organizationId'),
+      inpostOrganizationId: readConfigString(connection.config, 'organizationId'),
       inpostSenderAddress: readInpostSenderAddress(connection.config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
+      infaktBankAccount: readInfaktBankAccount(connection.config),
+      // Plugin-owned structured fields (#1330) — the platform's contribution
+      // hydrates its own field slice (e.g. KSeF seller/payment) so an
+      // unrelated save doesn't blank the persisted platform config.
+      ...(connectionConfig?.readConfigToForm(connection.config) ?? {}),
     },
-    resolver: zodResolver(editConnectionSchema),
+    resolver: zodResolver(resolverSchema),
   });
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
@@ -396,18 +394,35 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // a single JSON payload. Refuses to write when the JSON is unparseable so we
   // never discard the user's in-progress raw edits.
   function syncStructuredToJson(
-    field: StructuredField,
+    field: SyncableField,
     value: string,
     options: { markDirty?: boolean } = {},
   ): void {
     const markDirty = options.markDirty ?? true;
+    if (import.meta.env.DEV && !(HOST_STRUCTURED_FIELDS as readonly string[]).includes(field)) {
+      // Dev-only misconfiguration signal (#1330): a plugin section synced a
+      // field that has no host merge clause and either (a) its platform ships
+      // no `connectionConfig` contribution to assemble it, or (b) the
+      // contribution never declares the field in its `schemaShape` (the
+      // compiler-enforced key set every contributed field must appear in) -
+      // either way the value would be silently dropped from the config JSON.
+      if (connectionConfig === undefined) {
+        console.warn(
+          `[EditConnectionForm] Structured field "${field}" has no host merge clause and platform "${connection.platformType}" contributes no connectionConfig - the value will not be persisted into the config JSON.`,
+        );
+      } else if (!(field in connectionConfig.schemaShape)) {
+        console.warn(
+          `[EditConnectionForm] Structured field "${field}" has no host merge clause and is not declared in platform "${connection.platformType}"'s connectionConfig.schemaShape - the value will not be persisted into the config JSON.`,
+        );
+      }
+    }
     if (markDirty && field === 'masterCatalogConnectionId') {
       operatorTouchedCatalogRef.current = true;
     }
     form.setValue(field, value, { shouldDirty: markDirty });
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, { [field]: value });
+    const merged = mergeStructuredIntoConfig(parsed, { [field]: value }, connectionConfig);
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: markDirty });
   }
 
@@ -418,9 +433,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncSellerDefaultsToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      sellerDefaults: form.getValues('sellerDefaults'),
-    });
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { sellerDefaults: form.getValues('sellerDefaults') },
+      connectionConfig,
+    );
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -433,9 +450,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncSubiektCapabilitiesToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      subiektCapabilities: form.getValues('subiektCapabilities'),
-    });
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { subiektCapabilities: form.getValues('subiektCapabilities') },
+      connectionConfig,
+    );
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -446,8 +465,23 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   function syncInpostSenderAddressToJson(): void {
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(
+      parsed,
+      { inpostSenderAddress: form.getValues('inpostSenderAddress') },
+      connectionConfig,
+    );
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #1303 follow-up — re-serialize the whole `infaktBankAccount` snapshot into
+  // configText. Clone of `syncInpostSenderAddressToJson`: reads CURRENT form
+  // state, takes NO argument, and KEEPS the `!configIsParseable` early-return.
+  // The Infakt section MUST setValue('infaktBankAccount', …) BEFORE calling this.
+  function syncInfaktBankAccountToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
-      inpostSenderAddress: form.getValues('inpostSenderAddress'),
+      infaktBankAccount: form.getValues('infaktBankAccount'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -565,10 +599,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncStructuredToJson={(field, value, options) =>
-            syncStructuredToJson(field as StructuredField, value, options)
+            syncStructuredToJson(field as SyncableField, value, options)
           }
           syncObjectToJson={syncSubiektCapabilitiesToJson}
           syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
+          syncInfaktBankAccountToJson={syncInfaktBankAccountToJson}
         />
       ) : null}
 

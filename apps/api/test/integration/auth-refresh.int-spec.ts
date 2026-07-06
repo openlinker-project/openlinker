@@ -107,19 +107,28 @@ describe('Auth Refresh Integration (#710)', () => {
           ? [String(rawHeader)]
           : [];
       expect(rawCookies.length).toBeGreaterThan(0);
-      const refreshLine = rawCookies.find((c) => c.startsWith(`${COOKIE_REFRESH}=`));
-      // Skip the migration-cleanup Set-Cookie that `setCsrfCookie` emits at
-      // `Path=/auth` to drop the pre-#748 stale copy. That header looks like
-      // `ol_csrf=; Path=/auth; Expires=Thu, 01 Jan 1970 …` — it precedes the
-      // real issuance so a plain `.find()` would match the clearing line
-      // first and the `Path=/` assertions below would all fail.
+      // Skip the migration-cleanup Set-Cookie lines that precede the real
+      // issuance: `setCsrfCookie` clears the pre-#748 ol_csrf at `Path=/auth`,
+      // `setRefreshCookie` clears the pre-#1327 ol_refresh at `Path=/auth`.
+      // Those headers look like `ol_…=; Path=/auth; Expires=Thu, 01 Jan 1970 …`
+      // — a plain `.find()` would match the clearing line first and the Path
+      // assertions below would all fail.
+      const refreshLine = rawCookies.find(
+        (c) => c.startsWith(`${COOKIE_REFRESH}=`) && !/Expires=Thu, 01 Jan 1970/.test(c),
+      );
       const csrfLine = rawCookies.find(
         (c) => c.startsWith(`${COOKIE_CSRF}=`) && !/Expires=Thu, 01 Jan 1970/.test(c),
       );
 
       expect(refreshLine).toMatch(/HttpOnly/i);
       expect(refreshLine).toMatch(/SameSite=Lax/i); // dev/test mode
-      expect(refreshLine).toMatch(/Path=\/auth/);
+      // ol_refresh MUST be scoped to the versioned mount point. The literal
+      // /v1/auth here is deliberate — it pairs with the literal request path
+      // `.post('/v1/auth/login')` above, witnessing the RFC 6265 §5.1.4
+      // prefix-match the browser performs. Deriving it from API_VERSION_LABEL
+      // would make the assertion true by construction and blind to
+      // mount-vs-cookie drift (#1327).
+      expect(refreshLine).toMatch(/Path=\/v1\/auth(;|$)/);
       expect(csrfLine).toBeDefined();
       expect(csrfLine).not.toMatch(/HttpOnly/i); // SPA must read this
       // ol_csrf MUST be at Path=/ — document.cookie only exposes cookies whose

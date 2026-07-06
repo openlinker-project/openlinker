@@ -36,6 +36,7 @@ import {
   Query,
   Param,
   ParseUUIDPipe,
+  type PipeTransform,
   HttpCode,
   HttpStatus,
   Inject,
@@ -43,6 +44,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  NotImplementedException,
   Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -67,11 +69,15 @@ import {
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
+  BuyerProfile,
+  isBankAccountsReader,
+  isBankAccountDefaultSetter,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
+  IssuedLineSnapshot,
   OriginalDocumentSnapshot,
   TaxIdentifier,
   InvoicingPort,
@@ -95,6 +101,7 @@ import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
+import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -114,6 +121,28 @@ function invoiceIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
 }
 
+/** Shared `:connectionId` param pipe — 400 on a malformed UUID, so a bad path id never reaches the DB uuid cast (#1313). */
+function connectionIdPipe(): ParseUUIDPipe {
+  return new ParseUUIDPipe({ version: '4' });
+}
+
+/**
+ * `:accountId` param pipe — 400 on an empty/whitespace id (#1310 review). The
+ * adapter already `encodeURIComponent`s the id before the provider PUT, so this
+ * is a contract guard (a blank segment never reaches the provider), not the
+ * injection defence, and it holds for any future `BankAccountDefaultSetter`.
+ */
+function accountIdPipe(): PipeTransform<string, string> {
+  return {
+    transform(value: string): string {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new BadRequestException('accountId must be a non-empty string');
+      }
+      return value;
+    },
+  };
+}
+
 @Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
@@ -129,6 +158,104 @@ export class InvoicingController {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
   ) {}
+
+  @Get('connections/:connectionId/bank-accounts')
+  @ApiOperation({
+    summary: "List the connection's provider bank accounts (#1303 follow-up)",
+    description:
+      "Resolves the connection's Invoicing adapter and, if it implements BankAccountsReader, " +
+      "returns the seller's payable bank accounts (e.g. for picking one to stamp on Transfer " +
+      'invoices). 501 when the adapter has no bank-account concept.',
+  })
+  @ApiResponse({ status: 200, type: [BankAccountResponseDto] })
+  @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountsReader' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async getBankAccounts(
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
+  ): Promise<BankAccountResponseDto[]> {
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
+    if (!isBankAccountsReader(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement BankAccountsReader`,
+      );
+    }
+    try {
+      const accounts = await adapter.listBankAccounts();
+      return accounts.map((account) => ({
+        id: account.id,
+        accountNumber: account.accountNumber,
+        bankName: account.bankName,
+        isDefault: account.isDefault,
+      }));
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'listBankAccounts');
+    }
+  }
+
+  @Post('connections/:connectionId/bank-accounts/:accountId/default')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Mark a bank account as the provider's default (#1303 follow-up)",
+    description:
+      "Resolves the connection's Invoicing adapter and, if it implements " +
+      'BankAccountDefaultSetter, marks accountId as the default with the provider (e.g. ' +
+      "inFakt's own account settings) — keeps the provider's default in sync with the " +
+      "account OpenLinker stamps on Transfer invoices. 501 when the adapter doesn't support it.",
+  })
+  @ApiResponse({ status: 204, description: 'Default account updated' })
+  @ApiResponse({ status: 404, description: 'Connection not found or has no Invoicing adapter' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountDefaultSetter' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async setDefaultBankAccount(
+    @Param('connectionId', connectionIdPipe()) connectionId: string,
+    @Param('accountId', accountIdPipe()) accountId: string,
+  ): Promise<void> {
+    const adapter = await this.resolveInvoicingAdapter(connectionId);
+    if (!isBankAccountDefaultSetter(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${connectionId} does not implement BankAccountDefaultSetter`,
+      );
+    }
+    try {
+      await adapter.setDefaultBankAccount(accountId);
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'setDefaultBankAccount');
+    }
+  }
+
+  /**
+   * Resolve the connection's Invoicing adapter for the bank-account proxy
+   * endpoints. `AdapterNotFoundException` → 502 (provider unavailable),
+   * mirroring the issuance path's mapping, instead of surfacing as a generic
+   * 500; connection / capability-configuration errors propagate uncaught for
+   * the global filter to classify (404 etc.).
+   */
+  private async resolveInvoicingAdapter(connectionId: string): Promise<InvoicingPort> {
+    try {
+      return await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+        connectionId,
+        'Invoicing',
+      );
+    } catch (error) {
+      if (error instanceof AdapterNotFoundException) {
+        throw new BadGatewayException('Invoicing provider is unavailable');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The bank-account endpoints are pure provider proxies, so a live provider
+   * call failing is upstream trouble, not a server bug — map it to 502 with a
+   * generic message. Provider error text is logged, never returned (same PII
+   * posture as `toHttpException`).
+   */
+  private toProviderBadGateway(error: unknown, operation: string): Error {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Invoicing provider ${operation} failed: ${message}`);
+    return new BadGatewayException('Invoicing provider request failed');
+  }
 
   @Post('invoices')
   @HttpCode(HttpStatus.CREATED)
@@ -365,28 +492,35 @@ export class InvoicingController {
     let issued: InvoiceRecord;
     try {
       // Some adapters (KSeF's FA(3) KOR) cannot correct via a delta — they must
-      // resubmit a COMPLETE corrected document. Rebuild the original document's
-      // buyer/currency/lines from the order snapshot, exactly like a keyless
-      // re-issue does in `retryOne` — the buyer tax id is not persisted on
-      // `InvoiceRecord`, so it is rebuilt as `buyerTaxId: null`, same accepted
-      // limitation (see `OriginalDocumentSnapshot`'s doc comment for the
-      // line-fidelity caveat too). Built UNCONDITIONALLY whenever the backing
-      // order is still available — regardless of whether the resolved
-      // connection's adapter actually needs it — rather than resolving the
-      // adapter here just to branch on it; adapters that only need deltas
-      // (Subiekt) simply ignore the field. The extra order fetch is cheap
-      // relative to the network round-trip `issueCorrection` makes next.
-      const orderRecord = await this.orders.getOrderRecord(original.orderId);
-      const originalDocument = orderRecord
-        ? this.buildOriginalDocumentSnapshot({
-            orderRecord,
-            connectionId: original.connectionId,
-            documentType: original.documentType,
-            clearanceReference: original.clearanceReference,
-            documentNumber: original.providerInvoiceNumber,
-            issuedAt: original.issuedAt,
-          })
-        : undefined;
+      // resubmit a COMPLETE corrected document, which needs the original
+      // document's buyer/currency/lines. Built UNCONDITIONALLY whenever it can be
+      // — regardless of whether the resolved connection's adapter actually needs
+      // it — rather than resolving the adapter here just to branch on it; adapters
+      // that only need deltas (Subiekt) simply ignore the field.
+      //
+      // #1297: prefer the persisted issuance-time snapshot on the document being
+      // corrected (`original.issuedLineSnapshot`) — which, for a correction-of-
+      // correction, is the PRIOR correction's own post-correction lines, since
+      // `original` is resolved by :invoiceId above. Only when no snapshot exists
+      // (rows issued before this column) fall back to rebuilding from the order's
+      // CURRENT state — the pre-#1297 behaviour, with its accepted line-fidelity
+      // and `buyerTaxId: null` caveats (see `OriginalDocumentSnapshot`'s doc).
+      let originalDocument: OriginalDocumentSnapshot | undefined;
+      if (original.issuedLineSnapshot) {
+        originalDocument = this.buildSnapshotFromRecord(original, original.issuedLineSnapshot);
+      } else {
+        const orderRecord = await this.orders.getOrderRecord(original.orderId);
+        originalDocument = orderRecord
+          ? this.buildOriginalDocumentSnapshot({
+              orderRecord,
+              connectionId: original.connectionId,
+              documentType: original.documentType,
+              clearanceReference: original.clearanceReference,
+              documentNumber: original.providerInvoiceNumber,
+              issuedAt: original.issuedAt,
+            })
+          : undefined;
+      }
 
       issued = await this.invoiceService.issueCorrection({
         connectionId: original.connectionId,
@@ -521,11 +655,46 @@ export class InvoicingController {
   }
 
   /**
-   * Rebuild the original document's buyer/currency/lines from the order
-   * snapshot for adapters (e.g. KSeF) that must resubmit a COMPLETE corrected
-   * document rather than apply a delta — mirrors `retryOne`'s keyless-re-issue
-   * reconstruction. The buyer tax id is not persisted on `InvoiceRecord`, so it
-   * is rebuilt as `buyerTaxId: null`, the same accepted limitation as re-issue.
+   * Assemble `OriginalDocumentSnapshot` from the record's persisted issuance-time
+   * line snapshot (#1297) — the PRIMARY path. `buyer`/`currency`/`lines` come from
+   * the snapshot (the lines AS ISSUED, including the true buyer tax id — no
+   * `buyerTaxId: null` caveat and no order fetch); `documentType`/clearance/number/
+   * issue date come from the record itself. Transitional exception: a snapshot
+   * persisted by a correction of a PRE-#1297 record was seeded from the fallback
+   * reconstruction, so its `taxId` is `null` — a one-hop degradation that
+   * self-heals for documents issued after the snapshot column existed. The
+   * snapshot's `buyer` round-trips from jsonb as a plain structural object
+   * (`IssuedSnapshotBuyer`), so it is re-wrapped into a real `BuyerProfile` to
+   * match the fallback path's output shape.
+   */
+  private buildSnapshotFromRecord(
+    record: InvoiceRecord,
+    snapshot: IssuedLineSnapshot,
+  ): OriginalDocumentSnapshot {
+    const b = snapshot.buyer;
+    return {
+      buyer: new BuyerProfile(b.name, b.taxId, b.address, b.type),
+      currency: snapshot.currency,
+      documentType: record.documentType.length > 0 ? record.documentType : 'invoice',
+      lines: snapshot.lines,
+      clearanceReference: record.clearanceReference,
+      // Non-null assertions (not `?? ''` / ternary fallbacks): the caller already
+      // asserts `providerInvoiceNumber` and `issuedAt` are non-null before this
+      // path runs, so masking a future guard regression behind an empty string
+      // would silently produce an invalid document number / issue date instead
+      // of surfacing the broken invariant.
+      documentNumber: record.providerInvoiceNumber!,
+      issueDate: this.toIsoDateOnly(record.issuedAt!),
+    };
+  }
+
+  /**
+   * FALLBACK (pre-#1297) reconstruction: rebuild the original document's
+   * buyer/currency/lines from the order's CURRENT snapshot for records issued
+   * before `issuedLineSnapshot` existed — mirrors `retryOne`'s keyless-re-issue
+   * reconstruction. The buyer tax id is not recoverable this way, so it is
+   * rebuilt as `buyerTaxId: null`, and lines reflect the order's current state
+   * (see `OriginalDocumentSnapshot`'s doc comment for the line-fidelity caveat).
    * Takes a single options object (rather than positional params) so call
    * sites can't accidentally transpose two same-typed fields (e.g.
    * `documentNumber` / `clearanceReference`, both nullable strings).

@@ -11,6 +11,7 @@ import { Test } from '@nestjs/testing';
 import {
   ConflictException,
   NotFoundException,
+  NotImplementedException,
   BadRequestException,
   BadGatewayException,
   UnprocessableEntityException,
@@ -20,6 +21,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
   UnsupportedRegulatoryDocumentKindError,
+  BuyerProfile,
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
@@ -622,6 +624,83 @@ describe('InvoicingController', () => {
 
       await expect(controller.issueCorrection(invoiceId, dto)).rejects.toThrow();
     });
+
+    // #1297 — with a persisted issuance-time snapshot on the document being
+    // corrected, the controller assembles `originalDocument` from it and skips
+    // the order fetch entirely.
+    const snapshotBuyer = new BuyerProfile(
+      'ACME Sp. z o.o.',
+      { scheme: 'pl-nip', value: '1234567890' },
+      { line1: 'ul. X 1', line2: null, city: 'Poznań', postalCode: '60-001', countryIso2: 'PL' },
+      'company',
+    );
+    const issuedSnapshot = {
+      buyer: snapshotBuyer,
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+    };
+
+    it('#1297: prefers the persisted issuedLineSnapshot and does NOT fetch the order', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ issuedLineSnapshot: issuedSnapshot, clearanceReference: 'KSEF-ORIG' }),
+      );
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(orders.getOrderRecord).not.toHaveBeenCalled();
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({
+            currency: 'PLN',
+            documentType: 'invoice',
+            clearanceReference: 'KSEF-ORIG',
+            documentNumber: 'FV/2026/1',
+            issueDate: '2026-06-23',
+            // Lines come from the snapshot (AS ISSUED), not the order.
+            lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 100, taxRate: '23' }],
+            // Buyer is re-wrapped into a real BuyerProfile with the true tax id.
+            buyer: expect.objectContaining({
+              name: 'ACME Sp. z o.o.',
+              taxId: { scheme: 'pl-nip', value: '1234567890' },
+              type: 'company',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('#1297: correction-of-correction reads the prior correction record own snapshot', async () => {
+      const priorCorrectionSnapshot = {
+        buyer: snapshotBuyer,
+        currency: 'PLN',
+        // Post-correction lines of the prior correction.
+        lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 90, taxRate: '23' }],
+      };
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({
+          documentType: 'corrected',
+          issuedLineSnapshot: priorCorrectionSnapshot,
+        }),
+      );
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+
+      await controller.issueCorrection(invoiceId, dto);
+
+      expect(orders.getOrderRecord).not.toHaveBeenCalled();
+      expect(invoiceService.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDocument: expect.objectContaining({
+            documentType: 'corrected',
+            lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 90, taxRate: '23' }],
+          }),
+        }),
+      );
+    });
   });
 
   describe('GET /orders/:orderId/invoice', () => {
@@ -1045,6 +1124,109 @@ describe('InvoicingController', () => {
         controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /connections/:connectionId/bank-accounts (#1303 follow-up)', () => {
+    it('should return the mapped bank-account list when the adapter implements BankAccountsReader', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn().mockResolvedValue([
+          {
+            id: '1',
+            accountNumber: '61 1140 2004 0000 3002 0135 5387',
+            bankName: 'mBank',
+            isDefault: true,
+          },
+        ]),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await controller.getBankAccounts('conn-infakt-1');
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-infakt-1', 'Invoicing');
+      expect(result).toEqual([
+        {
+          id: '1',
+          accountNumber: '61 1140 2004 0000 3002 0135 5387',
+          bankName: 'mBank',
+          isDefault: true,
+        },
+      ]);
+    });
+
+    it('should 501 when the adapter does not implement BankAccountsReader', async () => {
+      const adapter = {} as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.getBankAccounts('conn-ksef-1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+
+    it('should 502 when the adapter cannot be constructed (AdapterNotFoundException)', async () => {
+      integrations.getCapabilityAdapter.mockRejectedValue(new AdapterNotFoundException('infakt'));
+
+      await expect(controller.getBankAccounts('conn-infakt-1')).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+    });
+
+    it('should 502 with a generic message when the live provider call fails', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn().mockRejectedValue(new Error('inFakt 500: seller NIP 123')),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const rejection = controller.getBankAccounts('conn-infakt-1');
+      await expect(rejection).rejects.toBeInstanceOf(BadGatewayException);
+      // Provider error text must never be echoed back (PII posture).
+      await expect(rejection).rejects.not.toThrow(/NIP 123/);
+    });
+  });
+
+  describe('POST /connections/:connectionId/bank-accounts/:accountId/default (#1303 follow-up)', () => {
+    it('should call setDefaultBankAccount when the adapter implements BankAccountDefaultSetter', async () => {
+      const setDefaultBankAccount = jest.fn().mockResolvedValue(undefined);
+      const adapter = {
+        listBankAccounts: jest.fn(),
+        setDefaultBankAccount,
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await controller.setDefaultBankAccount('conn-infakt-1', '1');
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-infakt-1', 'Invoicing');
+      expect(setDefaultBankAccount).toHaveBeenCalledWith('1');
+    });
+
+    it('should 501 when the adapter does not implement BankAccountDefaultSetter', async () => {
+      const adapter = {} as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-ksef-1', '1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+
+    it('should 501 when the adapter exposes the setter without the inherited lister (guard requires both)', async () => {
+      const adapter = { setDefaultBankAccount: jest.fn() } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-partial-1', '1')).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+
+    it('should 502 when the live provider call fails', async () => {
+      const adapter = {
+        listBankAccounts: jest.fn(),
+        setDefaultBankAccount: jest.fn().mockRejectedValue(new Error('inFakt 503')),
+      } as unknown as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(controller.setDefaultBankAccount('conn-infakt-1', '1')).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
     });
   });
 });

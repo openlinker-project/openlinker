@@ -178,6 +178,43 @@ export interface InvoiceLine {
 }
 
 /**
+ * Structural buyer shape persisted inside {@link IssuedLineSnapshot}. Field-for-
+ * field the data shape of {@link BuyerProfile} (a live instance assigns to it
+ * directly), but typed structurally because the snapshot round-trips through
+ * jsonb, which strips the class prototype (the `isCompany` getter). Consumers
+ * that need a real `BuyerProfile` re-wrap it from these fields.
+ */
+export interface IssuedSnapshotBuyer {
+  name: string;
+  /** Scheme-tagged tax id; `null` when the buyer has none (typically B2C). */
+  taxId: TaxIdentifier | null;
+  address: BuyerAddress;
+  type: BuyerType;
+}
+
+/**
+ * Issuance-time snapshot of the exact command inputs a correction needs to
+ * reconstruct the original document (#1297). Persisted on `InvoiceRecord` when a
+ * document is issued so a later correction diffs its `originalLineNumber`-indexed
+ * deltas against the lines AS ISSUED, not the order's current (possibly-edited)
+ * state. Neutral (ADR-026): reuses the {@link BuyerProfile} data shape
+ * ({@link IssuedSnapshotBuyer}) + {@link InvoiceLine}; no regime/provider
+ * vocabulary.
+ *
+ * Only `buyer`/`currency`/`lines` live here — the corrected document's
+ * `documentType`/clearance reference/number/issue date are read from the
+ * `InvoiceRecord` itself when assembling an {@link OriginalDocumentSnapshot}.
+ */
+export interface IssuedLineSnapshot {
+  /** Buyer as issued — structural (jsonb round-trip), see {@link IssuedSnapshotBuyer}. */
+  buyer: IssuedSnapshotBuyer;
+  /** ISO 4217 currency code, echoed from the issue command. */
+  currency: string;
+  /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate). */
+  lines: InvoiceLine[];
+}
+
+/**
  * Neutral correction descriptor — present only when {@link IssueInvoiceCommand}
  * issues a correcting document (`documentType` of `corrected` / `credit-note`).
  *
@@ -349,25 +386,28 @@ export interface CorrectionLine {
 
 /**
  * Best-effort reconstruction of the original document's issuance inputs,
- * assembled by the CALLER (never by adapters) from the order the original
- * document was issued for — mirroring how a keyless re-issue rebuilds its
- * {@link IssueInvoiceCommand} from the order snapshot. Needed by adapters that
- * must resubmit a COMPLETE corrected document rather than apply a delta (e.g.
- * KSeF's FA(3) KOR, which has no delta-only correction primitive) — adapters
- * that only need per-line deltas (Subiekt) never read this field.
+ * assembled by the CALLER (never by adapters). Needed by adapters that must
+ * resubmit a COMPLETE corrected document rather than apply a delta (e.g. KSeF's
+ * FA(3) KOR, which has no delta-only correction primitive) — adapters that only
+ * need per-line deltas (Subiekt) never read this field.
  *
- * ACCEPTED LIMITATIONS (no persisted point-in-time snapshot exists today):
- * - `buyer` tax id is not persisted on `InvoiceRecord`, so it is rebuilt as
+ * PRIMARY source (#1297): the caller reads the persisted issuance-time
+ * {@link IssuedLineSnapshot} off the document being corrected (`InvoiceRecord`),
+ * so `buyer` (including its true tax id) and `lines` reflect the document AS
+ * ISSUED — the `originalLineNumber`-indexed correction deltas then diff against
+ * the correct baseline even if the order's items changed since issuance. For a
+ * correction-of-correction the "document being corrected" is the prior
+ * correction, whose own post-correction snapshot is the correct baseline.
+ *
+ * FALLBACK (records issued before the snapshot column existed): the caller
+ * rebuilds from the order's CURRENT state, mirroring a keyless re-issue. Two
+ * accepted limitations apply to that path ONLY:
+ * - `buyer` tax id is not recoverable from the order, so it is rebuilt as
  *   `buyerTaxId: null` — same accepted limitation as a keyless re-issue.
- * - `lines` are read off the order's CURRENT state, NOT a snapshot taken at
- *   original-issuance time. If the order's items were modified after the
- *   original document was issued (edited quantity/price, added/removed/
- *   reordered line), `lines` — and therefore the `originalLineNumber`-indexed
- *   correction deltas applied against it — may no longer match what the
- *   provider actually has on file for the referenced original document.
- *   Correcting an order that changed since its original issuance is UNSAFE
- *   until `InvoiceRecord` persists the true issuance-time line snapshot.
- *   Tracked by https://github.com/openlinker-project/openlinker/issues/1297.
+ * - `lines` reflect the order's current state; if the order's items were
+ *   modified after issuance, the deltas applied against them may not match what
+ *   the provider holds for the original document. Unavoidable for pre-#1297
+ *   rows with no snapshot; newly-issued documents always carry one.
  */
 export interface OriginalDocumentSnapshot {
   buyer: BuyerProfile;
@@ -491,6 +531,8 @@ export interface CreateInvoiceRecordInput {
   documentContent?: IssuedDocumentContent | null;
   /** Persisted machine-readable source document (e.g. FA(3) XML); `null` when not captured. */
   sourceDocument?: StoredDocument | null;
+  /** Issuance-time line snapshot (#1297); `null` when not captured. */
+  issuedLineSnapshot?: IssuedLineSnapshot | null;
 }
 
 /**
@@ -598,4 +640,12 @@ export interface InvoiceOutcomePatch {
    * a source document.
    */
   sourceDocument?: StoredDocument | null;
+  /**
+   * Issuance-time line snapshot (#1297). Set once on a successful `issued`
+   * outcome — from the issue command for `issueInvoice`, or the post-correction
+   * ("after") lines for `issueCorrection`. NOT write-once at the persistence
+   * boundary (unlike `sourceDocument`): the service only ever sets it on the
+   * single terminal `issued` patch. `null` when not captured.
+   */
+  issuedLineSnapshot?: IssuedLineSnapshot | null;
 }

@@ -31,15 +31,16 @@ import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
-import type { SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
+import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
   KsefConnectionConfig,
   KsefCredentials,
   KsefEnvironment,
+  KsefPaymentConfig,
   KsefSellerConfig,
 } from '../../domain/types/ksef-connection.types';
-import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
+import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import type { IKsefAdapterFactory, KsefAdapters } from '../interfaces/ksef-adapter.factory.interface';
 
@@ -59,6 +60,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
 
     const seller = this.resolveSeller(connection);
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
+    const payment = this.resolvePayment(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -80,6 +82,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
+        { payment },
       ),
     };
   }
@@ -146,6 +149,64 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
   private resolveDefaultTaxRate(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
     return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
+  }
+
+  /**
+   * Resolve the connection-level default payment info (#1311) into the
+   * builder's neutral `Fa3PaymentInput` shape. Unlike `resolveSeller`, an
+   * absent/empty `config.payment` is a valid, common state — this returns
+   * `undefined` rather than throwing, so the builder omits `Platnosc`
+   * entirely. Defensive against a malformed `bankAccount` (empty `nrRb`), an
+   * unknown `formaPlatnosci` code, or a negative/non-integer
+   * `paymentTermDays` slipping through pre-validator connections, mirroring
+   * `resolveDefaultTaxRate`'s defensive posture — each field is dropped
+   * rather than emitted verbatim if it fails the same check the
+   * `ksef.publicapi.v2` shape validator applies at save time.
+   *
+   * The required-together invariants are thus enforced in three layers (FE
+   * assembly, the shape validator, and here) — intentional defense-in-depth
+   * matching the `resolveSeller` precedent (PR #1317 review): each layer
+   * guards a different entry path (operator UI, API writes, pre-validator /
+   * out-of-band config rows), so none of the three can be dropped without
+   * reopening one of those paths.
+   */
+  private resolvePayment(connection: Connection): Fa3PaymentInput | undefined {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const payment: KsefPaymentConfig | undefined = config?.payment;
+    if (!payment) {
+      return undefined;
+    }
+    const result: Fa3PaymentInput = {};
+    if (
+      payment.formaPlatnosci !== undefined &&
+      (KsefFormaPlatnosciValues as readonly string[]).includes(payment.formaPlatnosci)
+    ) {
+      result.formaPlatnosci = payment.formaPlatnosci;
+    }
+    // Whitespace-stripped defensively: the FE strips at assembly time and the
+    // shape validator rejects spaced values at save time, but a pre-validator
+    // config row could still carry a conventionally-spaced NRB — emitted
+    // verbatim it would fail KSeF's TNrRB pattern at clearance (PR #1317
+    // review). A whitespace-only value strips to '' and drops the block.
+    const nrRb = payment.bankAccount?.nrRb?.replace(/\s+/g, '');
+    if (nrRb) {
+      result.bankAccount = {
+        nrRb,
+        ...(payment.bankAccount?.bankName ? { bankName: payment.bankAccount.bankName } : {}),
+        ...(payment.bankAccount?.swift ? { swift: payment.bankAccount.swift } : {}),
+      };
+    }
+    if (
+      payment.paymentTermDays !== undefined &&
+      Number.isInteger(payment.paymentTermDays) &&
+      payment.paymentTermDays >= 0
+    ) {
+      result.paymentTermDays = payment.paymentTermDays;
+    }
+    if (payment.skonto?.conditions && payment.skonto.amount) {
+      result.skonto = payment.skonto;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
   }
 
   private async resolveCredentials(

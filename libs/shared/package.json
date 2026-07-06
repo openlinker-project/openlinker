@@ -52,6 +52,10 @@
     "./money": {
       "types": "./dist/money/index.d.ts",
       "require": "./dist/money/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "require": "./dist/worker/index.js"
     }
   },
   "files": [

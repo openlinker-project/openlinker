@@ -30,7 +30,9 @@ import type { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { IRegistrationService } from './registration.service.interface';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
-import { REFRESH_COOKIE_NAME } from './auth.cookies';
+import { PATH_METADATA } from '@nestjs/common/constants';
+import { API_VERSION_LABEL } from '../app-info/app-info.types';
+import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from './auth.cookies';
 
 const makeUser = (): User =>
   new User('user-uuid-123', 'admin', null, '$2a$10$hash', 'admin', 'active', new Date(), new Date());
@@ -87,6 +89,19 @@ describe('AuthController', () => {
     refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
   });
 
+  describe('refresh cookie path drift guard (#1327)', () => {
+    it('scopes the refresh cookie to the versioned mount point of AuthController', () => {
+      // RFC 6265 §5.1.4: the browser only sends ol_refresh when its Path
+      // prefixes the request path on / boundaries. Under URI versioning the
+      // controller is mounted at /{API_VERSION_LABEL}/{controller path}, so
+      // the cookie path must be derived from the same two sources — a future
+      // controller-prefix change fails here; a version bump self-heals.
+      const controllerPath = Reflect.getMetadata(PATH_METADATA, AuthController) as string;
+      expect(controllerPath).toBe('auth'); // guard against a silent undefined metadata read
+      expect(REFRESH_COOKIE_PATH).toBe(`/${API_VERSION_LABEL}/${controllerPath}`);
+    });
+  });
+
   describe('POST /auth/login', () => {
     const dto: LoginDto = Object.assign(new LoginDto(), {
       username: 'admin',
@@ -115,10 +130,19 @@ describe('AuthController', () => {
       const cookieNames = res.cookie.mock.calls.map((call) => call[0]);
       expect(cookieNames).toContain(REFRESH_COOKIE_NAME);
       expect(cookieNames).toContain('ol_csrf');
-      // setCsrfCookie proactively clears the stale /auth-scoped ol_csrf (#748)
-      // before re-issuing the /-scoped one, so users from the buggy window
-      // recover on their next login without needing to clear cookies manually.
+      // Refresh cookie must be issued at the versioned path or the browser
+      // never sends it back to /v1/auth/refresh (#1327).
+      expect(res.cookie).toHaveBeenCalledWith(
+        REFRESH_COOKIE_NAME,
+        'raw-refresh-token',
+        expect.objectContaining({ path: REFRESH_COOKIE_PATH }),
+      );
+      // Migration cleanups proactively clear the stale /auth-scoped copies —
+      // ol_csrf from the pre-#748 window, ol_refresh from the pre-#1327
+      // window — so users from the buggy windows recover on their next
+      // login without needing to clear cookies manually.
       expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, { path: '/auth' });
     });
 
     it('throws UnauthorizedException when credentials are invalid and skips cookie set', async () => {
@@ -159,8 +183,9 @@ describe('AuthController', () => {
       expect(refreshTokenService.rotate).toHaveBeenCalledWith('presented-token');
       expect(result.access_token).toBe('test-jwt-token');
       expect(res.cookie).toHaveBeenCalledTimes(2);
-      // Migration cleanup also fires on every successful refresh (#748).
+      // Migration cleanups also fire on every successful refresh (#748/#1327).
       expect(res.clearCookie).toHaveBeenCalledWith('ol_csrf', { path: '/auth' });
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, { path: '/auth' });
     });
 
     it('throws 401 when the cookie is missing', async () => {
@@ -186,8 +211,15 @@ describe('AuthController', () => {
           res as unknown as Response,
         ),
       ).rejects.toThrow(UnauthorizedException);
-      // 3 = ol_refresh @ /auth, ol_csrf @ /, ol_csrf @ /auth migration cleanup (#748).
-      expect(res.clearCookie).toHaveBeenCalledTimes(3);
+      // 4 = ol_refresh @ /v1/auth, ol_csrf @ /, plus the /auth migration
+      // cleanups for ol_csrf (#748) and ol_refresh (#1327). The wrong-path
+      // failure mode matters: a clear that misses the set path leaves a live
+      // HttpOnly refresh token in the jar, so assert WHICH cookie is deleted.
+      expect(res.clearCookie).toHaveBeenCalledTimes(4);
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, {
+        path: REFRESH_COOKIE_PATH,
+      });
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, { path: '/auth' });
     });
 
     it('revokes the orphan + clears cookies when getMe fails after a successful rotation', async () => {
@@ -209,7 +241,7 @@ describe('AuthController', () => {
       ).rejects.toThrow(UnauthorizedException);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('orphan-successor');
-      expect(res.clearCookie).toHaveBeenCalledTimes(3);
+      expect(res.clearCookie).toHaveBeenCalledTimes(4);
       // Cookies must NOT be set when the user is gone — the browser would
       // otherwise store a refresh cookie pointing at a useless DB row.
       expect(res.cookie).not.toHaveBeenCalled();
@@ -226,7 +258,14 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).toHaveBeenCalledWith('token-to-revoke');
-      expect(res.clearCookie).toHaveBeenCalledTimes(3);
+      expect(res.clearCookie).toHaveBeenCalledTimes(4);
+      // Logout must delete the cookie that was actually set (versioned path)
+      // AND the pre-#1327 legacy copy — a clear at the wrong path leaves a
+      // live HttpOnly refresh token behind after logout.
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, {
+        path: REFRESH_COOKIE_PATH,
+      });
+      expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_COOKIE_NAME, { path: '/auth' });
     });
 
     it('does not invoke revoke when no cookie is present, still clears cookies', async () => {
@@ -238,7 +277,7 @@ describe('AuthController', () => {
       await controller.logout(req, res as unknown as Response);
 
       expect(refreshTokenService.revoke).not.toHaveBeenCalled();
-      expect(res.clearCookie).toHaveBeenCalledTimes(3);
+      expect(res.clearCookie).toHaveBeenCalledTimes(4);
     });
   });
 
