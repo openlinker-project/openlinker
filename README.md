@@ -244,6 +244,7 @@ Database migrations run automatically (one-shot `migrate` container) before the 
 | OpenLinker API | http://localhost:3000 | — |
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/admin | `demo@prestashop.com` / `prestashop_demo` |
+| phpMyAdmin (PrestaShop MySQL) | http://localhost:8081 | `root` / `root` |
 
 PrestaShop auto-installs with a seeded catalog and the OpenLinker module pre-mounted. The PrestaShop ↔ OpenLinker **connection itself is configured manually** in the admin UI (`Connections → New`) — see the [Operator Guide](./docs/user-guide/README.md).
 

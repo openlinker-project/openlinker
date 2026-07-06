@@ -3,6 +3,11 @@ FROM node:20-alpine AS base
 # Install pnpm
 RUN npm install -g pnpm@9
 
+# bash: the repo's `migration:run` script (apps/api/package.json) invokes the
+# typeorm CLI via `bash`, which Alpine does not ship by default. The demo's
+# one-shot `migrate` service runs from this stage, so it needs bash present.
+RUN apk add --no-cache bash
+
 # Set working directory
 WORKDIR /app
 

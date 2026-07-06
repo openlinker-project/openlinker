@@ -47,7 +47,7 @@
     "dev:stack:seed-woocommerce": "docker exec openlinker-woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh",
     "dev:stack:wc-credentials": "docker exec openlinker-woocommerce cat /bitnami/wordpress/.dev-secrets/woocommerce-credentials.json | jq .",
     "dev:health": "curl -s http://localhost:3000/v1/health/dev-stack | jq . || curl -s http://localhost:3000/v1/health/dev-stack",
-    "demo:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build postgres redis mysql prestashop migrate api worker web",
+    "demo:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build postgres redis mysql phpmyadmin prestashop migrate api worker web",
     "demo:down": "docker compose -f docker-compose.yml -f docker-compose.demo.yml down",
     "demo:logs": "docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f",
     "prepare": "husky install || true"
