@@ -470,42 +470,59 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     const jobQueue = harness.getApp().get<SyncJobQueuePort>(SYNC_JOB_QUEUE_TOKEN);
     const enqueueSpy = jest.spyOn(jobQueue, 'enqueue');
 
-    // First sync: purchased → persisted 'processing' (priorStatus becomes 'processing').
-    erli.fake.setRawGet(
-      orderPath(ORDER_CANCEL),
-      buildErliOrder(ORDER_CANCEL, { status: 'purchased', productExternalId: externalProductId }),
-    );
-    await syncTolerateNoDestination(ORDER_CANCEL);
-    expect(enqueueSpy).not.toHaveBeenCalled();
+    // Wrapped in try/finally so the spy on the shared DI-singleton SyncJobQueueService
+    // is always restored, even if an assertion throws (the integration harness does
+    // not reset mocks between tests, so a leaked spy would bleed into later scenarios).
+    try {
+      // First sync: purchased → persisted 'processing' (priorStatus becomes 'processing').
+      erli.fake.setRawGet(
+        orderPath(ORDER_CANCEL),
+        buildErliOrder(ORDER_CANCEL, { status: 'purchased', productExternalId: externalProductId }),
+      );
+      await syncTolerateNoDestination(ORDER_CANCEL);
+      expect(enqueueSpy).not.toHaveBeenCalled();
 
-    // Second sync: cancelled → the #1146 hook fires (transition-gated) and enqueues
-    // the REAL marketplace.offer.stockRestore job via the REAL SyncJobQueueService.
-    erli.fake.setRawGet(
-      orderPath(ORDER_CANCEL),
-      buildErliOrder(ORDER_CANCEL, { status: 'cancelled', productExternalId: externalProductId }),
-    );
-    await syncTolerateNoDestination(ORDER_CANCEL);
+      // Second sync: cancelled → the #1146 hook fires (transition-gated) and enqueues
+      // the REAL marketplace.offer.stockRestore job via the REAL SyncJobQueueService.
+      erli.fake.setRawGet(
+        orderPath(ORDER_CANCEL),
+        buildErliOrder(ORDER_CANCEL, { status: 'cancelled', productExternalId: externalProductId }),
+      );
+      await syncTolerateNoDestination(ORDER_CANCEL);
 
-    const record = await findOrderRecord(ORDER_CANCEL);
-    expect(record).not.toBeNull();
-    expect(record!.orderSnapshot.status).toBe('cancelled');
-    const internalOrderId = record!.internalOrderId;
+      const record = await findOrderRecord(ORDER_CANCEL);
+      expect(record).not.toBeNull();
+      expect(record!.orderSnapshot.status).toBe('cancelled');
+      const internalOrderId = record!.internalOrderId;
 
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const [enqueueRequest] = enqueueSpy.mock.calls[0];
-    expect(enqueueRequest.type).toBe('marketplace.offer.stockRestore');
-    expect(enqueueRequest.connectionId).toBe(connectionId);
-    expect(enqueueRequest.payload).toMatchObject({ internalOrderId });
-    expect(enqueueRequest.options.dedupeKey).toBe(
-      `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
-    );
+      // syncOrderFromSource has TWO enqueue sites for a resolvable → cancelled
+      // transition — the early-fire hook (incoming.status) and the post-persist hook
+      // (order.status), both transition-gated on priorStatus !== 'cancelled' and both
+      // emitting the IDENTICAL dedupeKey. Redis dedupes them into a single job
+      // ("Job already enqueued (idempotent)"), but the spy counts method invocations,
+      // so it observes 2. Assert the idempotent intent directly: two invocations,
+      // exactly one distinct job.
+      expect(enqueueSpy).toHaveBeenCalledTimes(2);
+      const dedupeKeys = new Set(enqueueSpy.mock.calls.map((c) => c[0].options.dedupeKey));
+      expect(dedupeKeys.size).toBe(1);
 
-    // A re-poll of the already-cancelled order must NOT enqueue a second job
-    // (transition gate — priorStatus === 'cancelled' short-circuits).
-    await syncTolerateNoDestination(ORDER_CANCEL);
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const [enqueueRequest] = enqueueSpy.mock.calls[0];
+      expect(enqueueRequest.type).toBe('marketplace.offer.stockRestore');
+      expect(enqueueRequest.connectionId).toBe(connectionId);
+      expect(enqueueRequest.payload).toMatchObject({ internalOrderId });
+      expect(enqueueRequest.options.dedupeKey).toBe(
+        `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+      );
 
-    enqueueSpy.mockRestore();
+      // A re-poll of the already-cancelled order must NOT enqueue any additional job
+      // (transition gate — priorStatus === 'cancelled' short-circuits both hooks), so
+      // the invocation count stays at 2 and the distinct-job count stays at 1.
+      await syncTolerateNoDestination(ORDER_CANCEL);
+      expect(enqueueSpy).toHaveBeenCalledTimes(2);
+      expect(new Set(enqueueSpy.mock.calls.map((c) => c[0].options.dedupeKey)).size).toBe(1);
+    } finally {
+      enqueueSpy.mockRestore();
+    }
   });
 
   // ── S6: lifecycle writeback (DIRECT invocation of OrderStatusWriteback.write) ─
