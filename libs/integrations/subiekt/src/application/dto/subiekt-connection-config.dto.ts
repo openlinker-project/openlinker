@@ -16,6 +16,7 @@
  */
 import type { ValidatorConstraintInterface } from 'class-validator';
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -27,6 +28,10 @@ import {
   ValidatorConstraint,
 } from 'class-validator';
 import { isBridgeUrlSafe } from '../../infrastructure/http/subiekt-url-safety';
+import {
+  SubiektPaymentMethodValues,
+  type SubiektPaymentMethod,
+} from '../../domain/types/subiekt-connection-config.types';
 
 @ValidatorConstraint({ name: 'isBridgeUrlSafe', async: false })
 export class IsBridgeUrlSafeConstraint implements ValidatorConstraintInterface {
@@ -51,4 +56,24 @@ export class SubiektConnectionConfigDto {
   @Min(1000)
   @Max(120000)
   timeoutMs?: number;
+
+  // Payment / bank-account / cash-register defaults (#1324). No cross-field
+  // validation here — the bridge is the enforcement authority for
+  // transfer↔account linkage; OL passes through and surfaces the bridge's
+  // rejection. There is no Oddział (branch) field: the Sfera session binds the
+  // branch read-only to the logged-in bridge session, so a per-request override
+  // is impossible.
+  @IsOptional()
+  @IsIn(SubiektPaymentMethodValues)
+  defaultPaymentMethod?: SubiektPaymentMethod;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  bankAccountId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  defaultStanowiskoKasoweId?: number;
 }

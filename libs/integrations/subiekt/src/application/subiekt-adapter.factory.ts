@@ -14,7 +14,11 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { LoggerPort } from '@openlinker/shared/logging';
-import type { SubiektConnectionConfig } from '../domain/types/subiekt-connection-config.types';
+import type {
+  SubiektConnectionConfig,
+  SubiektPaymentMethod,
+} from '../domain/types/subiekt-connection-config.types';
+import { SubiektPaymentMethodValues } from '../domain/types/subiekt-connection-config.types';
 import type { SubiektBridgeCredentials } from '../domain/types/subiekt-credentials.types';
 import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exception';
 import { SubiektInvoicingAdapter } from '../infrastructure/adapters/subiekt-invoicing.adapter';
@@ -53,14 +57,15 @@ export class SubiektAdapterFactory {
     });
 
     return {
-      invoicing: new SubiektInvoicingAdapter(client, connection.id, logger),
+      invoicing: new SubiektInvoicingAdapter(client, connection.id, logger, config),
     };
   }
 
   /**
    * Validate and parse the raw `connection.config` blob.
-   * @throws SubiektConfigException on a missing / malformed `bridgeBaseUrl` or
-   *   out-of-range `timeoutMs`.
+   * @throws SubiektConfigException on a missing / malformed `bridgeBaseUrl`,
+   *   out-of-range `timeoutMs`, an invalid `defaultPaymentMethod`, or a
+   *   non-positive-integer `bankAccountId` / `defaultStanowiskoKasoweId`.
    */
   private validateAndParseConfig(config: Record<string, unknown>): SubiektConnectionConfig {
     const bridgeBaseUrl = config.bridgeBaseUrl;
@@ -85,6 +90,52 @@ export class SubiektAdapterFactory {
       timeoutMs = raw;
     }
 
-    return timeoutMs !== undefined ? { bridgeBaseUrl, timeoutMs } : { bridgeBaseUrl };
+    let defaultPaymentMethod: SubiektPaymentMethod | undefined;
+    if (config.defaultPaymentMethod !== undefined) {
+      const raw = config.defaultPaymentMethod;
+      if (
+        typeof raw !== 'string' ||
+        !SubiektPaymentMethodValues.includes(raw as SubiektPaymentMethod)
+      ) {
+        throw new SubiektConfigException(
+          `defaultPaymentMethod must be one of: ${SubiektPaymentMethodValues.join(', ')}`,
+          'defaultPaymentMethod',
+          raw,
+        );
+      }
+      defaultPaymentMethod = raw as SubiektPaymentMethod;
+    }
+
+    const bankAccountId = this.parsePositiveIntField(config.bankAccountId, 'bankAccountId');
+    const defaultStanowiskoKasoweId = this.parsePositiveIntField(
+      config.defaultStanowiskoKasoweId,
+      'defaultStanowiskoKasoweId',
+    );
+
+    const parsed: SubiektConnectionConfig = { bridgeBaseUrl };
+    if (timeoutMs !== undefined) parsed.timeoutMs = timeoutMs;
+    if (defaultPaymentMethod !== undefined) parsed.defaultPaymentMethod = defaultPaymentMethod;
+    if (bankAccountId !== undefined) parsed.bankAccountId = bankAccountId;
+    if (defaultStanowiskoKasoweId !== undefined) {
+      parsed.defaultStanowiskoKasoweId = defaultStanowiskoKasoweId;
+    }
+    return parsed;
+  }
+
+  /**
+   * Parse an OPTIONAL bridge-native positive-integer id field. Returns
+   * `undefined` when absent; throws `SubiektConfigException` when present but
+   * not a positive integer.
+   */
+  private parsePositiveIntField(raw: unknown, field: string): number | undefined {
+    if (raw === undefined) return undefined;
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+      throw new SubiektConfigException(
+        `${field} must be a positive integer`,
+        field,
+        raw,
+      );
+    }
+    return raw;
   }
 }

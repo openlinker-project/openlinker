@@ -10,6 +10,8 @@
 import {
   BuyerProfile,
   InvoiceRecord,
+  isBankAccountDefaultSetter,
+  isBankAccountsReader,
   isCorrectionIssuer,
   isRegulatoryStatusReader,
 } from '@openlinker/core/invoicing';
@@ -20,6 +22,7 @@ import type {
   TaxIdentifier,
 } from '@openlinker/core/invoicing';
 import type { LoggerPort } from '@openlinker/shared/logging';
+import type { SubiektConnectionConfig } from '../../../domain/types/subiekt-connection-config.types';
 import { FakeSubiektBridgeAdapter } from '../../../testing/fake-subiekt-bridge.adapter';
 import {
   SubiektInvoicingAdapter,
@@ -28,6 +31,7 @@ import {
 import { SubiektInvoiceRejectedError } from '../../../domain/exceptions/subiekt-invoice-rejected.exception';
 import { SubiektBridgeTransportError } from '../../../domain/exceptions/subiekt-bridge-transport.exception';
 import { SubiektUnsupportedDocumentTypeError } from '../../../domain/exceptions/subiekt-unsupported-document-type.exception';
+import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
 
 const ADDRESS: BuyerAddress = {
   line1: 'ul. Przykładowa 1',
@@ -76,6 +80,24 @@ function makeAdapter(bridge = new FakeSubiektBridgeAdapter()): {
 } {
   const logger = makeLogger();
   const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger);
+  return { adapter, bridge, logger };
+}
+
+const BASE_CONFIG: SubiektConnectionConfig = { bridgeBaseUrl: 'http://localhost:5000' };
+
+function makeConfiguredAdapter(
+  config: Partial<SubiektConnectionConfig>,
+  bridge = new FakeSubiektBridgeAdapter(),
+): {
+  adapter: SubiektInvoicingAdapter;
+  bridge: FakeSubiektBridgeAdapter;
+  logger: LoggerPort;
+} {
+  const logger = makeLogger();
+  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger, {
+    ...BASE_CONFIG,
+    ...config,
+  });
   return { adapter, bridge, logger };
 }
 
@@ -557,6 +579,246 @@ describe('SubiektInvoicingAdapter', () => {
       await expect(adapter.getClearanceStatus(issued.record)).rejects.toBeInstanceOf(
         SubiektInvoiceRejectedError,
       );
+    });
+  });
+
+  describe('bank-account discovery (#1324)', () => {
+    it('is detected as a BankAccountsReader and BankAccountDefaultSetter', () => {
+      const { adapter } = makeAdapter();
+      expect(isBankAccountsReader(adapter)).toBe(true);
+      expect(isBankAccountDefaultSetter(adapter)).toBe(true);
+    });
+
+    it('listBankAccounts maps the bridge shape to the neutral type and DROPS owner fields', async () => {
+      const { adapter } = makeAdapter();
+      const accounts = await adapter.listBankAccounts();
+      // The fake seeds 3 default accounts (two owner=1, one owner=2).
+      expect(accounts).toEqual([
+        {
+          id: '100004',
+          accountNumber: '00 10101010 1111 1111 1111 1111',
+          bankName: 'Rachunek podstawowy',
+          isDefault: true,
+        },
+        {
+          id: '100007',
+          accountNumber: '00 10101010 2222 2222 2222 2222',
+          bankName: 'Rachunek VAT',
+          isDefault: false,
+        },
+        {
+          id: '100011',
+          accountNumber: '00 10101010 3333 3333 3333 3333',
+          bankName: 'Rachunek oddziału',
+          isDefault: false,
+        },
+      ]);
+      // Owner fields are not part of the neutral shape.
+      expect(accounts[0]).not.toHaveProperty('ownerPodmiotId');
+      expect(accounts[0]).not.toHaveProperty('ownerName');
+    });
+
+    it('listBankAccounts degrades null name/number to empty strings', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedBankAccounts([
+        {
+          id: 500,
+          name: null,
+          number: null,
+          bankNumber: null,
+          description: null,
+          currency: null,
+          isVatAccount: false,
+          isDefault: false,
+          ownerPodmiotId: 1,
+          ownerName: null,
+        },
+      ]);
+      const accounts = await adapter.listBankAccounts();
+      expect(accounts).toEqual([
+        { id: '500', accountNumber: '', bankName: '', isDefault: false },
+      ]);
+    });
+
+    it('listBankAccountsWithOwner KEEPS the owner fields', async () => {
+      const { adapter } = makeAdapter();
+      const accounts = await adapter.listBankAccountsWithOwner();
+      expect(accounts).toEqual([
+        {
+          id: '100004',
+          accountNumber: '00 10101010 1111 1111 1111 1111',
+          bankName: 'Rachunek podstawowy',
+          isDefault: true,
+          ownerPodmiotId: 1,
+          ownerName: 'Moja Firma Sp. z o.o.',
+        },
+        {
+          id: '100007',
+          accountNumber: '00 10101010 2222 2222 2222 2222',
+          bankName: 'Rachunek VAT',
+          isDefault: false,
+          ownerPodmiotId: 1,
+          ownerName: 'Moja Firma Sp. z o.o.',
+        },
+        {
+          id: '100011',
+          accountNumber: '00 10101010 3333 3333 3333 3333',
+          bankName: 'Rachunek oddziału',
+          isDefault: false,
+          ownerPodmiotId: 2,
+          ownerName: 'Oddział Handlowy Sp. z o.o.',
+        },
+      ]);
+    });
+
+    it('setDefaultBankAccount calls the bridge with Number(accountId)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'setDefaultBankAccount');
+      await adapter.setDefaultBankAccount('100007');
+      expect(spy).toHaveBeenCalledWith(100007);
+    });
+
+    it('setDefaultBankAccount rejects a non-numeric id before hitting the bridge', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'setDefaultBankAccount');
+      await expect(adapter.setDefaultBankAccount('not-a-number')).rejects.toBeInstanceOf(
+        SubiektConfigException,
+      );
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('listBankAccounts propagates a translated transport error', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    });
+
+    it('listBankAccountsWithOwner propagates a translated transport error', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.listBankAccountsWithOwner()).rejects.toBeInstanceOf(
+        SubiektBridgeTransportError,
+      );
+    });
+
+    it('setDefaultBankAccount translates a subiekt-rejected error (terminal)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('subiekt-rejected', { reason: 'unknown account' });
+      await expect(adapter.setDefaultBankAccount('999')).rejects.toBeInstanceOf(
+        SubiektInvoiceRejectedError,
+      );
+    });
+  });
+
+  describe('cash-register discovery (#1324)', () => {
+    it('listCashRegisters maps the bridge shape incl. linked + unlinked (null oddzialId)', async () => {
+      const { adapter } = makeAdapter();
+      const registers = await adapter.listCashRegisters();
+      expect(registers).toEqual([
+        { id: 100065, name: 'Kasa Centralna', symbol: 'CENTR', oddzialId: null },
+        { id: 100066, name: 'Kasa Outlet', symbol: 'OUTLET', oddzialId: null },
+        { id: 100067, name: 'Kasa Pachnidło', symbol: 'PACH', oddzialId: 100001 },
+      ]);
+    });
+
+    it('listCashRegisters degrades null name/symbol gracefully', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedCashRegisters([{ id: 9, name: null, symbol: null, oddzialId: null }]);
+      const registers = await adapter.listCashRegisters();
+      expect(registers).toEqual([{ id: 9, name: null, symbol: null, oddzialId: null }]);
+    });
+
+    it('listCashRegisters propagates a translated transport error', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.listCashRegisters()).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    });
+  });
+
+  describe('issueInvoice payment + cash-register field stamping (#1324)', () => {
+    async function capturedRequest(
+      config: Partial<SubiektConnectionConfig>,
+    ): Promise<Record<string, unknown>> {
+      const { adapter, bridge } = makeConfiguredAdapter(config);
+      const spy = jest.spyOn(bridge, 'issueInvoice');
+      await adapter.issueInvoice(command());
+      return spy.mock.calls[0][0] as unknown as Record<string, unknown>;
+    }
+
+    it('(a) no config -> request carries NONE of the new keys (no regression)', async () => {
+      // Baseline built from the plain 3-arg adapter — proves an unconfigured
+      // connection sends a byte-identical request to the pre-#1324 behavior.
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'issueInvoice');
+      await adapter.issueInvoice(command());
+      const req = spy.mock.calls[0][0] as unknown as Record<string, unknown>;
+      expect(req).not.toHaveProperty('paymentMethod');
+      expect(req).not.toHaveProperty('bankAccountId');
+      expect(req).not.toHaveProperty('stanowiskoKasoweId');
+    });
+
+    it('(a2) empty config object -> request carries NONE of the new keys', async () => {
+      const req = await capturedRequest({});
+      expect(req).not.toHaveProperty('paymentMethod');
+      expect(req).not.toHaveProperty('bankAccountId');
+      expect(req).not.toHaveProperty('stanowiskoKasoweId');
+    });
+
+    it('(b) cash -> { paymentMethod: cash } only', async () => {
+      const req = await capturedRequest({ defaultPaymentMethod: 'cash' });
+      expect(req.paymentMethod).toBe('cash');
+      expect(req).not.toHaveProperty('bankAccountId');
+    });
+
+    it('(b2) cash ignores a configured bankAccountId', async () => {
+      const req = await capturedRequest({ defaultPaymentMethod: 'cash', bankAccountId: 100007 });
+      expect(req.paymentMethod).toBe('cash');
+      expect(req).not.toHaveProperty('bankAccountId');
+    });
+
+    it('(c) transfer + account -> both payment keys', async () => {
+      const req = await capturedRequest({
+        defaultPaymentMethod: 'transfer',
+        bankAccountId: 100007,
+      });
+      expect(req.paymentMethod).toBe('transfer');
+      expect(req.bankAccountId).toBe(100007);
+    });
+
+    it('(d) transfer without an account -> neither payment key (fiscal-safe)', async () => {
+      const req = await capturedRequest({ defaultPaymentMethod: 'transfer' });
+      expect(req).not.toHaveProperty('paymentMethod');
+      expect(req).not.toHaveProperty('bankAccountId');
+    });
+
+    it('(d2) transfer without an account warns about the half-configured state', async () => {
+      const { adapter, logger } = makeConfiguredAdapter({ defaultPaymentMethod: 'transfer' });
+      await adapter.issueInvoice(command());
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('transfer payment but has no bankAccountId'),
+        expect.objectContaining({ connectionId: 'conn-1' }),
+      );
+    });
+
+    it('(e) register set -> { stanowiskoKasoweId }', async () => {
+      const req = await capturedRequest({ defaultStanowiskoKasoweId: 100067 });
+      expect(req.stanowiskoKasoweId).toBe(100067);
+    });
+
+    it('(f) register unset -> no stanowiskoKasoweId key', async () => {
+      const req = await capturedRequest({ defaultPaymentMethod: 'cash' });
+      expect(req).not.toHaveProperty('stanowiskoKasoweId');
+    });
+
+    it('payment and cash-register fields combine on one request', async () => {
+      const req = await capturedRequest({
+        defaultPaymentMethod: 'transfer',
+        bankAccountId: 100007,
+        defaultStanowiskoKasoweId: 100067,
+      });
+      expect(req.paymentMethod).toBe('transfer');
+      expect(req.bankAccountId).toBe(100007);
+      expect(req.stanowiskoKasoweId).toBe(100067);
     });
   });
 });
