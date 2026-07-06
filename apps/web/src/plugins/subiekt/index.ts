@@ -45,6 +45,7 @@ import { SubiektStructuredSection } from './components/subiekt-structured-sectio
 import { SubiektInvoiceDetailSection } from './components/subiekt-invoice-detail-section';
 import { SubiektInvoiceCorrectionFlow } from './components/subiekt-invoice-correction-flow';
 import { SUBIEKT_CAPABILITY_DESCRIPTORS } from './subiekt-capability-descriptors';
+import { subiektConnectionConfig } from './subiekt-connection-config';
 
 export const subiektPlugin: OpenLinkerPlugin = definePlugin({
   id: 'subiekt',
@@ -62,6 +63,7 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
       badge: 'Sfera bridge',
     },
     capabilityDescriptors: SUBIEKT_CAPABILITY_DESCRIPTORS,
+    connectionConfig: subiektConnectionConfig,
     StructuredConfigSection: SubiektStructuredSection,
     CredentialsPanel: SubiektCredentialsPanel,
     invoiceDetailSection: SubiektInvoiceDetailSection,

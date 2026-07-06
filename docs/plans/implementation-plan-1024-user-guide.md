@@ -464,8 +464,8 @@ Documentation-only tasks have no unit or integration tests. Verification is:
 - [Issue #1024](https://github.com/openlinker-project/openlinker/issues/1024) — [TASK] Docs — screenshot-driven end-user platform guide (setup + day-to-day usage)
 - [Frontend UI Style Guide](../frontend-ui-style-guide.md) — Shell Layout, screenshot spec (1440×900 light)
 - [Getting Started](../getting-started.md) — Developer bootstrap (insertion point for hand-off link)
-- [WooCommerce Setup Guide](../integrations/woocommerce/setup-guide.md) — related per-platform guide
-- [Allegro Setup Guide](../integrations/allegro/setup-guide.md) — related per-platform guide
+- [WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md) — related per-platform guide
+- [Allegro Setup Guide](../../libs/integrations/allegro/docs/setup-guide.md) — related per-platform guide
 - [Issue #1022](https://github.com/openlinker-project/openlinker/issues/1022) — WooCommerce screenshot guide (adjacent, do not merge)
 - [Architecture Overview](../architecture-overview.md)
 - [Engineering Standards](../engineering-standards.md)
