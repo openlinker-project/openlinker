@@ -45,6 +45,10 @@ export const PermissionValues = [
   'listings:write',
   'users:read',
   'users:write',
+  'customers:read',
+  'shipments:read',
+  'invoices:read',
+  'webhooks:read',
 ] as const;
 
 /**
@@ -75,6 +79,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'inventory:write',
     'listings:read',
     'listings:write',
+    'customers:read',
+    'shipments:read',
+    'invoices:read',
+    'webhooks:read',
   ],
   viewer: [
     'connections:read',
@@ -85,5 +93,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'products:read',
     'inventory:read',
     'listings:read',
+    'customers:read',
+    'shipments:read',
+    'invoices:read',
+    'webhooks:read',
   ],
 } as const;

@@ -19,7 +19,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   IWebhookDeliveryQueryService,
   WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN,
@@ -30,7 +29,6 @@ import { WebhookDeliveryDetailResponseDto } from './dto/webhook-delivery-detail-
 import type { WebhookDeliverySummaryResponseDto } from './dto/webhook-delivery-summary-response.dto';
 import type { WebhookDelivery } from '@openlinker/core/webhooks';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('webhooks')
 @Controller('webhook-deliveries')

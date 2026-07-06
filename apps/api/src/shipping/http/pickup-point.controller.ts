@@ -5,7 +5,7 @@
  * provider-backed search (results write-through cached by id) and a fast by-id
  * cached read. Goes through `IPickupPointLookupService` — never the cache port
  * directly (repository/cache ports are banned cross-context in apps/**).
- * Admin + JWT.
+ * Any authenticated role + JWT (#1357).
  *
  * @module apps/api/src/shipping/http
  */
@@ -31,11 +31,9 @@ import {
   CapabilityNotSupportedException,
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import { ListPickupPointsQueryDto } from './dto/list-pickup-points-query.dto';
 import { PickupPointResponseDto } from './dto/pickup-point-response.dto';
 
-@Roles('admin', 'operator')
 @ApiBearerAuth()
 @ApiTags('pickup-points')
 @Controller('pickup-points')

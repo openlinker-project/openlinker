@@ -80,7 +80,6 @@ import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dt
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { ShipmentResponseDto } from './dto/shipment-response.dto';
 
-@Roles('admin', 'operator')
 @ApiBearerAuth()
 @ApiTags('shipments')
 @Controller('shipments')
