@@ -95,10 +95,16 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
  *   - invoice `status` (`invoice_statuses`): `draft` | `sent` | `printed` | `paid`
  *   - payment status (`payment_statuses`):  `paid` | `unpaid` | `partial_payment`
  *                                           | `payment_not_applicable`
- * A part-settled document surfaces as a `partial`/`partly` token (e.g.
- * `partial_payment`, `partly_paid`); full settlement as `paid`. Matching against
- * these known tokens (rather than a bare `=== 'paid'`) makes future drift in the
- * Infakt vocabulary explicit here instead of silently mis-classifying.
+ *
+ * `toPaymentStatus` reads only `InfaktInvoice.status` — the `invoice_statuses`
+ * field, which carries `paid` but has *no* partial token today. So the
+ * `partial`/`partly` match below is a forward-looking guard, not a currently
+ * reachable branch: it's here so that if Infakt ever surfaces a settlement token
+ * on `status` (or the field is later widened to the `payment_statuses`
+ * vocabulary, whose `partial_payment` it would then catch), a part-settled
+ * document classifies as `partially-paid` rather than silently `unpaid`.
+ * Matching against known tokens (rather than a bare `=== 'paid'`) keeps that
+ * drift explicit here instead of mis-classifying.
  */
 const INFAKT_PAID_TOKENS: readonly string[] = ['paid'];
 const INFAKT_PARTIAL_TOKENS: readonly string[] = ['partial', 'partly'];
