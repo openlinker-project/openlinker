@@ -114,6 +114,25 @@ export interface BridgeIssueInvoiceRequest {
   kontrahentId?: number;
   buyer?: BridgeBuyer;
   lines: BridgeLine[];
+  /**
+   * Payment selection (additive, #1324). Both absent = unchanged legacy
+   * behavior. Bridge-side `PaymentSelection.TryCreate` enforces the rules:
+   * `transfer` requires a positive `bankAccountId`; `cash` must not carry one; a
+   * bare `bankAccountId` without `paymentMethod` is rejected; not supported for
+   * `documentType: "PA"`. Vocabulary errors surface as 400, combination/account
+   * errors as 422 — OL passes through and surfaces the bridge's rejection.
+   */
+  paymentMethod?: 'cash' | 'transfer';
+  /** Numeric bank-account id to bill a `transfer` document against (bridge-native). */
+  bankAccountId?: number;
+  /**
+   * Stanowisko Kasowe (cash register) routing (additive, #1324). The Sfera
+   * session binds Oddział read-only to the logged-in bridge session, so a
+   * per-request branch override is impossible; the cash register is the only
+   * real per-document routing field. Accepted alone (keeps the document's
+   * session-bound branch).
+   */
+  stanowiskoKasoweId?: number;
 }
 
 /**
@@ -212,6 +231,65 @@ export interface BridgeInvoiceStatusRequest {
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+}
+
+/**
+ * One bank account (rachunek bankowy) as the bridge returns it from
+ * `GET /api/bank-accounts` (bridge PR #4). All display fields are nullable —
+ * the bridge returns `""`/`null` for unset Sfera columns, normalized to `null`
+ * on read where applicable. `ownerPodmiotId`/`ownerName` were added by PR #4 to
+ * tag each account with its owning seller Podmiot on a multi-payer install (the
+ * original PR #2 query silently returned only one payer's accounts). These
+ * owner fields are captured here so the data isn't lost, but the neutral core
+ * `InvoicingBankAccount` mapping in the #753 adapter drops them (core stays
+ * marketplace-neutral).
+ */
+export interface BridgeBankAccount {
+  id: number;
+  name: string | null;
+  number: string | null;
+  bankNumber: string | null;
+  description: string | null;
+  currency: string | null;
+  isVatAccount: boolean;
+  isDefault: boolean;
+  ownerPodmiotId: number;
+  ownerName: string | null;
+}
+
+/** `data` payload of `GET /api/bank-accounts`. */
+export interface BridgeListBankAccountsResponse {
+  count: number;
+  accounts: BridgeBankAccount[];
+}
+
+/**
+ * `data` payload of `PUT /api/bank-accounts/{id}/default`. Idempotent — selecting
+ * the current default is a no-op success.
+ */
+export interface BridgeSetDefaultBankAccountResponse {
+  bankAccountId: number;
+  isDefault: boolean;
+}
+
+/**
+ * One Stanowisko Kasowe (cash register) from `GET /api/cash-registers` (bridge
+ * PR #6). `oddzialId: null` means the register is unlinked (not branch-restricted);
+ * per the live probe most registers on a real install are unlinked. `oddzialId`
+ * here is the register's own informational branch tag (a display label), NOT a
+ * per-request routing override.
+ */
+export interface BridgeCashRegister {
+  id: number;
+  name: string | null;
+  symbol: string | null;
+  oddzialId: number | null;
+}
+
+/** `data` payload of `GET /api/cash-registers`. */
+export interface BridgeListCashRegistersResponse {
+  count: number;
+  cashRegisters: BridgeCashRegister[];
 }
 
 /**
