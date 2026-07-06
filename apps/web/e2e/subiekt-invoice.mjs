@@ -3,7 +3,7 @@
  *
  * Drives the running web app (:4173): opens a real ingested order, issues an
  * invoice through the order-detail Invoice panel (#757), and captures the
- * before/after states + the /invoices list (#758) into docs/assets/subiekt/.
+ * before/after states + the /invoices list (#758) into libs/integrations/subiekt/docs/assets/.
  * Captures both document types: B2B faktura (buyer with NIP) and B2C paragon.
  *
  * The actual document is created end-to-end: OL -> subiekt adapter -> bridge
@@ -22,16 +22,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/subiekt');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/subiekt/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
 const ORDER_B2B_ID = process.env.ORDER_B2B_ID ?? '';
 const ORDER_B2C_ID = process.env.ORDER_B2C_ID ?? '';
 const CONN_NAME = process.env.SUBIEKT_CONN_NAME ?? 'My Subiekt';
+const ADMIN_USERNAME = process.env.OL_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill(ADMIN_USERNAME);
+  await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }

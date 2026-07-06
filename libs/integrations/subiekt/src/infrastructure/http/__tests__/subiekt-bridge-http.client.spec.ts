@@ -323,6 +323,97 @@ describe('SubiektBridgeHttpClient', () => {
     });
   });
 
+  describe('listBankAccounts (#1324)', () => {
+    it('issues a GET to /api/bank-accounts and unwraps the envelope', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          count: 1,
+          accounts: [
+            {
+              id: 100004,
+              name: 'Rachunek podstawowy',
+              number: '00 10101010 1111 1111 1111 1111',
+              bankNumber: null,
+              description: null,
+              currency: 'PLN',
+              isVatAccount: false,
+              isDefault: true,
+              ownerPodmiotId: 1,
+              ownerName: 'Moja Firma Sp. z o.o.',
+            },
+          ],
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.listBankAccounts();
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/bank-accounts`);
+      expect(init.method).toBe('GET');
+      expect(res.count).toBe(1);
+      expect(res.accounts[0].ownerPodmiotId).toBe(1);
+    });
+
+    it('translates a transport failure to SubiektBridgeUnreachableError', async () => {
+      fetchMock.mockRejectedValue(fetchError('ECONNREFUSED'));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+    });
+
+    it('translates a 401 to SubiektBridgeAuthError (not a rejection)', async () => {
+      fetchMock.mockResolvedValue(errorResponse(401, {}));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeAuthError);
+    });
+  });
+
+  describe('setDefaultBankAccount (#1324)', () => {
+    it('issues a PUT to the templated /api/bank-accounts/{id}/default path', async () => {
+      fetchMock.mockResolvedValue(okResponse({ bankAccountId: 100007, isDefault: true }));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.setDefaultBankAccount(100007);
+      const [url, init] = fetchMock.mock.calls[0] as [
+        string,
+        { method: string; headers: Record<string, string> },
+      ];
+      expect(url).toBe(`${BASE}/api/bank-accounts/100007/default`);
+      expect(init.method).toBe('PUT');
+      expect(init.headers['content-type']).toBe('application/json');
+      expect(res).toEqual({ bankAccountId: 100007, isDefault: true });
+    });
+
+    it('translates a 422 rejection to SubiektRejectedError', async () => {
+      fetchMock.mockResolvedValue(errorResponse(422, envelopeError('Nieznany rachunek.')));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const err = await client
+        .setDefaultBankAccount(999)
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektRejectedError);
+      expect((err as SubiektRejectedError).reason).toBe('Nieznany rachunek.');
+    });
+  });
+
+  describe('listCashRegisters (#1324)', () => {
+    it('issues a GET to /api/cash-registers and unwraps the envelope', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          count: 2,
+          cashRegisters: [
+            { id: 100065, name: 'Kasa Centralna', symbol: 'CENTR', oddzialId: null },
+            { id: 100067, name: 'Kasa Pachnidło', symbol: 'PACH', oddzialId: 100001 },
+          ],
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.listCashRegisters();
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/cash-registers`);
+      expect(init.method).toBe('GET');
+      expect(res.cashRegisters[0].oddzialId).toBeNull();
+      expect(res.cashRegisters[1].oddzialId).toBe(100001);
+    });
+  });
+
   describe('token handling', () => {
     it('attaches the bridge token header when provided', async () => {
       fetchMock.mockResolvedValue(

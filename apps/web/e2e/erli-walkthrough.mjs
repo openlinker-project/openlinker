@@ -3,7 +3,7 @@
  *
  * Drives the running web app (:4173) with a real browser, logs in as the
  * bootstrap admin, and captures a screenshot at each step of the Erli setup
- * flow into docs/assets/erli/ (used by docs/integrations/erli/setup-guide.md).
+ * flow into libs/integrations/erli/docs/assets/ (used by libs/integrations/erli/docs/setup-guide.md).
  * Run with the dev stack + API + web up.
  *
  * Usage: node apps/web/e2e/erli-walkthrough.mjs [step]
@@ -14,14 +14,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHOTS = resolve(__dirname, '../../../docs/assets/erli');
+const SHOTS = resolve(__dirname, '../../../libs/integrations/erli/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
+const ADMIN_USERNAME = process.env.OL_ADMIN_USERNAME ?? 'admin';
+const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
+// Author-local default; override via env for your own environment.
 const ERLI_CONNECTION_ID = process.env.ERLI_CONNECTION_ID ?? '19d837f0-1b7c-448b-b381-8c8c9bc4ba07';
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
-  await page.getByPlaceholder('Enter your password').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill(ADMIN_USERNAME);
+  await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
 }

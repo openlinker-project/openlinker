@@ -49,6 +49,7 @@ import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
   InfaktBankAccount,
   InfaktClient,
+  InfaktCorrectiveInvoiceServiceRequest,
   InfaktInvoice,
   InfaktKsefStatus,
   InfaktListResponse,
@@ -194,6 +195,31 @@ function toGroszy(amountPln: number): number {
 /** Converts an Infakt wire amount (plain integer groszy) back to a PLN decimal for arithmetic. */
 function fromGroszy(amountGroszy: number): number {
   return amountGroszy / 100;
+}
+
+/**
+ * Converts an integer-groszy amount to the corrective_invoices.json wire
+ * format: a dot-decimal "amount currency" STRING like `"811.37 PLN"`.
+ * Verified live (2026-07-03): corrective_invoices.json 500s on the
+ * invoices.json integer-groszy shape — the two endpoints' formats DIFFER.
+ *
+ * PLN-only assumption: the currency suffix is hardcoded to " PLN" because
+ * inFakt is a Polish-only provider and `InfaktInvoice` carries no currency
+ * field to read a per-document currency from.
+ */
+function groszyToAmountString(amountGroszy: number): string {
+  return `${(amountGroszy / 100).toFixed(2)} PLN`;
+}
+
+/**
+ * A record with neutral `documentType: 'corrected'` is an Infakt CORRECTIVE
+ * invoice — a distinct resource living under `corrective_invoices/…`, NOT
+ * `invoices/…` (verified live, 2026-07-03: `GET /invoices/{uuid}.json`
+ * returns 404 for corrective uuids). Every read/submit path keyed on
+ * `providerInvoiceId` must branch on this.
+ */
+function isCorrectionRecord(documentType: string): boolean {
+  return documentType === 'corrected';
 }
 
 export class InfaktInvoicingAdapter
@@ -404,21 +430,28 @@ export class InfaktInvoicingAdapter
       return null;
     }
 
-    // Kind is unknown ahead of the lookup (no InvoiceRecord to read documentType
-    // from); try the two kinds this adapter issues (`vat`, `corrective`) in turn.
-    for (const invoiceType of ['vat', 'corrective']) {
+    // Kind is unknown ahead of the lookup (no InvoiceRecord to read
+    // documentType from), and corrective documents live under a DIFFERENT
+    // resource — `GET /invoices/{uuid}.json` 404s for corrective uuids
+    // (verified live, 2026-07-03). Try the plain-invoice path first, then
+    // fall back to `corrective_invoices/{uuid}.json`.
+    const lookups: ReadonlyArray<{ path: string; query?: Record<string, string> }> = [
+      {
+        path: `invoices/${encodeURIComponent(providerInvoiceId)}.json`,
+        query: { invoice_type: 'vat' },
+      },
+      { path: `corrective_invoices/${encodeURIComponent(providerInvoiceId)}.json` },
+    ];
+    for (const lookup of lookups) {
       try {
-        const invoice = await this.http.get<InfaktInvoice>(
-          `invoices/${providerInvoiceId}.json`,
-          { invoice_type: invoiceType },
-        );
+        const invoice = await this.http.get<InfaktInvoice>(lookup.path, lookup.query);
         const now = new Date();
         return new InvoiceRecord(
           randomUUID(),
           this.connectionId,
           '',
           INFAKT_PROVIDER_TYPE,
-          invoice.kind === 'corrective' ? 'corrected' : 'invoice',
+          invoice.kind === 'corrective' || invoice.kind === 'correction' ? 'corrected' : 'invoice',
           'issued',
           invoice.uuid,
           invoice.number ?? null,
@@ -448,10 +481,19 @@ export class InfaktInvoicingAdapter
       return { regulatoryStatus: 'not-applicable' };
     }
 
-    const invoice = await this.http.get<InfaktInvoice>(
-      `invoices/${record.providerInvoiceId}.json`,
-      { invoice_type: toInfaktInvoiceType(record.documentType) },
-    );
+    // Corrective documents are a distinct resource — the invoices/… path 404s
+    // for corrective uuids (verified live, 2026-07-03), so the reconcile job's
+    // poll must branch on the record's documentType.
+    const invoice = isCorrectionRecord(record.documentType)
+      ? await this.http.get<InfaktInvoice>(
+          `corrective_invoices/${encodeURIComponent(record.providerInvoiceId)}.json`,
+        )
+      : await this.http.get<InfaktInvoice>(
+          `invoices/${encodeURIComponent(record.providerInvoiceId)}.json`,
+          {
+            invoice_type: toInfaktInvoiceType(record.documentType),
+          },
+        );
 
     const ksefData = invoice.ksef_data;
     return {
@@ -466,50 +508,63 @@ export class InfaktInvoicingAdapter
 
     // Fetch original to build the before/after service arrays
     const original = await this.http.get<InfaktInvoice>(
-      `invoices/${originalProviderInvoiceId}.json`,
+      `invoices/${encodeURIComponent(originalProviderInvoiceId)}.json`,
       { invoice_type: 'vat' },
     );
 
-    // Build correction services: original row (correction: false) + corrected row (correction: true)
-    const correctionServices = original.services.flatMap((svc, idx) => {
-      const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
-      const corrQty = corrLine?.newQuantity ?? svc.quantity;
-      // svc.unit_net_price is a plain integer groszy (Infakt wire format —
-      // see toGroszy/fromGroszy) — convert to a PLN decimal before arithmetic.
-      const originalNet = fromGroszy(svc.unit_net_price);
-      // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
-      // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
-      // same as issueInvoice's gross→net conversion (#1292 review).
-      const corrPrice = corrLine?.newUnitPriceGross
-        ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
-        : toGroszy(originalNet);
-      return [
-        // Original "before" row
-        {
+    // Build correction services: original row (correction: false) + corrected
+    // row (correction: true), paired per `group`. NOTE the wire formats:
+    // corrective_invoices.json wants a decimal "amount currency" STRING for
+    // `unit_net_price` and a STRING `quantity` — the invoices.json
+    // integer-groszy / numeric shapes 500 here (verified live, 2026-07-03).
+    const correctionServices: InfaktCorrectiveInvoiceServiceRequest[] =
+      original.services.flatMap((svc, idx) => {
+        const corrLine = lines.find((l) => l.originalLineNumber === idx + 1);
+        const corrQty = corrLine?.newQuantity ?? svc.quantity;
+        // svc.unit_net_price is a plain integer groszy (Infakt wire format —
+        // see toGroszy/fromGroszy) — convert to a PLN decimal before arithmetic.
+        const originalNet = fromGroszy(svc.unit_net_price);
+        // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
+        // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
+        // same as issueInvoice's gross→net conversion (#1292 review).
+        // `!= null` (not truthy) so a correction to 0.00 PLN is honoured
+        // instead of silently falling back to the original price (#1342 review).
+        const corrPriceGroszy =
+          corrLine?.newUnitPriceGross != null
+            ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
+            : toGroszy(originalNet);
+        const shared = {
           name: svc.name,
           tax_symbol: svc.tax_symbol,
-          quantity: svc.quantity,
           unit: svc.unit ?? 'szt.',
-          unit_net_price: toGroszy(originalNet),
-          group: idx + 1,
-          correction: false,
-        },
-        // Corrected "after" row
-        {
-          name: svc.name,
-          tax_symbol: svc.tax_symbol,
-          quantity: corrQty,
-          unit: svc.unit ?? 'szt.',
-          unit_net_price: corrPrice,
-          group: idx + 1,
-          correction: true,
-        },
-      ];
-    });
+          group: String(idx + 1),
+        };
+        return [
+          // Original "before" row
+          {
+            ...shared,
+            quantity: String(svc.quantity),
+            unit_net_price: groszyToAmountString(toGroszy(originalNet)),
+            correction: false,
+          },
+          // Corrected "after" row
+          {
+            ...shared,
+            quantity: String(corrQty),
+            unit_net_price: groszyToAmountString(corrPriceGroszy),
+            correction: true,
+          },
+        ];
+      });
 
+    // Corrections go to the DEDICATED corrective_invoices.json endpoint with
+    // the `corrective_invoice` wrapper key (#1337) — posting a
+    // `kind: 'corrective'` payload to invoices.json makes Infakt SILENTLY
+    // ignore every correction field and create a plain, unlinked VAT invoice
+    // (verified live, 2026-07-03). Fiscally wrong, hence the belt-and-
+    // suspenders kind check below too.
     const payload = {
-      invoice: {
-        kind: 'corrective',
+      corrective_invoice: {
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
@@ -528,20 +583,41 @@ export class InfaktInvoicingAdapter
     };
 
     // InfaktApiError carries `failureMode`; propagate as-is (see issueInvoice).
-    const invoice = await this.http.post<InfaktInvoice>('invoices.json', payload);
+    const invoice = await this.http.post<InfaktInvoice>('corrective_invoices.json', payload);
+
+    // Belt-and-suspenders for the silent-downgrade class of bug (#1337): if
+    // the provider created anything other than a real correction, fail loudly
+    // instead of persisting a record that claims a corrective linkage the
+    // document doesn't have. Status 502 (not 4xx) is deliberate: a document WAS
+    // created here (just of the wrong kind), so this is `failureMode: 'in-doubt'`
+    // — a 4xx `'rejected'` would tell core "no document exists, safe to
+    // re-attempt", which could spawn a SECOND orphaned corrective on retry
+    // (the corrective external_id dedup is unverified — see the retry-safety
+    // note below). `in-doubt` forces manual review instead of an auto-retry loop.
+    // NOTE: the expected *response* kind is 'correction' (not 'corrective') —
+    // don't loosen this check to accept 'corrective' as a "fix".
+    if (invoice.kind !== 'correction') {
+      throw new InfaktApiError(
+        `Infakt returned kind "${invoice.kind}" instead of "correction" for corrective_invoices.json — document ${invoice.uuid} is not a correction of ${original.number ?? originalProviderInvoiceId}`,
+        502,
+        invoice,
+      );
+    }
 
     this.logger.log(`Infakt correction created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
 
     // A correction is its own KSeF document (KOR) — it needs the same explicit
-    // submission kick as the original (see issueInvoice).
+    // submission kick as the original (see issueInvoice), but through the
+    // corrective resource: `invoices/{uuid}/send_to_ksef.json` 404s for
+    // corrective uuids (verified live, 2026-07-03).
     //
     // Same retry-safety assumption as issueInvoice (unverified — #1293
     // review): a retry re-calls issueCorrection, which re-POSTs
-    // invoices.json with the same external_id; we rely on Infakt
+    // corrective_invoices.json with the same external_id; we rely on Infakt
     // returning/reusing the same correction uuid rather than creating a
     // second corrective draft, which would make this sendToKsef call a safe
     // re-attempt on the same document.
-    const ksefResult = await this.sendToKsef(invoice.uuid);
+    const ksefResult = await this.sendToKsef(invoice.uuid, 'corrective_invoices');
 
     const now = new Date();
     return new InvoiceRecord(
@@ -574,9 +650,18 @@ export class InfaktInvoicingAdapter
   // scripts/poc-sandbox-test.ts, and kept accessible so a future
   // operator-facing manual re-submit can reuse it without a second code path.
 
-  async sendToKsef(invoiceUuid: string): Promise<InfaktSendToKsefResponse> {
+  /**
+   * `resource` selects the REST resource the document lives under — a
+   * corrective invoice's submit path is `corrective_invoices/{uuid}/
+   * send_to_ksef.json`; the invoices/… path 404s for corrective uuids
+   * (verified live, 2026-07-03).
+   */
+  async sendToKsef(
+    invoiceUuid: string,
+    resource: 'invoices' | 'corrective_invoices' = 'invoices',
+  ): Promise<InfaktSendToKsefResponse> {
     return this.http.post<InfaktSendToKsefResponse>(
-      `invoices/${invoiceUuid}/send_to_ksef.json`,
+      `${resource}/${encodeURIComponent(invoiceUuid)}/send_to_ksef.json`,
       {},
     );
   }
@@ -626,10 +711,22 @@ export class InfaktInvoicingAdapter
     if (kind !== 'rendered') {
       throw new UnsupportedRegulatoryDocumentKindError(kind);
     }
-    const response = await this.http.getBinary(`invoices/${record.providerInvoiceId}/pdf.json`, {
-      document_type: 'original',
-      invoice_type: toInfaktInvoiceType(record.documentType),
-    });
+    // A correction's PDF lives under its own resource, mirroring every other
+    // corrective read path (`corrective_invoices/{uuid}/pdf.json` — the
+    // invoices/… path 404s for corrective uuids). Kept structurally identical
+    // to the invoice pdf.json call; not yet live-verified for corrections.
+    const response = isCorrectionRecord(record.documentType)
+      ? await this.http.getBinary(
+          `corrective_invoices/${encodeURIComponent(String(record.providerInvoiceId))}/pdf.json`,
+          { document_type: 'original' },
+        )
+      : await this.http.getBinary(
+          `invoices/${encodeURIComponent(String(record.providerInvoiceId))}/pdf.json`,
+          {
+            document_type: 'original',
+            invoice_type: toInfaktInvoiceType(record.documentType),
+          },
+        );
     return {
       content: response.data,
       contentType: response.contentType.length > 0 ? response.contentType : 'application/pdf',

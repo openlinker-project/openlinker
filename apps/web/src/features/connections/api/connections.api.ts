@@ -6,6 +6,8 @@ import type {
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  SubiektBankAccount,
+  SubiektCashRegister,
   UpdateConnectionInput,
 } from './connections.types';
 
@@ -13,6 +15,8 @@ export interface ConnectionsApi {
   create: (input: CreateConnectionInput) => Promise<Connection>;
   disable: (connectionId: string) => Promise<Connection>;
   getBankAccounts: (connectionId: string) => Promise<BankAccount[]>;
+  getSubiektBankAccounts: (connectionId: string) => Promise<SubiektBankAccount[]>;
+  getSubiektCashRegisters: (connectionId: string) => Promise<SubiektCashRegister[]>;
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
@@ -60,6 +64,16 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getBankAccounts(connectionId): Promise<BankAccount[]> {
       return request<BankAccount[]>(`/connections/${connectionId}/bank-accounts`);
+    },
+    getSubiektBankAccounts(connectionId): Promise<SubiektBankAccount[]> {
+      return request<SubiektBankAccount[]>(
+        `/integrations/subiekt/connections/${connectionId}/bank-accounts`,
+      );
+    },
+    getSubiektCashRegisters(connectionId): Promise<SubiektCashRegister[]> {
+      return request<SubiektCashRegister[]>(
+        `/integrations/subiekt/connections/${connectionId}/cash-registers`,
+      );
     },
     setDefaultBankAccount(connectionId, accountId): Promise<void> {
       return request<void>(`/connections/${connectionId}/bank-accounts/${accountId}/default`, {
