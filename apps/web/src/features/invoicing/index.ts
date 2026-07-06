@@ -34,13 +34,21 @@ export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
+export {
+  useSendInvoiceEmailMutation,
+  type SendInvoiceEmailVariables,
+} from './hooks/use-send-invoice-email-mutation';
 export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
 export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
-export { InvoiceStatusValues, RegulatoryStatusValues } from './api/invoicing.types';
+export {
+  InvoiceStatusValues,
+  RegulatoryStatusValues,
+  InvoiceEmailLocaleValues,
+} from './api/invoicing.types';
 export type {
   InvoiceRecord,
   InvoiceStatus,
@@ -62,4 +70,7 @@ export type {
   BulkIssueOutcome,
   CorrectionLineInput,
   IssueCorrectionInput,
+  InvoiceEmailLocale,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
 } from './api/invoicing.types';

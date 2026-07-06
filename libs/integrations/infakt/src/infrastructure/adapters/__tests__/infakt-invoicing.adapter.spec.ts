@@ -1078,4 +1078,50 @@ describe('InfaktInvoicingAdapter', () => {
       expect(body.invoice.bank_name).toBeUndefined();
     });
   });
+
+  describe('sendByEmail (#1353)', () => {
+    it('should POST deliver_via_email with print_type, mapped locale and send_copy', async () => {
+      http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
+
+      const result = await adapter.sendByEmail({
+        externalInvoiceId: 'inv-uuid-1',
+        locale: 'en',
+        sendCopy: true,
+      });
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/deliver_via_email.json',
+      );
+      expect(call?.body).toEqual({
+        print_type: 'original',
+        locale: 'en',
+        send_copy: true,
+      });
+      expect(result).toEqual({ delivered: true, recipient: null });
+    });
+
+    it('should omit locale/send_copy when not provided (inFakt defaults apply)', async () => {
+      http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
+
+      const result = await adapter.sendByEmail({ externalInvoiceId: 'inv-uuid-1' });
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/deliver_via_email.json',
+      );
+      expect(call?.body).toEqual({ print_type: 'original' });
+      expect(result).toEqual({ delivered: true, recipient: null });
+    });
+
+    it('should propagate a provider rejection', async () => {
+      http.seedError(
+        'POST',
+        'invoices/inv-uuid-1/deliver_via_email.json',
+        new InfaktApiError('deliver failed', 422, { error: 'delivery rejected' }),
+      );
+
+      await expect(adapter.sendByEmail({ externalInvoiceId: 'inv-uuid-1' })).rejects.toBeInstanceOf(
+        InfaktApiError,
+      );
+    });
+  });
 });

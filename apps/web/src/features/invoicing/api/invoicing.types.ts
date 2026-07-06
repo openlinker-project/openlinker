@@ -175,6 +175,24 @@ export interface RetryInvoicesResult {
   results: RetryInvoiceResult[];
 }
 
+/** Neutral document-language choice for `POST /invoices/:invoiceId/send-email` (#1353). */
+export const InvoiceEmailLocaleValues = ['pl', 'en'] as const;
+export type InvoiceEmailLocale = (typeof InvoiceEmailLocaleValues)[number];
+
+/** `POST /invoices/:invoiceId/send-email` request body (#1353). All optional —
+ *  a bare `{}` delivers to the buyer's provider-stored email in the provider's
+ *  default language. */
+export interface SendInvoiceEmailInput {
+  locale?: InvoiceEmailLocale;
+  sendCopy?: boolean;
+}
+
+/** `POST /invoices/:invoiceId/send-email` response (#1353). */
+export interface SendInvoiceEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+}
+
 /** `POST /invoices/bulk-issue` request body (#1355). Fans out over the single
  *  issue primitive per order id on one invoicing connection; idempotent per
  *  (connection, order) server-side. At most 100 order ids per request. */

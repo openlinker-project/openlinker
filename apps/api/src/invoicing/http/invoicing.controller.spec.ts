@@ -44,6 +44,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 import { InvoicingController } from './invoicing.controller';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
@@ -1350,6 +1351,90 @@ describe('InvoicingController', () => {
       await expect(controller.setDefaultBankAccount('conn-infakt-1', '1')).rejects.toBeInstanceOf(
         BadGatewayException,
       );
+    });
+  });
+
+  describe('POST /invoices/:invoiceId/send-email (#1353)', () => {
+    it('should trigger sendByEmail with the record providerInvoiceId + neutral options (no recipient override)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord({ providerInvoiceId: 'inv-uuid-9' }));
+      const sendByEmail = jest.fn().mockResolvedValue({ delivered: true, recipient: null });
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail } as unknown as InvoicingPort);
+
+      const result = await controller.sendInvoiceEmail('inv_1', {
+        locale: 'en',
+        sendCopy: true,
+      });
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn_1', 'Invoicing');
+      expect(sendByEmail).toHaveBeenCalledWith({
+        externalInvoiceId: 'inv-uuid-9',
+        locale: 'en',
+        sendCopy: true,
+      });
+      expect(result).toEqual({ delivered: true, recipient: null });
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      await expect(controller.sendInvoiceEmail('missing', {})).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('should 422 when the invoice has no provider invoice id', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord({ providerInvoiceId: null }));
+
+      await expect(controller.sendInvoiceEmail('inv_1', {})).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should 501 when the adapter does not implement InvoiceEmailSender', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      integrations.getCapabilityAdapter.mockResolvedValue({} as InvoicingPort);
+
+      await expect(controller.sendInvoiceEmail('inv_1', {})).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+    });
+
+    it('should 502 with a generic message when the live provider call fails', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const sendByEmail = jest.fn().mockRejectedValue(new Error('inFakt 500: buyer bob@secret.pl'));
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail } as unknown as InvoicingPort);
+
+      const rejection = controller.sendInvoiceEmail('inv_1', {});
+      await expect(rejection).rejects.toBeInstanceOf(BadGatewayException);
+      await expect(rejection).rejects.not.toThrow(/secret\.pl/);
+    });
+
+    it('should scrub the buyer email from the warn log on a provider failure', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const sendByEmail = jest.fn().mockRejectedValue(new Error('inFakt 500: buyer bob@secret.pl'));
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail } as unknown as InvoicingPort);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(controller.sendInvoiceEmail('inv_1', {})).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.not.stringContaining('bob@secret.pl'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[redacted-email]'));
+      warnSpy.mockRestore();
+    });
+
+    it('should scrub a plus-aliased buyer email from the warn log on a provider failure', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const sendByEmail = jest
+        .fn()
+        .mockRejectedValue(new Error('inFakt 500: buyer bob+invoices@secret.pl'));
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail } as unknown as InvoicingPort);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(controller.sendInvoiceEmail('inv_1', {})).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.not.stringContaining('bob+invoices@secret.pl'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[redacted-email]'));
+      warnSpy.mockRestore();
     });
   });
 });

@@ -146,4 +146,24 @@ describe('InfaktInvoiceDetailSection', () => {
       expect(downloadDocument).toHaveBeenCalledWith('ol_invoice_test', 'rendered'),
     );
   });
+
+  it('sends the invoice by email with the selected language when "Send by email" is clicked (#1353)', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null });
+    const apiClient = createMockApiClient({ invoicing: { sendEmail } });
+
+    renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'accepted', status: 'issued' })}
+        connection={infaktConnection}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'en' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send by email' }));
+
+    await waitFor(() =>
+      expect(sendEmail).toHaveBeenCalledWith('ol_invoice_test', { locale: 'en' }),
+    );
+  });
 });
