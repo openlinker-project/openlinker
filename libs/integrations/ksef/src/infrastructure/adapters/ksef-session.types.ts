@@ -98,12 +98,16 @@ export interface OnlineSessionStatusResponse {
  *    → non-terminal `submitted` (keep polling).
  *  - `200` Success → the document cleared and the KSeF number was assigned.
  *  - `400`/`440` validation/business rejection, `445` session closed with zero
- *    valid invoices → terminal `rejected`.
+ *    valid invoices, `450` document semantic-validation failure → terminal
+ *    `rejected`.
  *  - `550` processing error → transient (the reconciliation job retries).
  *
  * Provenance: `100`/`200` are confirmed from the KSeF v2 OpenAPI; `150`/`440`/
- * `445`/`550` are from the CIRFMF status catalogue. Unknown codes are handled by
- * the mapper's keep-polling default — not enumerated here.
+ * `445`/`550` are from the CIRFMF status catalogue; `450` (semantic validation
+ * failed — the document is rejected, no KSeF number/UPO is assigned) was
+ * observed live on the KSeF test env (2026-07-03, lowercase `KodKraju`) and
+ * matches the CIRFMF catalogue. Unknown codes are handled by the mapper's
+ * keep-polling default — not enumerated here.
  */
 export const KSEF_STATUS_PROCESSING_STARTED = 100;
 export const KSEF_STATUS_IN_PROGRESS = 150;
@@ -113,6 +117,8 @@ export const KSEF_STATUS_REJECTED = 400;
 export const KSEF_STATUS_FA3_PROCESSING = 430;
 export const KSEF_STATUS_BUSINESS_REJECTED = 440;
 export const KSEF_SESSION_CLOSED_ZERO_VALID = 445;
+/** Document failed semantic validation — terminal rejection (no KSeF number/UPO). */
+export const KSEF_STATUS_SEMANTIC_REJECTED = 450;
 export const KSEF_STATUS_PROCESSING_ERROR = 550;
 
 /**

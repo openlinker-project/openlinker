@@ -13,8 +13,9 @@
  *    (non-terminal; the caller polls again). `100`/`200` are confirmed from the
  *    KSeF v2 OpenAPI; `150`/`440`/`445`/`550` from the CIRFMF status catalogue.
  *  - `200` Success → `accepted` (the document cleared; KSeF assigned a number).
- *  - `400` / `440` / `445` (validation / business rejection / session closed
- *    with zero valid invoices) → `rejected` (terminal; non-retryable).
+ *  - `400` / `440` / `445` / `450` (validation / business rejection / session
+ *    closed with zero valid invoices / document semantic-validation failure)
+ *    → `rejected` (terminal; non-retryable).
  *  - `550` processing error → `null` sentinel: NOT mapped. The adapter treats
  *    `null` as "transient, let the reconciliation job (#1121) retry" and never
  *    reports it as a status.
@@ -43,6 +44,7 @@ import {
   KSEF_STATUS_FA3_PROCESSING,
   KSEF_STATUS_BUSINESS_REJECTED,
   KSEF_SESSION_CLOSED_ZERO_VALID,
+  KSEF_STATUS_SEMANTIC_REJECTED,
   KSEF_STATUS_PROCESSING_ERROR,
 } from './ksef-session.types';
 
@@ -60,6 +62,7 @@ const REJECTED_CODES: ReadonlySet<number> = new Set([
   KSEF_STATUS_REJECTED,
   KSEF_STATUS_BUSINESS_REJECTED,
   KSEF_SESSION_CLOSED_ZERO_VALID,
+  KSEF_STATUS_SEMANTIC_REJECTED,
 ]);
 
 /**
