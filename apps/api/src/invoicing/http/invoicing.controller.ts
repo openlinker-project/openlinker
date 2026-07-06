@@ -484,9 +484,12 @@ export class InvoicingController {
       );
     }
     if (!original.providerInvoiceNumber || !original.issuedAt) {
+      // Pre-#1338 rows issued before providerInvoiceNumber was persisted at
+      // construction time need the one-off backfill migration
+      // (1818000000005-backfill-ksef-provider-invoice-number.ts) to pass this check.
       throw new UnprocessableEntityException(
         `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet, ` +
-          `or it was issued before the provider stamped its document number and needs a one-off backfill (#1338)`,
+          `or it was issued before the provider stamped its document number and needs a one-off backfill`,
       );
     }
 
