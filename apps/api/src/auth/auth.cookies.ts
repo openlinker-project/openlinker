@@ -1,8 +1,8 @@
 /**
  * Auth Cookie Helpers
  *
- * Shapes the refresh + CSRF cookies set on `/auth/login`, rotated on
- * `/auth/refresh`, and cleared on `/auth/logout`. The single source
+ * Shapes the refresh + CSRF cookies set on `/v1/auth/login`, rotated on
+ * `/v1/auth/refresh`, and cleared on `/v1/auth/logout`. The single source
  * of truth for cookie names, paths, and SameSite mode — controllers
  * and tests both consume these constants so the contract drift would
  * be visible in the diff.
@@ -11,15 +11,26 @@
  */
 import { randomBytes } from 'crypto';
 import type { CookieOptions, Response } from 'express';
+import { API_VERSION_LABEL } from '../app-info/app-info.types';
 import { REFRESH_TOKEN_TTL_SECONDS } from './refresh-token.types';
 
 export const REFRESH_COOKIE_NAME = 'ol_refresh';
 export const CSRF_COOKIE_NAME = 'ol_csrf';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
 
-// Refresh cookie is HttpOnly and only consumed by /auth/refresh + /auth/logout,
-// so scoping it to /auth keeps it out of every unrelated request.
-const REFRESH_COOKIE_PATH = '/auth';
+// Refresh cookie is HttpOnly and only consumed by /v1/auth/refresh +
+// /v1/auth/logout, so scoping it to the versioned auth subtree keeps it out
+// of every unrelated request. Derived from API_VERSION_LABEL — the same
+// source main.ts feeds enableVersioning() — because RFC 6265 §5.1.4 only
+// sends a cookie when its Path prefixes the request path on / boundaries:
+// a literal '/auth' is NOT a prefix of '/v1/auth/refresh', so the browser
+// silently dropped the cookie from every refresh after the /v1 migration
+// (#1133) and each page reload logged the user out. See #1327.
+export const REFRESH_COOKIE_PATH = `/${API_VERSION_LABEL}/auth`;
+
+// Pre-versioning scope: ol_refresh lived here until #1327, and ol_csrf until
+// #748. Only used to clear those stale copies out of returning browsers.
+const LEGACY_AUTH_COOKIE_PATH = '/auth';
 
 // CSRF cookie is non-HttpOnly so the SPA can read it via document.cookie and
 // mirror it into X-CSRF-Token. document.cookie only exposes cookies whose
@@ -67,6 +78,13 @@ function csrfCookieOptions(): CookieOptions {
 }
 
 export function setRefreshCookie(res: Response, rawToken: string): void {
+  // Migration cleanup: drop the stale ol_refresh left at /auth from the
+  // pre-#1327 window before issuing the /v1/auth-scoped one. The stale copy
+  // is never sent to /v1/auth/* (that was the bug), but it holds a live,
+  // unrevoked token that would otherwise sit in the jar for its full TTL.
+  // Has to run on every login/refresh — affected users never reach logout
+  // while they're being silently bounced to /auth/login.
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: LEGACY_AUTH_COOKIE_PATH });
   res.cookie(REFRESH_COOKIE_NAME, rawToken, refreshCookieOptions());
 }
 
@@ -80,7 +98,7 @@ export function setCsrfCookie(res: Response): string {
   // to run on every successful login/refresh — clearAuthCookies (logout
   // only) isn't enough because affected users never reach logout while
   // they're being silently bounced to /auth/login.
-  res.clearCookie(CSRF_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+  res.clearCookie(CSRF_COOKIE_NAME, { path: LEGACY_AUTH_COOKIE_PATH });
   res.cookie(CSRF_COOKIE_NAME, csrf, csrfCookieOptions());
   return csrf;
 }
@@ -88,7 +106,9 @@ export function setCsrfCookie(res: Response): string {
 export function clearAuthCookies(res: Response): void {
   res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   res.clearCookie(CSRF_COOKIE_NAME, { path: CSRF_COOKIE_PATH });
-  // Migration cleanup: ol_csrf was previously set at /auth (#748). Clear that
-  // copy too so stale cookies from the buggy window don't shadow the new one.
-  res.clearCookie(CSRF_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+  // Migration cleanup: ol_csrf was previously set at /auth (#748), ol_refresh
+  // until #1327. Clear those copies too so stale cookies from the buggy
+  // windows don't linger (csrf could even shadow the new /-scoped value).
+  res.clearCookie(CSRF_COOKIE_NAME, { path: LEGACY_AUTH_COOKIE_PATH });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: LEGACY_AUTH_COOKIE_PATH });
 }

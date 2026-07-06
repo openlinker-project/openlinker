@@ -107,6 +107,18 @@ export interface ConnectionTestResult {
 }
 
 /**
+ * Entry from `GET /connections/:id/bank-accounts` (#1303 follow-up). Only
+ * meaningful for connections whose Invoicing adapter implements
+ * BankAccountsReader (today: Infakt).
+ */
+export interface BankAccount {
+  id: string;
+  accountNumber: string;
+  bankName: string;
+  isDefault: boolean;
+}
+
+/**
  * Response from `POST /connections/:id/webhooks/install` (#168). Reports whether
  * the WS push and the synchronous test ping both completed.
  */

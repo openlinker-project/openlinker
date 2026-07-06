@@ -24,6 +24,7 @@ describe('mapKsefStatusToRegulatoryStatus', () => {
     [400, 'rejected'],
     [440, 'rejected'],
     [445, 'rejected'],
+    [450, 'rejected'],
   ])('should map known business-rejection code %i → rejected (terminal)', (code, expected) => {
     expect(mapKsefStatusToRegulatoryStatus(code)).toBe(expected);
   });

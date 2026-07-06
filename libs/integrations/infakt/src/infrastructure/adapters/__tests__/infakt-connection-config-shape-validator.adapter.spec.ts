@@ -89,4 +89,63 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
       InvalidConnectionConfigException,
     );
   });
+
+  describe('bankAccount (#1303 follow-up)', () => {
+    const validAccount = { id: '42', accountNumber: '61 1140 2004 0000 0001', bankName: 'mBank' };
+
+    it('should resolve when bankAccount is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when bankAccount is null', async () => {
+      await expect(validator.validate({ bankAccount: null })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when bankAccount is well-formed', async () => {
+      await expect(validator.validate({ bankAccount: validAccount })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when bankAccount id is a legacy number', async () => {
+      await expect(
+        validator.validate({ bankAccount: { ...validAccount, id: 42 } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject when bankAccount is not an object', async () => {
+      await expect(validator.validate({ bankAccount: 'nope' })).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [{ path: 'bankAccount', message: expect.stringContaining('object') }],
+      });
+    });
+
+    it('should reject when bankAccount is an array', async () => {
+      await expect(validator.validate({ bankAccount: [] })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    });
+
+    it('should reject when bankAccount.id is missing', async () => {
+      await expect(
+        validator.validate({ bankAccount: { accountNumber: 'x', bankName: 'y' } }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'bankAccount.id', message: expect.stringContaining('string or number') }],
+      });
+    });
+
+    it('should reject when bankAccount.accountNumber is empty', async () => {
+      await expect(
+        validator.validate({ bankAccount: { ...validAccount, accountNumber: '   ' } }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'bankAccount.accountNumber', message: expect.stringContaining('non-empty') }],
+      });
+    });
+
+    it('should reject when bankAccount.bankName is not a string', async () => {
+      await expect(
+        validator.validate({ bankAccount: { ...validAccount, bankName: 123 } }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'bankAccount.bankName', message: expect.stringContaining('non-empty') }],
+      });
+    });
+  });
 });

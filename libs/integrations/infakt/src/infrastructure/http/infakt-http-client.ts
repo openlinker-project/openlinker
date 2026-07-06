@@ -53,6 +53,16 @@ export class InfaktHttpClient implements IInfaktHttpClient {
     return this.parse<T>(res, 'POST', path);
   }
 
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const url = this.buildUrl(path);
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return this.parse<T>(res, 'PUT', path);
+  }
+
   async getBinary(path: string, query?: Record<string, string>): Promise<InfaktBinaryResponse> {
     const url = this.buildUrl(path, query);
     const res = await fetch(url, { headers: this.headers() });

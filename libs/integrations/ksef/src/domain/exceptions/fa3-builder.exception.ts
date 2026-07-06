@@ -62,3 +62,15 @@ export class UnsupportedCurrencyException extends Fa3BuildException {
     this.name = 'UnsupportedCurrencyException';
   }
 }
+
+/**
+ * An address `countryIso2` (buyer or seller) had no FA(3) `KodKraju`
+ * (`TKodKraju`) representation after trim + uppercase normalisation. Carries
+ * the offending neutral country code only.
+ */
+export class UnsupportedCountryCodeException extends Fa3BuildException {
+  constructor(public readonly countryCode: string) {
+    super(`No FA(3) KodKraju mapping for country code: "${countryCode}"`);
+    this.name = 'UnsupportedCountryCodeException';
+  }
+}

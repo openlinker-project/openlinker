@@ -9,7 +9,10 @@
  * @module libs/integrations/ksef/src/infrastructure/fa3/domain
  */
 import { BuyerProfile, type IssueInvoiceCommand } from '@openlinker/core/invoicing';
-import { UnmappedTaxRateException } from '../../../domain/exceptions/fa3-builder.exception';
+import {
+  UnmappedTaxRateException,
+  UnsupportedCountryCodeException,
+} from '../../../domain/exceptions/fa3-builder.exception';
 import { mapToFa3BuilderInput, type Fa3MappingContext } from './fa3-builder-input.mapper';
 import type { SellerProfile } from './fa3-xml.types';
 
@@ -72,6 +75,41 @@ describe('mapToFa3BuilderInput — tax-rate fallback', () => {
     const result = mapToFa3BuilderInput(cmd, CONTEXT);
 
     expect(result.correction?.correctedLines[0].p12).toBe('8');
+  });
+});
+
+describe('mapToFa3BuilderInput - country-code normalisation', () => {
+  function commandWithBuyerCountry(countryIso2: string): IssueInvoiceCommand {
+    const cmd = baseCommand('23');
+    return {
+      ...cmd,
+      buyer: new BuyerProfile(
+        cmd.buyer.name,
+        cmd.buyer.taxId,
+        { ...cmd.buyer.address, countryIso2 },
+        cmd.buyer.type,
+      ),
+    };
+  }
+
+  it('should uppercase a lowercase buyer countryIso2 when it is a TKodKraju member', () => {
+    const result = mapToFa3BuilderInput(commandWithBuyerCountry('pl'), CONTEXT);
+    expect(result.buyerAddress.countryIso2).toBe('PL');
+  });
+
+  it('should normalise the seller address countryIso2 as well', () => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      seller: { ...SELLER, address: { ...SELLER.address, countryIso2: 'pl' } },
+    };
+    const result = mapToFa3BuilderInput(baseCommand('23'), context);
+    expect(result.seller.address.countryIso2).toBe('PL');
+  });
+
+  it('should throw UnsupportedCountryCodeException when the buyer countryIso2 is outside the enumeration', () => {
+    expect(() => mapToFa3BuilderInput(commandWithBuyerCountry('xx'), CONTEXT)).toThrow(
+      UnsupportedCountryCodeException,
+    );
   });
 });
 

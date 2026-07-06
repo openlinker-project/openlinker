@@ -118,6 +118,35 @@ function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'tra
 }
 
 /**
+ * Read the Infakt bank-account snapshot out of `config.bankAccount` (#1303
+ * follow-up). `id` is a string end-to-end (matching the neutral
+ * `InvoicingBankAccount.id`); a legacy numeric `id` persisted by an earlier
+ * build is coerced so the select still preselects it.
+ */
+// Exported for unit testing the legacy-id coercion / shape-guard seam
+// (#1310 review, finding 6); consumed only via the component's `defaultValues`.
+export function readInfaktBankAccount(
+  config: Record<string, unknown>,
+): { id: string; accountNumber: string; bankName: string } | null {
+  const raw = config.bankAccount;
+  if (
+    typeof raw !== 'object' ||
+    raw === null ||
+    typeof (raw as { accountNumber?: unknown }).accountNumber !== 'string' ||
+    typeof (raw as { bankName?: unknown }).bankName !== 'string'
+  ) {
+    return null;
+  }
+  const id = (raw as { id?: unknown }).id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  return {
+    id: String(id),
+    accountNumber: (raw as { accountNumber: string }).accountNumber,
+    bankName: (raw as { bankName: string }).bankName,
+  };
+}
+
+/**
  * Read the InPost sender address out of `config.senderAddress` (#771). Returns
  * a fully-populated form shape — empty-string fields where the operator hasn't
  * filled them yet — so RHF's nested `register()` paths work without per-field
@@ -310,6 +339,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       inpostSenderAddress: readInpostSenderAddress(connection.config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
+      infaktBankAccount: readInfaktBankAccount(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -443,6 +473,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #1303 follow-up — re-serialize the whole `infaktBankAccount` snapshot into
+  // configText. Clone of `syncInpostSenderAddressToJson`: reads CURRENT form
+  // state, takes NO argument, and KEEPS the `!configIsParseable` early-return.
+  // The Infakt section MUST setValue('infaktBankAccount', …) BEFORE calling this.
+  function syncInfaktBankAccountToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      infaktBankAccount: form.getValues('infaktBankAccount'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -560,6 +603,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           }
           syncObjectToJson={syncSubiektCapabilitiesToJson}
           syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
+          syncInfaktBankAccountToJson={syncInfaktBankAccountToJson}
         />
       ) : null}
 
