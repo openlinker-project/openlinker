@@ -23,7 +23,11 @@
  * narrow with `isRegulatoryResubmitter` before invoking — a provider that has no
  * resend concept simply doesn't implement it (the HTTP layer degrades to 501).
  *
- * Neutral-vocabulary litmus (ADR-026): no `nip`/`ksef`/`vat`/`jpk`/`faktura` here.
+ * Neutral-vocabulary litmus (ADR-026): the CONTRACT SURFACE — interface name,
+ * method name, parameter/return types — carries no `nip`/`ksef`/`vat`/`jpk`/
+ * `faktura` vocabulary. The prose above names inFakt/KSeF only as illustrative
+ * examples of a natively-transmitting provider; those are documentation, not part
+ * of the type surface a sibling context binds to.
  *
  * @module libs/core/src/invoicing/domain/ports/capabilities
  * @see {@link RegulatoryStatusReader} for the read-only clearance-poll half

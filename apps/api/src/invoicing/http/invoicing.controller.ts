@@ -66,6 +66,7 @@ import {
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  InvoiceRecordNotFoundException,
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
@@ -83,6 +84,7 @@ import type {
   TaxIdentifier,
   InvoicingPort,
   RegulatoryDocumentKind,
+  RegulatoryClearanceResult,
   StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
@@ -585,16 +587,35 @@ export class InvoicingController {
       );
     }
 
-    let refreshed: InvoiceRecord;
+    // No OL-side concurrency lease here (unlike the issue path's CAS lease): two
+    // concurrent admin clicks both read `rejected` and both re-hit the provider.
+    // That is intentional and safe — `resubmitForClearance` only re-sends the SAME
+    // document by `providerInvoiceId` and never re-POSTs `invoices.json`, so it
+    // cannot double-issue; resend relies on provider-side idempotency rather than
+    // an OL lease.
+    let result: RegulatoryClearanceResult;
     try {
-      const result = await adapter.resubmitForClearance(record);
-      // Refresh the stored regulatory status so the projection reflects the new
-      // (typically `submitted`) state and the reconciliation sweep resumes polling.
-      refreshed = await this.invoiceService.applyRegulatoryClearance(invoiceId, result);
+      result = await adapter.resubmitForClearance(record);
     } catch (error) {
+      // Only the provider call is a 502-worthy upstream fault. Keep the local
+      // write outside this catch so a TOCTOU persistence failure isn't mislabelled
+      // as a provider failure.
       throw this.toProviderBadGateway(error, 'resubmitForClearance');
     }
-    return this.toDto(refreshed);
+
+    // Refresh the stored regulatory status so the projection reflects the new
+    // (typically `submitted`) state and the reconciliation sweep resumes polling.
+    // The provider already succeeded; a failure here is a local persistence fault
+    // (e.g. the record was deleted after the read), mapped on its own terms.
+    try {
+      const refreshed = await this.invoiceService.applyRegulatoryClearance(invoiceId, result);
+      return this.toDto(refreshed);
+    } catch (error) {
+      if (error instanceof InvoiceRecordNotFoundException) {
+        throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+      }
+      throw this.toHttpException(error);
+    }
   }
 
   @Get('orders/:orderId/invoice')

@@ -20,6 +20,7 @@ import type { Response } from 'express';
 import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
+  InvoiceRecordNotFoundException,
   UnsupportedRegulatoryDocumentKindError,
   BuyerProfile,
 } from '@openlinker/core/invoicing';
@@ -1292,6 +1293,26 @@ describe('InvoicingController', () => {
       // Provider error text (incl. any PII) must never be echoed back.
       await expect(rejection).rejects.not.toThrow(/NIP 123/);
       expect(invoiceService.applyRegulatoryClearance).not.toHaveBeenCalled();
+    });
+
+    it('404 NotFound (not 502) when the record is deleted after resend succeeds (TOCTOU)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ regulatoryStatus: 'rejected' }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        resubmitForClearance: jest
+          .fn()
+          .mockResolvedValue({ regulatoryStatus: 'submitted', clearanceReference: null }),
+      } as unknown as InvoicingPort);
+      // Provider succeeded; the local write-back fails because the row vanished.
+      invoiceService.applyRegulatoryClearance.mockRejectedValue(
+        new InvoiceRecordNotFoundException('inv_1'),
+      );
+
+      const rejection = controller.resendToKsef('inv_1');
+      await expect(rejection).rejects.toBeInstanceOf(NotFoundException);
+      // Must NOT be mislabelled as a provider fault.
+      await expect(rejection).rejects.not.toBeInstanceOf(BadGatewayException);
     });
   });
 });
