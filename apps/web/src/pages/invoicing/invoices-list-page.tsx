@@ -308,6 +308,34 @@ export function InvoicesListPage(): ReactElement {
         'Issued, pending, and failed invoices across connections, with regulatory (KSeF) status.',
       )}
     >
+      {retryMutation.error ? (
+        <Alert tone="error" className="invoice-list__retry-error">
+          {t('invoice.bulk.retryError', 'Batch retry failed:')} {retryMutation.error.message}
+          <Button
+            tone="secondary"
+            className="button--sm"
+            style={{ marginLeft: '8px' }}
+            onClick={() => retryMutation.reset()}
+          >
+            {t('invoice.bulk.dismiss', 'Dismiss')}
+          </Button>
+        </Alert>
+      ) : null}
+
+      {bulkIssueMutation.error ? (
+        <Alert tone="error" className="invoice-list__issue-error">
+          {t('invoice.bulk.issueError', 'Bulk issue failed:')} {bulkIssueMutation.error.message}
+          <Button
+            tone="secondary"
+            className="button--sm"
+            style={{ marginLeft: '8px' }}
+            onClick={() => bulkIssueMutation.reset()}
+          >
+            {t('invoice.bulk.dismiss', 'Dismiss')}
+          </Button>
+        </Alert>
+      ) : null}
+
       {retryBanner ? (
         <Alert tone="success" className="invoice-list__retry-banner">
           {t('invoice.bulk.retryResult', 'Batch retry complete.')}{' '}

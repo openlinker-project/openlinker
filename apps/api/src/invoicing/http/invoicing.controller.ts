@@ -496,8 +496,9 @@ export class InvoicingController {
   /**
    * Issue an invoice for a SINGLE order on the given connection, reusing the exact
    * issue primitive `POST /invoices` composes (`toIssueInvoiceCommand` +
-   * `invoiceService.issueInvoice`). Never throws — every branch maps to a per-id
-   * result so one bad order cannot abort the batch:
+   * `invoiceService.issueInvoice`). Never throws — every branch, including the
+   * order/invoice lookups, is inside the try so an infra blip on any one id
+   * cannot abort the batch:
    *   - order record not found                    -> failed (not-found).
    *   - existing invoice `issued`                 -> skipped (already issued),
    *     carrying the existing row's id — the idempotent path.
@@ -509,37 +510,40 @@ export class InvoicingController {
    *
    * The buyer tax id is NOT supplied per-order in a bulk request (mirrors a keyless
    * single re-issue), so the rebuilt command derives the buyer from the order
-   * snapshot alone (`buyerTaxId: null`). A rehydration failure or provider rejection
-   * is captured as `failed` with a neutral, PII-free correlation id — the raw
-   * provider/PII text is never returned.
+   * snapshot alone (`buyerTaxId: null`). A `DuplicateInvoiceRecordException` (a
+   * concurrent bulk/auto-issue race on the same deterministic key) is semantically
+   * "already in progress" and reported `skipped`, not `failed`. Any other
+   * rehydration failure or provider rejection is captured as `failed` with a
+   * neutral, PII-free correlation id — the raw provider/PII text is never returned.
    */
   private async issueOneForOrder(
     connectionId: string,
     orderId: string,
   ): Promise<BulkIssueInvoiceResultDto> {
-    const record = await this.orders.getOrderRecord(orderId);
-    if (!record) {
-      return { orderId, outcome: 'failed', reason: 'Order not found.' };
-    }
-
-    // Re-issue gate — same semantics as the single `POST /invoices` endpoint, but
-    // downgraded from a thrown 409 to a per-id `skipped` so the batch continues.
-    const existing = await this.invoiceService.getInvoice({ orderId, connectionId });
-    if (existing) {
-      if (existing.status === 'issued') {
-        return {
-          orderId,
-          outcome: 'skipped',
-          invoiceId: existing.id,
-          reason: 'An invoice is already issued for this order.',
-        };
-      }
-      if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
-        return { orderId, outcome: 'skipped', reason: 'Invoice issuance is already in progress.' };
-      }
-    }
-
     try {
+      const record = await this.orders.getOrderRecord(orderId);
+      if (!record) {
+        return { orderId, outcome: 'failed', reason: 'Order not found.' };
+      }
+
+      // Re-issue gate — same semantics as the single `POST /invoices` endpoint,
+      // but downgraded from a thrown 409 to a per-id `skipped` so the batch
+      // continues.
+      const existing = await this.invoiceService.getInvoice({ orderId, connectionId });
+      if (existing) {
+        if (existing.status === 'issued') {
+          return {
+            orderId,
+            outcome: 'skipped',
+            invoiceId: existing.id,
+            reason: 'An invoice is already issued for this order.',
+          };
+        }
+        if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
+          return { orderId, outcome: 'skipped', reason: 'Invoice issuance is already in progress.' };
+        }
+      }
+
       const order = this.rehydrateOrder(record.internalOrderId, record);
       // Deterministic per-(connection, order) key — the same key the auto-issue
       // trigger uses. Threading it into the service's exactly-once dedup gate is
@@ -557,9 +561,19 @@ export class InvoicingController {
       const issued = await this.invoiceService.issueInvoice(command);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
     } catch (error) {
-      // A rejection / rehydration failure for ONE order must not abort the batch.
-      // Log the bounded internal diagnostic with a correlation id; surface only a
-      // neutral, PII-free reason.
+      if (error instanceof DuplicateInvoiceRecordException) {
+        // Same deterministic key as the auto-issue trigger — a concurrent
+        // bulk+auto-issue race lands here. It is already in progress/done, not
+        // a failure, and no double-issue results either way.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: 'Invoice issuance is already in progress.',
+        };
+      }
+      // A rejection / rehydration / lookup failure for ONE order must not abort
+      // the batch. Log the bounded internal diagnostic with a correlation id;
+      // surface only a neutral, PII-free reason.
       const correlationId = `inv-bulk-${Date.now().toString(36)}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;

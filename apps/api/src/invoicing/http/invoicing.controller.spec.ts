@@ -21,6 +21,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
   UnsupportedRegulatoryDocumentKindError,
+  DuplicateInvoiceRecordException,
   BuyerProfile,
 } from '@openlinker/core/invoicing';
 import type {
@@ -1008,6 +1009,25 @@ describe('InvoicingController', () => {
       // The neutral reason never echoes the raw provider message.
       expect(failed?.reason).not.toContain('provider blew up');
       expect(failed?.reason).toContain('correlationId');
+    });
+
+    it('should report a concurrent bulk/auto-issue race (DuplicateInvoiceRecordException) as skipped, not failed', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        new DuplicateInvoiceRecordException(CONN, 'ol_order_1'),
+      );
+
+      const res = await controller.bulkIssueInvoices({ connectionId: CONN, orderIds: ['ol_order_1'] });
+
+      expect(res.issued).toBe(0);
+      expect(res.failed).toBe(0);
+      expect(res.skipped).toBe(1);
+      expect(res.results[0]).toEqual({
+        orderId: 'ol_order_1',
+        outcome: 'skipped',
+        reason: expect.stringContaining('already in progress'),
+      });
     });
 
     it('should de-duplicate repeated order ids so an order is issued at most once', async () => {
