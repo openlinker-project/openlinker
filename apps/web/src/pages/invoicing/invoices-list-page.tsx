@@ -314,7 +314,7 @@ export function InvoicesListPage(): ReactElement {
           <Button
             tone="secondary"
             className="button--sm"
-            style={{ marginLeft: '8px' }}
+            style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => retryMutation.reset()}
           >
             {t('invoice.bulk.dismiss', 'Dismiss')}
@@ -328,7 +328,7 @@ export function InvoicesListPage(): ReactElement {
           <Button
             tone="secondary"
             className="button--sm"
-            style={{ marginLeft: '8px' }}
+            style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => bulkIssueMutation.reset()}
           >
             {t('invoice.bulk.dismiss', 'Dismiss')}
@@ -348,7 +348,7 @@ export function InvoicesListPage(): ReactElement {
           <Button
             tone="secondary"
             className="button--sm"
-            style={{ marginLeft: '8px' }}
+            style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => setRetryBanner(null)}
           >
             {t('invoice.bulk.dismiss', 'Dismiss')}
@@ -371,7 +371,7 @@ export function InvoicesListPage(): ReactElement {
           <Button
             tone="secondary"
             className="button--sm"
-            style={{ marginLeft: '8px' }}
+            style={{ marginLeft: 'var(--space-2)' }}
             onClick={() => setIssueBanner(null)}
           >
             {t('invoice.bulk.dismiss', 'Dismiss')}

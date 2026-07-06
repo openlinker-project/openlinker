@@ -562,9 +562,16 @@ export class InvoicingController {
       return { orderId, outcome: 'issued', invoiceId: issued.id };
     } catch (error) {
       if (error instanceof DuplicateInvoiceRecordException) {
-        // Same deterministic key as the auto-issue trigger — a concurrent
-        // bulk+auto-issue race lands here. It is already in progress/done, not
-        // a failure, and no double-issue results either way.
+        // Belt-and-suspenders. The primary dedup on the deterministic
+        // `invoice:{connectionId}:{orderId}` key happens INSIDE
+        // `InvoiceService.issueInvoice`: its read-gate resolves an existing
+        // same-key row (returning an `issued` one verbatim, resuming a
+        // non-terminal one), and a create-race is normally swallowed there too —
+        // the service catches the duplicate, re-reads the winner, and resumes it.
+        // This catch only fires in the residual race where that internal re-read
+        // can't resolve a winner and the exception propagates. It is still
+        // "already in progress/done", not a failure, and no double-issue results
+        // either way, so report it as `skipped`.
         return {
           orderId,
           outcome: 'skipped',

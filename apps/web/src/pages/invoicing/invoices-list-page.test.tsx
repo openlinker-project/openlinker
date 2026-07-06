@@ -320,10 +320,10 @@ describe('InvoicesListPage', () => {
     expect(bulkIssue).toHaveBeenCalledWith({ connectionId: 'conn_a', orderIds: ['order_a'] });
     expect(bulkIssue).toHaveBeenCalledWith({ connectionId: 'conn_b', orderIds: ['order_b'] });
 
-    // Banner sums issued/skipped/failed across both connection groups.
-    const banner = await screen.findByText((_, el) =>
-      el?.className === 'alert__description' && (el.textContent ?? '').includes('Bulk issue complete.'),
-    );
+    // Banner sums issued/skipped/failed across both connection groups. Query by
+    // the banner's own text (robust to the Alert component's internal markup /
+    // CSS class names) rather than the `alert__description` implementation class.
+    const banner = await screen.findByText(/Bulk issue complete\./);
     expect(banner.textContent).toContain('1 issued.');
     expect(banner.textContent).toContain('1 skipped (already issued or in progress).');
   });
