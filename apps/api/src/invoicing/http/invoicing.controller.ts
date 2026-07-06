@@ -72,6 +72,7 @@ import {
   BuyerProfile,
   isBankAccountsReader,
   isBankAccountDefaultSetter,
+  isInvoiceEmailSender,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -102,6 +103,8 @@ import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
 import { BankAccountResponseDto } from './dto/bank-account-response.dto';
+import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
+import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -540,6 +543,55 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     return this.toDto(issued);
+  }
+
+  @Post('invoices/:invoiceId/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email an issued invoice to the buyer (#1353)',
+    description:
+      'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
+      'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
+      'provider composes and delivers the message. Optional neutral locale (pl/en), recipient ' +
+      'override, and send-copy flag. 501 when the resolved adapter does not implement ' +
+      'InvoiceEmailSender.',
+  })
+  @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement InvoiceEmailSender' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async sendInvoiceEmail(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Body() dto: SendInvoiceEmailRequestDto,
+  ): Promise<SendInvoiceEmailResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!record.providerInvoiceId) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
+      );
+    }
+
+    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
+    if (!isInvoiceEmailSender(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`,
+      );
+    }
+    try {
+      const result = await adapter.sendByEmail({
+        externalInvoiceId: record.providerInvoiceId,
+        locale: dto.locale,
+        recipient: dto.recipient,
+        sendCopy: dto.sendCopy,
+      });
+      return { delivered: result.delivered, recipient: result.recipient };
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'sendByEmail');
+    }
   }
 
   @Get('orders/:orderId/invoice')

@@ -25,6 +25,7 @@ import type {
   CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
+  InvoiceEmailSender,
   InvoicingBankAccount,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
@@ -36,6 +37,8 @@ import type {
   RegulatoryDocumentReader,
   RegulatoryStatus,
   RegulatoryStatusReader,
+  SendInvoiceByEmailCommand,
+  SendInvoiceByEmailResult,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
@@ -95,6 +98,24 @@ function toInfaktInvoiceType(documentType: string): string {
       return 'proforma';
     default:
       return 'vat';
+  }
+}
+
+/**
+ * Maps the neutral email-delivery locale (#1353) → inFakt's `email_locales`
+ * dictionary value. inFakt accepts `pl` / `en` (bilingual variants exist but
+ * are out of scope for the neutral pl/en choice). Returns `undefined` when the
+ * caller left it unset, so the request omits `locale` and inFakt uses its own
+ * per-account default.
+ */
+function toInfaktEmailLocale(locale: string | undefined): string | undefined {
+  switch (locale) {
+    case 'pl':
+      return 'pl';
+    case 'en':
+      return 'en';
+    default:
+      return undefined;
   }
 }
 
@@ -181,7 +202,8 @@ export class InfaktInvoicingAdapter
     CorrectionIssuer,
     RegulatoryDocumentReader,
     BankAccountsReader,
-    BankAccountDefaultSetter
+    BankAccountDefaultSetter,
+    InvoiceEmailSender
 {
   /**
    * Payment method sent on every issued invoice/correction (#1303) — a
@@ -556,6 +578,33 @@ export class InfaktInvoicingAdapter
       `invoices/${invoiceUuid}/send_to_ksef.json`,
       {},
     );
+  }
+
+  /**
+   * `InvoiceEmailSender.sendByEmail` (#1353) — trigger inFakt to render + email
+   * the already-issued invoice to the buyer via
+   * `POST /invoices/{uuid}/deliver_via_email.json`. inFakt composes and sends
+   * the message itself (OL attaches nothing) and flips the invoice status to
+   * `sent` on its side. `print_type: 'original'` is the standard document view;
+   * `locale` is sent only when the operator picked one (else inFakt's account
+   * default); `recipient` overrides the client's stored email; `send_copy`
+   * asks inFakt to CC the seller. A provider rejection propagates as-is (the
+   * controller maps it to a 502).
+   */
+  async sendByEmail(cmd: SendInvoiceByEmailCommand): Promise<SendInvoiceByEmailResult> {
+    const locale = toInfaktEmailLocale(cmd.locale);
+    const payload = {
+      print_type: 'original',
+      ...(locale ? { locale } : {}),
+      ...(cmd.recipient ? { recipient: cmd.recipient } : {}),
+      ...(cmd.sendCopy !== undefined ? { send_copy: cmd.sendCopy } : {}),
+    };
+    await this.http.post(
+      `invoices/${encodeURIComponent(cmd.externalInvoiceId)}/deliver_via_email.json`,
+      payload,
+    );
+    this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} emailed to buyer`);
+    return { delivered: true, recipient: cmd.recipient ?? null };
   }
 
   /**
