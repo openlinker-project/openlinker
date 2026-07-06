@@ -22,11 +22,13 @@ import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/in
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
+import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 export {
@@ -34,6 +36,7 @@ export {
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 @Module({
@@ -72,6 +75,11 @@ export {
       provide: REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
       useExisting: RegulatoryStatusReconciliationService,
     },
+    PaymentStatusRefreshService,
+    {
+      provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
+      useExisting: PaymentStatusRefreshService,
+    },
   ],
   // Export BOTH the token and the provider so OrdersModule (which imports this
   // module) can inject the trigger service by token (F2/F3). The reconciliation
@@ -84,6 +92,9 @@ export {
     AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
     AutoIssueTriggerService,
     REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the service into
+    // PaymentStatusRefreshHandler (#1354) — same reason as the reconciliation token.
+    PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   ],
 })
 export class InvoicingModule {}

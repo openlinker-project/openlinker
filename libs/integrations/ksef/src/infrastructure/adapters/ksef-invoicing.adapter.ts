@@ -167,6 +167,15 @@ export class KsefInvoicingAdapter
     this.assertCorrectionConsistency(cmd);
 
     const issuedAt = this.now();
+    // The FA(3) P_2 document number. Single source for BOTH the XML builder's
+    // `invoiceNumber` and the persisted `InvoiceRecord.providerInvoiceNumber` —
+    // the correction precondition (#1289) matches on the persisted value, so the
+    // two must never diverge (#1338).
+    // TODO: replace the orderId placeholder with a real per-seller sequential
+    // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
+    // order id) before prod. Owned by the core InvoiceService numbering
+    // follow-up (#1118), not the C6 clearance-read (#1150).
+    const documentNumber = cmd.orderId;
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
@@ -179,11 +188,7 @@ export class KsefInvoicingAdapter
         seller: this.seller,
         issueDate: this.toIsoDate(issuedAt),
         generatedAt: issuedAt.toISOString(),
-        // TODO: replace the orderId placeholder with a real per-seller sequential
-        // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
-        // order id) before prod. Owned by the core InvoiceService numbering
-        // follow-up (#1118), not the C6 clearance-read (#1150).
-        invoiceNumber: cmd.orderId,
+        invoiceNumber: documentNumber,
         defaultTaxRate: this.defaultTaxRate,
         payment: this.payment,
       }),
@@ -241,7 +246,10 @@ export class KsefInvoicingAdapter
       this.resolveDocumentType(cmd.documentType),
       'issued',
       encodeProviderInvoiceId(sessionRef, invoiceReference),
-      null,
+      // Leaving this null made the correction precondition in the HTTP
+      // controller (#1289) reject every KSeF KOR with "missing document
+      // number / issue date" (#1338).
+      documentNumber,
       'submitted',
       null,
       cmd.idempotencyKey ?? null,
@@ -309,6 +317,15 @@ export class KsefInvoicingAdapter
       );
     }
     const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
+    // NOTE (#1338 review follow-up, tracked in #1364): delegating to issueInvoice
+    // with the SAME `orderId` means a KOR stamps P_2 = the original document's
+    // P_2 — the correction and the invoice it corrects share a document number,
+    // which is wrong for FA(3) (P_2 must be unique per document). Pre-existing
+    // (the orderId-as-P_2 placeholder predates this fix); now more visible
+    // because `providerInvoiceNumber` is actually persisted and consumed by the
+    // correction precondition. Must be resolved together with the real
+    // per-seller sequential FA(3) numbering source (see the `documentNumber`
+    // TODO in issueInvoice above) — a correction needs its own distinct number.
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,

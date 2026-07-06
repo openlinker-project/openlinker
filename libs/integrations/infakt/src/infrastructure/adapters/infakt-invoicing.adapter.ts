@@ -25,17 +25,25 @@ import type {
   CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
+  InvoiceEmailLocale,
+  InvoiceEmailSender,
   InvoicingBankAccount,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  PaymentStatus,
+  PaymentStatusReader,
+  PaymentStatusResult,
   RegulatoryClearanceResult,
   RegulatoryDocument,
   RegulatoryDocumentKind,
   RegulatoryDocumentReader,
+  RegulatoryResubmitter,
   RegulatoryStatus,
   RegulatoryStatusReader,
+  SendInvoiceByEmailCommand,
+  SendInvoiceByEmailResult,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
@@ -87,6 +95,42 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
   }
 }
 
+/**
+ * The Infakt settlement tokens this adapter recognises, verified against the
+ * two Infakt meta dictionaries (live 2026-07):
+ *   - invoice `status` (`invoice_statuses`): `draft` | `sent` | `printed` | `paid`
+ *   - payment status (`payment_statuses`):  `paid` | `unpaid` | `partial_payment`
+ *                                           | `payment_not_applicable`
+ *
+ * `toPaymentStatus` reads only `InfaktInvoice.status` — the `invoice_statuses`
+ * field, which carries `paid` but has *no* partial token today. So the
+ * `partial`/`partly` match below is a forward-looking guard, not a currently
+ * reachable branch: it's here so that if Infakt ever surfaces a settlement token
+ * on `status` (or the field is later widened to the `payment_statuses`
+ * vocabulary, whose `partial_payment` it would then catch), a part-settled
+ * document classifies as `partially-paid` rather than silently `unpaid`.
+ * Matching against known tokens (rather than a bare `=== 'paid'`) keeps that
+ * drift explicit here instead of mis-classifying.
+ */
+const INFAKT_PAID_TOKENS: readonly string[] = ['paid'];
+const INFAKT_PARTIAL_TOKENS: readonly string[] = ['partial', 'partly'];
+
+/**
+ * Maps Infakt's invoice `status` (+ `paid_date`) → neutral PaymentStatus (#1354).
+ *
+ * Precedence: an explicit `paid` token wins; a `partial`/`partly` token is
+ * part-settled; a present `paid_date` with any other status is a defensive
+ * fallback to `paid` (Infakt only stamps that date once the document is
+ * settled); everything else (`draft`/`sent`/`printed`/…) is `unpaid`.
+ */
+function toPaymentStatus(invoice: InfaktInvoice): PaymentStatus {
+  const status = (invoice.status ?? '').toLowerCase();
+  if (INFAKT_PAID_TOKENS.includes(status)) return 'paid';
+  if (INFAKT_PARTIAL_TOKENS.some((token) => status.includes(token))) return 'partially-paid';
+  if (invoice.paid_date) return 'paid';
+  return 'unpaid';
+}
+
 /** Maps neutral DocumentType → Infakt's GET-by-uuid `invoice_type` query param. */
 function toInfaktInvoiceType(documentType: string): string {
   switch (documentType) {
@@ -96,6 +140,24 @@ function toInfaktInvoiceType(documentType: string): string {
       return 'proforma';
     default:
       return 'vat';
+  }
+}
+
+/**
+ * Maps the neutral email-delivery locale (#1353) → the `locale` field of
+ * inFakt's `deliver_via_email` payload (`pl` / `en`; bilingual variants exist
+ * but are out of scope for the neutral pl/en choice). Returns `undefined`
+ * when the caller left it unset, so the request omits `locale` and inFakt
+ * uses its own per-account default.
+ */
+function toInfaktEmailLocale(locale: InvoiceEmailLocale | undefined): string | undefined {
+  switch (locale) {
+    case 'pl':
+      return 'pl';
+    case 'en':
+      return 'en';
+    case undefined:
+      return undefined;
   }
 }
 
@@ -204,10 +266,13 @@ export class InfaktInvoicingAdapter
   implements
     InvoicingPort,
     RegulatoryStatusReader,
+    PaymentStatusReader,
+    RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
     BankAccountsReader,
-    BankAccountDefaultSetter
+    BankAccountDefaultSetter,
+    InvoiceEmailSender
 {
   /**
    * Payment method sent on every issued invoice/correction (#1303) — a
@@ -479,6 +544,25 @@ export class InfaktInvoicingAdapter
     };
   }
 
+  /**
+   * `PaymentStatusReader.getPaymentStatus` (#1354) — authoritative re-read of the
+   * document's payment state. A provider payment webhook is only a trigger; core
+   * calls this to read the real state rather than trusting the webhook body.
+   * Returns `unknown` when the record has no provider id (nothing to read).
+   */
+  async getPaymentStatus(record: InvoiceRecord): Promise<PaymentStatusResult> {
+    if (!record.providerInvoiceId) {
+      return { paymentStatus: 'unknown' };
+    }
+
+    const invoice = await this.http.get<InfaktInvoice>(
+      `invoices/${record.providerInvoiceId}.json`,
+      { invoice_type: toInfaktInvoiceType(record.documentType) },
+    );
+
+    return { paymentStatus: toPaymentStatus(invoice) };
+  }
+
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
     const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } =
       cmd;
@@ -641,6 +725,65 @@ export class InfaktInvoicingAdapter
       `${resource}/${encodeURIComponent(invoiceUuid)}/send_to_ksef.json`,
       {},
     );
+  }
+
+  /**
+   * `RegulatoryResubmitter.resubmitForClearance` (#1356) — re-trigger KSeF
+   * submission of an ALREADY-ISSUED inFakt document, for the operator "resend to
+   * KSeF" action on a rejected invoice.
+   *
+   * Retry-safety (confirms/guards the previously-UNVERIFIED note on repeated
+   * `send_to_ksef` above): unlike `issueInvoice`/`issueCorrection`, this path
+   * does NOT re-POST `invoices.json`, so it can never create a second draft. It
+   * only re-hits `send_to_ksef.json` for the SAME existing document identified by
+   * `record.providerInvoiceId` — a pure re-transmission of a document inFakt
+   * already holds. The caller (the HTTP layer) additionally gates the action to
+   * documents whose clearance ended in `rejected`, so an in-flight or already-
+   * accepted document is never re-sent. Together these make a repeat
+   * `send_to_ksef` a safe re-attempt on one and the same fiscal document — it
+   * cannot double-issue. inFakt's async model returns the fresh submission status
+   * here (typically `pending`/`sent` → neutral `submitted`); OL's reconciliation
+   * sweep (#1121) then polls it to a terminal state.
+   *
+   * `providerInvoiceId` is always present for an issued record; the defensive
+   * `not-applicable` return covers a malformed record rather than a real path.
+   */
+  async resubmitForClearance(record: InvoiceRecord): Promise<RegulatoryClearanceResult> {
+    if (!record.providerInvoiceId) {
+      return { regulatoryStatus: 'not-applicable' };
+    }
+    const ksefResult = await this.sendToKsef(record.providerInvoiceId);
+    return {
+      regulatoryStatus: toRegulatoryStatus(ksefResult.status),
+      clearanceReference: ksefResult.ksef_number ?? null,
+    };
+  }
+
+  /**
+   * `InvoiceEmailSender.sendByEmail` (#1353) — trigger inFakt to render + email
+   * the already-issued invoice to the buyer via
+   * `POST /invoices/{uuid}/deliver_via_email.json`. inFakt composes and sends
+   * the message itself (OL attaches nothing) and flips the invoice status to
+   * `sent` on its side. `print_type: 'original'` is the standard document view;
+   * `locale` is sent only when the operator picked one (else inFakt's account
+   * default); `send_copy` asks inFakt to CC the seller. There is no recipient
+   * override — inFakt always uses the client's stored email, so the response
+   * `recipient` is always null (inFakt doesn't echo it back). A provider
+   * rejection propagates as-is (the controller maps it to a 502).
+   */
+  async sendByEmail(cmd: SendInvoiceByEmailCommand): Promise<SendInvoiceByEmailResult> {
+    const locale = toInfaktEmailLocale(cmd.locale);
+    const payload = {
+      print_type: 'original',
+      ...(locale ? { locale } : {}),
+      ...(cmd.sendCopy !== undefined ? { send_copy: cmd.sendCopy } : {}),
+    };
+    await this.http.post(
+      `invoices/${encodeURIComponent(cmd.externalInvoiceId)}/deliver_via_email.json`,
+      payload,
+    );
+    this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} emailed to buyer`);
+    return { delivered: true, recipient: null };
   }
 
   /**

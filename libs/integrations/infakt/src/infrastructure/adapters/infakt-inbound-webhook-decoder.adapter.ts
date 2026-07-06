@@ -51,17 +51,24 @@ export class InfaktInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     }
 
     // Short-circuit here rather than always routing: every Infakt event OL
-    // doesn't act on (draft_invoice_created, invoice_marked_as_paid, …) would
-    // otherwise still pay for a full Postgres dedup-insert + Redis publish
-    // before being dead-lettered two hops later in WebhookToJobHandler.
+    // doesn't act on (draft_invoice_created, …) would otherwise still pay for a
+    // full Postgres dedup-insert + Redis publish before being dead-lettered two
+    // hops later in WebhookToJobHandler. KSeF-clearance and payment events
+    // (#1354) route; everything else is ignored.
     if (this.parser.toOlDomain(parsed.event.name) === null) {
       return { action: 'ignore', reason: `unhandled Infakt event: ${parsed.event.name}` };
     }
 
+    // The external id is the invoice uuid. KSeF-clearance resources carry it as
+    // `invoice_uuid`; a payment event whose resource is the full invoice object
+    // carries it as `uuid` (#1354). Fall back to the event uuid only when neither
+    // is present, so the routed job targets the right document.
     const externalId =
       typeof parsed.resource['invoice_uuid'] === 'string'
         ? parsed.resource['invoice_uuid']
-        : parsed.event.uuid;
+        : typeof parsed.resource['uuid'] === 'string'
+          ? parsed.resource['uuid']
+          : parsed.event.uuid;
 
     return {
       action: 'route',

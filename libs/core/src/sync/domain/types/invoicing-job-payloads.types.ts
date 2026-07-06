@@ -78,3 +78,16 @@ export interface RegulatoryStatusReconcilePayloadV1 {
   /** Page size: max number of non-terminal records to reconcile this run. */
   limit: number;
 }
+
+/**
+ * Payload for `invoicing.paymentStatus.refreshByExternalId` (#1354). Carries the
+ * provider's invoice id named by the payment webhook; the handler re-reads
+ * authoritative payment state for THAT document (webhook is a trigger, not the
+ * source of truth) and updates OL's projection. No cursor — it is a single-id
+ * refresh, not a sweep.
+ */
+export interface PaymentStatusRefreshByExternalIdPayloadV1 {
+  schemaVersion: 1;
+  /** Provider-native invoice id (matches `InvoiceRecord.providerInvoiceId`). */
+  externalInvoiceId: string;
+}

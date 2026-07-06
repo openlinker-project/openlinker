@@ -567,6 +567,177 @@ describe('InfaktInvoicingAdapter', () => {
     });
   });
 
+  describe('getPaymentStatus (#1354)', () => {
+    function issuedRecord(): InvoiceRecord {
+      return new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        'inv-uuid-1',
+        'FV/1/2026',
+        'accepted',
+        'KSeF-1',
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+    }
+
+    it('should return unknown when the record has no providerInvoiceId', async () => {
+      const record = new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'pending',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+
+      expect(await adapter.getPaymentStatus(record)).toEqual({ paymentStatus: 'unknown' });
+    });
+
+    it.each([
+      ['paid', null, 'paid'],
+      ['partly_paid', null, 'partially-paid'],
+      // `partial_payment` is Infakt's payment_statuses-dictionary token; the
+      // substring match must classify it the same as `partly_paid`.
+      ['partial_payment', null, 'partially-paid'],
+      ['sent', null, 'unpaid'],
+      ['draft', null, 'unpaid'],
+      ['printed', null, 'unpaid'],
+      // A present paid_date with a non-paid status still resolves to paid.
+      ['printed', '2026-07-05', 'paid'],
+    ] as const)(
+      'should map invoice status %s (paid_date=%s) to paymentStatus %s',
+      async (status, paidDate, expected) => {
+        const record = issuedRecord();
+        http.seed(
+          'GET',
+          'invoices/inv-uuid-1.json',
+          invoiceFixture({ status, paid_date: paidDate }),
+        );
+
+        const result = await adapter.getPaymentStatus(record);
+
+        expect(result.paymentStatus).toBe(expected);
+      },
+    );
+
+    it('should propagate a transport error (webhook body is never trusted)', async () => {
+      const record = issuedRecord();
+      http.seedError('GET', 'invoices/inv-uuid-1.json', new InfaktApiError('server error', 503, {}));
+
+      await expect(adapter.getPaymentStatus(record)).rejects.toMatchObject({ statusCode: 503 });
+    });
+  });
+
+  describe('resubmitForClearance (#1356)', () => {
+    function issuedRecord(): InvoiceRecord {
+      return new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        'inv-uuid-1',
+        'FV/1/2026',
+        'rejected',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+    }
+
+    it('re-hits send_to_ksef for the existing document and maps the returned status', async () => {
+      http.seed(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        ksefResponseFixture({ status: 'sent' }),
+      );
+
+      const result = await adapter.resubmitForClearance(issuedRecord());
+
+      expect(result).toEqual({ regulatoryStatus: 'submitted', clearanceReference: null });
+      // Never re-POSTs invoices.json (no new draft) — only re-sends the SAME document.
+      expect(http.calls.some((c) => c.method === 'POST' && c.path === 'invoices.json')).toBe(false);
+      expect(
+        http.calls.some(
+          (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/send_to_ksef.json',
+        ),
+      ).toBe(true);
+    });
+
+    it('surfaces a KSeF number once the resend clears', async () => {
+      http.seed(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        ksefResponseFixture({ status: 'success', ksef_number: 'KSeF-999' }),
+      );
+
+      const result = await adapter.resubmitForClearance(issuedRecord());
+
+      expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'KSeF-999' });
+    });
+
+    it('returns not-applicable defensively when the record has no providerInvoiceId', async () => {
+      const record = new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        null,
+        null,
+        'rejected',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+
+      const result = await adapter.resubmitForClearance(record);
+
+      expect(result).toEqual({ regulatoryStatus: 'not-applicable' });
+    });
+
+    it('propagates a transport error (error path)', async () => {
+      http.seedError(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        new InfaktApiError('server error', 503, {}),
+      );
+
+      await expect(adapter.resubmitForClearance(issuedRecord())).rejects.toMatchObject({
+        statusCode: 503,
+      });
+    });
+  });
+
   describe('issueCorrection', () => {
     const baseCmd: IssueCorrectionCommand = {
       connectionId: 'conn-1',
@@ -1076,6 +1247,52 @@ describe('InfaktInvoicingAdapter', () => {
       const body = invoiceCall?.body as { invoice: Record<string, unknown> };
       expect(body.invoice.bank_account).toBeUndefined();
       expect(body.invoice.bank_name).toBeUndefined();
+    });
+  });
+
+  describe('sendByEmail (#1353)', () => {
+    it('should POST deliver_via_email with print_type, mapped locale and send_copy', async () => {
+      http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
+
+      const result = await adapter.sendByEmail({
+        externalInvoiceId: 'inv-uuid-1',
+        locale: 'en',
+        sendCopy: true,
+      });
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/deliver_via_email.json',
+      );
+      expect(call?.body).toEqual({
+        print_type: 'original',
+        locale: 'en',
+        send_copy: true,
+      });
+      expect(result).toEqual({ delivered: true, recipient: null });
+    });
+
+    it('should omit locale/send_copy when not provided (inFakt defaults apply)', async () => {
+      http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
+
+      const result = await adapter.sendByEmail({ externalInvoiceId: 'inv-uuid-1' });
+
+      const call = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/deliver_via_email.json',
+      );
+      expect(call?.body).toEqual({ print_type: 'original' });
+      expect(result).toEqual({ delivered: true, recipient: null });
+    });
+
+    it('should propagate a provider rejection', async () => {
+      http.seedError(
+        'POST',
+        'invoices/inv-uuid-1/deliver_via_email.json',
+        new InfaktApiError('deliver failed', 422, { error: 'delivery rejected' }),
+      );
+
+      await expect(adapter.sendByEmail({ externalInvoiceId: 'inv-uuid-1' })).rejects.toBeInstanceOf(
+        InfaktApiError,
+      );
     });
   });
 });

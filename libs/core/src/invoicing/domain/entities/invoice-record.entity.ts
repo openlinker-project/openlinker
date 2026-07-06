@@ -19,6 +19,7 @@ import type {
   InvoiceStatus,
   IssuedDocumentContent,
   IssuedLineSnapshot,
+  PaymentStatus,
   RegulatoryStatus,
   StoredDocument,
 } from '../types/invoicing.types';
@@ -100,11 +101,23 @@ export class InvoiceRecord {
      * reconstruction) or when no snapshot was captured.
      */
     public readonly issuedLineSnapshot: IssuedLineSnapshot | null = null,
+    /**
+     * Neutral payment lifecycle (#1354) — refreshed from an authoritative
+     * `PaymentStatusReader` read when a provider signals a payment change (e.g.
+     * inFakt's `invoice_marked_as_paid` webhook). `unknown` until first read, so
+     * it never asserts "unpaid" for a document OL has simply not polled.
+     */
+    public readonly paymentStatus: PaymentStatus = 'unknown',
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */
   get isIssued(): boolean {
     return this.status === 'issued';
+  }
+
+  /** Pure derivation (#1354): the provider reports the document fully settled. */
+  get isPaid(): boolean {
+    return this.paymentStatus === 'paid';
   }
 
   /**
