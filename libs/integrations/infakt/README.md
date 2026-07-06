@@ -18,9 +18,11 @@ KSeF clearance-status reads through inFakt's own native KSeF integration.
 | `Invoicing` | `InvoicingPort` (`issueInvoice`, `getInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`), `RegulatoryStatusReader` (`getClearanceStatus`), `CorrectionIssuer` (`issueCorrection`), `BankAccountsReader` (`listBankAccounts`), `BankAccountDefaultSetter` (`setDefaultBankAccount`), `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) |
 
 `RegulatoryTransmitter` is deliberately **not** implemented — see
-[ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md). inFakt
-submits to KSeF on its own, so there is no submit primitive for OL to call; only the
-read side (`RegulatoryStatusReader`) makes sense here.
+[ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md). OL's adapter
+does trigger submission (`send_to_ksef.json`, called inline at issuance), but clearance
+timing and status ownership stay with inFakt's own KSeF integration, so that trigger
+isn't surfaced as an independently-callable `RegulatoryTransmitter` method — only the
+read side (`RegulatoryStatusReader`) makes sense as a public capability here.
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability
 catalog.
@@ -57,7 +59,9 @@ omit both to fall back to `cash` with no stamped account.
 ## Notable implementation details
 
 - **KSeF-as-intermediary**: `issueInvoice` creates the document via
-  `POST /invoices.json`; inFakt submits it to KSeF internally on its own timing.
+  `POST /invoices.json`, then explicitly calls `POST /invoices/{uuid}/send_to_ksef.json`
+  inline (a draft does not auto-submit on its own) — after that, inFakt processes
+  clearance through its own KSeF integration, on its own timing.
   `getClearanceStatus` reads `GET /invoices/{uuid}.json` and maps
   `ksef_data.status` (`pending | sent | success | error`) to the neutral
   `RegulatoryStatus`. See [ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md).
@@ -79,15 +83,19 @@ omit both to fall back to `cash` with no stamped account.
 - **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
   (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
   the **Download PDF** button on the accepted invoice detail page.
-- **Inbound webhooks**: `InfaktWebhookTranslator` verifies
-  `X-Infakt-Signature` (HMAC-SHA256 over the raw body) and handles inFakt's
-  subscription-verification handshake (`{"verification_code": "..."}` echo). Only
-  `send_to_ksef_success` / `send_to_ksef_error` route to a domain event; every other
-  event (`draft_invoice_created`, `invoice_marked_as_paid`, …) is acknowledged and
-  ignored. Wired into OL's generic `POST /webhooks/:provider/:connectionId` ingress via
-  `InfaktInboundWebhookDecoderAdapter` (ADR-021) — webhook subscriptions themselves are
-  configured manually in the inFakt dashboard; there is no `WebhookProvisioningPort`
-  for this adapter.
+- **Inbound webhooks**, three collaborating classes: `InfaktWebhookTranslator` is the
+  shared crypto/parsing core — `X-Infakt-Signature` verification (HMAC-SHA256 over the
+  raw body), the subscription-verification handshake
+  (`{"verification_code": "..."}` echo), and the event-name allowlist.
+  `InfaktInboundWebhookDecoderAdapter` (`InboundWebhookDecoderPort`, ADR-021) wraps it
+  to authenticate + decode at OL's generic `POST /webhooks/:provider/:connectionId`
+  ingress. `InfaktWebhookEventTranslatorAdapter` (`WebhookEventTranslatorPort`,
+  ADR-015) then maps the decoded envelope to a `CanonicalInboundEvent` on the
+  `invoicing` domain for routing — only `send_to_ksef_success` /
+  `send_to_ksef_error` route through; every other event (`draft_invoice_created`,
+  `invoice_marked_as_paid`, …) is acknowledged and ignored. Webhook subscriptions
+  themselves are configured manually in the inFakt dashboard; there is no
+  `WebhookProvisioningPort` for this adapter.
 - **Retry classification**: `InfaktRetryClassifierAdapter` marks rate-limit and
   transient-network failures retryable, and validation/auth failures terminal, for the
   worker's job runner.

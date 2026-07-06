@@ -18,29 +18,47 @@ different points on the "who owns the KSeF session" axis:
   UPO. OL is the transmitter.
 - **Subiekt**: a local desktop bridge auto-submits to KSeF on Subiekt's own schedule; OL
   only reads back the resulting status.
-- **inFakt**: OL calls inFakt's REST API to *create* an invoice (`POST /invoices.json`).
-  inFakt then submits that invoice to KSeF **on its own**, on its own timing, using its
-  own KSeF integration — OL never touches KSeF directly for inFakt-issued documents.
+- **inFakt**: OL calls inFakt's REST API to *create* an invoice (`POST /invoices.json`),
+  then explicitly triggers submission (`POST /invoices/{uuid}/send_to_ksef.json`) as an
+  inline second step. From that point on, inFakt processes clearance using its own KSeF
+  integration, on its own timing — OL never touches KSeF (the session, the FA(3) XML,
+  or the UPO) directly for inFakt-issued documents.
 
 The `RegulatoryTransmitter` sub-capability ([ADR-026 amendment](./026-country-agnostic-invoicing-domain.md#amendments))
 models "submit for clearance + read status" as one capability, precisely because a
 provider that *actively transmits* necessarily also needs to read back the authority
-reference it just submitted for. inFakt breaks that assumption: OL has no submit
-primitive to call at all — clearance happens as a side effect of inFakt's own invoice
-lifecycle, entirely outside OL's control.
+reference it just submitted for. inFakt breaks that assumption differently than it
+first appears: OL's adapter **does** call an explicit submit primitive
+(`POST /invoices/{uuid}/send_to_ksef.json`, inline inside `issueInvoice`/
+`issueCorrection`) — verified live (2026-07-01) that an inFakt draft does **not**
+auto-submit to KSeF on its own, so this call is what actually starts clearance. What
+OL does not have is *ownership* of the submission: inFakt — not OL — still holds the
+KSeF session, builds the FA(3) XML, and is the authority on clearance status. OL's
+call only hands an already-created document to inFakt's own KSeF integration; it
+carries no independent retry/timing semantics of its own the way a true
+`submitForClearance()` would.
 
 ## Decision
 
 `InfaktInvoicingAdapter` implements `InvoicingPort` + `RegulatoryStatusReader` +
 `CorrectionIssuer` — **not** `RegulatoryTransmitter`.
 
-- **No `submitForClearance()`.** There is nothing for OL to submit; inFakt auto-triggers
-  KSeF submission the moment `POST /invoices.json` succeeds (confirmed live on sandbox,
-  #1274: clearance completes in ~90s with zero further OL action).
+- **No public `submitForClearance()`.** OL retains an out-of-port `sendToKsef` trigger
+  (called inline by `issueInvoice`/`issueCorrection`, not exposed as a standalone port
+  method) and does not surface it as a `RegulatoryTransmitter` method because clearance
+  timing and status ownership stay with inFakt, not OL — a failed `sendToKsef` call
+  after a successful create leaves an orphaned un-submitted document rather than a
+  resumable submit step, and the actual clearance work (KSeF session, FA(3) XML, UPO)
+  happens entirely inside inFakt's infrastructure. Clearance itself still completes on
+  inFakt's own timing (confirmed live on sandbox, #1274: ~90s from the inline trigger).
 - **Status polling via `getClearanceStatus()`.** The adapter reads
   `GET /invoices/{uuid}.json` and maps `invoice.ksef_data.status`
   (`pending | sent | success | error`) onto the neutral `RegulatoryStatus`
   (`submitted | submitted | accepted | rejected`; absent `ksef_data` → `not-applicable`).
+  `success` maps to the terminal `accepted` state, not `cleared` — `cleared` is reserved
+  for split-clearance regimes no current provider emits, and a `cleared` mapping here
+  previously left the FE status badge stuck at "CLEARING" (#1293 review, live E2E
+  finding).
 - **Webhooks are a push-notification shortcut, not a transport.** inFakt fires
   `send_to_ksef_success` / `send_to_ksef_error` webhooks the moment its own KSeF
   submission resolves. `InfaktInboundWebhookDecoderAdapter` (ADR-021) decodes these
@@ -59,11 +77,11 @@ lifecycle, entirely outside OL's control.
   second time for the same tenant — duplicate infrastructure inFakt already runs, for
   no operator benefit, and inFakt would still submit the invoice on its own schedule
   regardless, risking a double-submission race.
-- **Disable inFakt's KSeF auto-submit setting and drive KSeF directly from OL.** Viable
-  as a fallback (inFakt exposes this as an account-level setting) but rejected as the
-  default: it throws away the one thing inFakt uniquely offers over direct KSeF — zero
-  crypto/session management on OL's side — and would make the inFakt adapter a strictly
-  worse KSeF adapter. Left as an operator escape hatch, not modeled in code.
+- **Disable KSeF integration in inFakt's account settings and drive KSeF directly from
+  OL.** Viable as a fallback but rejected as the default: it throws away the one thing
+  inFakt uniquely offers over direct KSeF — zero crypto/session management on OL's
+  side — and would make the inFakt adapter a strictly worse KSeF adapter. Left as an
+  operator escape hatch, not modeled in code.
 - **Model `submitForClearance()` as a no-op that just calls `getClearanceStatus()`
   immediately**, to satisfy `RegulatoryTransmitter`'s interface shape. Rejected: it
   would lie about what the method does (nothing is "submitted" by calling it) and
@@ -80,13 +98,16 @@ lifecycle, entirely outside OL's control.
   of inFakt's own submission, without OL polling on a tight interval.
 
 **Cons / trade-offs:**
-- OL cannot control *when* an inFakt-issued invoice is submitted to KSeF, or retry a
-  failed submission itself — that lever lives entirely in inFakt's account settings.
-- If the operator disables inFakt's KSeF auto-submit (the documented fallback above),
-  `regulatoryStatus` on every inFakt invoice stays `not-applicable` forever — there is
-  no code path to notice and warn about this misconfiguration; it's an operational
-  bookkeeping-side setting, not one OL surfaces or should re-implement (raised, not
-  fixed, in the [setup guide](../../integrations/infakt/setup-guide.md#troubleshooting)).
+- OL cannot retry a failed `sendToKsef` call independently of re-issuing the document,
+  and cannot control the timing of the clearance work itself once inFakt has accepted
+  the submission — that part lives entirely inside inFakt's own KSeF integration.
+- If KSeF integration is disabled in the operator's inFakt account settings, the
+  explicit `sendToKsef` call OL makes fails outright rather than silently degrading;
+  `regulatoryStatus` on every inFakt invoice then stays `not-applicable`. There is no
+  code path to notice and warn about this misconfiguration ahead of time — it's an
+  operational, bookkeeping-side setting, not one OL surfaces or should re-implement
+  (raised, not fixed, in the
+  [setup guide](../../integrations/infakt/setup-guide.md#troubleshooting)).
 
 ## References
 

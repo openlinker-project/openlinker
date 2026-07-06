@@ -18,7 +18,7 @@ full rationale behind that design.
 | Capability | Supported | Notes |
 |---|---|---|
 | `Invoicing` (`issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) | ✅ | Document types: `invoice`, `corrected`, `proforma`, `prepayment`. |
-| `RegulatoryStatusReader` (`getClearanceStatus`) | ✅ | Reads `ksef_data.status` off the stored invoice. **Not** `RegulatoryTransmitter` — inFakt submits to KSeF itself; OL has no submit primitive to call. |
+| `RegulatoryStatusReader` (`getClearanceStatus`) | ✅ | Reads `ksef_data.status` off the stored invoice. **Not** `RegulatoryTransmitter` — OL does trigger submission (`send_to_ksef.json`, called inline at issuance), but clearance timing and status ownership stay with inFakt's own KSeF integration, so that trigger isn't exposed as an independently-callable submit method. |
 | `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a `corrective` invoice against `POST /invoices.json` with a before/after line-pair payload. |
 | `BankAccountsReader` (`listBankAccounts`) + `BankAccountDefaultSetter` (`setDefaultBankAccount`) | ✅ | Backs the live bank-account picker for `Transfer` invoices - accounts are fetched from `GET /bank_accounts.json`, and the picked account is synced back as the inFakt default. |
 | `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) | ✅ | Fetches the inFakt-rendered invoice PDF - powers the **Download PDF** button on the invoice detail page. |
@@ -37,10 +37,13 @@ The connection detail page shows the enabled capability roles for the connection
 
 1. An active [inFakt](https://www.infakt.pl/) account (or an inFakt **sandbox**
    account for testing — the same API shape, a different `baseUrl`).
-2. **KSeF integration enabled** in your inFakt account settings, with auto-submit-on-issue
-   turned on. This is what makes clearance happen without OL driving KSeF itself — see
-   [ADR-030](../../architecture/adrs/030-infakt-ksef-indirection.md) for why OL doesn't
-   (and can't) control this timing.
+2. **KSeF integration enabled** in your inFakt account settings. OL's adapter explicitly
+   triggers KSeF submission right after creating each invoice — an inFakt draft does
+   **not** submit to KSeF on its own — but that trigger only succeeds if KSeF
+   integration is turned on for the account; inFakt still owns the actual clearance
+   session and timing once submission starts. See
+   [ADR-030](../../architecture/adrs/030-infakt-ksef-indirection.md) for the full
+   rationale.
 3. An **API key**, generated from your inFakt account settings.
 
 ![inFakt dashboard login](../../../libs/integrations/infakt/docs/assets/if1-infakt-dashboard-login.png)
@@ -118,31 +121,35 @@ auto-provisioning). Set it up manually:
 4. inFakt sends a **verification ping** — a POST with `{"verification_code": "..."}` —
    to confirm the endpoint is live. OL's webhook decoder echoes the same code back
    automatically; the subscription activates once inFakt sees the matching echo.
-5. **Secret**: OL and inFakt must share the same HMAC secret to verify
-   `X-Infakt-Signature` on every delivery. OL does not yet have a frontend affordance
-   for this - rotate the secret via the API instead:
-
-   ```bash
-   curl -X POST "https://<your-ol-host>/v1/connections/{connectionId}/webhooks/secret/rotate" \
-     -H "Authorization: Bearer <your-ol-jwt>"
-   ```
-
-   The response (201) returns the new secret **once** - copy it immediately, it is
-   never retrievable again.
+5. **Secret**: as the subscription-creation form below shows, inFakt's "Nowy webhook"
+   form has **no secret field** — only the account fields (URL, description, payload
+   content, event checkboxes) plus your inFakt **account password**, required to
+   confirm the action. inFakt instead **auto-generates a secret per subscription**
+   after creation, visible in that subscription's details view in the inFakt
+   dashboard. Open the newly-created webhook's details, copy the generated secret, and
+   set it as OL's webhook secret for this connection so `X-Infakt-Signature`
+   verification matches.
 
 ![inFakt webhooks list](../../../libs/integrations/infakt/docs/assets/if3-infakt-webhooks-list.png)
 
 ![inFakt webhook subscription form](../../../libs/integrations/infakt/docs/assets/if4-infakt-webhook-form.png)
 
-> **The secret-exchange direction into inFakt is unverified.** The screenshot above
-> shows inFakt's own "New webhook" form, which as shipped exposes URL, description,
-> a payload-format option, event checkboxes, and the account password - **no secret
-> field**. It is not yet confirmed how (or whether) inFakt lets an operator paste in
-> OL's rotated secret for a given subscription. The likely path, if inFakt exposes one
-> elsewhere in its webhook settings, is to copy the OL-rotated secret into it; failing
-> that, copy inFakt's own generated value (if it has one) and use it as the OL-side
-> secret instead. This is a known gap; see [Troubleshooting](#troubleshooting) if
-> signatures don't match after setup.
+> **Known gap**: there is currently no OL admin-UI affordance for webhook secrets on
+> the inFakt connection page (unlike PrestaShop/Erli, which push an OL-generated
+> secret out to the platform). OL's rotate endpoint only **generates a new random
+> secret server-side** — there is no endpoint to set it to an arbitrary caller-supplied
+> value, such as the one inFakt just generated:
+>
+> ```bash
+> curl -X POST "https://<your-ol-host>/v1/connections/{connectionId}/webhooks/secret/rotate" \
+>   -H "Authorization: Bearer <your-ol-jwt>"
+> # => { "secret": "...", "revealedOnce": true, "warning": "..." } (shown once, copy immediately)
+> ```
+>
+> The returned `secret` will **not** match the one inFakt generated for the
+> subscription, so signature verification fails until either an FE affordance or a
+> "set secret" endpoint ships. See [Troubleshooting](#troubleshooting) for the
+> resulting symptom.
 
 ---
 
@@ -204,9 +211,9 @@ after issuance does not shift the correction baseline.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Connection test fails immediately | Wrong or revoked API key, or `baseUrl` pointed at the wrong environment | Re-check the API key in inFakt account settings; confirm `baseUrl` is blank (production) or the correct sandbox host. |
-| Webhook deliveries return 401 | `X-Infakt-Signature` doesn't match — the OL and inFakt secrets are out of sync | Re-rotate the OL webhook secret and re-paste it into the inFakt subscription (or vice versa — see the note in [Webhook configuration](#2-webhook-configuration)). |
+| Webhook deliveries return 401 | `X-Infakt-Signature` doesn't match — inFakt auto-generates the subscription's secret and OL has no endpoint to set its own secret to that same value (known gap, see [Webhook configuration](#2-webhook-configuration)) | Re-check the secret copied from inFakt's webhook-details view against whatever value was last set on the OL side; until a "set secret" endpoint or FE affordance ships, this requires a manual DB/API workaround per connection. |
 | Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
-| Invoice stays `submitted` forever, never reaches `cleared`/`accepted` | KSeF auto-submit is disabled in inFakt's account settings (the [Prerequisites](#prerequisites) toggle), or KSeF itself rejected the document | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue); if KSeF auto-submit is off, `getClearanceStatus()` will keep returning `not-applicable` — turn the setting back on. |
+| Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
 | Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
 
 ---
