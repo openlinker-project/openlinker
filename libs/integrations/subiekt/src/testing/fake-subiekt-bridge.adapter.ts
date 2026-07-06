@@ -27,12 +27,17 @@ import {
   SubiektRejectedError,
 } from '../bridge/subiekt-bridge.errors';
 import type {
+  BridgeBankAccount,
+  BridgeCashRegister,
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
   BridgeIssueInvoiceRequest,
   BridgeIssueInvoiceResponse,
   BridgeKorektaRequest,
   BridgeKorektaResponse,
+  BridgeListBankAccountsResponse,
+  BridgeListCashRegistersResponse,
+  BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
 } from '../bridge/subiekt-bridge.types';
@@ -40,6 +45,65 @@ import type {
 type SeededFailure =
   | { kind: 'bridge-unreachable' }
   | { kind: 'subiekt-rejected'; reason: string };
+
+/**
+ * Deterministic default bank accounts. Two accounts, one default, and a THIRD
+ * carrying a distinct `ownerPodmiotId` (2 vs 1) so multi-payer UI/behaviour can
+ * be exercised downstream. Numeric ids mirror the real bridge's `100xxx` space.
+ */
+function defaultBankAccounts(): BridgeBankAccount[] {
+  return [
+    {
+      id: 100004,
+      name: 'Rachunek podstawowy',
+      number: '00 10101010 1111 1111 1111 1111',
+      bankNumber: null,
+      description: null,
+      currency: 'PLN',
+      isVatAccount: false,
+      isDefault: true,
+      ownerPodmiotId: 1,
+      ownerName: 'Moja Firma Sp. z o.o.',
+    },
+    {
+      id: 100007,
+      name: 'Rachunek VAT',
+      number: '00 10101010 2222 2222 2222 2222',
+      bankNumber: null,
+      description: null,
+      currency: 'PLN',
+      isVatAccount: true,
+      isDefault: false,
+      ownerPodmiotId: 1,
+      ownerName: 'Moja Firma Sp. z o.o.',
+    },
+    {
+      id: 100011,
+      name: 'Rachunek oddziału',
+      number: '00 10101010 3333 3333 3333 3333',
+      bankNumber: null,
+      description: null,
+      currency: 'PLN',
+      isVatAccount: false,
+      isDefault: false,
+      ownerPodmiotId: 2,
+      ownerName: 'Oddział Handlowy Sp. z o.o.',
+    },
+  ];
+}
+
+/**
+ * Deterministic default cash registers (Stanowiska Kasowe) — a mix of linked
+ * (`oddzialId` set to an informational branch tag) and unlinked (`oddzialId:
+ * null`), matching the real probe data.
+ */
+function defaultCashRegisters(): BridgeCashRegister[] {
+  return [
+    { id: 100065, name: 'Kasa Centralna', symbol: 'CENTR', oddzialId: null },
+    { id: 100066, name: 'Kasa Outlet', symbol: 'OUTLET', oddzialId: null },
+    { id: 100067, name: 'Kasa Pachnidło', symbol: 'PACH', oddzialId: 100001 },
+  ];
+}
 
 export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private issueCounter = 0;
@@ -51,6 +115,9 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
+  /** Discovery state (bank accounts / cash registers), #1324. */
+  private bankAccounts: BridgeBankAccount[] = defaultBankAccounts();
+  private cashRegisters: BridgeCashRegister[] = defaultCashRegisters();
 
   issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     const failure = this.failureError();
@@ -130,6 +197,41 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     );
   }
 
+  listBankAccounts(): Promise<BridgeListBankAccountsResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const accounts = this.bankAccounts.map((a) => ({ ...a }));
+    return Promise.resolve({ count: accounts.length, accounts });
+  }
+
+  setDefaultBankAccount(bankAccountId: number): Promise<BridgeSetDefaultBankAccountResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const target = this.bankAccounts.find((a) => a.id === bankAccountId);
+    if (!target) {
+      // Mirror the real bridge's 422 for an unknown account id.
+      return Promise.reject(new SubiektRejectedError(`Unknown bank account id: ${bankAccountId}`));
+    }
+    // Idempotent flip: the picked account becomes the sole default.
+    for (const account of this.bankAccounts) {
+      account.isDefault = account.id === bankAccountId;
+    }
+    return Promise.resolve({ bankAccountId, isDefault: true });
+  }
+
+  listCashRegisters(): Promise<BridgeListCashRegistersResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const cashRegisters = this.cashRegisters.map((c) => ({ ...c }));
+    return Promise.resolve({ count: cashRegisters.length, cashRegisters });
+  }
+
   // --- test helpers -----------------------------------------------------------
 
   /**
@@ -156,6 +258,16 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     return this.lastKorektaRequest;
   }
 
+  /** Replace the seeded bank accounts (deep-copied) for `listBankAccounts`/`setDefaultBankAccount`. */
+  seedBankAccounts(accounts: BridgeBankAccount[]): void {
+    this.bankAccounts = accounts.map((a) => ({ ...a }));
+  }
+
+  /** Replace the seeded cash registers (deep-copied) for `listCashRegisters`. */
+  seedCashRegisters(cashRegisters: BridgeCashRegister[]): void {
+    this.cashRegisters = cashRegisters.map((c) => ({ ...c }));
+  }
+
   /** Reset all in-memory state between tests. */
   clear(): void {
     this.issueCounter = 0;
@@ -164,6 +276,8 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = null;
     this.issuedById.clear();
     this.lastKorektaRequest = null;
+    this.bankAccounts = defaultBankAccounts();
+    this.cashRegisters = defaultCashRegisters();
   }
 
   private failureError(): Error | null {

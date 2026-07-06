@@ -2,7 +2,7 @@
 
 OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop or WooCommerce) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples.
 
-For WooCommerce-specific wizard steps, see the **[WooCommerce Setup Guide](../integrations/woocommerce/setup-guide.md)**.
+For WooCommerce-specific wizard steps, see the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)**.
 
 ---
 

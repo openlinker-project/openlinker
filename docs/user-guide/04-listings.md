@@ -2,7 +2,7 @@
 
 Listings are the marketplace offers OpenLinker manages on your behalf. Each listing is linked to a product variant in your catalog and published to a marketplace (Allegro) via the configured connection. This section covers the listings view, the offer-creation wizard, and category mappings.
 
-For Allegro-specific category parameter details, see the **[Allegro Setup Guide](../integrations/allegro/setup-guide.md)**.
+For Allegro-specific category parameter details, see the **[Allegro Setup Guide](../../libs/integrations/allegro/docs/setup-guide.md)**.
 
 ---
 

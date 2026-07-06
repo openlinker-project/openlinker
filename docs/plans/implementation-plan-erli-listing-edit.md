@@ -338,6 +338,6 @@ No other files need to change.
 
 - [Frontend Architecture](../frontend-architecture.md) — `PlatformContribution` slot reference
 - [ADR-025: Erli Marketplace Adapter](../architecture/adrs/025-erli-marketplace-adapter.md) — frozen-field exclusion §4b
-- [Erli Setup Guide](../integrations/erli/setup-guide.md) — operator documentation
-- [Erli Runbook](../integrations/erli/runbook.md) — frozen-field day-2 notes
+- [Erli Setup Guide](../../libs/integrations/erli/docs/setup-guide.md) — operator documentation
+- [Erli Runbook](../../libs/integrations/erli/docs/runbook.md) — frozen-field day-2 notes
 - [Engineering Standards](../engineering-standards.md)
