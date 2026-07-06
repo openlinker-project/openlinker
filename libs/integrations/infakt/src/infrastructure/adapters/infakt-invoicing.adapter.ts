@@ -30,6 +30,9 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  PaymentStatus,
+  PaymentStatusReader,
+  PaymentStatusResult,
   RegulatoryClearanceResult,
   RegulatoryDocument,
   RegulatoryDocumentKind,
@@ -84,6 +87,23 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
     case 'error':
       return 'rejected';
   }
+}
+
+/**
+ * Maps Infakt's invoice `status` (+ `paid_date`) → neutral PaymentStatus (#1354).
+ *
+ * Infakt's payment states surface on the invoice `status` string. `paid` is the
+ * fully-settled terminal; a `partly`/`partial` variant means part-settled;
+ * everything else (`draft`/`sent`/`printed`/…) is treated as `unpaid`. A present
+ * `paid_date` with a non-`paid` status is a defensive fallback to `paid`, since
+ * Infakt only stamps that date when the document has been settled.
+ */
+function toPaymentStatus(invoice: InfaktInvoice): PaymentStatus {
+  const status = (invoice.status ?? '').toLowerCase();
+  if (status === 'paid') return 'paid';
+  if (status.includes('partial') || status.includes('partly')) return 'partially-paid';
+  if (invoice.paid_date) return 'paid';
+  return 'unpaid';
 }
 
 /** Maps neutral DocumentType → Infakt's GET-by-uuid `invoice_type` query param. */
@@ -178,6 +198,7 @@ export class InfaktInvoicingAdapter
   implements
     InvoicingPort,
     RegulatoryStatusReader,
+    PaymentStatusReader,
     CorrectionIssuer,
     RegulatoryDocumentReader,
     BankAccountsReader,
@@ -435,6 +456,25 @@ export class InfaktInvoicingAdapter
       regulatoryStatus: toRegulatoryStatus(ksefData?.status ?? null),
       clearanceReference: ksefData?.ksef_number ?? null,
     };
+  }
+
+  /**
+   * `PaymentStatusReader.getPaymentStatus` (#1354) — authoritative re-read of the
+   * document's payment state. A provider payment webhook is only a trigger; core
+   * calls this to read the real state rather than trusting the webhook body.
+   * Returns `unknown` when the record has no provider id (nothing to read).
+   */
+  async getPaymentStatus(record: InvoiceRecord): Promise<PaymentStatusResult> {
+    if (!record.providerInvoiceId) {
+      return { paymentStatus: 'unknown' };
+    }
+
+    const invoice = await this.http.get<InfaktInvoice>(
+      `invoices/${record.providerInvoiceId}.json`,
+      { invoice_type: toInfaktInvoiceType(record.documentType) },
+    );
+
+    return { paymentStatus: toPaymentStatus(invoice) };
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {

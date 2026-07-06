@@ -136,6 +136,39 @@ describe('InboundRoutingPolicyService', () => {
     );
   });
 
+  it('should route an invoice-payment event to invoicing.paymentStatus.refreshByExternalId gated on Invoicing', async () => {
+    const outcome = await service.route(
+      event({ domain: 'invoice-payment', eventType: 'invoice_marked_as_paid', externalId: 'inv-42' }),
+      connection(['Invoicing']),
+      ['Invoicing'],
+      'evt-10'
+    );
+
+    expect(outcome.status).toBe('enqueued');
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: 'invoicing.paymentStatus.refreshByExternalId',
+        payload: { schemaVersion: 1, externalInvoiceId: 'inv-42' },
+      })
+    );
+  });
+
+  it('should not enqueue an invoice-payment event when Invoicing is not enabled', async () => {
+    const outcome = await service.route(
+      event({ domain: 'invoice-payment', eventType: 'invoice_marked_as_paid' }),
+      connection([]),
+      ['Invoicing'],
+      'evt-10'
+    );
+
+    expect(outcome).toEqual({
+      status: 'ungated',
+      domain: 'invoice-payment',
+      requiredCapability: 'Invoicing',
+    });
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
   it('should not enqueue an invoicing event when Invoicing is not enabled', async () => {
     const outcome = await service.route(
       event({ domain: 'invoicing', eventType: 'send_to_ksef_success' }),

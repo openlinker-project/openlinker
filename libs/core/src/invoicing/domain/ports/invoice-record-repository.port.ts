@@ -34,6 +34,17 @@ export interface InvoiceRecordRepositoryPort {
    */
   findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null>;
 
+  /**
+   * Find the most-recently-created record for a provider invoice id on the
+   * connection (#1354). Backs the payment-status refresh triggered by a
+   * provider payment webhook, which names the document by its provider id;
+   * `null` when no row matches.
+   */
+  findByProviderInvoiceId(
+    connectionId: string,
+    providerInvoiceId: string,
+  ): Promise<InvoiceRecord | null>;
+
   /** Read half of the exactly-once gate; `null` when no row holds the key. */
   findByIdempotencyKey(
     connectionId: string,

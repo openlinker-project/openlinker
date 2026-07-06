@@ -104,6 +104,20 @@ describe('InfaktInboundWebhookDecoderAdapter', () => {
       expect(result.action === 'route' && result.envelope.externalId).toBe('e-2');
     });
 
+    it('should route an invoice_marked_as_paid event, taking externalId from the resource uuid', () => {
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          event: { uuid: 'e-9', name: 'invoice_marked_as_paid', retry_counter: 0, created_at: '2026-06-30T10:00:00Z' },
+          // Payment event resource is the full invoice object → uuid, not invoice_uuid.
+          resource: { uuid: 'inv-99', status: 'paid' },
+        }),
+      );
+      const result = adapter.extractEnvelope(rawBody);
+      expect(result.action).toBe('route');
+      expect(result.action === 'route' && result.envelope.externalId).toBe('inv-99');
+      expect(result.action === 'route' && result.envelope.eventType).toBe('invoice_marked_as_paid');
+    });
+
     it('should ignore (not route) an Infakt event OL does not act on', () => {
       const rawBody = Buffer.from(
         JSON.stringify({

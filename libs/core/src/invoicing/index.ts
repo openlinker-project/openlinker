@@ -19,6 +19,8 @@ export * from './domain/entities/invoice-record.entity';
 export * from './domain/ports/invoicing.port';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
+// Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
+export * from './domain/ports/capabilities/payment-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
@@ -49,5 +51,12 @@ export type {
   RegulatoryStatusReconcileResult,
 } from './application/services/regulatory-status-reconciliation.service.interface';
 export { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
+export type {
+  IPaymentStatusRefreshService,
+  PaymentStatusRefreshOutcome,
+  PaymentStatusRefreshResult,
+} from './application/services/payment-status-refresh.service.interface';
+export { PaymentStatusRefreshOutcomeValues } from './application/services/payment-status-refresh.service.interface';
+export { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';
