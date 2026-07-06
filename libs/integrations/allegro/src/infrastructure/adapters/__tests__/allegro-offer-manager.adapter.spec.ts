@@ -23,6 +23,7 @@ import {
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
   isCatalogProductReader,
+  isCategoryBrowser,
   isEanCategoryMatcher,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
@@ -796,6 +797,13 @@ describe('AllegroOfferManagerAdapter', () => {
       // Lock the capability-guard contract: future #736 application service
       // narrows on isEanCategoryMatcher(adapter) to discover this method.
       expect(isEanCategoryMatcher(adapter)).toBe(true);
+    });
+
+    it('declares the CategoryBrowser capability via the runtime guard (#1367)', () => {
+      // Drift-guard for the manifest's advertised `CategoryBrowser` sub-capability
+      // (allegro-plugin.spec.ts): the bulk wizard's browsable-taxonomy signal
+      // trusts the manifest, so the adapter must actually implement fetchCategories.
+      expect(isCategoryBrowser(adapter)).toBe(true);
     });
 
     it('forwards batch input through to the util via the adapter cache + http client', async () => {
