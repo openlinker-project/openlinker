@@ -142,6 +142,35 @@ export function isTerminalRegulatoryStatus(status: RegulatoryStatus): boolean {
   return (TerminalRegulatoryStatusValues as readonly string[]).includes(status);
 }
 
+/**
+ * Neutral PAYMENT lifecycle of an issued document (#1354, ADR-026) — orthogonal
+ * to both the issuance `status` and the regulatory clearance `RegulatoryStatus`.
+ * A provider adapter maps its native payment state onto these; `unknown` is the
+ * default until OL has read an authoritative payment state (a document whose
+ * provider payment state OL has never read stays `unknown`). Country/
+ * provider-agnostic: no `paid_date`/`left_to_pay`/`faktura` vocabulary — those
+ * live behind the adapter.
+ *
+ *   - `unknown`: OL has not (yet) read a payment state for this document.
+ *   - `unpaid`: the provider reports nothing paid.
+ *   - `partially-paid`: some but not all of the amount is settled.
+ *   - `paid`: the provider reports the document fully settled.
+ */
+export const PaymentStatusValues = ['unknown', 'unpaid', 'partially-paid', 'paid'] as const;
+export type PaymentStatus = (typeof PaymentStatusValues)[number];
+
+/**
+ * Outcome of an authoritative payment-status read (#1354). Returned by the
+ * `PaymentStatusReader` sub-capability so the core refresh service persists it
+ * via `updateOutcome` without translation (maps onto `InvoiceOutcomePatch.
+ * paymentStatus`). A payment verdict is carried as data; a transport/infra
+ * failure throws for the caller to handle.
+ */
+export interface PaymentStatusResult {
+  /** Neutral payment lifecycle the adapter mapped the provider's state onto. */
+  paymentStatus: PaymentStatus;
+}
+
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];
@@ -513,6 +542,8 @@ export interface CreateInvoiceRecordInput {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /** Neutral payment lifecycle (#1354); defaults `unknown` when omitted. */
+  paymentStatus?: PaymentStatus;
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;
@@ -602,6 +633,12 @@ export interface InvoiceOutcomePatch {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /**
+   * Neutral payment lifecycle (#1354). Set by the payment-status refresh
+   * service from an authoritative `PaymentStatusReader` read; omitted otherwise
+   * so an unrelated outcome patch never resets it.
+   */
+  paymentStatus?: PaymentStatus;
   pdfUrl?: string | null;
   issuedAt?: Date | null;
   errorMessage?: string | null;

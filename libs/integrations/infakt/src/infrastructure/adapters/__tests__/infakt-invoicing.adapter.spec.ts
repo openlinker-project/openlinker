@@ -567,6 +567,86 @@ describe('InfaktInvoicingAdapter', () => {
     });
   });
 
+  describe('getPaymentStatus (#1354)', () => {
+    function issuedRecord(): InvoiceRecord {
+      return new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        'inv-uuid-1',
+        'FV/1/2026',
+        'accepted',
+        'KSeF-1',
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+    }
+
+    it('should return unknown when the record has no providerInvoiceId', async () => {
+      const record = new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'pending',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+
+      expect(await adapter.getPaymentStatus(record)).toEqual({ paymentStatus: 'unknown' });
+    });
+
+    it.each([
+      ['paid', null, 'paid'],
+      ['partly_paid', null, 'partially-paid'],
+      // `partial_payment` is Infakt's payment_statuses-dictionary token; the
+      // substring match must classify it the same as `partly_paid`.
+      ['partial_payment', null, 'partially-paid'],
+      ['sent', null, 'unpaid'],
+      ['draft', null, 'unpaid'],
+      ['printed', null, 'unpaid'],
+      // A present paid_date with a non-paid status still resolves to paid.
+      ['printed', '2026-07-05', 'paid'],
+    ] as const)(
+      'should map invoice status %s (paid_date=%s) to paymentStatus %s',
+      async (status, paidDate, expected) => {
+        const record = issuedRecord();
+        http.seed(
+          'GET',
+          'invoices/inv-uuid-1.json',
+          invoiceFixture({ status, paid_date: paidDate }),
+        );
+
+        const result = await adapter.getPaymentStatus(record);
+
+        expect(result.paymentStatus).toBe(expected);
+      },
+    );
+
+    it('should propagate a transport error (webhook body is never trusted)', async () => {
+      const record = issuedRecord();
+      http.seedError('GET', 'invoices/inv-uuid-1.json', new InfaktApiError('server error', 503, {}));
+
+      await expect(adapter.getPaymentStatus(record)).rejects.toMatchObject({ statusCode: 503 });
+    });
+  });
+
   describe('resubmitForClearance (#1356)', () => {
     function issuedRecord(): InvoiceRecord {
       return new InvoiceRecord(

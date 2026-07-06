@@ -180,14 +180,22 @@ export class InfaktWebhookTranslator {
   }
 
   /**
-   * Maps an Infakt event name to the OL canonical domain.
+   * Maps an Infakt event name to the OL canonical inbound domain.
    * Returns null for events OL does not handle (ACK with 200 and ignore).
+   *
+   * KSeF-clearance events route to `invoicing` (regulatory-status reconcile);
+   * payment events route to the distinct `invoice-payment` domain (#1354) so the
+   * core routing policy nudges the by-id payment refresh rather than the
+   * regulatory sweep. Both return values match `CanonicalInboundEvent.domain`.
    */
-  toOlDomain(eventName: InfaktWebhookEventName): 'invoicing' | null {
+  toOlDomain(eventName: InfaktWebhookEventName): 'invoicing' | 'invoice-payment' | null {
     switch (eventName) {
       case 'send_to_ksef_success':
       case 'send_to_ksef_error':
         return 'invoicing';
+      case 'invoice_marked_as_paid':
+      case 'invoice_marked_as_paid_via_async_api':
+        return 'invoice-payment';
       default:
         return null;
     }

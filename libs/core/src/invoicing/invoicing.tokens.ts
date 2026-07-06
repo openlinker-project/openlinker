@@ -27,3 +27,10 @@ export const AUTO_ISSUE_TRIGGER_SERVICE_TOKEN = Symbol('IAutoIssueTriggerService
 export const REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN = Symbol(
   'IRegulatoryStatusReconciliationService',
 );
+
+/**
+ * Binding token for the {@link IPaymentStatusRefreshService} (#1354). Refreshes
+ * `InvoiceRecord.paymentStatus` for a single document via the
+ * `PaymentStatusReader` sub-capability when a provider payment webhook triggers.
+ */
+export const PAYMENT_STATUS_REFRESH_SERVICE_TOKEN = Symbol('IPaymentStatusRefreshService');

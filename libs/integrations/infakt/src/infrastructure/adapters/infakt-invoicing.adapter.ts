@@ -32,6 +32,9 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  PaymentStatus,
+  PaymentStatusReader,
+  PaymentStatusResult,
   RegulatoryClearanceResult,
   RegulatoryDocument,
   RegulatoryDocumentKind,
@@ -90,6 +93,42 @@ function toRegulatoryStatus(ksefStatus: InfaktKsefStatus | null | undefined): Re
     case 'error':
       return 'rejected';
   }
+}
+
+/**
+ * The Infakt settlement tokens this adapter recognises, verified against the
+ * two Infakt meta dictionaries (live 2026-07):
+ *   - invoice `status` (`invoice_statuses`): `draft` | `sent` | `printed` | `paid`
+ *   - payment status (`payment_statuses`):  `paid` | `unpaid` | `partial_payment`
+ *                                           | `payment_not_applicable`
+ *
+ * `toPaymentStatus` reads only `InfaktInvoice.status` — the `invoice_statuses`
+ * field, which carries `paid` but has *no* partial token today. So the
+ * `partial`/`partly` match below is a forward-looking guard, not a currently
+ * reachable branch: it's here so that if Infakt ever surfaces a settlement token
+ * on `status` (or the field is later widened to the `payment_statuses`
+ * vocabulary, whose `partial_payment` it would then catch), a part-settled
+ * document classifies as `partially-paid` rather than silently `unpaid`.
+ * Matching against known tokens (rather than a bare `=== 'paid'`) keeps that
+ * drift explicit here instead of mis-classifying.
+ */
+const INFAKT_PAID_TOKENS: readonly string[] = ['paid'];
+const INFAKT_PARTIAL_TOKENS: readonly string[] = ['partial', 'partly'];
+
+/**
+ * Maps Infakt's invoice `status` (+ `paid_date`) → neutral PaymentStatus (#1354).
+ *
+ * Precedence: an explicit `paid` token wins; a `partial`/`partly` token is
+ * part-settled; a present `paid_date` with any other status is a defensive
+ * fallback to `paid` (Infakt only stamps that date once the document is
+ * settled); everything else (`draft`/`sent`/`printed`/…) is `unpaid`.
+ */
+function toPaymentStatus(invoice: InfaktInvoice): PaymentStatus {
+  const status = (invoice.status ?? '').toLowerCase();
+  if (INFAKT_PAID_TOKENS.includes(status)) return 'paid';
+  if (INFAKT_PARTIAL_TOKENS.some((token) => status.includes(token))) return 'partially-paid';
+  if (invoice.paid_date) return 'paid';
+  return 'unpaid';
 }
 
 /** Maps neutral DocumentType → Infakt's GET-by-uuid `invoice_type` query param. */
@@ -227,6 +266,7 @@ export class InfaktInvoicingAdapter
   implements
     InvoicingPort,
     RegulatoryStatusReader,
+    PaymentStatusReader,
     RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
@@ -502,6 +542,25 @@ export class InfaktInvoicingAdapter
       regulatoryStatus: toRegulatoryStatus(ksefData?.status ?? null),
       clearanceReference: ksefData?.ksef_number ?? null,
     };
+  }
+
+  /**
+   * `PaymentStatusReader.getPaymentStatus` (#1354) — authoritative re-read of the
+   * document's payment state. A provider payment webhook is only a trigger; core
+   * calls this to read the real state rather than trusting the webhook body.
+   * Returns `unknown` when the record has no provider id (nothing to read).
+   */
+  async getPaymentStatus(record: InvoiceRecord): Promise<PaymentStatusResult> {
+    if (!record.providerInvoiceId) {
+      return { paymentStatus: 'unknown' };
+    }
+
+    const invoice = await this.http.get<InfaktInvoice>(
+      `invoices/${record.providerInvoiceId}.json`,
+      { invoice_type: toInfaktInvoiceType(record.documentType) },
+    );
+
+    return { paymentStatus: toPaymentStatus(invoice) };
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {

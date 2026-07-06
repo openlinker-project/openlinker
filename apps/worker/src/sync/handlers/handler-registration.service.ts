@@ -31,6 +31,7 @@ import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
+import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -57,7 +58,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
-    private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler
+    private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
+    private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler
   ) {}
 
   onModuleInit(): void {
@@ -136,6 +138,11 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'invoicing.regulatoryStatus.reconcile',
       this.regulatoryStatusReconcileHandler
+    );
+    // Register by-id payment-status refresh handler (#1354)
+    this.handlerRegistry.register(
+      'invoicing.paymentStatus.refreshByExternalId',
+      this.paymentStatusRefreshHandler
     );
   }
 }

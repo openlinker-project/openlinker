@@ -23,6 +23,10 @@ export const InboundEventDomainValues = [
   'product',
   'shipment',
   'invoicing',
+  // Payment-status change of an issued document (#1354) — kept distinct from
+  // `invoicing` (regulatory clearance) so the routing policy nudges the
+  // payment-refresh job, not the regulatory-status reconcile.
+  'invoice-payment',
 ] as const;
 
 export type InboundEventDomain = (typeof InboundEventDomainValues)[number];
