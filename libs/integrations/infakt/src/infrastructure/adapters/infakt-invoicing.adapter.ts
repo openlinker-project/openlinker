@@ -449,9 +449,12 @@ export class InfaktInvoicingAdapter
         // newUnitPriceGross is gross (IssueCorrectionCommand contract); Infakt's
         // unit_net_price is net — convert using the ORIGINAL line's tax_symbol,
         // same as issueInvoice's gross→net conversion (#1292 review).
-        const corrPriceGroszy = corrLine?.newUnitPriceGross
-          ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
-          : toGroszy(originalNet);
+        // `!= null` (not truthy) so a correction to 0.00 PLN is honoured
+        // instead of silently falling back to the original price (#1342 review).
+        const corrPriceGroszy =
+          corrLine?.newUnitPriceGross != null
+            ? toGroszy(grossToNet(corrLine.newUnitPriceGross, svc.tax_symbol))
+            : toGroszy(originalNet);
         const shared = {
           name: svc.name,
           tax_symbol: svc.tax_symbol,
@@ -512,6 +515,8 @@ export class InfaktInvoicingAdapter
     // re-attempt", which could spawn a SECOND orphaned corrective on retry
     // (the corrective external_id dedup is unverified — see the retry-safety
     // note below). `in-doubt` forces manual review instead of an auto-retry loop.
+    // NOTE: the expected *response* kind is 'correction' (not 'corrective') —
+    // don't loosen this check to accept 'corrective' as a "fix".
     if (invoice.kind !== 'correction') {
       throw new InfaktApiError(
         `Infakt returned kind "${invoice.kind}" instead of "correction" for corrective_invoices.json — document ${invoice.uuid} is not a correction of ${original.number ?? originalProviderInvoiceId}`,

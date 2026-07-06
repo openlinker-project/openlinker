@@ -686,6 +686,26 @@ describe('InfaktInvoicingAdapter', () => {
       expect(correctedRow?.unit_net_price).toBe('50.00 PLN');
     });
 
+    it('should honour a correction to 0.00 PLN instead of falling back to the original price (#1342 review)', async () => {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'corrective_invoices.json', invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }));
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+
+      await adapter.issueCorrection({
+        ...baseCmd,
+        lines: [{ originalLineNumber: 1, newUnitPriceGross: 0 }],
+      });
+
+      const postCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'corrective_invoices.json',
+      );
+      const body = postCall?.body as {
+        corrective_invoice: { services: { unit_net_price: string; correction: boolean }[] };
+      };
+      const correctedRow = body.corrective_invoice.services.find((s) => s.correction === true);
+      expect(correctedRow?.unit_net_price).toBe('0.00 PLN');
+    });
+
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
       http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
       http.seedError(
