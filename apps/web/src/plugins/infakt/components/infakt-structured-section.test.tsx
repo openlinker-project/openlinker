@@ -487,7 +487,7 @@ describe('InfaktStructuredSection', () => {
       fireEvent.change(select, { target: { value: '1' } });
 
       expect(
-        await findToastTitle('Could not update the inFakt default account'),
+        await findToastTitle('Could not update the default account'),
       ).toBeInTheDocument();
     });
   });
