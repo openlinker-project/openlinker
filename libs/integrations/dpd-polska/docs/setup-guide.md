@@ -9,7 +9,9 @@ connection that generates labels + handover protocols over the REST
 ## Prerequisites
 
 - A DPD Polska account with API access.
-- A **master FID** (`masterFid`, numeric) — your DPD customer/federation id.
+- A **payer FID** (`payerFid`, numeric string) — **required** — your DPD payer id.
+- Optionally a **master FID** (`masterFid`, numeric string) — your DPD
+  customer/federation id, only when it differs from the payer FID.
 - API **login + password** for the DPD services.
 - OpenLinker API + worker running.
 - A sender address (returned on labels) in Polish format.
@@ -22,7 +24,8 @@ connection that generates labels + handover protocols over the REST
 
 1. Request API access from DPD Polska (gated; the REST `DPDServices` Swagger and
    the SOAP `DPDInfoServices` WSDL are issued with your account).
-2. Note your **master FID** (`masterFid`) — numeric string.
+2. Note your **payer FID** (`payerFid`) — numeric string, **required**. If your
+   account issues a separate **master FID** (`masterFid`), note it too (optional).
 3. Note your service **login** and **password** (the credentials half of the
    connection, stored encrypted).
 4. Confirm which **environment** you've been issued — sandbox/demo or production.
@@ -36,7 +39,8 @@ connection that generates labels + handover protocols over the REST
    - `postalCode` — PL format `NN-NNN`
    - `countryCode` — ISO 3166-1 alpha-2 (e.g. `PL`)
    - `company` / `name` / `phone` / `email` (optional)
-4. **Master FID**: your numeric `masterFid`.
+4. **Payer FID**: your numeric `payerFid` (**required**). Set **Master FID**
+   (`masterFid`) only if your account issues one distinct from the payer FID.
 5. **Environment**: sandbox or production (must match the issued credentials).
 6. **Login / password**: the DPD service credentials from Step 1.
 7. Click **Test Connection**, then **Save**.
@@ -49,7 +53,7 @@ connection that generates labels + handover protocols over the REST
 
 ## 4. Troubleshooting
 
-- **`masterFid must be a numeric string`** — strip any non-digit characters from the FID.
+- **`payerFid must be a numeric string`** / **`masterFid must be a numeric string`** — strip any non-digit characters from the FID (`payerFid` is required, `masterFid` optional).
 - **`postalCode must match the PL format NN-NNN`** — sender postcode must be `NN-NNN`.
 - **Auth / `needs_reauth`** — login, password, or environment mismatch; the DPD auth-failure classifier flags the connection for re-auth. Re-check credentials against the issued environment.
 - **Labels generate but tracking is empty** — tracking is a *separate* SOAP host (`DPDInfoServices`); verify it's reachable independently of the REST endpoint.

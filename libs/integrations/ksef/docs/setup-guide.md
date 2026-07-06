@@ -109,10 +109,14 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 
 Credentials (`KsefCredentials`, resolved via `CredentialsResolverPort`):
 
+The operator submits `{ authType, secret }` — the raw token. The platform
+stores it and assigns the opaque `secretRef` itself; `secretRef` is **not** a
+field you provide (see [Obtaining credentials](#obtaining-credentials)).
+
 | Field | Required | Description |
 |---|---|---|
 | `authType` | ✅ | `ksef-token` \| `qualified-seal`. |
-| `secretRef` | ✅ | Opaque reference to the secret in the credential store (never the secret value). Assigned by the platform — see [Obtaining credentials](#obtaining-credentials). |
+| `secret` | ✅ | The raw authentication secret (KSeF authorization token for `ksef-token`). Write-only — persisted in the credential store behind the platform-assigned `secretRef` and never echoed back. |
 
 ---
 

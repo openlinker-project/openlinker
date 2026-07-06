@@ -83,7 +83,15 @@ redacted.)*
 
 ## 3. Add the connection in OpenLinker
 
-Open **Connections → Add connection** (`/connections/new`) and pick the **Erli** card.
+From the OpenLinker dashboard:
+
+![OpenLinker dashboard](./assets/00-dashboard.png)
+
+Open **Connections** to see your configured integrations:
+
+![Connections list](./assets/01-connections-list.png)
+
+Click **Add connection** (`/connections/new`) and pick the **Erli** card.
 
 ![Platform picker](./assets/02-platform-picker.png)
 

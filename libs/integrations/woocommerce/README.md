@@ -17,7 +17,7 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 | `ProductMaster` | Read/write product catalog and variants |
 | `InventoryMaster` | Read and adjust stock levels |
 | `OrderSource` | Cursor-based order feed + hydrate full order |
-| `OrderProcessorManager` | Create orders in WooCommerce; supports `OrderFulfillmentUpdater`, `FulfillmentStatusReader`, `DestinationOptionsReader` |
+| `OrderProcessorManager` | Create orders in WooCommerce; supports `OrderFulfillmentUpdater` |
 | `ProductPublisher` | Publish product content changes back to WooCommerce |
 | `CategoryProvisioner` | Create / ensure a category exists in WooCommerce before publishing |
 

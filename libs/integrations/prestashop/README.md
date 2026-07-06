@@ -7,9 +7,9 @@ PrestaShop WebService v1 adapter for OpenLinker.
 If you're here to **build a new integration** (Shopify, WooCommerce,
 BigCommerce, …), start by copying this package's layout — it implements
 the broadest set of capabilities (`ProductMaster`, `InventoryMaster`,
-`OrderSource`, `OrderProcessorManager`) and registers the full
-side-service set (connection tester, webhook provisioner, two shape
-validators). The walkthrough lives at
+`OrderSource`, `OrderProcessorManager`, `ProductPublisher`,
+`CategoryProvisioner`) and registers the full side-service set (connection
+tester, webhook provisioner, two shape validators). The walkthrough lives at
 [`docs/plugin-author-guide.md`](../../../docs/plugin-author-guide.md) —
 read it alongside this code, not before.
 
@@ -32,6 +32,8 @@ Two pointers for special cases this package doesn't demonstrate:
 | `InventoryMaster`         | [`infrastructure/adapters/prestashop-inventory-master.adapter.ts`](./src/infrastructure/adapters/prestashop-inventory-master.adapter.ts)                                                   |
 | `OrderSource`             | [`infrastructure/adapters/prestashop-order-source.adapter.ts`](./src/infrastructure/adapters/prestashop-order-source.adapter.ts)                                                           |
 | `OrderProcessorManager`   | [`infrastructure/adapters/prestashop-order-processor-manager.adapter.ts`](./src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts)                                     |
+| `ProductPublisher`        | [`infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts`](./src/infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts)             |
+| `CategoryProvisioner`     | [`infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts`](./src/infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts)             |
 
 Plus the registered side services:
 

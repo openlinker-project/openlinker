@@ -25,6 +25,7 @@ import { annotate, clearAnnotations } from './annotate.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOTS = resolve(__dirname, '../../../libs/integrations/woocommerce/docs/assets');
 const BASE = process.env.WEB_BASE ?? 'http://localhost:4173';
+const ADMIN_USERNAME = process.env.OL_ADMIN_USERNAME ?? 'admin';
 const ADMIN_PASSWORD = process.env.OL_ADMIN_PASSWORD ?? 'admin';
 const API_BASE = process.env.API_BASE ?? 'http://localhost:3000';
 const SITE_URL = process.env.WC_SITE_URL ?? 'https://localhost:8443';
@@ -39,7 +40,7 @@ if (!CONSUMER_KEY || !CONSUMER_SECRET) {
 
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Enter your username').fill('admin');
+  await page.getByPlaceholder('Enter your username').fill(ADMIN_USERNAME);
   await page.getByPlaceholder('Enter your password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
@@ -145,7 +146,7 @@ try {
     await enqueue('master.inventory.syncAll');
     await page.waitForTimeout(6000);
   } else {
-    console.warn('No auth token found in localStorage — skipping direct sync trigger.');
+    console.warn('No auth token from the login response — skipping direct sync trigger.');
   }
 
   // 5. Products list.

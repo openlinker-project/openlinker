@@ -28,7 +28,7 @@ with catalog sync, inventory propagation, order ingest, and offer creation.
 
 1. Open OL Admin → Integrations → Connections → **New Connection**
 2. Platform: **WooCommerce**
-3. Site URL: `https://your-shop.com` (HTTPS in production; `http://localhost:8082` for local dev stack)
+3. Site URL: `https://your-shop.com` — **HTTPS is required** (the config validator rejects `http://`, even for local dev; use a self-signed cert on your local dev stack, e.g. `https://localhost:8443`)
 4. Consumer Key / Consumer Secret: paste from Step 1
 5. Click **Test Connection** — expects `{ success: true, latencyMs: ... }`
 6. Click **Save**

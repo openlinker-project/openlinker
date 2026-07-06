@@ -24,7 +24,7 @@ Connects OpenLinker to the **KSeF REST API v2** to:
 
 | Capability | Sub-capabilities |
 |---|---|
-| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status), `RegulatoryStatusReader` (read status only), `RegulatoryDocumentReader` (download the UPO receipt), `CorrectionIssuer` (issue FA(3) KOR corrections) |
+| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status; extends `RegulatoryStatusReader`, so read-status-only is covered too), `RegulatoryDocumentReader` (download the UPO receipt), `CorrectionIssuer` (issue FA(3) KOR corrections) |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
