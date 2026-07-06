@@ -69,6 +69,7 @@ import {
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
+  isRegulatoryResubmitter,
   BuyerProfile,
   isBankAccountsReader,
   isBankAccountDefaultSetter,
@@ -540,6 +541,60 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     return this.toDto(issued);
+  }
+
+  @Post('invoices/:invoiceId/resend-to-ksef')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-send a rejected invoice to the tax authority (KSeF)',
+    description:
+      "Re-triggers transmission of an already-issued document whose clearance ended in " +
+      "'rejected', then refreshes the stored regulatory status. Gated to rejected documents " +
+      '(409 otherwise) to avoid racing an in-flight submission or re-sending a cleared document. ' +
+      'Requires the connection adapter to implement the RegulatoryResubmitter sub-capability ' +
+      '(501 when unsupported). Neutral by design (ADR-026) — the core capability carries no ' +
+      'regime vocabulary; only this operator-facing route name references KSeF, mirroring /upo.',
+  })
+  @ApiResponse({ status: 200, description: 'Resubmitted; refreshed record', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'Invoice is not in a rejected state' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement RegulatoryResubmitter' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or the resend failed' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async resendToKsef(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceRecordResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    // Gate: resend ONLY a terminal-rejected document. Re-sending an in-flight
+    // (`submitted`) or already-`accepted` document would race the provider or
+    // duplicate a cleared submission, so anything but `rejected` is a 409.
+    if (record.regulatoryStatus !== 'rejected') {
+      throw new ConflictException(
+        `Invoice ${invoiceId} is not in a rejected state (regulatory status ${record.regulatoryStatus}); ` +
+          'only rejected invoices can be re-sent',
+      );
+    }
+
+    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
+    if (!isRegulatoryResubmitter(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${record.connectionId} does not implement RegulatoryResubmitter`,
+      );
+    }
+
+    let refreshed: InvoiceRecord;
+    try {
+      const result = await adapter.resubmitForClearance(record);
+      // Refresh the stored regulatory status so the projection reflects the new
+      // (typically `submitted`) state and the reconciliation sweep resumes polling.
+      refreshed = await this.invoiceService.applyRegulatoryClearance(invoiceId, result);
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'resubmitForClearance');
+    }
+    return this.toDto(refreshed);
   }
 
   @Get('orders/:orderId/invoice')

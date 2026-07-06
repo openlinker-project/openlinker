@@ -34,6 +34,7 @@ import type {
   RegulatoryDocument,
   RegulatoryDocumentKind,
   RegulatoryDocumentReader,
+  RegulatoryResubmitter,
   RegulatoryStatus,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
@@ -204,6 +205,7 @@ export class InfaktInvoicingAdapter
   implements
     InvoicingPort,
     RegulatoryStatusReader,
+    RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
     BankAccountsReader,
@@ -641,6 +643,38 @@ export class InfaktInvoicingAdapter
       `${resource}/${encodeURIComponent(invoiceUuid)}/send_to_ksef.json`,
       {},
     );
+  }
+
+  /**
+   * `RegulatoryResubmitter.resubmitForClearance` (#1356) — re-trigger KSeF
+   * submission of an ALREADY-ISSUED inFakt document, for the operator "resend to
+   * KSeF" action on a rejected invoice.
+   *
+   * Retry-safety (confirms/guards the previously-UNVERIFIED note on repeated
+   * `send_to_ksef` above): unlike `issueInvoice`/`issueCorrection`, this path
+   * does NOT re-POST `invoices.json`, so it can never create a second draft. It
+   * only re-hits `send_to_ksef.json` for the SAME existing document identified by
+   * `record.providerInvoiceId` — a pure re-transmission of a document inFakt
+   * already holds. The caller (the HTTP layer) additionally gates the action to
+   * documents whose clearance ended in `rejected`, so an in-flight or already-
+   * accepted document is never re-sent. Together these make a repeat
+   * `send_to_ksef` a safe re-attempt on one and the same fiscal document — it
+   * cannot double-issue. inFakt's async model returns the fresh submission status
+   * here (typically `pending`/`sent` → neutral `submitted`); OL's reconciliation
+   * sweep (#1121) then polls it to a terminal state.
+   *
+   * `providerInvoiceId` is always present for an issued record; the defensive
+   * `not-applicable` return covers a malformed record rather than a real path.
+   */
+  async resubmitForClearance(record: InvoiceRecord): Promise<RegulatoryClearanceResult> {
+    if (!record.providerInvoiceId) {
+      return { regulatoryStatus: 'not-applicable' };
+    }
+    const ksefResult = await this.sendToKsef(record.providerInvoiceId);
+    return {
+      regulatoryStatus: toRegulatoryStatus(ksefResult.status),
+      clearanceReference: ksefResult.ksef_number ?? null,
+    };
   }
 
   /**

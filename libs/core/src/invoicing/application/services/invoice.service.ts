@@ -50,6 +50,7 @@ import type {
   IssuedLineSnapshot,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
+  RegulatoryClearanceResult,
   TaxBreakdownEntry,
 } from '../../domain/types/invoicing.types';
 
@@ -594,6 +595,22 @@ export class InvoiceService implements IInvoiceService {
     // Cross-context list seam (#1119): the HTTP layer reaches the invoice
     // projection through here, never the repository port. Pure projection read.
     return this.repo.findMany(filter, pagination);
+  }
+
+  async applyRegulatoryClearance(
+    invoiceId: string,
+    result: RegulatoryClearanceResult,
+  ): Promise<InvoiceRecord> {
+    // Write-back of a refreshed clearance outcome (#1356). ONLY the two
+    // regulatory fields are patched — the issuance lifecycle (status, provider
+    // ids, line snapshot, failure fields) is deliberately left untouched, so a
+    // resend never mutates the issued document's own record beyond its clearance
+    // state. `updateOutcome` throws `InvoiceRecordNotFoundException` on an
+    // unknown id.
+    return this.repo.updateOutcome(invoiceId, {
+      regulatoryStatus: result.regulatoryStatus,
+      clearanceReference: result.clearanceReference ?? null,
+    });
   }
 
   /**

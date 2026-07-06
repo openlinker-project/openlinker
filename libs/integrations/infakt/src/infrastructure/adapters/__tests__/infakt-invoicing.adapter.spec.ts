@@ -567,6 +567,97 @@ describe('InfaktInvoicingAdapter', () => {
     });
   });
 
+  describe('resubmitForClearance (#1356)', () => {
+    function issuedRecord(): InvoiceRecord {
+      return new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        'inv-uuid-1',
+        'FV/1/2026',
+        'rejected',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+    }
+
+    it('re-hits send_to_ksef for the existing document and maps the returned status', async () => {
+      http.seed(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        ksefResponseFixture({ status: 'sent' }),
+      );
+
+      const result = await adapter.resubmitForClearance(issuedRecord());
+
+      expect(result).toEqual({ regulatoryStatus: 'submitted', clearanceReference: null });
+      // Never re-POSTs invoices.json (no new draft) — only re-sends the SAME document.
+      expect(http.calls.some((c) => c.method === 'POST' && c.path === 'invoices.json')).toBe(false);
+      expect(
+        http.calls.some(
+          (c) => c.method === 'POST' && c.path === 'invoices/inv-uuid-1/send_to_ksef.json',
+        ),
+      ).toBe(true);
+    });
+
+    it('surfaces a KSeF number once the resend clears', async () => {
+      http.seed(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        ksefResponseFixture({ status: 'success', ksef_number: 'KSeF-999' }),
+      );
+
+      const result = await adapter.resubmitForClearance(issuedRecord());
+
+      expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'KSeF-999' });
+    });
+
+    it('returns not-applicable defensively when the record has no providerInvoiceId', async () => {
+      const record = new InvoiceRecord(
+        'id-1',
+        'conn-1',
+        'order-1',
+        INFAKT_PROVIDER_TYPE,
+        'invoice',
+        'issued',
+        null,
+        null,
+        'rejected',
+        null,
+        null,
+        null,
+        new Date(),
+        null,
+        new Date(),
+        new Date(),
+      );
+
+      const result = await adapter.resubmitForClearance(record);
+
+      expect(result).toEqual({ regulatoryStatus: 'not-applicable' });
+    });
+
+    it('propagates a transport error (error path)', async () => {
+      http.seedError(
+        'POST',
+        'invoices/inv-uuid-1/send_to_ksef.json',
+        new InfaktApiError('server error', 503, {}),
+      );
+
+      await expect(adapter.resubmitForClearance(issuedRecord())).rejects.toMatchObject({
+        statusCode: 503,
+      });
+    });
+  });
+
   describe('issueCorrection', () => {
     const baseCmd: IssueCorrectionCommand = {
       connectionId: 'conn-1',

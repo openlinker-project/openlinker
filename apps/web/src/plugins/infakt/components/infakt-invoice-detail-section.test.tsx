@@ -122,6 +122,40 @@ describe('InfaktInvoiceDetailSection', () => {
     expect(await screen.findByText('KSeF rejected this invoice.')).toBeInTheDocument();
   });
 
+  it('shows a Resend to KSeF button only when rejected', async () => {
+    const { rerender } = renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'accepted', clearanceReference: 'REF-1' })}
+        connection={infaktConnection}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Resend to KSeF' })).not.toBeInTheDocument();
+
+    rerender(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'rejected', failureReason: 'nope' })}
+        connection={infaktConnection}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Resend to KSeF' })).toBeInTheDocument();
+  });
+
+  it('calls resendToKsef when the Resend button is clicked (rejected)', async () => {
+    const resendToKsef = vi.fn().mockResolvedValue(makeInvoice({ regulatoryStatus: 'submitted' }));
+    const apiClient = createMockApiClient({ invoicing: { resendToKsef } });
+
+    renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'rejected', failureReason: 'nope' })}
+        connection={infaktConnection}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resend to KSeF' }));
+    await waitFor(() => expect(resendToKsef).toHaveBeenCalledWith('ol_invoice_test'));
+  });
+
   it('calls downloadDocument with kind=rendered when Download PDF is clicked', async () => {
     URL.createObjectURL = vi.fn(() => 'blob:mock');
     URL.revokeObjectURL = vi.fn();

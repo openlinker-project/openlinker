@@ -33,6 +33,7 @@ export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
+export { useResendToKsefMutation } from './hooks/use-resend-to-ksef-mutation';
 export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
 export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';

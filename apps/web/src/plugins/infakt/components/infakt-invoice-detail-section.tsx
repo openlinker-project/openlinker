@@ -24,6 +24,7 @@ import {
   RegulatoryStatusBadge,
   regCardToneFor,
   useInvoiceRenderedDocumentDownload,
+  useResendToKsefMutation,
 } from '../../../features/invoicing';
 
 export function InfaktInvoiceDetailSection({
@@ -31,6 +32,7 @@ export function InfaktInvoiceDetailSection({
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
   const pdfDownload = useInvoiceRenderedDocumentDownload();
+  const resendToKsef = useResendToKsefMutation();
   const { showToast } = useToast();
 
   if (invoice.regulatoryStatus === 'not-applicable') {
@@ -48,6 +50,28 @@ export function InfaktInvoiceDetailSection({
         description:
           pdfDownload.error?.message ??
           t('infakt.invoice.detail.pdfDownloadFailedDesc', 'Could not fetch the invoice PDF.'),
+      });
+    }
+  }
+
+  async function handleResendToKsef(): Promise<void> {
+    try {
+      await resendToKsef.mutateAsync(invoice.id);
+      showToast({
+        tone: 'success',
+        title: t('infakt.invoice.detail.resendSuccess', 'Re-sent to KSeF'),
+        description: t(
+          'infakt.invoice.detail.resendSuccessDesc',
+          'inFakt is submitting this invoice to KSeF again. Its clearance status will refresh shortly.',
+        ),
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: t('infakt.invoice.detail.resendFailed', 'Re-send failed'),
+        description:
+          (error instanceof Error ? error.message : undefined) ??
+          t('infakt.invoice.detail.resendFailedDesc', 'Could not re-send the invoice to KSeF.'),
       });
     }
   }
@@ -96,10 +120,22 @@ export function InfaktInvoiceDetailSection({
       ) : null}
 
       {invoice.regulatoryStatus === 'rejected' ? (
-        <p className="text-muted reg-card__note">
-          {invoice.failureReason ??
-            t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
-        </p>
+        <div className="reg-card__summary">
+          <p className="text-muted reg-card__note">
+            {invoice.failureReason ??
+              t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
+          </p>
+          <Button
+            tone="primary"
+            className="button--sm"
+            onClick={() => void handleResendToKsef()}
+            disabled={resendToKsef.isPending}
+          >
+            {resendToKsef.isPending
+              ? t('infakt.invoice.detail.resending', 'Re-sending…')
+              : t('infakt.invoice.detail.resend', 'Resend to KSeF')}
+          </Button>
+        </div>
       ) : null}
     </section>
   );
