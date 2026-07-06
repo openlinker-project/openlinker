@@ -31,8 +31,6 @@ export interface SendInvoiceByEmailCommand {
   externalInvoiceId: string;
   /** Neutral document language; the adapter maps it to the provider's vocabulary. Defaults per-provider when omitted. */
   locale?: InvoiceEmailLocale;
-  /** Override recipient address; when omitted the provider uses the buyer's stored email. */
-  recipient?: string;
   /** Ask the provider to also send a copy to the seller. */
   sendCopy?: boolean;
 }
@@ -40,7 +38,11 @@ export interface SendInvoiceByEmailCommand {
 export interface SendInvoiceByEmailResult {
   /** True when the provider accepted the delivery request. */
   delivered: boolean;
-  /** The recipient the send was addressed to, when the provider echoes it (else null). */
+  /**
+   * The recipient the send was addressed to, when the provider echoes it
+   * back (else null). There is no override input — the provider always uses
+   * the buyer's stored email; this is read-only confirmation.
+   */
   recipient: string | null;
 }
 

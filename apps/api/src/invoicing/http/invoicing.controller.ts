@@ -192,7 +192,7 @@ export class InvoicingController {
         isDefault: account.isDefault,
       }));
     } catch (error) {
-      throw this.toProviderBadGateway(error, 'listBankAccounts');
+      throw this.toProviderBadGateway(error, 'listBankAccounts', connectionId);
     }
   }
 
@@ -223,7 +223,7 @@ export class InvoicingController {
     try {
       await adapter.setDefaultBankAccount(accountId);
     } catch (error) {
-      throw this.toProviderBadGateway(error, 'setDefaultBankAccount');
+      throw this.toProviderBadGateway(error, 'setDefaultBankAccount', connectionId);
     }
   }
 
@@ -249,14 +249,21 @@ export class InvoicingController {
   }
 
   /**
-   * The bank-account endpoints are pure provider proxies, so a live provider
-   * call failing is upstream trouble, not a server bug — map it to 502 with a
+   * These endpoints are pure provider proxies, so a live provider call
+   * failing is upstream trouble, not a server bug — map it to 502 with a
    * generic message. Provider error text is logged, never returned (same PII
-   * posture as `toHttpException`).
+   * posture as `toHttpException`) — but `sendByEmail` in particular emails
+   * buyers, so a provider error can itself embed the buyer's address (e.g.
+   * "inFakt 500: buyer bob@secret.pl"). Email-shaped substrings are scrubbed
+   * before the message ever reaches the logger, and the optional `contextId`
+   * (invoice/connection id) lets an operator correlate the log line without
+   * needing the raw provider text.
    */
-  private toProviderBadGateway(error: unknown, operation: string): Error {
+  private toProviderBadGateway(error: unknown, operation: string, contextId?: string): Error {
     const message = error instanceof Error ? error.message : String(error);
-    this.logger.warn(`Invoicing provider ${operation} failed: ${message}`);
+    const scrubbed = message.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]');
+    const suffix = contextId ? ` (${contextId})` : '';
+    this.logger.warn(`Invoicing provider ${operation} failed${suffix}: ${scrubbed}`);
     return new BadGatewayException('Invoicing provider request failed');
   }
 
@@ -552,9 +559,9 @@ export class InvoicingController {
     description:
       'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
       'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
-      'provider composes and delivers the message. Optional neutral locale (pl/en), recipient ' +
-      'override, and send-copy flag. 501 when the resolved adapter does not implement ' +
-      'InvoiceEmailSender.',
+      'provider composes and delivers the message to the buyer\'s stored email (no recipient ' +
+      'override). Optional neutral locale (pl/en) and send-copy flag. 501 when the resolved ' +
+      'adapter does not implement InvoiceEmailSender.',
   })
   @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
@@ -585,12 +592,11 @@ export class InvoicingController {
       const result = await adapter.sendByEmail({
         externalInvoiceId: record.providerInvoiceId,
         locale: dto.locale,
-        recipient: dto.recipient,
         sendCopy: dto.sendCopy,
       });
       return { delivered: result.delivered, recipient: result.recipient };
     } catch (error) {
-      throw this.toProviderBadGateway(error, 'sendByEmail');
+      throw this.toProviderBadGateway(error, 'sendByEmail', invoiceId);
     }
   }
 

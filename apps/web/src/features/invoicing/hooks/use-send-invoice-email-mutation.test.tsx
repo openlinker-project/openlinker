@@ -10,7 +10,7 @@ import { useSendInvoiceEmailMutation } from './use-send-invoice-email-mutation';
 
 describe('useSendInvoiceEmailMutation', () => {
   it('calls sendEmail with the invoice id + input and resolves to the delivery result', async () => {
-    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: 'buyer@example.com' });
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null });
 
     let capturedMutation: ReturnType<typeof useSendInvoiceEmailMutation> | undefined;
 
@@ -25,15 +25,14 @@ describe('useSendInvoiceEmailMutation', () => {
 
     capturedMutation!.mutate({
       invoiceId: 'ol_invoice_1',
-      input: { locale: 'en', recipient: 'buyer@example.com' },
+      input: { locale: 'en' },
     });
 
     await waitFor(() => expect(capturedMutation!.isSuccess).toBe(true));
 
-    expect(capturedMutation!.data).toEqual({ delivered: true, recipient: 'buyer@example.com' });
+    expect(capturedMutation!.data).toEqual({ delivered: true, recipient: null });
     expect(sendEmail).toHaveBeenCalledWith('ol_invoice_1', {
       locale: 'en',
-      recipient: 'buyer@example.com',
     });
   });
 

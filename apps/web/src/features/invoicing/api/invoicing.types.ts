@@ -184,7 +184,6 @@ export type InvoiceEmailLocale = (typeof InvoiceEmailLocaleValues)[number];
  *  default language. */
 export interface SendInvoiceEmailInput {
   locale?: InvoiceEmailLocale;
-  recipient?: string;
   sendCopy?: boolean;
 }
 

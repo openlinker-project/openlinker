@@ -3,13 +3,16 @@
  *
  * Body for `POST /invoices/:invoiceId/send-email`. Every field is optional — a
  * bare `{}` triggers a send to the buyer's provider-stored email in the
- * provider's default language. `locale` is the neutral document-language choice
- * (pl/en); `recipient` overrides the stored email; `sendCopy` CCs the seller.
+ * provider's default language. `locale` is the neutral document-language
+ * choice (pl/en); `sendCopy` CCs the seller. There is deliberately no
+ * recipient-override field — the invoice carries buyer PII, so the send
+ * always targets the buyer's stored email, never an operator-supplied
+ * address.
  *
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional } from 'class-validator';
 import { InvoiceEmailLocaleValues, type InvoiceEmailLocale } from '@openlinker/core/invoicing';
 
 export class SendInvoiceEmailRequestDto {
@@ -20,13 +23,6 @@ export class SendInvoiceEmailRequestDto {
   @IsOptional()
   @IsIn(InvoiceEmailLocaleValues)
   locale?: InvoiceEmailLocale;
-
-  @ApiPropertyOptional({
-    description: "Override recipient address; omit to use the buyer's provider-stored email.",
-  })
-  @IsOptional()
-  @IsEmail()
-  recipient?: string;
 
   @ApiPropertyOptional({ description: 'Also send a copy to the seller.' })
   @IsOptional()

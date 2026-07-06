@@ -907,13 +907,12 @@ describe('InfaktInvoicingAdapter', () => {
   });
 
   describe('sendByEmail (#1353)', () => {
-    it('should POST deliver_via_email with print_type, mapped locale, recipient and send_copy', async () => {
+    it('should POST deliver_via_email with print_type, mapped locale and send_copy', async () => {
       http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
 
       const result = await adapter.sendByEmail({
         externalInvoiceId: 'inv-uuid-1',
         locale: 'en',
-        recipient: 'buyer@example.com',
         sendCopy: true,
       });
 
@@ -923,13 +922,12 @@ describe('InfaktInvoicingAdapter', () => {
       expect(call?.body).toEqual({
         print_type: 'original',
         locale: 'en',
-        recipient: 'buyer@example.com',
         send_copy: true,
       });
-      expect(result).toEqual({ delivered: true, recipient: 'buyer@example.com' });
+      expect(result).toEqual({ delivered: true, recipient: null });
     });
 
-    it('should omit locale/recipient/send_copy when not provided (inFakt defaults apply)', async () => {
+    it('should omit locale/send_copy when not provided (inFakt defaults apply)', async () => {
       http.seed('POST', 'invoices/inv-uuid-1/deliver_via_email.json', {});
 
       const result = await adapter.sendByEmail({ externalInvoiceId: 'inv-uuid-1' });
