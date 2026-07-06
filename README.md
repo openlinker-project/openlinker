@@ -224,6 +224,37 @@ OpenLinker is moving fast and publicly. See [recent activity](https://github.com
 
 ---
 
+## One-command demo
+
+Want to click through OpenLinker without setting up a dev environment? The demo overlay boots the **entire stack in Docker** — PostgreSQL, Redis, MySQL, a seeded PrestaShop, and the full OpenLinker app tier (API + Worker + admin UI) — from a clean checkout:
+
+```bash
+git clone https://github.com/openlinker-project/openlinker.git
+cd openlinker
+pnpm demo:up        # builds the images and starts everything (first run takes a while)
+pnpm demo:logs      # follow the logs
+pnpm demo:down      # stop the stack (add -v to also wipe the data volumes)
+```
+
+Database migrations run automatically (one-shot `migrate` container) before the API and Worker start — no manual `migration:run` needed.
+
+| Service | URL | Credentials |
+|---|---|---|
+| OpenLinker admin UI | http://localhost:8090 | `admin` / `admin` |
+| OpenLinker API | http://localhost:3000 | — |
+| PrestaShop storefront | http://localhost:8080 | — |
+| PrestaShop admin | http://localhost:8080/admin | `demo@prestashop.com` / `prestashop_demo` |
+
+PrestaShop auto-installs with a seeded catalog and the OpenLinker module pre-mounted. The PrestaShop ↔ OpenLinker **connection itself is configured manually** in the admin UI (`Connections → New`) — see the [Operator Guide](./docs/user-guide/README.md).
+
+Notes:
+
+- The demo shares the same Compose project (and data volumes) as `pnpm dev:stack:up`, so don't run both flows expecting isolated data. Requires Docker Compose ≥ 2.24.
+- `VITE_API_BASE_URL` is baked into the UI bundle at image build time (default `http://localhost:3000`); rebuild the `web` image to change it.
+- Demo credentials are intentionally not production-safe — this stack is for local evaluation only.
+
+---
+
 ## Quickstart
 
 ```bash

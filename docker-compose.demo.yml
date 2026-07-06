@@ -1,0 +1,106 @@
+# Demo overlay — one-command full-stack demo (#1352).
+#
+# Used TOGETHER with the base file, never alone:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build \
+#     postgres redis mysql prestashop migrate api worker web
+#
+# (wrapped by `pnpm demo:up` / `demo:down` / `demo:logs`)
+#
+# The base docker-compose.yml stays the single source of truth for the infra
+# services (postgres/redis/mysql/prestashop); this overlay only (a) reshapes
+# the dev `api` service into a production posture and (b) adds the missing
+# app tier: one-shot `migrate`, `worker`, and `web`.
+#
+# Boot order (enforced via depends_on, not the CLI service list):
+#   postgres healthy -> migrate runs to completion -> api + worker start;
+#   prestashop auto-installs in parallel; web is static and needs nothing.
+#
+# NOTE: `!reset` (used to drop the dev bind-mounts) requires Docker Compose
+# >= 2.24 (Jan 2024).
+
+services:
+  api:
+    environment:
+      # Production posture for the demo image. The admin login stays the
+      # predictable admin/admin because OL_BOOTSTRAP_ADMIN_PASSWORD is set
+      # explicitly — under NODE_ENV=production BootstrapAdminService would
+      # otherwise generate a random password (apps/api/src/auth/
+      # bootstrap-admin.service.ts).
+      NODE_ENV: production
+      OL_BOOTSTRAP_ADMIN_PASSWORD: admin
+    # Drop the dev-stack source bind-mounts — the demo runs the built image,
+    # not the working tree. (Without !reset, Compose merges volumes by target
+    # path and the mounts would survive the override.)
+    volumes: !reset []
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: openlinker-worker
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: openlinker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Required by shared PII config (libs/shared/src/config/pii-config.ts) —
+      # order-ingestion jobs hash customer identifiers in the worker.
+      OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Build-time (Vite) — must be the API origin reachable from the
+        # operator's BROWSER, hence localhost, not the compose service name.
+        VITE_API_BASE_URL: http://localhost:3000
+    container_name: openlinker-web
+    ports:
+      # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
+      - '8090:80'
+    depends_on:
+      - api
+
+  # One-shot schema bootstrap. Runs the exact same migration command as local
+  # development, from the `base` build stage (full source tree + dev deps).
+  # Deliberately NOT the `production` stage: the compiled data-source.js
+  # resolves its entity/migration globs against paths that assume the source
+  # tree ships alongside dist (documented pre-existing characteristic in
+  # apps/api/src/plugin-migrations.ts), so plugin-owned migrations (Allegro)
+  # would be silently skipped there. `migration:run` is idempotent — re-runs
+  # on an already-migrated volume are no-ops.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: openlinker-migrate
+    command: ['pnpm', '--filter', '@openlinker/api', 'migration:run']
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: openlinker
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy

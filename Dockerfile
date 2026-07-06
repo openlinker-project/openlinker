@@ -19,7 +19,9 @@ COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
+COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
+COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
@@ -54,7 +56,9 @@ COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
+COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
+COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
@@ -75,7 +79,9 @@ COPY --from=base /app/libs/integrations/ai/dist ./libs/integrations/ai/dist
 COPY --from=base /app/libs/integrations/allegro/dist ./libs/integrations/allegro/dist
 COPY --from=base /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist
 COPY --from=base /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
+COPY --from=base /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
 COPY --from=base /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
+COPY --from=base /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
 COPY --from=base /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
 COPY --from=base /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
@@ -89,3 +95,13 @@ EXPOSE 3000
 
 # Start application
 CMD ["node", "apps/api/dist/apps/api/src/main.js"]
+
+# Worker stage — extends the production layer set (same libs dist + node_modules)
+# with the worker's own compiled output and entrypoint. The worker exposes no
+# HTTP surface (NestFactory.createApplicationContext), so no EXPOSE.
+FROM production AS worker
+
+COPY --from=base /app/apps/worker/dist ./apps/worker/dist
+COPY --from=base /app/apps/worker/node_modules ./apps/worker/node_modules
+
+CMD ["node", "apps/worker/dist/apps/worker/src/main.js"]
