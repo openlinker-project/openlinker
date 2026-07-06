@@ -50,6 +50,13 @@ export interface InvoicingApi {
   /** `POST /invoices/:invoiceId/correct` — issue a correcting document (#1241). */
   issueCorrection: (invoiceId: string, input: IssueCorrectionInput) => Promise<InvoiceRecord>;
   /**
+   * `POST /invoices/:invoiceId/resend-to-ksef` (#1356) — re-send a rejected
+   * invoice to the tax authority and return the refreshed record. Server gates
+   * to `regulatoryStatus === 'rejected'` (409 otherwise) and to adapters that
+   * implement the neutral RegulatoryResubmitter capability (501 otherwise).
+   */
+  resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>;
+  /**
    * `POST /invoices/:invoiceId/send-email` (#1353) — trigger the provider to
    * render + email the issued invoice to the buyer. 501 when the connection's
    * Invoicing adapter cannot send email. Neutral: keyed on the internal
@@ -139,6 +146,12 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(input),
+      });
+    },
+    resendToKsef(invoiceId): Promise<InvoiceRecord> {
+      return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/resend-to-ksef`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
       });
     },
     sendEmail(invoiceId, input): Promise<SendInvoiceEmailResult> {

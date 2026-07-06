@@ -34,6 +34,7 @@ export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
+export { useResendToKsefMutation } from './hooks/use-resend-to-ksef-mutation';
 export {
   useSendInvoiceEmailMutation,
   type SendInvoiceEmailVariables,

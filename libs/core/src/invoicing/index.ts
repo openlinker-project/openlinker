@@ -20,6 +20,7 @@ export * from './domain/ports/invoicing.port';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
+export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';

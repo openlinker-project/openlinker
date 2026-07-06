@@ -20,6 +20,7 @@ import type { Response } from 'express';
 import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
+  InvoiceRecordNotFoundException,
   UnsupportedRegulatoryDocumentKindError,
   DuplicateInvoiceRecordException,
   BuyerProfile,
@@ -278,6 +279,7 @@ describe('InvoicingController', () => {
       getInvoice: jest.fn().mockResolvedValue(null),
       getInvoiceById: jest.fn().mockResolvedValue(null),
       listInvoices: jest.fn(),
+      applyRegulatoryClearance: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
     orders = {
       getOrderRecord: jest.fn(),
@@ -1351,6 +1353,90 @@ describe('InvoicingController', () => {
       await expect(controller.setDefaultBankAccount('conn-infakt-1', '1')).rejects.toBeInstanceOf(
         BadGatewayException,
       );
+    });
+  });
+
+  describe('POST /invoices/:invoiceId/resend-to-ksef (#1356)', () => {
+    it('404 NotFound when the invoice does not exist', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+      await expect(controller.resendToKsef('inv_missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('409 Conflict when the invoice is not in a rejected state', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ regulatoryStatus: 'accepted' }),
+      );
+      await expect(controller.resendToKsef('inv_1')).rejects.toBeInstanceOf(ConflictException);
+      // Gate short-circuits before any adapter resolution.
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('501 NotImplemented when the adapter does not implement RegulatoryResubmitter', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ regulatoryStatus: 'rejected' }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({} as InvoicingPort);
+      await expect(controller.resendToKsef('inv_1')).rejects.toBeInstanceOf(NotImplementedException);
+      expect(invoiceService.applyRegulatoryClearance).not.toHaveBeenCalled();
+    });
+
+    it('resubmits and returns the refreshed record when rejected + capability present', async () => {
+      const rejected = makeInvoiceRecord({ regulatoryStatus: 'rejected' });
+      invoiceService.getInvoiceById.mockResolvedValue(rejected);
+      const resubmitForClearance = jest
+        .fn()
+        .mockResolvedValue({ regulatoryStatus: 'submitted', clearanceReference: null });
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        resubmitForClearance,
+      } as unknown as InvoicingPort);
+      const refreshed = makeInvoiceRecord({ regulatoryStatus: 'submitted' });
+      invoiceService.applyRegulatoryClearance.mockResolvedValue(refreshed);
+
+      const result = await controller.resendToKsef('inv_1');
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn_1', 'Invoicing');
+      expect(resubmitForClearance).toHaveBeenCalledWith(rejected);
+      expect(invoiceService.applyRegulatoryClearance).toHaveBeenCalledWith('inv_1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+      });
+      expect(result.regulatoryStatus).toBe('submitted');
+    });
+
+    it('502 BadGateway with a generic message when the live resend fails', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ regulatoryStatus: 'rejected' }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        resubmitForClearance: jest.fn().mockRejectedValue(new Error('inFakt 500: seller NIP 123')),
+      } as unknown as InvoicingPort);
+
+      const rejection = controller.resendToKsef('inv_1');
+      await expect(rejection).rejects.toBeInstanceOf(BadGatewayException);
+      // Provider error text (incl. any PII) must never be echoed back.
+      await expect(rejection).rejects.not.toThrow(/NIP 123/);
+      expect(invoiceService.applyRegulatoryClearance).not.toHaveBeenCalled();
+    });
+
+    it('404 NotFound (not 502) when the record is deleted after resend succeeds (TOCTOU)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ regulatoryStatus: 'rejected' }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        resubmitForClearance: jest
+          .fn()
+          .mockResolvedValue({ regulatoryStatus: 'submitted', clearanceReference: null }),
+      } as unknown as InvoicingPort);
+      // Provider succeeded; the local write-back fails because the row vanished.
+      invoiceService.applyRegulatoryClearance.mockRejectedValue(
+        new InvoiceRecordNotFoundException('inv_1'),
+      );
+
+      const rejection = controller.resendToKsef('inv_1');
+      await expect(rejection).rejects.toBeInstanceOf(NotFoundException);
+      // Must NOT be mislabelled as a provider fault.
+      await expect(rejection).rejects.not.toBeInstanceOf(BadGatewayException);
     });
   });
 
