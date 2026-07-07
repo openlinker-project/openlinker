@@ -171,6 +171,18 @@ describe('ErliAdapterFactory', () => {
       ).rejects.toBeInstanceOf(ErliConfigException);
     });
 
+    it('should resolve credentials exactly once per call (#1399 review — no double resolve)', async () => {
+      const resolver = resolverFor({
+        apiKey: 'k-123',
+        allegroClientId: 'client-1',
+        allegroClientSecret: 'secret-1',
+      });
+
+      await factory.createAdapters(connection(), {} as IdentifierMappingPort, resolver);
+
+      expect(resolver.get).toHaveBeenCalledTimes(1);
+    });
+
     describe('Allegro category-catalog wiring (#1382/#1383, ADR-031)', () => {
       it('should NOT wire CategoryBrowser/CategoryParametersReader when Allegro credentials are absent', async () => {
         const adapters = await factory.createAdapters(
