@@ -2,10 +2,17 @@
  * Erli single-offer wizard schema
  *
  * Field schema for `ErliCreateOfferWizard`. Erli offers are products — no
- * seller/delivery policies and no Allegro-style category parameters — so the
- * field set is smaller than Allegro's: variant, title, category (Allegro-id
- * reuse #985), price (PLN), stock, description, and dispatch time. Images come
- * from the master product (not operator-entered).
+ * seller/delivery policies — so the field set is smaller than Allegro's:
+ * variant, title, category (Allegro-id reuse #985), price (PLN), stock,
+ * description, and dispatch time. Images come from the master product (not
+ * operator-entered).
+ *
+ * `parameters` (#1384) mirrors Allegro's `createOfferFieldsSchema` shape —
+ * a dynamic per-category dict validated at step-advance time via
+ * `buildParametersZodSchema`, not by this static resolver. It is only
+ * populated when the connection has Allegro category access configured
+ * (`connection.config.allegroCategoryAccessEnabled`); otherwise it stays
+ * `{}` and is dropped from the submit payload.
  *
  * @module features/listings/components/erli
  */
@@ -31,7 +38,12 @@ export const erliCreateOfferSchema = z
       .min(0, 'Stock must be 0 or greater'),
     description: z.string().optional(),
     publishImmediately: z.boolean(),
+    parameters: z.record(z.string(), z.unknown()).default({}),
   })
   .merge(erliOfferFieldsSchema);
 
-export type ErliCreateOfferValues = z.infer<typeof erliCreateOfferSchema>;
+// `.default({})` on `parameters` makes it optional on input (RHF form state,
+// pre-submit) and required on output (post-resolver submit handler) — same
+// split `createOfferFieldsSchema` uses for Allegro's wizard.
+export type ErliCreateOfferValues = z.input<typeof erliCreateOfferSchema>;
+export type ErliCreateOfferSubmission = z.output<typeof erliCreateOfferSchema>;

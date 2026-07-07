@@ -53,8 +53,13 @@ function readString(params: Record<string, unknown> | undefined, key: string): s
  * (product). The form-state map is keyed by parameter id alone — re-submission
  * re-derives the section split from the freshly-loaded category-parameters
  * metadata, so the section distinction is not preserved on the form side.
+ *
+ * Exported for reuse by the Erli retry mapper (#1384) — both platforms
+ * persist the same neutral `overrides.parameters` wire shape.
  */
-function readParameters(overrides: CreateOfferOverrides | undefined): CategoryParameterFormValues {
+export function readParameters(
+  overrides: CreateOfferOverrides | undefined,
+): CategoryParameterFormValues {
   const out: CategoryParameterFormValues = {};
   appendWireParameters(out, overrides?.parameters);
   // Transitional fallback for snapshots persisted before #1071.
