@@ -134,4 +134,30 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
       });
     });
   });
+
+  describe('allegroCategoryAccessEnabled (#1383, ADR-031 "Correction")', () => {
+    it('should resolve when allegroCategoryAccessEnabled is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when allegroCategoryAccessEnabled is true', async () => {
+      await expect(
+        validator.validate({ allegroCategoryAccessEnabled: true })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when allegroCategoryAccessEnabled is false', async () => {
+      await expect(
+        validator.validate({ allegroCategoryAccessEnabled: false })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a non-boolean allegroCategoryAccessEnabled value', async () => {
+      await expect(
+        validator.validate({ allegroCategoryAccessEnabled: 'true' })
+      ).rejects.toMatchObject({
+        errors: [{ path: 'allegroCategoryAccessEnabled', message: expect.any(String) }],
+      });
+    });
+  });
 });

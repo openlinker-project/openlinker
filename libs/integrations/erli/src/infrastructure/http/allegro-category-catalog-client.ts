@@ -5,7 +5,7 @@
  * Allegro's public `/sale/categories` and `/sale/categories/{id}/parameters`
  * catalog via an Allegro app's `grant_type=client_credentials` token — no
  * seller/user OAuth context, no Allegro `Connection` required (#1382,
- * ADR-030).
+ * ADR-031).
  *
  * Deliberately does NOT import anything from `@openlinker/integrations-allegro`
  * — plugin packages are architecturally independent (ADR-003), and Erli must
@@ -18,7 +18,7 @@
  * Category/parameter response mapping mirrors
  * `AllegroOfferManagerAdapter.fetchCategories` /
  * `.fetchCategoryParametersRaw` field-for-field (read there for the source of
- * truth) — duplicated here per ADR-030 rather than shared, since sharing
+ * truth) — duplicated here per ADR-031 rather than shared, since sharing
  * would require the forbidden cross-plugin dependency.
  *
  * Plain class, no NestJS/DI — constructed per-connection by
@@ -212,7 +212,7 @@ export class AllegroCategoryCatalogClient {
  * Maps Allegro's raw category-parameter shape to the neutral `CategoryParameter`
  * contract — field-for-field copy of
  * `libs/integrations/allegro/src/infrastructure/mappers/allegro-category-parameter.mapper.ts`
- * (kept in sync manually per ADR-030's no-cross-plugin-dependency decision).
+ * (kept in sync manually per ADR-031's no-cross-plugin-dependency decision).
  * The `__tests__` spec runs this function against Allegro's own real sandbox
  * fixture (`category-parameters-257933.json`) with assertions mirrored from
  * `allegro-category-parameter.mapper.spec.ts` — touching either mapper should

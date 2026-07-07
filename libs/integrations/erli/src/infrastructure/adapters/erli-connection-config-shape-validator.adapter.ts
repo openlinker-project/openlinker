@@ -55,6 +55,7 @@ export class ErliConnectionConfigShapeValidatorAdapter
 
     this.validateDispatchTime(config.defaultDispatchTime, issues);
     this.validateAllegroEnvironment(config.allegroEnvironment, issues);
+    this.validateAllegroCategoryAccessEnabled(config.allegroCategoryAccessEnabled, issues);
 
     const callbackBaseUrl = config.callbackBaseUrl;
     if (callbackBaseUrl !== undefined) {
@@ -134,6 +135,25 @@ export class ErliConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'allegroEnvironment',
         message: `must be one of: ${AllegroCatalogEnvironmentValues.join(', ')}`,
+      });
+    }
+  }
+
+  /**
+   * `allegroCategoryAccessEnabled`, when present, must be a boolean. This is
+   * the non-secret, FE-visible signal that `allegroClientId`/`allegroClientSecret`
+   * are both configured on this connection (#1383, ADR-031 "Correction") —
+   * `connection.supportedCapabilities` cannot serve this purpose since it is a
+   * static, per-adapterKey manifest value, not computed per connection instance.
+   */
+  private validateAllegroCategoryAccessEnabled(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'boolean') {
+      issues.push({
+        path: 'allegroCategoryAccessEnabled',
+        message: 'must be a boolean when provided',
       });
     }
   }
