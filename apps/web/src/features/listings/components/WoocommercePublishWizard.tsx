@@ -35,7 +35,10 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
+import { useProductQuery, useProductsQuery } from '../../products';
+import type { Product, ProductVariant } from '../../products';
 import { useShopPublishMutation } from '../hooks/use-shop-publish-mutation';
 import { useBulkShopPublishMutation } from '../hooks/use-bulk-shop-publish-mutation';
 import type {
@@ -58,6 +61,20 @@ interface WoocommercePublishWizardProps {
   defaultVariantIds?: string[];
   onCancel: () => void;
   onSubmitted: (result: { recordId?: string; batchId?: string }, connectionId: string) => void;
+}
+
+const VARIANT_SEARCH_DEBOUNCE_MS = 300;
+const VARIANT_PICKER_PAGE_SIZE = 10;
+
+function variantLabel(product: Product, variant: ProductVariant): string {
+  const attrs = variant.attributes ? Object.values(variant.attributes).join(' · ') : '';
+  if (attrs) {
+    return `${product.name} - ${attrs}`;
+  }
+  if (variant.sku) {
+    return `${product.name} - ${variant.sku}`;
+  }
+  return product.name;
 }
 
 /** Whole-flow mode derived from the props the launcher passes. Bulk wins
@@ -98,6 +115,31 @@ export function WoocommercePublishWizard({
     () => resolveVariantIds(defaultVariantId, defaultVariantIds),
     [defaultVariantId, defaultVariantIds],
   );
+  // The top-level "Publish to shop" CTA opens this wizard with no variant
+  // context at all (no row/product to publish from). In that case the
+  // operator has to search and pick one here instead of the field silently
+  // rendering blank.
+  const needsVariantPicker = mode === 'single' && ids.length === 0;
+
+  const [pickedVariantId, setPickedVariantId] = useState<string | null>(null);
+  const [pickedVariantLabel, setPickedVariantLabel] = useState<string | null>(null);
+  const [productSearchInput, setProductSearchInput] = useState('');
+  const [productOffset, setProductOffset] = useState(0);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const debouncedProductSearch = useDebouncedValue(productSearchInput, VARIANT_SEARCH_DEBOUNCE_MS);
+
+  const productsQuery = useProductsQuery(
+    { search: debouncedProductSearch || undefined },
+    { limit: VARIANT_PICKER_PAGE_SIZE, offset: productOffset },
+  );
+  const productDetailQuery = useProductQuery(selectedProductId ?? '');
+
+  const effectiveIds = ids.length > 0 ? ids : pickedVariantId ? [pickedVariantId] : [];
+
+  function handleVariantPick(product: Product, variant: ProductVariant): void {
+    setPickedVariantId(variant.id);
+    setPickedVariantLabel(variantLabel(product, variant));
+  }
 
   const singleMutation = useShopPublishMutation();
   const bulkMutation = useBulkShopPublishMutation();
@@ -134,7 +176,7 @@ export function WoocommercePublishWizard({
       if (mode === 'bulk') {
         const request: BulkShopPublishRequest = {
           connectionId: connection.id,
-          internalVariantIds: ids,
+          internalVariantIds: effectiveIds,
           status: values.status,
           stock: stockValue,
           ...(price ? { price } : {}),
@@ -144,12 +186,12 @@ export function WoocommercePublishWizard({
         showToast({
           tone: 'success',
           title: 'Bulk publish started',
-          description: `Publishing ${ids.length} products to ${connection.name}.`,
+          description: `Publishing ${effectiveIds.length} products to ${connection.name}.`,
         });
         onSubmitted({ batchId: result.batchId }, connection.id);
       } else {
         const request: ShopPublishRequest = {
-          internalVariantId: ids[0],
+          internalVariantId: effectiveIds[0],
           status: values.status,
           stock: stockValue,
           ...(price ? { price } : {}),
@@ -220,7 +262,10 @@ export function WoocommercePublishWizard({
           </div>
           <div className="shop-publish-kv__row">
             <dt>Variant</dt>
-            <dd className="mono-text">{ids[0]}</dd>
+            <dd>
+              {pickedVariantLabel ? <div>{pickedVariantLabel}</div> : null}
+              <span className="mono-text muted-text">{effectiveIds[0]}</span>
+            </dd>
           </div>
           <div className="shop-publish-kv__row">
             <dt>Visibility</dt>
@@ -266,23 +311,147 @@ export function WoocommercePublishWizard({
       {mode === 'bulk' ? (
         <div className="form-field">
           <span className="form-field__label">
-            Variants <span className="shop-publish-hint">{ids.length} selected</span>
+            Variants <span className="shop-publish-hint">{effectiveIds.length} selected</span>
           </span>
           <div className="shop-publish-chips">
-            {ids.map((id) => (
+            {effectiveIds.map((id) => (
               <span key={id} className="shop-publish-chip mono-text" title={id}>
                 {id}
               </span>
             ))}
           </div>
         </div>
+      ) : needsVariantPicker && pickedVariantId === null ? (
+        <div className="form-field">
+          <FormField
+            label="Search products"
+            name="productSearch"
+            description="Search by product name, SKU, or EAN."
+          >
+            <Input
+              value={productSearchInput}
+              onChange={(e) => {
+                setProductSearchInput(e.target.value);
+                setProductOffset(0);
+              }}
+              placeholder="e.g. T-shirt, SKU-123, 5901234567890"
+            />
+          </FormField>
+
+          <div className="create-offer-variant-picker">
+            {productsQuery.isLoading ? (
+              <p className="muted-text">Loading products…</p>
+            ) : (productsQuery.data?.items.length ?? 0) === 0 ? (
+              <p className="muted-text">No products match.</p>
+            ) : (
+              <ul className="create-offer-variant-picker__list">
+                {(productsQuery.data?.items ?? []).map((product) => {
+                  const isExpanded = selectedProductId === product.id;
+                  return (
+                    <li key={product.id} className="create-offer-variant-picker__product">
+                      <button
+                        type="button"
+                        className="create-offer-variant-picker__product-row"
+                        onClick={() => setSelectedProductId(isExpanded ? null : product.id)}
+                        aria-expanded={isExpanded}
+                      >
+                        <span>{product.name}</span>
+                        <span className="mono-text muted-text">{product.sku ?? '-'}</span>
+                      </button>
+
+                      {isExpanded ? (
+                        <ul className="create-offer-variant-picker__variants">
+                          {productDetailQuery.isLoading ? (
+                            <li className="muted-text">Loading variants…</li>
+                          ) : (productDetailQuery.data?.variants ?? []).length === 0 ? (
+                            <li className="muted-text">No variants on this product.</li>
+                          ) : (
+                            (productDetailQuery.data?.variants ?? []).map((variant) => (
+                              <li key={variant.id}>
+                                <label className="create-offer-variant-picker__variant">
+                                  <input
+                                    type="radio"
+                                    name="wooPublishVariantId"
+                                    value={variant.id}
+                                    checked={false}
+                                    onChange={() =>
+                                      handleVariantPick(productDetailQuery.data ?? product, variant)
+                                    }
+                                  />
+                                  <span className="create-offer-variant-picker__variant-name">
+                                    {variantLabel(productDetailQuery.data ?? product, variant)}
+                                  </span>
+                                  <span className="mono-text muted-text">
+                                    SKU {variant.sku ?? '-'} · EAN {variant.ean ?? '-'}
+                                  </span>
+                                </label>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {(() => {
+              const total = productsQuery.data?.total ?? 0;
+              if (total <= VARIANT_PICKER_PAGE_SIZE) return null;
+              const pageEnd = Math.min(productOffset + VARIANT_PICKER_PAGE_SIZE, total);
+              return (
+                <div className="create-offer-variant-picker__pagination">
+                  <span className="muted-text">
+                    {productOffset + 1}-{pageEnd} of {total}
+                  </span>
+                  <div className="create-offer-variant-picker__pagination-actions">
+                    <Button
+                      tone="secondary"
+                      type="button"
+                      aria-label="Previous page of products"
+                      disabled={productOffset === 0}
+                      onClick={() =>
+                        setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
+                      }
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      tone="secondary"
+                      type="button"
+                      aria-label="Next page of products"
+                      disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
+                      onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       ) : (
         <div className="form-field">
           <span className="form-field__label">Variant</span>
           <div className="shop-publish-variant-line">
-            <span className="mono-text" title={ids[0]}>
-              {ids[0]}
+            {pickedVariantLabel ? <span>{pickedVariantLabel}</span> : null}
+            <span className="mono-text muted-text" title={effectiveIds[0]}>
+              {effectiveIds[0]}
             </span>
+            {needsVariantPicker ? (
+              <Button
+                type="button"
+                tone="ghost"
+                className="button--sm"
+                onClick={() => {
+                  setPickedVariantId(null);
+                  setPickedVariantLabel(null);
+                }}
+              >
+                Change
+              </Button>
+            ) : null}
           </div>
         </div>
       )}
@@ -365,7 +534,7 @@ export function WoocommercePublishWizard({
             <Button
               type="button"
               tone="secondary"
-              disabled={isPending}
+              disabled={isPending || effectiveIds.length === 0}
               onClick={() => {
                 void form.trigger().then((ok) => {
                   if (ok) setReviewing(true);
@@ -375,11 +544,11 @@ export function WoocommercePublishWizard({
               Review
             </Button>
           ) : null}
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" disabled={isPending || effectiveIds.length === 0}>
             {isPending
               ? 'Publishing…'
               : mode === 'bulk'
-                ? `Publish ${ids.length} products`
+                ? `Publish ${effectiveIds.length} products`
                 : 'Publish'}
           </Button>
         </div>

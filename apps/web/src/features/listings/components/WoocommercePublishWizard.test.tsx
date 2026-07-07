@@ -102,6 +102,56 @@ describe('WoocommercePublishWizard', () => {
     });
   });
 
+  it('shows a searchable variant picker and lets the operator pick one when opened without a default variant', async () => {
+    const shopPublish = vi
+      .fn()
+      .mockResolvedValue({ jobId: 'job-1', listingCreationRecordId: 'rec-9' });
+    const products = {
+      list: vi.fn().mockResolvedValue({
+        items: [{ id: 'prod_1', name: 'Red Shirt', sku: 'RS-1', price: 19.99, currency: 'PLN' }],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue({
+        id: 'prod_1',
+        name: 'Red Shirt',
+        sku: 'RS-1',
+        price: 19.99,
+        currency: 'PLN',
+        variants: [
+          { id: 'ol_variant_9', productId: 'prod_1', sku: 'RS-1-M', ean: null, gtin: null, price: 19.99 },
+        ],
+      }),
+    };
+    const apiClient = createMockApiClient({ listings: { shopPublish }, products });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    // Publish is disabled until a variant is picked.
+    expect(await screen.findByRole('button', { name: /^publish$/i })).toBeDisabled();
+
+    fireEvent.click(await screen.findByText('Red Shirt'));
+    fireEvent.click(await screen.findByRole('radio'));
+
+    const publishButton = await screen.findByRole('button', { name: /^publish$/i });
+    expect(publishButton).not.toBeDisabled();
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(shopPublish).toHaveBeenCalledTimes(1);
+    });
+    const [, body] = shopPublish.mock.calls[0];
+    expect(body).toMatchObject({ internalVariantId: 'ol_variant_9' });
+  });
+
   it('rejects a negative stock value and does not call the API', async () => {
     const shopPublish = vi.fn();
     const apiClient = createMockApiClient({ listings: { shopPublish } });
