@@ -14,7 +14,7 @@
 
 **Context**: Erli "borrows" Allegro's category/attribute taxonomy by design (ADR-023 §40/§83, ADR-025, #1045) — `ErliOfferManagerAdapter` implements `TaxonomyBorrower` but not `CategoryBrowser`/`CategoryParametersReader`, so today's Erli offer wizard has only a plain-text Category ID field and no parameter step. Diagnosis (this conversation) confirmed: (1) Allegro's `/sale/categories` and `/sale/categories/{id}/parameters` are public catalog data reachable via `grant_type=client_credentials` — no seller/user OAuth context required; (2) nothing in this codebase supports that grant type today (only per-seller `refresh_token`); (3) the existing generic capability-resolution machinery (`CategoriesCacheService.getAllegroCategories`, `GET /listings/connections/:connectionId/categories/:categoryId/parameters`) already works for *any* `connectionId` whose resolved adapter implements the relevant capability — so once Erli's own adapter can serve these two methods, no new HTTP endpoints are needed.
 
-**Classification**: Integration (Erli) + Interface (FE wizard) — see [ADR-030](../architecture/adrs/030-erli-allegro-category-catalog-via-client-credentials.md) for the full architectural decision and rejected alternatives (no cross-plugin dependency, no shared system-wide credential in v1).
+**Classification**: Integration (Erli) + Interface (FE wizard) — see [ADR-031](../architecture/adrs/031-erli-allegro-category-catalog-via-client-credentials.md) for the full architectural decision and rejected alternatives (no cross-plugin dependency, no shared system-wide credential in v1).
 
 ---
 
@@ -31,12 +31,12 @@
 - Any change to `OfferBuilderService.buildOfferParameters` or `AttributeProjectionService` merge logic — already destination-capability-agnostic (confirmed in diagnosis) and requires no changes.
 - Any change to `ErliOfferManagerAdapter.buildExternalAttributes` (`cmd.parameters` → `source:"allegro"` wire mapping) — already correct.
 - Bulk-offer wizard changes — its `supportedCapabilities.includes('CategoryBrowser')` gate (#1367) already exists and will automatically start working correctly for configured Erli connections once this ships; no bulk-wizard code changes are required, but its existing test suite must be re-verified (see §9).
-- A shared, system-wide (non-tenant) Allegro app credential — deferred per ADR-030 alternatives.
+- A shared, system-wide (non-tenant) Allegro app credential — deferred per ADR-031 alternatives.
 - Any change to Allegro's own seller-OAuth (`refresh_token`) flow or `AllegroAdapterFactory`.
 - Database migrations — no new tables/columns; new fields live inside the existing encrypted `credentialsRef` JSON blob for the Erli connection (`integration_credentials.credentialsCiphertext`), same mechanism as `apiKey` today.
 
 ### Constraints
-- Must not introduce a dependency from `@openlinker/integrations-erli` on `@openlinker/integrations-allegro` (ADR-030).
+- Must not introduce a dependency from `@openlinker/integrations-erli` on `@openlinker/integrations-allegro` (ADR-031).
 - Must not regress the #1367 bulk-wizard capability gate for unconfigured Erli connections.
 - Three sub-tasks land sequentially on one integration branch (`1 → 2 → 3`); one final PR to `main` for review.
 
@@ -78,7 +78,7 @@
 - **Known pitfall**: category/parameter data is public and identical for every caller — cache aggressively (mirrors `AllegroOfferManagerAdapter.fetchCategoryParameters`'s existing global, non-per-connection cache key `allegro:cat-params:{categoryId}` and `CategoriesCacheService`'s 24h DB cache, which is keyed by `connectionId` today — see Phase 1 Step 1.3 for the cache-key decision).
 
 ### Internal Patterns
-- `AllegroConnectionTokenState` (`libs/integrations/allegro/src/infrastructure/http/allegro-connection-token-state.ts`) is the reference shape for proactive-refresh-window + single-flight-refresh + failure-cooldown token management — reused as a *design pattern*, not imported (per ADR-030, no cross-plugin dependency). The Erli-owned client re-implements a simplified version (no reactive-401 path needed since client-credentials tokens don't 401 on expiry the same way — a fresh token is requested proactively before the cached one's `expiresAt`).
+- `AllegroConnectionTokenState` (`libs/integrations/allegro/src/infrastructure/http/allegro-connection-token-state.ts`) is the reference shape for proactive-refresh-window + single-flight-refresh + failure-cooldown token management — reused as a *design pattern*, not imported (per ADR-031, no cross-plugin dependency). The Erli-owned client re-implements a simplified version (no reactive-401 path needed since client-credentials tokens don't 401 on expiry the same way — a fresh token is requested proactively before the cached one's `expiresAt`).
 - `ErliAdapterFactory` (`libs/integrations/erli/src/application/erli-adapter.factory.ts`) is a plain (non-`@Injectable`) class, one instance's `createAdapters`/`createHttpClient` builds per-connection state — the new catalog client follows the same "plain class, constructed per connection" shape.
 - `ErliConnectionCredentialsShapeValidatorAdapter` / `ErliConnectionConfigShapeValidatorAdapter` (`libs/integrations/erli/src/infrastructure/adapters/`) — hand-rolled validators (no class-validator), registered against the host's two shape-validator registries in `erli-plugin.ts`'s `register(host)`.
 
@@ -91,7 +91,7 @@
 - Should `allegroClientSecret` rotation go through the same `useUpdateConnectionCredentialsMutation` payload as `apiKey`, merging all three fields in one PUT, or a separate mutation? **Assumption: same PUT, one merged credentials object** — mirrors how `apiKey` rotation already works and avoids a second credentials-write path.
 
 ### Assumptions
-- Both `allegroClientId` and `allegroClientSecret` live in `ErliCredentials` (encrypted, alongside `apiKey`) — not split across `config`/`credentials` — since the FE gating signal is `connection.supportedCapabilities`, not a raw config field, so there's no need for `allegroClientId` to be FE-visible non-secret config (see ADR-030 "Alternatives considered" for why an earlier config/credentials split was rejected in favor of this simpler one-shape approach).
+- Both `allegroClientId` and `allegroClientSecret` live in `ErliCredentials` (encrypted, alongside `apiKey`) — not split across `config`/`credentials` — since the FE gating signal is `connection.supportedCapabilities`, not a raw config field, so there's no need for `allegroClientId` to be FE-visible non-secret config (see ADR-031 "Alternatives considered" for why an earlier config/credentials split was rejected in favor of this simpler one-shape approach).
 - "Both or neither" is enforced at the **credentials shape validator** level (reject if exactly one of the two is present) rather than deferred to runtime — fail closed at save time with a clear 400, rather than silently degrading.
 - Sandbox vs production Allegro host selection for the catalog client follows the **same `environment` config convention** already used by `AllegroConnectionConfig.environment` — added as a new optional `ErliConnectionConfig.allegroEnvironment?: 'sandbox' | 'production'` (defaults to `'production'`), since Erli's own config today has no such field and category data differs between Allegro sandbox and production catalogs.
 - No new DB migration: reusing the existing `credentialsRef` blob and `ErliConnectionConfig` JSON — both already schema-less JSON columns.
@@ -144,7 +144,7 @@
 
 1. **`ErliOfferManagerAdapter` conditional capability wiring**
    - **File**: `libs/integrations/erli/src/infrastructure/adapters/erli-offer-manager.adapter.ts`
-   - **Action**: Add an optional constructor parameter `allegroCategoryCatalog?: AllegroCategoryCatalogClient`. **Do not** add `CategoryBrowser`/`CategoryParametersReader` to the class's static `implements` clause (per ADR-030 — this must stay a per-instance, runtime-reflected capability, not a static one). Instead, in the constructor, when `allegroCategoryCatalog` is provided:
+   - **Action**: Add an optional constructor parameter `allegroCategoryCatalog?: AllegroCategoryCatalogClient`. **Do not** add `CategoryBrowser`/`CategoryParametersReader` to the class's static `implements` clause (per ADR-031 — this must stay a per-instance, runtime-reflected capability, not a static one). Instead, in the constructor, when `allegroCategoryCatalog` is provided:
      ```ts
      if (allegroCategoryCatalog) {
        this.fetchCategories = (parentId) => allegroCategoryCatalog.fetchCategories(parentId);
@@ -226,7 +226,7 @@
 
 ## 7. Alternatives Considered
 
-See [ADR-030 § Alternatives considered](../architecture/adrs/030-erli-allegro-category-catalog-via-client-credentials.md#alternatives-considered) for the full architectural alternatives analysis (require a real Allegro connection, cross-plugin dependency, shared system-wide credential, always-static capability implementation). Summarized: the chosen design (Erli-owned client, per-instance dynamic capability wiring) was the only option that avoided both a new cross-plugin dependency and a regression of the #1367 bulk-wizard capability gate.
+See [ADR-031 § Alternatives considered](../architecture/adrs/031-erli-allegro-category-catalog-via-client-credentials.md#alternatives-considered) for the full architectural alternatives analysis (require a real Allegro connection, cross-plugin dependency, shared system-wide credential, always-static capability implementation). Summarized: the chosen design (Erli-owned client, per-instance dynamic capability wiring) was the only option that avoided both a new cross-plugin dependency and a regression of the #1367 bulk-wizard capability gate.
 
 ---
 
@@ -234,7 +234,7 @@ See [ADR-030 § Alternatives considered](../architecture/adrs/030-erli-allegro-c
 
 ### Architecture Compliance
 - ✅ No CORE changes; existing capability ports/guards reused as designed.
-- ✅ No cross-plugin package dependency (ADR-030).
+- ✅ No cross-plugin package dependency (ADR-031).
 - ✅ Hexagonal layering respected: new HTTP client + credential fields live in `libs/integrations/erli/{domain,infrastructure}`; FE changes confined to `features/listings` and `plugins/erli`.
 
 ### Naming Conventions
@@ -292,7 +292,7 @@ See [ADR-030 § Alternatives considered](../architecture/adrs/030-erli-allegro-c
 ## 10. Alignment Checklist
 
 - [x] Follows hexagonal architecture
-- [x] Respects CORE vs Integration boundaries (no CORE changes; ADR-030 explicitly avoids a new cross-plugin dependency)
+- [x] Respects CORE vs Integration boundaries (no CORE changes; ADR-031 explicitly avoids a new cross-plugin dependency)
 - [x] Uses existing patterns (no unnecessary abstractions — reuses `CategoryPicker`, `useCategoryParametersQuery`, `CategoriesCacheService`, `OfferBuilderService` merge logic verbatim)
 - [x] Idempotency considered (token acquisition is naturally idempotent/re-entrant; no write-side idempotency concerns — this feature is read-only against Allegro)
 - [ ] Event-driven patterns — not applicable (no new domain events)
@@ -308,7 +308,7 @@ See [ADR-030 § Alternatives considered](../architecture/adrs/030-erli-allegro-c
 
 ## Related Documentation
 
-- [ADR-030](../architecture/adrs/030-erli-allegro-category-catalog-via-client-credentials.md) — architectural decision for this plan
+- [ADR-031](../architecture/adrs/031-erli-allegro-category-catalog-via-client-credentials.md) — architectural decision for this plan
 - [ADR-023](../architecture/adrs/023-cross-platform-category-and-attribute-projection.md) — cross-platform category placement and attribute projection
 - [ADR-025](../architecture/adrs/025-erli-marketplace-adapter.md) — Erli marketplace adapter design
 - [Architecture Overview](../architecture-overview.md)

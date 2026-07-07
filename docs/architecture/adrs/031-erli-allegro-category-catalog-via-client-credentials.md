@@ -1,4 +1,4 @@
-# ADR-030: Erli category/parameter browsing via an Erli-owned Allegro client-credentials token
+# ADR-031: Erli category/parameter browsing via an Erli-owned Allegro client-credentials token
 
 - **Status**: Proposed
 - **Date**: 2026-07-07
