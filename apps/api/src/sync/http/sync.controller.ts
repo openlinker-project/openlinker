@@ -189,6 +189,7 @@ export class SyncController {
     };
   }
 
+  @Roles('admin')
   @Get('jobs/lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

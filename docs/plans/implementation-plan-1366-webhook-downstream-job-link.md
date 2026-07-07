@@ -54,7 +54,7 @@
 - `libs/core/src/sync/infrastructure/persistence/repositories/sync-job.repository.ts` — implement (mirrors `findById`).
 
 ### Phase B — interface (apps/api)
-- `apps/api/src/sync/http/sync.controller.ts` — `@Get('jobs/lookup')` (before `jobs/:id`); `@Query` `platformType` / `connectionId` / `eventId` with a blank guard → `BadRequestException`; assemble the key via `buildInboundJobIdempotencyKey`; `NotFoundException` when the repo returns null; reuse `toDto`.
+- `apps/api/src/sync/http/sync.controller.ts` — `@Roles('admin') @Get('jobs/lookup')` (before `jobs/:id`); `@Query` `platformType` / `connectionId` / `eventId` with a blank guard → `BadRequestException`; assemble the key via `buildInboundJobIdempotencyKey`; `NotFoundException` when the repo returns null; reuse `toDto`. Admin-gated because `SyncJobResponseDto.payloadJson` is an admin-only field (inbound webhook payloads can carry PII) — a viewer's lookup 403s and the FE falls back to the filtered list. (Pre-existing: `GET /sync/jobs` + `jobs/grouped` still return `payloadJson`/`lastError` to any authenticated role despite the label — a separate, out-of-scope security follow-up.)
 - `apps/api/src/sync/http/sync.controller.spec.ts` — add `findByIdempotencyKey` to the typed repo mock; 3 tests (found / missing-component / not-found), asserting the server-assembled key.
 
 ### Phase C — frontend
