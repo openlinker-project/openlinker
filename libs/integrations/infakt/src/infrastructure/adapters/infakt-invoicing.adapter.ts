@@ -316,7 +316,7 @@ export class InfaktInvoicingAdapter
     const response = await this.http.get<InfaktListResponse<InfaktBankAccount>>(
       'bank_accounts.json',
     );
-    return response.entities.map((account) => ({
+    return response.items.map((account) => ({
       id: String(account.id),
       accountNumber: account.account_number,
       bankName: account.bank_name,
@@ -838,7 +838,7 @@ export class InfaktInvoicingAdapter
       const list = await this.http.get<InfaktListResponse<InfaktClient>>('clients.json', {
         nip,
       });
-      return list.entities[0] ?? null;
+      return list.items[0] ?? null;
     } catch {
       return null;
     }
