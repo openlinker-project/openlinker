@@ -37,7 +37,8 @@ tier — API + Worker + admin UI.
   (the whole monorepo is compiled inside the image; the build is from your local
   checkout, not a pre-built registry image).
 - **Free host ports:** `8090` (UI), `3000` (API), `8080` (PrestaShop), `8081`
-  (phpMyAdmin), `5432` (Postgres), `6379` (Redis), `3306` (MySQL).
+  (phpMyAdmin), `8082` (WooCommerce), `5432` (Postgres), `6379` (Redis), `3306`
+  (MySQL), `3307` (WooCommerce MySQL).
 
 > ⚠️ **Shared volumes with the dev stack.** The demo shares the same Compose
 > project (`openlinker`) and data volumes as `pnpm dev:stack:up`. On a machine
@@ -111,13 +112,14 @@ pnpm demo:down      # stop the stack (add -v to also wipe the data volumes)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build \
-  postgres redis mysql phpmyadmin prestashop migrate api worker web
+  postgres redis mysql phpmyadmin woocommerce-mysql woocommerce prestashop migrate api worker web
 ```
 
 Boot order is enforced by `depends_on` (not the CLI service list):
 **Postgres healthy → one-shot `migrate` runs to completion → `api` + `worker`
-start**; PrestaShop auto-installs in parallel; `web` is static (nginx) and needs
-nothing. Migrations run automatically — no manual `migration:run`.
+start**; PrestaShop and WooCommerce auto-install in parallel; `web` is static
+(nginx) and needs nothing. Migrations run automatically — no manual
+`migration:run`.
 
 Wait until the app tier is healthy:
 
@@ -126,8 +128,8 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml ps
 curl -s http://localhost:3000/v1/health         # expect {"status":"ok",...}
 ```
 
-PrestaShop takes the longest (auto-install + seed); give it a few minutes on the
-first run.
+PrestaShop and WooCommerce take the longest (auto-install + seed / plugin
+download); give them a few minutes on the first run.
 
 ---
 
@@ -140,6 +142,8 @@ first run.
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/**admin-dev** | `demo@prestashop.com` / `prestashop_demo` |
 | phpMyAdmin | http://localhost:8081 | `root` / `root` |
+| WooCommerce storefront | http://localhost:8082 | — |
+| WooCommerce admin (`wp-admin`) | http://localhost:8082/wp-admin | `admin` / `admin123` |
 
 > The PrestaShop admin folder is `admin-dev` (the post-install step renames the
 > randomized install folder), **not** `/admin`.
