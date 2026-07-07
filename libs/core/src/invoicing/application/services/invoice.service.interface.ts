@@ -17,6 +17,7 @@ import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   PaginatedInvoiceRecords,
+  RegulatoryClearanceResult,
 } from '../../domain/types/invoicing.types';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 
@@ -117,4 +118,20 @@ export interface IInvoiceService {
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
   ): Promise<PaginatedInvoiceRecords>;
+
+  /**
+   * Persist a refreshed regulatory-clearance outcome onto an existing record
+   * (#1356). Patches ONLY `regulatoryStatus` + `clearanceReference` — the
+   * issuance lifecycle (`status`, provider ids, line snapshot) is untouched.
+   * Backs the operator "resend to authority" action: after an adapter that
+   * implements `RegulatoryResubmitter` re-triggers transmission, the caller
+   * writes the returned {@link RegulatoryClearanceResult} back so the projection
+   * reflects the new (typically `submitted`) status and the reconciliation sweep
+   * (#1121) resumes polling it. NEVER queries the provider/adapter itself.
+   * Throws `InvoiceRecordNotFoundException` when the id is unknown.
+   */
+  applyRegulatoryClearance(
+    invoiceId: string,
+    result: RegulatoryClearanceResult,
+  ): Promise<InvoiceRecord>;
 }

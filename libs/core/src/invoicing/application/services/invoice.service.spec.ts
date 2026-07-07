@@ -175,6 +175,7 @@ describe('InvoiceService', () => {
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findLatestByOrderId: jest.fn(),
+      findByProviderInvoiceId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
       claimForIssue: jest.fn(),

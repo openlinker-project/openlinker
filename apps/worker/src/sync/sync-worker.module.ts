@@ -42,6 +42,7 @@ import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handl
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
+import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -83,6 +84,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductPublishHandler,
     InvoicingIssueHandler,
     RegulatoryStatusReconcileHandler,
+    PaymentStatusRefreshHandler,
     HandlerRegistrationService,
   ],
 })

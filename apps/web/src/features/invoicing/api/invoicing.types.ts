@@ -175,6 +175,54 @@ export interface RetryInvoicesResult {
   results: RetryInvoiceResult[];
 }
 
+/** Neutral document-language choice for `POST /invoices/:invoiceId/send-email` (#1353). */
+export const InvoiceEmailLocaleValues = ['pl', 'en'] as const;
+export type InvoiceEmailLocale = (typeof InvoiceEmailLocaleValues)[number];
+
+/** `POST /invoices/:invoiceId/send-email` request body (#1353). All optional —
+ *  a bare `{}` delivers to the buyer's provider-stored email in the provider's
+ *  default language. */
+export interface SendInvoiceEmailInput {
+  locale?: InvoiceEmailLocale;
+  sendCopy?: boolean;
+}
+
+/** `POST /invoices/:invoiceId/send-email` response (#1353). */
+export interface SendInvoiceEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+}
+
+/** `POST /invoices/bulk-issue` request body (#1355). Fans out over the single
+ *  issue primitive per order id on one invoicing connection; idempotent per
+ *  (connection, order) server-side. At most 100 order ids per request. */
+export interface BulkIssueInvoicesInput {
+  connectionId: string;
+  orderIds: string[];
+}
+
+/** Per-order-id outcome of a bulk issue (#1355). */
+export const BulkIssueOutcomeValues = ['issued', 'skipped', 'failed'] as const;
+export type BulkIssueOutcome = (typeof BulkIssueOutcomeValues)[number];
+
+/** One row of the bulk-issue result. `invoiceId` is present only on `issued`;
+ *  `reason` is a neutral, PII-free string present on `skipped` / `failed`. */
+export interface BulkIssueInvoiceResult {
+  orderId: string;
+  outcome: BulkIssueOutcome;
+  invoiceId?: string;
+  reason?: string;
+}
+
+/** `POST /invoices/bulk-issue` response (#1355): aggregate counts + per-id
+ *  outcomes. */
+export interface BulkIssueInvoicesResult {
+  issued: number;
+  skipped: number;
+  failed: number;
+  results: BulkIssueInvoiceResult[];
+}
+
 /** One corrected line for `POST /invoices/:invoiceId/correct` (#1241). */
 export interface CorrectionLineInput {
   originalLineNumber: number;

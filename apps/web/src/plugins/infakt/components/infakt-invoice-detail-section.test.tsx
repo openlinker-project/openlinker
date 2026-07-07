@@ -122,6 +122,40 @@ describe('InfaktInvoiceDetailSection', () => {
     expect(await screen.findByText('KSeF rejected this invoice.')).toBeInTheDocument();
   });
 
+  it('shows a Resend to KSeF button only when rejected', async () => {
+    const { rerender } = renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'accepted', clearanceReference: 'REF-1' })}
+        connection={infaktConnection}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Resend to KSeF' })).not.toBeInTheDocument();
+
+    rerender(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'rejected', failureReason: 'nope' })}
+        connection={infaktConnection}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Resend to KSeF' })).toBeInTheDocument();
+  });
+
+  it('calls resendToKsef when the Resend button is clicked (rejected)', async () => {
+    const resendToKsef = vi.fn().mockResolvedValue(makeInvoice({ regulatoryStatus: 'submitted' }));
+    const apiClient = createMockApiClient({ invoicing: { resendToKsef } });
+
+    renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'rejected', failureReason: 'nope' })}
+        connection={infaktConnection}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resend to KSeF' }));
+    await waitFor(() => expect(resendToKsef).toHaveBeenCalledWith('ol_invoice_test'));
+  });
+
   it('calls downloadDocument with kind=rendered when Download PDF is clicked', async () => {
     URL.createObjectURL = vi.fn(() => 'blob:mock');
     URL.revokeObjectURL = vi.fn();
@@ -144,6 +178,26 @@ describe('InfaktInvoiceDetailSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
     await waitFor(() =>
       expect(downloadDocument).toHaveBeenCalledWith('ol_invoice_test', 'rendered'),
+    );
+  });
+
+  it('sends the invoice by email with the selected language when "Send by email" is clicked (#1353)', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null });
+    const apiClient = createMockApiClient({ invoicing: { sendEmail } });
+
+    renderWithProviders(
+      <InfaktInvoiceDetailSection
+        invoice={makeInvoice({ regulatoryStatus: 'accepted', status: 'issued' })}
+        connection={infaktConnection}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'en' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send by email' }));
+
+    await waitFor(() =>
+      expect(sendEmail).toHaveBeenCalledWith('ol_invoice_test', { locale: 'en' }),
     );
   });
 });
