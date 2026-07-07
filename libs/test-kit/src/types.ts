@@ -176,7 +176,7 @@ export interface ContainerConfig {
   postgresImage?: string;
 
   /**
-   * Redis image tag. Defaults to `redis:7-alpine`.
+   * Redis-compatible image tag. Defaults to `valkey/valkey:8-alpine`.
    */
   redisImage?: string;
 

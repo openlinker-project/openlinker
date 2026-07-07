@@ -26,7 +26,7 @@ declare global {
 }
 
 const DEFAULT_POSTGRES_IMAGE = 'postgres:16-alpine';
-const DEFAULT_REDIS_IMAGE = 'redis:7-alpine';
+const DEFAULT_REDIS_IMAGE = 'valkey/valkey:8-alpine';
 const DEFAULT_DB_NAME = 'openlinker_test';
 const DEFAULT_DB_USER = 'postgres';
 const DEFAULT_DB_PASSWORD = 'postgres';
