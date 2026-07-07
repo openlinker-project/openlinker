@@ -8,6 +8,14 @@
  * confirmed by the #992 spike) drops in via `connection.config.baseUrl` with no
  * code change.
  *
+ * `allegroClientId` / `allegroClientSecret` / `allegroEnvironment` (#1382,
+ * ADR-030) are an optional, separate Allegro app credential pair + environment
+ * selector — unrelated to Erli's own `apiKey` — that let an Erli connection
+ * browse Allegro's public category/parameter catalog via
+ * `grant_type=client_credentials` (see `AllegroCategoryCatalogClient`). The two
+ * credential fields are "both or neither"; enforced by
+ * `ErliConnectionCredentialsShapeValidatorAdapter` (#1383), not here.
+ *
  * Lives in `domain/types/` (not infrastructure) so the application-layer
  * factory can depend on it without inverting the hexagonal layer direction —
  * mirrors the Allegro/PrestaShop connection-type layout.
@@ -15,9 +23,23 @@
  * @module libs/integrations/erli/src/domain/types
  */
 
+/**
+ * Allegro environment the `AllegroCategoryCatalogClient` resolves its token +
+ * REST hosts against (#1382, ADR-030). Mirrors `AllegroConnectionConfig
+ * .environment`'s `as const` + runtime-array convention — kept local rather
+ * than imported from `@openlinker/integrations-allegro`, since plugin
+ * packages are architecturally independent (ADR-030).
+ */
+export const AllegroCatalogEnvironmentValues = ['sandbox', 'production'] as const;
+export type AllegroCatalogEnvironment = (typeof AllegroCatalogEnvironmentValues)[number];
+
 /** Encrypted credentials for an Erli connection (resolved via host.credentialsResolver). */
 export interface ErliCredentials {
   apiKey: string;
+  /** Allegro app client id (client_credentials grant) — optional, catalog-browsing only (#1382). */
+  allegroClientId?: string;
+  /** Allegro app client secret (client_credentials grant) — optional, catalog-browsing only (#1382). */
+  allegroClientSecret?: string;
 }
 
 /**
@@ -52,6 +74,13 @@ export interface ErliConnectionConfig {
    * e.g. `http://host.docker.internal:3000` in dev, the public OL URL in prod.
    */
   callbackBaseUrl?: string;
+  /**
+   * Allegro environment to resolve the `AllegroCategoryCatalogClient`'s token
+   * and REST hosts against (#1382, ADR-030) — mirrors `AllegroConnectionConfig
+   * .environment`'s convention. Defaults to `'production'` when absent. Only
+   * meaningful when `allegroClientId`/`allegroClientSecret` are configured.
+   */
+  allegroEnvironment?: AllegroCatalogEnvironment;
 }
 
 /**
