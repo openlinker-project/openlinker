@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
@@ -84,9 +84,13 @@ describe('WebhookDeliveryDetailPage', () => {
 
     // The Redis Stream enqueue ID is the link *text*, but it resolves to the
     // persisted job's UUID detail route — never `/jobs-logs/<streamId>`, which
-    // the UUID-only route would reject.
+    // the UUID-only route would reject. The link renders the filtered-list
+    // fallback first, then flips to the exact job once the connection + lookup
+    // queries resolve — so wait for the upgraded href.
     const jobLink = await screen.findByRole('link', { name: '1782207005442-0' });
-    expect(jobLink).toHaveAttribute('href', '/jobs-logs/job-uuid-123');
+    await waitFor(() =>
+      expect(jobLink).toHaveAttribute('href', '/jobs-logs/job-uuid-123'),
+    );
 
     // The FE passes the raw components (platformType from the connection,
     // connectionId, eventId) — the server assembles the key, no format here.
