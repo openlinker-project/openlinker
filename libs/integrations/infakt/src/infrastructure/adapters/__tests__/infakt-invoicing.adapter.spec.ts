@@ -146,8 +146,8 @@ describe('InfaktInvoicingAdapter', () => {
         country: null,
       };
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
-        entities: [existing],
-        metainfo: { total_count: 1, next: null, previous: null },
+        items: [existing],
+        pagination: { current_page: 1, items_on_page: 1, limit: 10, total_items: 1, total_pages: 1 },
       });
 
       const result = await adapter.upsertCustomer({
@@ -162,8 +162,8 @@ describe('InfaktInvoicingAdapter', () => {
 
     it('should create a new client when no NIP match exists (happy path)', async () => {
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
-        entities: [],
-        metainfo: { total_count: 0, next: null, previous: null },
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
       });
       const created: InfaktClient = {
         id: 2,
@@ -234,8 +234,8 @@ describe('InfaktInvoicingAdapter', () => {
     beforeEach(() => {
       // upsertCustomer -> findClientByNip -> none found -> create
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
-        entities: [],
-        metainfo: { total_count: 0, next: null, previous: null },
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
       });
       http.seed('POST', 'clients.json', {
         id: 1,
@@ -1049,8 +1049,8 @@ describe('InfaktInvoicingAdapter', () => {
 
     function seedIssueFixtures(): void {
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
-        entities: [],
-        metainfo: { total_count: 0, next: null, previous: null },
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
       });
       http.seed('POST', 'clients.json', {
         id: 1,
@@ -1128,7 +1128,7 @@ describe('InfaktInvoicingAdapter', () => {
   describe('bank accounts (#1303 follow-up)', () => {
     it('should map the bank-accounts list from snake_case to camelCase, including the default flag', async () => {
       http.seed<InfaktListResponse<InfaktBankAccount>>('GET', 'bank_accounts.json', {
-        entities: [
+        items: [
           {
             id: 1,
             account_number: '61 1140 2004 0000 3002 0135 5387',
@@ -1142,7 +1142,7 @@ describe('InfaktInvoicingAdapter', () => {
             default: true,
           },
         ],
-        metainfo: { total_count: 2, next: null, previous: null },
+        pagination: { current_page: 1, items_on_page: 2, limit: 10, total_items: 2, total_pages: 1 },
       });
 
       const accounts = await adapter.listBankAccounts();
@@ -1155,11 +1155,18 @@ describe('InfaktInvoicingAdapter', () => {
 
     it('should return an empty array when inFakt has no bank accounts configured', async () => {
       http.seed<InfaktListResponse<unknown>>('GET', 'bank_accounts.json', {
-        entities: [],
-        metainfo: { total_count: 0, next: null, previous: null },
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
       });
 
       await expect(adapter.listBankAccounts()).resolves.toEqual([]);
+    });
+
+    it('should throw a named InfaktApiError instead of an undefined.map() TypeError when the list envelope has no items array (#1373/#1374 regression guard)', async () => {
+      http.seed('GET', 'bank_accounts.json', { entities: [], metainfo: {} });
+
+      await expect(adapter.listBankAccounts()).rejects.toThrow(InfaktApiError);
+      await expect(adapter.listBankAccounts()).rejects.toThrow(/unexpected envelope shape/);
     });
 
     it('should PUT the account as default in inFakt', async () => {
@@ -1187,8 +1194,8 @@ describe('InfaktInvoicingAdapter', () => {
 
     function seedIssueFixtures(): void {
       http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', {
-        entities: [],
-        metainfo: { total_count: 0, next: null, previous: null },
+        items: [],
+        pagination: { current_page: 1, items_on_page: 0, limit: 10, total_items: 0, total_pages: 1 },
       });
       http.seed('POST', 'clients.json', {
         id: 1,

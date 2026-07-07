@@ -111,13 +111,15 @@ export interface InfaktClient {
   country: string | null;
 }
 
-/** Paginated list response shape. */
+/** Paginated list response shape (v3 API — verified live 2026-07-07). */
 export interface InfaktListResponse<T> {
-  entities: T[];
-  metainfo: {
-    total_count: number;
-    next: string | null;
-    previous: string | null;
+  items: T[];
+  pagination: {
+    current_page: number;
+    items_on_page: number;
+    limit: number;
+    total_items: number;
+    total_pages: number;
   };
 }
 

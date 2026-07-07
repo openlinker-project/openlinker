@@ -33,7 +33,7 @@ function fakeResponse(ok: boolean, status: number): Response {
   return {
     ok,
     status,
-    text: (): Promise<string> => Promise.resolve(ok ? '{"entities":[]}' : '{"error":"unauthorized"}'),
+    text: (): Promise<string> => Promise.resolve(ok ? '{"items":[]}' : '{"error":"unauthorized"}'),
   } as unknown as Response;
 }
 
