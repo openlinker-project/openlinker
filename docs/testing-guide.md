@@ -171,7 +171,7 @@ async setup(): Promise<void> {
     .start();
 
   // 2. Start Redis container
-  this.redisContainer = await new RedisContainer('redis:7-alpine').start();
+  this.redisContainer = await new RedisContainer('valkey/valkey:8-alpine').start();
 
   // 3. Override environment variables with container ports
   process.env.DB_HOST = this.postgresContainer.getHost();
@@ -215,7 +215,7 @@ async setup(): Promise<void> {
 ### Container Images
 
 - **PostgreSQL**: `postgres:16-alpine` (lightweight, production-like)
-- **Redis**: `redis:7-alpine` (lightweight, production-like)
+- **Redis**: `valkey/valkey:8-alpine` (lightweight, production-like)
 
 ---
 
@@ -900,7 +900,7 @@ pnpm test && pnpm test:integration
 ### Testcontainers
 
 - **PostgreSQL**: `postgres:16-alpine` (ephemeral container)
-- **Redis**: `redis:7-alpine` (ephemeral container)
+- **Redis**: `valkey/valkey:8-alpine` (ephemeral container)
 - **Lifecycle**: Auto-started before tests, auto-stopped after tests
 
 ---
