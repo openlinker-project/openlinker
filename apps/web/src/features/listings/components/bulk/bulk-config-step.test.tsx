@@ -99,4 +99,34 @@ describe('BulkConfigStep', () => {
 
     expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
   }, 15000);
+
+  it('disables the "Generate AI descriptions" toggle in demo mode', async () => {
+    const connection = {
+      id: 'conn-1',
+      name: 'My Allegro',
+      status: 'active',
+      platformType: 'allegro',
+      supportedCapabilities: ['OfferManager'],
+    } as unknown as Connection;
+    const apiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      connections: { list: vi.fn().mockResolvedValue([connection]) },
+      listings: {
+        getSellerPolicies: vi
+          .fn()
+          .mockResolvedValue({ deliveryPolicies: [{ id: 'dp1', name: 'Courier 24h' }] }),
+      },
+    });
+    renderWithProviders(
+      <BulkConfigStep initial={{ generateDescription: true }} onProceed={vi.fn()} onCancel={() => undefined} />,
+      { apiClient },
+    );
+
+    const toggle = await screen.findByRole('checkbox', {
+      name: /Generate AI descriptions by default/,
+    });
+    await waitFor(() => { expect(toggle).toBeDisabled(); }, { timeout: 5000 });
+    // Forced off even though `initial.generateDescription` was true.
+    expect(toggle).not.toBeChecked();
+  }, 15000);
 });

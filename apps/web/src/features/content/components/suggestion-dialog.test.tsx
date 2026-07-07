@@ -5,12 +5,13 @@
  * just calls `onApply(text)` — persistence is the parent's job), and that
  * tone/extra inputs are forwarded as part of the suggest request payload.
  */
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SuggestionDialog } from './suggestion-dialog';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { AI_GENERATION_DEMO_DISABLED_MESSAGE } from '../../../shared/config/demo-mode';
 import type { SuggestionResponse } from '../api/content.types';
 
 function makeSuggestionResponse(suggestion: string): SuggestionResponse {
@@ -169,6 +170,54 @@ describe('SuggestionDialog', () => {
       channel: null,
       tone: undefined,
       extraInstructions: undefined,
+    });
+  });
+
+  describe('demo mode', () => {
+    function renderInDemoMode() {
+      const suggest = vi.fn();
+      const mockApi = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        content: { suggest },
+      });
+      renderWithProviders(
+        <SuggestionDialog productId="ol_product_1" channel={null} onApply={vi.fn()} />,
+        { apiClient: mockApi },
+      );
+      return { suggest };
+    }
+
+    it('disables the trigger and does not open the dialog', async () => {
+      const { suggest } = renderInDemoMode();
+      const user = userEvent.setup();
+
+      // Re-query inside waitFor: the enabled Dialog trigger renders first and is
+      // replaced by the disabled demo trigger once the config query resolves.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Suggest with AI/ })).toBeDisabled(),
+      );
+
+      await user.click(screen.getByRole('button', { name: /Suggest with AI/ }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(suggest).not.toHaveBeenCalled();
+    });
+
+    it('surfaces the demo-mode tooltip on the locked trigger', async () => {
+      renderInDemoMode();
+      const user = userEvent.setup();
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Suggest with AI/ })).toBeDisabled(),
+      );
+
+      // The tooltip trigger is the focusable span wrapping the disabled button.
+      const trigger = screen.getByRole('button', { name: /Suggest with AI/ });
+      await user.hover(trigger.parentElement as HTMLElement);
+
+      expect(
+        await screen.findByText(AI_GENERATION_DEMO_DISABLED_MESSAGE),
+      ).toBeInTheDocument();
     });
   });
 });

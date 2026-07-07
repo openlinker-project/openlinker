@@ -60,6 +60,36 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
+  // Shared render for a greyed-out, non-clickable nav item (planned items and
+  // demo-locked `restricted` groups use the same treatment; only the tooltip
+  // source differs — per-item `reason` for planned, group-level for restricted).
+  // `locked` items also show a lock glyph so the state reads without hovering.
+  const renderDisabledItem = (
+    label: string,
+    reason: string | undefined,
+    locked: boolean,
+  ): ReactElement => (
+    <li key={label}>
+      <span
+        className="shell-nav__link shell-nav__link--disabled"
+        role="link"
+        aria-disabled="true"
+        tabIndex={-1}
+        title={reason}
+      >
+        {locked ? (
+          <>
+            <span className="shell-nav__link-label">{label}</span>
+            <span className="shell-nav__link-lock" aria-hidden="true">
+              🔒
+            </span>
+          </>
+        ) : (
+          label
+        )}
+      </span>
+    </li>
+  );
   return (
     <nav className="shell-nav" aria-label={ariaLabel}>
       {groups.map((group) => (
@@ -87,19 +117,9 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
                     </li>
                   );
                 })
-              : group.items.map((item) => (
-                  <li key={item.label}>
-                    <span
-                      className="shell-nav__link shell-nav__link--disabled"
-                      role="link"
-                      aria-disabled="true"
-                      tabIndex={-1}
-                      title={item.reason}
-                    >
-                      {item.label}
-                    </span>
-                  </li>
-                ))}
+              : group.kind === 'restricted'
+                ? group.items.map((item) => renderDisabledItem(item.label, group.reason, true))
+                : group.items.map((item) => renderDisabledItem(item.label, item.reason, false))}
           </ul>
         </section>
       ))}
@@ -216,7 +236,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const counts = useNavCounts();
   const isAdmin =
     isReady && session.status === 'authenticated' && session.user?.role === 'admin';
-  const groups = useMemo(() => buildNavGroups({ isAdmin }), [isAdmin]);
+  const groups = useMemo(() => buildNavGroups({ isAdmin, demoMode }), [isAdmin, demoMode]);
   const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {

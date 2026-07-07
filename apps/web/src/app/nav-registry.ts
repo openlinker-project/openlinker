@@ -18,6 +18,7 @@
  */
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
+import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
@@ -84,26 +85,43 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
 
 export interface BuildNavGroupsInput {
   isAdmin: boolean;
+  demoMode: boolean;
 }
 
 /**
  * Build the sidebar nav composition for the current session.
  *
- * Filters the static `BASE_NAV_GROUPS` against the session role, then folds
- * in plugin contributions via the existing `mergePluginNavContributions`
- * helper. Admin-only items contributed by plugins are also filtered out for
- * non-admin sessions — no client-side permission filtering at render.
+ * Role-gated groups (`requiresRole: 'admin'`) are handled per context:
+ * - **Admins** keep full live access in every mode, including demo — a demo
+ *   admin still administers AI templates / users (#1379).
+ * - **Non-admins in demo mode**: shown as a `restricted` group — visible,
+ *   greyed-out, and locked with a tooltip — so the demo advertises that the
+ *   feature exists but is off in the read-only demo.
+ * - **Non-admins in normal mode**: filtered out entirely (unchanged; no
+ *   client-side permission enforcement at render).
+ *
+ * Plugin contributions are then folded in via `mergePluginNavContributions`,
+ * which applies the same `requiresRole` gate against the session role.
  */
-export function buildNavGroups({ isAdmin }: BuildNavGroupsInput): NavGroup[] {
-  // `mergePluginNavContributions` already deep-clones each group before
-  // mutating it, so we can pass the readonly array directly without an
-  // intermediate spread.
-  const baseGroups: NavGroup[] = BASE_NAV_GROUPS.filter((group) => {
+export function buildNavGroups({ isAdmin, demoMode }: BuildNavGroupsInput): NavGroup[] {
+  // `mergePluginNavContributions` deep-clones each live group before mutating,
+  // so pushing the readonly BASE group objects by reference is safe.
+  const baseGroups: NavGroup[] = [];
+  for (const group of BASE_NAV_GROUPS) {
     if (group.kind === 'live' && group.requiresRole === 'admin' && !isAdmin) {
-      return false;
+      // Non-admin: locked-but-visible in demo, hidden otherwise.
+      if (demoMode) {
+        baseGroups.push({
+          kind: 'restricted',
+          label: group.label,
+          items: group.items.map((item) => ({ label: item.label })),
+          reason: NAV_DEMO_RESTRICTED_MESSAGE,
+        });
+      }
+      continue;
     }
-    return true;
-  });
+    baseGroups.push(group);
+  }
 
   const contributions = plugins.flatMap((plugin) => plugin.build?.navItems ?? []);
   return mergePluginNavContributions(baseGroups, contributions, { isAdmin });

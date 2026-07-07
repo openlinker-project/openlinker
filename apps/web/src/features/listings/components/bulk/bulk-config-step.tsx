@@ -21,6 +21,9 @@ import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react
 import { useForm } from 'react-hook-form';
 
 import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
+import { AI_GENERATION_DEMO_DISABLED_MESSAGE } from '../../../../shared/config/demo-mode';
+import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
@@ -101,6 +104,7 @@ export function BulkConfigStep({
   const section = platform?.bulkOfferConfigSection;
 
   const values = form.watch();
+  const demoMode = useDemoMode();
 
   // ---- shared-slice validity (explicit, deterministic — not formState.isValid) ----
   const markupValid =
@@ -330,22 +334,52 @@ export function BulkConfigStep({
         </span>
       </label>
 
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-        <input
-          type="checkbox"
-          checked={values.generateDescription}
-          onChange={(e) =>
-            form.setValue('generateDescription', e.target.checked, { shouldDirty: true })
-          }
-        />
-        <span>
-          <strong>Generate AI descriptions by default</strong>
-          <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-            Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal
-            overrides this.
-          </small>
-        </span>
-      </label>
+      {(() => {
+        // Demo mode: AI generation is unavailable, so force the toggle off and
+        // lock it with an explanatory tooltip. The span wrap is required for
+        // the tooltip because a disabled checkbox emits no pointer events.
+        const field = (
+          <label
+            style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
+            aria-disabled={demoMode}
+          >
+            <input
+              type="checkbox"
+              checked={demoMode ? false : values.generateDescription}
+              disabled={demoMode}
+              onChange={(e) => {
+                if (demoMode) return;
+                form.setValue('generateDescription', e.target.checked, { shouldDirty: true });
+              }}
+            />
+            <span>
+              <strong>
+                {demoMode ? (
+                  <span aria-hidden="true" style={{ marginRight: 'var(--space-1)' }}>
+                    🔒
+                  </span>
+                ) : null}
+                Generate AI descriptions by default
+              </strong>
+              <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                {demoMode
+                  ? AI_GENERATION_DEMO_DISABLED_MESSAGE
+                  : 'Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal overrides this.'}
+              </small>
+            </span>
+          </label>
+        );
+        return demoMode ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>{field}</span>
+            </TooltipTrigger>
+            <TooltipContent>{AI_GENERATION_DEMO_DISABLED_MESSAGE}</TooltipContent>
+          </Tooltip>
+        ) : (
+          field
+        );
+      })()}
 
       <footer className="bulk-wizard__footer">
         <div className="bulk-wizard__footer-spacer" />
