@@ -10,6 +10,15 @@
  * Not `@Injectable` — a plain class; the client it builds closes over one
  * connection's API key (ADR-025 static-key model, never a DI singleton).
  *
+ * Allegro category-catalog wiring (#1382/#1383, ADR-031): when the resolved
+ * credentials carry BOTH `allegroClientId` and `allegroClientSecret`,
+ * `createAdapters` also builds an `AllegroCategoryCatalogClient` (environment
+ * from `config.allegroEnvironment ?? 'production'`) and passes it into the
+ * offer-manager constructor, which wires `fetchCategories`/
+ * `fetchCategoryParameters` as per-instance properties. Absent or partial
+ * credentials → `undefined` is passed instead, leaving those properties unset
+ * for this connection (never a static, connection-independent capability).
+ *
  * @module libs/integrations/erli/src/application
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
@@ -24,6 +33,7 @@ import {
   type ErliCredentials,
 } from '../domain/types/erli-connection.types';
 import { ERLI_ADAPTER_KEY } from '../erli.constants';
+import { AllegroCategoryCatalogClient } from '../infrastructure/http/allegro-category-catalog-client';
 import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-manager.adapter';
 import { ErliOrderSourceAdapter } from '../infrastructure/adapters/erli-order-source.adapter';
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
@@ -65,6 +75,12 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
   ): Promise<ErliAdapters> {
     const httpClient = await this.createHttpClient(connection, credentialsResolver);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
+    // Resolved again here (createHttpClient above already resolved it for the
+    // apiKey) so the factory can inspect the optional Allegro credential pair —
+    // credentialsResolver reads are cheap per-connection-resolution, not
+    // per-request, so the second resolve is not a hot-path cost.
+    const credentials = await this.resolveCredentials(connection, credentialsResolver);
+    const allegroCategoryCatalog = this.buildAllegroCategoryCatalog(credentials, config);
     // Construct the offer manager first so its reference can be shared with the
     // order-source adapter (which needs it for the `cancelled` stock-restore path).
     const offerManager = new ErliOfferManagerAdapter(
@@ -73,6 +89,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       httpClient,
       config.defaultDispatchTime,
       cache,
+      allegroCategoryCatalog,
     );
     return {
       offerManager,
@@ -121,6 +138,31 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       );
     }
     return credentials;
+  }
+
+  /**
+   * Build the optional Allegro category-catalog client (#1382/#1383, ADR-031).
+   * Requires BOTH `allegroClientId` and `allegroClientSecret` — re-checked here
+   * as defense-in-depth alongside `ErliConnectionCredentialsShapeValidatorAdapter`
+   * (a pre-existing or externally-written credentials row could carry exactly
+   * one). Absent or partial credentials return `undefined`, which the offer
+   * adapter treats as "no category browsing wired for this connection" —
+   * never a static, connection-independent capability.
+   */
+  private buildAllegroCategoryCatalog(
+    credentials: ErliCredentials,
+    config: ErliConnectionConfig,
+  ): AllegroCategoryCatalogClient | undefined {
+    const clientId = credentials.allegroClientId?.trim();
+    const clientSecret = credentials.allegroClientSecret?.trim();
+    if (!clientId || !clientSecret) {
+      return undefined;
+    }
+    return new AllegroCategoryCatalogClient(
+      clientId,
+      clientSecret,
+      config.allegroEnvironment ?? 'production',
+    );
   }
 
   private resolveBaseUrl(connection: Connection): string {

@@ -9,7 +9,12 @@
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { isOfferCreator, isOfferFieldUpdater } from '@openlinker/core/listings';
+import {
+  isCategoryBrowser,
+  isCategoryParametersReader,
+  isOfferCreator,
+  isOfferFieldUpdater,
+} from '@openlinker/core/listings';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliAdapterFactory } from '../erli-adapter.factory';
 
@@ -39,6 +44,7 @@ function okResponse(): Response {
     status: 200,
     headers: { get: (): string | null => null },
     text: (): Promise<string> => Promise.resolve('{}'),
+    json: (): Promise<Record<string, never>> => Promise.resolve({}),
   } as unknown as Response;
 }
 
@@ -163,6 +169,67 @@ describe('ErliAdapterFactory', () => {
           resolverFor({ apiKey: 'k' }),
         ),
       ).rejects.toBeInstanceOf(ErliConfigException);
+    });
+
+    describe('Allegro category-catalog wiring (#1382/#1383, ADR-031)', () => {
+      it('should NOT wire CategoryBrowser/CategoryParametersReader when Allegro credentials are absent', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+        );
+
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
+        expect(isCategoryParametersReader(adapters.offerManager)).toBe(false);
+      });
+
+      it('should NOT wire CategoryBrowser/CategoryParametersReader when only one of the Allegro credential pair is present', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123', allegroClientId: 'client-1' }),
+        );
+
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(false);
+        expect(isCategoryParametersReader(adapters.offerManager)).toBe(false);
+      });
+
+      it('should wire CategoryBrowser/CategoryParametersReader when both Allegro credentials are present', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'client-1',
+            allegroClientSecret: 'secret-1',
+          }),
+        );
+
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
+        expect(isCategoryParametersReader(adapters.offerManager)).toBe(true);
+      });
+
+      it('should resolve the Allegro sandbox host when config.allegroEnvironment is sandbox', async () => {
+        const adapters = await factory.createAdapters(
+          connection({ config: { allegroEnvironment: 'sandbox' } }),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'client-1',
+            allegroClientSecret: 'secret-1',
+          }),
+        );
+        expect(isCategoryBrowser(adapters.offerManager)).toBe(true);
+
+        if (isCategoryBrowser(adapters.offerManager)) {
+          await adapters.offerManager.fetchCategories();
+        }
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('allegrosandbox.pl'),
+          expect.anything(),
+        );
+      });
     });
   });
 });
