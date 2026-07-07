@@ -14,6 +14,8 @@ import type {
   WebhookDeliveryStatus,
 } from '../../features/webhook-deliveries/api/webhook-deliveries.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { useSyncJobLookupQuery } from '../../features/sync-jobs/hooks/use-sync-job-lookup-query';
 
 function statusTone(status: WebhookDeliveryStatus): StatusBadgeTone {
   switch (status) {
@@ -31,7 +33,28 @@ function statusTone(status: WebhookDeliveryStatus): StatusBadgeTone {
   }
 }
 
-function buildWebhookDeliveryItems(d: WebhookDeliveryDetail): KeyValueItem[] {
+/**
+ * Where the "Downstream job" link points. The persisted SyncJob UUID (exact
+ * job detail) is preferred; until it resolves — or if the worker hasn't created
+ * the row yet — we fall back to the Jobs & Logs list pre-filtered to this
+ * delivery's connection + job type, so the link is never dead and never sends a
+ * Redis Stream enqueue ID to the UUID-only `/jobs-logs/:id` route (#1366).
+ */
+function buildDownstreamJobHref(d: WebhookDeliveryDetail, exactJobId: string | null): string {
+  if (exactJobId) {
+    return `/jobs-logs/${exactJobId}`;
+  }
+  const params = new URLSearchParams({ connectionId: d.connectionId });
+  if (d.downstreamJobType) {
+    params.set('jobType', d.downstreamJobType);
+  }
+  return `/jobs-logs?${params.toString()}`;
+}
+
+function buildWebhookDeliveryItems(
+  d: WebhookDeliveryDetail,
+  exactJobId: string | null,
+): KeyValueItem[] {
   const items: KeyValueItem[] = [
     {
       id: 'status',
@@ -75,7 +98,7 @@ function buildWebhookDeliveryItems(d: WebhookDeliveryDetail): KeyValueItem[] {
       label: 'Downstream job',
       value: (
         <>
-          <Link to={`/jobs-logs/${d.downstreamJobId}`} className="mono-text">
+          <Link to={buildDownstreamJobHref(d, exactJobId)} className="mono-text">
             {d.downstreamJobId}
           </Link>
           {d.downstreamJobType ? (
@@ -92,6 +115,22 @@ function buildWebhookDeliveryItems(d: WebhookDeliveryDetail): KeyValueItem[] {
 export function WebhookDeliveryDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const query = useWebhookDeliveryQuery(id);
+
+  // Resolve the connection (for its platformType) and, from that, the exact
+  // downstream SyncJob the webhook enqueued (#1366). The server builds the
+  // idempotency key from these components — the platformType comes from the
+  // resolved connection (the delivery's free-form `provider` is not a reliable
+  // substitute). Both hooks self-disable on missing inputs, so they're safe to
+  // call before the guards below and stay dormant when there's no downstream job.
+  const delivery = query.data;
+  const connectionQuery = useConnectionQuery(delivery?.connectionId ?? '');
+  const platformType = connectionQuery.data?.platformType;
+  const lookupInput =
+    delivery?.downstreamJobId && platformType
+      ? { platformType, connectionId: delivery.connectionId, eventId: delivery.eventId }
+      : null;
+  const downstreamJobQuery = useSyncJobLookupQuery(lookupInput);
+  const exactJobId = downstreamJobQuery.data?.id ?? null;
 
   if (query.isLoading) {
     return (
@@ -122,7 +161,7 @@ export function WebhookDeliveryDetailPage(): ReactElement {
       title={<span className="mono-text">{d.eventType ?? d.eventId}</span>}
     >
       <section className="detail-section">
-        <KeyValueList items={buildWebhookDeliveryItems(d)} />
+        <KeyValueList items={buildWebhookDeliveryItems(d, exactJobId)} />
       </section>
 
       {d.rejectionReason ? (
