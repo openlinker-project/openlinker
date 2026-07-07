@@ -28,7 +28,7 @@
 ### In Scope
 - `InvoiceRecordOrmEntity`: `leaseExpiresAt`, `issuedAt` → `@Column({ type: 'timestamptz', nullable: true })`; `createdAt` → `@CreateDateColumn({ type: 'timestamptz' })`; `updatedAt` → `@UpdateDateColumn({ type: 'timestamptz' })`.
 - One migration converting the four existing `invoice_records` columns with `USING ... AT TIME ZONE 'UTC'` (value-preserving) plus a symmetric `down()`.
-- One fail-first Testcontainers regression test proving `claimForIssue`'s lease-expiry gate is correct under a non-UTC (`Europe/Warsaw`) Postgres session timezone, appended to the existing `apps/api/test/integration/invoicing/invoice-record-repository.int-spec.ts` (both branches: not-yet-expired lease rejects reclaim; expired lease allows reclaim).
+- One fail-first Testcontainers regression test proving `claimForIssue`'s lease-expiry gate is correct across genuinely different process-local timezones (a lease written by a `TZ=UTC` child process, evaluated by a `TZ=Pacific/Kiritimati` child process — see Phase 3 implementation note), appended to the existing `apps/api/test/integration/invoicing/invoice-record-repository.int-spec.ts` (both branches: not-yet-expired lease rejects reclaim; expired lease allows reclaim).
 
 ### Out of Scope
 - `order_records` (already `timestamptz` — no change).
@@ -160,18 +160,19 @@ None identified.
 
 ### Phase 3: Regression test
 
-**Goal**: Prove `claimForIssue`'s lease-expiry gate is correct under a non-UTC Postgres session timezone — fails on the pre-fix naive schema, passes after.
+**Goal**: Prove `claimForIssue`'s lease-expiry gate is correct across genuinely different process-local timezones — fails on the pre-fix naive schema, passes after.
+
+**Implementation note (deviation from the original plan, discovered during implementation):** the plan's original design (`SET TIME ZONE` on a dedicated `QueryRunner`, mirroring `job-intake-execution.int-spec.ts`) was empirically tested and found to **not** reproduce the bug — it passed identically on both the pre-fix and post-fix schema. Root-cause investigation (reading `pg`'s `dateToString`/`postgres-date`'s `parseDate`, and probing the live Testcontainers Postgres directly) showed the actual mechanism: `node-postgres` serializes an outgoing `Date` parameter using the **process's own local time components + local UTC offset**, and Postgres's `timestamp without time zone` input parser silently **drops** that offset, storing the writing process's local wall-clock digits. The skew therefore depends on the **OS-level local timezone of the Node process**, not the Postgres session's `TimeZone` GUC — and `process.env.TZ` reassignment mid-process was also verified (via a throwaway probe) to have **no effect** on already-initialized Date behavior in this Jest/ts-jest setup, so a real reproduction requires genuinely different **processes**.
 
 **Steps**:
 
-1. **Add the tz regression test**
-   - **File**: `apps/api/test/integration/invoicing/invoice-record-repository.int-spec.ts` — append to (or immediately after) the `describe('claimForIssue — atomic single-flight CAS (#1200)', ...)` block.
-   - **Action**: following the `Europe/Warsaw` `QueryRunner` pattern from `apps/worker/test/integration/job-intake-execution.int-spec.ts`, add two tests:
-     - **"does NOT re-claim a live lease inserted under a non-UTC session timezone"**: open a dedicated `QueryRunner`, `SET TIME ZONE 'Europe/Warsaw'` on it, insert a `claimRow({ status: 'issuing', leaseExpiresAt: <now + 60s> })` through that connection's repository/manager, then call `repository.claimForIssue(...)` on the harness's normal-session repository and assert it returns `null` (lease still live).
-     - **"re-claims an expired lease inserted under a non-UTC session timezone"**: same setup but `leaseExpiresAt: <now - 60s>`, assert `claimForIssue` returns the claimed row (`status: 'issuing'`, new lease).
-   - Use `queryRunner.release()` in a `finally` block, mirroring the existing PR #1262 pattern.
-   - **Acceptance**: both tests fail against the pre-fix (`timestamp` without tz) schema and pass after the Phase 1+2 changes are applied. (Verify by temporarily reverting Phase 1/2 locally and confirming a red run, then reapplying — do not commit the reverted state.)
-   - **Dependencies**: Phases 1 and 2 must be applied against the Testcontainers-provisioned DB (migrations run automatically as part of the integration harness boot — no manual step needed beyond having the migration file present).
+1. **Add a child-process helper** — `apps/api/test/integration/helpers/tz-claim-probe.child.js`: a plain Node script (no TypeScript, no TypeORM) using the `pg` client directly, taking `(mode, host, port, user, password, database, id, leaseIso, nowIso)` as argv. `mode=write` sets `leaseExpiresAt`; `mode=compare` runs the exact `claimForIssue` CAS predicate and prints `{claimed: boolean}` to stdout.
+2. **Add the tz regression tests** — `apps/api/test/integration/invoicing/invoice-record-repository.int-spec.ts`, appended inside `describe('claimForIssue — atomic single-flight CAS (#1200)', ...)`:
+   - Both tests `child_process.spawnSync` the helper twice against the SAME running Testcontainers instance: once with `TZ=UTC` to write the lease, once with `TZ=Pacific/Kiritimati` (UTC+14, the most extreme real-world offset) to run the CAS-claim predicate — modeling two worker hosts with different local timezones, which is the real production scenario `claimForIssue` guards against.
+   - **"does NOT reclaim a live lease written by a UTC process when compared by a UTC+14 process"** — live lease (+60s), expect `claimed: false`.
+   - **"reclaims an expired lease written by a UTC process when compared by a UTC+14 process"** — expired lease (-60s), expect `claimed: true`.
+   - **Empirically verified fail-first**: against the pre-fix (naive `timestamp`) schema, the first test **fails** (`Expected: false, Received: true` — the still-live lease is wrongly reclaimed, reproducing the double-claim/double-submit-to-KSeF risk end-to-end). Against the post-fix (`timestamptz`) schema, both tests pass.
+   - **Dependencies**: Phases 1 and 2 must be applied against the Testcontainers-provisioned DB (migrations run automatically as part of the integration harness boot).
 
 ### Implementation Details
 
@@ -214,7 +215,7 @@ None identified.
 - **Reference**: [Engineering Standards - Naming Conventions](../engineering-standards.md#naming-conventions)
 
 ### Existing Patterns
-- ✅ Migration structure, docblock shape, and regression-test technique (`SET TIME ZONE` on a dedicated `QueryRunner`) all mirror PR #1262 exactly — no new pattern introduced.
+- ✅ Migration structure and docblock shape mirror PR #1262 exactly. The regression-test *technique* diverges from #1262's `SET TIME ZONE`-on-a-`QueryRunner` pattern — that pattern was tried first and empirically shown not to reproduce the bug (see Phase 3 implementation note) — but the *intent* (fail-first proof under a real timezone mismatch) is the same.
 
 ### Risks
 - **Migration timestamp collision**: if another invoicing migration merges to `main` between plan-writing and implementation, the hardcoded `1818000000006` will collide or sort incorrectly. **Mitigation**: Phase 2 Step 1 mandates re-checking the tail immediately before creating the file; `scripts/check-migration-timestamps.mjs` (`pnpm lint`) fails the build on any collision or ordering violation before merge.
@@ -237,8 +238,8 @@ None identified.
 ### Integration Tests
 - **File**: `apps/api/test/integration/invoicing/invoice-record-repository.int-spec.ts` (extended, not new).
 - Two new tests under `describe('claimForIssue — atomic single-flight CAS (#1200)', ...)`:
-  1. A live lease inserted under `Europe/Warsaw` session timezone is NOT reclaimed.
-  2. An expired lease inserted under `Europe/Warsaw` session timezone IS reclaimed.
+  1. A live lease written by a `TZ=UTC` child process is NOT reclaimed when evaluated by a `TZ=Pacific/Kiritimati` child process.
+  2. An expired lease written by a `TZ=UTC` child process IS reclaimed when evaluated by a `TZ=Pacific/Kiritimati` child process.
 - Both must be written to fail against the pre-fix schema and pass after — verified manually during implementation (temporarily revert Phase 1+2, confirm red, reapply, confirm green).
 
 ### Mocking Strategy
@@ -248,7 +249,7 @@ None identified.
 - [ ] `leaseExpiresAt`, `issuedAt`, `createdAt`, `updatedAt` on `InvoiceRecordOrmEntity` are `timestamptz`
 - [ ] A new migration converts the existing `invoice_records` columns with `USING ... AT TIME ZONE 'UTC'` (value-preserving), uses the next free synthetic prefix re-verified at implementation time (not a `Date.now()` prefix), and has a correct `down()`
 - [ ] `pnpm --filter @openlinker/api migration:show` shows the migration as pending before running, and no errors after running
-- [ ] A Testcontainers regression test proves `claimForIssue`'s lease-expiry gate is correct under a non-UTC Postgres session timezone (fails on pre-fix schema, passes after)
+- [x] A Testcontainers regression test proves `claimForIssue`'s lease-expiry gate is correct across genuinely different process-local timezones (fails on pre-fix schema — verified: still-live lease wrongly reclaimed — passes after)
 - [ ] `pnpm lint`, `pnpm type-check`, `pnpm test` all pass
 - [ ] No architecture boundary violations (CORE ↔ Integration) — none touched
 
