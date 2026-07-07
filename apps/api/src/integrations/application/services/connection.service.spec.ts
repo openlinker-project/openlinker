@@ -128,6 +128,14 @@ describe('ConnectionService', () => {
             })
         ),
       update: jest.fn(),
+      getByRef: jest.fn().mockResolvedValue({
+        id: 'cred-row-1',
+        ref: 'cred-ref-1',
+        platformType: 'prestashop',
+        credentialsJson: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
       delete: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<ICredentialsService>;
 
@@ -812,6 +820,36 @@ describe('ConnectionService', () => {
 
       expect(credentials.update).toHaveBeenCalledWith('cred-ref-1', {
         credentialsJson: { webserviceApiKey: 'NEW' },
+      });
+    });
+
+    it('should merge onto existing stored fields instead of replacing the whole blob', async () => {
+      const dbConnection = new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'active',
+        {},
+        'db:cred-ref-1',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+      connectionPort.get.mockResolvedValue(dbConnection);
+      credentials.getByRef.mockResolvedValue({
+        id: 'cred-row-1',
+        ref: 'cred-ref-1',
+        platformType: 'prestashop',
+        credentialsJson: { webserviceApiKey: 'OLD', otherField: 'keep-me' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' });
+
+      expect(credentials.update).toHaveBeenCalledWith('cred-ref-1', {
+        credentialsJson: { webserviceApiKey: 'NEW', otherField: 'keep-me' },
       });
     });
 

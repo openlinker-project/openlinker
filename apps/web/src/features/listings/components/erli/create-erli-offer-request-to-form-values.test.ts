@@ -55,6 +55,24 @@ describe('createErliOfferRequestToFormValues', () => {
     expect(values.dispatchPeriod).toBe(2);
     expect(values.dispatchUnit).toBe('day');
   });
+
+  it('restores category-parameter values from the wire snapshot on retry', () => {
+    const values = createErliOfferRequestToFormValues(
+      snapshot({
+        overrides: {
+          title: 'With parameters',
+          categoryId: '12345',
+          parameters: [
+            { id: 'p1', values: ['Red'], section: 'offer' },
+            { id: 'p2', valuesIds: ['v1', 'v2'], section: 'offer' },
+          ],
+        },
+      }),
+      FALLBACK,
+    );
+
+    expect(values.parameters).toEqual({ p1: 'Red', p2: ['v1', 'v2'] });
+  });
 });
 
 describe('readErliOfferRequestPrefill', () => {
