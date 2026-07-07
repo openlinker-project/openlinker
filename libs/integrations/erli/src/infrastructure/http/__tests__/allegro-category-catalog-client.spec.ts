@@ -352,6 +352,106 @@ describe('AllegroCategoryCatalogClient', () => {
     });
   });
 
+  describe('distributed token cache (#1399 review)', () => {
+    function inMemoryCachePort(): {
+      get: jest.Mock;
+      set: jest.Mock;
+      delete: jest.Mock;
+      store: Map<string, unknown>;
+    } {
+      const store = new Map<string, unknown>();
+      return {
+        store,
+        get: jest.fn((key: string) => Promise.resolve(store.has(key) ? store.get(key) : null)),
+        set: jest.fn((key: string, value: unknown) => {
+          store.set(key, value);
+          return Promise.resolve();
+        }),
+        delete: jest.fn((key: string) => {
+          store.delete(key);
+          return Promise.resolve();
+        }),
+      };
+    }
+
+    it('should write the acquired token to the cache keyed by clientId', async () => {
+      const cache = inMemoryCachePort();
+      const cachedClient = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'app-token-1', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+
+      await cachedClient.fetchCategories();
+
+      expect(cache.set).toHaveBeenCalledWith(
+        `erli:allegro-category-token:${CLIENT_ID}`,
+        expect.objectContaining({ accessToken: 'app-token-1' }),
+        expect.any(Number)
+      );
+    });
+
+    it('should reuse a token found in the cache instead of re-acquiring, across separate client instances', async () => {
+      const cache = inMemoryCachePort();
+      const first = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'shared-token', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+      await first.fetchCategories();
+
+      // A fresh instance (e.g. built by a later, unrelated `createAdapters`
+      // call) sharing the same CachePort must find the token in `cache`
+      // rather than paying another OAuth round-trip.
+      const second = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+      await second.fetchCategories();
+
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      expect(tokenRequests).toHaveLength(1);
+      const secondCategoriesCall = recordedCalls(fetchMock)[2];
+      expect(secondCategoriesCall[1]?.headers?.Authorization).toBe('Bearer shared-token');
+    });
+
+    it('should re-acquire when the cached entry is expired, even if present in the cache', async () => {
+      const cache = inMemoryCachePort();
+      const nowSpy = jest.spyOn(Date, 'now');
+      nowSpy.mockReturnValue(1_000_000);
+      cache.store.set(`erli:allegro-category-token:${CLIENT_ID}`, {
+        accessToken: 'stale-shared-token',
+        expiresAt: 1_000_000 - 1,
+      });
+      const cachedClient = new AllegroCategoryCatalogClient(CLIENT_ID, CLIENT_SECRET, 'sandbox', cache);
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'fresh-token', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+
+      await cachedClient.fetchCategories();
+
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      expect(tokenRequests).toHaveLength(1);
+      nowSpy.mockRestore();
+    });
+
+    it('should behave exactly as before (in-memory only) when no cache is supplied', async () => {
+      // `client` (from the outer beforeEach) is constructed without a cache —
+      // backward-compat: no CachePort dependency introduced for existing callers.
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'app-token-1', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+
+      await client.fetchCategories();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('auth rejection on a data call (distinct from the token endpoint)', () => {
     it('should throw ErliAuthenticationException when /sale/categories itself rejects the bearer token', async () => {
       fetchMock

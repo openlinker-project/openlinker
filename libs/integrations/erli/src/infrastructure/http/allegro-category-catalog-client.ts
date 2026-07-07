@@ -5,7 +5,7 @@
  * Allegro's public `/sale/categories` and `/sale/categories/{id}/parameters`
  * catalog via an Allegro app's `grant_type=client_credentials` token — no
  * seller/user OAuth context, no Allegro `Connection` required (#1382,
- * ADR-030).
+ * ADR-031).
  *
  * Deliberately does NOT import anything from `@openlinker/integrations-allegro`
  * — plugin packages are architecturally independent (ADR-003), and Erli must
@@ -18,11 +18,22 @@
  * Category/parameter response mapping mirrors
  * `AllegroOfferManagerAdapter.fetchCategories` /
  * `.fetchCategoryParametersRaw` field-for-field (read there for the source of
- * truth) — duplicated here per ADR-030 rather than shared, since sharing
+ * truth) — duplicated here per ADR-031 rather than shared, since sharing
  * would require the forbidden cross-plugin dependency.
  *
  * Plain class, no NestJS/DI — constructed per-connection by
  * `ErliAdapterFactory` (#1383) exactly like `ErliHttpClient`.
+ *
+ * Token cache (#1399 review): the in-memory `cached` field only helps within
+ * one instance's lifetime, and `ErliAdapterFactory` builds a fresh instance
+ * per `getCapabilityAdapter` call — with no adapter-instance caching anywhere
+ * in the resolution seam, every `fetchCategoryParameters` call would otherwise
+ * pay a full `client_credentials` OAuth round-trip. When the optional `cache`
+ * (`host.cache`, `CachePort`) is supplied, the acquired token is additionally
+ * persisted there keyed by `clientId` (an Allegro app's client-credentials
+ * token isn't connection-scoped — the same app can back multiple Erli
+ * connections) with a TTL matching the token's own remaining lifetime, so it
+ * survives across per-request client instances and across processes.
  *
  * @module libs/integrations/erli/src/infrastructure/http
  */
@@ -31,6 +42,7 @@ import type {
   CategoryParameterDictionaryEntry,
   OfferCategory,
 } from '@openlinker/core/listings';
+import type { CachePort } from '@openlinker/shared';
 import type { AllegroCatalogEnvironment } from '../../domain/types/erli-connection.types';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
@@ -75,11 +87,22 @@ export class AllegroCategoryCatalogClient {
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
-    environment: AllegroCatalogEnvironment
+    environment: AllegroCatalogEnvironment,
+    private readonly cache?: CachePort
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;
     this.restApiBaseUrl =
       environment === 'production' ? PRODUCTION_REST_API_BASE_URL : SANDBOX_REST_API_BASE_URL;
+  }
+
+  /**
+   * Namespaced by `clientId` (never `connectionId`) — the cached value is an
+   * Allegro app-level `client_credentials` token, not a per-connection one.
+   * `encodeURIComponent` backstops a stray `:` from blurring the namespace
+   * separator, mirroring `ErliOfferManagerAdapter.frozenStockCacheKey`.
+   */
+  private get tokenCacheKey(): string {
+    return `erli:allegro-category-token:${encodeURIComponent(this.clientId)}`;
   }
 
   /**
@@ -116,14 +139,23 @@ export class AllegroCategoryCatalogClient {
   /**
    * Returns a cached app token if it's more than {@link TOKEN_REFRESH_WINDOW_MS}
    * away from expiry, else acquires a fresh one via `grant_type=client_credentials`.
+   *
+   * Checks the in-memory `cached` field first (free, no I/O), then falls back
+   * to the distributed `cache` (if supplied) before paying the OAuth
+   * round-trip — a fresh token acquired here is written to both, so the next
+   * per-request instance for this `clientId` finds it in `cache` instead of
+   * re-acquiring.
    */
   private async ensureToken(): Promise<string> {
-    if (
-      this.cached &&
-      this.cached.expiresAt !== undefined &&
-      Date.now() < this.cached.expiresAt - TOKEN_REFRESH_WINDOW_MS
-    ) {
-      return this.cached.accessToken;
+    if (this.isFresh(this.cached)) {
+      return this.cached!.accessToken;
+    }
+    if (this.cache) {
+      const shared = await this.cache.get<CachedToken>(this.tokenCacheKey);
+      if (this.isFresh(shared ?? undefined)) {
+        this.cached = shared!;
+        return this.cached.accessToken;
+      }
     }
     if (!this.inFlightToken) {
       this.inFlightToken = this.acquireToken().finally(() => {
@@ -131,7 +163,20 @@ export class AllegroCategoryCatalogClient {
       });
     }
     this.cached = await this.inFlightToken;
+    if (this.cache && this.cached.expiresAt !== undefined) {
+      const ttlSec = Math.max(1, Math.floor((this.cached.expiresAt - Date.now()) / 1000));
+      await this.cache.set(this.tokenCacheKey, this.cached, ttlSec);
+    }
     return this.cached.accessToken;
+  }
+
+  /** A token is usable if it has a known expiry more than the refresh window away. */
+  private isFresh(token: CachedToken | undefined): boolean {
+    return (
+      token !== undefined &&
+      token.expiresAt !== undefined &&
+      Date.now() < token.expiresAt - TOKEN_REFRESH_WINDOW_MS
+    );
   }
 
   private async acquireToken(): Promise<CachedToken> {
@@ -212,7 +257,7 @@ export class AllegroCategoryCatalogClient {
  * Maps Allegro's raw category-parameter shape to the neutral `CategoryParameter`
  * contract — field-for-field copy of
  * `libs/integrations/allegro/src/infrastructure/mappers/allegro-category-parameter.mapper.ts`
- * (kept in sync manually per ADR-030's no-cross-plugin-dependency decision).
+ * (kept in sync manually per ADR-031's no-cross-plugin-dependency decision).
  * The `__tests__` spec runs this function against Allegro's own real sandbox
  * fixture (`category-parameters-257933.json`) with assertions mirrored from
  * `allegro-category-parameter.mapper.spec.ts` — touching either mapper should
