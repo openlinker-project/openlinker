@@ -26,14 +26,18 @@ services:
       # predictable admin/admin because OL_BOOTSTRAP_ADMIN_PASSWORD is set
       # explicitly — under NODE_ENV=production BootstrapAdminService would
       # otherwise generate a random password (apps/api/src/auth/
-      # bootstrap-admin.service.ts).
+      # bootstrap-admin.service.ts). Override in .env before exposing this
+      # beyond localhost — admin/admin is a throwaway demo default, not a
+      # production-safe credential.
       NODE_ENV: production
-      OL_BOOTSTRAP_ADMIN_PASSWORD: admin
+      OL_BOOTSTRAP_ADMIN_PASSWORD: '${OL_BOOTSTRAP_ADMIN_PASSWORD:-admin}'
       # CORS allow-list must include the browser origin the web UI is served
       # from (the `web` service publishes :8090), or login fails with a
       # "NetworkError when attempting to fetch resource" (#1368). The API
-      # default is only http://localhost:4173 (apps/api/src/main.ts).
-      OL_CORS_ORIGIN: http://localhost:8090
+      # default is only http://localhost:4173 (apps/api/src/main.ts). Override
+      # in .env with the real public origin (e.g. https://app.example.com)
+      # when serving the UI from a domain other than localhost:8090.
+      OL_CORS_ORIGIN: '${OL_CORS_ORIGIN:-http://localhost:8090}'
       # Required by migration 1795000000000-encrypt-integration-credentials and
       # for decrypting connection credentials at runtime. Operator-supplied via
       # .env (see .env.example); `:?` fails the boot with a clear message if unset.
@@ -72,8 +76,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       # Required by shared PII config (libs/shared/src/config/pii-config.ts) —
-      # order-ingestion jobs hash customer identifiers in the worker.
-      OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
+      # order-ingestion jobs hash customer identifiers in the worker. Same
+      # variable as the api service's (docker-compose.yml) — override once in
+      # .env to keep both in sync.
+      OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:-development-pii-hash-salt-change-in-production}'
       # Same encryption key the api/migrate services use — the worker decrypts
       # connection credentials when running sync jobs (#1368).
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
@@ -92,7 +98,10 @@ services:
       args:
         # Build-time (Vite) — must be the API origin reachable from the
         # operator's BROWSER, hence localhost, not the compose service name.
-        VITE_API_BASE_URL: http://localhost:3000
+        # Baked into the bundle at build time: overriding this in .env only
+        # takes effect on the NEXT `--build` (e.g. https://api.example.com
+        # for a public-domain deployment), not on a plain `up`/restart.
+        VITE_API_BASE_URL: '${VITE_API_BASE_URL:-http://localhost:3000}'
     container_name: openlinker-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
