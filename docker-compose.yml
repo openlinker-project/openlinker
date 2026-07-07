@@ -181,7 +181,11 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'php -r "exit(@file_get_contents(\"http://localhost:80\") ? 0 : 1);"']
+      # PS_DOMAIN redirects "/" to http://localhost:8080/ (the host-mapped port),
+      # which isn't reachable from inside this container. `curl` without `-L`
+      # accepts the 302 as proof Apache is up; PHP's file_get_contents() follows
+      # redirects by default and fails with "Connection refused" on :8080 (#1392).
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://localhost:80']
       interval: 30s
       timeout: 10s
       retries: 5
