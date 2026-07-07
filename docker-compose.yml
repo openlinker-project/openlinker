@@ -48,6 +48,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # First-boot init (~60s: creates the prestashop db/user) must not be
+      # counted against the retry window, or a slower host marks MySQL
+      # unhealthy and aborts the dependent prestashop/phpmyadmin services (#1368).
+      start_period: 180s
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
@@ -134,7 +138,9 @@ services:
     # alphabetically after the installer completes. Use `pnpm dev:stack:seed-prestashop`
     # to re-run them mid-development without recreating the volume.
     environment:
-      PS_DOMAIN: localhost:8080
+      # Canonical shop domain PrestaShop bakes into generated links/redirects.
+      # Override in .env for a public-domain deployment (e.g. shop.example.com).
+      PS_DOMAIN: '${PS_DOMAIN:-localhost:8080}'
       PS_FOLDER_ADMIN: admin
       PS_COUNTRY: US
       PS_LANGUAGE: en
@@ -197,9 +203,11 @@ services:
       DB_DATABASE: openlinker
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: development-secret-key-change-in-production
-      JWT_EXPIRES_IN: 1d
-      OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
+      # Override every one of these in .env for anything beyond local
+      # dev/demo use — the defaults are throwaway values, not secrets.
+      JWT_SECRET: '${JWT_SECRET:-development-secret-key-change-in-production}'
+      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1d}'
+      OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:-development-pii-hash-salt-change-in-production}'
     ports:
       - '3000:3000'
     depends_on:

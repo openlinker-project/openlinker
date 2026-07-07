@@ -1,0 +1,28 @@
+# Keeps the Docker build context small and prevents host-built artifacts
+# (which may carry host-OS native binaries — esbuild/rollup/bcrypt — or a
+# local .env) from being copied into the image by `COPY . .` (Dockerfile,
+# apps/web/Dockerfile).
+
+.git/
+**/node_modules/
+**/dist/
+**/coverage/
+# tsc -b incremental build state: a host tsbuildinfo copied into the image
+# makes `tsc -b` believe a sibling package's dist (excluded above) is already
+# built, failing with TS6305 "Output file has not been built from source".
+**/*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+
+.vscode/
+.idea/
+
+.claude/
+docs/
+README.md
+CONTRIBUTING.md

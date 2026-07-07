@@ -224,6 +224,55 @@ OpenLinker is moving fast and publicly. See [recent activity](https://github.com
 
 ---
 
+## One-command demo
+
+Want to click through OpenLinker without setting up a dev environment? The demo overlay boots the **entire stack in Docker** — PostgreSQL, Redis, MySQL, a seeded PrestaShop, and the full OpenLinker app tier (API + Worker + admin UI) — from a clean checkout:
+
+> For a full step-by-step walkthrough (example `.env`, PrestaShop + Allegro connection wiring, end-to-end verification, and troubleshooting) see the [One-Command Demo Setup Guide](./docs/one-command-demo-setup-guide.md).
+
+```bash
+git clone https://github.com/openlinker-project/openlinker.git
+cd openlinker
+
+# Required pre-step: provide the credentials encryption key (not committable).
+# .env.example already ships an empty OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=
+# line, so drop it and append the generated one instead of `>> .env`, which
+# would leave two lines with the same key (harmless — env-file parsing is
+# last-wins — but confusing to anyone editing .env by hand).
+grep -v '^OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=' .env.example > .env
+echo "OPENLINKER_CREDENTIALS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> .env
+
+pnpm demo:up        # builds the images and starts everything (first run takes a while)
+pnpm demo:logs      # follow the logs
+pnpm demo:down      # stop the stack (add -v to also wipe the data volumes)
+```
+
+> **Required:** `OPENLINKER_CREDENTIALS_ENCRYPTION_KEY` must be set (via the root `.env`) before `pnpm demo:up`. The credentials-encryption migration fails closed without it and aborts the boot. Generate one with `openssl rand -base64 32`. See [`.env.example`](./.env.example).
+
+Database migrations run automatically (one-shot `migrate` container) before the API and Worker start — no manual `migration:run` needed.
+
+| Service | URL | Credentials |
+|---|---|---|
+| OpenLinker admin UI | http://localhost:8090 | `admin` / `admin` |
+| OpenLinker API | http://localhost:3000 | — |
+| PrestaShop storefront | http://localhost:8080 | — |
+| PrestaShop admin | http://localhost:8080/admin-dev | `demo@prestashop.com` / `prestashop_demo` |
+| phpMyAdmin (PrestaShop MySQL) | http://localhost:8081 | `root` / `root` |
+
+PrestaShop auto-installs with a seeded catalog and the OpenLinker module pre-mounted. The PrestaShop ↔ OpenLinker **connection itself is configured manually** in the admin UI (`Connections → New`) — see the [Operator Guide](./docs/user-guide/README.md).
+
+**Configuring the PrestaShop connection (container networking):** the API and Worker containers reach PrestaShop over the Compose network by its **service name**, not `localhost`. When creating the connection, set both the **Shop URL** and the **Storefront URL** to `http://prestashop` (not `http://localhost:8080`) — `localhost` from inside a container resolves to the container itself. The demo pre-configures PrestaShop for this (a `prestashop`-domain shop URL plus disabled canonical redirect) via a post-install step, so webservice calls and server-side product-image downloads (OpenLinker fetches image bytes itself, then re-uploads them to the marketplace CDN) resolve correctly.
+
+> **Known limitation (follow-up):** with the Storefront URL set to `http://prestashop`, product-image *download* works from the app tier, but the operator's **browser** can't resolve `prestashop`, so product thumbnails in the OpenLinker UI won't render. Decoupling the server-side download base from the browser display base is a tracked follow-up — for the demo, prefer a working image sync over rendered thumbnails.
+
+Notes:
+
+- ⚠️ **Shared volumes:** the demo shares the same Compose project (`openlinker`) and data volumes as `pnpm dev:stack:up`. On a machine with an existing local dev stack, running the demo **reuses and can clobber that data** — the two flows are *not* isolated. Stop and, if needed, wipe one before running the other (`pnpm dev:stack:down` / `pnpm demo:down -v`). Requires Docker Compose ≥ 2.24.
+- `VITE_API_BASE_URL` is baked into the UI bundle at image build time (default `http://localhost:3000`); rebuild the `web` image to change it.
+- Demo credentials are intentionally not production-safe — this stack is for local evaluation only.
+
+---
+
 ## Quickstart
 
 ```bash
