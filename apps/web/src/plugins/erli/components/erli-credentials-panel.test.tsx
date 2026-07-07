@@ -216,4 +216,57 @@ describe('ErliCredentialsPanel', () => {
       screen.getByText(/enter the allegro client id and client secret to enable/i),
     ).toBeInTheDocument();
   });
+
+  it('never fires the config patch when the credentials write rejects', async () => {
+    const updateCredentials = vi.fn().mockRejectedValue(new Error('Invalid Allegro credentials'));
+    const update = vi.fn().mockResolvedValue(erliConnectionWithAllegroAccess);
+    const apiClient = createMockApiClient({ connections: { updateCredentials, update } });
+    renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+    fireEvent.click(screen.getByText('Rotate API key'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+    fireEvent.change(screen.getByPlaceholderText('Allegro Client ID'), {
+      target: { value: 'client-123' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Allegro Client Secret'), {
+      target: { value: 'secret-456' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+    await waitFor(() => {
+      expect(updateCredentials).toHaveBeenCalledTimes(1);
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(await screen.findByText('Invalid Allegro credentials')).toBeInTheDocument();
+    // Panel stays open with the entered fields intact so a retry can resend them.
+    expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
+  });
+
+  it('keeps allegroCategoryAccessEnabled at its prior value and shows an inline error when the config patch rejects after credentials succeeded', async () => {
+    const updateCredentials = vi.fn().mockResolvedValue(undefined);
+    const update = vi.fn().mockRejectedValue(new Error('Connection update failed'));
+    const apiClient = createMockApiClient({ connections: { updateCredentials, update } });
+    renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+    fireEvent.click(screen.getByText('Rotate API key'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+    fireEvent.change(screen.getByPlaceholderText('Allegro Client ID'), {
+      target: { value: 'client-123' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Allegro Client Secret'), {
+      target: { value: 'secret-456' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      await screen.findByText(/category-browsing setting failed to save/i),
+    ).toBeInTheDocument();
+    // Panel stays open (flag write failed, so it never got a chance to reflect the
+    // new value anywhere the operator can see) and the fields aren't discarded.
+    expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
+    expect(screen.queryByText('Credentials saved')).not.toBeInTheDocument();
+  });
 });
