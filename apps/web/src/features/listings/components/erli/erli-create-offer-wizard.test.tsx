@@ -309,5 +309,45 @@ describe('ErliCreateOfferWizard', () => {
         { id: 'p_stan', valuesIds: ['nowy'], section: 'offer' },
       ]);
     });
+
+    it('blocks Next on the Category step until a category is selected (#1401 review)', async () => {
+      const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']), {
+        connections: { list: vi.fn().mockResolvedValue([erliConnectionWithCategoryAccess]) },
+        listings: {
+          createOffer: vi
+            .fn()
+            .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
+          resolveCategory: vi.fn().mockResolvedValue({ allegroCategoryId: null, method: 'manual' }),
+          getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),
+        },
+        mappings: {
+          getAllegroCategories: vi
+            .fn()
+            .mockResolvedValue([{ id: '12345', name: 'Test Category', parentId: null, leaf: true }]),
+        },
+      });
+      renderWithProviders(
+        <ErliCreateOfferWizard
+          connection={erliConnectionWithCategoryAccess}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await pickVariantAndAdvance();
+      fireEvent.change(await screen.findByLabelText(/^price \(PLN\)$/i), {
+        target: { value: '99.99' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Category step — click Next without touching the CategoryPicker at all.
+      await screen.findByText('Category');
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      expect(await screen.findByText(/select a category to continue/i)).toBeInTheDocument();
+      // Still on the Category step — Category-parameters never rendered.
+      expect(screen.queryByText(/no additional parameters required/i)).not.toBeInTheDocument();
+    });
   });
 });

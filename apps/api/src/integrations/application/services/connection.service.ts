@@ -416,9 +416,16 @@ export class ConnectionService implements IConnectionService {
       platformType: connection.platformType,
       adapterKey: connection.adapterKey,
     });
-    await this.validateCredentialsShape(metadata.adapterKey, credentials);
     const ref = connection.credentialsRef.slice('db:'.length);
-    await this.credentials.update(ref, { credentialsJson: credentials });
+    // Merge onto the existing stored credentials rather than replacing the
+    // whole blob: callers only send the fields they actually changed (e.g.
+    // rotating just `apiKey`), and a full replace would silently delete any
+    // other previously-stored field (e.g. Erli's optional Allegro
+    // `allegroClientId`/`allegroClientSecret` pair, #1401 review).
+    const existing = await this.credentials.getByRef(ref);
+    const mergedCredentials = { ...existing.credentialsJson, ...credentials };
+    await this.validateCredentialsShape(metadata.adapterKey, mergedCredentials);
+    await this.credentials.update(ref, { credentialsJson: mergedCredentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
   }
 

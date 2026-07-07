@@ -306,6 +306,18 @@ export function ErliCreateOfferWizard({
     if (!valid) return;
     if (stepIndex === 1 && hasImageBlocker) return; // can't advance with a missing image
 
+    // #1401 review — Category is a static `[]` STEP_FIELDS entry (CategoryPicker
+    // has no static-field trigger), so `categoryId` must be enforced manually here,
+    // mirroring `AllegroCreateOfferWizard`'s required `categoryId` field. Without
+    // this an operator can click through the Category step without picking one.
+    if (allegroCategoryAccessEnabled && stepIndex === categoryStepIndex) {
+      if (!form.getValues('categoryId')) {
+        form.setError('categoryId', { type: 'manual', message: 'Select a category to continue.' });
+        return;
+      }
+      form.clearErrors('categoryId');
+    }
+
     // #1384 — dynamic per-category Zod validation, mirrors
     // `AllegroCreateOfferWizard`'s Step-3 gate. Skipped when the category has
     // no parameters or the schema is still loading.
@@ -639,7 +651,7 @@ export function ErliCreateOfferWizard({
                     onChange={field.onChange}
                     invalid={Boolean(fieldState.error)}
                     aria-labelledby="erli-categoryId-label"
-                    aria-describedby="erli-categoryId-description"
+                    aria-describedby="erli-categoryId-description erli-categoryId-error"
                   />
                 )}
               />
@@ -647,6 +659,11 @@ export function ErliCreateOfferWizard({
                 Browse the Allegro-borrowed category tree (ADR-023/ADR-031) and pick a leaf
                 category.
               </p>
+              {form.formState.errors.categoryId?.message ? (
+                <p id="erli-categoryId-error" className="form-field__error" role="alert">
+                  {form.formState.errors.categoryId.message}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

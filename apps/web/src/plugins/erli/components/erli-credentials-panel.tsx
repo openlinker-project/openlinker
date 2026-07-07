@@ -188,36 +188,47 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
             <span>
               <strong>Browse Allegro categories when creating Erli offers</strong>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-                Used only to read the public category catalog — never to sign in as a seller or
-                place offers.
+                Turn this on to pick categories and fill required parameters from a list, the same
+                way you do for Allegro. Leave it off and you&apos;ll enter category IDs by hand.
               </small>
             </span>
           </label>
 
           {allegroEnabled ? (
             <div className="form-grid">
-              <Input
-                autoComplete="off"
-                placeholder="Allegro Client ID"
-                value={allegroClientId}
-                onChange={(event) => setAllegroClientId(event.target.value)}
-              />
-              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+              <div>
                 <Input
-                  type={showSecret ? 'text' : 'password'}
                   autoComplete="off"
-                  placeholder="Allegro Client Secret"
-                  value={allegroClientSecret}
-                  onChange={(event) => setAllegroClientSecret(event.target.value)}
+                  placeholder="Allegro Client ID"
+                  value={allegroClientId}
+                  onChange={(event) => setAllegroClientId(event.target.value)}
                 />
-                <Button
-                  tone="ghost"
-                  type="button"
-                  onClick={() => setShowSecret((v) => !v)}
-                  aria-label={showSecret ? 'Hide Client Secret' : 'Show Client Secret'}
-                >
-                  {showSecret ? 'Hide' : 'Show'}
-                </Button>
+                <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                  From an Allegro app you register at apps.developer.allegro.pl. Used only to read
+                  the public category catalog - never to sign in as a seller or place offers.
+                </small>
+              </div>
+              <div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <Input
+                    type={showSecret ? 'text' : 'password'}
+                    autoComplete="off"
+                    placeholder="Allegro Client Secret"
+                    value={allegroClientSecret}
+                    onChange={(event) => setAllegroClientSecret(event.target.value)}
+                  />
+                  <Button
+                    tone="ghost"
+                    type="button"
+                    onClick={() => setShowSecret((v) => !v)}
+                    aria-label={showSecret ? 'Hide Client Secret' : 'Show Client Secret'}
+                  >
+                    {showSecret ? 'Hide' : 'Show'}
+                  </Button>
+                </div>
+                <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                  Stored encrypted. You won&apos;t see it again after saving.
+                </small>
               </div>
             </div>
           ) : null}
