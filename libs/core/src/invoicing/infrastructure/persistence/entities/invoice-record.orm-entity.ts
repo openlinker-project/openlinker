@@ -98,7 +98,7 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'text', nullable: true })
   pdfUrl!: string | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   issuedAt!: Date | null;
 
   @Column({ type: 'text', nullable: true })
@@ -131,7 +131,7 @@ export class InvoiceRecordOrmEntity {
    * currently holds the in-flight slot. Backs the atomic `claimForIssue` guard
    * that lets exactly one concurrent same-key retry cross the provider boundary.
    */
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   leaseExpiresAt!: Date | null;
 
   /**
@@ -166,9 +166,9 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   issuedLineSnapshot!: IssuedLineSnapshot | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }
