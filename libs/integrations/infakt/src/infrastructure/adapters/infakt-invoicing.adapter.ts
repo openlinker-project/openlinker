@@ -313,9 +313,7 @@ export class InfaktInvoicingAdapter
    * being stamped) if one ever falls off the page.
    */
   async listBankAccounts(): Promise<InvoicingBankAccount[]> {
-    const response = await this.http.get<InfaktListResponse<InfaktBankAccount>>(
-      'bank_accounts.json',
-    );
+    const response = await this.getListResponse<InfaktBankAccount>('bank_accounts.json');
     return response.items.map((account) => ({
       id: String(account.id),
       accountNumber: account.account_number,
@@ -835,13 +833,37 @@ export class InfaktInvoicingAdapter
 
   private async findClientByNip(nip: string): Promise<InfaktClient | null> {
     try {
-      const list = await this.http.get<InfaktListResponse<InfaktClient>>('clients.json', {
-        nip,
-      });
+      const list = await this.getListResponse<InfaktClient>('clients.json', { nip });
       return list.items[0] ?? null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Thin regression guard against a repeat of the #1373/#1374 envelope-shape
+   * drift: `listBankAccounts`/`findClientByNip` both previously read
+   * `response.entities` against a list endpoint that actually returns
+   * `{ items, pagination }`, so a missing `items` array surfaced as an
+   * `undefined.map()` `TypeError` — indistinguishable, once the controller
+   * masks it into a generic 502, from an unreachable provider. Failing loudly
+   * here with a named, path-specific `InfaktApiError` means a FUTURE wire-shape
+   * drift logs a clear cause (`toProviderBadGateway` logs the thrown error's
+   * message) instead of a bare "Cannot read properties of undefined".
+   */
+  private async getListResponse<T>(
+    path: string,
+    query?: Record<string, string>,
+  ): Promise<InfaktListResponse<T>> {
+    const response = await this.http.get<InfaktListResponse<T>>(path, query);
+    if (!response || !Array.isArray(response.items)) {
+      throw new InfaktApiError(
+        `Infakt ${path} returned an unexpected envelope shape (expected { items: [...] })`,
+        502,
+        response,
+      );
+    }
+    return response;
   }
 
   /**

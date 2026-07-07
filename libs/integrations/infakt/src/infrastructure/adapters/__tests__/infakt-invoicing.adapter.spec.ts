@@ -1162,6 +1162,13 @@ describe('InfaktInvoicingAdapter', () => {
       await expect(adapter.listBankAccounts()).resolves.toEqual([]);
     });
 
+    it('should throw a named InfaktApiError instead of an undefined.map() TypeError when the list envelope has no items array (#1373/#1374 regression guard)', async () => {
+      http.seed('GET', 'bank_accounts.json', { entities: [], metainfo: {} });
+
+      await expect(adapter.listBankAccounts()).rejects.toThrow(InfaktApiError);
+      await expect(adapter.listBankAccounts()).rejects.toThrow(/unexpected envelope shape/);
+    });
+
     it('should PUT the account as default in inFakt', async () => {
       http.seed('PUT', 'bank_accounts/54946.json', {
         id: 54946,
