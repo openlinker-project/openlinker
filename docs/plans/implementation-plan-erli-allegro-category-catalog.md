@@ -22,15 +22,15 @@
 
 ### In Scope
 - A new, Erli-owned Allegro `client_credentials` HTTP client (`AllegroCategoryCatalogClient`) — token acquisition/caching + `fetchCategories`/`fetchCategoryParameters` calls against Allegro's public REST host.
-- Two new optional fields on Erli connection credentials: `allegroClientId`, `allegroClientSecret`.
-- `ErliAdapterFactory` wiring so the constructed `ErliOfferManagerAdapter` *instance* exposes working `fetchCategories`/`fetchCategoryParameters` only when both fields are present and valid — reflected correctly through the existing `isCategoryBrowser`/`isCategoryParametersReader` structural guards and `connection.supportedCapabilities`.
+- Two new optional fields on Erli connection credentials: `allegroClientId`, `allegroClientSecret`; one new non-secret optional field on Erli connection config: `allegroCategoryAccessEnabled: boolean`, written/cleared alongside the credentials pair.
+- `ErliAdapterFactory` wiring so the constructed `ErliOfferManagerAdapter` *instance* exposes working `fetchCategories`/`fetchCategoryParameters` only when both credential fields are present and valid — reflected correctly through the existing `isCategoryBrowser`/`isCategoryParametersReader` structural guards. **Note**: `connection.supportedCapabilities` is a static, per-`adapterKey` manifest value, not computed per-connection-instance — it does NOT reflect this configuration state (discovered during #1383 implementation; see ADR-031 "Correction"). `allegroCategoryAccessEnabled` in `config` is the FE-visible signal instead.
 - Erli connection wizard/edit form: checkbox-gated reveal of Client ID / Client Secret fields (per approved mockup).
-- Erli single-offer wizard (`erli-create-offer-wizard.tsx`): new Category step (reusing `CategoryPicker`) and Category-parameters step (reusing `CategoryParametersStep`/`useCategoryParametersQuery`), gated on `connection.supportedCapabilities.includes('CategoryBrowser')`, with fallback to today's plain-text field when absent.
+- Erli single-offer wizard (`erli-create-offer-wizard.tsx`): new Category step (reusing `CategoryPicker`) and Category-parameters step (reusing `CategoryParametersStep`/`useCategoryParametersQuery`), gated on `connection.config.allegroCategoryAccessEnabled`, with fallback to today's plain-text field when absent.
 
 ### Out of Scope
 - Any change to `OfferBuilderService.buildOfferParameters` or `AttributeProjectionService` merge logic — already destination-capability-agnostic (confirmed in diagnosis) and requires no changes.
 - Any change to `ErliOfferManagerAdapter.buildExternalAttributes` (`cmd.parameters` → `source:"allegro"` wire mapping) — already correct.
-- Bulk-offer wizard changes — its `supportedCapabilities.includes('CategoryBrowser')` gate (#1367) already exists and will automatically start working correctly for configured Erli connections once this ships; no bulk-wizard code changes are required, but its existing test suite must be re-verified (see §9).
+- Bulk-offer wizard changes — its `supportedCapabilities.includes('CategoryBrowser')` gate (#1367) is unaffected by this feature (that field is static per-`adapterKey`, so it stays `false` for Erli regardless of per-connection Allegro configuration — a pre-existing bulk-wizard limitation, unchanged and explicitly out of scope here); its existing test suite must still pass unmodified (see §9) to confirm no regression, but it will not gain the new category/parameters UX.
 - A shared, system-wide (non-tenant) Allegro app credential — deferred per ADR-031 alternatives.
 - Any change to Allegro's own seller-OAuth (`refresh_token`) flow or `AllegroAdapterFactory`.
 - Database migrations — no new tables/columns; new fields live inside the existing encrypted `credentialsRef` JSON blob for the Erli connection (`integration_credentials.credentialsCiphertext`), same mechanism as `apiKey` today.
@@ -91,7 +91,7 @@
 - Should `allegroClientSecret` rotation go through the same `useUpdateConnectionCredentialsMutation` payload as `apiKey`, merging all three fields in one PUT, or a separate mutation? **Assumption: same PUT, one merged credentials object** — mirrors how `apiKey` rotation already works and avoids a second credentials-write path.
 
 ### Assumptions
-- Both `allegroClientId` and `allegroClientSecret` live in `ErliCredentials` (encrypted, alongside `apiKey`) — not split across `config`/`credentials` — since the FE gating signal is `connection.supportedCapabilities`, not a raw config field, so there's no need for `allegroClientId` to be FE-visible non-secret config (see ADR-031 "Alternatives considered" for why an earlier config/credentials split was rejected in favor of this simpler one-shape approach).
+- `allegroClientId` and `allegroClientSecret` both live in `ErliCredentials` (encrypted, alongside `apiKey`) — the secret values never need to be FE-visible. **Superseded assumption** (corrected post-#1383): the FE still needs *some* per-connection-visible signal to decide which wizard branch to render, and `connection.supportedCapabilities` turned out not to serve that purpose (it's a static per-`adapterKey` manifest value — see ADR-031 "Correction"). The actual signal is a separate, non-secret `ErliConnectionConfig.allegroCategoryAccessEnabled?: boolean`, written/cleared by the backend in the same request that writes/clears the credentials pair (the write path — whatever endpoint ends up handling the credentials update in #1383/#1384's implementation — updates both the credentials blob and the config flag together, so they can't drift out of sync under normal operation).
 - "Both or neither" is enforced at the **credentials shape validator** level (reject if exactly one of the two is present) rather than deferred to runtime — fail closed at save time with a clear 400, rather than silently degrading.
 - Sandbox vs production Allegro host selection for the catalog client follows the **same `environment` config convention** already used by `AllegroConnectionConfig.environment` — added as a new optional `ErliConnectionConfig.allegroEnvironment?: 'sandbox' | 'production'` (defaults to `'production'`), since Erli's own config today has no such field and category data differs between Allegro sandbox and production catalogs.
 - No new DB migration: reusing the existing `credentialsRef` blob and `ErliConnectionConfig` JSON — both already schema-less JSON columns.
@@ -138,7 +138,7 @@
 
 ### Sub-task 2 (Phase 2): Backend — Erli connection credentials + adapter wiring + validators
 
-**Goal**: An Erli connection can store Allegro app credentials; when present, its resolved `OfferManagerPort` adapter instance genuinely implements `CategoryBrowser`/`CategoryParametersReader`, correctly reflected in `connection.supportedCapabilities`.
+**Goal**: An Erli connection can store Allegro app credentials; when present, its resolved `OfferManagerPort` adapter instance genuinely implements `CategoryBrowser`/`CategoryParametersReader` (verified via the `is*` guards and the real HTTP endpoints, not via `connection.supportedCapabilities` — see the "Note" under §2 In Scope), and the FE-visible `allegroCategoryAccessEnabled` config flag is kept in sync with that state.
 
 **Steps**:
 
@@ -173,16 +173,22 @@
    - **Acceptance**: unit test covering valid/invalid/absent.
    - **Dependencies**: Step 1.1.
 
-5. **Error handling at existing call sites**
+5. **Config field + write-path sync for the FE-visible signal** *(added post-#1383 review — see ADR-031 "Correction")*
+   - **Files**: `libs/integrations/erli/src/domain/types/erli-connection.types.ts`, `libs/integrations/erli/src/infrastructure/adapters/erli-connection-config-shape-validator.adapter.ts`, plus whichever endpoint/service handles the Erli connection credentials update (identify the existing generic "update connection credentials" mechanism at implementation time).
+   - **Action**: Add `allegroCategoryAccessEnabled?: boolean` to `ErliConnectionConfig`; validate it's a boolean when present (mirrors the `allegroEnvironment` validator in Step 4). Whatever code path writes `allegroClientId`/`allegroClientSecret` into credentials must, in the same operation, set `config.allegroCategoryAccessEnabled = true` when both are being set to non-empty values, and `false` (or remove the field) when either is cleared — so the flag can never silently drift from the actual credential state under normal write paths.
+   - **Acceptance**: unit test confirming the config write happens atomically alongside the credentials write in both directions (enable and disable).
+   - **Dependencies**: Steps 2.3, 2.4.
+
+6. **Error handling at existing call sites**
    - **Files**: `apps/api/src/categories/categories-cache.service.ts`, `apps/api/src/listings/http/listings.controller.ts`
    - **Action**: These are unchanged in logic (still resolve via `getCapabilityAdapter` + `is*` guards), but since a *misconfigured* connection now correctly has `fetchCategories === undefined` (guard returns `false`, existing "doesn't support" branches fire — 501 for parameters, empty array for categories), **no new error-handling path is actually needed here**. Verify this explicitly with a manual/integration check (Phase 2 acceptance) rather than assuming — the whole point of the per-instance wiring in Step 2.1 is that misconfigured connections behave exactly like today's "adapter doesn't implement this capability" case, not like a new runtime exception.
-   - **Acceptance**: confirmed via the integration test in Step 2.6 that an Erli connection *without* Allegro credentials gets a 501 from the parameters endpoint and `[]` from the categories endpoint — identical to today's behavior, not a new error shape.
+   - **Acceptance**: confirmed via the integration test in Step 2.7 that an Erli connection *without* Allegro credentials gets a 501 from the parameters endpoint and `[]` from the categories endpoint — identical to today's behavior, not a new error shape.
 
-6. **Integration test**
+7. **Integration test**
    - **File**: `apps/api/test/integration/listings/erli-category-catalog.int-spec.ts` (new)
-   - **Action**: Using the existing Erli fake-HTTP-client test pattern (`erli-fake-http-client.ts` / `erli-test-offer-manager.helper.ts`, #991) as a reference — but note this new client (`AllegroCategoryCatalogClient`) talks to Allegro, not Erli, so it needs its **own** fake HTTP seam (fake `fetch` or a small interface it depends on) rather than reusing the Erli fake client. Cover: (a) Erli connection with valid Allegro app credentials → `GET /listings/connections/:id/categories/:categoryId/parameters` returns data; (b) Erli connection without → returns 501 (today's existing behavior, unchanged); (c) `connection.supportedCapabilities` includes `'CategoryBrowser'`/`'CategoryParametersReader'` only in case (a).
+   - **Action**: Using the existing Erli fake-HTTP-client test pattern (`erli-fake-http-client.ts` / `erli-test-offer-manager.helper.ts`, #991) as a reference — but note this new client (`AllegroCategoryCatalogClient`) talks to Allegro, not Erli, so it needs its **own** fake HTTP seam (fake `fetch` or a small interface it depends on) rather than reusing the Erli fake client. Cover: (a) Erli connection with valid Allegro app credentials → `GET /listings/connections/:id/categories/:categoryId/parameters` returns data; (b) Erli connection without → returns 501 (today's existing behavior, unchanged); (c) `connection.config.allegroCategoryAccessEnabled` is `true` only in case (a) — `connection.supportedCapabilities` does NOT vary between the two cases (it's static per-`adapterKey`) and asserting on it here would be a false-positive test.
    - **Acceptance**: `pnpm test:integration` green for this suite.
-   - **Dependencies**: Steps 2.1-2.5.
+   - **Dependencies**: Steps 2.1-2.6.
 
 ---
 
@@ -200,7 +206,7 @@
 
 2. **Category step in `erli-create-offer-wizard.tsx`**
    - **File**: `apps/web/src/features/listings/components/erli/erli-create-offer-wizard.tsx`
-   - **Action**: Read `connection.supportedCapabilities.includes('CategoryBrowser')` (the connection object is already available in this component per the existing `categoryId` field's `resolved` logic around line 168). When `true`, render `CategoryPicker` (reusing the same component/props Allegro's wizard uses) in place of the current plain `<Input>` (line ~413-420), writing the selected leaf category id into the same `categoryId` form field. When `false`, keep today's plain-text input **plus** add the fallback hint block from the mockup ("Add Allegro category browsing to this connection to pick from a list instead" with a link to the connection's edit page).
+   - **Action**: Read `connection.config.allegroCategoryAccessEnabled` (the connection object is already available in this component per the existing `categoryId` field's `resolved` logic around line 168). When `true`, render `CategoryPicker` (reusing the same component/props Allegro's wizard uses) in place of the current plain `<Input>` (line ~413-420), writing the selected leaf category id into the same `categoryId` form field. When `false`, keep today's plain-text input **plus** add the fallback hint block from the mockup ("Add Allegro category browsing to this connection to pick from a list instead" with a link to the connection's edit page).
    - **Acceptance**: `erli-create-offer-wizard.test.tsx` extended with two scenarios (capability present/absent) asserting the correct sub-component renders.
    - **Dependencies**: Step 3.1 is not a hard dependency (this step only needs the capability flag, not credential UI) — can be built in parallel with 3.1, merged together on the sub-task-3 branch.
 
@@ -218,7 +224,7 @@
 
 5. **`needsProductParameters` flag**
    - **File**: `apps/web/src/features/listings/components/erli/erli-create-offer-wizard.tsx` (line ~190 per diagnosis)
-   - **Action**: The hardcoded `needsProductParameters: false` passed to the shared `offerValidation.validateRow` contract should become capability-conditional (`connection.supportedCapabilities.includes('CategoryBrowser')`), so the shared validation contract correctly reflects Erli's now-variable parameter requirements.
+   - **Action**: The hardcoded `needsProductParameters: false` passed to the shared `offerValidation.validateRow` contract should become capability-conditional (`connection.config.allegroCategoryAccessEnabled`), so the shared validation contract correctly reflects Erli's now-variable parameter requirements.
    - **Acceptance**: unit test asserting the flag flips with capability presence.
    - **Dependencies**: Step 3.2.
 
@@ -245,7 +251,7 @@ See [ADR-031 § Alternatives considered](../architecture/adrs/031-erli-allegro-c
 - ✅ Validated against `AllegroTokenRefreshService` (token-refresh shape), `ErliAdapterFactory` (per-connection construction shape), `CategoriesCacheService` (capability-generic resolution — confirmed via direct file read, not assumed).
 
 ### Risks
-- **Regression risk on #1367**: the entire design of Step 2.1 (per-instance, not per-class, capability exposure) exists specifically to avoid this. **Mitigation**: the integration test in Step 2.6 explicitly asserts `supportedCapabilities` differs between configured/unconfigured Erli connections; additionally, re-run the existing bulk-wizard test suite (`apps/web/src/features/listings/components/bulk/bulk-edit-modal.test.tsx`) unmodified after Phase 2 lands — it should still pass, proving no regression.
+- **Regression risk on #1367**: the entire design of Step 2.1 (per-instance, not per-class, capability exposure) exists specifically to avoid this. **Mitigation**: the integration test in Step 2.6 explicitly asserts the real per-connection signal (`is*` guards on the resolved adapter, HTTP endpoint 200-vs-error behavior, and the `allegroCategoryAccessEnabled` config flag) differs between configured/unconfigured Erli connections, while confirming `connection.supportedCapabilities` itself stays unchanged across both (since it's static per-`adapterKey`, not per-instance); additionally, re-run the existing bulk-wizard test suite (`apps/web/src/features/listings/components/bulk/bulk-edit-modal.test.tsx`) unmodified after Phase 2 lands — it should still pass, proving no regression.
 - **Sandbox/production category drift**: Allegro sandbox and production catalogs can differ. **Mitigation**: `allegroEnvironment` config field lets an operator match their Erli sandbox testing against Allegro sandbox categories; documented in the credentials panel's helper text.
 - **Client-credentials token silently expiring mid-wizard-session**: a long-idle browser tab could hold a stale category list if the BE-side cache TTL (24h) outlives actual data changes upstream. **Mitigation**: pre-existing risk shared with Allegro's own category cache — not newly introduced, no additional mitigation needed beyond existing TTL.
 - **Operator confusion about what the Allegro app credential is for**: mitigated by the approved mockup's explicit helper text ("Used only to read the public category catalog — never to sign in as a seller or place offers").
@@ -253,7 +259,7 @@ See [ADR-031 § Alternatives considered](../architecture/adrs/031-erli-allegro-c
 ### Edge Cases
 - Operator fills in `allegroClientId` but leaves `allegroClientSecret` blank (or vice versa) → client-side Zod validation blocks submit before hitting the API; server-side shape validator is the authoritative backstop (Step 2.3).
 - Operator's Allegro app credentials are valid at save time but later revoked/rotated on Allegro's side → `AllegroCategoryCatalogClient.ensureToken()` throws on the next token request; surfaces as a 501-equivalent... actually as a thrown exception from `fetchCategories`/`fetchCategoryParameters`, which propagates up through `CategoriesCacheService`/`listings.controller.ts` as an unhandled error today for *other* adapters too (this is the general "adapter implements the capability but the call fails" case, not the "doesn't implement" case) — note this as a pre-existing gap in generic error handling, not something unique to introduce new handling for in this plan; flag as a possible fast-follow if it proves confusing in practice.
-- Erli connection has Allegro credentials configured but the operator is mid-way through an in-progress offer draft created *before* the credentials were added → the wizard re-evaluates `connection.supportedCapabilities` on each mount (TanStack Query), so a page refresh picks up the new capability; no special migration needed for in-flight drafts since nothing is persisted mid-wizard.
+- Erli connection has Allegro credentials configured but the operator is mid-way through an in-progress offer draft created *before* the credentials were added → the wizard re-evaluates `connection.config.allegroCategoryAccessEnabled` on each mount (TanStack Query), so a page refresh picks up the new configuration; no special migration needed for in-flight drafts since nothing is persisted mid-wizard.
 
 ### Backward Compatibility
 - ✅ Fully additive. Existing Erli connections without `allegroClientId`/`allegroClientSecret` behave identically to today (plain-text category ID field, no parameters step).
@@ -272,7 +278,7 @@ See [ADR-031 § Alternatives considered](../architecture/adrs/031-erli-allegro-c
 - `apps/web/src/features/listings/components/erli/erli-create-offer-wizard.test.tsx` (extended) — capability-conditional rendering for category step, parameters step, stepper labels, `needsProductParameters` flag.
 
 ### Integration Tests
-- `apps/api/test/integration/listings/erli-category-catalog.int-spec.ts` (new, Phase 2 Step 6) — end-to-end capability reflection through the real `GET /listings/connections/:id/categories/:categoryId/parameters` endpoint and `connection.supportedCapabilities` in the connection-read response.
+- `apps/api/test/integration/listings/erli-category-catalog.int-spec.ts` (new, Phase 2 Step 6) — end-to-end capability reflection through the real `GET /listings/connections/:id/categories/:categoryId/parameters` endpoint and the `allegroCategoryAccessEnabled` field in the connection-read response's `config`.
 
 ### Mocking Strategy
 - `AllegroCategoryCatalogClient`'s unit tests mock global `fetch` directly (matches `AllegroTokenRefreshService.spec.ts`'s own approach — verify before writing, don't assume).
@@ -280,7 +286,7 @@ See [ADR-031 § Alternatives considered](../architecture/adrs/031-erli-allegro-c
 - FE tests use `renderWithProviders()` + `createMockApiClient()` per existing convention — no real network calls.
 
 ### Acceptance Criteria
-- [ ] An Erli connection with valid Allegro app credentials shows `'CategoryBrowser'` and `'CategoryParametersReader'` in its `supportedCapabilities`; one without does not.
+- [ ] An Erli connection with valid Allegro app credentials has `allegroCategoryAccessEnabled: true` in its `config`, and its resolved adapter instance passes `isCategoryBrowser`/`isCategoryParametersReader`; a connection without has neither. (`connection.supportedCapabilities` itself is intentionally unaffected — it's static per-`adapterKey`, not a per-connection signal.)
 - [ ] The Erli offer wizard renders the Allegro-style category tree + parameters steps when the capability is present, and today's plain-text field + fallback hint when absent.
 - [ ] A required category parameter left empty blocks submit in the wizard (parity with Allegro).
 - [ ] Submitted Erli offers with parameters filled via the wizard reach `ErliOfferManagerAdapter.buildExternalAttributes` unchanged (no BE regression — covered by existing tests, re-run not rewritten).
