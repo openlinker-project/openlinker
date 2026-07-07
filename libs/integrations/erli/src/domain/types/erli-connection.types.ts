@@ -9,7 +9,7 @@
  * code change.
  *
  * `allegroClientId` / `allegroClientSecret` / `allegroEnvironment` (#1382,
- * ADR-030) are an optional, separate Allegro app credential pair + environment
+ * ADR-031) are an optional, separate Allegro app credential pair + environment
  * selector — unrelated to Erli's own `apiKey` — that let an Erli connection
  * browse Allegro's public category/parameter catalog via
  * `grant_type=client_credentials` (see `AllegroCategoryCatalogClient`). The two
@@ -25,10 +25,10 @@
 
 /**
  * Allegro environment the `AllegroCategoryCatalogClient` resolves its token +
- * REST hosts against (#1382, ADR-030). Mirrors `AllegroConnectionConfig
+ * REST hosts against (#1382, ADR-031). Mirrors `AllegroConnectionConfig
  * .environment`'s `as const` + runtime-array convention — kept local rather
  * than imported from `@openlinker/integrations-allegro`, since plugin
- * packages are architecturally independent (ADR-030).
+ * packages are architecturally independent (ADR-031).
  */
 export const AllegroCatalogEnvironmentValues = ['sandbox', 'production'] as const;
 export type AllegroCatalogEnvironment = (typeof AllegroCatalogEnvironmentValues)[number];
@@ -76,11 +76,20 @@ export interface ErliConnectionConfig {
   callbackBaseUrl?: string;
   /**
    * Allegro environment to resolve the `AllegroCategoryCatalogClient`'s token
-   * and REST hosts against (#1382, ADR-030) — mirrors `AllegroConnectionConfig
+   * and REST hosts against (#1382, ADR-031) — mirrors `AllegroConnectionConfig
    * .environment`'s convention. Defaults to `'production'` when absent. Only
    * meaningful when `allegroClientId`/`allegroClientSecret` are configured.
    */
   allegroEnvironment?: AllegroCatalogEnvironment;
+  /**
+   * Non-secret, FE-visible mirror of "are `allegroClientId`/`allegroClientSecret`
+   * both configured" (#1383, ADR-031 "Correction"). `connection.supportedCapabilities`
+   * is a static, per-`adapterKey` manifest value — it is NOT computed per
+   * connection instance, so it cannot signal this. Whatever code path writes or
+   * clears the Allegro credential pair must set/clear this flag in the same
+   * operation, atomically, so it never drifts from the actual credential state.
+   */
+  allegroCategoryAccessEnabled?: boolean;
 }
 
 /**
