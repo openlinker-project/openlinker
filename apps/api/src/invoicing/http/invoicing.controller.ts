@@ -23,8 +23,10 @@
  * blob without any KSeF/regime vocabulary.
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
- * we declare only `@Roles('admin')` + `@ApiBearerAuth()` — never a redundant
- * `@UseGuards(JwtAuthGuard)`.
+ * we never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no
+ * `@Roles` (open to any authenticated role, including viewer); writes carry
+ * their own `@Roles('admin')` (#1357, mirroring the #1124 read-open/write-gated
+ * pattern).
  *
  * @module apps/api/src/invoicing/http
  */
@@ -152,7 +154,6 @@ function accountIdPipe(): PipeTransform<string, string> {
   };
 }
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
 @Controller()
@@ -202,6 +203,7 @@ export class InvoicingController {
     }
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/bank-accounts/:accountId/default')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
@@ -275,6 +277,7 @@ export class InvoicingController {
     return new BadGatewayException('Invoicing provider request failed');
   }
 
+  @Roles('admin')
   @Post('invoices')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -363,6 +366,7 @@ export class InvoicingController {
     return this.toDto(issued);
   }
 
+  @Roles('admin')
   @Post('invoices/retry')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -474,6 +478,7 @@ export class InvoicingController {
     }
   }
 
+  @Roles('admin')
   @Post('invoices/bulk-issue')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -612,6 +617,7 @@ export class InvoicingController {
     }
   }
 
+  @Roles('admin')
   @Post('invoices/:invoiceId/correct')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -702,6 +708,7 @@ export class InvoicingController {
     return this.toDto(issued);
   }
 
+  @Roles('admin')
   @Post('invoices/:invoiceId/resend-to-ksef')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -775,6 +782,7 @@ export class InvoicingController {
     }
   }
 
+  @Roles('admin')
   @Post('invoices/:invoiceId/send-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

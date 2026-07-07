@@ -18,7 +18,6 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   ConnectionCursorRepositoryPort,
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
@@ -28,7 +27,6 @@ import { ListCursorsQueryDto } from './dto/list-cursors-query.dto';
 import { CursorResponseDto } from './dto/cursor-response.dto';
 import { PaginatedCursorsResponseDto } from './dto/paginated-cursors-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('cursors')
 @Controller('cursors')

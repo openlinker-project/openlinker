@@ -10,8 +10,9 @@
  * the same production resolution path real adapters use.
  *
  * Covers: 200 (bytes + Content-Type/Content-Disposition headers) for a cleared
- * record, 404 for an unknown id, 409 for a not-yet-cleared record, 403 for a
- * non-admin caller.
+ * record, 404 for an unknown id, 409 for a not-yet-cleared record, and 200 for
+ * a viewer caller (read access opened by #1357 — the endpoint carries no
+ * @Roles, so any authenticated role passes the guard).
  *
  * NOTE: this worktree's node_modules can symlink to a stale core dist, which
  * breaks api controller specs locally — this spec is written to run in CI where
@@ -188,7 +189,7 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
       .expect(409);
   });
 
-  it('should 403 for a non-admin caller', async () => {
+  it('should 200 for a viewer caller (read access opened by #1357)', async () => {
     const http = harness.getHttp();
     const dataSource = harness.getDataSource();
     const connection = await createTestConnection(dataSource, {
@@ -202,6 +203,12 @@ describe('Invoicing UPO Download Integration (#1224)', () => {
     await http
       .get(`/v1/invoices/${record.id}/upo`)
       .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(403);
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
   });
 });
