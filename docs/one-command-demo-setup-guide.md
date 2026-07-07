@@ -25,6 +25,7 @@ tier — API + Worker + admin UI.
 7. [Verify the end-to-end flow](#7-verify-the-end-to-end-flow)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Teardown](#9-teardown)
+10. [Running on a shared server / multiple instances](#10-running-on-a-shared-server--multiple-instances)
 
 ---
 
@@ -272,3 +273,33 @@ pnpm demo:down -v    # stop and WIPE the data volumes (fresh start next time)
 
 Because the demo shares the `openlinker` Compose project with `pnpm dev:stack:up`,
 `-v` wipes volumes shared with the dev stack too — see the warning in section 1.
+
+---
+
+## 10. Running on a shared server / multiple instances
+
+By default every published port binds to `127.0.0.1` and every container name
+is prefixed `openlinker-` — safe on a single-user laptop, but two things to
+know before running this on a shared/public host (#1400):
+
+- **Loopback binding is the default, not an accident.** `postgres` / `redis` /
+  `mysql` / `phpmyadmin` / `prestashop` / `api` all publish on `127.0.0.1` so
+  they're never reachable from outside the host just because a firewall
+  wasn't configured — put a reverse proxy in front of `web` (and `api`, if the
+  browser needs to reach it directly) for anything beyond localhost access.
+  Override the bind interface with `OL_BIND_ADDRESS` in `.env` only if a
+  service genuinely needs to be reachable beyond loopback.
+- **Running a second instance alongside an existing one** (e.g. a per-PR
+  preview environment, or a staging + demo pair on the same host): set a
+  distinct `COMPOSE_PROJECT_NAME` (renames the project and every
+  `container_name`) plus distinct `*_HOST_PORT` overrides
+  (`POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `MYSQL_HOST_PORT`,
+  `PHPMYADMIN_HOST_PORT`, `PRESTASHOP_HOST_PORT`,
+  `WOOCOMMERCE_MYSQL_HOST_PORT`, `WOOCOMMERCE_HOST_PORT`, `API_HOST_PORT`,
+  `WEB_HOST_PORT`) in that instance's own `.env` — see `.env.example` for the
+  full list and defaults.
+
+> `pnpm dev:stack:seed-woocommerce` / `pnpm dev:stack:wc-credentials` invoke
+> `docker exec openlinker-woocommerce` directly and don't yet respect a custom
+> `COMPOSE_PROJECT_NAME` — a known limitation when running a second instance,
+> tracked as a documented gap rather than fixed here.
