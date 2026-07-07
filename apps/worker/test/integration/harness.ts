@@ -39,7 +39,9 @@ export async function startHarness(): Promise<void> {
     .start();
 
   // Start Redis container
-  const redis = await new RedisContainer('redis:7-alpine').withLabels(ciRunIdLabels()).start();
+  const redis = await new RedisContainer('valkey/valkey:8-alpine')
+    .withLabels(ciRunIdLabels())
+    .start();
 
   // Provide connection info to tests via env vars
   process.env.DB_HOST = postgres.getHost();
