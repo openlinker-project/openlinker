@@ -75,7 +75,9 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
   const idFilled = allegroClientId.trim().length > 0;
   const secretFilled = allegroClientSecret.trim().length > 0;
   const canSubmit =
-    apiKey.trim().length > 0 || idFilled || secretFilled || allegroEnabled !== initialAllegroEnabled;
+    apiKey.trim().length > 0 ||
+    (allegroEnabled && (idFilled || secretFilled)) ||
+    allegroEnabled !== initialAllegroEnabled;
 
   function openPanel(): void {
     // Seed the checkbox from the connection's current server-confirmed state
@@ -180,7 +182,6 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
             <input
               type="checkbox"
-              style={{ accentColor: 'var(--accent)' }}
               checked={allegroEnabled}
               onChange={(event) => setAllegroEnabled(event.target.checked)}
             />

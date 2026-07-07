@@ -26,6 +26,7 @@ import {
   SUPPORTED_OFFER_CREATION_REQUEST_SCHEMA_VERSION,
   type CreateOfferRequest,
 } from '../../api/listings.types';
+import { readParameters } from '../create-offer-request-to-form-values';
 import type { ErliCreateOfferValues } from './erli-create-offer.schema';
 import { isValidDispatch, type ErliDispatchTimeParam } from './erli-offer-fields.schema';
 
@@ -62,13 +63,10 @@ export function createErliOfferRequestToFormValues(
     publishImmediately: request.publishImmediately,
     dispatchPeriod: dispatch.period,
     dispatchUnit: dispatch.unit,
-    // #1384 — category-parameter values are not reconstructed from the wire
-    // snapshot on retry (parity gap, same simplification the schema's
-    // `.default({})` already assumes for a fresh wizard); the operator
-    // re-fills the Category-parameters step if the category access flag is
-    // active. `categoryId` above is restored, so the step re-fetches the
-    // right schema.
-    parameters: {},
+    // Reuses the Allegro retry mapper's heuristic (#1384) — both platforms
+    // persist the same neutral `overrides.parameters` wire shape, so a
+    // retried offer re-opens with its previously entered parameter values.
+    parameters: readParameters(overrides),
   };
 }
 

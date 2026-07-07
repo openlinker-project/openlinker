@@ -187,6 +187,24 @@ describe('ErliCredentialsPanel', () => {
     expect(updateCredentials).not.toHaveBeenCalled();
   });
 
+  it('disables save after typing a Client ID then unchecking the box (no discarded-input false success)', async () => {
+    const updateCredentials = vi.fn().mockResolvedValue(undefined);
+    const update = vi.fn().mockResolvedValue(erliConnection);
+    const apiClient = createMockApiClient({ connections: { updateCredentials, update } });
+    renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+    fireEvent.click(screen.getByText('Rotate API key'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+    fireEvent.change(screen.getByPlaceholderText('Allegro Client ID'), {
+      target: { value: 'client-123' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+
+    expect(screen.getByRole('button', { name: 'Save credentials' })).toBeDisabled();
+    expect(updateCredentials).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('blocks submit when enabling the checkbox without ever entering credentials', () => {
     renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />);
     fireEvent.click(screen.getByText('Rotate API key'));
