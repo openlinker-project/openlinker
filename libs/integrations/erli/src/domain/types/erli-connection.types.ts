@@ -23,6 +23,16 @@
  * @module libs/integrations/erli/src/domain/types
  */
 
+/**
+ * Allegro environment the `AllegroCategoryCatalogClient` resolves its token +
+ * REST hosts against (#1382, ADR-030). Mirrors `AllegroConnectionConfig
+ * .environment`'s `as const` + runtime-array convention — kept local rather
+ * than imported from `@openlinker/integrations-allegro`, since plugin
+ * packages are architecturally independent (ADR-030).
+ */
+export const AllegroCatalogEnvironmentValues = ['sandbox', 'production'] as const;
+export type AllegroCatalogEnvironment = (typeof AllegroCatalogEnvironmentValues)[number];
+
 /** Encrypted credentials for an Erli connection (resolved via host.credentialsResolver). */
 export interface ErliCredentials {
   apiKey: string;
@@ -70,7 +80,7 @@ export interface ErliConnectionConfig {
    * .environment`'s convention. Defaults to `'production'` when absent. Only
    * meaningful when `allegroClientId`/`allegroClientSecret` are configured.
    */
-  allegroEnvironment?: 'sandbox' | 'production';
+  allegroEnvironment?: AllegroCatalogEnvironment;
 }
 
 /**

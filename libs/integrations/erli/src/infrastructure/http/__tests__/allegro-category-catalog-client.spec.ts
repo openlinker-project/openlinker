@@ -6,11 +6,46 @@
  * cache, the category/parameter response mapping, and typed-exception
  * classification for a rejected token request and a network failure.
  *
+ * Parity note (#1382 review): the "cross-plugin mapper parity" block below
+ * runs Allegro's own real sandbox fixture through this client's independently
+ * -maintained copy of `toNeutralCategoryParameter`, with assertions mirrored
+ * from `allegro-category-parameter.mapper.spec.ts` — a change to either
+ * mapper's behavior should prompt updating both spec files.
+ *
  * @module libs/integrations/erli/src/infrastructure/http
  */
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { ErliAuthenticationException } from '../../../domain/exceptions/erli-authentication.exception';
 import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { AllegroCategoryCatalogClient } from '../allegro-category-catalog-client';
+
+/** Allegro's real sandbox capture (cat 257933, "Aparaty cyfrowe") — shared with `allegro-category-parameter.mapper.spec.ts`. */
+const ALLEGRO_FIXTURE_PATH = resolve(
+  __dirname,
+  '../../../../../allegro/src/infrastructure/adapters/__fixtures__/category-parameters-257933.json'
+);
+
+interface AllegroFixtureParameter {
+  id: string;
+  options?: { describesProduct?: boolean };
+  dictionary?: Array<{ dependsOnValueIds?: string[] }>;
+}
+
+function loadAllegroFixture(): { parameters: AllegroFixtureParameter[] } {
+  return JSON.parse(readFileSync(ALLEGRO_FIXTURE_PATH, 'utf8')) as {
+    parameters: AllegroFixtureParameter[];
+  };
+}
+
+function findFixtureParam(
+  fixture: { parameters: AllegroFixtureParameter[] },
+  id: string
+): AllegroFixtureParameter {
+  const found = fixture.parameters.find((p) => p.id === id);
+  if (!found) throw new Error(`Fixture missing parameter ${id}`);
+  return found;
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -276,6 +311,122 @@ describe('AllegroCategoryCatalogClient', () => {
         parameterId: 'p1',
         valueIds: expect.arrayContaining(['v1', 'v2']),
       });
+    });
+  });
+
+  describe('token single-flight', () => {
+    it('should issue exactly one token request for two concurrent calls on a cold cache', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'app-token-1', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }))
+        .mockResolvedValueOnce(jsonResponse(200, { parameters: [] }));
+
+      await Promise.all([client.fetchCategories(), client.fetchCategoryParameters('1')]);
+
+      const tokenRequests = recordedCalls(fetchMock).filter(([url]) => url.includes('/auth/oauth/token'));
+      expect(tokenRequests).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('should treat a token response missing expires_in as already-expired', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'app-token-1', token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }))
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'app-token-2', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { categories: [] }));
+
+      await client.fetchCategories();
+      await client.fetchCategories();
+
+      // A token with no expires_in must never be treated as never-expiring —
+      // the second call re-acquires rather than reusing app-token-1 forever.
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      const secondCategoriesCall = recordedCalls(fetchMock)[3];
+      expect(secondCategoriesCall[1]?.headers?.Authorization).toBe('Bearer app-token-2');
+    });
+  });
+
+  describe('auth rejection on a data call (distinct from the token endpoint)', () => {
+    it('should throw ErliAuthenticationException when /sale/categories itself rejects the bearer token', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'stale-token', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(401, { error: 'invalid_token' }));
+
+      await expect(client.fetchCategories()).rejects.toThrow(ErliAuthenticationException);
+    });
+
+    it('should throw ErliAuthenticationException when /sale/categories/{id}/parameters rejects the bearer token', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(200, { access_token: 'stale-token', expires_in: 3600, token_type: 'bearer' })
+        )
+        .mockResolvedValueOnce(jsonResponse(403, { error: 'access_denied' }));
+
+      await expect(client.fetchCategoryParameters('1')).rejects.toThrow(ErliAuthenticationException);
+    });
+  });
+
+  describe('cross-plugin mapper parity (#1382 review — Allegro mapper drift guard)', () => {
+    let fixture: { parameters: AllegroFixtureParameter[] };
+
+    beforeAll(() => {
+      fixture = loadAllegroFixture();
+    });
+
+    beforeEach(() => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { access_token: 'app-token-1', expires_in: 3600, token_type: 'bearer' })
+      );
+    });
+
+    it('should map every parameter in Allegro\'s real sandbox capture without throwing', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, fixture));
+
+      const result = await client.fetchCategoryParameters('257933');
+
+      expect(result).toHaveLength(fixture.parameters.length);
+    });
+
+    it("should emit section: 'product' for the Marka parameter (describesProduct: true)", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, fixture));
+      const raw = findFixtureParam(fixture, '248811'); // "Marka" — same case as the Allegro spec
+      expect(raw.options?.describesProduct).toBe(true);
+
+      const result = await client.fetchCategoryParameters('257933');
+
+      const neutral = result.find((p) => p.id === '248811');
+      expect(neutral?.section).toBe('product');
+    });
+
+    it("should emit section: 'offer' for the Stan parameter (describesProduct absent)", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, fixture));
+      const raw = findFixtureParam(fixture, '11323'); // "Stan" — same case as the Allegro spec
+      expect(raw.options?.describesProduct).not.toBe(true);
+
+      const result = await client.fetchCategoryParameters('257933');
+
+      const neutral = result.find((p) => p.id === '11323');
+      expect(neutral?.section).toBe('offer');
+    });
+
+    it('should build dependsOn from the parameter-level dependency + entry-value union, matching the Allegro mapper', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, fixture));
+      const raw = findFixtureParam(fixture, '229205'); // "Stan opakowania" — same case as the Allegro spec
+
+      const result = await client.fetchCategoryParameters('257933');
+
+      const neutral = result.find((p) => p.id === '229205');
+      expect(neutral?.dependsOn?.parameterId).toBe('11323');
+      const expectedValueIds = raw.dictionary?.[0]?.dependsOnValueIds ?? [];
+      expect(new Set(neutral?.dependsOn?.valueIds ?? [])).toEqual(new Set(expectedValueIds));
     });
   });
 });

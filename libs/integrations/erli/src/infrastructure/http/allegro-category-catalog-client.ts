@@ -31,8 +31,16 @@ import type {
   CategoryParameterDictionaryEntry,
   OfferCategory,
 } from '@openlinker/core/listings';
+import type { AllegroCatalogEnvironment } from '../../domain/types/erli-connection.types';
 import { ErliAuthenticationException } from '../../domain/exceptions/erli-authentication.exception';
 import { ErliNetworkException } from '../../domain/exceptions/erli-network.exception';
+import type {
+  AllegroCategoriesResponse,
+  AllegroCategoryParameter,
+  AllegroCategoryParametersResponse,
+  AllegroTokenResponse,
+  CachedToken,
+} from './allegro-category-catalog-client.types';
 
 /** Allegro environment → web host (serves `/auth/oauth/token`). */
 const SANDBOX_WEB_BASE_URL = 'https://allegro.pl.allegrosandbox.pl';
@@ -51,72 +59,23 @@ const ALLEGRO_ACCEPT_HEADER = 'application/vnd.allegro.public.v1+json';
  */
 const TOKEN_REFRESH_WINDOW_MS = 60_000;
 
-interface AllegroTokenResponse {
-  access_token: string;
-  expires_in?: number;
-  token_type: string;
-}
-
-/** Raw Allegro category item — `GET /sale/categories`. */
-interface AllegroCategoryItem {
-  id: string;
-  name: string;
-  parent?: { id: string } | null;
-  leaf: boolean;
-}
-
-interface AllegroCategoriesResponse {
-  categories: AllegroCategoryItem[];
-}
-
-/** Raw Allegro category parameter — `GET /sale/categories/{id}/parameters`. */
-interface AllegroCategoryParameter {
-  id: string;
-  name: string;
-  type: 'dictionary' | 'string' | 'integer' | 'float';
-  required: boolean;
-  unit?: string;
-  options?: {
-    dependsOnParameterId?: string;
-    describesProduct?: boolean;
-    customValuesEnabled?: boolean;
-  };
-  dictionary?: Array<{
-    id: string;
-    value: string;
-    dependsOnValueIds?: string[];
-  }>;
-  restrictions?: {
-    multipleChoices?: boolean;
-    min?: number;
-    max?: number;
-    minLength?: number;
-    maxLength?: number;
-    range?: boolean;
-    precision?: number;
-    allowedNumberOfValues?: number;
-  };
-}
-
-interface AllegroCategoryParametersResponse {
-  parameters: AllegroCategoryParameter[];
-}
-
-/** Cached client-credentials token state for one client instance. */
-interface CachedToken {
-  accessToken: string;
-  expiresAt: number | undefined;
-}
-
 export class AllegroCategoryCatalogClient {
   private readonly webBaseUrl: string;
   private readonly restApiBaseUrl: string;
   private cached: CachedToken | undefined;
+  /**
+   * In-flight token acquisition, shared by concurrent `ensureToken()` callers
+   * so two parallel `fetchCategories`/`fetchCategoryParameters` calls on a
+   * cold cache issue one `grant_type=client_credentials` request, not two.
+   * Cleared once the request settles (success or failure) so a later call
+   * re-evaluates the cache/acquire decision fresh.
+   */
+  private inFlightToken: Promise<CachedToken> | undefined;
 
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
-    environment: 'sandbox' | 'production'
+    environment: AllegroCatalogEnvironment
   ) {
     this.webBaseUrl = environment === 'production' ? PRODUCTION_WEB_BASE_URL : SANDBOX_WEB_BASE_URL;
     this.restApiBaseUrl =
@@ -161,12 +120,17 @@ export class AllegroCategoryCatalogClient {
   private async ensureToken(): Promise<string> {
     if (
       this.cached &&
-      (this.cached.expiresAt === undefined ||
-        Date.now() < this.cached.expiresAt - TOKEN_REFRESH_WINDOW_MS)
+      this.cached.expiresAt !== undefined &&
+      Date.now() < this.cached.expiresAt - TOKEN_REFRESH_WINDOW_MS
     ) {
       return this.cached.accessToken;
     }
-    this.cached = await this.acquireToken();
+    if (!this.inFlightToken) {
+      this.inFlightToken = this.acquireToken().finally(() => {
+        this.inFlightToken = undefined;
+      });
+    }
+    this.cached = await this.inFlightToken;
     return this.cached.accessToken;
   }
 
@@ -249,6 +213,10 @@ export class AllegroCategoryCatalogClient {
  * contract — field-for-field copy of
  * `libs/integrations/allegro/src/infrastructure/mappers/allegro-category-parameter.mapper.ts`
  * (kept in sync manually per ADR-030's no-cross-plugin-dependency decision).
+ * The `__tests__` spec runs this function against Allegro's own real sandbox
+ * fixture (`category-parameters-257933.json`) with assertions mirrored from
+ * `allegro-category-parameter.mapper.spec.ts` — touching either mapper should
+ * prompt updating the assertions in both spec files.
  */
 function toNeutralCategoryParameter(raw: AllegroCategoryParameter): CategoryParameter {
   const dependsOnParameterId = raw.options?.dependsOnParameterId;
