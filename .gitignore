@@ -60,9 +60,6 @@ Thumbs.db
 # Husky
 .husky/_
 
-# Docker
-.dockerignore
-
 # Claude Code worktrees
 .claude/worktrees/
 

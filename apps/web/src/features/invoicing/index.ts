@@ -29,17 +29,27 @@ export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
+export { useBulkIssueInvoicesMutation } from './hooks/use-bulk-issue-invoices-mutation';
 export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
+export { useResendToKsefMutation } from './hooks/use-resend-to-ksef-mutation';
+export {
+  useSendInvoiceEmailMutation,
+  type SendInvoiceEmailVariables,
+} from './hooks/use-send-invoice-email-mutation';
 export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
 export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
 export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
-export { InvoiceStatusValues, RegulatoryStatusValues } from './api/invoicing.types';
+export {
+  InvoiceStatusValues,
+  RegulatoryStatusValues,
+  InvoiceEmailLocaleValues,
+} from './api/invoicing.types';
 export type {
   InvoiceRecord,
   InvoiceStatus,
@@ -55,6 +65,13 @@ export type {
   RetryInvoicesResult,
   RetryInvoiceResult,
   RetryOutcome,
+  BulkIssueInvoicesInput,
+  BulkIssueInvoicesResult,
+  BulkIssueInvoiceResult,
+  BulkIssueOutcome,
   CorrectionLineInput,
   IssueCorrectionInput,
+  InvoiceEmailLocale,
+  SendInvoiceEmailInput,
+  SendInvoiceEmailResult,
 } from './api/invoicing.types';

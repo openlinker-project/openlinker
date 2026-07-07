@@ -42,7 +42,23 @@ describe('InfaktWebhookEventTranslatorAdapter', () => {
     expect(translator.translate(event({ eventType: 'send_to_ksef_error' }))?.domain).toBe('invoicing');
   });
 
-  it('should return null for a non-KSeF invoice event (dead-letter)', () => {
+  it('should translate an invoice_marked_as_paid event to the invoice-payment domain', () => {
+    expect(translator.translate(event({ eventType: 'invoice_marked_as_paid' }))).toEqual({
+      domain: 'invoice-payment',
+      externalId: 'inv-1',
+      eventType: 'invoice_marked_as_paid',
+      occurredAt: '2026-06-30T10:00:00Z',
+      payload: { status: 'success' },
+    });
+  });
+
+  it('should translate an invoice_marked_as_paid_via_async_api event to the invoice-payment domain', () => {
+    expect(
+      translator.translate(event({ eventType: 'invoice_marked_as_paid_via_async_api' }))?.domain,
+    ).toBe('invoice-payment');
+  });
+
+  it('should return null for a non-actionable invoice event (dead-letter)', () => {
     expect(translator.translate(event({ eventType: 'draft_invoice_created' }))).toBeNull();
   });
 

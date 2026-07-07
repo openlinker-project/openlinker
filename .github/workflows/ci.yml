@@ -324,3 +324,23 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+  docker-build-smoke:
+    name: Docker Build Smoke Test
+    # Guards the `Dockerfile`'s hand-enumerated per-package COPY lists
+    # (workspace manifests in `base`, `dist` output in `production`/`worker`).
+    # A plugin added to apps/api or apps/worker's package.json without a
+    # matching COPY entry breaks `pnpm install`'s "workspace:*" resolution
+    # inside the image — this went unnoticed pre-#1365 because no CI job
+    # built the image. Building `base` alone is enough to catch that class of
+    # drift cheaply, without paying for the full multi-stage build + `pnpm build`.
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build base stage (API/worker image)
+        run: docker build --target base -f Dockerfile .
+      - name: Build web image
+        run: docker build -f apps/web/Dockerfile .

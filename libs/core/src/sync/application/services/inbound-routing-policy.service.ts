@@ -40,7 +40,10 @@ import type {
   MasterInventorySyncByExternalIdPayloadV1,
   MasterProductSyncByExternalIdPayloadV1,
 } from '../../domain/types/master-job-payloads.types';
-import type { RegulatoryStatusReconcilePayloadV1 } from '../../domain/types/invoicing-job-payloads.types';
+import type {
+  PaymentStatusRefreshByExternalIdPayloadV1,
+  RegulatoryStatusReconcilePayloadV1,
+} from '../../domain/types/invoicing-job-payloads.types';
 
 /**
  * Page size for the reconcile job a webhook-triggered `invoicing` event
@@ -179,6 +182,21 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
             schemaVersion: 1,
             limit: INVOICING_WEBHOOK_RECONCILE_LIMIT,
           } satisfies RegulatoryStatusReconcilePayloadV1,
+        };
+      case 'invoice-payment':
+        // A provider payment webhook (e.g. Infakt `invoice_marked_as_paid`) is a
+        // trigger, not the source of truth (#1354): route a by-id refresh that
+        // re-reads authoritative payment state for the named document rather than
+        // trusting the webhook body. Distinct from the regulatory reconcile above
+        // because a paid document is typically already regulatory-terminal and so
+        // outside the regulatory frontier.
+        return {
+          jobType: 'invoicing.paymentStatus.refreshByExternalId',
+          requiredCapability: 'Invoicing',
+          payload: {
+            schemaVersion: 1,
+            externalInvoiceId: event.externalId,
+          } satisfies PaymentStatusRefreshByExternalIdPayloadV1,
         };
       default: {
         // Exhaustive — `domain` is a closed union; this guards future additions.

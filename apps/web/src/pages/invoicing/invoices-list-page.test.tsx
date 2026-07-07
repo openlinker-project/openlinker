@@ -65,9 +65,10 @@ function makeEnvelope(overrides: Partial<PaginatedInvoices> = {}): PaginatedInvo
 function mockApi(
   list: InvoicingApi['list'],
   connections: Connection[] = [makeConnection()],
+  bulkIssue?: InvoicingApi['bulkIssue'],
 ): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
-    invoicing: { list },
+    invoicing: { list, ...(bulkIssue ? { bulkIssue } : {}) },
     connections: { list: vi.fn().mockResolvedValue(connections) },
   });
 }
@@ -284,6 +285,47 @@ describe('InvoicesListPage', () => {
       const bar = document.querySelector('.bulk-action-bar');
       expect(bar?.getAttribute('aria-hidden')).toBe('true');
     });
+  });
+
+  it('fans out one bulkIssue call per connectionId when selected rows span connections (#1355)', async () => {
+    const user = userEvent.setup();
+    const connA = makeConnection({ id: 'conn_a', name: 'Connection A' });
+    const connB = makeConnection({ id: 'conn_b', name: 'Connection B' });
+    const invoiceA = makeInvoice({ id: 'inv_a', orderId: 'order_a', connectionId: 'conn_a' });
+    const invoiceB = makeInvoice({ id: 'inv_b', orderId: 'order_b', connectionId: 'conn_b' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [invoiceA, invoiceB], total: 2 }));
+    const bulkIssue = vi
+      .fn()
+      .mockResolvedValueOnce({ issued: 1, skipped: 0, failed: 0, results: [] })
+      .mockResolvedValueOnce({ issued: 0, skipped: 1, failed: 0, results: [] });
+
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list, [connA, connB], bulkIssue),
+      route: '/invoices',
+    });
+
+    await screen.findByText('order_a');
+    const checkboxes = screen.getAllByRole('checkbox', { name: /select invoice/i });
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+
+    await user.click(screen.getByRole('button', { name: /issue invoices/i }));
+    await user.click(screen.getByRole('button', { name: 'Issue' }));
+
+    await waitFor(() => {
+      expect(bulkIssue).toHaveBeenCalledTimes(2);
+    });
+    expect(bulkIssue).toHaveBeenCalledWith({ connectionId: 'conn_a', orderIds: ['order_a'] });
+    expect(bulkIssue).toHaveBeenCalledWith({ connectionId: 'conn_b', orderIds: ['order_b'] });
+
+    // Banner sums issued/skipped/failed across both connection groups. Query by
+    // the banner's own text (robust to the Alert component's internal markup /
+    // CSS class names) rather than the `alert__description` implementation class.
+    const banner = await screen.findByText(/Bulk issue complete\./);
+    expect(banner.textContent).toContain('1 issued.');
+    expect(banner.textContent).toContain('1 skipped (already issued or in progress).');
   });
 
   it('renders the clearanceReference (KSeF number) column when present', async () => {

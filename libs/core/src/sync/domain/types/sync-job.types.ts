@@ -43,6 +43,8 @@ export const JobTypeValues = [
   // Invoicing (core-owned; capability-scoped, executed by worker)
   // KSeF regulatory-status reconciliation sweep (#1121).
   'invoicing.regulatoryStatus.reconcile',
+  // By-id payment-status refresh triggered by a provider payment webhook (#1354).
+  'invoicing.paymentStatus.refreshByExternalId',
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',

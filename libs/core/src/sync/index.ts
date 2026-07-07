@@ -95,6 +95,7 @@ export type {
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

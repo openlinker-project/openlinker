@@ -138,6 +138,13 @@ export function BulkWizard({
   // resolves the category server-side at submit (#1096 / ADR-025 §3), so a
   // pre-flight non-match must not block it; one without a browsable category tree
   // needs manual Allegro-id entry in the edit modal rather than the tree picker.
+  //
+  // `EanCategoryMatcher` and `CategoryBrowser` are `OfferManager` sub-capabilities
+  // advertised on the connection payload's `supportedCapabilities` (Allegro's
+  // manifest declares them, Erli does not — #1367). Keep them in the manifest; the
+  // response `supportedCapabilities` mirrors the live manifest, so dropping either
+  // silently regresses Allegro to the borrows-taxonomy branch (no parameter step,
+  // required "Stan" unsettable → PARAMETER_REQUIRED at submit).
   const destinationResolvesCategoryAtSubmit = batchConnection
     ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;

@@ -81,6 +81,20 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByProviderInvoiceId(
+    connectionId: string,
+    providerInvoiceId: string,
+  ): Promise<InvoiceRecord | null> {
+    // Newest-first so a keyless re-issue that produced several rows for the same
+    // provider id resolves deterministically to the latest attempt (mirrors
+    // `findByOrderId`). Backed by `IDX_invoice_records_provider_invoice_id`.
+    const entity = await this.repository.findOne({
+      where: { connectionId, providerInvoiceId },
+      order: { createdAt: 'DESC' },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findByIdempotencyKey(
     connectionId: string,
     idempotencyKey: string,
@@ -303,6 +317,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     entity.providerInvoiceNumber = input.providerInvoiceNumber ?? null;
     entity.regulatoryStatus = input.regulatoryStatus ?? 'not-applicable';
     entity.clearanceReference = input.clearanceReference ?? null;
+    entity.paymentStatus = input.paymentStatus ?? 'unknown';
     entity.pdfUrl = input.pdfUrl ?? null;
     entity.issuedAt = input.issuedAt ?? null;
     entity.errorMessage = input.errorMessage ?? null;
@@ -344,6 +359,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.documentContent,
       entity.sourceDocument,
       entity.issuedLineSnapshot,
+      entity.paymentStatus,
     );
   }
 }
