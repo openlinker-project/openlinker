@@ -28,6 +28,15 @@ const erliConnection: Connection = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
+// #1384 — a per-connection-instance signal (`config.allegroCategoryAccessEnabled`),
+// deliberately NOT reflected in `supportedCapabilities` (static per-adapterKey,
+// see ADR-031 "Correction") — both connections keep the same `supportedCapabilities`.
+const erliConnectionWithCategoryAccess: Connection = {
+  ...erliConnection,
+  id: 'conn_erli_2',
+  config: { ...erliConnection.config, allegroCategoryAccessEnabled: true },
+};
+
 function productWith(images: string[] | null): Product {
   return {
     id: 'ol_product_abc',
@@ -203,6 +212,102 @@ describe('ErliCreateOfferWizard', () => {
     expect(request.overrides?.imageUrls).toEqual(['https://cdn.example.com/a.jpg']);
     expect(request.overrides?.platformParams).toMatchObject({
       dispatchTime: { period: 5, unit: 'hour' },
+    });
+  });
+
+  // #1384 — capability-conditional category/parameters steps.
+  describe('Allegro category access (#1384)', () => {
+    it('keeps the plain-text category field and shows the fallback hint when access is not configured', async () => {
+      renderWithProviders(
+        <ErliCreateOfferWizard connection={erliConnection} onCancel={vi.fn()} onSubmitted={vi.fn()} />,
+        { apiClient: mocks(productWith(['https://cdn.example.com/a.jpg'])) },
+      );
+
+      await pickVariantAndAdvance();
+
+      expect(await screen.findByPlaceholderText(/e\.g\. 12345/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/add allegro category browsing to this connection/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /configure category browsing/i })).toHaveAttribute(
+        'href',
+        `/connections/${erliConnection.id}/edit`,
+      );
+      // Only the 3-step shape — no "Category" / "Category parameters" steps.
+      expect(screen.queryByText('Category parameters')).not.toBeInTheDocument();
+    });
+
+    it('renders the Category and Category-parameters steps, blocks on a required parameter, and submits overrides.parameters', async () => {
+      const mockApi = mocks(productWith(['https://cdn.example.com/a.jpg']), {
+        connections: { list: vi.fn().mockResolvedValue([erliConnectionWithCategoryAccess]) },
+        listings: {
+          createOffer: vi
+            .fn()
+            .mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
+          resolveCategory: vi.fn().mockResolvedValue({ allegroCategoryId: null, method: 'manual' }),
+          getCategoryParameters: vi.fn().mockResolvedValue({
+            parameters: [
+              {
+                id: 'p_stan',
+                name: 'Stan',
+                type: 'dictionary',
+                required: true,
+                section: 'offer',
+                restrictions: {},
+                dictionary: [{ id: 'nowy', value: 'Nowy' }],
+              },
+            ],
+          }),
+        },
+        mappings: {
+          getAllegroCategories: vi
+            .fn()
+            .mockResolvedValue([{ id: '12345', name: 'Test Category', parentId: null, leaf: true }]),
+        },
+      });
+      renderWithProviders(
+        <ErliCreateOfferWizard
+          connection={erliConnectionWithCategoryAccess}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+        />,
+        { apiClient: mockApi },
+      );
+
+      await pickVariantAndAdvance();
+      // Offer-details step: no plain-text category field or hint anymore —
+      // it moved to its own step.
+      fireEvent.change(await screen.findByLabelText(/^price \(PLN\)$/i), {
+        target: { value: '99.99' },
+      });
+      expect(screen.queryByPlaceholderText(/e\.g\. 12345/i)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Category step — pick the leaf via the reused CategoryPicker.
+      const selectButton = await screen.findByRole('button', { name: /^select$/i });
+      fireEvent.click(selectButton);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^selected$/i })).toBeInTheDocument(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      // Category-parameters step — required "Stan" field blocks Next until filled.
+      await screen.findByText('Stan');
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+      expect(await screen.findByText(/stan is required/i)).toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('Stan'), { target: { value: 'nowy' } });
+      fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+      fireEvent.click(await screen.findByRole('button', { name: /create offer/i }));
+
+      const createOffer = vi.mocked(mockApi.listings.createOffer);
+      await waitFor(() => expect(createOffer).toHaveBeenCalledTimes(1));
+      const [, request] = createOffer.mock.calls[0] as [string, CreateOfferRequest];
+      expect(request.overrides?.categoryId).toBe('12345');
+      expect(request.overrides?.parameters).toEqual([
+        { id: 'p_stan', valuesIds: ['nowy'], section: 'offer' },
+      ]);
     });
   });
 });

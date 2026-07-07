@@ -62,6 +62,13 @@ export function createErliOfferRequestToFormValues(
     publishImmediately: request.publishImmediately,
     dispatchPeriod: dispatch.period,
     dispatchUnit: dispatch.unit,
+    // #1384 — category-parameter values are not reconstructed from the wire
+    // snapshot on retry (parity gap, same simplification the schema's
+    // `.default({})` already assumes for a fresh wizard); the operator
+    // re-fills the Category-parameters step if the category access flag is
+    // active. `categoryId` above is restored, so the step re-fetches the
+    // right schema.
+    parameters: {},
   };
 }
 
