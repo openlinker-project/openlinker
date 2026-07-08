@@ -39,7 +39,11 @@ import {
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionCredentialsRewriterRegistryService,
+  CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
+import type { ConnectionCredentialsRewriterPort } from '@openlinker/core/integrations';
 import { AllegroConnectionConfigShapeValidatorAdapter } from '@openlinker/integrations-allegro';
 import {
   PrestashopConnectionConfigShapeValidatorAdapter,
@@ -61,6 +65,7 @@ describe('ConnectionService', () => {
   let mockWebhookProvisioner: jest.Mocked<WebhookProvisioningPort>;
   let configValidatorRegistry: ConnectionConfigShapeValidatorRegistryService;
   let credentialsValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
+  let credentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -171,6 +176,12 @@ describe('ConnectionService', () => {
       new PrestashopConnectionCredentialsShapeValidatorAdapter()
     );
 
+    // Credentials-rewriter registry (#1387, ADR-031). Empty by default so
+    // `updateCredentials` exercises the no-op passthrough for every existing
+    // test; individual tests register a stub rewriter to exercise the
+    // delegation path.
+    credentialsRewriterRegistry = new ConnectionCredentialsRewriterRegistryService();
+
     const mockCredentialsResolver: CredentialsResolverPort = {
       get: jest.fn(),
     } as unknown as CredentialsResolverPort;
@@ -191,6 +202,10 @@ describe('ConnectionService', () => {
         {
           provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
           useValue: credentialsValidatorRegistry,
+        },
+        {
+          provide: CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+          useValue: credentialsRewriterRegistry,
         },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
       ],
@@ -872,6 +887,80 @@ describe('ConnectionService', () => {
         service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
       ).rejects.toThrow(/does not have a db-backed/);
       expect(credentials.update).not.toHaveBeenCalled();
+    });
+
+    describe('credentials rewriter dispatch (#1387, ADR-031)', () => {
+      // ConnectionService has zero platform-specific knowledge of what a
+      // rewriter does (that logic — e.g. Erli's Allegro-credentials-reuse
+      // resolution — lives behind `ConnectionCredentialsRewriterPort` in the
+      // owning plugin package and is unit-tested there). These tests only
+      // pin the generic dispatch contract: no-op passthrough when nothing is
+      // registered for the adapterKey, and delegation + error-mapping when a
+      // rewriter is registered.
+      const dbConnection = new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'active',
+        {},
+        'db:cred-ref-1',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+      beforeEach(() => {
+        connectionPort.get.mockResolvedValue(dbConnection);
+        credentials.getByRef.mockResolvedValue({
+          id: 'cred-row-1',
+          ref: 'cred-ref-1',
+          platformType: 'prestashop',
+          credentialsJson: { webserviceApiKey: 'EXISTING' },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      });
+
+      it('should pass the credentials through unchanged when no rewriter is registered for the adapterKey', async () => {
+        await service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' });
+
+        expect(credentials.update).toHaveBeenCalledWith('cred-ref-1', {
+          credentialsJson: { webserviceApiKey: 'NEW' },
+        });
+      });
+
+      it('should delegate to the registered rewriter and persist its returned payload', async () => {
+        const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+          rewrite: jest
+            .fn()
+            .mockResolvedValue({ webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' }),
+        };
+        credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+        await service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' });
+
+        expect(stubRewriter.rewrite).toHaveBeenCalledWith({ webserviceApiKey: 'NEW' });
+        expect(credentials.update).toHaveBeenCalledWith('cred-ref-1', {
+          credentialsJson: { webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' },
+        });
+      });
+
+      it('should map a ConnectionCredentialsRewriteException from the rewriter to BadRequestException', async () => {
+        const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+          rewrite: jest
+            .fn()
+            .mockRejectedValue(
+              new ConnectionCredentialsRewriteException('Stub', 'source connection is invalid')
+            ),
+        };
+        credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+        await expect(
+          service.updateCredentials('connection-123', { webserviceApiKey: 'NEW' })
+        ).rejects.toThrow(BadRequestException);
+        expect(credentials.update).not.toHaveBeenCalled();
+      });
     });
   });
 
