@@ -93,7 +93,12 @@ function ProductCatalogLinkBanner({
   isLoading,
   hasError,
 }: ProductCatalogLinkBannerProps): ReactElement | null {
-  if (!connection.enabledCapabilities.includes('OfferManager')) return null;
+  if (
+    !connection.enabledCapabilities.includes('OfferManager') &&
+    !connection.enabledCapabilities.includes('ProductPublisher')
+  ) {
+    return null;
+  }
 
   const rawMaster = connection.config.masterCatalogConnectionId;
   const explicitMaster = typeof rawMaster === 'string' ? rawMaster : null;

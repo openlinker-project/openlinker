@@ -112,6 +112,17 @@ describe('ProductPublishBuilderService', () => {
     expect(command.parameters).toBeUndefined();
   });
 
+  it('should publish uncategorised when the master cannot report categories', async () => {
+    productMaster.getProductCategories.mockRejectedValue(
+      new Error('Get product categories is not implemented in MVP.')
+    );
+
+    const command = await service.buildPublishProductCommand(baseInput);
+
+    expect(command.destinationCategoryIds).toEqual([]);
+    expect(shopAdapter.provisionCategory).not.toHaveBeenCalled();
+  });
+
   it('should throw when the variant is not found', async () => {
     products.getVariant.mockResolvedValue(null);
     await expect(service.buildPublishProductCommand(baseInput)).rejects.toBeInstanceOf(
