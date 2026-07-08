@@ -27,6 +27,7 @@ import type { IInboundRoutingPolicyService } from '../interfaces/inbound-routing
 import type { RoutingOutcome } from '../types/inbound-routing-policy.types';
 import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
 import { JOB_ENQUEUE_TOKEN } from '../../sync.tokens';
+import { buildInboundJobIdempotencyKey } from './inbound-job-idempotency-key';
 import type { JobType, SyncJobRequest } from '../../domain/types/sync-job.types';
 import type {
   MarketplaceOrderSyncPayloadV1,
@@ -98,7 +99,11 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
       jobType,
       connectionId: connection.id,
       payload,
-      idempotencyKey: `${connection.platformType}:${connection.id}:${sourceEventId}`,
+      idempotencyKey: buildInboundJobIdempotencyKey(
+        connection.platformType,
+        connection.id,
+        sourceEventId
+      ),
     };
     const { jobId } = await this.jobEnqueue.enqueueJob(job);
     this.logger.log(

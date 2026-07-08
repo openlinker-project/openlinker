@@ -51,6 +51,7 @@ describe('SyncController', () => {
     createIfNotExistsByIdempotencyKey: jest.fn(),
     findAndLockDueJobs: jest.fn(),
     findById: jest.fn(),
+    findByIdempotencyKey: jest.fn(),
     findMany: jest.fn(),
     markSucceeded: jest.fn(),
     markFailed: jest.fn(),
@@ -236,6 +237,42 @@ describe('SyncController', () => {
       syncJobRepository.findById.mockResolvedValue(null);
 
       await expect(controller.getJob('missing-id')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('lookupJobForWebhookEvent', () => {
+    it('should assemble the idempotency key from the components and return the job DTO', async () => {
+      syncJobRepository.findByIdempotencyKey.mockResolvedValue(makeSyncJob({ id: 'job-1' }));
+
+      const result = await controller.lookupJobForWebhookEvent('prestashop', 'conn-1', 'evt_42');
+
+      // Server assembles the key from the raw components — the caller never
+      // encodes the format (#1366).
+      expect(syncJobRepository.findByIdempotencyKey).toHaveBeenCalledWith(
+        'prestashop:conn-1:evt_42',
+      );
+      expect(result.id).toBe('job-1');
+    });
+
+    it('should throw BadRequestException when any component is missing or blank', async () => {
+      await expect(
+        controller.lookupJobForWebhookEvent(undefined, 'conn-1', 'evt_42'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        controller.lookupJobForWebhookEvent('prestashop', '   ', 'evt_42'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        controller.lookupJobForWebhookEvent('prestashop', 'conn-1', undefined),
+      ).rejects.toThrow(BadRequestException);
+      expect(syncJobRepository.findByIdempotencyKey).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when no job matches the key yet', async () => {
+      syncJobRepository.findByIdempotencyKey.mockResolvedValue(null);
+
+      await expect(
+        controller.lookupJobForWebhookEvent('prestashop', 'conn-1', 'evt_unknown'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

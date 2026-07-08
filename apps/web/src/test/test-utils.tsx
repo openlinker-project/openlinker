@@ -421,6 +421,7 @@ export function createMockApiClient(
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      lookupJobForWebhookEvent: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue(null),
       listGrouped: vi.fn().mockResolvedValue({
         groups: [],
