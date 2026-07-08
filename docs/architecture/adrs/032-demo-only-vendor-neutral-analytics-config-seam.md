@@ -1,4 +1,4 @@
-# ADR-030: Demo-only, vendor-neutral analytics/integration config seam on `/system/config`
+# ADR-032: Demo-only, vendor-neutral analytics/integration config seam on `/system/config`
 
 - **Status**: Proposed
 - **Date**: 2026-07-08

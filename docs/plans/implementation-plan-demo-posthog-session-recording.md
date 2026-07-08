@@ -12,7 +12,7 @@
 
 **Context**: [Issue #1301](https://github.com/openlinker-project/openlinker/issues/1301). The demo already has a server-authoritative flag seam (`SystemService` / `GET /system/config` → `{ demoMode }`, #1127 / PR #1264), consumed once by the FE via `useSystemConfigQuery`. This plan extends that seam with an optional `demoIntegrations.posthog` block, and adds a demo-scoped FE loader that dynamically imports `posthog-js` only when the config is present and the visitor has consented.
 
-**Classification**: Frontend (+ a small Interface-layer BE extension). See [ADR-030](../architecture/adrs/030-demo-only-vendor-neutral-analytics-config-seam.md) for the design rationale (vendor-neutral, namespaced config seam vs. flat fields, vs. a private overlay/fork, vs. build-time `VITE_*`).
+**Classification**: Frontend (+ a small Interface-layer BE extension). See [ADR-032](../architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md) for the design rationale (vendor-neutral, namespaced config seam vs. flat fields, vs. a private overlay/fork, vs. build-time `VITE_*`).
 
 ---
 
@@ -82,7 +82,7 @@
 ## 5. Questions & Assumptions
 
 ### Open Questions
-- None blocking — the design (namespaced `demoIntegrations.posthog`) was confirmed with the user before this plan was written (see [ADR-030](../architecture/adrs/030-demo-only-vendor-neutral-analytics-config-seam.md)).
+- None blocking — the design (namespaced `demoIntegrations.posthog`) was confirmed with the user before this plan was written (see [ADR-032](../architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md)).
 
 ### Assumptions
 - Consent is **not** persisted server-side or tied to a user identity — a `localStorage` flag (`openlinker.demoAnalyticsConsent`) is sufficient, mirroring the theme-preference precedent. If product later wants server-tracked consent (e.g. for compliance reporting), that's a follow-up.
@@ -91,7 +91,7 @@
 - The consent gate reuses/extends the existing `DemoBanner` component (adds a CTA) rather than introducing a second banner — avoids banner stacking in the shell's already-tight vertical budget (`docs/frontend-ui-style-guide.md § Main Workspace`).
 
 ### Documentation Gaps
-- None identified beyond what ADR-030 already resolves (the vendor-neutral shape question raised in the earlier `/tech-review` pass).
+- None identified beyond what ADR-032 already resolves (the vendor-neutral shape question raised in the earlier `/tech-review` pass).
 
 ---
 
@@ -297,7 +297,7 @@
 
 ## 7. Alternatives Considered
 
-See [ADR-030](../architecture/adrs/030-demo-only-vendor-neutral-analytics-config-seam.md) for the full trade-off discussion (flat vendor-prefixed fields vs. namespaced `demoIntegrations.<provider>`, private overlay/fork, build-time `VITE_*`). Summary: namespaced-per-provider was chosen so the sibling support-chat issue is an additive DTO change rather than a reshape.
+See [ADR-032](../architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md) for the full trade-off discussion (flat vendor-prefixed fields vs. namespaced `demoIntegrations.<provider>`, private overlay/fork, build-time `VITE_*`). Summary: namespaced-per-provider was chosen so the sibling support-chat issue is an additive DTO change rather than a reshape.
 
 One additional FE-scoped alternative considered in this plan:
 
@@ -391,6 +391,6 @@ One additional FE-scoped alternative considered in this plan:
 - [Frontend UI Style Guide](../frontend-ui-style-guide.md)
 - [Testing Guide](../testing-guide.md)
 - [Code Review Guide](../code-review-guide.md)
-- [ADR-030: Demo-only, vendor-neutral analytics/integration config seam](../architecture/adrs/030-demo-only-vendor-neutral-analytics-config-seam.md)
+- [ADR-032: Demo-only, vendor-neutral analytics/integration config seam](../architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md)
 - [ADR-029: Versioning and release strategy](../architecture/adrs/029-versioning-and-release-strategy.md) (one-image deploy model referenced in constraints)
 - Originating issue: [#1301](https://github.com/openlinker-project/openlinker/issues/1301)
