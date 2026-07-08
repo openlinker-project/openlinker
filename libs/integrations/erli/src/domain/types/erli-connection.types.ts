@@ -104,3 +104,10 @@ export interface ErliConnectionConfig {
  * Erli allowlist — see `domain/policies/erli-base-url.policy.ts`.
  */
 export const ERLI_DEFAULT_BASE_URL = 'https://erli.pl/svc/shop-api';
+
+/**
+ * Sandbox Erli Shop API base URL (confirmed by the #992 spike). Named source of
+ * truth for the FE create-wizard's Production/Sandbox environment select (#1377)
+ * — previously only referenced in the doc comment above.
+ */
+export const ERLI_SANDBOX_BASE_URL = 'https://sandbox.erli.dev/svc/shop-api';
