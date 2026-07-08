@@ -33,10 +33,10 @@ import {
   type IOrderRecordService,
   type PaymentStatus,
   type CodToCollect,
+  type OrderRecord,
   PAYMENT_STATUS,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
-import type { OrderRecord } from '@openlinker/core/orders';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
@@ -112,11 +112,6 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       throw new OrderNotDispatchablePaymentStatusException(input.orderId, paymentStatus);
     }
 
-    // COD authorization gate (#1435): the FE is not authorization
-    // (frontend-architecture § App Boundary), so COD is decided server-side from
-    // the order's payment status — mirroring the #938 payment gate above.
-    const cod = this.resolveEffectiveCod(order, input.cod);
-
     switch (resolution.processorKind) {
       case FULFILLMENT_PROCESSOR_KIND.OmpFulfilled:
         // Branch-1: the OMP ships via its own carrier setup — OL generates no
@@ -126,6 +121,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
 
       case FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier:
       case FULFILLMENT_PROCESSOR_KIND.SourceBrokered: {
+        // COD authorization gate (#1435): the FE is not authorization
+        // (frontend-architecture § App Boundary), so COD is decided server-side
+        // from the order's payment status — mirroring the #938 payment gate
+        // above. Resolved only on the label-generating path, so an OMP-fulfilled
+        // order never computes (and discards) a COD or logs a spurious strip.
+        const cod = this.resolveEffectiveCod(order, input.cod, input.orderId);
         const shipment = await this.dispatchViaShippingProvider(
           input,
           resolution.processorConnectionId,
@@ -181,19 +182,31 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
   private resolveEffectiveCod(
     order: OrderRecord | null,
     inputCod: CodToCollect | undefined,
+    orderId: string,
   ): CodToCollect | undefined {
     const paymentStatus = order?.paymentStatus;
     if (paymentStatus === PAYMENT_STATUS.Paid) {
       if (inputCod !== undefined) {
         this.logger.warn(
-          `Stripping COD from dispatch of order ${order?.internalOrderId ?? '(unknown)'}: ` +
+          `Stripping COD from dispatch of order ${orderId}: ` +
             `order is prepaid (payment status 'paid')`,
         );
       }
       return undefined;
     }
     if (paymentStatus === PAYMENT_STATUS.Cod) {
-      return order?.codToCollect ?? inputCod;
+      const resolved = order?.codToCollect ?? inputCod;
+      if (resolved === undefined) {
+        // Likely operator mistake: a COD order is being dispatched with no
+        // amount from either the marketplace source or the caller, so it would
+        // ship COD with nothing to collect. Surface it; the value is unchanged.
+        this.logger.warn(
+          `COD order ${orderId} resolved to no COD amount ` +
+            `(no marketplace-sourced amount and no caller-supplied amount): ` +
+            `it will ship without a collectable amount`,
+        );
+      }
+      return resolved;
     }
     // Unknown / unreported payment (non-marketplace sources) — preserve the
     // caller-supplied COD (the pre-#1435 behavior for PrestaShop / DPD).
