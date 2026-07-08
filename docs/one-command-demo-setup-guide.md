@@ -11,6 +11,10 @@ tier — API + Worker + admin UI.
 
 > **Local evaluation only.** Credentials are intentionally not production-safe and
 > the stack is not hardened (no TLS, default passwords). Do not expose it publicly.
+>
+> Need to make the demo reachable under a real domain instead (reverse proxy +
+> TLS, rotated credentials, DNS)? See the
+> [public-domain demo deployment guide](./public-domain-demo-deployment-guide.md).
 
 ---
 

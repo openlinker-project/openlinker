@@ -32,7 +32,10 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Override in .env for anything beyond local dev/demo use (#1403) — the
+      # default is a throwaway value, not a secret. Every service below that
+      # connects to Postgres references this same var so they never drift.
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       POSTGRES_DB: openlinker
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432'
@@ -61,16 +64,29 @@ services:
     image: mysql:8.4.7
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      # Overridable in .env (#1403) — both default to today's literal values.
+      # PRESTASHOP_MYSQL_PASSWORD must match the prestashop service's
+      # PS_DB_PASSWD/DB_PASSWD below (same var referenced at both sites).
+      MYSQL_ROOT_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
       MYSQL_DATABASE: prestashop
       MYSQL_USER: prestashop
-      MYSQL_PASSWORD: prestashop
+      MYSQL_PASSWORD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_HOST_PORT:-3306}:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -87,8 +103,10 @@ services:
       PMA_HOST: mysql
       PMA_PORT: 3306
       PMA_USER: root
-      PMA_PASSWORD: root
-      MYSQL_ROOT_PASSWORD: root
+      # Mirrors the mysql service's root password (#1403) — phpMyAdmin only
+      # ever talks to the PrestaShop-side MySQL instance.
+      PMA_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
+      MYSQL_ROOT_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${PHPMYADMIN_HOST_PORT:-8081}:80'
     depends_on:
@@ -104,17 +122,31 @@ services:
     image: mysql:8.4.7
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-woocommerce-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      # Overridable in .env (#1403), separate from the PrestaShop MySQL
+      # instance's vars — these two databases rotate independently.
+      # WOOCOMMERCE_MYSQL_PASSWORD must match the woocommerce service's
+      # WORDPRESS_DATABASE_PASSWORD below (same var referenced at both sites).
+      MYSQL_ROOT_PASSWORD: '${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-root}'
       MYSQL_DATABASE: woocommerce
       MYSQL_USER: woocommerce
-      MYSQL_PASSWORD: woocommerce
+      MYSQL_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-woocommerce}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${WOOCOMMERCE_MYSQL_HOST_PORT:-3307}:3306'
     volumes:
       - woocommerce_mysql_data:/var/lib/mysql
     healthcheck:
-      # -proot: no space between flag and password (matches MYSQL_ROOT_PASSWORD: root)
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      # -p<password>: no space between flag and password.
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-root}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -131,7 +163,8 @@ services:
       WORDPRESS_DATABASE_PORT_NUMBER: 3306
       WORDPRESS_DATABASE_NAME: woocommerce
       WORDPRESS_DATABASE_USER: woocommerce
-      WORDPRESS_DATABASE_PASSWORD: woocommerce
+      # Must match woocommerce-mysql's MYSQL_PASSWORD above (#1403).
+      WORDPRESS_DATABASE_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-woocommerce}'
       WORDPRESS_USERNAME: admin
       WORDPRESS_PASSWORD: admin123
       WORDPRESS_EMAIL: admin@openlinker.local
@@ -177,7 +210,8 @@ services:
       PS_DB_SERVER: mysql
       PS_DB_NAME: prestashop
       PS_DB_USER: prestashop
-      PS_DB_PASSWD: prestashop
+      # Must match the mysql service's MYSQL_PASSWORD (#1403).
+      PS_DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
       PS_DB_PREFIX: ps_
       PS_ENABLE_SSL: 0
       PS_DEMO_MODE: 0
@@ -186,10 +220,12 @@ services:
       DB_SERVER: mysql
       DB_NAME: prestashop
       DB_USER: prestashop
-      DB_PASSWD: prestashop
+      DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
       DB_PREFIX: ps_
       ADMIN_MAIL: demo@prestashop.com
-      ADMIN_PASSWD: prestashop_demo
+      # The seeded PrestaShop admin login password (#1403) — override before
+      # exposing this beyond localhost, same as OL_BOOTSTRAP_ADMIN_PASSWORD.
+      ADMIN_PASSWD: '${ADMIN_PASSWD:-prestashop_demo}'
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${PRESTASHOP_HOST_PORT:-8080}:80'
     volumes:
@@ -233,7 +269,8 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the postgres service's POSTGRES_PASSWORD above (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       REDIS_HOST: redis
       REDIS_PORT: 6379

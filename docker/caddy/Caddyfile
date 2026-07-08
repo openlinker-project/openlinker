@@ -1,0 +1,26 @@
+# Production Caddyfile for the public-domain demo proxy overlay (#1403).
+#
+# Automatic HTTPS via Let's Encrypt — Caddy issues and renews a certificate
+# per site block the first time it observes real, publicly-resolvable DNS
+# for that hostname (HTTP-01 challenge on port 80, then serves over 443).
+#
+# See docs/public-domain-demo-deployment-guide.md for prerequisites (DNS
+# records, port 80/443 reachability) and the post-deploy verification
+# checklist. For local verification without real DNS, use Caddyfile.local
+# instead (set CADDYFILE_PATH=./docker/caddy/Caddyfile.local in .env).
+
+{
+	email {$TLS_EMAIL}
+}
+
+{$WEB_DOMAIN} {
+	reverse_proxy web:80
+}
+
+{$API_DOMAIN} {
+	reverse_proxy api:3000
+}
+
+{$PRESTASHOP_DOMAIN} {
+	reverse_proxy prestashop:80
+}
