@@ -12,6 +12,7 @@
 import type { BulkDispatchItem } from '../../shipments';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type ParsedOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
+import type { LockerTemplate } from '../components/generate-label-form.schema';
 
 /** Internal locker-vs-courier classification of the order's delivery method. */
 export type ResolvedShippingMethod = 'paczkomat' | 'kurier';
@@ -93,7 +94,7 @@ export interface DispatchParcel {
   weightGrams: number;
   /** Locker size code for paczkomat shipments (InPost `small|medium|large`).
    *  Required by the BE for a paczkomat shipment; absent for courier. */
-  template?: string;
+  template?: LockerTemplate;
 }
 
 /**
