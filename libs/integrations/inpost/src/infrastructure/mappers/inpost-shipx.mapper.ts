@@ -185,7 +185,11 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
     parcels: { template: cmd.parcel.template },
     service: 'inpost_locker_standard',
     reference: cmd.shipmentId,
-    custom_attributes: { sending_method: 'dispatch_order', target_point: cmd.paczkomatId },
+    // Paczkomat is a sender self-drop at a locker → `parcel_locker` is the ShipX
+    // sending method documented for `inpost_locker_standard`. `dispatch_order`
+    // (courier collects from the sender) routed locker shipments into the
+    // courier pickup-order flow (#1427).
+    custom_attributes: { sending_method: 'parcel_locker', target_point: cmd.paczkomatId },
   };
 }
 
