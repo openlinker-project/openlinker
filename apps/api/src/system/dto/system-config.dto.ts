@@ -8,7 +8,6 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, ValidateNested } from 'class-validator';
 import { DemoIntegrationsDto } from './demo-integrations.dto';
 
 export class SystemConfigDto {
@@ -20,8 +19,6 @@ export class SystemConfigDto {
     description:
       'Demo-only third-party integration config (e.g. PostHog). Present only when demo mode is active and the provider is configured.',
   })
-  @IsOptional()
-  @ValidateNested()
   @Type(() => DemoIntegrationsDto)
   demoIntegrations?: DemoIntegrationsDto;
 }

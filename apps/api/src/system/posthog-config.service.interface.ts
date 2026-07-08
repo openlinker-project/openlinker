@@ -7,11 +7,7 @@
  *
  * @module apps/api/src/system
  */
-
-export interface PosthogConfig {
-  key: string;
-  host: string;
-}
+import type { PosthogConfig } from './posthog-config.types';
 
 export interface IPosthogConfigService {
   /**

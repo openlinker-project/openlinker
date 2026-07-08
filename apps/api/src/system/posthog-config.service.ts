@@ -10,7 +10,8 @@
  */
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { IPosthogConfigService, PosthogConfig } from './posthog-config.service.interface';
+import type { IPosthogConfigService } from './posthog-config.service.interface';
+import type { PosthogConfig } from './posthog-config.types';
 
 const DEFAULT_POSTHOG_HOST = 'https://eu.posthog.com';
 

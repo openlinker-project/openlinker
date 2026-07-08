@@ -119,7 +119,18 @@ in the demo banner.
 | `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
 | `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
 
-See [ADR-032](./architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md) for the design rationale.
+**Only run session recording against synthetic seed data.** Recording masks
+all form inputs and all rendered text (`maskAllInputs` + a mask-everything
+text selector), but a demo instance pointed at real shop data would still
+expose non-text signal (order IDs in URLs, image content, layout) to
+PostHog cloud. Session recording is intended for the seeded demo dataset
+only — never enable `OL_POSTHOG_KEY` on an instance connected to a live
+PrestaShop/Allegro/Erli store with real customer data.
+
+A visitor who accepted the consent prompt can revoke it at any time from
+the demo banner ("Disable" next to "Analytics on").
+
+See ADR-032 (`docs/architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md`, merging via #1410) for the design rationale.
 
 ---
 

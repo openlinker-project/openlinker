@@ -52,4 +52,22 @@ describe('DemoBanner', () => {
     await userEvent.click(screen.getByRole('button', { name: /decline/i }));
     expect(onConsentChange).toHaveBeenCalledWith('declined');
   });
+
+  it('should not render the revoke affordance when consentAccepted is false', () => {
+    render(<DemoBanner consentAccepted={false} />);
+    expect(screen.queryByText(/analytics on/i)).not.toBeInTheDocument();
+  });
+
+  it('should render the revoke affordance when consentAccepted is true', () => {
+    render(<DemoBanner consentAccepted />);
+    expect(screen.getByText(/analytics on/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /disable/i })).toBeInTheDocument();
+  });
+
+  it('should call onConsentChange with "declined" when Disable is clicked', async () => {
+    const onConsentChange = vi.fn();
+    render(<DemoBanner consentAccepted onConsentChange={onConsentChange} />);
+    await userEvent.click(screen.getByRole('button', { name: /disable/i }));
+    expect(onConsentChange).toHaveBeenCalledWith('declined');
+  });
 });

@@ -1,5 +1,6 @@
 import type { IDemoModeService } from '../auth/demo-mode.service.interface';
-import type { IPosthogConfigService, PosthogConfig } from './posthog-config.service.interface';
+import type { IPosthogConfigService } from './posthog-config.service.interface';
+import type { PosthogConfig } from './posthog-config.types';
 import { SystemService } from './system.service';
 
 describe('SystemService', () => {

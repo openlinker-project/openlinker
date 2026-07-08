@@ -10,13 +10,10 @@
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, ValidateNested } from 'class-validator';
 import { PosthogDemoIntegrationDto } from './posthog-demo-integration.dto';
 
 export class DemoIntegrationsDto {
   @ApiPropertyOptional({ type: PosthogDemoIntegrationDto })
-  @IsOptional()
-  @ValidateNested()
   @Type(() => PosthogDemoIntegrationDto)
   posthog?: PosthogDemoIntegrationDto;
 }

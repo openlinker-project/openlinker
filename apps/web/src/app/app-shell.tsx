@@ -46,6 +46,7 @@ import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 import { DemoBanner } from '../shared/ui/demo-banner';
 import { useSystemConfigQuery } from '../features/system';
 import {
+  disableDemoAnalytics,
   getDemoAnalyticsConsent,
   initDemoIntegrations,
   setDemoAnalyticsConsent,
@@ -268,6 +269,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const handleAnalyticsConsentChange = useCallback((consent: DemoAnalyticsConsent): void => {
     setDemoAnalyticsConsent(consent);
     setAnalyticsConsent(consent);
+    if (consent === 'declined') {
+      disableDemoAnalytics();
+    }
   }, []);
 
   const crumbs = resolveCrumbFromMatches(matches);
@@ -350,6 +354,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
         {demoMode ? (
           <DemoBanner
             consentPending={Boolean(posthogConfig?.key) && analyticsConsent === null}
+            consentAccepted={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}
             onConsentChange={handleAnalyticsConsentChange}
           />
         ) : null}

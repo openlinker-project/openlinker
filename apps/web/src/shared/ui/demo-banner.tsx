@@ -6,8 +6,9 @@
  * persists for the session as a constant visual reminder.
  *
  * Optionally renders an analytics-consent CTA (#1301) when the host passes
- * `consentPending`. This component stays feature-agnostic — it does not read
- * or write consent storage itself (that lives in `features/demo`, which
+ * `consentPending`, or a compact revoke affordance when the host passes
+ * `consentAccepted`. This component stays feature-agnostic — it does not
+ * read or write consent storage itself (that lives in `features/demo`, which
  * `shared/ui` must not import) — the host wires `onConsentChange`.
  */
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
@@ -16,12 +17,14 @@ import { Button } from './button';
 export interface DemoBannerProps extends ComponentPropsWithoutRef<'div'> {
   /** True when the visitor hasn't yet accepted or declined demo analytics. */
   consentPending?: boolean;
-  /** Called with the visitor's choice when the consent CTA is used. */
+  /** True when the visitor has already accepted demo analytics (shows a revoke affordance). */
+  consentAccepted?: boolean;
+  /** Called with the visitor's choice when the consent CTA or revoke affordance is used. */
   onConsentChange?: (consent: 'accepted' | 'declined') => void;
 }
 
 export const DemoBanner = forwardRef<HTMLDivElement, DemoBannerProps>(function DemoBanner(
-  { className = '', consentPending = false, onConsentChange, ...props },
+  { className = '', consentPending = false, consentAccepted = false, onConsentChange, ...props },
   ref,
 ) {
   const classes = ['demo-banner', className].filter(Boolean).join(' ');
@@ -48,6 +51,18 @@ export const DemoBanner = forwardRef<HTMLDivElement, DemoBannerProps>(function D
             onClick={() => onConsentChange?.('declined')}
           >
             Decline
+          </Button>
+        </span>
+      ) : null}
+      {consentAccepted ? (
+        <span className="demo-banner__consent">
+          <span>Analytics on.</span>
+          <Button
+            className="button--xs"
+            tone="ghost"
+            onClick={() => onConsentChange?.('declined')}
+          >
+            Disable
           </Button>
         </span>
       ) : null}

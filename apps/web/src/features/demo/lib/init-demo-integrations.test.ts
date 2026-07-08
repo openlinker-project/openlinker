@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemConfig } from '../../system';
-import { initDemoIntegrations } from './init-demo-integrations';
+import { disableDemoAnalytics, initDemoIntegrations } from './init-demo-integrations';
 
 const posthogInit = vi.fn();
+const posthogOptOut = vi.fn();
 vi.mock('posthog-js', () => ({
-  default: { init: posthogInit },
+  default: { init: posthogInit, opt_out_capturing: posthogOptOut },
 }));
 
 const getDemoAnalyticsConsent = vi.fn();
@@ -20,6 +21,7 @@ const configuredPosthog: SystemConfig = {
 describe('initDemoIntegrations', () => {
   beforeEach(() => {
     posthogInit.mockClear();
+    posthogOptOut.mockClear();
     getDemoAnalyticsConsent.mockReset();
   });
 
@@ -57,10 +59,29 @@ describe('initDemoIntegrations', () => {
     expect(posthogInit).toHaveBeenCalledWith('phc_abc', {
       api_host: 'https://eu.posthog.com',
       person_profiles: 'identified_only',
+      autocapture: false,
+      capture_pageview: true,
       session_recording: {
         maskAllInputs: true,
-        maskTextSelector: '[data-ph-mask]',
+        maskTextSelector: '*',
       },
     });
+  });
+});
+
+describe('disableDemoAnalytics', () => {
+  beforeEach(() => {
+    posthogInit.mockClear();
+    posthogOptOut.mockClear();
+    getDemoAnalyticsConsent.mockReset();
+  });
+
+  it('should opt the visitor out of capture after PostHog was initialized', async () => {
+    getDemoAnalyticsConsent.mockReturnValue('accepted');
+    await initDemoIntegrations(configuredPosthog);
+
+    disableDemoAnalytics();
+
+    expect(posthogOptOut).toHaveBeenCalledTimes(1);
   });
 });
