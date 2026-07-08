@@ -170,6 +170,28 @@ describe('buildDispatchItem', () => {
     expect(item.recipient.address).toBeUndefined();
   });
 
+  it('forwards the locker-size template when supplied', () => {
+    const item = buildDispatchItem({
+      order: order({ snapshot: PACZKOMAT_SNAPSHOT }),
+      snapshot: parseOrderSnapshot(PACZKOMAT_SNAPSHOT),
+      shippingMethod: 'paczkomat',
+      parcel: { length: 300, width: 200, height: 100, weightGrams: 500, template: 'medium' },
+      paczkomatId: 'POZ08A',
+    });
+    expect(item.parcel.template).toBe('medium');
+  });
+
+  it('omits parcel.template when no locker size is supplied', () => {
+    const item = buildDispatchItem({
+      order: order({ snapshot: PACZKOMAT_SNAPSHOT }),
+      snapshot: parseOrderSnapshot(PACZKOMAT_SNAPSHOT),
+      shippingMethod: 'paczkomat',
+      parcel: { length: 300, width: 200, height: 100, weightGrams: 500 },
+      paczkomatId: 'POZ08A',
+    });
+    expect(item.parcel.template).toBeUndefined();
+  });
+
   it('normalises a comma decimal in the COD amount', () => {
     const item = buildDispatchItem({
       order: order({ snapshot: COURIER_SNAPSHOT }),

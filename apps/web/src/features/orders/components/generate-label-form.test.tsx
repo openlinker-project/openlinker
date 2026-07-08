@@ -211,6 +211,31 @@ describe('GenerateLabelForm — happy path', () => {
     expect((generateLabel.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
   });
 
+  it('should send parcel.template (locker size, default medium) for a paczkomat order (#1423)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parcel: expect.objectContaining({ template: 'medium' }),
+        }),
+      ),
+    );
+  });
+
   it('should send deliveryIntent pickup_point for an order with a pickup point (#979)', async () => {
     const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
     const apiClient = createMockApiClient({ shipments: { generateLabel } });

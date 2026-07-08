@@ -20,12 +20,24 @@ import { z } from 'zod';
 export const COD_CURRENCY_VALUES = ['PLN', 'EUR', 'RON', 'CZK'] as const;
 export type CodCurrency = (typeof COD_CURRENCY_VALUES)[number];
 
+/**
+ * InPost locker size templates. A paczkomat shipment is described by a locker
+ * size (`parcel.template`), not per-item dimensions — the order carries no
+ * reliable dimensions. The BE adapter rejects a paczkomat shipment without it.
+ */
+export const LOCKER_TEMPLATE_VALUES = ['small', 'medium', 'large'] as const;
+export type LockerTemplate = (typeof LOCKER_TEMPLATE_VALUES)[number];
+
 export const generateLabelSchema = z.object({
   length: z.coerce.number().int().positive('Length must be a positive integer'),
   width: z.coerce.number().int().positive('Width must be a positive integer'),
   height: z.coerce.number().int().positive('Height must be a positive integer'),
   weightGrams: z.coerce.number().int().positive('Weight must be a positive integer'),
   paczkomatId: z.string().trim().optional(),
+  // Locker size for paczkomat shipments (#764 InPost). Optional at the schema
+  // level (courier shipments don't use it); the form defaults it and only
+  // surfaces the picker for the paczkomat flow.
+  lockerTemplate: z.enum(LOCKER_TEMPLATE_VALUES).optional(),
   // Optional cash-on-delivery (operator-supplied, #966). Empty amount ⇒ no COD.
   // COD-incapable carriers ignore it server-side; DPD translates it to the COD
   // service. Amount accepts a decimal string (comma or dot) — normalised at submit.
