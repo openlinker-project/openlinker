@@ -169,8 +169,11 @@ services:
     # to re-run them mid-development without recreating the volume.
     environment:
       # Canonical shop domain PrestaShop bakes into generated links/redirects.
-      # Override in .env for a public-domain deployment (e.g. shop.example.com).
-      PS_DOMAIN: '${PS_DOMAIN:-localhost:8080}'
+      # Defaults to the same PRESTASHOP_HOST_PORT (#1400) this service's own
+      # port publish uses, so a shifted PRESTASHOP_HOST_PORT for a second
+      # instance stays self-consistent without a separate override. Override
+      # in .env for a public-domain deployment (e.g. shop.example.com).
+      PS_DOMAIN: '${PS_DOMAIN:-localhost:${PRESTASHOP_HOST_PORT:-8080}}'
       PS_FOLDER_ADMIN: admin
       PS_COUNTRY: US
       PS_LANGUAGE: en

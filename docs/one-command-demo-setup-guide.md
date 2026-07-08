@@ -287,8 +287,11 @@ know before running this on a shared/public host (#1400):
   they're never reachable from outside the host just because a firewall
   wasn't configured — put a reverse proxy in front of `web` (and `api`, if the
   browser needs to reach it directly) for anything beyond localhost access.
-  Override the bind interface with `OL_BIND_ADDRESS` in `.env` only if a
-  service genuinely needs to be reachable beyond loopback.
+  Only set `OL_BIND_ADDRESS=0.0.0.0` in `.env` for the specific case of
+  connecting from a different machine than the one running the stack (e.g. a
+  remote VM you SSH into but browse from your laptop) — pair it with a
+  reverse proxy or firewall rule, since it makes every published port
+  reachable from the network, not just the one you meant to expose.
 - **Running a second instance alongside an existing one** (e.g. a per-PR
   preview environment, or a staging + demo pair on the same host): set a
   distinct `COMPOSE_PROJECT_NAME` (renames the project and every
@@ -297,7 +300,11 @@ know before running this on a shared/public host (#1400):
   `PHPMYADMIN_HOST_PORT`, `PRESTASHOP_HOST_PORT`,
   `WOOCOMMERCE_MYSQL_HOST_PORT`, `WOOCOMMERCE_HOST_PORT`, `API_HOST_PORT`,
   `WEB_HOST_PORT`) in that instance's own `.env` — see `.env.example` for the
-  full list and defaults.
+  full list and defaults. `PS_DOMAIN`, `OL_CORS_ORIGIN`, and
+  `VITE_API_BASE_URL` all default to the matching `*_HOST_PORT` value, so a
+  second instance with shifted ports stays internally consistent without
+  extra overrides — set them explicitly only for a real public-domain
+  deployment.
 
 > `pnpm dev:stack:seed-woocommerce` / `pnpm dev:stack:wc-credentials` invoke
 > `docker exec openlinker-woocommerce` directly and don't yet respect a custom

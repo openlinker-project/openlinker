@@ -32,12 +32,15 @@ services:
       NODE_ENV: production
       OL_BOOTSTRAP_ADMIN_PASSWORD: '${OL_BOOTSTRAP_ADMIN_PASSWORD:-admin}'
       # CORS allow-list must include the browser origin the web UI is served
-      # from (the `web` service publishes :8090), or login fails with a
-      # "NetworkError when attempting to fetch resource" (#1368). The API
-      # default is only http://localhost:4173 (apps/api/src/main.ts). Override
-      # in .env with the real public origin (e.g. https://app.example.com)
-      # when serving the UI from a domain other than localhost:8090.
-      OL_CORS_ORIGIN: '${OL_CORS_ORIGIN:-http://localhost:8090}'
+      # from (the `web` service publishes :${WEB_HOST_PORT}), or login fails
+      # with a "NetworkError when attempting to fetch resource" (#1368). The
+      # API default is only http://localhost:4173 (apps/api/src/main.ts).
+      # Defaults to the same WEB_HOST_PORT (#1400) the web service's own port
+      # publish uses, so a shifted WEB_HOST_PORT for a second instance stays
+      # self-consistent without a separate override. Still override with the
+      # real public origin (e.g. https://app.example.com) when serving the UI
+      # from a domain other than localhost.
+      OL_CORS_ORIGIN: '${OL_CORS_ORIGIN:-http://localhost:${WEB_HOST_PORT:-8090}}'
       # Required by migration 1795000000000-encrypt-integration-credentials and
       # for decrypting connection credentials at runtime. Operator-supplied via
       # .env (see .env.example); `:?` fails the boot with a clear message if unset.
@@ -100,10 +103,13 @@ services:
       args:
         # Build-time (Vite) — must be the API origin reachable from the
         # operator's BROWSER, hence localhost, not the compose service name.
-        # Baked into the bundle at build time: overriding this in .env only
-        # takes effect on the NEXT `--build` (e.g. https://api.example.com
-        # for a public-domain deployment), not on a plain `up`/restart.
-        VITE_API_BASE_URL: '${VITE_API_BASE_URL:-http://localhost:3000}'
+        # Defaults to the same API_HOST_PORT (#1400) the api service's own
+        # port publish uses, so a shifted API_HOST_PORT for a second instance
+        # stays self-consistent without a separate override. Baked into the
+        # bundle at build time: overriding this in .env only takes effect on
+        # the NEXT `--build` (e.g. https://api.example.com for a
+        # public-domain deployment), not on a plain `up`/restart.
+        VITE_API_BASE_URL: '${VITE_API_BASE_URL:-http://localhost:${API_HOST_PORT:-3000}}'
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
