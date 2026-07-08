@@ -222,6 +222,26 @@ row + `PS_CANONICAL_REDIRECT=0`, added by a post-install step), so the
 > display base). For the demo, prefer a working image sync over rendered
 > thumbnails.
 
+> **Allegro vs. Erli — the Storefront URL requirement differs.** The guidance
+> above (`http://prestashop`) only holds for **Allegro**: OpenLinker downloads
+> the product image bytes server-side and re-uploads them to Allegro's CDN, so
+> the URL only needs to be **container-reachable**, not public.
+>
+> **Erli does not re-upload images** — its servers fetch the product image URL
+> directly, so for an Erli connection the Storefront URL **must be a real,
+> publicly-reachable HTTPS URL**. `http://prestashop` will silently fail image
+> sync to Erli. For local testing, front PrestaShop with a quick tunnel (e.g.
+> `cloudflared tunnel --url http://localhost:8080`); for a persistent
+> deployment, use the reverse-proxy/public-domain overlay
+> (`docker-compose.proxy.yml`) described in
+> [`docs/public-domain-demo-deployment-guide.md`](./public-domain-demo-deployment-guide.md).
+>
+> `storefrontBaseUrl` is a single, connection-level setting shared by every
+> destination synced from that PrestaShop master. If you're running **both**
+> Allegro and Erli off the same connection, set it to the public HTTPS URL —
+> a public URL also satisfies Allegro's (looser) container-reachability
+> requirement, but a container-internal URL does not satisfy Erli's.
+
 After connecting, OpenLinker syncs the seeded catalog (6 products + variants). See
 them under **Products**.
 
