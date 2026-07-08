@@ -51,6 +51,7 @@ import {
 } from '../../shipments';
 import {
   COD_CURRENCY_VALUES,
+  LOCKER_TEMPLATE_VALUES,
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
@@ -172,6 +173,8 @@ export function GenerateLabelForm({
       // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
       // operator types (picker deferred per plan).
       paczkomatId: snapshot.pickupPoint?.id ?? '',
+      // Locker size — required by the BE for paczkomat shipments (#764).
+      lockerTemplate: 'medium',
       // COD (#966, decision A) — operator-entered at dispatch; not order-sourced.
       codAmount: '',
       codCurrency: 'PLN',
@@ -187,6 +190,7 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
+  const lockerTemplateRegister = form.register('lockerTemplate');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
 
@@ -225,6 +229,7 @@ export function GenerateLabelForm({
           width: values.width,
           height: values.height,
           weightGrams: values.weightGrams,
+          template: shippingMethod === 'paczkomat' ? values.lockerTemplate : undefined,
         },
         paczkomatId: values.paczkomatId,
         cod:
@@ -434,6 +439,23 @@ export function GenerateLabelForm({
               aria-readonly={paczkomatIsBuyerSelected ? 'true' : undefined}
               placeholder={paczkomatIsBuyerSelected ? undefined : 'POZ08A'}
             />
+          </FormField>
+        ) : null}
+
+        {shippingMethod === 'paczkomat' ? (
+          <FormField
+            label="Locker size"
+            name="lockerTemplate"
+            description="InPost parcel template — required for a paczkomat shipment."
+            error={form.formState.errors.lockerTemplate?.message}
+          >
+            <Select {...lockerTemplateRegister} aria-label="Locker size">
+              {LOCKER_TEMPLATE_VALUES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
           </FormField>
         ) : null}
 

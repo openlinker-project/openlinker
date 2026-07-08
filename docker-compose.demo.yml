@@ -42,6 +42,13 @@ services:
       # for decrypting connection credentials at runtime. Operator-supplied via
       # .env (see .env.example); `:?` fails the boot with a clear message if unset.
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
+      # Dashboard "System health" widget (DevStackHealthService.checkPrestaShop)
+      # GETs this from *inside* the api container, where localhost (the base
+      # value's dev default, apps/api/env.example) resolves to the api
+      # container itself, not PrestaShop — this made PrestaShop always report
+      # unreachable/ERROR even with a working Connection (#1415). Route it to
+      # the `prestashop` service's Docker DNS name instead.
+      PRESTASHOP_BASE_URL: '${PRESTASHOP_BASE_URL:-http://prestashop}'
     # Overrides base's port publish with the same ${OL_BIND_ADDRESS}/${API_HOST_PORT}
     # vars (#1400) — kept as an explicit override rather than relying on the
     # base value because the demo image ships default admin/admin credentials

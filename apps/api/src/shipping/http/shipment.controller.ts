@@ -415,7 +415,15 @@ export class ShipmentController {
       return new BadGatewayException(error.message);
     }
     if (error instanceof ShippingProviderRejectionException) {
-      return new BadGatewayException(error.message);
+      // Surface the carrier's structured rejection so the client sees WHICH
+      // field the provider rejected, not just a generic message (#1428). The
+      // provider-details payload is field-error metadata by convention — never
+      // credentials. `providerCode` gives callers a stable discriminator.
+      return new BadGatewayException({
+        message: error.message,
+        providerCode: error.providerCode,
+        details: error.providerDetails,
+      });
     }
     if (error instanceof Error) {
       this.logger.error(
