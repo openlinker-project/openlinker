@@ -134,7 +134,6 @@ export class SyncController {
     description: 'Paginated job list',
     type: PaginatedSyncJobsResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listJobs(@Query() query: ListSyncJobsQueryDto): Promise<PaginatedSyncJobsResponseDto> {
     const { status, connectionId, jobType, outcome, limit = 20, offset = 0 } = query;
 
@@ -163,7 +162,6 @@ export class SyncController {
     description: 'Aggregated group list',
     type: GroupedSyncJobsResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listGroupedJobs(
     @Query() query: ListGroupedSyncJobsQueryDto
   ): Promise<GroupedSyncJobsResponseDto> {
@@ -189,18 +187,16 @@ export class SyncController {
     };
   }
 
-  @Roles('admin')
   @Get('jobs/lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Look up the sync job an inbound webhook event enqueued',
     description:
-      'Resolves the persisted SyncJob for a webhook trigger, keyed by the inbound-job idempotency key the server assembles from (platformType, connectionId, eventId) — the same key InboundRoutingPolicy stamps on the enqueued job (#1366). Callers pass the raw components (a webhook delivery holds all three) rather than re-encoding the key format. Returns 404 if no job with that key exists yet — the enqueue and the worker-side row creation happen at different times.',
+      'Resolves the persisted SyncJob for a webhook trigger, keyed by the inbound-job idempotency key the server assembles from (platformType, connectionId, eventId) — the same key InboundRoutingPolicy stamps on the enqueued job (#1366). Callers pass the raw components (a webhook delivery holds all three) rather than re-encoding the key format. Returns 404 if no job with that key exists yet — the enqueue and the worker-side row creation happen at different times. Open to any authenticated role, matching its sibling read endpoints (jobs, jobs/grouped, jobs/:id) — only job mutation (enqueue, retry) is admin-gated.',
   })
   @ApiResponse({ status: 200, description: 'Job detail', type: SyncJobResponseDto })
   @ApiResponse({ status: 400, description: 'Missing platformType, connectionId, or eventId' })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async lookupJobForWebhookEvent(
     @Query('platformType') platformType?: string,
     @Query('connectionId') connectionId?: string,
@@ -254,7 +250,6 @@ export class SyncController {
   @ApiOperation({ summary: 'Get sync job by ID' })
   @ApiResponse({ status: 200, description: 'Job detail', type: SyncJobResponseDto })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getJob(@Param('id', ParseUUIDPipe) id: string): Promise<SyncJobResponseDto> {
     const job = await this.syncJobRepository.findById(id);
     if (!job) {

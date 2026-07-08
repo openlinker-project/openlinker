@@ -55,7 +55,7 @@ export class SyncJobResponseDto {
   @ApiProperty({ description: 'Job last-update timestamp (ISO 8601)' })
   updatedAt!: string;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Job payload (admin only)' })
+  @ApiPropertyOptional({ nullable: true, description: 'Job payload' })
   payloadJson!: Record<string, unknown> | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Idempotency key used for deduplication' })
