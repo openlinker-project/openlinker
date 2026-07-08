@@ -6,9 +6,11 @@
  * client-side "both or neither" validation for the Client ID/Secret pair,
  * and the sequenced credentials-then-config atomicity write for
  * `allegroCategoryAccessEnabled` (both the enable and disable directions).
+ * Also covers (#1387) the reuse-vs-manual Allegro credential source choice.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Connection } from '../../../features/connections';
 import {
   createMockApiClient,
   findToastTitle,
@@ -23,6 +25,16 @@ const erliConnectionWithAllegroAccess = {
   config: { ...erliConnection.config, allegroCategoryAccessEnabled: true },
 };
 
+const allegroConnection: Connection = {
+  ...sampleConnection,
+  id: 'conn_allegro_1',
+  name: 'Main Allegro Store',
+  platformType: 'allegro',
+  adapterKey: 'allegro.publicapi.v1',
+  enabledCapabilities: ['OrderSource', 'OfferManager'],
+  supportedCapabilities: ['OrderSource', 'OfferManager'],
+};
+
 describe('ErliCredentialsPanel', () => {
   afterEach(cleanup);
 
@@ -35,7 +47,7 @@ describe('ErliCredentialsPanel', () => {
     const envBacked = { ...erliConnection, credentialsBacked: false };
     renderWithProviders(<ErliCredentialsPanel connection={envBacked} />);
     expect(
-      screen.getByDisplayValue('Environment variable (not editable via UI)'),
+      screen.getByDisplayValue('Environment variable (not editable via UI)')
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /rotate/i })).not.toBeInTheDocument();
   });
@@ -91,15 +103,11 @@ describe('ErliCredentialsPanel', () => {
 
     expect(screen.queryByPlaceholderText('Allegro Client ID')).not.toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /browse allegro categories/i }),
-    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
     expect(screen.getByPlaceholderText('Allegro Client ID')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Allegro Client Secret')).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /browse allegro categories/i }),
-    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
     expect(screen.queryByPlaceholderText('Allegro Client ID')).not.toBeInTheDocument();
   });
 
@@ -114,7 +122,7 @@ describe('ErliCredentialsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
 
     expect(
-      screen.getByText(/enter both the allegro client id and client secret/i),
+      screen.getByText(/enter both the allegro client id and client secret/i)
     ).toBeInTheDocument();
   });
 
@@ -213,7 +221,7 @@ describe('ErliCredentialsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
 
     expect(
-      screen.getByText(/enter the allegro client id and client secret to enable/i),
+      screen.getByText(/enter the allegro client id and client secret to enable/i)
     ).toBeInTheDocument();
   });
 
@@ -262,11 +270,125 @@ describe('ErliCredentialsPanel', () => {
       expect(update).toHaveBeenCalledTimes(1);
     });
     expect(
-      await screen.findByText(/category-browsing setting failed to save/i),
+      await screen.findByText(/category-browsing setting failed to save/i)
     ).toBeInTheDocument();
     // Panel stays open (flag write failed, so it never got a chance to reflect the
     // new value anywhere the operator can see) and the fields aren't discarded.
     expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
     expect(screen.queryByText('Credentials saved')).not.toBeInTheDocument();
+  });
+
+  describe('reuse an existing Allegro connection (#1387)', () => {
+    it('shows only the manual fields plus a "no connection found" notice when there are zero Allegro connections', async () => {
+      const list = vi.fn().mockResolvedValue([]);
+      const apiClient = createMockApiClient({ connections: { list } });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+
+      expect(
+        await screen.findByText(/no allegro connection found on this account/i)
+      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Allegro Client ID')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/reuse credentials from an existing allegro connection/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('defaults to the reuse radio with a connection picker when an Allegro connection exists', async () => {
+      const list = vi.fn().mockResolvedValue([allegroConnection]);
+      const apiClient = createMockApiClient({ connections: { list } });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+
+      expect(
+        await screen.findByText(/reuse credentials from an existing allegro connection/i)
+      ).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /reuse credentials/i })).toBeChecked();
+      expect(screen.getByRole('option', { name: allegroConnection.name })).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Allegro Client ID')).not.toBeInTheDocument();
+    });
+
+    it('sends reuseAllegroConnectionId (not raw credentials) and patches allegroCategoryAccessEnabled=true', async () => {
+      const list = vi.fn().mockResolvedValue([allegroConnection]);
+      const updateCredentials = vi.fn().mockResolvedValue(undefined);
+      const update = vi.fn().mockResolvedValue(erliConnectionWithAllegroAccess);
+      const apiClient = createMockApiClient({
+        connections: { list, updateCredentials, update },
+      });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+      await screen.findByRole('combobox', { name: /allegro connection to reuse/i });
+      fireEvent.change(screen.getByRole('combobox', { name: /allegro connection to reuse/i }), {
+        target: { value: allegroConnection.id },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+      await waitFor(() => {
+        expect(updateCredentials).toHaveBeenCalledWith(erliConnection.id, {
+          reuseAllegroConnectionId: allegroConnection.id,
+        });
+      });
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(erliConnection.id, {
+          config: { ...erliConnection.config, allegroCategoryAccessEnabled: true },
+        });
+      });
+      // The raw Allegro secret is never present anywhere in this flow's payloads.
+      expect(updateCredentials.mock.calls[0][1]).not.toHaveProperty('allegroClientSecret');
+    });
+
+    it('switches to manual fields when "Enter Allegro app credentials manually" is chosen, unaffected by available connections', async () => {
+      const list = vi.fn().mockResolvedValue([allegroConnection]);
+      const updateCredentials = vi.fn().mockResolvedValue(undefined);
+      const update = vi.fn().mockResolvedValue(erliConnectionWithAllegroAccess);
+      const apiClient = createMockApiClient({
+        connections: { list, updateCredentials, update },
+      });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+      await screen.findByRole('radio', { name: /enter allegro app credentials manually/i });
+      fireEvent.click(
+        screen.getByRole('radio', { name: /enter allegro app credentials manually/i })
+      );
+
+      expect(screen.getByPlaceholderText('Allegro Client ID')).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText('Allegro Client ID'), {
+        target: { value: 'client-123' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Allegro Client Secret'), {
+        target: { value: 'secret-456' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+      await waitFor(() => {
+        expect(updateCredentials).toHaveBeenCalledWith(erliConnection.id, {
+          allegroClientId: 'client-123',
+          allegroClientSecret: 'secret-456',
+        });
+      });
+    });
+
+    it('blocks submit when enabling via reuse without selecting a connection', async () => {
+      const list = vi.fn().mockResolvedValue([allegroConnection]);
+      const apiClient = createMockApiClient({ connections: { list } });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+      await screen.findByRole('combobox', { name: /allegro connection to reuse/i });
+      fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+      expect(
+        screen.getByText(/select an allegro connection to reuse its credentials/i)
+      ).toBeInTheDocument();
+    });
   });
 });

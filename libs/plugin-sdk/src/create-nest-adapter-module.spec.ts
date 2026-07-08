@@ -26,6 +26,7 @@ import {
   INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN,
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   CREDENTIALS_RESOLVER_TOKEN,
 } from '@openlinker/core/integrations';
@@ -63,6 +64,7 @@ describe('createNestAdapterModule', () => {
     inboundWebhookDecoderRegistry: object;
     connectionConfigShapeValidatorRegistry: object;
     connectionCredentialsShapeValidatorRegistry: object;
+    connectionCredentialsRewriterRegistry: object;
     oauthCompletionRegistry: object;
     retryClassifierRegistry: object;
     authFailureClassifierRegistry: object;
@@ -80,6 +82,7 @@ describe('createNestAdapterModule', () => {
       inboundWebhookDecoderRegistry: {},
       connectionConfigShapeValidatorRegistry: {},
       connectionCredentialsShapeValidatorRegistry: {},
+      connectionCredentialsRewriterRegistry: {},
       oauthCompletionRegistry: {},
       retryClassifierRegistry: {},
       authFailureClassifierRegistry: {},
@@ -121,6 +124,10 @@ describe('createNestAdapterModule', () => {
         {
           provide: CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
           useValue: registries.connectionCredentialsShapeValidatorRegistry,
+        },
+        {
+          provide: CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+          useValue: registries.connectionCredentialsRewriterRegistry,
         },
         {
           provide: INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,

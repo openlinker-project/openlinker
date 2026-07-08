@@ -19,6 +19,7 @@ export { InboundWebhookDecoderRegistryService } from './infrastructure/adapters/
 export { EmailNormalizerRegistryService } from './infrastructure/adapters/email-normalizer-registry.service';
 export { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 export { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
+export { ConnectionCredentialsRewriterRegistryService } from './infrastructure/adapters/connection-credentials-rewriter-registry.service';
 export { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 
 // Ports
@@ -32,6 +33,7 @@ export { InboundWebhookDecoderPort } from './domain/ports/inbound-webhook-decode
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
 export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
+export { ConnectionCredentialsRewriterPort } from './domain/ports/connection-credentials-rewriter.port';
 export { OAuthCompletionPort } from './domain/ports/oauth-completion.port';
 export {
   WebhookSecretProviderPort,
@@ -83,6 +85,7 @@ export { DuplicateAdapterKeyException } from './domain/exceptions/duplicate-adap
 export { DuplicatePlatformDefaultException } from './domain/exceptions/duplicate-platform-default.exception';
 export { InvalidConnectionConfigException } from './domain/exceptions/invalid-connection-config.exception';
 export { InvalidCredentialsShapeException } from './domain/exceptions/invalid-credentials-shape.exception';
+export { ConnectionCredentialsRewriteException } from './domain/exceptions/connection-credentials-rewrite.exception';
 export { OAuthCodeExchangeException } from './domain/exceptions/oauth-code-exchange.exception';
 export {
   flattenValidationErrors,
