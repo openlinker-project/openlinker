@@ -1140,6 +1140,15 @@ textarea,
   color: var(--text-primary);
 }
 
+/* Lock glyph on a demo-restricted nav item (#1379) — a visible affordance so
+   "locked" reads at a glance without waiting for the hover tooltip. */
+.shell-nav__link-lock {
+  padding-left: 0.5rem;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
 /* Workspace footer: org + env + user + sign-out. Desktop only lives at
    the bottom of the sticky sidebar; drawer keeps it inline. */
 .shell-workspace {
