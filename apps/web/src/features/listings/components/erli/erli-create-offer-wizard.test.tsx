@@ -345,7 +345,12 @@ describe('ErliCreateOfferWizard', () => {
       await screen.findByText('Category');
       fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-      expect(await screen.findByText(/select a category to continue/i)).toBeInTheDocument();
+      // CI runners under load can be slower to commit the manual RHF error
+      // than the 1s testing-library default (#1420 review) — widen this one
+      // assertion rather than the whole suite's global timeout.
+      expect(
+        await screen.findByText(/select a category to continue/i, {}, { timeout: 5000 }),
+      ).toBeInTheDocument();
       // Still on the Category step — Category-parameters never rendered.
       expect(screen.queryByText(/no additional parameters required/i)).not.toBeInTheDocument();
     });
