@@ -1,0 +1,54 @@
+# Optional reverse-proxy + TLS overlay for public-domain demo deployments (#1403).
+#
+# Used ON TOP of the base + demo overlays:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.proxy.yml \
+#     up -d --build postgres redis mysql prestashop migrate api worker web caddy
+#
+# Adds a single Caddy service that terminates TLS (automatic Let's Encrypt
+# certificates, zero manual ACME config) and routes by hostname to the
+# existing web/api/prestashop services. Caddy reaches them over the internal
+# Compose network by SERVICE NAME (web:80, api:3000, prestashop:80) — it does
+# NOT depend on those services publishing host ports, so this overlay works
+# whether or not the loopback-binding hardening from #1400/#1402 has landed,
+# and avoids a redundant hop back out through the host network stack.
+#
+# This overlay REQUIRES docker-compose.demo.yml (the `web` service only
+# exists there — the bare dev stack has no admin UI to serve).
+#
+# Required .env vars (see .env.example): WEB_DOMAIN, API_DOMAIN,
+# PRESTASHOP_DOMAIN, TLS_EMAIL. See
+# docs/public-domain-demo-deployment-guide.md for the full walkthrough,
+# including local verification without real DNS (CADDYFILE_PATH override).
+#
+# Omitting `-f docker-compose.proxy.yml` reproduces today's plain-HTTP
+# localhost behavior unchanged — this overlay touches no other service.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: openlinker-caddy
+    environment:
+      WEB_DOMAIN: '${WEB_DOMAIN:?set WEB_DOMAIN in .env (see .env.example) - the public hostname for the admin UI}'
+      API_DOMAIN: '${API_DOMAIN:?set API_DOMAIN in .env (see .env.example) - the public hostname for the API}'
+      PRESTASHOP_DOMAIN: '${PRESTASHOP_DOMAIN:?set PRESTASHOP_DOMAIN in .env (see .env.example) - the public hostname for PrestaShop}'
+      TLS_EMAIL: '${TLS_EMAIL:?set TLS_EMAIL in .env (see .env.example) - required by Lets Encrypt for expiry notices}'
+    ports:
+      # Unbound (not loopback) by design — this is the public TLS-terminating
+      # edge; that is the point of the overlay.
+      - '80:80'
+      - '443:443'
+    volumes:
+      # CADDYFILE_PATH lets local verification swap in Caddyfile.local
+      # (tls internal, no real DNS/domain needed) without editing this file.
+      - '${CADDYFILE_PATH:-./docker/caddy/Caddyfile}:/etc/caddy/Caddyfile:ro'
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+      - prestashop
+
+volumes:
+  caddy_data:
+  caddy_config:

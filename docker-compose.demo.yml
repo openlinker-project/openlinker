@@ -73,7 +73,8 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the base file's postgres service POSTGRES_PASSWORD (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -134,7 +135,8 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the base file's postgres service POSTGRES_PASSWORD (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       # migration 1795000000000-encrypt-integration-credentials fails closed
       # under NODE_ENV=production when this is unset, rolling back and exiting 1
