@@ -50,8 +50,9 @@ import {
   type GenerateLabelInput,
 } from '../../shipments';
 import {
+  buildGenerateLabelSchema,
   COD_CURRENCY_VALUES,
-  generateLabelSchema,
+  PARCEL_TEMPLATE_VALUES,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
 } from './generate-label-form.schema';
@@ -159,6 +160,10 @@ export function GenerateLabelForm({
     }
   };
 
+  // Locker size is only required for paczkomat — built per-render off the
+  // resolved shipping method so the courier flow never demands it.
+  const schema = useMemo(() => buildGenerateLabelSchema(shippingMethod), [shippingMethod]);
+
   const form = useForm<GenerateLabelFormValues, undefined, GenerateLabelFormSubmission>({
     defaultValues: {
       // Numeric fields bind to native `<input type="number">`, which RHF sees
@@ -172,11 +177,12 @@ export function GenerateLabelForm({
       // Allegro flow: paczkomatId is pre-filled buyer-selected; InPost flow:
       // operator types (picker deferred per plan).
       paczkomatId: snapshot.pickupPoint?.id ?? '',
+      parcelTemplate: undefined,
       // COD (#966, decision A) — operator-entered at dispatch; not order-sourced.
       codAmount: '',
       codCurrency: 'PLN',
     },
-    resolver: zodResolver(generateLabelSchema),
+    resolver: zodResolver(schema),
   });
 
   // Cache the `register('length')` call so the spread and the explicit-ref
@@ -187,6 +193,7 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
+  const parcelTemplateRegister = form.register('parcelTemplate');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
 
@@ -226,6 +233,7 @@ export function GenerateLabelForm({
           height: values.height,
           weightGrams: values.weightGrams,
         },
+        parcelTemplate: values.parcelTemplate,
         paczkomatId: values.paczkomatId,
         cod:
           values.codAmount && values.codAmount.length > 0
@@ -434,6 +442,28 @@ export function GenerateLabelForm({
               aria-readonly={paczkomatIsBuyerSelected ? 'true' : undefined}
               placeholder={paczkomatIsBuyerSelected ? undefined : 'POZ08A'}
             />
+          </FormField>
+        ) : null}
+
+        {shippingMethod === 'paczkomat' ? (
+          <FormField
+            label="Locker size"
+            name="parcelTemplate"
+            description="Size of the InPost locker compartment for this parcel."
+            error={form.formState.errors.parcelTemplate?.message}
+          >
+            <Select
+              {...parcelTemplateRegister}
+              aria-label="Locker size"
+              invalid={Boolean(form.formState.errors.parcelTemplate)}
+            >
+              <option value="">Select size…</option>
+              {PARCEL_TEMPLATE_VALUES.map((size) => (
+                <option key={size} value={size}>
+                  {size.charAt(0).toUpperCase() + size.slice(1)}
+                </option>
+              ))}
+            </Select>
           </FormField>
         ) : null}
 

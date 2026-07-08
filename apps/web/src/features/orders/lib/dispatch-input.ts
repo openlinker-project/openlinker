@@ -105,10 +105,12 @@ export function buildDispatchItem(args: {
   snapshot: ParsedOrderSnapshot;
   shippingMethod: ResolvedShippingMethod;
   parcel: DispatchParcel;
+  /** Locker size (InPost ShipX `template`) — required for a paczkomat shipment. */
+  parcelTemplate?: string;
   paczkomatId?: string;
   cod?: { amount: string; currency: string };
 }): BulkDispatchItem {
-  const { order, snapshot, shippingMethod, parcel, paczkomatId, cod } = args;
+  const { order, snapshot, shippingMethod, parcel, parcelTemplate, paczkomatId, cod } = args;
   const a = snapshot.shippingAddress;
 
   const address =
@@ -137,6 +139,7 @@ export function buildDispatchItem(args: {
       address,
     },
     parcel: {
+      ...(shippingMethod === 'paczkomat' && parcelTemplate ? { template: parcelTemplate } : {}),
       dimensions: { length: parcel.length, width: parcel.width, height: parcel.height },
       weightGrams: parcel.weightGrams,
     },
