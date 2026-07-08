@@ -32,6 +32,8 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  MarkInvoicePaidCommand,
+  PaymentMarker,
   PaymentStatus,
   PaymentStatusReader,
   PaymentStatusResult,
@@ -267,6 +269,7 @@ export class InfaktInvoicingAdapter
     InvoicingPort,
     RegulatoryStatusReader,
     PaymentStatusReader,
+    PaymentMarker,
     RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
@@ -559,6 +562,30 @@ export class InfaktInvoicingAdapter
     );
 
     return { paymentStatus: toPaymentStatus(invoice) };
+  }
+
+  /**
+   * `PaymentMarker.markPaid` (#1362) - the outbound counterpart to
+   * `getPaymentStatus`: push an authoritative "paid" state to inFakt for an
+   * order settled elsewhere (e.g. a marketplace order - the buyer paid the
+   * marketplace, not the seller's bank account, so inFakt has no bank
+   * statement to auto-match against). Verified live against the sandbox
+   * (2026-07-08): `POST /async/invoices/{uuid}/paid.json` returns 201 with an
+   * async task envelope (`processing_code: 100`, "task accepted" - not
+   * "completed"), and an immediate re-read shows `status: 'paid'` /
+   * `paid_date` set. Re-marking an already-paid invoice is safe (still 201,
+   * no error).
+   *
+   * Async on inFakt's side: the caller is responsible for re-reading via
+   * `getPaymentStatus` afterward if it needs OL's own projection updated -
+   * this method only confirms the provider ACCEPTED the mark, not that its
+   * processing has finished.
+   */
+  async markPaid(cmd: MarkInvoicePaidCommand): Promise<void> {
+    await this.http.post(`async/invoices/${encodeURIComponent(cmd.externalInvoiceId)}/paid.json`, {
+      invoice: { paid_date: cmd.paidDate.toISOString().slice(0, 10) },
+    });
+    this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} marked as paid`);
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
