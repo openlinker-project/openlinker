@@ -17,6 +17,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PropsWithChildren,
   type ReactElement,
 } from 'react';
@@ -44,6 +45,13 @@ import { CommandPaletteProvider, useCommandPalette } from './command-palette-pro
 import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 import { DemoBanner } from '../shared/ui/demo-banner';
 import { useSystemConfigQuery } from '../features/system';
+import {
+  disableDemoAnalytics,
+  getDemoAnalyticsConsent,
+  initDemoIntegrations,
+  setDemoAnalyticsConsent,
+  type DemoAnalyticsConsent,
+} from '../features/demo';
 
 interface SidebarNavProps {
   ariaLabel: string;
@@ -204,6 +212,11 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { showToast } = useToast();
   const systemConfigQuery = useSystemConfigQuery();
   const demoMode = systemConfigQuery.data?.demoMode ?? false;
+  const posthogConfig = systemConfigQuery.data?.demoIntegrations?.posthog;
+  const [analyticsConsent, setAnalyticsConsent] = useState<DemoAnalyticsConsent | null>(() =>
+    getDemoAnalyticsConsent(),
+  );
+  const hasInitializedAnalyticsRef = useRef(false);
   const location = useLocation();
   const drawerRef = useRef<HTMLDialogElement>(null);
   // Initialize density at boot so <html data-density="..."> is set before
@@ -237,6 +250,29 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
       showToast({ tone: 'info', description: 'You have been logged out.' });
     })();
   }, [clearSession, showToast]);
+
+  // Demo-only analytics (#1301) — attempt init once the config query has
+  // settled and again whenever the visitor grants consent. The loader's own
+  // guards (demoMode, config presence, consent) make repeat calls a no-op,
+  // but hasInitializedAnalyticsRef avoids a redundant dynamic import.
+  useEffect(() => {
+    if (!systemConfigQuery.isSuccess || hasInitializedAnalyticsRef.current) {
+      return;
+    }
+    if (analyticsConsent !== 'accepted') {
+      return;
+    }
+    hasInitializedAnalyticsRef.current = true;
+    void initDemoIntegrations(systemConfigQuery.data);
+  }, [systemConfigQuery.isSuccess, systemConfigQuery.data, analyticsConsent]);
+
+  const handleAnalyticsConsentChange = useCallback((consent: DemoAnalyticsConsent): void => {
+    setDemoAnalyticsConsent(consent);
+    setAnalyticsConsent(consent);
+    if (consent === 'declined') {
+      disableDemoAnalytics();
+    }
+  }, []);
 
   const crumbs = resolveCrumbFromMatches(matches);
 
@@ -315,7 +351,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           ) : null}
         </header>
 
-        {demoMode ? <DemoBanner /> : null}
+        {demoMode ? (
+          <DemoBanner
+            consentPending={Boolean(posthogConfig?.key) && analyticsConsent === null}
+            consentAccepted={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}
+            onConsentChange={handleAnalyticsConsentChange}
+          />
+        ) : null}
 
         {/* `key={location.pathname}` retriggers the .shell-content
             cross-fade animation on every route change (#775). */}

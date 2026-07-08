@@ -103,6 +103,35 @@ demo-safe values. Listed here so you know what's in play if you want to override
 > `VITE_API_BASE_URL` is a **build-time** input — changing it requires rebuilding
 > the `web` image (`pnpm demo:up` rebuilds when the arg changes).
 
+### Optional: session recording on a public demo instance
+
+**OpenLinker ships no telemetry by default.** Session recording (PostHog)
+only activates on an instance where the operator has both set
+`OL_DEMO_MODE=true` and explicitly configured `OL_POSTHOG_KEY` — a self-hosted
+install or a local `pnpm demo:up` run never contacts PostHog. When both are
+set, `GET /system/config` surfaces a `demoIntegrations.posthog` block that the
+frontend uses to load `posthog-js` (dynamically, so it never ships in the
+default bundle) — and only after the visitor accepts the consent prompt shown
+in the demo banner.
+
+| Variable | Purpose |
+|---|---|
+| `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
+| `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
+
+**Only run session recording against synthetic seed data.** Recording masks
+all form inputs and all rendered text (`maskAllInputs` + a mask-everything
+text selector), but a demo instance pointed at real shop data would still
+expose non-text signal (order IDs in URLs, image content, layout) to
+PostHog cloud. Session recording is intended for the seeded demo dataset
+only — never enable `OL_POSTHOG_KEY` on an instance connected to a live
+PrestaShop/Allegro/Erli store with real customer data.
+
+A visitor who accepted the consent prompt can revoke it at any time from
+the demo banner ("Disable" next to "Analytics on").
+
+See ADR-032 (`docs/architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md`, merging via #1410) for the design rationale.
+
 ---
 
 ## 3. Boot the stack

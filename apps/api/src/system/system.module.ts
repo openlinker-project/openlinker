@@ -10,6 +10,8 @@
 import { Module } from '@nestjs/common';
 import { DemoModeService } from '../auth/demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
+import { PosthogConfigService } from './posthog-config.service';
+import { POSTHOG_CONFIG_SERVICE_TOKEN } from './posthog-config.service.interface';
 import { SystemService } from './system.service';
 import { SYSTEM_SERVICE_TOKEN } from './system.service.interface';
 import { SystemController } from './system.controller';
@@ -19,6 +21,8 @@ import { SystemController } from './system.controller';
   providers: [
     DemoModeService,
     { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
+    PosthogConfigService,
+    { provide: POSTHOG_CONFIG_SERVICE_TOKEN, useExisting: PosthogConfigService },
     SystemService,
     { provide: SYSTEM_SERVICE_TOKEN, useExisting: SystemService },
   ],

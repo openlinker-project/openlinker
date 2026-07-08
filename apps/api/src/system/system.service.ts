@@ -12,6 +12,10 @@ import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../auth/demo-mode.service.interface';
+import {
+  POSTHOG_CONFIG_SERVICE_TOKEN,
+  type IPosthogConfigService,
+} from './posthog-config.service.interface';
 import type { ISystemService } from './system.service.interface';
 import type { SystemConfigDto } from './dto/system-config.dto';
 
@@ -20,9 +24,21 @@ export class SystemService implements ISystemService {
   constructor(
     @Inject(DEMO_MODE_SERVICE_TOKEN)
     private readonly demoModeService: IDemoModeService,
+    @Inject(POSTHOG_CONFIG_SERVICE_TOKEN)
+    private readonly posthogConfigService: IPosthogConfigService,
   ) {}
 
   getConfig(): SystemConfigDto {
-    return { demoMode: this.demoModeService.isDemoModeEnabled() };
+    const demoMode = this.demoModeService.isDemoModeEnabled();
+    if (!demoMode) {
+      return { demoMode };
+    }
+
+    const posthog = this.posthogConfigService.getConfig();
+    if (!posthog) {
+      return { demoMode };
+    }
+
+    return { demoMode, demoIntegrations: { posthog } };
   }
 }
