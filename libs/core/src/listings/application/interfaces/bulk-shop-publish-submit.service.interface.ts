@@ -27,9 +27,9 @@ export interface IBulkShopPublishSubmitService {
    *
    * Throws `ConnectionNotFoundException` (→ 404), `ConnectionDisabledException`
    * (→ 409), `CapabilityNotSupportedException` (→ 422) for the connection/capability
-   * cascade, and `EmptyBulkSubmissionException` (→ 400) when `internalVariantIds`
-   * is empty. On partial enqueue failure the batch is marked `failed` best-effort
-   * and the error re-thrown.
+   * cascade, and `EmptyBulkSubmissionException` (→ 400) when `items` is empty. On
+   * partial enqueue failure the batch is marked `failed` best-effort and the
+   * error re-thrown.
    */
   submit(input: BulkShopPublishSubmitInput): Promise<BulkShopPublishSubmitResult>;
 

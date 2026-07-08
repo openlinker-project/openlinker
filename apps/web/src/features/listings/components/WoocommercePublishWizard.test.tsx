@@ -94,7 +94,11 @@ describe('WoocommercePublishWizard', () => {
     const [body] = shopPublishBulk.mock.calls[0];
     expect(body).toMatchObject({
       connectionId: 'conn_woo_1',
-      internalVariantIds: ['ol_variant_1', 'ol_variant_2', 'ol_variant_3'],
+      items: [
+        { internalVariantId: 'ol_variant_1', stock: 0 },
+        { internalVariantId: 'ol_variant_2', stock: 0 },
+        { internalVariantId: 'ol_variant_3', stock: 0 },
+      ],
       status: 'draft',
     });
     await waitFor(() => {
@@ -102,7 +106,63 @@ describe('WoocommercePublishWizard', () => {
     });
   });
 
-  it('shows a searchable variant picker and lets the operator pick one when opened without a default variant', async () => {
+  it('gives each product its own stock/price row in bulk Configure, independent of the others (#1414)', async () => {
+    const shopPublishBulk = vi.fn().mockResolvedValue({ batchId: 'batch-7', items: [] });
+    const apiClient = createMockApiClient({ listings: { shopPublishBulk } });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        defaultVariantIds={['ol_variant_1', 'ol_variant_2']}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    const stockInputs = await screen.findAllByPlaceholderText('master');
+    // 2 products × (stock, price) = 4 inputs; stock inputs are the even ones.
+    fireEvent.change(stockInputs[0], { target: { value: '12' } });
+
+    fireEvent.click(await screen.findByRole('button', { name: /publish 2 products/i }));
+
+    await waitFor(() => {
+      expect(shopPublishBulk).toHaveBeenCalledTimes(1);
+    });
+    const [body] = shopPublishBulk.mock.calls[0];
+    expect(body.items).toEqual([
+      { internalVariantId: 'ol_variant_1', stock: 12 },
+      { internalVariantId: 'ol_variant_2', stock: 0 },
+    ]);
+  });
+
+  it('removes a product from the batch via its row remove button', async () => {
+    const shopPublishBulk = vi.fn().mockResolvedValue({ batchId: 'batch-7', items: [] });
+    const apiClient = createMockApiClient({ listings: { shopPublishBulk } });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        defaultVariantIds={['ol_variant_1', 'ol_variant_2']}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    await screen.findByRole('button', { name: /publish 2 products/i });
+    fireEvent.click((await screen.findAllByRole('button', { name: /remove.*from batch/i }))[0]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /publish 1 product/i }));
+
+    await waitFor(() => {
+      expect(shopPublishBulk).toHaveBeenCalledTimes(1);
+    });
+    const [body] = shopPublishBulk.mock.calls[0];
+    expect(body.items).toEqual([{ internalVariantId: 'ol_variant_2', stock: 0 }]);
+  });
+
+  it('shows a searchable multi-select picker and lets the operator check one or more variants when opened without a default variant', async () => {
     const shopPublish = vi
       .fn()
       .mockResolvedValue({ jobId: 'job-1', listingCreationRecordId: 'rec-9' });
@@ -135,14 +195,19 @@ describe('WoocommercePublishWizard', () => {
       { apiClient },
     );
 
-    // Publish is disabled until a variant is picked.
-    expect(await screen.findByRole('button', { name: /^publish$/i })).toBeDisabled();
+    // Continue is disabled until at least one variant is checked.
+    expect(
+      await screen.findByRole('button', { name: /continue with 0 products/i }),
+    ).toBeDisabled();
 
     fireEvent.click(await screen.findByText('Red Shirt'));
-    fireEvent.click(await screen.findByRole('radio'));
+    fireEvent.click(await screen.findByRole('checkbox'));
+
+    const continueButton = await screen.findByRole('button', { name: /continue with 1 product/i });
+    expect(continueButton).not.toBeDisabled();
+    fireEvent.click(continueButton);
 
     const publishButton = await screen.findByRole('button', { name: /^publish$/i });
-    expect(publishButton).not.toBeDisabled();
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -150,6 +215,47 @@ describe('WoocommercePublishWizard', () => {
     });
     const [, body] = shopPublish.mock.calls[0];
     expect(body).toMatchObject({ internalVariantId: 'ol_variant_9' });
+  });
+
+  it('removes a checked variant from the selection tray before continuing', async () => {
+    const products = {
+      list: vi.fn().mockResolvedValue({
+        items: [{ id: 'prod_1', name: 'Red Shirt', sku: 'RS-1', price: 19.99, currency: 'PLN' }],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      }),
+      getById: vi.fn().mockResolvedValue({
+        id: 'prod_1',
+        name: 'Red Shirt',
+        sku: 'RS-1',
+        price: 19.99,
+        currency: 'PLN',
+        variants: [
+          { id: 'ol_variant_9', productId: 'prod_1', sku: 'RS-1-M', ean: null, gtin: null, price: 19.99 },
+        ],
+      }),
+    };
+    const apiClient = createMockApiClient({ listings: {}, products });
+
+    renderWithProviders(
+      <WoocommercePublishWizard
+        connection={wooConnection}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    fireEvent.click(await screen.findByText('Red Shirt'));
+    fireEvent.click(await screen.findByRole('checkbox'));
+    await screen.findByRole('button', { name: /continue with 1 product/i });
+
+    fireEvent.click(await screen.findByRole('button', { name: /remove.*from batch/i }));
+
+    expect(
+      await screen.findByRole('button', { name: /continue with 0 products/i }),
+    ).toBeDisabled();
   });
 
   it('rejects a negative stock value and does not call the API', async () => {

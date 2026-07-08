@@ -235,7 +235,7 @@ export function ShopPublishLauncher({
         if (!next) close();
       }}
     >
-      <DialogContent>
+      <DialogContent className="dialog__content--publish">
         <DialogTitle>{title}</DialogTitle>
         {description !== null ? (
           <DialogDescription className="mono-text">{description}</DialogDescription>
