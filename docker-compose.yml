@@ -124,7 +124,11 @@ services:
       # /wp-json/wc/v3/ = WC namespace index, returns 200 without auth once WC is active.
       # NOT /wp-json/wc/v3/system_status (requires consumer key — chicken-and-egg at startup).
       # php, not curl/wget — neither exists in the bitnamilegacy image.
-      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc/v3") === false ? 1 : 0);''']
+      # Needle is "wc\/v3", not "wc/v3": the response body is a JSON string
+      # produced by PHP's json_encode, which escapes "/" as "\/" by default —
+      # the unescaped needle never matches, so the healthcheck always failed
+      # (container ran fine but was permanently reported unhealthy).
+      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc\/v3") === false ? 1 : 0);''']
       interval: 30s
       timeout: 10s
       retries: 10
@@ -181,7 +185,11 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'php -r "exit(@file_get_contents(\"http://localhost:80\") ? 0 : 1);"']
+      # PS_DOMAIN redirects "/" to http://localhost:8080/ (the host-mapped port),
+      # which isn't reachable from inside this container. `curl` without `-L`
+      # accepts the 302 as proof Apache is up; PHP's file_get_contents() follows
+      # redirects by default and fails with "Connection refused" on :8080 (#1392).
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://localhost:80']
       interval: 30s
       timeout: 10s
       retries: 5
