@@ -5,10 +5,10 @@ provider: it issues invoices and reads back their KSeF clearance status through
 inFakt's own, native KSeF submission.
 
 inFakt is the second provider of the country-agnostic **Invoicing** domain
-([ADR-026](../../architecture/adrs/026-country-agnostic-invoicing-domain.md)). Unlike
+([ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md)). Unlike
 the `@openlinker/integrations-ksef` package, OL never opens a KSeF session or builds
 FA(3) XML for inFakt-issued invoices — inFakt does that internally, on its own
-timing. See [ADR-030](../../architecture/adrs/030-infakt-ksef-indirection.md) for the
+timing. See [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) for the
 full rationale behind that design.
 
 ---
@@ -25,7 +25,7 @@ full rationale behind that design.
 
 The connection detail page shows the enabled capability roles for the connection:
 
-![inFakt capability panel](../../../libs/integrations/infakt/docs/assets/19-infakt-capability-panel.png)
+![inFakt capability panel](./assets/19-infakt-capability-panel.png)
 
 - **adapterKey:** `infakt.accounting.v1`
 - **platformType:** `infakt`
@@ -42,13 +42,13 @@ The connection detail page shows the enabled capability roles for the connection
    **not** submit to KSeF on its own — but that trigger only succeeds if KSeF
    integration is turned on for the account; inFakt still owns the actual clearance
    session and timing once submission starts. See
-   [ADR-030](../../architecture/adrs/030-infakt-ksef-indirection.md) for the full
+   [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) for the full
    rationale.
 3. An **API key**, generated from your inFakt account settings.
 
-![inFakt dashboard login](../../../libs/integrations/infakt/docs/assets/if1-infakt-dashboard-login.png)
+![inFakt dashboard login](./assets/if1-infakt-dashboard-login.png)
 
-![inFakt API key page](../../../libs/integrations/infakt/docs/assets/if2-infakt-api-key-page.png)
+![inFakt API key page](./assets/if2-infakt-api-key-page.png)
 
 ---
 
@@ -56,7 +56,7 @@ The connection detail page shows the enabled capability roles for the connection
 
 From **Connections → New connection**, pick **inFakt** from the platform picker.
 
-![Platform picker](../../../libs/integrations/infakt/docs/assets/00-platform-picker.png)
+![Platform picker](./assets/00-platform-picker.png)
 
 The guided wizard (`/connections/new/infakt`) collects:
 
@@ -67,9 +67,9 @@ The guided wizard (`/connections/new/infakt`) collects:
 | Base URL (optional) | ❌ | Advanced override for sandbox testing. Must use HTTPS. Leave blank to use inFakt's production API. |
 | Default payment method | ❌ | `Cash` or `Transfer` - the `payment_method` stamped on every invoice issued through this connection. Leave it untouched to fall back to `Cash`. `Transfer` is rejected (422) by inFakt unless a bank account is configured on the seller's inFakt account. |
 
-![inFakt wizard, empty](../../../libs/integrations/infakt/docs/assets/01-infakt-wizard-empty.png)
+![inFakt wizard, empty](./assets/01-infakt-wizard-empty.png)
 
-![inFakt wizard, filled in](../../../libs/integrations/infakt/docs/assets/02-infakt-wizard-filled.png)
+![inFakt wizard, filled in](./assets/02-infakt-wizard-filled.png)
 
 When **Transfer** is selected, the connection also carries a **bank account for
 Transfer invoices**. The picker for a specific account unlocks once the connection
@@ -82,11 +82,11 @@ and the picked account's number and bank name.
 After submitting, the connection is created and a **Test connection** affordance
 appears — use it to confirm the API key is valid before relying on the connection.
 
-![Connection created](../../../libs/integrations/infakt/docs/assets/03-infakt-connection-created.png)
+![Connection created](./assets/03-infakt-connection-created.png)
 
-![Connection test passed](../../../libs/integrations/infakt/docs/assets/04-infakt-connection-test-ok.png)
+![Connection test passed](./assets/04-infakt-connection-test-ok.png)
 
-![Connections list with inFakt](../../../libs/integrations/infakt/docs/assets/05-connections-list-with-infakt.png)
+![Connections list with inFakt](./assets/05-connections-list-with-infakt.png)
 
 Both payment fields stay editable after creation. On the connection **Edit** form,
 the **Payment method for invoice** disclosure exposes the same **Default payment
@@ -95,9 +95,9 @@ from inFakt. Picking a different account persists it eagerly and syncs it back a
 default account in inFakt, so the connection config and the inFakt account never
 drift apart.
 
-![Edit form, payment method disclosure](../../../libs/integrations/infakt/docs/assets/06-infakt-edit-payment-section.png)
+![Edit form, payment method disclosure](./assets/06-infakt-edit-payment-section.png)
 
-![Edit form, changed bank account persisted](../../../libs/integrations/infakt/docs/assets/07-infakt-edit-bank-persisted.png)
+![Edit form, changed bank account persisted](./assets/07-infakt-edit-bank-persisted.png)
 
 ---
 
@@ -130,9 +130,9 @@ auto-provisioning). Set it up manually:
    set it as OL's webhook secret for this connection so `X-Infakt-Signature`
    verification matches.
 
-![inFakt webhooks list](../../../libs/integrations/infakt/docs/assets/if3-infakt-webhooks-list.png)
+![inFakt webhooks list](./assets/if3-infakt-webhooks-list.png)
 
-![inFakt webhook subscription form](../../../libs/integrations/infakt/docs/assets/if4-infakt-webhook-form.png)
+![inFakt webhook subscription form](./assets/if4-infakt-webhook-form.png)
 
 > **Known gap**: there is currently no OL admin-UI affordance for webhook secrets on
 > the inFakt connection page (unlike PrestaShop/Erli, which push an OL-generated
@@ -158,35 +158,35 @@ auto-provisioning). Set it up manually:
 1. Trigger an invoice issuance from OL for a test order (**Order detail → Issue
    invoice**, connection set to your inFakt connection).
 
-   ![Orders list](../../../libs/integrations/infakt/docs/assets/08-orders-list.png)
+   ![Orders list](./assets/08-orders-list.png)
 
-   ![Order detail, not yet issued](../../../libs/integrations/infakt/docs/assets/10-order-detail-not-issued.png)
+   ![Order detail, not yet issued](./assets/10-order-detail-not-issued.png)
 
 2. Immediately after issuance, the invoice section shows `submitted` — inFakt has
    accepted the invoice and queued it for KSeF submission.
 
-   ![Invoice issued, submitted](../../../libs/integrations/infakt/docs/assets/11-invoice-issued-submitted.png)
+   ![Invoice issued, submitted](./assets/11-invoice-issued-submitted.png)
 
 3. Within roughly a minute (sandbox: ~90s observed), inFakt's own KSeF submission
    completes. The webhook fires, OL re-reads the status, and the invoice section
    updates to `accepted` with a clearance reference chip.
 
-   ![Invoice accepted / cleared](../../../libs/integrations/infakt/docs/assets/12-invoice-accepted-cleared.png)
+   ![Invoice accepted / cleared](./assets/12-invoice-accepted-cleared.png)
 
 4. Confirm the same invoice shows as KSeF-confirmed from inFakt's own side.
 
-   ![inFakt invoice confirmed](../../../libs/integrations/infakt/docs/assets/if5-infakt-invoice-confirmed.png)
+   ![inFakt invoice confirmed](./assets/if5-infakt-invoice-confirmed.png)
 
 5. The full invoice detail page renders the regulatory region alongside the rest of
    the invoice.
 
-   ![Invoice detail page](../../../libs/integrations/infakt/docs/assets/13-invoice-detail-page.png)
+   ![Invoice detail page](./assets/13-invoice-detail-page.png)
 
 6. Download the invoice PDF. On the accepted invoice detail page, the **Download
    PDF** button in the KSeF clearance panel fetches the invoice as rendered by
    inFakt.
 
-   ![Download PDF on the accepted invoice](../../../libs/integrations/infakt/docs/assets/18-invoice-pdf-download.png)
+   ![Download PDF on the accepted invoice](./assets/18-invoice-pdf-download.png)
 
 ### Correcting an invoice
 
@@ -196,13 +196,13 @@ against the invoice lines as issued (the issuance-time snapshot persisted with t
 invoice record, #1297), not against the order's current state - editing the order
 after issuance does not shift the correction baseline.
 
-![Correction dialog, empty](../../../libs/integrations/infakt/docs/assets/14-correction-modal-empty.png)
+![Correction dialog, empty](./assets/14-correction-modal-empty.png)
 
-![Correction dialog, filled in](../../../libs/integrations/infakt/docs/assets/15-correction-modal-filled.png)
+![Correction dialog, filled in](./assets/15-correction-modal-filled.png)
 
-![Correction issued](../../../libs/integrations/infakt/docs/assets/16-correction-issued.png)
+![Correction issued](./assets/16-correction-issued.png)
 
-![Invoices list, with correction linked to the original](../../../libs/integrations/infakt/docs/assets/17-invoices-list.png)
+![Invoices list, with correction linked to the original](./assets/17-invoices-list.png)
 
 ---
 
@@ -220,11 +220,11 @@ after issuance does not shift the correction baseline.
 
 ## Related documentation
 
-- [ADR-030](../../architecture/adrs/030-infakt-ksef-indirection.md) — why this adapter
+- [ADR-030](../../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) — why this adapter
   implements `RegulatoryStatusReader`, not `RegulatoryTransmitter`
-- [ADR-026](../../architecture/adrs/026-country-agnostic-invoicing-domain.md) — the
+- [ADR-026](../../../../docs/architecture/adrs/026-country-agnostic-invoicing-domain.md) — the
   country-agnostic invoicing domain this provider plugs into
-- [ADR-021](../../architecture/adrs/021-third-party-native-inbound-webhook-ingestion.md) —
+- [ADR-021](../../../../docs/architecture/adrs/021-third-party-native-inbound-webhook-ingestion.md) —
   the inbound-webhook-decoder pattern `InfaktInboundWebhookDecoderAdapter` implements
-- [`libs/integrations/infakt/README.md`](../../../libs/integrations/infakt/README.md) —
+- [`libs/integrations/infakt/README.md`](../README.md) —
   package-level adapter reference (capabilities, credentials/config shape)

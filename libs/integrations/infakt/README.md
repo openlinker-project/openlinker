@@ -102,7 +102,7 @@ omit both to fall back to `cash` with no stamped account.
 
 ## Documentation
 
-- [docs/setup-guide.md](../../../docs/integrations/infakt/setup-guide.md) — operator
+- [docs/setup-guide.md](./docs/setup-guide.md) — operator
   setup guide (connection creation, webhook configuration, troubleshooting)
 - [ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md) — design
   rationale for the KSeF-intermediary model

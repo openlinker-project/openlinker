@@ -107,7 +107,7 @@ carries no independent retry/timing semantics of its own the way a true
   code path to notice and warn about this misconfiguration ahead of time — it's an
   operational, bookkeeping-side setting, not one OL surfaces or should re-implement
   (raised, not fixed, in the
-  [setup guide](../../integrations/infakt/setup-guide.md#troubleshooting)).
+  [setup guide](../../../libs/integrations/infakt/docs/setup-guide.md#troubleshooting)).
 
 ## References
 
@@ -118,4 +118,4 @@ carries no independent retry/timing semantics of its own the way a true
   [ADR-021](./021-third-party-native-inbound-webhook-ingestion.md) (per-provider inbound
   webhook decoder — how the `send_to_ksef_*` events reach OL)
 - Primary doc section: [docs/architecture-overview.md § 14 Invoicing](../../architecture-overview.md#14-invoicing)
-- Operator guide: [docs/integrations/infakt/setup-guide.md](../../integrations/infakt/setup-guide.md)
+- Operator guide: [libs/integrations/infakt/docs/setup-guide.md](../../../libs/integrations/infakt/docs/setup-guide.md)
