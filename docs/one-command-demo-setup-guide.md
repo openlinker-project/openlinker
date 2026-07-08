@@ -103,6 +103,24 @@ demo-safe values. Listed here so you know what's in play if you want to override
 > `VITE_API_BASE_URL` is a **build-time** input — changing it requires rebuilding
 > the `web` image (`pnpm demo:up` rebuilds when the arg changes).
 
+### Optional: session recording on a public demo instance
+
+**OpenLinker ships no telemetry by default.** Session recording (PostHog)
+only activates on an instance where the operator has both set
+`OL_DEMO_MODE=true` and explicitly configured `OL_POSTHOG_KEY` — a self-hosted
+install or a local `pnpm demo:up` run never contacts PostHog. When both are
+set, `GET /system/config` surfaces a `demoIntegrations.posthog` block that the
+frontend uses to load `posthog-js` (dynamically, so it never ships in the
+default bundle) — and only after the visitor accepts the consent prompt shown
+in the demo banner.
+
+| Variable | Purpose |
+|---|---|
+| `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
+| `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
+
+See [ADR-032](./architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md) for the design rationale.
+
 ---
 
 ## 3. Boot the stack

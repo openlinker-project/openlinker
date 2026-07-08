@@ -10295,6 +10295,16 @@ html[data-density='compact'] .status-badge {
   line-height: 1;
 }
 
+/* Analytics-consent CTA (#1301) — appended to the demo banner only when a
+   demo-only integration (e.g. PostHog) is configured and unconsented. */
+.demo-banner__consent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* Login / register page: info bar at top of the form-card. */
 .guest-form__demo-bar {
   display: flex;

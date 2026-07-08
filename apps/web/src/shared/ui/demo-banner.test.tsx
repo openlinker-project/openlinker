@@ -1,6 +1,7 @@
 import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { DemoBanner } from './demo-banner';
 
 describe('DemoBanner', () => {
@@ -25,5 +26,30 @@ describe('DemoBanner', () => {
     const ref = createRef<HTMLDivElement>();
     render(<DemoBanner ref={ref} />);
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
+  });
+
+  it('should not render the consent CTA when consentPending is false', () => {
+    render(<DemoBanner consentPending={false} />);
+    expect(screen.queryByText(/accept analytics/i)).not.toBeInTheDocument();
+  });
+
+  it('should render the consent CTA when consentPending is true', () => {
+    render(<DemoBanner consentPending />);
+    expect(screen.getByText(/accept analytics/i)).toBeInTheDocument();
+    expect(screen.getByText(/decline/i)).toBeInTheDocument();
+  });
+
+  it('should call onConsentChange with "accepted" when Accept is clicked', async () => {
+    const onConsentChange = vi.fn();
+    render(<DemoBanner consentPending onConsentChange={onConsentChange} />);
+    await userEvent.click(screen.getByRole('button', { name: /accept analytics/i }));
+    expect(onConsentChange).toHaveBeenCalledWith('accepted');
+  });
+
+  it('should call onConsentChange with "declined" when Decline is clicked', async () => {
+    const onConsentChange = vi.fn();
+    render(<DemoBanner consentPending onConsentChange={onConsentChange} />);
+    await userEvent.click(screen.getByRole('button', { name: /decline/i }));
+    expect(onConsentChange).toHaveBeenCalledWith('declined');
   });
 });
