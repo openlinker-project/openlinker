@@ -22,8 +22,8 @@ import { useForm } from 'react-hook-form';
 
 import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
-import { AI_GENERATION_DEMO_DISABLED_MESSAGE } from '../../../../shared/config/demo-mode';
-import { useDemoMode } from '../../../system';
+import { BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE } from '../../../../shared/config/demo-mode';
+import { usePermission } from '../../../../shared/auth/use-permission';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
@@ -104,7 +104,7 @@ export function BulkConfigStep({
   const section = platform?.bulkOfferConfigSection;
 
   const values = form.watch();
-  const demoMode = useDemoMode();
+  const canGenerateDescription = usePermission('listings:write');
 
   // ---- shared-slice validity (explicit, deterministic — not formState.isValid) ----
   const markupValid =
@@ -335,26 +335,30 @@ export function BulkConfigStep({
       </label>
 
       {(() => {
-        // Demo mode: AI generation is unavailable, so force the toggle off and
-        // lock it with an explanatory tooltip. The span wrap is required for
-        // the tooltip because a disabled checkbox emits no pointer events.
+        // Gated on `listings:write` (admin + operator), not demo mode — the
+        // bulk-create endpoint is `@Roles('admin', 'operator')`-gated in
+        // every environment, so a viewer session would otherwise see an
+        // enabled toggle that 403s on submit, in both demo and production
+        // alike. Lock it with an explanatory tooltip; the span wrap is
+        // required because a disabled checkbox emits no pointer events.
+        const locked = !canGenerateDescription;
         const field = (
           <label
             style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
-            aria-disabled={demoMode}
+            aria-disabled={locked}
           >
             <input
               type="checkbox"
-              checked={demoMode ? false : values.generateDescription}
-              disabled={demoMode}
+              checked={locked ? false : values.generateDescription}
+              disabled={locked}
               onChange={(e) => {
-                if (demoMode) return;
+                if (locked) return;
                 form.setValue('generateDescription', e.target.checked, { shouldDirty: true });
               }}
             />
             <span>
               <strong>
-                {demoMode ? (
+                {locked ? (
                   <span aria-hidden="true" style={{ marginRight: 'var(--space-1)' }}>
                     🔒
                   </span>
@@ -362,19 +366,19 @@ export function BulkConfigStep({
                 Generate AI descriptions by default
               </strong>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-                {demoMode
-                  ? AI_GENERATION_DEMO_DISABLED_MESSAGE
+                {locked
+                  ? BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE
                   : 'Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal overrides this.'}
               </small>
             </span>
           </label>
         );
-        return demoMode ? (
+        return locked ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <span tabIndex={0}>{field}</span>
             </TooltipTrigger>
-            <TooltipContent>{AI_GENERATION_DEMO_DISABLED_MESSAGE}</TooltipContent>
+            <TooltipContent>{BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE}</TooltipContent>
           </Tooltip>
         ) : (
           field

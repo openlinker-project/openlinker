@@ -497,6 +497,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'products:read', 'products:write',
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
+    'ai:suggest',
   ],
 };
 

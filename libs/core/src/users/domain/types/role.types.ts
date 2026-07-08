@@ -49,6 +49,7 @@ export const PermissionValues = [
   'shipments:read',
   'invoices:read',
   'webhooks:read',
+  'ai:suggest',
 ] as const;
 
 /**

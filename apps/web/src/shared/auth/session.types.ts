@@ -25,6 +25,7 @@ export const PermissionValues = [
   'shipments:read',
   'invoices:read',
   'webhooks:read',
+  'ai:suggest',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

@@ -6,6 +6,7 @@
 import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   findToastTitle,
   renderWithProviders,
@@ -34,7 +35,10 @@ function renderDrawer(
   const mockApi = createMockApiClient(overrides);
   renderWithProviders(
     <EditOfferDrawer isOpen={isOpen} onClose={onClose} mapping={mapping} />,
-    { apiClient: mockApi },
+    // Authenticated (admin) session — `SuggestionDialog`'s "Suggest with AI"
+    // trigger is gated on the `ai:suggest` permission (#1379 re-scope), not
+    // demo mode, so the AI-suggest tests below need a permitted session.
+    { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
   );
   return { mockApi, onClose };
 }
@@ -183,6 +187,11 @@ describe('EditOfferDrawer', () => {
       // Save is disabled while pristine.
       expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
 
+      // Session hydration is async — the trigger renders locked until the
+      // authenticated (admin) session resolves.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
       fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
 
@@ -204,6 +213,11 @@ describe('EditOfferDrawer', () => {
       };
       renderDrawer(true, {}, undefined, mappingWithLink);
 
+      // Session hydration is async — the trigger renders locked until the
+      // authenticated (admin) session resolves.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
 
       expect(await screen.findByText(/this offer only/i)).toBeInTheDocument();

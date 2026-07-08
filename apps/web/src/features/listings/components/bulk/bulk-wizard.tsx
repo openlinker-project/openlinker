@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
-import { useDemoMode } from '../../../system';
+import { usePermission } from '../../../../shared/auth/use-permission';
 import { useConnectionsQuery } from '../../../connections';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
@@ -74,7 +74,7 @@ export function BulkWizard({
   // confirm step submit reuse it; remount mints a fresh one.
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
 
-  const demoMode = useDemoMode();
+  const canGenerateDescription = usePermission('listings:write');
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
@@ -287,8 +287,12 @@ export function BulkWizard({
           // is a required nominal fallback the worker should never reach.
           stock: 1,
           publishImmediately,
-          // Demo mode has no AI provider configured — never enqueue generation.
-          generateDescription: demoMode ? false : config.generateDescription,
+          // Belt-and-suspenders: re-derive at submit time so a stale `true`
+          // in `config` (e.g. a preset draft) can't leak into the request
+          // for a session that lacks `listings:write` — permission-gated,
+          // not demo-mode-gated, since the bulk-create endpoint is
+          // `@Roles('admin', 'operator')` in every environment (#1379 re-scope).
+          generateDescription: canGenerateDescription ? config.generateDescription : false,
           overrides: {
             // Generic per-platform knobs (Allegro deliveryPolicyId, Erli
             // dispatchTime, …) — the config section populated these (#1096).
@@ -313,7 +317,7 @@ export function BulkWizard({
         // Surfaced via mutation.error in the modal — toast is redundant.
       }
     },
-    [config, rows, mutation, navigate, showToast, demoMode],
+    [config, rows, mutation, navigate, showToast, canGenerateDescription],
   );
 
   const noVariants = rows.filter((r) => r.primaryVariant === null).length;
