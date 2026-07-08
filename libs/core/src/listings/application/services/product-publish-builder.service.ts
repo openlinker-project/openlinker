@@ -144,7 +144,18 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       return [];
     }
 
-    const categories = await productMaster.getProductCategories(productId);
+    let categories: Category[];
+    try {
+      categories = await productMaster.getProductCategories(productId);
+    } catch (error) {
+      // Best-effort per the class docstring: a master that can't report
+      // categories (e.g. PrestaShop's ProductMaster, not yet implemented)
+      // must not block the publish — it just ships uncategorised.
+      this.logger.warn(
+        `Could not read master categories for product ${productId}; publishing uncategorised: ${(error as Error).message}`
+      );
+      return [];
+    }
     const path = this.toProvisionPath(categories);
     if (path.length === 0) {
       return [];
