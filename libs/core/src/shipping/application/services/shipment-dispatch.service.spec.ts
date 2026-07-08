@@ -23,6 +23,8 @@ import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-reposit
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
+import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
+import { Logger } from '@openlinker/shared/logging';
 
 /** Build an OrderRecord whose snapshot carries the given payment status (or none). */
 function makeOrderRecord(paymentStatus?: PaymentStatus): OrderRecord {
@@ -454,6 +456,28 @@ describe('ShipmentDispatchService', () => {
         draft.id,
         expect.objectContaining({ status: 'failed', errorMessage: 'paczkomat unavailable' }),
       );
+    });
+
+    it('should log the provider rejection code + details, not just the message (#1428)', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      repository.update.mockResolvedValue(makeShipment({ status: 'failed' }));
+      const rejection = new ShippingProviderRejectionException(
+        'inpost',
+        'target_point',
+        'validation errors',
+        { fieldErrors: { custom_attributes: [{ target_point: ['does_not_exist'] }] } },
+      );
+      adapter.generateLabel.mockRejectedValue(rejection);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(service.dispatch(makeInput())).rejects.toBe(rejection);
+
+      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('code=target_point');
+      expect(logged).toContain('does_not_exist');
+      warn.mockRestore();
     });
   });
 
