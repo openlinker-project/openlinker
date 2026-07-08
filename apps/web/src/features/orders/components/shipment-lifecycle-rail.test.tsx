@@ -39,12 +39,18 @@ describe('ShipmentLifecycleRail', () => {
     expect(steps[3]).not.toHaveClass('shipment-lifecycle-rail__step--live');
   });
 
-  it('should render the interrupted (halted) variant for a failed shipment', () => {
+  it('should halt a failed shipment at the label stage and leave no stage falsely completed', () => {
     const { container } = render(<ShipmentLifecycleRail status="failed" />);
     expect(container.querySelector('.shipment-lifecycle-rail--halted')).not.toBeNull();
-    expect(screen.getByText('Dispatch failed')).toBeInTheDocument();
+    expect(screen.getByText('Label failed')).toBeInTheDocument();
+    expect(screen.queryByText('Label ready')).not.toBeInTheDocument();
     const steps = screen.getAllByRole('listitem');
-    expect(steps[1]).toHaveClass('shipment-lifecycle-rail__step--halt');
+    // The halt sits at the label stage; no earlier stage is painted as a
+    // completed success, and later stages stay upcoming.
+    expect(steps[0]).toHaveClass('shipment-lifecycle-rail__step--halt');
+    expect(steps.some((step) => step.classList.contains('shipment-lifecycle-rail__step--done'))).toBe(
+      false,
+    );
   });
 
   it('should render the cancelled variant with a muted halt node', () => {

@@ -34,6 +34,8 @@ export { Textarea } from './textarea';
 export { Select } from './select';
 export { Combobox } from './combobox';
 export type { ComboboxOption, ComboboxValue } from './combobox';
+export { SegmentedControl } from './segmented-control';
+export type { SegmentedControlOption, SegmentedControlProps } from './segmented-control';
 
 // ── Form composition ───────────────────────────────────────────────
 export { FormField } from './form-field';

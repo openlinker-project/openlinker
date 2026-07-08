@@ -4,8 +4,11 @@
  * Horizontal 4-stage tracker for the order-detail shipment panel:
  * Label ready → Dispatched → In transit → Delivered. Mirrors the buyer-side
  * tracker the marketplace already shows. Maps a persisted `ShipmentStatus`
- * onto the stage sequence; terminal-exception statuses (`failed` / `cancelled`)
- * render an interrupted rail whose halt node sits at the dispatch stage.
+ * onto the stage sequence; terminal-exception statuses render an interrupted
+ * rail whose halt node sits at the stage where progress actually stopped —
+ * `failed` at the label stage (an InPost `failed` is overwhelmingly a
+ * label-generation failure, so no later stage is ever falsely shown complete),
+ * `cancelled` at the dispatch stage (a cancellation presupposes a ready label).
  *
  * Presentational only — no data fetching. Status colour is semantic; the accent
  * is reserved for the current live node.
@@ -19,9 +22,12 @@ import type { ShipmentStatus } from '../../shipments';
 const STAGE_LABELS = ['Label ready', 'Dispatched', 'In transit', 'Delivered'] as const;
 
 /**
- * The stage index each status "lives" at. Terminal-exception statuses halt at
- * the dispatch stage (index 1) — the furthest point a shipment reaches before
- * an operator/carrier rejection or cancellation.
+ * The stage index each status halts / lives at. A halt node must never leave an
+ * earlier stage painted as a completed success (`index < current` renders as
+ * `done`), so each terminal-exception status halts at the stage where progress
+ * actually stopped: `failed` at the label stage (index 0 — label generation is
+ * the dominant InPost failure mode), `cancelled` at the dispatch stage (index 1
+ * — the label was ready before the cancellation).
  */
 const STAGE_INDEX: Record<ShipmentStatus, number> = {
   draft: 0,
@@ -29,7 +35,7 @@ const STAGE_INDEX: Record<ShipmentStatus, number> = {
   dispatched: 1,
   'in-transit': 2,
   delivered: 3,
-  failed: 1,
+  failed: 0,
   cancelled: 1,
 };
 
@@ -56,7 +62,7 @@ interface ShipmentLifecycleRailProps {
 function buildStages(status: ShipmentStatus): RailStage[] {
   const current = STAGE_INDEX[status];
   const halted = status === 'failed' || status === 'cancelled';
-  const haltLabel = status === 'failed' ? 'Dispatch failed' : 'Cancelled';
+  const haltLabel = status === 'failed' ? 'Label failed' : 'Cancelled';
 
   return STAGE_LABELS.map((label, index): RailStage => {
     if (index < current) {

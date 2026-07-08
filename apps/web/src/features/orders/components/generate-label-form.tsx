@@ -35,6 +35,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
@@ -204,10 +205,11 @@ export function GenerateLabelForm({
   const paczkomatRegister = form.register('paczkomatId');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
-  // Locker size is driven imperatively via a segmented control (#1425) — keep
-  // the field registered so RHF tracks it, but bind the pressed state through
-  // `watch` + `setValue` rather than spreading a native-input registration.
-  form.register('lockerTemplate');
+  // Locker size is driven imperatively via a segmented control (#1425). The
+  // registration is bound to a hidden input at the control (so RHF holds a real
+  // ref and tracks the field); the pressed state is set via `setValue` and read
+  // via `watch`.
+  const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
   // COD orders are flagged by the snapshot's payment status (#928). The COD
@@ -462,43 +464,35 @@ export function GenerateLabelForm({
           </FormField>
         ) : null}
 
-        {/* Locker size (#1425) — segmented control replacing the Select. Multi
-            child, so it renders the `.form-field` markup directly (like the
-            dimensions composite) rather than through FormField, which clones a
-            single control child. Labelled by the visible label + the group's
-            aria-label; driven imperatively via `setValue`. */}
+        {/* Locker size (#1425) — the shared SegmentedControl replacing the
+            Select. Multi-child, so it renders the `.form-field` markup directly
+            (like the dimensions composite) rather than through FormField, which
+            clones a single control child. The group is labelled by aria-label
+            and wired to its description + error via aria-describedby /
+            aria-errormessage; driven imperatively via `setValue`, with a hidden
+            registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
           <div className="form-field">
             <span className="form-field__label">Locker size</span>
-            <p className="form-field__description">
+            <p className="form-field__description" id="lockerTemplate-description">
               InPost parcel template — required for a paczkomat shipment.
             </p>
-            <div className="segmented-control" role="group" aria-label="Locker size">
-              {LOCKER_TEMPLATE_VALUES.map((t) => {
-                const active = lockerTemplate === t;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    className={[
-                      'segmented-control__option',
-                      active ? 'segmented-control__option--active' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    aria-pressed={active}
-                    onClick={() =>
-                      form.setValue('lockerTemplate', t, { shouldValidate: true })
-                    }
-                  >
-                    <span className="segmented-control__label">{t}</span>
-                    <span className="segmented-control__hint" aria-hidden="true">
-                      {LOCKER_TEMPLATE_GABARYT[t]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <SegmentedControl
+              aria-label="Locker size"
+              aria-describedby="lockerTemplate-description"
+              aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
+              aria-errormessage={
+                form.formState.errors.lockerTemplate ? 'lockerTemplate-error' : undefined
+              }
+              value={lockerTemplate ?? 'medium'}
+              onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
+              options={LOCKER_TEMPLATE_VALUES.map((t) => ({
+                value: t,
+                label: t,
+                hint: LOCKER_TEMPLATE_GABARYT[t],
+              }))}
+            />
+            <input type="hidden" {...lockerTemplateRegister} />
             <FieldError
               id="lockerTemplate-error"
               message={form.formState.errors.lockerTemplate?.message}

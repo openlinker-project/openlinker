@@ -9201,7 +9201,7 @@ html[data-density='compact'] .status-badge {
   font-weight: 600;
 }
 
-/* Segmented locker-size control (replaces the Select). */
+/* Segmented control — shared SegmentedControl primitive (shared/ui). */
 .segmented-control {
   display: inline-flex;
   align-self: flex-start;
