@@ -57,7 +57,27 @@ export interface PlannedNavGroup {
   label: string;
 }
 
-export type NavGroup = LiveNavGroup | PlannedNavGroup;
+/**
+ * A group that exists but is not usable in the current runtime context —
+ * today, an admin area locked while the deployment runs in demo mode (#1379).
+ * Rendered greyed-out and non-clickable with a group-level tooltip `reason`
+ * (distinct from `planned`, whose items carry their own "coming soon" reason).
+ * Produced only at build time by `buildNavGroups`; never authored directly in
+ * `BASE_NAV_GROUPS`.
+ */
+export interface RestrictedNavItem {
+  label: string;
+}
+
+export interface RestrictedNavGroup {
+  items: RestrictedNavItem[];
+  kind: 'restricted';
+  label: string;
+  /** Tooltip explaining why the whole group is locked. */
+  reason: string;
+}
+
+export type NavGroup = LiveNavGroup | PlannedNavGroup | RestrictedNavGroup;
 
 /**
  * Registry-shaped variant of `NavGroup`. Mirrors the runtime shape but

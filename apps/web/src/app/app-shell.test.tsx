@@ -21,6 +21,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './app-shell';
 import type { RouteCrumbHandle } from './nav-registry.types';
+import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { ToastProvider } from '../shared/ui/toast-provider';
@@ -163,6 +164,52 @@ describe('AppShell', () => {
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).queryByText('AI')).toBeNull();
     expect(within(primary).queryByText('Prompt templates')).toBeNull();
+  });
+
+  it('locks AI and Administration for a non-admin in demo mode (#1379)', async () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: [],
+    });
+    const demoApiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
+
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    // Wait for the demo-mode config to resolve and transform the groups.
+    const users = await within(primary).findByText('Users');
+
+    const usersLink = users.closest('.shell-nav__link');
+    expect(usersLink).toHaveAttribute('aria-disabled', 'true');
+    expect(usersLink).toHaveAttribute('title', NAV_DEMO_RESTRICTED_MESSAGE);
+    // The group is visible but its items are not navigable links.
+    expect(users.closest('a')).toBeNull();
+    // A lock glyph reads the state at a glance (no hover required).
+    expect(usersLink?.querySelector('.shell-nav__link-lock')).not.toBeNull();
+
+    // AI group is locked the same way — its item is present but not a link.
+    const promptTemplates = within(primary).getByText('Prompt templates');
+    expect(promptTemplates.closest('a')).toBeNull();
+    expect(promptTemplates.closest('.shell-nav__link')).toHaveAttribute(
+      'title',
+      NAV_DEMO_RESTRICTED_MESSAGE,
+    );
+  });
+
+  it('keeps AI and Administration live for an admin in demo mode (#1379)', async () => {
+    const demoApiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient });
+
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    // Admin keeps navigable links even in demo mode.
+    const promptTemplates = await within(primary).findByText('Prompt templates');
+    expect(promptTemplates.closest('a')).toHaveAttribute('href', '/ai/prompt-templates');
   });
 
   it('uses "Connections" as the nav label (not "Integrations")', () => {

@@ -5,6 +5,7 @@ import { ApiClientProvider } from '../api/api-client-provider';
 import { createJwtBearerSessionAdapter } from '../../shared/auth/jwt-bearer-session-adapter';
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
+import { TooltipProvider } from '../../shared/ui/tooltip';
 import { env } from '../../shared/config/env';
 import { ThemeProvider } from '../../shared/theme';
 import { LocaleProvider } from '../../shared/i18n';
@@ -42,9 +43,11 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
         <PluginRegistryProvider plugins={plugins}>
           <SessionProvider adapter={sessionAdapter}>
             <ToastProvider>
-              <ApiClientProvider client={apiClient}>
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-              </ApiClientProvider>
+              <TooltipProvider>
+                <ApiClientProvider client={apiClient}>
+                  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+                </ApiClientProvider>
+              </TooltipProvider>
             </ToastProvider>
           </SessionProvider>
         </PluginRegistryProvider>
