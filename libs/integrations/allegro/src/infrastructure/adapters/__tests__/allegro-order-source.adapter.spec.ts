@@ -803,7 +803,9 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: 'Stacja paliw BP',
-          pointType: 'apm',
+          // No POP signal in id/name — Allegro exposes no apm discriminator,
+          // so the classifier stays truthfully undefined (#1433).
+          pointType: undefined,
         });
         // shippingAddress geography comes from the locker; recipient name+phone
         // remain the buyer's (the parcel is collected by the buyer).
@@ -846,7 +848,7 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: undefined,
-          pointType: 'apm',
+          pointType: undefined,
         });
         // Falls back to buyer.address since neither delivery.address nor
         // pickupPoint.address has geography.
@@ -880,7 +882,7 @@ describe('AllegroOrderSourceAdapter', () => {
         expect(incoming.pickupPoint?.pointType).toBe('pop');
       });
 
-      it('should infer pointType apm for a plain locker id (#1433)', async () => {
+      it('should leave pointType undefined for a plain locker id with no POP signal (#1433)', async () => {
         const form = baseForm();
         form.delivery = {
           address: {},
@@ -890,7 +892,7 @@ describe('AllegroOrderSourceAdapter', () => {
 
         const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
 
-        expect(incoming.pickupPoint?.pointType).toBe('apm');
+        expect(incoming.pickupPoint?.pointType).toBeUndefined();
       });
     });
 

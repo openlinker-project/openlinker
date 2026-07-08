@@ -142,7 +142,7 @@ export function toTrackingSnapshot(status: ShipmentStatus, providerStatus: strin
 /** Map a ShipX point to the neutral `PickupPoint`. */
 export function toPickupPoint(point: ShipXPoint): PickupPoint {
   const type = normalizePointTypeTokens(point.type);
-  return {
+  const result: PickupPoint = {
     providerId: point.name,
     name: point.name,
     address: toPickupPointAddress(point),
@@ -150,8 +150,11 @@ export function toPickupPoint(point: ShipXPoint): PickupPoint {
     lat: point.location?.latitude,
     lon: point.location?.longitude,
     pointType: classifyInpostPointType({ id: point.name, name: point.display_name, type }),
-    ...(type !== undefined && { type }),
   };
+  if (type !== undefined) {
+    result.type = type;
+  }
+  return result;
 }
 
 /**
@@ -164,6 +167,11 @@ export function toPickupPoint(point: ShipXPoint): PickupPoint {
  * `type` is absent, falls back to a heuristic on the point `id`
  * (`POP-` prefix, case-insensitive) or display `name` (contains
  * "PaczkoPunkt"). Pure — no I/O.
+ *
+ * The Allegro order-source adapter (`AllegroOrderSourceAdapter.
+ * classifyPickupPointType`) carries a deliberately-duplicated copy of the
+ * fallback branch only (no ShipX `type` list at ingestion). Keep the two in
+ * sync — a change to this heuristic should prompt an equivalent edit there.
  */
 export function classifyInpostPointType(input: {
   id?: string;

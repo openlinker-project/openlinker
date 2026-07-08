@@ -104,6 +104,10 @@ export function GenerateLabelForm({
   // or a locker-classified method ⇒ paczkomat flow.
   const methodClass = classifyDeliveryMethod(snapshot.shipping);
   const shippingMethod = resolveShippingMethod(snapshot);
+  // Point-kind label (#1433) — `pop` ⇒ PaczkoPunkt, `apm` or absent ⇒
+  // Paczkomat (mirrors the order-delivery panel mapping; the pickup field only
+  // renders for the paczkomat flow, so absent defaults to Paczkomat here).
+  const pickupFieldLabel = snapshot.pickupPoint?.pointType === 'pop' ? 'PaczkoPunkt' : 'Paczkomat';
   // Clear courier signal: the method is known-courier, or — until the snapshot
   // carries the method (#952) — the order has a full street address but no
   // pickup point. Suppresses the locker retry hint on courier orders that will
@@ -424,12 +428,12 @@ export function GenerateLabelForm({
 
         {shippingMethod === 'paczkomat' ? (
           <FormField
-            label="Paczkomat"
+            label={pickupFieldLabel}
             name="paczkomatId"
             description={
               paczkomatIsBuyerSelected
                 ? 'Buyer-selected via Allegro — read-only.'
-                : 'Type the paczkomat code (e.g. POZ08A). Picker coming in a follow-up.'
+                : `Type the ${pickupFieldLabel} code (e.g. POZ08A). Picker coming in a follow-up.`
             }
             error={form.formState.errors.paczkomatId?.message}
           >

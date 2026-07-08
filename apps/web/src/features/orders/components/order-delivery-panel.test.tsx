@@ -4,12 +4,12 @@ import { renderWithProviders } from '../../../test/test-utils';
 import { OrderDeliveryPanel } from './order-delivery-panel';
 
 describe('OrderDeliveryPanel', () => {
-  it('renders nothing when there is no delivery data', () => {
+  it('should render nothing when there is no delivery data', () => {
     renderWithProviders(<OrderDeliveryPanel />);
     expect(screen.queryByRole('region', { name: 'Delivery' })).toBeNull();
   });
 
-  it('renders the address, method and pickup code when present', () => {
+  it('should render the address, method and pickup code when they are present', () => {
     renderWithProviders(
       <OrderDeliveryPanel
         shippingAddress={{ address1: 'ul. Testowa 1', city: 'Warszawa', postalCode: '00-001', country: 'PL' }}
@@ -23,7 +23,7 @@ describe('OrderDeliveryPanel', () => {
     expect(screen.getByText(/operator-selected|buyer-selected/)).toBeInTheDocument();
   });
 
-  it('prefixes the pickup code with the point kind when pointType is present (#1433)', () => {
+  it('should prefix the pickup code with the point kind when pointType is present (#1433)', () => {
     renderWithProviders(
       <OrderDeliveryPanel
         pickupPoint={{ id: 'POP-OLS19', pointType: 'pop' }}
@@ -33,7 +33,7 @@ describe('OrderDeliveryPanel', () => {
     expect(screen.getByText(/PaczkoPunkt\s+POP-OLS19/)).toBeInTheDocument();
   });
 
-  it('labels an apm point as Paczkomat (#1433)', () => {
+  it('should label the pickup code as Paczkomat when pointType is apm (#1433)', () => {
     renderWithProviders(
       <OrderDeliveryPanel
         pickupPoint={{ id: 'OLS06A', pointType: 'apm' }}
