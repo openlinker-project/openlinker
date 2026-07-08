@@ -22,7 +22,7 @@ export const ERLI_ADAPTER_KEY = 'erli.shopapi.v1';
 // path alias into libs/integrations/* packages.
 export const ERLI_SANDBOX_BASE_URL = 'https://sandbox.erli.dev/svc/shop-api';
 
-export const ErliEnvironmentValues = ['production', 'sandbox'] as const;
+export const ErliEnvironmentValues = ['sandbox', 'production'] as const;
 export type ErliEnvironment = (typeof ErliEnvironmentValues)[number];
 
 export const erliSetupSchema = z.object({
@@ -37,7 +37,7 @@ export type ErliSetupFormSubmission = z.output<typeof erliSetupSchema>;
 export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
   name: '',
   apiKey: '',
-  environment: 'production',
+  environment: 'sandbox',
 };
 
 export function toCreateConnectionInput(values: ErliSetupFormSubmission): CreateConnectionInput {

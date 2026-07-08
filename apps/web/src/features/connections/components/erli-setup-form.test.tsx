@@ -45,9 +45,9 @@ describe('ErliSetupForm', () => {
     });
   });
 
-  it('defaults the environment select to Production', () => {
+  it('defaults the environment select to Sandbox', () => {
     renderWithProviders(<ErliSetupForm />);
-    expect(screen.getByLabelText('Environment')).toHaveValue('production');
+    expect(screen.getByLabelText('Environment')).toHaveValue('sandbox');
   });
 
   it('submits the API key and omits config when Production is selected', async () => {
@@ -61,6 +61,9 @@ describe('ErliSetupForm', () => {
     });
     fireEvent.change(screen.getByLabelText('API key'), {
       target: { value: 'sk_test_123' },
+    });
+    fireEvent.change(screen.getByLabelText('Environment'), {
+      target: { value: 'production' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 

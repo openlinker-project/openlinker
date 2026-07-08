@@ -154,8 +154,8 @@ export function ErliSetupForm(): ReactElement {
           {...form.register('environment')}
           invalid={Boolean(form.formState.errors.environment)}
         >
-          <option value="production">Production — https://erli.pl</option>
-          <option value="sandbox">Sandbox — https://sandbox.erli.dev</option>
+          <option value="sandbox">Sandbox - https://sandbox.erli.dev</option>
+          <option value="production">Production - https://erli.pl</option>
         </Select>
       </FormField>
 
