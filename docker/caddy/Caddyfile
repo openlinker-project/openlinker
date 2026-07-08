@@ -24,3 +24,7 @@
 {$PRESTASHOP_DOMAIN} {
 	reverse_proxy prestashop:80
 }
+
+{$WOOCOMMERCE_DOMAIN} {
+	reverse_proxy woocommerce:8080
+}

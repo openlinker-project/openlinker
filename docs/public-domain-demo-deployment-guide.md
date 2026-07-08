@@ -51,9 +51,15 @@ hostnames at the server's public IP:
 | `app.example.com` | server IP | OpenLinker admin UI (`web`) |
 | `api.example.com` | server IP | OpenLinker API (`api`) |
 | `shop.example.com` | server IP | PrestaShop |
+| `wc.example.com` | server IP | WooCommerce |
 
 `worker` needs **no DNS record** — it's a background process with no
-`EXPOSE`'d port and is never proxied.
+`EXPOSE`'d port and is never proxied. `WOOCOMMERCE_DOMAIN` is required by
+the overlay the same way the other three domains are (fails closed if
+unset, see § 5) because `docker-compose.yml` always starts the
+`woocommerce` service — point it at a real record even if you don't
+currently use a WooCommerce Connection; Caddy only requests a certificate
+for it lazily, on first real traffic.
 
 Wait for DNS propagation (`dig +short app.example.com` should return the
 server IP) before booting the proxy overlay — Caddy's automatic HTTPS will
@@ -72,6 +78,7 @@ the most common point of confusion:
 | `WEB_DOMAIN` | `OL_CORS_ORIGIN` = `https://<WEB_DOMAIN>` | The API's CORS allow-list must match the browser origin the UI is served from, or login fails with a CORS `NetworkError`. |
 | `API_DOMAIN` | `VITE_API_BASE_URL` = `https://<API_DOMAIN>` | Baked into the UI bundle at **build time** — changing it requires `--build` on the `web` image, not just a restart. |
 | `PRESTASHOP_DOMAIN` | `PS_DOMAIN` = `<PRESTASHOP_DOMAIN>` | The domain PrestaShop bakes into its own generated links/redirects. |
+| `WOOCOMMERCE_DOMAIN` | (nothing else — see the callout below) | Unlike the other three, this is not just cosmetic: it's the **only** `siteUrl` a WooCommerce Connection can actually authenticate against (#1416). |
 
 Worked example, given the DNS records above:
 
@@ -80,6 +87,7 @@ Worked example, given the DNS records above:
 WEB_DOMAIN=app.example.com
 API_DOMAIN=api.example.com
 PRESTASHOP_DOMAIN=shop.example.com
+WOOCOMMERCE_DOMAIN=wc.example.com
 TLS_EMAIL=ops@example.com
 
 # Must line up with the domains above (scheme included)
@@ -95,6 +103,21 @@ PS_DOMAIN=shop.example.com
 > **internal**, container-to-container address — never the public
 > `PRESTASHOP_DOMAIN`. The API/Worker containers never resolve the public
 > domain; only the operator's browser does.
+
+> **WooCommerce is the opposite: the Connection's `siteUrl` MUST be the
+> public `https://<WOOCOMMERCE_DOMAIN>`, never `http://woocommerce:8080`.**
+> WooCommerce's REST API only accepts Basic-Auth/query-string credentials
+> when PHP's `is_ssl()` is true, and OpenLinker's adapter doesn't implement
+> the OAuth 1.0a alternative required over plain HTTP. Pointing the
+> Connection at the internal address (as PrestaShop's guidance above would
+> suggest) always fails with `401 woocommerce_rest_cannot_view`, regardless
+> of credentials. `https://<WOOCOMMERCE_DOMAIN>` works because Caddy
+> genuinely terminates TLS there **and** the `woocommerce` service override
+> in `docker-compose.proxy.yml` teaches WordPress to trust Caddy's
+> `X-Forwarded-Proto` header for the hop back to plain-HTTP
+> `woocommerce:8080` — see the [WooCommerce setup
+> guide](../libs/integrations/woocommerce/docs/setup-guide.md) for the full
+> explanation and the local-dev-without-a-domain alternative (a tunnel).
 
 The full variable reference (base demo vars + this guide's additions) is in
 [`.env.example`](../.env.example) — every override lives there with an
@@ -128,16 +151,21 @@ anything twice — one `.env` line per variable is enough.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.proxy.yml \
-  up -d --build postgres redis mysql prestashop migrate api worker web caddy
+  up -d --build postgres redis mysql woocommerce-mysql prestashop woocommerce migrate api worker web caddy
 ```
 
 The proxy overlay (`docker-compose.proxy.yml`) adds one service, `caddy`,
 which:
-- reaches `web` / `api` / `prestashop` **over the internal Compose network**
-  by service name and container port — it does not depend on those
-  services' host-published ports at all;
-- terminates TLS for the three domains configured in step 3;
+- reaches `web` / `api` / `prestashop` / `woocommerce` **over the internal
+  Compose network** by service name and container port — it does not depend
+  on those services' host-published ports at all;
+- terminates TLS for the four domains configured in step 3;
 - publishes host ports `80` and `443` (unbound — this is the public edge).
+
+It also adds a scoped override to the `woocommerce` service itself
+(`WORDPRESS_EXTRA_WP_CONFIG_CONTENT`) so WordPress trusts Caddy's
+`X-Forwarded-Proto: https` header — see the callout in step 3 for why this
+is required for a WooCommerce Connection to authenticate at all.
 
 Confirm it's up:
 
@@ -156,13 +184,15 @@ demo exactly as documented in the [base setup guide](./one-command-demo-setup-gu
 To verify the proxy overlay boots and routes correctly **before** you have
 real DNS/domains, or in a local sandbox:
 
-1. Pick three test hostnames (e.g. `app.local.test`, `api.local.test`,
-   `shop.local.test`) and add them to `/etc/hosts` pointing at `127.0.0.1`.
+1. Pick four test hostnames (e.g. `app.local.test`, `api.local.test`,
+   `shop.local.test`, `wc.local.test`) and add them to `/etc/hosts` pointing
+   at `127.0.0.1`.
 2. Set `.env`:
    ```dotenv
    WEB_DOMAIN=app.local.test
    API_DOMAIN=api.local.test
    PRESTASHOP_DOMAIN=shop.local.test
+   WOOCOMMERCE_DOMAIN=wc.local.test
    TLS_EMAIL=test@example.com
    CADDYFILE_PATH=./docker/caddy/Caddyfile.local
    ```
@@ -202,6 +232,12 @@ Run through this after every deployment (initial or credential rotation):
   ```
 - [ ] **PrestaShop reachable at its own domain**: `https://<PRESTASHOP_DOMAIN>`
   loads the storefront.
+- [ ] **WooCommerce Connection authenticates**: create/edit a WooCommerce
+  Connection with `siteUrl: https://<WOOCOMMERCE_DOMAIN>` and run
+  **Test Connection** — expects `{ success: true, latencyMs: ... }`, not a
+  `401 woocommerce_rest_cannot_view`. This is the concrete verification that
+  the `X-Forwarded-Proto` trust override actually round-trips end to end,
+  not just that `https://<WOOCOMMERCE_DOMAIN>/wp-admin` loads in a browser.
 - [ ] **Database ports unreachable from outside the host** — run from a
   *different* machine (not the server itself):
   ```bash
@@ -230,8 +266,10 @@ Run through this after every deployment (initial or credential rotation):
 | Browser shows a certificate warning even with the production Caddyfile | `CADDYFILE_PATH` is still pointed at `Caddyfile.local` | Unset `CADDYFILE_PATH` (or point it back at `./docker/caddy/Caddyfile`) and restart the `caddy` service |
 | Login fails with a CORS `NetworkError` after switching to a public domain | `OL_CORS_ORIGIN` doesn't match `https://<WEB_DOMAIN>` exactly (scheme/host) | Fix `OL_CORS_ORIGIN` in `.env`, restart `api` |
 | UI calls the wrong API origin / mixed-content errors | `VITE_API_BASE_URL` wasn't set before the `web` image was built | Set it in `.env`, rebuild: `docker compose ... up -d --build web` |
-| `docker compose up` with the proxy overlay fails immediately citing a missing var | One of `WEB_DOMAIN`/`API_DOMAIN`/`PRESTASHOP_DOMAIN`/`TLS_EMAIL` is unset | Set all four in `.env` — the overlay fails closed by design (`${VAR:?...}`) rather than booting half-configured |
-| `caddy` service can't reach `web`/`api`/`prestashop` | Booted without `-f docker-compose.demo.yml` (no `web` service exists) | Always use the 3-file invocation from § 5 |
+| WooCommerce Connection still returns `401 woocommerce_rest_cannot_view` through `https://<WOOCOMMERCE_DOMAIN>` | The `woocommerce` service booted before `docker-compose.proxy.yml` was in the `-f` list (env only applies at container creation), or WordPress's config cache still has the old `wp-config.php` | Recreate the container with all three `-f` flags: `docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.proxy.yml up -d --force-recreate woocommerce` |
+| Connection Test fails with an HTTPS/protocol validation error instead of 401 | `siteUrl` was set to `http://woocommerce:8080` or `http://<WOOCOMMERCE_DOMAIN>` | This is the connection-config validator working as intended (#1416) — WooCommerce `siteUrl` must be `https://`; use `https://<WOOCOMMERCE_DOMAIN>` |
+| `docker compose up` with the proxy overlay fails immediately citing a missing var | One of `WEB_DOMAIN`/`API_DOMAIN`/`PRESTASHOP_DOMAIN`/`WOOCOMMERCE_DOMAIN`/`TLS_EMAIL` is unset | Set all five in `.env` — the overlay fails closed by design (`${VAR:?...}`) rather than booting half-configured |
+| `caddy` service can't reach `web`/`api`/`prestashop`/`woocommerce` | Booted without `-f docker-compose.demo.yml` (no `web` service exists), or without `woocommerce` in the service list | Always use the 3-file invocation from § 5, including `woocommerce-mysql woocommerce` in the service list |
 
 For everything else (PrestaShop admin folder, seller-defaults, offer
 creation, etc.), see the [base demo setup guide's troubleshooting
