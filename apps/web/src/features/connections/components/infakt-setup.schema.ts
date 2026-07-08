@@ -4,8 +4,8 @@
  * Zod schema + form → API payload mapping for the guided inFakt connection
  * wizard. inFakt is a Polish accounting platform authenticated with a single
  * API key (#1280/#1282). The form collects a connection name, the required
- * `apiKey` credential, and an optional advanced `baseUrl` config override
- * (sandbox vs. production). Mirrors `erli-setup.schema.ts`.
+ * `apiKey` credential, and an optional advanced free-text `baseUrl` config
+ * override (sandbox vs. production).
  *
  * @module features/connections/components
  */

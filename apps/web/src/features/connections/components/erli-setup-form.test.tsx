@@ -50,7 +50,7 @@ describe('ErliSetupForm', () => {
     expect(screen.getByLabelText('Environment')).toHaveValue('sandbox');
   });
 
-  it('submits the API key and omits config when Production is selected', async () => {
+  it('submits the neutral production environment in config when Production is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -73,7 +73,7 @@ describe('ErliSetupForm', () => {
           name: 'My Erli Store',
           platformType: 'erli',
           adapterKey: 'erli.shopapi.v1',
-          config: {},
+          config: { environment: 'production' },
           credentials: { apiKey: 'sk_test_123' },
         }),
       );
@@ -81,7 +81,7 @@ describe('ErliSetupForm', () => {
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
-  it('includes the sandbox baseUrl in config when Sandbox is selected', async () => {
+  it('submits the neutral sandbox environment in config when Sandbox is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -101,7 +101,7 @@ describe('ErliSetupForm', () => {
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { baseUrl: 'https://sandbox.erli.dev/svc/shop-api' },
+          config: { environment: 'sandbox' },
         }),
       );
     });

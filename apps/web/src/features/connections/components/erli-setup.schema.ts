@@ -5,10 +5,13 @@
  * wizard. Erli is a marketplace authenticated with a single Shop API key
  * (sent as a Bearer token by the BE adapter, #981). The form collects a
  * connection name, the required `apiKey` credential, and an `environment`
- * select (Production/Sandbox, #1377) that maps to an optional `baseUrl`
- * config override. `enabledCapabilities` is intentionally omitted from the
- * payload so the API defaults it to the adapter manifest's supported set
- * (#984/#993 ship `OfferManager` / `OrderSource`).
+ * select (Production/Sandbox, #1377). The payload persists the neutral
+ * `config.environment` choice — the BE adapter factory resolves it to the
+ * concrete Shop API base URL — so no sandbox-URL literal is duplicated on the
+ * FE and a future URL change never leaves a stale literal in stored
+ * connections. `enabledCapabilities` is intentionally omitted from the payload
+ * so the API defaults it to the adapter manifest's supported set (#984/#993
+ * ship `OfferManager` / `OrderSource`).
  *
  * @module features/connections/components
  */
@@ -17,13 +20,7 @@ import type { CreateConnectionInput } from '../api/connections.types';
 
 export const ERLI_ADAPTER_KEY = 'erli.shopapi.v1';
 
-// Mirrors the BE source of truth (libs/integrations/erli/src/domain/types
-// /erli-connection.types.ts) — duplicated as a literal since apps/web has no
-// path alias into libs/integrations/* packages.
-export const ERLI_SANDBOX_BASE_URL = 'https://sandbox.erli.dev/svc/shop-api';
-
 export const ErliEnvironmentValues = ['sandbox', 'production'] as const;
-export type ErliEnvironment = (typeof ErliEnvironmentValues)[number];
 
 export const erliSetupSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
@@ -41,17 +38,15 @@ export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
 };
 
 export function toCreateConnectionInput(values: ErliSetupFormSubmission): CreateConnectionInput {
-  const config: Record<string, unknown> = {};
-  if (values.environment === 'sandbox') {
-    config.baseUrl = ERLI_SANDBOX_BASE_URL;
-  }
-
   return {
     name: values.name,
     platformType: 'erli',
     adapterKey: ERLI_ADAPTER_KEY,
     credentials: { apiKey: values.apiKey },
-    config,
+    // Persist the neutral choice, not a derived URL: the BE adapter factory
+    // maps `environment` → the concrete Shop API base URL, so a future
+    // sandbox-URL change can't leave a stale literal in this connection's config.
+    config: { environment: values.environment },
     // enabledCapabilities is OMITTED on purpose: on the omitted path
     // `ConnectionService.create` defaults to the adapter manifest's supported
     // set (`rest.enabledCapabilities ?? [...metadata.supportedCapabilities]`),

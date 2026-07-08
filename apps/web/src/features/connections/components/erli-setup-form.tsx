@@ -4,7 +4,8 @@
  * Single-step wizard for creating an Erli connection. Collects:
  *   - Connection name
  *   - Shop API key (the only credential — sent as a Bearer token by the BE)
- *   - Environment (Production/Sandbox, #1377) — maps to a base URL config override
+ *   - Environment (Production/Sandbox, #1377) — persisted as the neutral
+ *     `config.environment` choice; the BE resolves it to a base URL
  *
  * Simpler than the WooCommerce form — one credential, no capabilities step
  * (capabilities default silently to the adapter manifest's supported set on
@@ -150,10 +151,7 @@ export function ErliSetupForm(): ReactElement {
         error={form.formState.errors.environment?.message}
         description="Choose Sandbox to test against Erli's sandbox before switching to production."
       >
-        <Select
-          {...form.register('environment')}
-          invalid={Boolean(form.formState.errors.environment)}
-        >
+        <Select {...form.register('environment')}>
           <option value="sandbox">Sandbox - https://sandbox.erli.dev</option>
           <option value="production">Production - https://erli.pl</option>
         </Select>
