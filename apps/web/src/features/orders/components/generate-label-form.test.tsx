@@ -179,6 +179,8 @@ describe('GenerateLabelForm — happy path', () => {
     fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    // COD is behind a checkbox (#1425) — reveal the amount input first.
+    fireEvent.click(screen.getByLabelText(/^Cash on delivery$/i));
     // Comma decimal separator → normalised to a dot for the wire shape.
     fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '129,90' } });
 
@@ -231,6 +233,36 @@ describe('GenerateLabelForm — happy path', () => {
       expect(generateLabel).toHaveBeenCalledWith(
         expect.objectContaining({
           parcel: expect.objectContaining({ template: 'medium' }),
+        }),
+      ),
+    );
+  });
+
+  it('should send the selected locker size via the segmented control (#1425)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    // Segmented control: pick "large" (was defaulted to medium).
+    const large = screen.getByRole('button', { name: /large/i });
+    fireEvent.click(large);
+    expect(large).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parcel: expect.objectContaining({ template: 'large' }),
         }),
       ),
     );
