@@ -81,6 +81,7 @@ describe('ConnectionController', () => {
       createIfNotExistsByIdempotencyKey: jest.fn(),
       findAndLockDueJobs: jest.fn(),
       findById: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
       findMany: jest.fn(),
       markSucceeded: jest.fn(),
       markFailed: jest.fn(),

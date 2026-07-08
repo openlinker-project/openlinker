@@ -18,7 +18,6 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
   CustomerProjectionRepositoryPort,
@@ -29,7 +28,6 @@ import { CustomerProjectionResponseDto } from './dto/customer-projection-respons
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('customers')
 @Controller('customers')

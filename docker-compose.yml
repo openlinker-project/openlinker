@@ -1,15 +1,44 @@
-name: openlinker
+# Port binding / naming conventions (#1400):
+#
+# - Every published port binds to ${OL_BIND_ADDRESS:-127.0.0.1} by default —
+#   loopback-only, so a shared/public host doesn't expose postgres/redis/mysql/
+#   phpMyAdmin/PrestaShop/api to the internet just because a firewall wasn't
+#   configured. Override OL_BIND_ADDRESS in .env only when a service genuinely
+#   needs to be reachable beyond loopback (e.g. behind a reverse proxy on its
+#   own host).
+# - Every host-side port is a `${<SERVICE>_HOST_PORT:-<default>}` override —
+#   named with a `_HOST_PORT` suffix (not e.g. plain `REDIS_PORT`) so it can't
+#   be confused with the *container-internal* env vars of the same service
+#   family (api's `REDIS_PORT: 6379` below is the internal Redis port the api
+#   process connects to — always 6379 — and is unrelated to the host-side
+#   publish this section controls).
+# - `${COMPOSE_PROJECT_NAME:-openlinker}` drives both the top-level project
+#   name and every `container_name`, so a second stack instance (different
+#   `.env`: distinct COMPOSE_PROJECT_NAME + shifted *_HOST_PORT values) can
+#   run alongside this one on the same host without name or port collisions.
+#   Defaults reproduce today's exact literal names/ports — nothing changes
+#   for an operator who doesn't set .env overrides, beyond the loopback bind.
+#
+# Volume rule: named Docker volumes (declared at the bottom of this file) are
+# for persistent service data. Bind-mounts into the repo tree are used only
+# where a container needs live repo files it doesn't own as data — PrestaShop
+# module source for fast dev iteration, and one-shot PrestaShop/WooCommerce
+# post-install/init scripts.
+name: ${COMPOSE_PROJECT_NAME:-openlinker}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: openlinker-postgres
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Override in .env for anything beyond local dev/demo use (#1403) — the
+      # default is a throwaway value, not a secret. Every service below that
+      # connects to Postgres references this same var so they never drift.
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       POSTGRES_DB: openlinker
     ports:
-      - '5432:5432'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,9 +49,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: openlinker-redis
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-redis
     ports:
-      - '6379:6379'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,34 +62,53 @@ services:
 
   mysql:
     image: mysql:8.4.7
-    container_name: openlinker-mysql
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      # Overridable in .env (#1403) — both default to today's literal values.
+      # PRESTASHOP_MYSQL_PASSWORD must match the prestashop service's
+      # PS_DB_PASSWD/DB_PASSWD below (same var referenced at both sites).
+      MYSQL_ROOT_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
       MYSQL_DATABASE: prestashop
       MYSQL_USER: prestashop
-      MYSQL_PASSWORD: prestashop
+      MYSQL_PASSWORD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
     ports:
-      - '3306:3306'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_HOST_PORT:-3306}:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
+      # First-boot init (~60s: creates the prestashop db/user) must not be
+      # counted against the retry window, or a slower host marks MySQL
+      # unhealthy and aborts the dependent prestashop/phpmyadmin services (#1368).
+      start_period: 180s
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
     platform: linux/amd64
-    container_name: openlinker-phpmyadmin
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-phpmyadmin
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
       PMA_USER: root
-      PMA_PASSWORD: root
-      MYSQL_ROOT_PASSWORD: root
+      # Mirrors the mysql service's root password (#1403) — phpMyAdmin only
+      # ever talks to the PrestaShop-side MySQL instance.
+      PMA_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
+      MYSQL_ROOT_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-root}'
     ports:
-      - '8081:80'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${PHPMYADMIN_HOST_PORT:-8081}:80'
     depends_on:
       mysql:
         condition: service_healthy
@@ -72,19 +120,33 @@ services:
 
   woocommerce-mysql:
     image: mysql:8.4.7
-    container_name: openlinker-woocommerce-mysql
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-woocommerce-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      # Overridable in .env (#1403), separate from the PrestaShop MySQL
+      # instance's vars — these two databases rotate independently.
+      # WOOCOMMERCE_MYSQL_PASSWORD must match the woocommerce service's
+      # WORDPRESS_DATABASE_PASSWORD below (same var referenced at both sites).
+      MYSQL_ROOT_PASSWORD: '${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-root}'
       MYSQL_DATABASE: woocommerce
       MYSQL_USER: woocommerce
-      MYSQL_PASSWORD: woocommerce
+      MYSQL_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-woocommerce}'
     ports:
-      - '127.0.0.1:3307:3306'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${WOOCOMMERCE_MYSQL_HOST_PORT:-3307}:3306'
     volumes:
       - woocommerce_mysql_data:/var/lib/mysql
     healthcheck:
-      # -proot: no space between flag and password (matches MYSQL_ROOT_PASSWORD: root)
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      # -p<password>: no space between flag and password.
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-root}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -92,7 +154,7 @@ services:
   woocommerce:
     image: bitnamilegacy/wordpress:6.7.1
     platform: linux/amd64
-    container_name: openlinker-woocommerce
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-woocommerce
     depends_on:
       woocommerce-mysql:
         condition: service_healthy
@@ -101,7 +163,8 @@ services:
       WORDPRESS_DATABASE_PORT_NUMBER: 3306
       WORDPRESS_DATABASE_NAME: woocommerce
       WORDPRESS_DATABASE_USER: woocommerce
-      WORDPRESS_DATABASE_PASSWORD: woocommerce
+      # Must match woocommerce-mysql's MYSQL_PASSWORD above (#1403).
+      WORDPRESS_DATABASE_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-woocommerce}'
       WORDPRESS_USERNAME: admin
       WORDPRESS_PASSWORD: admin123
       WORDPRESS_EMAIL: admin@openlinker.local
@@ -112,7 +175,7 @@ services:
       WORDPRESS_PLUGINS: https://downloads.wordpress.org/plugin/woocommerce.10.1.0.zip
     ports:
       # 8082: avoids collision with PrestaShop on 8080
-      - '127.0.0.1:8082:8080'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${WOOCOMMERCE_HOST_PORT:-8082}:8080'
     volumes:
       - woocommerce_data:/bitnami/wordpress
       - ./docker/woocommerce:/docker-entrypoint-initdb.d:ro
@@ -120,7 +183,11 @@ services:
       # /wp-json/wc/v3/ = WC namespace index, returns 200 without auth once WC is active.
       # NOT /wp-json/wc/v3/system_status (requires consumer key — chicken-and-egg at startup).
       # php, not curl/wget — neither exists in the bitnamilegacy image.
-      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc/v3") === false ? 1 : 0);''']
+      # Needle is "wc\/v3", not "wc/v3": the response body is a JSON string
+      # produced by PHP's json_encode, which escapes "/" as "\/" by default —
+      # the unescaped needle never matches, so the healthcheck always failed
+      # (container ran fine but was permanently reported unhealthy).
+      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc\/v3") === false ? 1 : 0);''']
       interval: 30s
       timeout: 10s
       retries: 10
@@ -128,20 +195,23 @@ services:
 
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
-    container_name: openlinker-prestashop
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-prestashop
     # Auto-install + post-install scripts run via the upstream image's
     # /tmp/docker_run.sh (the default CMD). It iterates /tmp/post-install-scripts/
     # alphabetically after the installer completes. Use `pnpm dev:stack:seed-prestashop`
     # to re-run them mid-development without recreating the volume.
     environment:
-      PS_DOMAIN: localhost:8080
+      # Canonical shop domain PrestaShop bakes into generated links/redirects.
+      # Override in .env for a public-domain deployment (e.g. shop.example.com).
+      PS_DOMAIN: '${PS_DOMAIN:-localhost:8080}'
       PS_FOLDER_ADMIN: admin
       PS_COUNTRY: US
       PS_LANGUAGE: en
       PS_DB_SERVER: mysql
       PS_DB_NAME: prestashop
       PS_DB_USER: prestashop
-      PS_DB_PASSWD: prestashop
+      # Must match the mysql service's MYSQL_PASSWORD (#1403).
+      PS_DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
       PS_DB_PREFIX: ps_
       PS_ENABLE_SSL: 0
       PS_DEMO_MODE: 0
@@ -150,12 +220,14 @@ services:
       DB_SERVER: mysql
       DB_NAME: prestashop
       DB_USER: prestashop
-      DB_PASSWD: prestashop
+      DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-prestashop}'
       DB_PREFIX: ps_
       ADMIN_MAIL: demo@prestashop.com
-      ADMIN_PASSWD: prestashop_demo
+      # The seeded PrestaShop admin login password (#1403) — override before
+      # exposing this beyond localhost, same as OL_BOOTSTRAP_ADMIN_PASSWORD.
+      ADMIN_PASSWD: '${ADMIN_PASSWD:-prestashop_demo}'
     ports:
-      - '8080:80'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${PRESTASHOP_HOST_PORT:-8080}:80'
     volumes:
       - prestashop_data:/var/www/html
       # Bind-mount module source for fast dev iteration
@@ -175,7 +247,11 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'php -r "exit(@file_get_contents(\"http://localhost:80\") ? 0 : 1);"']
+      # PS_DOMAIN redirects "/" to http://localhost:8080/ (the host-mapped port),
+      # which isn't reachable from inside this container. `curl` without `-L`
+      # accepts the 302 as proof Apache is up; PHP's file_get_contents() follows
+      # redirects by default and fails with "Connection refused" on :8080 (#1392).
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://localhost:80']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -186,22 +262,25 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-    container_name: openlinker-api
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-api
     environment:
       NODE_ENV: development
       PORT: 3000
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the postgres service's POSTGRES_PASSWORD above (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: development-secret-key-change-in-production
-      JWT_EXPIRES_IN: 1d
-      OL_PII_HASH_SALT: development-pii-hash-salt-change-in-production
+      # Override every one of these in .env for anything beyond local
+      # dev/demo use — the defaults are throwaway values, not secrets.
+      JWT_SECRET: '${JWT_SECRET:-development-secret-key-change-in-production}'
+      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1d}'
+      OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:-development-pii-hash-salt-change-in-production}'
     ports:
-      - '3000:3000'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-3000}:3000'
     depends_on:
       postgres:
         condition: service_healthy

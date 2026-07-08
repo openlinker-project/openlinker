@@ -211,6 +211,11 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByIdempotencyKey(idempotencyKey: string): Promise<SyncJob | null> {
+    const entity = await this.repository.findOne({ where: { idempotencyKey } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findMany(
     filters: SyncJobFilters,
     pagination: SyncJobPagination

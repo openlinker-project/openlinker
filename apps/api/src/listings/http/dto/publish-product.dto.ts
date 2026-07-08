@@ -110,34 +110,52 @@ export class PublishProductRequestDto {
   content?: PublishContentDto;
 }
 
+export class BulkPublishItemDto {
+  @ApiProperty({
+    description: 'OpenLinker internal variant id',
+    example: 'ol_variant_a1b2c3d4e5f6',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(VARIANT_ID_PATTERN, { message: `internalVariantId ${VARIANT_ID_MESSAGE}` })
+  internalVariantId!: string;
+
+  @ApiProperty({ example: 7, minimum: 0, description: "This product's own stock." })
+  @IsInt()
+  @Min(0)
+  stock!: number;
+
+  @ApiPropertyOptional({
+    type: PublishPriceDto,
+    description: "This product's own price override; omitted ⇒ master price.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PublishPriceDto)
+  price?: PublishPriceDto;
+}
+
 export class BulkPublishProductRequestDto {
   @ApiProperty({ description: 'Target shop connection id (uuid).' })
   @IsString()
   @IsNotEmpty()
   connectionId!: string;
 
-  @ApiProperty({ isArray: true, type: String, description: 'Internal variant ids (1..100).' })
+  @ApiProperty({
+    isArray: true,
+    type: BulkPublishItemDto,
+    description: 'One entry per product (1..100), each with its own stock/price.',
+  })
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(100)
-  @IsString({ each: true })
-  @Matches(VARIANT_ID_PATTERN, { each: true, message: `internalVariantIds ${VARIANT_ID_MESSAGE}` })
-  internalVariantIds!: string[];
+  @ValidateNested({ each: true })
+  @Type(() => BulkPublishItemDto)
+  items!: BulkPublishItemDto[];
 
   @ApiProperty({ enum: PublishProductStatusValues, example: 'published' })
   @IsIn(PublishProductStatusValues)
   status!: PublishProductStatus;
-
-  @ApiProperty({ example: 7, minimum: 0, description: 'Shared stock applied to every variant.' })
-  @IsInt()
-  @Min(0)
-  stock!: number;
-
-  @ApiPropertyOptional({ type: PublishPriceDto, description: 'Shared price override.' })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => PublishPriceDto)
-  price?: PublishPriceDto;
 
   @ApiPropertyOptional({ type: PublishContentDto, description: 'Shared content overrides.' })
   @IsOptional()

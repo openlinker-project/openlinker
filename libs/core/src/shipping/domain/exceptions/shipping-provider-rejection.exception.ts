@@ -40,6 +40,16 @@
  *     - Allegro command errors: `{ errors: AllegroShipmentCommandError[] }`
  *   Optional — undefined when there's nothing structured to carry.
  *
+ *   **Contract (not just convention) — this is a data-exposure boundary.**
+ *   The HTTP controller forwards `providerDetails` verbatim into the 502
+ *   response body AND logs it via `JSON.stringify`. Adapters MUST therefore
+ *   populate it with narrow, deliberately-mapped field-error / discriminator
+ *   metadata only. It MUST NOT carry secrets, credentials, buyer PII, echoed
+ *   request payloads, or a raw upstream error body — doing so would surface
+ *   that data in an API response and in logs, violating the "never return
+ *   secrets in API responses" security baseline. Map to an explicit shape;
+ *   never spread an unfiltered provider response into this field.
+ *
  * `message` is operator-readable verbatim — no prefix. The structured
  * `providerName` already carries the provider context for logs.
  *

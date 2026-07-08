@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
@@ -65,5 +65,63 @@ describe('WebhookDeliveryDetailPage', () => {
 
     const links = await screen.findAllByRole('link', { name: sampleConnection.name });
     expect(links.length).toBeGreaterThan(0);
+  });
+
+  it('links the downstream job to the exact SyncJob resolved for the webhook event', async () => {
+    const lookup = vi.fn().mockResolvedValue({ id: 'job-uuid-123' });
+    const api = createMockApiClient({
+      webhookDeliveries: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleDelivery,
+          downstreamJobId: '1782207005442-0',
+          downstreamJobType: 'marketplace.order.sync',
+        }),
+      },
+      syncJobs: { lookupJobForWebhookEvent: lookup },
+    });
+
+    renderDetail(api);
+
+    // The Redis Stream enqueue ID is the link *text*, but it resolves to the
+    // persisted job's UUID detail route — never `/jobs-logs/<streamId>`, which
+    // the UUID-only route would reject. The link renders the filtered-list
+    // fallback first, then flips to the exact job once the connection + lookup
+    // queries resolve — so wait for the upgraded href.
+    const jobLink = await screen.findByRole('link', { name: '1782207005442-0' });
+    await waitFor(() =>
+      expect(jobLink).toHaveAttribute('href', '/jobs-logs/job-uuid-123'),
+    );
+
+    // The FE passes the raw components (platformType from the connection,
+    // connectionId, eventId) — the server assembles the key, no format here.
+    expect(lookup).toHaveBeenCalledWith({
+      platformType: sampleConnection.platformType,
+      connectionId: sampleConnection.id,
+      eventId: 'evt_42',
+    });
+  });
+
+  it('falls back to the pre-filtered job list when the job is not resolvable yet', async () => {
+    const api = createMockApiClient({
+      webhookDeliveries: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleDelivery,
+          downstreamJobId: '1782207005442-0',
+          downstreamJobType: 'marketplace.order.sync',
+        }),
+      },
+      // Worker hasn't created the row yet → lookup 404s.
+      syncJobs: {
+        lookupJobForWebhookEvent: vi.fn().mockRejectedValue(new Error('not found')),
+      },
+    });
+
+    renderDetail(api);
+
+    const jobLink = await screen.findByRole('link', { name: '1782207005442-0' });
+    expect(jobLink).toHaveAttribute(
+      'href',
+      `/jobs-logs?connectionId=${sampleConnection.id}&jobType=marketplace.order.sync`,
+    );
   });
 });

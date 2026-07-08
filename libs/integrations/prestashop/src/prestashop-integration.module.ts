@@ -43,6 +43,8 @@ import {
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
+  CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionCredentialsRewriterRegistryService,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   OAuthCompletionRegistryService,
   WEBHOOK_SECRET_PROVIDER_TOKEN,
@@ -117,6 +119,8 @@ export class PrestashopIntegrationModule implements OnModuleInit {
     private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
+    @Inject(CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN)
+    private readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService,
     @Inject(INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN)
     private readonly oauthCompletionRegistry: OAuthCompletionRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
@@ -175,6 +179,7 @@ export class PrestashopIntegrationModule implements OnModuleInit {
       inboundWebhookDecoderRegistry: this.inboundWebhookDecoderRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
       connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
+      connectionCredentialsRewriterRegistry: this.connectionCredentialsRewriterRegistry,
       oauthCompletionRegistry: this.oauthCompletionRegistry,
     };
 

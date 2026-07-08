@@ -9,12 +9,13 @@ interface SetDefaultBankAccountVariables {
 }
 
 /**
- * Marks a bank account as the provider's default (#1303 follow-up) — keeps
- * inFakt's own "default account" setting in sync with the account
+ * Marks a bank account as the invoicing provider's default (#1303 follow-up) —
+ * keeps the provider's own "default account" setting in sync with the account
  * OpenLinker stamps on Transfer invoices, whenever the operator picks one.
+ * Provider-neutral: used by both inFakt (#1310) and Subiekt (#1324).
  *
- * A failed call leaves OL and inFakt disagreeing about the default, so the
- * hook surfaces the failure via a toast — call sites fire-and-forget with
+ * A failed call leaves OL and the provider disagreeing about the default, so
+ * the hook surfaces the failure via a toast — call sites fire-and-forget with
  * `.mutate()` and rely on this single error seam.
  */
 export function useSetDefaultBankAccountMutation(): UseMutationResult<
@@ -30,15 +31,23 @@ export function useSetDefaultBankAccountMutation(): UseMutationResult<
     mutationFn: ({ connectionId, accountId }: SetDefaultBankAccountVariables) =>
       apiClient.connections.setDefaultBankAccount(connectionId, accountId),
     onSuccess: async (_data, { connectionId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: connectionsQueryKeys.bankAccounts(connectionId),
-      });
+      // Invalidate BOTH bank-account list keys: the neutral list (inFakt) and
+      // the owner-aware Subiekt list (#1324). Whichever section is on screen,
+      // its `isDefault` flags refresh after the default flips.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: connectionsQueryKeys.bankAccounts(connectionId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: connectionsQueryKeys.subiektBankAccounts(connectionId),
+        }),
+      ]);
     },
     onError: (error) => {
       showToast({
         tone: 'error',
-        title: 'Could not update the inFakt default account',
-        description: `The account was saved in OpenLinker but inFakt still shows the previous default. ${error.message}`,
+        title: 'Could not update the default account',
+        description: `The account was saved in OpenLinker but the invoicing provider still shows the previous default. ${error.message}`,
       });
     },
   });

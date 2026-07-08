@@ -1,10 +1,11 @@
 /**
  * Viewer Role Authorization Integration Test
  *
- * Proves that the per-method @Roles('admin') guards introduced in #1124 are
+ * Proves that the per-method @Roles('admin') guards introduced in #1124, and
+ * extended to Invoicing/Customers/Shipments/Pickup-Points in #1357, are
  * correctly wired end-to-end:
  *
- *  - Viewer JWT → 200 on representative read endpoints across all 10 controllers modified by #1124
+ *  - Viewer JWT → 200 on representative read endpoints across all covered controllers
  *  - Viewer JWT → 403 on representative write endpoints (guard fires before handler)
  *  - Viewer JWT → Connection.config redacted to {} in both list and get responses
  *  - Admin JWT  → Connection.config returned in full
@@ -98,6 +99,57 @@ describe('Viewer Role Authorization', () => {
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(200);
     });
+
+    it('GET /customers', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .get('/v1/customers')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
+
+    it('GET /shipments', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .get('/v1/shipments')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
+
+    it('GET /pickup-points', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get('/v1/pickup-points')
+        .set('Authorization', `Bearer ${viewerToken}`);
+      // No `connectionId`/query params seeded — assert the guard passes
+      // (not 403), matching the operator-role-authz precedent for this same
+      // endpoint (operator-role-authz.int-spec.ts).
+      expect(res.status).not.toBe(403);
+    });
+
+    it('GET /invoices', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .get('/v1/invoices')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
+
+    it('GET /webhook-deliveries', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .get('/v1/webhook-deliveries')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
+
+    it('GET /cursors', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .get('/v1/cursors')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
   });
 
   // ─── writes: viewer gets 403 ────────────────────────────────────────────────
@@ -179,6 +231,33 @@ describe('Viewer Role Authorization', () => {
       await http
         .get(`/v1/connections/${conn.id as string}/diagnostics`)
         .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+    });
+
+    it('POST /invoices', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/invoices')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ orderId: 'fake-order-id' })
+        .expect(403);
+    });
+
+    it('POST /invoices/retry', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/invoices/retry')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ invoiceIds: [] })
+        .expect(403);
+    });
+
+    it('POST /shipments/generate-label', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/shipments/generate-label')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ orderId: 'fake-order-id' })
         .expect(403);
     });
   });

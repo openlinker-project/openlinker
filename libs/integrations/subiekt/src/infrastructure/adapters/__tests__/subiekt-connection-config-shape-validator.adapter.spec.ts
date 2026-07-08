@@ -39,4 +39,39 @@ describe('SubiektConnectionConfigShapeValidatorAdapter', () => {
       validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', timeoutMs: 999999 }),
     ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
   });
+
+  it('accepts a valid config with all payment/cash-register fields (#1324)', async () => {
+    await expect(
+      validator.validate({
+        bridgeBaseUrl: 'http://192.168.1.10:5000',
+        defaultPaymentMethod: 'transfer',
+        bankAccountId: 5,
+        defaultStanowiskoKasoweId: 100067,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects an invalid defaultPaymentMethod (#1324)', async () => {
+    await expect(
+      validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', defaultPaymentMethod: 'card' }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+  });
+
+  it('rejects a non-positive-integer bankAccountId (#1324)', async () => {
+    await expect(
+      validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', bankAccountId: 0 }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    await expect(
+      validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', bankAccountId: 1.5 }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+  });
+
+  it('rejects a non-positive-integer defaultStanowiskoKasoweId (#1324)', async () => {
+    await expect(
+      validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', defaultStanowiskoKasoweId: 0 }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    await expect(
+      validator.validate({ bridgeBaseUrl: 'http://192.168.1.10', defaultStanowiskoKasoweId: 1.5 }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+  });
 });

@@ -296,13 +296,21 @@ describe('ShipmentController', () => {
       );
     });
 
-    it('should map ShippingProviderRejectionException to 502', async () => {
+    it('should map ShippingProviderRejectionException to a 502 carrying the structured provider details (#1428)', async () => {
       dispatch.dispatch.mockRejectedValue(
-        new ShippingProviderRejectionException('inpost', 'PARCEL_TOO_LARGE', 'parcel exceeds size'),
+        new ShippingProviderRejectionException('inpost', 'target_point', 'validation errors', {
+          fieldErrors: { custom_attributes: [{ target_point: ['does_not_exist'] }] },
+        }),
       );
-      await expect(controller.generateLabel(makeGenerateLabelDto())).rejects.toBeInstanceOf(
-        BadGatewayException,
-      );
+
+      const err = await controller.generateLabel(makeGenerateLabelDto()).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadGatewayException);
+      expect((err as BadGatewayException).getResponse()).toEqual({
+        message: 'validation errors',
+        providerCode: 'target_point',
+        details: { fieldErrors: { custom_attributes: [{ target_point: ['does_not_exist'] }] } },
+      });
     });
 
     it('should map a ShippingProviderAuthException (carrier 401/403) to 502, not the 500 "Unclassified" path', async () => {

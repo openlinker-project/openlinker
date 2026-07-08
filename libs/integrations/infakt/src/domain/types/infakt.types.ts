@@ -29,10 +29,15 @@ export interface InfaktKsefData {
   } | null;
 }
 
-/** Infakt invoice kinds. */
+/**
+ * Infakt invoice kinds. `'correction'` is what POST /corrective_invoices.json
+ * returns on its created document (verified live, 2026-07-03); `'corrective'`
+ * remains the GET-by-uuid `invoice_type` query vocabulary.
+ */
 export type InfaktInvoiceKind =
   | 'vat'
   | 'corrective'
+  | 'correction'
   | 'advance'
   | 'final'
   | 'internal'
@@ -106,14 +111,37 @@ export interface InfaktClient {
   country: string | null;
 }
 
-/** Paginated list response shape. */
+/** Paginated list response shape (v3 API — verified live 2026-07-07). */
 export interface InfaktListResponse<T> {
-  entities: T[];
-  metainfo: {
-    total_count: number;
-    next: string | null;
-    previous: string | null;
+  items: T[];
+  pagination: {
+    current_page: number;
+    items_on_page: number;
+    limit: number;
+    total_items: number;
+    total_pages: number;
   };
+}
+
+/**
+ * One "before"/"after" service row on a POST /corrective_invoices.json request.
+ *
+ * The corrective endpoint's wire formats DIFFER from invoices.json (verified
+ * live, 2026-07-03): `unit_net_price` is a decimal "amount currency" STRING
+ * (e.g. `"811.37 PLN"`) and `quantity` is an integer-or-decimal STRING (the
+ * adapter sends `String(quantity)`, e.g. `"1"` / `"0"`) — sending the
+ * invoices.json integer-groszy / numeric-quantity shapes here
+ * 500s. Rows come in pairs per `group`: `correction: false` (original values)
+ * then `correction: true` (corrected values).
+ */
+export interface InfaktCorrectiveInvoiceServiceRequest {
+  name: string;
+  tax_symbol: string;
+  quantity: string;
+  unit: string;
+  unit_net_price: string;
+  group: string;
+  correction: boolean;
 }
 
 /** Response from POST /invoices/{uuid}/send_to_ksef.json */

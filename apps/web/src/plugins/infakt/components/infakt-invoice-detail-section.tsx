@@ -14,16 +14,20 @@
  *
  * @module plugins/infakt/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { Button } from '../../../shared/ui/button';
+import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins/plugin.types';
 import {
   RegulatoryStatusBadge,
   regCardToneFor,
   useInvoiceRenderedDocumentDownload,
+  useResendToKsefMutation,
+  useSendInvoiceEmailMutation,
+  type InvoiceEmailLocale,
 } from '../../../features/invoicing';
 
 export function InfaktInvoiceDetailSection({
@@ -31,6 +35,9 @@ export function InfaktInvoiceDetailSection({
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
   const pdfDownload = useInvoiceRenderedDocumentDownload();
+  const resendToKsef = useResendToKsefMutation();
+  const sendEmail = useSendInvoiceEmailMutation();
+  const [emailLocale, setEmailLocale] = useState<InvoiceEmailLocale>('pl');
   const { showToast } = useToast();
 
   if (invoice.regulatoryStatus === 'not-applicable') {
@@ -38,6 +45,7 @@ export function InfaktInvoiceDetailSection({
   }
 
   const ksefNumber = invoice.clearanceReference ?? invoice.providerInvoiceNumber ?? null;
+  const canSendEmail = invoice.status === 'issued';
 
   async function handleDownloadPdf(): Promise<void> {
     const ok = await pdfDownload.download(invoice.id);
@@ -48,6 +56,51 @@ export function InfaktInvoiceDetailSection({
         description:
           pdfDownload.error?.message ??
           t('infakt.invoice.detail.pdfDownloadFailedDesc', 'Could not fetch the invoice PDF.'),
+      });
+    }
+  }
+
+  async function handleResendToKsef(): Promise<void> {
+    try {
+      await resendToKsef.mutateAsync(invoice.id);
+      showToast({
+        tone: 'success',
+        title: t('infakt.invoice.detail.resendSuccess', 'Re-sent to KSeF'),
+        description: t(
+          'infakt.invoice.detail.resendSuccessDesc',
+          'inFakt is submitting this invoice to KSeF again. Its clearance status will refresh shortly.',
+        ),
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: t('infakt.invoice.detail.resendFailed', 'Re-send failed'),
+        description:
+          (error instanceof Error ? error.message : undefined) ??
+          t('infakt.invoice.detail.resendFailedDesc', 'Could not re-send the invoice to KSeF.'),
+      });
+    }
+  }
+
+  async function handleSendEmail(): Promise<void> {
+    try {
+      await sendEmail.mutateAsync({ invoiceId: invoice.id, input: { locale: emailLocale } });
+      showToast({
+        tone: 'success',
+        title: t('infakt.invoice.detail.emailSent', 'Invoice emailed to buyer'),
+        description: t(
+          'infakt.invoice.detail.emailSentDesc',
+          'inFakt is delivering the invoice to the buyer by email.',
+        ),
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: t('infakt.invoice.detail.emailFailed', 'Sending email failed'),
+        description:
+          error instanceof Error
+            ? error.message
+            : t('infakt.invoice.detail.emailFailedDesc', 'Could not email the invoice to the buyer.'),
       });
     }
   }
@@ -96,10 +149,50 @@ export function InfaktInvoiceDetailSection({
       ) : null}
 
       {invoice.regulatoryStatus === 'rejected' ? (
-        <p className="text-muted reg-card__note">
-          {invoice.failureReason ??
-            t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
-        </p>
+        <div className="reg-card__summary">
+          <p className="text-muted reg-card__note">
+            {invoice.failureReason ??
+              t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
+          </p>
+          <Button
+            tone="primary"
+            className="button--sm"
+            onClick={() => void handleResendToKsef()}
+            disabled={resendToKsef.isPending}
+          >
+            {resendToKsef.isPending
+              ? t('infakt.invoice.detail.resending', 'Re-sending…')
+              : t('infakt.invoice.detail.resend', 'Resend to KSeF')}
+          </Button>
+        </div>
+      ) : null}
+
+      {canSendEmail ? (
+        <div className="reg-card__actions invoice-detail-section__email">
+          <label className="invoice-detail-section__email-locale">
+            <span className="text-muted">
+              {t('infakt.invoice.detail.emailLanguage', 'Email language')}
+            </span>
+            <Select
+              value={emailLocale}
+              disabled={sendEmail.isPending}
+              onChange={(e) => setEmailLocale(e.target.value as InvoiceEmailLocale)}
+            >
+              <option value="pl">{t('infakt.invoice.detail.emailLocalePl', 'Polish')}</option>
+              <option value="en">{t('infakt.invoice.detail.emailLocaleEn', 'English')}</option>
+            </Select>
+          </label>
+          <Button
+            tone="primary"
+            className="button--sm"
+            onClick={() => void handleSendEmail()}
+            disabled={sendEmail.isPending}
+          >
+            {sendEmail.isPending
+              ? t('infakt.invoice.detail.emailSending', 'Sending…')
+              : t('infakt.invoice.detail.emailSend', 'Send by email')}
+          </Button>
+        </div>
       ) : null}
     </section>
   );

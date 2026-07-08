@@ -82,4 +82,21 @@ describe('ROLE_PERMISSIONS', () => {
       expect([...ROLE_PERMISSIONS.admin].sort()).toEqual([...PermissionValues].sort());
     });
   });
+
+  describe('viewer (#1357)', () => {
+    it('should contain customers:read, shipments:read, invoices:read, webhooks:read', () => {
+      expect(ROLE_PERMISSIONS.viewer).toContain('customers:read');
+      expect(ROLE_PERMISSIONS.viewer).toContain('shipments:read');
+      expect(ROLE_PERMISSIONS.viewer).toContain('invoices:read');
+      expect(ROLE_PERMISSIONS.viewer).toContain('webhooks:read');
+    });
+  });
+
+  describe('ai:suggest (#1379 re-scope)', () => {
+    it('should be admin-only — operator and viewer must not hold it', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('ai:suggest');
+      expect(ROLE_PERMISSIONS.operator).not.toContain('ai:suggest');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('ai:suggest');
+    });
+  });
 });

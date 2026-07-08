@@ -23,8 +23,10 @@
  * blob without any KSeF/regime vocabulary.
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
- * we declare only `@Roles('admin')` + `@ApiBearerAuth()` — never a redundant
- * `@UseGuards(JwtAuthGuard)`.
+ * we never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no
+ * `@Roles` (open to any authenticated role, including viewer); writes carry
+ * their own `@Roles('admin')` (#1357, mirroring the #1124 read-open/write-gated
+ * pattern).
  *
  * @module apps/api/src/invoicing/http
  */
@@ -66,12 +68,15 @@ import {
   InvalidBuyerProfileError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  InvoiceRecordNotFoundException,
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
+  isRegulatoryResubmitter,
   BuyerProfile,
   isBankAccountsReader,
   isBankAccountDefaultSetter,
+  isInvoiceEmailSender,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -82,6 +87,7 @@ import type {
   TaxIdentifier,
   InvoicingPort,
   RegulatoryDocumentKind,
+  RegulatoryClearanceResult,
   StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
@@ -101,7 +107,12 @@ import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.
 import { RetryInvoicesRequestDto } from './dto/retry-invoices-request.dto';
 import { RetryInvoicesResponseDto } from './dto/retry-invoices-response.dto';
 import type { RetryInvoiceResultDto } from './dto/retry-invoices-response.dto';
+import { BulkIssueInvoicesRequestDto } from './dto/bulk-issue-invoices-request.dto';
+import { BulkIssueInvoicesResponseDto } from './dto/bulk-issue-invoices-response.dto';
+import type { BulkIssueInvoiceResultDto } from './dto/bulk-issue-invoices-response.dto';
 import { BankAccountResponseDto } from './dto/bank-account-response.dto';
+import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
+import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -143,7 +154,6 @@ function accountIdPipe(): PipeTransform<string, string> {
   };
 }
 
-@Roles('admin')
 @ApiBearerAuth()
 @ApiTags('invoicing')
 @Controller()
@@ -189,10 +199,11 @@ export class InvoicingController {
         isDefault: account.isDefault,
       }));
     } catch (error) {
-      throw this.toProviderBadGateway(error, 'listBankAccounts');
+      throw this.toProviderBadGateway(error, 'listBankAccounts', connectionId);
     }
   }
 
+  @Roles('admin')
   @Post('connections/:connectionId/bank-accounts/:accountId/default')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
@@ -220,7 +231,7 @@ export class InvoicingController {
     try {
       await adapter.setDefaultBankAccount(accountId);
     } catch (error) {
-      throw this.toProviderBadGateway(error, 'setDefaultBankAccount');
+      throw this.toProviderBadGateway(error, 'setDefaultBankAccount', connectionId);
     }
   }
 
@@ -246,17 +257,27 @@ export class InvoicingController {
   }
 
   /**
-   * The bank-account endpoints are pure provider proxies, so a live provider
-   * call failing is upstream trouble, not a server bug — map it to 502 with a
+   * These endpoints are pure provider proxies, so a live provider call
+   * failing is upstream trouble, not a server bug — map it to 502 with a
    * generic message. Provider error text is logged, never returned (same PII
-   * posture as `toHttpException`).
+   * posture as `toHttpException`) — but `sendByEmail` in particular emails
+   * buyers, so a provider error can itself embed the buyer's address (e.g.
+   * "inFakt 500: buyer bob@secret.pl"). Email-shaped substrings are scrubbed
+   * before the message ever reaches the logger, and the optional `contextId`
+   * (invoice/connection id) lets an operator correlate the log line without
+   * needing the raw provider text.
    */
-  private toProviderBadGateway(error: unknown, operation: string): Error {
+  private toProviderBadGateway(error: unknown, operation: string, contextId?: string): Error {
     const message = error instanceof Error ? error.message : String(error);
-    this.logger.warn(`Invoicing provider ${operation} failed: ${message}`);
+    // Best-effort PII scrub for logging hygiene, not exhaustive RFC 5322
+    // validation — quoted-string / special-character local-parts won't match.
+    const scrubbed = message.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]');
+    const suffix = contextId ? ` (${contextId})` : '';
+    this.logger.warn(`Invoicing provider ${operation} failed${suffix}: ${scrubbed}`);
     return new BadGatewayException('Invoicing provider request failed');
   }
 
+  @Roles('admin')
   @Post('invoices')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -345,6 +366,7 @@ export class InvoicingController {
     return this.toDto(issued);
   }
 
+  @Roles('admin')
   @Post('invoices/retry')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -456,6 +478,146 @@ export class InvoicingController {
     }
   }
 
+  @Roles('admin')
+  @Post('invoices/bulk-issue')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Bulk-issue invoices for a list of orders (#1355)',
+    description:
+      'Issues invoices for a set of order ids on one invoicing connection, fanning ' +
+      'out over the SAME single-order issue primitive `POST /invoices` composes (no ' +
+      'parallel bulk pipeline). Idempotent per (connection, order) via the ' +
+      'deterministic key `invoice:{connectionId}:{orderId}` (same key the auto-issue ' +
+      'trigger uses), so a re-submitted batch does not double-issue. Orders already ' +
+      'issued / in progress are skipped; a per-order failure is captured without ' +
+      'aborting the rest. At most 100 order ids per request. Returns a per-id summary.',
+  })
+  @ApiResponse({ status: 200, description: 'Per-id issue summary', type: BulkIssueInvoicesResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (empty array, blank ids, or batch > 100)' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async bulkIssueInvoices(
+    @Body() dto: BulkIssueInvoicesRequestDto,
+  ): Promise<BulkIssueInvoicesResponseDto> {
+    // De-duplicate ids while preserving first-seen order so a caller that repeats
+    // an id gets ONE outcome and the same order is never issued twice in a single
+    // request (each attempt could otherwise re-cross the provider boundary).
+    const uniqueOrderIds = [...new Set(dto.orderIds)];
+
+    const results: BulkIssueInvoiceResultDto[] = [];
+    for (const orderId of uniqueOrderIds) {
+      results.push(await this.issueOneForOrder(dto.connectionId, orderId));
+    }
+
+    const issued = results.filter((r) => r.outcome === 'issued').length;
+    const skipped = results.filter((r) => r.outcome === 'skipped').length;
+    return { issued, skipped, failed: results.length - issued - skipped, results };
+  }
+
+  /**
+   * Issue an invoice for a SINGLE order on the given connection, reusing the exact
+   * issue primitive `POST /invoices` composes (`toIssueInvoiceCommand` +
+   * `invoiceService.issueInvoice`). Never throws — every branch, including the
+   * order/invoice lookups, is inside the try so an infra blip on any one id
+   * cannot abort the batch:
+   *   - order record not found                    -> failed (not-found).
+   *   - existing invoice `issued`                 -> skipped (already issued),
+   *     carrying the existing row's id — the idempotent path.
+   *   - existing `pending` / LIVE `issuing` lease  -> skipped (in progress).
+   *   - otherwise (`failed` / expired lease / none) -> rebuild the command from the
+   *     order snapshot and issue, keyed by the deterministic
+   *     `invoice:{connectionId}:{orderId}` so a re-submitted batch resumes/dedups
+   *     THAT row rather than double-issuing.
+   *
+   * The buyer tax id is NOT supplied per-order in a bulk request (mirrors a keyless
+   * single re-issue), so the rebuilt command derives the buyer from the order
+   * snapshot alone (`buyerTaxId: null`). A `DuplicateInvoiceRecordException` (a
+   * concurrent bulk/auto-issue race on the same deterministic key) is semantically
+   * "already in progress" and reported `skipped`, not `failed`. Any other
+   * rehydration failure or provider rejection is captured as `failed` with a
+   * neutral, PII-free correlation id — the raw provider/PII text is never returned.
+   */
+  private async issueOneForOrder(
+    connectionId: string,
+    orderId: string,
+  ): Promise<BulkIssueInvoiceResultDto> {
+    try {
+      const record = await this.orders.getOrderRecord(orderId);
+      if (!record) {
+        return { orderId, outcome: 'failed', reason: 'Order not found.' };
+      }
+
+      // Re-issue gate — same semantics as the single `POST /invoices` endpoint,
+      // but downgraded from a thrown 409 to a per-id `skipped` so the batch
+      // continues.
+      const existing = await this.invoiceService.getInvoice({ orderId, connectionId });
+      if (existing) {
+        if (existing.status === 'issued') {
+          return {
+            orderId,
+            outcome: 'skipped',
+            invoiceId: existing.id,
+            reason: 'An invoice is already issued for this order.',
+          };
+        }
+        if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
+          return { orderId, outcome: 'skipped', reason: 'Invoice issuance is already in progress.' };
+        }
+      }
+
+      const order = this.rehydrateOrder(record.internalOrderId, record);
+      // Deterministic per-(connection, order) key — the same key the auto-issue
+      // trigger uses. Threading it into the service's exactly-once dedup gate is
+      // what makes a re-submitted batch idempotent (an already-issued row is
+      // returned verbatim; an in-flight one is not double-attempted).
+      const idempotencyKey = `invoice:${connectionId}:${orderId}`;
+      const command = toIssueInvoiceCommand({
+        order,
+        connectionId,
+        // Bulk requests carry no per-order buyer tax id; derive from the order
+        // snapshot alone (matches a keyless single re-issue).
+        buyerTaxId: null,
+        idempotencyKey,
+      });
+      const issued = await this.invoiceService.issueInvoice(command);
+      return { orderId, outcome: 'issued', invoiceId: issued.id };
+    } catch (error) {
+      if (error instanceof DuplicateInvoiceRecordException) {
+        // Belt-and-suspenders. The primary dedup on the deterministic
+        // `invoice:{connectionId}:{orderId}` key happens INSIDE
+        // `InvoiceService.issueInvoice`: its read-gate resolves an existing
+        // same-key row (returning an `issued` one verbatim, resuming a
+        // non-terminal one), and a create-race is normally swallowed there too —
+        // the service catches the duplicate, re-reads the winner, and resumes it.
+        // This catch only fires in the residual race where that internal re-read
+        // can't resolve a winner and the exception propagates. It is still
+        // "already in progress/done", not a failure, and no double-issue results
+        // either way, so report it as `skipped`.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: 'Invoice issuance is already in progress.',
+        };
+      }
+      // A rejection / rehydration / lookup failure for ONE order must not abort
+      // the batch. Log the bounded internal diagnostic with a correlation id;
+      // surface only a neutral, PII-free reason.
+      const correlationId = `inv-bulk-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      this.logger.warn(
+        `Bulk issue failed for order ${orderId} (${correlationId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return {
+        orderId,
+        outcome: 'failed',
+        reason: `Issuance failed; surfaced for manual review (correlationId: ${correlationId}).`,
+      };
+    }
+  }
+
+  @Roles('admin')
   @Post('invoices/:invoiceId/correct')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
@@ -484,8 +646,12 @@ export class InvoicingController {
       );
     }
     if (!original.providerInvoiceNumber || !original.issuedAt) {
+      // Pre-#1338 rows issued before providerInvoiceNumber was persisted at
+      // construction time need the one-off backfill migration
+      // (1818000000004-backfill-ksef-provider-invoice-number.ts) to pass this check.
       throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet`,
+        `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet, ` +
+          `or it was issued before the provider stamped its document number and needs a one-off backfill`,
       );
     }
 
@@ -540,6 +706,129 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     return this.toDto(issued);
+  }
+
+  @Roles('admin')
+  @Post('invoices/:invoiceId/resend-to-ksef')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-send a rejected invoice to the tax authority (KSeF)',
+    description:
+      "Re-triggers transmission of an already-issued document whose clearance ended in " +
+      "'rejected', then refreshes the stored regulatory status. Gated to rejected documents " +
+      '(409 otherwise) to avoid racing an in-flight submission or re-sending a cleared document. ' +
+      'Requires the connection adapter to implement the RegulatoryResubmitter sub-capability ' +
+      '(501 when unsupported). Neutral by design (ADR-026) — the core capability carries no ' +
+      'regime vocabulary; only this operator-facing route name references KSeF, mirroring /upo.',
+  })
+  @ApiResponse({ status: 200, description: 'Resubmitted; refreshed record', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 409, description: 'Invoice is not in a rejected state' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement RegulatoryResubmitter' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or the resend failed' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async resendToKsef(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceRecordResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    // Gate: resend ONLY a terminal-rejected document. Re-sending an in-flight
+    // (`submitted`) or already-`accepted` document would race the provider or
+    // duplicate a cleared submission, so anything but `rejected` is a 409.
+    if (record.regulatoryStatus !== 'rejected') {
+      throw new ConflictException(
+        `Invoice ${invoiceId} is not in a rejected state (regulatory status ${record.regulatoryStatus}); ` +
+          'only rejected invoices can be re-sent',
+      );
+    }
+
+    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
+    if (!isRegulatoryResubmitter(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for connection ${record.connectionId} does not implement RegulatoryResubmitter`,
+      );
+    }
+
+    // No OL-side concurrency lease here (unlike the issue path's CAS lease): two
+    // concurrent admin clicks both read `rejected` and both re-hit the provider.
+    // That is intentional and safe — `resubmitForClearance` only re-sends the SAME
+    // document by `providerInvoiceId` and never re-POSTs `invoices.json`, so it
+    // cannot double-issue; resend relies on provider-side idempotency rather than
+    // an OL lease.
+    let result: RegulatoryClearanceResult;
+    try {
+      result = await adapter.resubmitForClearance(record);
+    } catch (error) {
+      // Only the provider call is a 502-worthy upstream fault. Keep the local
+      // write outside this catch so a TOCTOU persistence failure isn't mislabelled
+      // as a provider failure.
+      throw this.toProviderBadGateway(error, 'resubmitForClearance');
+    }
+
+    // Refresh the stored regulatory status so the projection reflects the new
+    // (typically `submitted`) state and the reconciliation sweep resumes polling.
+    // The provider already succeeded; a failure here is a local persistence fault
+    // (e.g. the record was deleted after the read), mapped on its own terms.
+    try {
+      const refreshed = await this.invoiceService.applyRegulatoryClearance(invoiceId, result);
+      return this.toDto(refreshed);
+    } catch (error) {
+      if (error instanceof InvoiceRecordNotFoundException) {
+        throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+      }
+      throw this.toHttpException(error);
+    }
+  }
+
+  @Roles('admin')
+  @Post('invoices/:invoiceId/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email an issued invoice to the buyer (#1353)',
+    description:
+      'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
+      'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
+      'provider composes and delivers the message to the buyer\'s stored email (no recipient ' +
+      'override). Optional neutral locale (pl/en) and send-copy flag. 501 when the resolved ' +
+      'adapter does not implement InvoiceEmailSender.',
+  })
+  @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement InvoiceEmailSender' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  async sendInvoiceEmail(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Body() dto: SendInvoiceEmailRequestDto,
+  ): Promise<SendInvoiceEmailResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!record.providerInvoiceId) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
+      );
+    }
+
+    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
+    if (!isInvoiceEmailSender(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`,
+      );
+    }
+    try {
+      const result = await adapter.sendByEmail({
+        externalInvoiceId: record.providerInvoiceId,
+        locale: dto.locale,
+        sendCopy: dto.sendCopy,
+      });
+      return { delivered: result.delivered, recipient: result.recipient };
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'sendByEmail', invoiceId);
+    }
   }
 
   @Get('orders/:orderId/invoice')

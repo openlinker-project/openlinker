@@ -36,4 +36,7 @@ export const CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN = Symbol(
 export const INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN = Symbol(
   'OAuthCompletionRegistryService',
 );
+export const CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN = Symbol(
+  'ConnectionCredentialsRewriterRegistryService',
+);
 

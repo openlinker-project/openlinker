@@ -12,6 +12,7 @@ import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { Session, SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
+import { TooltipProvider } from '../shared/ui/tooltip';
 import { LocaleProvider } from '../shared/i18n';
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { PluginRegistryProvider } from '../shared/plugins';
@@ -247,6 +248,9 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       issue: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue({ retried: 0, skipped: 0, results: [] }),
+      // #1355 — bulk issue default: nothing issued, so the /invoices list page
+      // bulk-issue path doesn't hit `undefined` once `bulkIssue` is added.
+      bulkIssue: vi.fn().mockResolvedValue({ issued: 0, skipped: 0, failed: 0, results: [] }),
       issueCorrection: vi.fn().mockResolvedValue(null),
       // #1234 — resolves to an empty PDF blob by default so tests that invoke the
       // UPO preview/download path don't hit `undefined`.
@@ -418,6 +422,7 @@ export function createMockApiClient(
         offset: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      lookupJobForWebhookEvent: vi.fn().mockResolvedValue(null),
       retry: vi.fn().mockResolvedValue(null),
       listGrouped: vi.fn().mockResolvedValue({
         groups: [],
@@ -493,6 +498,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'products:read', 'products:write',
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
+    'ai:suggest',
   ],
 };
 
@@ -572,9 +578,11 @@ export function renderWithProviders(
           <PluginRegistryProvider plugins={plugins}>
             <SessionProvider adapter={sessionAdapter}>
               <ToastProvider>
-                <ApiClientProvider client={apiClient}>
-                  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-                </ApiClientProvider>
+                <TooltipProvider>
+                  <ApiClientProvider client={apiClient}>
+                    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+                  </ApiClientProvider>
+                </TooltipProvider>
               </ToastProvider>
             </SessionProvider>
           </PluginRegistryProvider>

@@ -20,6 +20,8 @@
  *
  * @module apps/api/test/integration/invoicing
  */
+import * as childProcess from 'node:child_process';
+
 import { InvoiceRecordOrmEntity } from '@openlinker/core/invoicing/orm-entities';
 import { BuyerProfile, InvoiceRecordNotFoundException } from '@openlinker/core/invoicing';
 // Deep import of the infrastructure repository (host-only test seam): the
@@ -262,6 +264,113 @@ describe('invoice_records persistence (integration)', () => {
           new Date(Date.now() + 60_000),
         ),
       ).rejects.toBeInstanceOf(InvoiceRecordNotFoundException);
+    });
+
+    // Regression tests for the timestamptz fix (#1296). Root cause: node-postgres
+    // serializes an outgoing `Date` parameter using the PROCESS's LOCAL time
+    // components + local UTC offset (`pg/lib/utils.js` `dateToString`), and a
+    // `timestamp without time zone` column silently DROPS that offset on write
+    // (Postgres ignores any zone indication for a naive-timestamp input) — so the
+    // stored digits are the writing process's LOCAL wall-clock rendering of the
+    // instant, not its UTC rendering. The same happens on the comparing side: the
+    // bound `:now` parameter is also serialized using ITS OWN process's local
+    // wall-clock digits, offset dropped. Two processes with the SAME local
+    // timezone round-trip correctly by symmetry (which is why flipping
+    // Postgres's session `TimeZone` GUC — or `process.env.TZ` on an
+    // already-running process, which several Node/V8 builds don't honour for
+    // already-initialized Date state — has NO effect); the skew appears only
+    // when the WRITING process and the COMPARING process have genuinely
+    // different OS-level local timezones, e.g. a lease written by one
+    // worker/host and evaluated by another with a different `TZ` — exactly the
+    // two-worker double-claim scenario `claimForIssue` exists to prevent. A
+    // real process-timezone difference requires separate OS processes (`TZ` is
+    // read once at process start), so this spawns two child processes via
+    // `tz-claim-probe.child.cjs` — one at `TZ=UTC` to write the lease, one at
+    // `TZ=Pacific/Kiritimati` (UTC+14 — the most extreme real-world offset) to
+    // run the exact CAS-claim predicate — against the SAME running
+    // Testcontainers Postgres instance. `timestamptz` columns always
+    // round-trip the offset explicitly, so the comparison is correct
+    // regardless of either process's local timezone.
+    describe('across genuinely different process-local timezones (#1296)', () => {
+      const dsOptions = () => {
+        const opts = harness.getDataSource().options as unknown as {
+          host: string;
+          port: number;
+          username: string;
+          password: string;
+          database: string;
+        };
+        return opts;
+      };
+
+      function runChild(
+        mode: 'write' | 'compare',
+        tz: string,
+        id: string,
+        leaseIso: string,
+        nowIso: string,
+      ): { claimed?: boolean } {
+        const opts = dsOptions();
+        const scriptPath = require.resolve('../helpers/tz-claim-probe.child.cjs');
+        const result = childProcess.spawnSync(
+          process.execPath,
+          [scriptPath, mode, id, leaseIso, nowIso],
+          {
+            // Connection details travel via PG* env vars, never argv, so the
+            // test-container password never appears in `ps` output.
+            env: {
+              ...process.env,
+              TZ: tz,
+              PGHOST: String(opts.host),
+              PGPORT: String(opts.port),
+              PGUSER: String(opts.username),
+              PGPASSWORD: String(opts.password),
+              PGDATABASE: String(opts.database),
+            },
+            encoding: 'utf-8',
+          },
+        );
+        if (result.status !== 0) {
+          throw new Error(`tz-claim-probe.child.cjs (${mode}, TZ=${tz}) failed: ${result.stderr}`);
+        }
+        return JSON.parse(result.stdout) as { claimed?: boolean };
+      }
+
+      it('does NOT reclaim a live lease written by a UTC process when compared by a UTC+14 process', async () => {
+        const saved = await repo.save(claimRow({ status: 'issuing', leaseExpiresAt: null }));
+        const liveLeaseIso = new Date(Date.now() + 60_000).toISOString();
+
+        runChild('write', 'UTC', saved.id, liveLeaseIso, liveLeaseIso);
+        const { claimed } = runChild(
+          'compare',
+          'Pacific/Kiritimati',
+          saved.id,
+          new Date(Date.now() + 120_000).toISOString(),
+          new Date().toISOString(),
+        );
+
+        expect(claimed).toBe(false);
+        const reread = await repo.findOneOrFail({ where: { id: saved.id } });
+        expect(reread.status).toBe('issuing');
+      });
+
+      it('reclaims an expired lease written by a UTC process when compared by a UTC+14 process', async () => {
+        const saved = await repo.save(claimRow({ status: 'issuing', leaseExpiresAt: null }));
+        const expiredLeaseIso = new Date(Date.now() - 60_000).toISOString();
+
+        runChild('write', 'UTC', saved.id, expiredLeaseIso, expiredLeaseIso);
+        const { claimed } = runChild(
+          'compare',
+          'Pacific/Kiritimati',
+          saved.id,
+          new Date(Date.now() + 120_000).toISOString(),
+          new Date().toISOString(),
+        );
+
+        expect(claimed).toBe(true);
+        const reread = await repo.findOneOrFail({ where: { id: saved.id } });
+        expect(reread.status).toBe('issuing');
+      });
     });
   });
 });

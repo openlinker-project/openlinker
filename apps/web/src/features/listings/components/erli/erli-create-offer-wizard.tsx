@@ -31,8 +31,9 @@
  * @module features/listings/components/erli
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { Controller, FormProvider, useForm, type FieldPath } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../../shared/ui/alert';
 import { Button } from '../../../../shared/ui/button';
@@ -49,8 +50,21 @@ import { useProductQuery, useProductsQuery, useVariantQuery } from '../../../pro
 import type { Product, ProductVariant } from '../../../products';
 import { useCreateOfferMutation } from '../../hooks/use-create-offer-mutation';
 import { useResolveCategoryQuery } from '../../hooks/use-resolve-category-query';
-import type { CreateOfferRequest } from '../../api/listings.types';
-import { erliCreateOfferSchema, type ErliCreateOfferValues } from './erli-create-offer.schema';
+import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
+import { CategoryPicker } from '../CategoryPicker';
+import { CategoryParametersStep } from '../category-parameters-step';
+import { buildParametersZodSchema } from '../build-parameters-zod-schema';
+import {
+  MissingCategoryParameterSectionError,
+  categoryParametersToOfferParameters,
+} from '../category-parameters-to-offer-parameters';
+import type { CategoryParameterFormValues } from '../category-parameter-form.types';
+import type { CreateOfferRequest, OfferParameter } from '../../api/listings.types';
+import {
+  erliCreateOfferSchema,
+  type ErliCreateOfferSubmission,
+  type ErliCreateOfferValues,
+} from './erli-create-offer.schema';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import {
   formatDispatch,
@@ -59,9 +73,37 @@ import {
 } from './erli-offer-fields.schema';
 import { readErliOfferRequestPrefill } from './create-erli-offer-request-to-form-values';
 
-const ERLI_STEP_LABELS = ['Variant', 'Offer details', 'Review'] as const;
+/**
+ * Step labels — capability-conditional (#1384). Erli borrows Allegro's
+ * category/attribute taxonomy (ADR-023, ADR-031); when the connection has
+ * Allegro app credentials configured (`config.allegroCategoryAccessEnabled`,
+ * a per-connection-instance-visible flag — NOT `supportedCapabilities`,
+ * which is static per-adapterKey and cannot reflect this, see ADR-031
+ * "Correction"), the wizard grows a dedicated Category step (CategoryPicker)
+ * and a Category-parameters step, mirroring `AllegroCreateOfferWizard`.
+ * Otherwise it keeps today's 3-step shape with the plain-text category field
+ * folded into "Offer details".
+ */
+const ERLI_STEP_LABELS_BASIC = ['Variant', 'Offer details', 'Review'] as const;
+const ERLI_STEP_LABELS_WITH_CATEGORY = [
+  'Variant',
+  'Offer details',
+  'Category',
+  'Category parameters',
+  'Review',
+] as const;
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
 const VARIANT_PICKER_PAGE_SIZE = 20;
+
+/**
+ * RHF cannot infer the dynamic `parameters.{paramId}` path from
+ * `ErliCreateOfferValues` (the `parameters` slice is `z.record(z.unknown())`
+ * by design — per-field shapes come from the runtime `CategoryParameter`
+ * list). Mirrors `AllegroCreateOfferWizard`'s `parametersFieldPath` helper.
+ */
+function parametersFieldPath(paramId: string): FieldPath<ErliCreateOfferValues> {
+  return `parameters.${paramId}` as FieldPath<ErliCreateOfferValues>;
+}
 
 function variantLabel(product: Product, variant: ProductVariant): string {
   const attrs = variant.attributes ? Object.values(variant.attributes).join(' · ') : '';
@@ -106,7 +148,18 @@ export function ErliCreateOfferWizard({
   // Shared, declared-once Erli validator (image gate). Resolved via usePlatform.
   const erliValidation = usePlatform(connection.platformType)?.offerValidation;
 
-  const form = useForm<ErliCreateOfferValues>({
+  // #1384 — per-connection-instance signal (NOT `connection.supportedCapabilities`,
+  // which is static per-adapterKey — see ADR-031 "Correction"). Read directly off
+  // the connection's already-returned `config`, no new query needed.
+  const allegroCategoryAccessEnabled = connection.config.allegroCategoryAccessEnabled === true;
+  const stepLabels = allegroCategoryAccessEnabled
+    ? ERLI_STEP_LABELS_WITH_CATEGORY
+    : ERLI_STEP_LABELS_BASIC;
+  const categoryStepIndex = allegroCategoryAccessEnabled ? 2 : null;
+  const categoryParametersStepIndex = allegroCategoryAccessEnabled ? 3 : null;
+  const reviewStepIndex = stepLabels.length - 1;
+
+  const form = useForm<ErliCreateOfferValues, undefined, ErliCreateOfferSubmission>({
     defaultValues: prefill ?? {
       internalVariantId: defaultVariantId ?? '',
       variantLabel: '',
@@ -118,6 +171,7 @@ export function ErliCreateOfferWizard({
       publishImmediately: false,
       dispatchPeriod: dispatchDefault.period,
       dispatchUnit: dispatchDefault.unit,
+      parameters: {},
     },
     resolver: zodResolver(erliCreateOfferSchema),
     mode: 'onBlur',
@@ -170,6 +224,35 @@ export function ErliCreateOfferWizard({
     }
   }, [categoryQuery.data, form]);
 
+  // #1384 — category-parameter schema, only fetched once a category is
+  // selected AND the connection has Allegro category access configured.
+  // Same hook Allegro's wizard uses (`useCategoryParametersQuery`) — no new
+  // hook needed, per the plan.
+  const currentCategoryId = form.watch('categoryId');
+  const categoryParametersQuery = useCategoryParametersQuery(
+    allegroCategoryAccessEnabled ? connection.id : undefined,
+    allegroCategoryAccessEnabled ? currentCategoryId || undefined : undefined,
+  );
+  const categoryParameters = useMemo(
+    () => categoryParametersQuery.data ?? [],
+    [categoryParametersQuery.data],
+  );
+  // Clear the parameters slice whenever the chosen category changes — the
+  // shape is category-specific so prior values would never be valid under a
+  // new schema (mirrors `AllegroCreateOfferWizard`).
+  const lastCategoryIdRef = useRef<string>(currentCategoryId);
+  useEffect(() => {
+    if (lastCategoryIdRef.current && lastCategoryIdRef.current !== currentCategoryId) {
+      form.setValue('parameters', {}, { shouldDirty: false, shouldValidate: false });
+      form.clearErrors('parameters');
+    }
+    lastCategoryIdRef.current = currentCategoryId;
+  }, [currentCategoryId, form]);
+  // #423 — surfaces `MissingCategoryParameterSectionError` (stale cache
+  // predating #417) with an actionable "reload" message, mirroring Allegro's
+  // wizard.
+  const [staleSchemaError, setStaleSchemaError] = useState<string | null>(null);
+
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
       if (!form.formState.isDirty) return;
@@ -187,10 +270,10 @@ export function ErliCreateOfferWizard({
     () =>
       erliValidation?.validateRow({
         imageCount: imageUrls.length,
-        needsProductParameters: false,
+        needsProductParameters: allegroCategoryAccessEnabled,
         willLinkProductCard: false,
       }) ?? [],
-    [erliValidation, imageUrls.length],
+    [erliValidation, imageUrls.length, allegroCategoryAccessEnabled],
   );
   const hasImageBlocker = pickedProduct !== null && imageBlockers.length > 0;
 
@@ -207,19 +290,59 @@ export function ErliCreateOfferWizard({
     setPickedVariantEan(variant.ean ?? variant.gtin ?? null);
   }
 
-  const STEP_FIELDS: ReadonlyArray<ReadonlyArray<keyof ErliCreateOfferValues>> = [
-    ['internalVariantId'],
-    ['title', 'priceAmount', 'stock', 'dispatchPeriod', 'dispatchUnit'],
-    [],
-  ];
+  const STEP_FIELDS: ReadonlyArray<ReadonlyArray<keyof ErliCreateOfferValues>> = allegroCategoryAccessEnabled
+    ? [
+        ['internalVariantId'],
+        ['title', 'priceAmount', 'stock', 'dispatchPeriod', 'dispatchUnit'],
+        [], // Category — CategoryPicker, no static-field trigger
+        [], // Category parameters — validated dynamically below
+        [],
+      ]
+    : [['internalVariantId'], ['title', 'priceAmount', 'stock', 'dispatchPeriod', 'dispatchUnit'], []];
 
   async function goNext(): Promise<void> {
     const fields = STEP_FIELDS[stepIndex] ?? [];
     const valid = fields.length === 0 ? true : await form.trigger(fields);
     if (!valid) return;
     if (stepIndex === 1 && hasImageBlocker) return; // can't advance with a missing image
+
+    // #1401 review — Category is a static `[]` STEP_FIELDS entry (CategoryPicker
+    // has no static-field trigger), so `categoryId` must be enforced manually here,
+    // mirroring `AllegroCreateOfferWizard`'s required `categoryId` field. Without
+    // this an operator can click through the Category step without picking one.
+    if (allegroCategoryAccessEnabled && stepIndex === categoryStepIndex) {
+      if (!form.getValues('categoryId')) {
+        form.setError('categoryId', { type: 'manual', message: 'Select a category to continue.' });
+        return;
+      }
+      form.clearErrors('categoryId');
+    }
+
+    // #1384 — dynamic per-category Zod validation, mirrors
+    // `AllegroCreateOfferWizard`'s Step-3 gate. Skipped when the category has
+    // no parameters or the schema is still loading.
+    if (
+      allegroCategoryAccessEnabled &&
+      stepIndex === categoryParametersStepIndex &&
+      categoryParameters.length > 0
+    ) {
+      const paramValues =
+        (form.getValues('parameters') as CategoryParameterFormValues | undefined) ?? {};
+      const result = buildParametersZodSchema(categoryParameters).safeParse(paramValues);
+      if (!result.success) {
+        form.clearErrors('parameters');
+        for (const issue of result.error.issues) {
+          const paramId = String(issue.path[0] ?? '');
+          if (paramId === '') continue;
+          form.setError(parametersFieldPath(paramId), { type: 'manual', message: issue.message });
+        }
+        return;
+      }
+      form.clearErrors('parameters');
+    }
+
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
-    setStepIndex((i) => Math.min(i + 1, ERLI_STEP_LABELS.length - 1));
+    setStepIndex((i) => Math.min(i + 1, stepLabels.length - 1));
   }
 
   function goBack(): void {
@@ -236,6 +359,28 @@ export function ErliCreateOfferWizard({
     // the `defaultVariantId` path where no product was interactively picked.
     if (imageBlockers.length > 0) return;
 
+    setStaleSchemaError(null); // clear from any prior submit
+
+    // #1384 — serialize the Step-4 category-parameter values into the
+    // neutral `OfferParameter[]` shape, exactly like Allegro's wizard.
+    // `OfferBuilderService.buildOfferParameters` merges `overrides.parameters`
+    // server-side unchanged — no BE change needed (confirmed in ADR-031's plan).
+    let parameters: OfferParameter[] = [];
+    if (allegroCategoryAccessEnabled) {
+      try {
+        parameters = categoryParametersToOfferParameters(
+          (submitted.parameters as CategoryParameterFormValues | undefined) ?? {},
+          categoryParameters,
+        );
+      } catch (error) {
+        if (error instanceof MissingCategoryParameterSectionError) {
+          setStaleSchemaError(error.parameterName);
+          return;
+        }
+        throw error;
+      }
+    }
+
     const request: CreateOfferRequest = {
       internalVariantId: submitted.internalVariantId,
       stock: submitted.stock,
@@ -246,6 +391,7 @@ export function ErliCreateOfferWizard({
         ...(submitted.categoryId ? { categoryId: submitted.categoryId } : {}),
         description: submitted.description ? submitted.description : null,
         imageUrls,
+        ...(parameters.length > 0 ? { parameters } : {}),
         platformParams: {
           dispatchTime: { period: submitted.dispatchPeriod, unit: submitted.dispatchUnit },
         },
@@ -291,7 +437,7 @@ export function ErliCreateOfferWizard({
       </header>
 
       <SetupStepper
-        steps={ERLI_STEP_LABELS}
+        steps={stepLabels}
         currentStep={stepIndex}
         completedSteps={completedSteps}
       />
@@ -302,6 +448,22 @@ export function ErliCreateOfferWizard({
       {mutation.error ? (
         <Alert tone="error" title="Offer creation failed">
           {mutation.error.message}
+        </Alert>
+      ) : null}
+      {staleSchemaError !== null ? (
+        <Alert tone="error" title="Wizard data is out of date">
+          <p>
+            Category parameter <strong>{staleSchemaError}</strong> is missing data that was added
+            in a recent update. Please reload this page to refetch the latest category schema.
+          </p>
+          <div className="alert__actions">
+            <Button type="button" tone="primary" onClick={() => window.location.reload()}>
+              Reload now
+            </Button>
+            <Button type="button" tone="ghost" onClick={() => setStaleSchemaError(null)}>
+              Dismiss
+            </Button>
+          </div>
         </Alert>
       ) : null}
 
@@ -408,16 +570,24 @@ export function ErliCreateOfferWizard({
                 <Input {...form.register('title')} maxLength={120} />
               </FormField>
 
-              <FormField
-                label="Category (resolved by EAN)"
-                name="categoryId"
-                description="Resolved from the variant barcode against the marketplace catalog. Leave blank to let the backend resolve at create time."
-              >
-                <Input
-                  {...form.register('categoryId')}
-                  placeholder={categoryQuery.isLoading ? 'Resolving…' : 'e.g. 12345'}
-                />
-              </FormField>
+              {!allegroCategoryAccessEnabled ? (
+                <>
+                  <FormField
+                    label="Category (resolved by EAN)"
+                    name="categoryId"
+                    description="Resolved from the variant barcode against the marketplace catalog. Leave blank to let the backend resolve at create time."
+                  >
+                    <Input
+                      {...form.register('categoryId')}
+                      placeholder={categoryQuery.isLoading ? 'Resolving…' : 'e.g. 12345'}
+                    />
+                  </FormField>
+                  <p className="erli-config__note">
+                    Add Allegro category browsing to this connection to pick from a list instead
+                    of typing a raw category id. <Link to={`/connections/${connection.id}/edit`}>Configure category browsing</Link>.
+                  </p>
+                </>
+              ) : null}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                 <FormField
@@ -466,7 +636,61 @@ export function ErliCreateOfferWizard({
             </div>
           ) : null}
 
-          {stepIndex === 2 ? (
+          {allegroCategoryAccessEnabled && stepIndex === categoryStepIndex ? (
+            <div className="form-field">
+              <span id="erli-categoryId-label" className="form-field__label">
+                Category
+              </span>
+              <Controller
+                control={form.control}
+                name="categoryId"
+                render={({ field, fieldState }) => (
+                  <CategoryPicker
+                    connectionId={connection.id}
+                    value={field.value || null}
+                    onChange={field.onChange}
+                    invalid={Boolean(fieldState.error)}
+                    aria-labelledby="erli-categoryId-label"
+                    aria-describedby="erli-categoryId-description erli-categoryId-error"
+                  />
+                )}
+              />
+              <p id="erli-categoryId-description" className="form-field__description">
+                Browse the Allegro-borrowed category tree (ADR-023/ADR-031) and pick a leaf
+                category.
+              </p>
+              {form.formState.errors.categoryId?.message ? (
+                <p id="erli-categoryId-error" className="form-field__error" role="alert">
+                  {form.formState.errors.categoryId.message}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {allegroCategoryAccessEnabled && stepIndex === categoryParametersStepIndex ? (
+            categoryParametersQuery.isLoading ? (
+              <p className="muted-text" role="status" aria-live="polite">
+                Loading category parameters…
+              </p>
+            ) : categoryParametersQuery.error ? (
+              <Alert tone="error" title="Unable to load category parameters">
+                <span>{categoryParametersQuery.error.message}</span>
+                <Button
+                  tone="secondary"
+                  type="button"
+                  onClick={() => void categoryParametersQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </Alert>
+            ) : categoryParameters.length === 0 ? (
+              <p className="muted-text">No additional parameters required for this category.</p>
+            ) : (
+              <CategoryParametersStep parameters={categoryParameters} formNamespace="parameters" />
+            )
+          ) : null}
+
+          {stepIndex === reviewStepIndex ? (
             <dl className="create-offer-review">
               <dt>Variant</dt>
               <dd>{values.variantLabel || values.internalVariantId}</dd>
@@ -499,7 +723,7 @@ export function ErliCreateOfferWizard({
                   ← Back
                 </Button>
               ) : null}
-              {stepIndex < ERLI_STEP_LABELS.length - 1 ? (
+              {stepIndex < stepLabels.length - 1 ? (
                 <Button
                   type="button"
                   onClick={() => void goNext()}

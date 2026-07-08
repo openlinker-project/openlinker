@@ -95,6 +95,7 @@ export type {
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
@@ -120,6 +121,7 @@ export type { ISyncCursorsService } from './application/services/sync-cursors.se
 // Inbound routing policy (ADR-015) — class is value-exported so the API webhooks
 // module can bind it; deps (IIntegrationsService, JobEnqueuePort) resolve there.
 export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
+export { buildInboundJobIdempotencyKey } from './application/services/inbound-job-idempotency-key';
 export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
 export type { RoutingOutcome } from './application/types/inbound-routing-policy.types';
 

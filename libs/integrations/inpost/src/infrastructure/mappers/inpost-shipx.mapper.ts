@@ -134,8 +134,19 @@ export function toGenerateLabelResult(shipment: ShipXShipment): GenerateLabelRes
  * shipments; no brokerage layer to disambiguate, unlike Allegro Delivery —
  * see `KnownCarrierValues` in core).
  */
-export function toTrackingSnapshot(status: ShipmentStatus, providerStatus: string): TrackingSnapshot {
-  return { status, providerStatus, carrier: 'inpost' };
+export function toTrackingSnapshot(
+  status: ShipmentStatus,
+  providerStatus: string,
+  trackingNumber?: string,
+): TrackingSnapshot {
+  // Backfill the waybill once ShipX mints it at confirmation — the status-sync
+  // service diffs this onto `Shipment.trackingNumber` (never overwrites).
+  return {
+    status,
+    providerStatus,
+    carrier: 'inpost',
+    ...(trackingNumber ? { trackingNumber } : {}),
+  };
 }
 
 /** Map a ShipX point to the neutral `PickupPoint`. */
@@ -185,7 +196,11 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
     parcels: { template: cmd.parcel.template },
     service: 'inpost_locker_standard',
     reference: cmd.shipmentId,
-    custom_attributes: { sending_method: 'dispatch_order', target_point: cmd.paczkomatId },
+    // Paczkomat is a sender self-drop at a locker → `parcel_locker` is the ShipX
+    // sending method documented for `inpost_locker_standard`. `dispatch_order`
+    // (courier collects from the sender) routed locker shipments into the
+    // courier pickup-order flow (#1427).
+    custom_attributes: { sending_method: 'parcel_locker', target_point: cmd.paczkomatId },
   };
 }
 

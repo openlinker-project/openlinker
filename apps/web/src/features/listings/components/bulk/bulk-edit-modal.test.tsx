@@ -9,7 +9,7 @@
  * dialog are stubbed so the test isolates the modal's own logic from their
  * data dependencies.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
@@ -23,11 +23,19 @@ vi.mock('../CategoryPicker', () => ({
     <div data-testid="category-picker">{value ?? 'none'}</div>
   ),
 }));
+// Mutable so a test can drive the category-parameters query result (#1367).
+let mockCategoryParameters: unknown[] = [];
 vi.mock('../../hooks/use-category-parameters-query', () => ({
-  useCategoryParametersQuery: () => ({ data: [], isLoading: false, error: null }),
+  useCategoryParametersQuery: () => ({
+    data: mockCategoryParameters,
+    isLoading: false,
+    error: null,
+  }),
 }));
 vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
-vi.mock('../category-parameters-step', () => ({ CategoryParametersStep: () => null }));
+vi.mock('../category-parameters-step', () => ({
+  CategoryParametersStep: () => <div data-testid="category-parameters-step" />,
+}));
 
 const DEFAULTS = { stock: 5, publishImmediately: true, priceAmount: '12.00', priceCurrency: 'PLN' };
 
@@ -89,6 +97,10 @@ function makeRow(opts: {
 }
 
 describe('BulkEditModal', () => {
+  beforeEach(() => {
+    mockCategoryParameters = [];
+  });
+
   it('renders a suggested-category chip per multi-match candidate, falling back to the id', () => {
     renderWithProviders(
       <BulkEditModal
@@ -234,5 +246,46 @@ describe('BulkEditModal', () => {
     await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
     const override = onSave.mock.calls[0][1] as { overrides?: { categoryId?: string } };
     expect(override.overrides?.categoryId).toBeUndefined();
+  });
+
+  // #1367 — a browsable-taxonomy destination (Allegro, whose manifest advertises
+  // the `CategoryBrowser` sub-capability) must render the per-category parameter
+  // step so required offer params like "Stan" can be set; a borrows-taxonomy
+  // destination (Erli) must not.
+  it('renders the category-parameter step for a browsable destination once a category is resolved (#1367)', () => {
+    mockCategoryParameters = [{ id: '11323', name: 'Stan', type: 'dictionary', required: true }];
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={{ ...makeRow(), resolvedCategoryId: 'cat-1' }}
+        connection={connection}
+        canBrowseCategories={true}
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('Category parameters')).toBeInTheDocument();
+    expect(screen.getByTestId('category-parameters-step')).toBeInTheDocument();
+  });
+
+  it('hides the category-parameter step for a borrows destination even with required params (#1367)', () => {
+    mockCategoryParameters = [{ id: '11323', name: 'Stan', type: 'dictionary', required: true }];
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={{ ...makeRow(), resolvedCategoryId: 'cat-1' }}
+        connection={connection}
+        canBrowseCategories={false}
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText('Category parameters')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('category-parameters-step')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
   });
 });

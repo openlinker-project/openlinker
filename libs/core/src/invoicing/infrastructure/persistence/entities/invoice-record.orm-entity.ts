@@ -29,7 +29,7 @@ import type {
   IssuedLineSnapshot,
   StoredDocument,
 } from '../../../domain/types/invoicing.types';
-import { InvoiceStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
+import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
 @Entity('invoice_records')
 @Index('IDX_invoice_records_order_connection', ['orderId', 'connectionId'])
@@ -84,13 +84,21 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'text', nullable: true })
   clearanceReference!: string | null;
 
+  /**
+   * Neutral payment lifecycle (#1354) — refreshed from an authoritative
+   * `PaymentStatusReader` read triggered by a provider payment webhook. Defaults
+   * `unknown` (never asserts "unpaid" for a document OL has not polled).
+   */
+  @Column({ type: 'text', default: 'unknown' })
+  paymentStatus!: PaymentStatus;
+
   @Column({ type: 'text', nullable: true })
   idempotencyKey!: string | null;
 
   @Column({ type: 'text', nullable: true })
   pdfUrl!: string | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   issuedAt!: Date | null;
 
   @Column({ type: 'text', nullable: true })
@@ -123,7 +131,7 @@ export class InvoiceRecordOrmEntity {
    * currently holds the in-flight slot. Backs the atomic `claimForIssue` guard
    * that lets exactly one concurrent same-key retry cross the provider boundary.
    */
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   leaseExpiresAt!: Date | null;
 
   /**
@@ -158,9 +166,9 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'jsonb', nullable: true })
   issuedLineSnapshot!: IssuedLineSnapshot | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

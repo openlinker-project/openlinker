@@ -7,7 +7,9 @@
  *  - Operator JWT → 2xx on operational write endpoints (guard passes; handler
  *    may 400/404 on missing data, but NOT 403)
  *  - Operator JWT → 403 on administrative endpoints (connections write, sync
- *    write, AI settings, prompt templates, webhook-deliveries, cursors, users)
+ *    write, AI settings, prompt templates, users). Webhook-deliveries and
+ *    cursors were opened to viewer/operator by #1357 (read-only, no
+ *    credentials/secrets in their DTOs — see ANALYSIS-1357).
  *  - Operator JWT → Connection.config redacted to {} (same as viewer — operator
  *    is not admin)
  *
@@ -111,6 +113,38 @@ describe('Operator Role Authorization', () => {
         .set('Authorization', `Bearer ${operatorToken}`);
       expect(res.status).not.toBe(403);
     });
+
+    it('GET /customers → 200 (operator has full customer-read access)', async () => {
+      const { http, operatorToken } = await seeds();
+      await http
+        .get('/v1/customers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+    });
+
+    it('GET /invoices → 200 (operator has full invoice-read access)', async () => {
+      const { http, operatorToken } = await seeds();
+      await http
+        .get('/v1/invoices')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+    });
+
+    it('GET /webhook-deliveries → 200 (opened to operator/viewer by #1357)', async () => {
+      const { http, operatorToken } = await seeds();
+      await http
+        .get('/v1/webhook-deliveries')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+    });
+
+    it('GET /cursors → 200 (opened to operator/viewer by #1357)', async () => {
+      const { http, operatorToken } = await seeds();
+      await http
+        .get('/v1/cursors')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+    });
   });
 
   // ─── administrative writes — operator gets 403 ──────────────────────────────
@@ -202,6 +236,15 @@ describe('Operator Role Authorization', () => {
         .expect(403);
     });
 
+    it('POST /invoices → 403 (invoicing writes remain admin-only)', async () => {
+      const { http, operatorToken } = await seeds();
+      await http
+        .post('/v1/invoices')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ orderId: 'fake-order-id' })
+        .expect(403);
+    });
+
     it('GET /prompt-templates → 403 (entire controller admin-only)', async () => {
       const { http, operatorToken } = await seeds();
       await http
@@ -216,22 +259,6 @@ describe('Operator Role Authorization', () => {
         .put('/v1/ai-provider-settings/active')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ provider: 'anthropic' })
-        .expect(403);
-    });
-
-    it('GET /webhook-deliveries → 403 (entire controller admin-only)', async () => {
-      const { http, operatorToken } = await seeds();
-      await http
-        .get('/v1/webhook-deliveries')
-        .set('Authorization', `Bearer ${operatorToken}`)
-        .expect(403);
-    });
-
-    it('GET /cursors → 403 (entire controller admin-only)', async () => {
-      const { http, operatorToken } = await seeds();
-      await http
-        .get('/v1/cursors')
-        .set('Authorization', `Bearer ${operatorToken}`)
         .expect(403);
     });
 

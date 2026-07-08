@@ -113,6 +113,18 @@ export interface SyncJobRepositoryPort {
   findById(id: string): Promise<SyncJob | null>;
 
   /**
+   * Find a single job by its unique idempotency key. Returns null if not found.
+   *
+   * The idempotency key is the durable cross-reference between an inbound
+   * trigger and the persisted job it produced — the key an enqueuer computes
+   * (e.g. `InboundRoutingPolicyService` uses `{platformType}:{connectionId}:{sourceEventId}`)
+   * is the same one stored on the row. Callers that only hold the enqueue
+   * coordinates (not the DB UUID) use this to resolve the actual `SyncJob` —
+   * e.g. correlating a webhook delivery to the job it triggered (#1366).
+   */
+  findByIdempotencyKey(idempotencyKey: string): Promise<SyncJob | null>;
+
+  /**
    * Requeue stuck jobs (optional helper)
    *
    * Finds jobs stuck in 'running' status longer than lockTimeoutMinutes,

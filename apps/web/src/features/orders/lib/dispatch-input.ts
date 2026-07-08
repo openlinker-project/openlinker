@@ -91,6 +91,9 @@ export interface DispatchParcel {
   width: number;
   height: number;
   weightGrams: number;
+  /** Locker size code for paczkomat shipments (InPost `small|medium|large`).
+   *  Required by the BE for a paczkomat shipment; absent for courier. */
+  template?: string;
 }
 
 /**
@@ -137,6 +140,9 @@ export function buildDispatchItem(args: {
       address,
     },
     parcel: {
+      // Locker size is authoritative for paczkomat shipments; dimensions are
+      // carried too but ignored by locker adapters.
+      ...(parcel.template ? { template: parcel.template } : {}),
       dimensions: { length: parcel.length, width: parcel.width, height: parcel.height },
       weightGrams: parcel.weightGrams,
     },

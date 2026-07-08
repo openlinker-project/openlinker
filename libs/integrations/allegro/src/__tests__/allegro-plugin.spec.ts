@@ -20,6 +20,17 @@ describe('allegroAdapterManifest', () => {
       expect.arrayContaining(['OrderSource', 'OfferManager', 'ShippingProviderManager']),
     );
   });
+
+  it('advertises the CategoryBrowser + EanCategoryMatcher OfferManager sub-capabilities so the bulk wizard renders the category-parameter step for a browsable taxonomy (#1367)', () => {
+    // These drive the FE browsable-vs-borrows split on the connection response's
+    // `supportedCapabilities`. The adapter implements both (guard-verified in
+    // allegro-offer-manager.adapter.spec.ts); the manifest must advertise them
+    // or the coarse list is silently missing them and Allegro is treated as a
+    // borrows-taxonomy destination (no "Stan" parameter → PARAMETER_REQUIRED).
+    expect(allegroAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['CategoryBrowser', 'EanCategoryMatcher']),
+    );
+  });
 });
 
 describe('createAllegroPlugin → register(host)', () => {
