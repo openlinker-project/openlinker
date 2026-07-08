@@ -463,7 +463,7 @@ authoring your plugin). Its four fields:
 
 The `HostServices` bag passed into `register` and `createCapabilityAdapter`
 is defined at
-[`libs/plugin-sdk/src/host-services.ts:54-163`](../libs/plugin-sdk/src/host-services.ts#L54-L163).
+[`libs/plugin-sdk/src/host-services.ts:55-178`](../libs/plugin-sdk/src/host-services.ts#L55-L178).
 It splits into two blocks:
 
 - **Read inputs** (use): `logger`, `identifierMapping`,
@@ -473,7 +473,8 @@ It splits into two blocks:
   `emailNormalizerRegistry`, `retryClassifierRegistry`,
   `schedulerTaskRegistry`, `webhookProvisioningRegistry`,
   `connectionConfigShapeValidatorRegistry`,
-  `connectionCredentialsShapeValidatorRegistry`.
+  `connectionCredentialsShapeValidatorRegistry`,
+  `connectionCredentialsRewriterRegistry`.
 
 **Plugin-specific cross-package deps** (your customer-projection
 repository, mapping-config service, etc.) are *not* in the
@@ -1045,7 +1046,7 @@ If you're proposing a new "bulk" capability on a port, that's almost certainly a
   vertical-slice patterns, the PrestaShop opt-in helper.
 - [`libs/plugin-sdk/src/adapter-plugin.ts:42-110`](../libs/plugin-sdk/src/adapter-plugin.ts#L42-L110)
   — the `AdapterPlugin` contract spec, header-comment form.
-- [`libs/plugin-sdk/src/host-services.ts:54-163`](../libs/plugin-sdk/src/host-services.ts#L54-L163)
+- [`libs/plugin-sdk/src/host-services.ts:55-178`](../libs/plugin-sdk/src/host-services.ts#L55-L178)
   — the `HostServices` bag, fields split into read-inputs vs side
   registries.
 

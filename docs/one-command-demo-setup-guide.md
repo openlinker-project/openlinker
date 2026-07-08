@@ -11,6 +11,10 @@ tier — API + Worker + admin UI.
 
 > **Local evaluation only.** Credentials are intentionally not production-safe and
 > the stack is not hardened (no TLS, default passwords). Do not expose it publicly.
+>
+> Need to make the demo reachable under a real domain instead (reverse proxy +
+> TLS, rotated credentials, DNS)? See the
+> [public-domain demo deployment guide](./public-domain-demo-deployment-guide.md).
 
 ---
 
@@ -25,6 +29,7 @@ tier — API + Worker + admin UI.
 7. [Verify the end-to-end flow](#7-verify-the-end-to-end-flow)
 8. [Troubleshooting](#8-troubleshooting)
 9. [Teardown](#9-teardown)
+10. [Running on a shared server / multiple instances](#10-running-on-a-shared-server--multiple-instances)
 
 ---
 
@@ -97,6 +102,35 @@ demo-safe values. Listed here so you know what's in play if you want to override
 
 > `VITE_API_BASE_URL` is a **build-time** input — changing it requires rebuilding
 > the `web` image (`pnpm demo:up` rebuilds when the arg changes).
+
+### Optional: session recording on a public demo instance
+
+**OpenLinker ships no telemetry by default.** Session recording (PostHog)
+only activates on an instance where the operator has both set
+`OL_DEMO_MODE=true` and explicitly configured `OL_POSTHOG_KEY` — a self-hosted
+install or a local `pnpm demo:up` run never contacts PostHog. When both are
+set, `GET /system/config` surfaces a `demoIntegrations.posthog` block that the
+frontend uses to load `posthog-js` (dynamically, so it never ships in the
+default bundle) — and only after the visitor accepts the consent prompt shown
+in the demo banner.
+
+| Variable | Purpose |
+|---|---|
+| `OL_POSTHOG_KEY` | PostHog project API key (publishable, write-only ingestion key — never a personal/private key). Unset by default. |
+| `OL_POSTHOG_HOST` | PostHog ingestion host. Defaults to `https://eu.posthog.com` when `OL_POSTHOG_KEY` is set. |
+
+**Only run session recording against synthetic seed data.** Recording masks
+all form inputs and all rendered text (`maskAllInputs` + a mask-everything
+text selector), but a demo instance pointed at real shop data would still
+expose non-text signal (order IDs in URLs, image content, layout) to
+PostHog cloud. Session recording is intended for the seeded demo dataset
+only — never enable `OL_POSTHOG_KEY` on an instance connected to a live
+PrestaShop/Allegro/Erli store with real customer data.
+
+A visitor who accepted the consent prompt can revoke it at any time from
+the demo banner ("Disable" next to "Analytics on").
+
+See ADR-032 (`docs/architecture/adrs/032-demo-only-vendor-neutral-analytics-config-seam.md`, merging via #1410) for the design rationale.
 
 ---
 
@@ -188,6 +222,26 @@ row + `PS_CANONICAL_REDIRECT=0`, added by a post-install step), so the
 > display base). For the demo, prefer a working image sync over rendered
 > thumbnails.
 
+> **Allegro vs. Erli — the Storefront URL requirement differs.** The guidance
+> above (`http://prestashop`) only holds for **Allegro**: OpenLinker downloads
+> the product image bytes server-side and re-uploads them to Allegro's CDN, so
+> the URL only needs to be **container-reachable**, not public.
+>
+> **Erli does not re-upload images** — its servers fetch the product image URL
+> directly, so for an Erli connection the Storefront URL **must be a real,
+> publicly-reachable HTTPS URL**. `http://prestashop` will silently fail image
+> sync to Erli. For local testing, front PrestaShop with a quick tunnel (e.g.
+> `cloudflared tunnel --url http://localhost:8080`); for a persistent
+> deployment, use the reverse-proxy/public-domain overlay
+> (`docker-compose.proxy.yml`) described in
+> [`docs/public-domain-demo-deployment-guide.md`](./public-domain-demo-deployment-guide.md).
+>
+> `storefrontBaseUrl` is a single, connection-level setting shared by every
+> destination synced from that PrestaShop master. If you're running **both**
+> Allegro and Erli off the same connection, set it to the public HTTPS URL —
+> a public URL also satisfies Allegro's (looser) container-reachability
+> requirement, but a container-internal URL does not satisfy Erli's.
+
 After connecting, OpenLinker syncs the seeded catalog (6 products + variants). See
 them under **Products**.
 
@@ -272,3 +326,33 @@ pnpm demo:down -v    # stop and WIPE the data volumes (fresh start next time)
 
 Because the demo shares the `openlinker` Compose project with `pnpm dev:stack:up`,
 `-v` wipes volumes shared with the dev stack too — see the warning in section 1.
+
+---
+
+## 10. Running on a shared server / multiple instances
+
+By default every published port binds to `127.0.0.1` and every container name
+is prefixed `openlinker-` — safe on a single-user laptop, but two things to
+know before running this on a shared/public host (#1400):
+
+- **Loopback binding is the default, not an accident.** `postgres` / `redis` /
+  `mysql` / `phpmyadmin` / `prestashop` / `api` all publish on `127.0.0.1` so
+  they're never reachable from outside the host just because a firewall
+  wasn't configured — put a reverse proxy in front of `web` (and `api`, if the
+  browser needs to reach it directly) for anything beyond localhost access.
+  Override the bind interface with `OL_BIND_ADDRESS` in `.env` only if a
+  service genuinely needs to be reachable beyond loopback.
+- **Running a second instance alongside an existing one** (e.g. a per-PR
+  preview environment, or a staging + demo pair on the same host): set a
+  distinct `COMPOSE_PROJECT_NAME` (renames the project and every
+  `container_name`) plus distinct `*_HOST_PORT` overrides
+  (`POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `MYSQL_HOST_PORT`,
+  `PHPMYADMIN_HOST_PORT`, `PRESTASHOP_HOST_PORT`,
+  `WOOCOMMERCE_MYSQL_HOST_PORT`, `WOOCOMMERCE_HOST_PORT`, `API_HOST_PORT`,
+  `WEB_HOST_PORT`) in that instance's own `.env` — see `.env.example` for the
+  full list and defaults.
+
+> `pnpm dev:stack:seed-woocommerce` / `pnpm dev:stack:wc-credentials` invoke
+> `docker exec openlinker-woocommerce` directly and don't yet respect a custom
+> `COMPOSE_PROJECT_NAME` — a known limitation when running a second instance,
+> tracked as a documented gap rather than fixed here.

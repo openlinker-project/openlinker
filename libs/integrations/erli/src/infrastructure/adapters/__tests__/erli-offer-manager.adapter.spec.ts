@@ -12,6 +12,8 @@
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
 import {
+  isCategoryBrowser,
+  isCategoryParametersReader,
   isOfferStatusReader,
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
@@ -26,6 +28,7 @@ import { ErliAuthenticationException } from '../../../domain/exceptions/erli-aut
 import { ErliConfigException } from '../../../domain/exceptions/erli-config.exception';
 import { ErliNetworkException } from '../../../domain/exceptions/erli-network.exception';
 import { ERLI_ADAPTER_KEY } from '../../../erli.constants';
+import type { AllegroCategoryCatalogClient } from '../../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import {
   ErliOfferManagerAdapter,
@@ -79,6 +82,75 @@ describe('ErliOfferManagerAdapter', () => {
   describe('getBorrowedTaxonomy (#1045 — TaxonomyBorrower)', () => {
     it("declares 'allegro' as the borrowed owner taxonomy", () => {
       expect(adapter.getBorrowedTaxonomy()).toBe('allegro');
+    });
+  });
+
+  describe('Allegro category-catalog wiring (#1383, ADR-031)', () => {
+    it('should NOT expose CategoryBrowser/CategoryParametersReader when constructed without a catalog client', () => {
+      expect(isCategoryBrowser(adapter)).toBe(false);
+      expect(isCategoryParametersReader(adapter)).toBe(false);
+      expect(adapter.fetchCategories).toBeUndefined();
+      expect(adapter.fetchCategoryParameters).toBeUndefined();
+    });
+
+    it('should expose CategoryBrowser/CategoryParametersReader when constructed with a catalog client', () => {
+      const catalogClient = {
+        fetchCategories: jest.fn().mockResolvedValue([{ id: '1', name: 'Cat', parentId: null, leaf: true }]),
+        fetchCategoryParameters: jest.fn().mockResolvedValue([]),
+      } as unknown as jest.Mocked<AllegroCategoryCatalogClient>;
+      const wiredAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        undefined,
+        catalogClient,
+      );
+
+      expect(isCategoryBrowser(wiredAdapter)).toBe(true);
+      expect(isCategoryParametersReader(wiredAdapter)).toBe(true);
+    });
+
+    it('should delegate fetchCategories to the catalog client, forwarding parentId', async () => {
+      const catalogClient = {
+        fetchCategories: jest.fn().mockResolvedValue([{ id: '1', name: 'Cat', parentId: null, leaf: true }]),
+        fetchCategoryParameters: jest.fn().mockResolvedValue([]),
+      } as unknown as jest.Mocked<AllegroCategoryCatalogClient>;
+      const wiredAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        undefined,
+        undefined,
+        catalogClient,
+      );
+
+      const result = await wiredAdapter.fetchCategories?.('parent-1');
+
+      expect(catalogClient.fetchCategories).toHaveBeenCalledWith('parent-1');
+      expect(result).toEqual([{ id: '1', name: 'Cat', parentId: null, leaf: true }]);
+    });
+
+    it('should delegate fetchCategoryParameters to the catalog client, adapting the {categoryId} input to a plain id', async () => {
+      const catalogClient = {
+        fetchCategories: jest.fn().mockResolvedValue([]),
+        fetchCategoryParameters: jest.fn().mockResolvedValue([{ id: 'p1', name: 'Param', type: 'string', required: false, multiValue: false }]),
+      } as unknown as jest.Mocked<AllegroCategoryCatalogClient>;
+      const wiredAdapter = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        undefined,
+        undefined,
+        catalogClient,
+      );
+
+      const result = await wiredAdapter.fetchCategoryParameters?.({ categoryId: 'cat-1' });
+
+      expect(catalogClient.fetchCategoryParameters).toHaveBeenCalledWith('cat-1');
+      expect(result).toEqual([
+        { id: 'p1', name: 'Param', type: 'string', required: false, multiValue: false },
+      ]);
     });
   });
 

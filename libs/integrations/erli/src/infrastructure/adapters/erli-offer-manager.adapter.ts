@@ -79,15 +79,34 @@
  * Out of scope (own issues, marked seams): master-price → offer propagation (no
  * core trigger today), offer-status reconciliation #989.
  *
+ * Allegro category-catalog browsing (#1383, ADR-031): a connection that
+ * configured Allegro app credentials (`allegroClientId`/`allegroClientSecret`,
+ * #1382) gets `fetchCategories`/`fetchCategoryParameters` wired as OPTIONAL
+ * INSTANCE properties in the constructor, delegating to the shared
+ * `AllegroCategoryCatalogClient`. This class deliberately does NOT declare
+ * `CategoryBrowser`/`CategoryParametersReader` in its `implements` clause —
+ * doing so would make every Erli connection advertise the capability
+ * regardless of whether Allegro credentials are configured, which would both
+ * misreport per-connection support and regress the #1367 bulk-wizard
+ * capability gate (`connection.supportedCapabilities.includes('CategoryBrowser')`
+ * for connections that never configured Allegro credentials). Runtime callers
+ * narrow with `isCategoryBrowser`/`isCategoryParametersReader`
+ * (`typeof adapter.fetchCategories === 'function'`), which correctly reflects
+ * per-instance wiring instead of a static class capability. See ADR-031
+ * "Alternatives considered" for why the static-implements approach was
+ * rejected.
+ *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link OfferManagerPort}
  */
 import {
   OfferCreateRejectedException,
   OfferNotFoundOnMarketplaceException,
+  type CategoryParameter,
   type CreateOfferCommand,
   type CreateOfferResult,
   type CreateOfferValidationError,
+  type OfferCategory,
   type OfferCreator,
   type OfferDescriptionUpdate,
   type OfferFieldUpdate,
@@ -108,6 +127,7 @@ import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ERLI_PRODUCT_ID_PATTERN } from '../../erli.constants';
 import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
+import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
   ErliExternalAttribute,
@@ -180,6 +200,24 @@ export class ErliOfferManagerAdapter
     return 'allegro';
   }
 
+  /**
+   * `CategoryBrowser.fetchCategories` (#1383, ADR-031) — assigned in the
+   * constructor ONLY when `allegroCategoryCatalog` is provided. Declared as an
+   * optional instance property (not a class method / `implements` member) so
+   * `isCategoryBrowser` (`typeof adapter.fetchCategories === 'function'`)
+   * reflects per-connection Allegro-credential configuration rather than a
+   * static, connection-independent capability.
+   */
+  fetchCategories?: (parentId?: string) => Promise<OfferCategory[]>;
+
+  /**
+   * `CategoryParametersReader.fetchCategoryParameters` (#1383, ADR-031). Same
+   * per-instance wiring as {@link fetchCategories} — delegates to the shared
+   * `AllegroCategoryCatalogClient`, adapting its plain-`categoryId` signature
+   * to the port's `{ categoryId }` input shape.
+   */
+  fetchCategoryParameters?: (input: { categoryId: string }) => Promise<CategoryParameter[]>;
+
   constructor(
     private readonly connectionId: string,
     private readonly adapterKey: string,
@@ -196,7 +234,24 @@ export class ErliOfferManagerAdapter
      * which case every consult fails open (push stock = pre-#1066 behaviour).
      */
     private readonly cache?: CachePort,
-  ) {}
+    /**
+     * Shared Allegro category-catalog client (#1382/#1383, ADR-031). Provided
+     * by `ErliAdapterFactory` only when the connection's resolved credentials
+     * carry BOTH `allegroClientId` and `allegroClientSecret`. When present,
+     * wires {@link fetchCategories}/{@link fetchCategoryParameters}; when
+     * absent, both stay `undefined` and this instance offers no category
+     * browsing at all — exactly the "adapter doesn't implement this
+     * capability" case callers already handle.
+     */
+    allegroCategoryCatalog?: AllegroCategoryCatalogClient,
+  ) {
+    if (allegroCategoryCatalog) {
+      this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>
+        allegroCategoryCatalog.fetchCategories(parentId);
+      this.fetchCategoryParameters = (input: { categoryId: string }): Promise<CategoryParameter[]> =>
+        allegroCategoryCatalog.fetchCategoryParameters(input.categoryId);
+    }
+  }
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
     const externalOfferId = this.resolveErliProductId(cmd);

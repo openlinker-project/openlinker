@@ -92,13 +92,15 @@ describe('BulkShopPublishController', () => {
     controller = new BulkShopPublishController(bulkSubmit as never);
   });
 
-  it('should submit a bulk batch stamping initiatedBy from the session', async () => {
+  it('should submit a bulk batch stamping initiatedBy from the session, with each item keeping its own stock', async () => {
     const result = await controller.submit(
       {
         connectionId: CONN,
-        internalVariantIds: ['ol_variant_a'],
+        items: [
+          { internalVariantId: 'ol_variant_a', stock: 1 },
+          { internalVariantId: 'ol_variant_b', stock: 4 },
+        ],
         status: 'draft',
-        stock: 1,
       } as never,
       USER,
     );
@@ -106,7 +108,10 @@ describe('BulkShopPublishController', () => {
       expect.objectContaining({
         connectionId: CONN,
         initiatedBy: 'user-1',
-        internalVariantIds: ['ol_variant_a'],
+        items: [
+          { internalVariantId: 'ol_variant_a', stock: 1 },
+          { internalVariantId: 'ol_variant_b', stock: 4 },
+        ],
       }),
     );
     expect(result).toEqual({ batchId: 'batch-1', items: [] });
@@ -115,10 +120,7 @@ describe('BulkShopPublishController', () => {
   it('should map EmptyBulkSubmissionException to 400', async () => {
     bulkSubmit.submit.mockRejectedValue(new EmptyBulkSubmissionException());
     await expect(
-      controller.submit(
-        { connectionId: CONN, internalVariantIds: [], status: 'draft', stock: 1 } as never,
-        USER,
-      ),
+      controller.submit({ connectionId: CONN, items: [], status: 'draft' } as never, USER),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 

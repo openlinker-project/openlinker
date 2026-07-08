@@ -360,8 +360,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const StructuredSection = plugin?.StructuredConfigSection;
   const ExtraSection = plugin?.ExtraConfigSection;
   const PluginCredentialsPanel = plugin?.CredentialsPanel;
+  // Both marketplace offer connections and shop-publish connections resolve
+  // master-catalog product data (name/description/images/price) through
+  // `masterCatalogConnectionId` — `OfferBuilderService` and
+  // `ProductPublishBuilderService` share the same requirement.
   const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
-  const hasStructuredInputs = StructuredSection !== undefined || isMarketplace;
+  const needsMasterCatalog =
+    isMarketplace || connection.enabledCapabilities.includes('ProductPublisher');
+  const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
   // structured inputs so typing in them can't silently drop custom keys that
@@ -493,7 +499,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const autoSelectFiredRef = useRef(false);
   useEffect(() => {
     if (autoSelectFiredRef.current) return;
-    if (!isMarketplace) return;
+    if (!needsMasterCatalog) return;
     if (hasStoredMaster) return;
     if (!localAutoSelectId) return;
     if (connectionsQuery.isLoading) return;
@@ -506,7 +512,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     localAutoSelectId,
     connectionsQuery.isLoading,
     connectionsQuery.error,
-    isMarketplace,
+    needsMasterCatalog,
     hasStoredMaster,
   ]);
 
@@ -607,7 +613,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
-      {isMarketplace ? (
+      {needsMasterCatalog ? (
         <MarketplaceCatalogPicker
           value={masterCatalogValue}
           candidates={candidates}

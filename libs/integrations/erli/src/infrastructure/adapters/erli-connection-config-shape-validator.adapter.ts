@@ -9,6 +9,11 @@
  * `ConnectionConfigShapeValidatorRegistryService` at `erli.shopapi.v1`;
  * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
+ * Also validates the optional `allegroEnvironment` selector (#1382/#1383,
+ * ADR-031) — when present, it must be one of `AllegroCatalogEnvironmentValues`
+ * (`'sandbox' | 'production'`), the two hosts `AllegroCategoryCatalogClient`
+ * knows how to resolve.
+ *
  * Hand-rolled (no class-validator) — one optional field doesn't justify a DTO
  * graph, and Erli stays dependency-light.
  *
@@ -21,6 +26,7 @@ import {
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { ERLI_ALLOWED_BASE_URL_HOSTS, isAllowedErliHost } from '../../domain/policies/erli-base-url.policy';
+import { AllegroCatalogEnvironmentValues } from '../../domain/types/erli-connection.types';
 
 export class ErliConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -48,6 +54,8 @@ export class ErliConnectionConfigShapeValidatorAdapter
     }
 
     this.validateDispatchTime(config.defaultDispatchTime, issues);
+    this.validateAllegroEnvironment(config.allegroEnvironment, issues);
+    this.validateAllegroCategoryAccessEnabled(config.allegroCategoryAccessEnabled, issues);
 
     const callbackBaseUrl = config.callbackBaseUrl;
     if (callbackBaseUrl !== undefined) {
@@ -107,6 +115,45 @@ export class ErliConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'defaultDispatchTime.unit',
         message: "must be 'hour', 'day', or 'month'",
+      });
+    }
+  }
+
+  /**
+   * `allegroEnvironment`, when present, must be exactly `'sandbox'` or
+   * `'production'` — the two hosts `AllegroCategoryCatalogClient` resolves
+   * against. Absent is valid (defaults to `'production'` at read time).
+   */
+  private validateAllegroEnvironment(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (
+      typeof value !== 'string' ||
+      !(AllegroCatalogEnvironmentValues as readonly string[]).includes(value)
+    ) {
+      issues.push({
+        path: 'allegroEnvironment',
+        message: `must be one of: ${AllegroCatalogEnvironmentValues.join(', ')}`,
+      });
+    }
+  }
+
+  /**
+   * `allegroCategoryAccessEnabled`, when present, must be a boolean. This is
+   * the non-secret, FE-visible signal that `allegroClientId`/`allegroClientSecret`
+   * are both configured on this connection (#1383, ADR-031 "Correction") —
+   * `connection.supportedCapabilities` cannot serve this purpose since it is a
+   * static, per-adapterKey manifest value, not computed per connection instance.
+   */
+  private validateAllegroCategoryAccessEnabled(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'boolean') {
+      issues.push({
+        path: 'allegroCategoryAccessEnabled',
+        message: 'must be a boolean when provided',
       });
     }
   }

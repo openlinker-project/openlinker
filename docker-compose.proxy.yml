@@ -1,0 +1,107 @@
+# Optional reverse-proxy + TLS overlay for public-domain demo deployments (#1403).
+#
+# Used ON TOP of the base + demo overlays:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.proxy.yml \
+#     up -d --build postgres redis mysql prestashop migrate api worker web caddy
+#
+# Adds a single Caddy service that terminates TLS (automatic Let's Encrypt
+# certificates, zero manual ACME config) and routes by hostname to the
+# existing web/api/prestashop/woocommerce services. Caddy reaches them over
+# the internal Compose network by SERVICE NAME (web:80, api:3000,
+# prestashop:80, woocommerce:8080) — it does NOT depend on those services
+# publishing host ports, so this overlay works whether or not the
+# loopback-binding hardening from #1400/#1402 has landed, and avoids a
+# redundant hop back out through the host network stack.
+#
+# This overlay REQUIRES docker-compose.demo.yml (the `web` service only
+# exists there — the bare dev stack has no admin UI to serve).
+#
+# Required .env vars (see .env.example): WEB_DOMAIN, API_DOMAIN,
+# PRESTASHOP_DOMAIN, WOOCOMMERCE_DOMAIN, TLS_EMAIL. See
+# docs/public-domain-demo-deployment-guide.md for the full walkthrough,
+# including local verification without real DNS (CADDYFILE_PATH override).
+#
+# Omitting `-f docker-compose.proxy.yml` reproduces today's plain-HTTP
+# localhost behavior unchanged — this overlay touches no other service
+# EXCEPT the scoped `woocommerce` proxy-trust override below, which only
+# takes effect when this file is included.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: openlinker-caddy
+    environment:
+      WEB_DOMAIN: '${WEB_DOMAIN:?set WEB_DOMAIN in .env (see .env.example) - the public hostname for the admin UI}'
+      API_DOMAIN: '${API_DOMAIN:?set API_DOMAIN in .env (see .env.example) - the public hostname for the API}'
+      PRESTASHOP_DOMAIN: '${PRESTASHOP_DOMAIN:?set PRESTASHOP_DOMAIN in .env (see .env.example) - the public hostname for PrestaShop}'
+      WOOCOMMERCE_DOMAIN: '${WOOCOMMERCE_DOMAIN:?set WOOCOMMERCE_DOMAIN in .env (see .env.example) - the public hostname for WooCommerce}'
+      TLS_EMAIL: '${TLS_EMAIL:?set TLS_EMAIL in .env (see .env.example) - required by Lets Encrypt for expiry notices}'
+    ports:
+      # Unbound (not loopback) by design — this is the public TLS-terminating
+      # edge; that is the point of the overlay.
+      - '80:80'
+      - '443:443'
+    volumes:
+      # CADDYFILE_PATH lets local verification swap in Caddyfile.local
+      # (tls internal, no real DNS/domain needed) without editing this file.
+      - '${CADDYFILE_PATH:-./docker/caddy/Caddyfile}:/etc/caddy/Caddyfile:ro'
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+      - prestashop
+      - woocommerce
+
+  # Scoped WordPress proxy-trust override (#1416). WooCommerce's REST API
+  # (WC_REST_Authentication::authenticate()) only accepts Basic-Auth /
+  # query-string consumer key+secret when PHP's is_ssl() is true; over plain
+  # HTTP it demands OAuth 1.0a instead, which OpenLinker's adapter doesn't
+  # implement. Caddy terminates real TLS at the edge above but forwards
+  # plain HTTP internally to woocommerce:8080, so WordPress's own is_ssl()
+  # would still see plain HTTP unless told to trust Caddy's
+  # X-Forwarded-Proto header.
+  #
+  # This override is defined ONLY in this optional overlay file — the base
+  # (docker-compose.yml) and demo (docker-compose.demo.yml) compose files
+  # never set WORDPRESS_EXTRA_WP_CONFIG_CONTENT, so a plain `pnpm demo:up`
+  # or bare dev-stack boot (no Caddy in front) never trusts this header from
+  # anyone. It is intentionally NOT a blanket "always HTTPS" bypass (unlike
+  # an earlier, rejected mu-plugin approach that unconditionally set
+  # $_SERVER['HTTPS']='on'): it only flips HTTPS on when the specific
+  # request already carries X-Forwarded-Proto: https, which for any request
+  # arriving from the public internet can only originate from Caddy's own
+  # genuine TLS termination — ports 80/443 are the only unbound (public)
+  # entry point this overlay adds.
+  #
+  # KNOWN RESIDUAL RISK (verified, not fixed here — out of scope per #1416's
+  # safety note): the woocommerce service's own port 8082 host-port mapping
+  # is loopback-bound by default (#1400/#1402) but still reachable by any
+  # process on the SAME host, which can set X-Forwarded-Proto itself and
+  # bypass the HTTPS gate for that direct request. This is the same trust
+  # boundary already accepted for every other loopback-bound service in
+  # this demo stack (anyone who can run code on the host can already reach
+  # Postgres/Redis/MySQL directly) — it does not extend that boundary to
+  # the public internet, which is the actual threat the is_ssl() gate
+  # exists to close.
+  woocommerce:
+    environment:
+      # $$ escapes Compose's own ${VAR} interpolation — the literal string
+      # written into wp-config.php must keep a single $.
+      #
+      # No `&&` here (nested ifs instead): bitnami's wordpress_conf_append
+      # inserts this value as a sed REPLACEMENT string, where `&` means
+      # "the whole matched line" — a literal `&&` in the PHP would silently
+      # corrupt wp-config.php (verified: it crashes `wp core install` with
+      # no error output) rather than write the intended condition.
+      WORDPRESS_EXTRA_WP_CONFIG_CONTENT: |
+        if (!empty($$_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+            if ($$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+                $$_SERVER['HTTPS'] = 'on';
+            }
+        }
+
+volumes:
+  caddy_data:
+  caddy_config:

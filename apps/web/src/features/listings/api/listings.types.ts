@@ -299,12 +299,16 @@ export interface ShopPublishStatusResponse {
   updatedAt: string;
 }
 
-export interface BulkShopPublishRequest {
-  connectionId: string;
-  internalVariantIds: string[];
-  status: 'draft' | 'published';
+export interface BulkShopPublishItemRequest {
+  internalVariantId: string;
   stock: number;
   price?: ShopPublishPrice;
+}
+
+export interface BulkShopPublishRequest {
+  connectionId: string;
+  items: BulkShopPublishItemRequest[];
+  status: 'draft' | 'published';
   content?: ShopPublishContent;
 }
 

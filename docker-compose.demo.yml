@@ -42,16 +42,18 @@ services:
       # for decrypting connection credentials at runtime. Operator-supplied via
       # .env (see .env.example); `:?` fails the boot with a clear message if unset.
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
-    # Loopback-bound, overriding base's `3000:3000` — the demo image ships
-    # default admin/admin credentials with no redaction, so a multi-homed/LAN
-    # host must not expose it beyond localhost. The browser reaches it at
-    # localhost:3000 regardless (see the `web` service's VITE_API_BASE_URL
-    # below), so this is transparent to the operator.
+    # Overrides base's port publish with the same ${OL_BIND_ADDRESS}/${API_HOST_PORT}
+    # vars (#1400) — kept as an explicit override rather than relying on the
+    # base value because the demo image ships default admin/admin credentials
+    # with no redaction, so this binding must never silently drift from the
+    # base file's. The browser reaches it at localhost:${API_HOST_PORT}
+    # regardless (see the `web` service's VITE_API_BASE_URL below), so this is
+    # transparent to the operator.
     # `!override` (not a plain list, which Compose would merge/append) replaces
-    # base's binding outright — otherwise both the unbound and loopback-bound
-    # publishes would coexist and fail to bind the same host port twice.
+    # base's binding outright — otherwise both publishes would coexist and
+    # fail to bind the same host port twice.
     ports: !override
-      - '127.0.0.1:3000:3000'
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-3000}:3000'
     # Drop the dev-stack source bind-mounts — the demo runs the built image,
     # not the working tree. (Without !reset, Compose merges volumes by target
     # path and the mounts would survive the override.)
@@ -65,13 +67,14 @@ services:
       context: .
       dockerfile: Dockerfile
       target: worker
-    container_name: openlinker-worker
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-worker
     environment:
       NODE_ENV: production
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the base file's postgres service POSTGRES_PASSWORD (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -102,12 +105,13 @@ services:
         # takes effect on the NEXT `--build` (e.g. https://api.example.com
         # for a public-domain deployment), not on a plain `up`/restart.
         VITE_API_BASE_URL: '${VITE_API_BASE_URL:-http://localhost:3000}'
-    container_name: openlinker-web
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
-      # Loopback-bound: the demo ships default admin/admin credentials with no
-      # redaction, so a multi-homed/LAN host must not expose it beyond localhost.
-      - '127.0.0.1:8090:80'
+      # Loopback-bound by default (#1400): the demo ships default admin/admin
+      # credentials with no redaction, so a multi-homed/LAN host must not
+      # expose it beyond localhost.
+      - '${OL_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-8090}:80'
     depends_on:
       - api
 
@@ -124,14 +128,15 @@ services:
       context: .
       dockerfile: Dockerfile
       target: base
-    container_name: openlinker-migrate
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-migrate
     command: ['pnpm', '--filter', '@openlinker/api', 'migration:run']
     environment:
       NODE_ENV: production
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      # Must match the base file's postgres service POSTGRES_PASSWORD (#1403).
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-postgres}'
       DB_DATABASE: openlinker
       # migration 1795000000000-encrypt-integration-credentials fails closed
       # under NODE_ENV=production when this is unset, rolling back and exiting 1

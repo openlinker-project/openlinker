@@ -53,7 +53,7 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
   ) {}
 
   async submit(input: BulkShopPublishSubmitInput): Promise<BulkShopPublishSubmitResult> {
-    if (input.internalVariantIds.length === 0) {
+    if (input.items.length === 0) {
       throw new EmptyBulkSubmissionException();
     }
 
@@ -66,15 +66,14 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
 
     // 2. Persist the parent batch. totalCount = fan-out width (no multi-variant
     //    expansion — each submitted id is its own publish; #1042 model is
-    //    variant-keyed).
+    //    variant-keyed). Stock/price are per-item (#1414), so sharedConfig only
+    //    carries what's genuinely shared across every child.
     const batch = await this.bulkBatchRepository.create({
       connectionId: input.connectionId,
       initiatedBy: input.initiatedBy,
-      totalCount: input.internalVariantIds.length,
+      totalCount: input.items.length,
       sharedConfig: {
         status: input.status,
-        stock: input.stock,
-        ...(input.price !== undefined && { price: input.price }),
         ...(input.content !== undefined && { content: input.content }),
       },
     });
@@ -83,21 +82,25 @@ export class BulkShopPublishSubmitService implements IBulkShopPublishSubmitServi
     //    marks the batch failed and re-throws (mirrors BulkListingSubmitService).
     const items: BulkShopPublishItem[] = [];
     try {
-      for (const internalVariantId of input.internalVariantIds) {
+      for (const item of input.items) {
         const { jobId, listingCreationRecord } = await this.enqueue.enqueuePublish({
           connectionId: input.connectionId,
-          internalVariantId,
+          internalVariantId: item.internalVariantId,
           status: input.status,
-          stock: input.stock,
+          stock: item.stock,
           bulkBatchId: batch.id,
-          ...(input.price !== undefined && { price: input.price }),
+          ...(item.price !== undefined && { price: item.price }),
           ...(input.content !== undefined && { content: input.content }),
         });
-        items.push({ internalVariantId, jobId, listingCreationRecordId: listingCreationRecord.id });
+        items.push({
+          internalVariantId: item.internalVariantId,
+          jobId,
+          listingCreationRecordId: listingCreationRecord.id,
+        });
       }
     } catch (error) {
       this.logger.warn(
-        `Bulk publish batch ${batch.id} enqueue failed after ${items.length}/${input.internalVariantIds.length} jobs: ${(error as Error).message}`,
+        `Bulk publish batch ${batch.id} enqueue failed after ${items.length}/${input.items.length} jobs: ${(error as Error).message}`,
       );
       await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
       throw error;

@@ -1,0 +1,35 @@
+# Local-verification variant of the Caddyfile (#1403) — no real DNS/domain,
+# no Let's Encrypt, no mkcert dependency.
+#
+# `tls internal` makes Caddy mint certificates from its own local CA instead
+# of requesting one from Let's Encrypt. Use this together with /etc/hosts
+# entries pointing your three test hostnames at 127.0.0.1 — see
+# docs/public-domain-demo-deployment-guide.md § Local verification.
+#
+# Select this file via .env:
+#   CADDYFILE_PATH=./docker/caddy/Caddyfile.local
+#
+# The browser will show a certificate warning unless you additionally trust
+# Caddy's local root CA (`docker compose exec caddy caddy trust` — see the
+# guide); accepting the warning is sufficient to verify routing + TLS
+# termination without doing that.
+
+{$WEB_DOMAIN} {
+	tls internal
+	reverse_proxy web:80
+}
+
+{$API_DOMAIN} {
+	tls internal
+	reverse_proxy api:3000
+}
+
+{$PRESTASHOP_DOMAIN} {
+	tls internal
+	reverse_proxy prestashop:80
+}
+
+{$WOOCOMMERCE_DOMAIN} {
+	tls internal
+	reverse_proxy woocommerce:8080
+}

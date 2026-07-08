@@ -34,6 +34,8 @@ import {
   ConnectionConfigShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
+  CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionCredentialsRewriterRegistryService,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   OAuthCompletionRegistryService,
   CREDENTIALS_RESOLVER_TOKEN,
@@ -64,6 +66,7 @@ import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin } from './erli-plugin';
 import { ErliWebhookProvisioningModule } from './erli-webhook-provisioning.module';
+import { ErliCredentialsRewriterModule } from './erli-credentials-rewriter.module';
 
 @Module({
   imports: [
@@ -75,6 +78,11 @@ import { ErliWebhookProvisioningModule } from './erli-webhook-provisioning.modul
     // + IWebhookSecretService (not in HostServices), so it self-registers from
     // this companion module rather than from plugin.register(host).
     ErliWebhookProvisioningModule,
+    // #1387: the Allegro-credentials-reuse rewriter needs NestJS-injected
+    // ConnectionPort (not in HostServices), so it self-registers from this
+    // companion module rather than from plugin.register(host) — same shape
+    // as ErliWebhookProvisioningModule above.
+    ErliCredentialsRewriterModule,
   ],
 })
 export class ErliIntegrationModule implements OnModuleInit {
@@ -99,6 +107,8 @@ export class ErliIntegrationModule implements OnModuleInit {
     private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
+    @Inject(CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN)
+    private readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService,
     @Inject(INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN)
     private readonly oauthCompletionRegistry: OAuthCompletionRegistryService,
     @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
@@ -140,6 +150,7 @@ export class ErliIntegrationModule implements OnModuleInit {
       inboundWebhookDecoderRegistry: this.inboundWebhookDecoderRegistry,
       connectionConfigShapeValidatorRegistry: this.connectionConfigShapeValidatorRegistry,
       connectionCredentialsShapeValidatorRegistry: this.connectionCredentialsShapeValidatorRegistry,
+      connectionCredentialsRewriterRegistry: this.connectionCredentialsRewriterRegistry,
       oauthCompletionRegistry: this.oauthCompletionRegistry,
     };
 

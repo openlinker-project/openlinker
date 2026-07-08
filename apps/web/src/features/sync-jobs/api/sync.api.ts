@@ -29,6 +29,16 @@ export interface SyncJobResponse {
   status: string;
 }
 
+/**
+ * Raw components of an inbound webhook event, from which the server assembles
+ * the inbound-job idempotency key to resolve the job it enqueued (#1366).
+ */
+export interface WebhookJobLookupInput {
+  platformType: string;
+  connectionId: string;
+  eventId: string;
+}
+
 export interface SyncJobsApi {
   enqueue: (input: EnqueueSyncJobInput) => Promise<SyncJobResponse>;
   /**
@@ -42,6 +52,15 @@ export interface SyncJobsApi {
    */
   list: (filters?: SyncJobFilters, pagination?: SyncJobPagination) => Promise<PaginatedSyncJobs>;
   getById: (id: string) => Promise<SyncJob>;
+  /**
+   * Resolve the persisted SyncJob a webhook trigger enqueued (#1366). The
+   * caller passes the raw components of the inbound event (a webhook delivery
+   * holds all three); the server assembles the idempotency key, so the format
+   * lives only in core and is never re-encoded here. Rejects with a 404
+   * `ApiError` when no job exists yet (worker hasn't created the row), which
+   * the caller treats as "not resolvable".
+   */
+  lookupJobForWebhookEvent: (input: WebhookJobLookupInput) => Promise<SyncJob>;
   retry: (id: string) => Promise<SyncJob>;
   /**
    * List sync jobs aggregated by (connectionId, jobType). Server caps the
@@ -94,6 +113,14 @@ export function createSyncJobsApi(request: ApiRequest): SyncJobsApi {
     },
     getById(id): Promise<SyncJob> {
       return request<SyncJob>(`/sync/jobs/${id}`);
+    },
+    lookupJobForWebhookEvent(input): Promise<SyncJob> {
+      const params = new URLSearchParams({
+        platformType: input.platformType,
+        connectionId: input.connectionId,
+        eventId: input.eventId,
+      });
+      return request<SyncJob>(`/sync/jobs/lookup?${params.toString()}`);
     },
     retry(id): Promise<SyncJob> {
       return request<SyncJob>(`/sync/jobs/${id}/retry`, { method: 'POST' });

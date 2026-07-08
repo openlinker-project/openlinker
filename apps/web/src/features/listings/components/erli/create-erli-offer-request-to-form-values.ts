@@ -26,6 +26,7 @@ import {
   SUPPORTED_OFFER_CREATION_REQUEST_SCHEMA_VERSION,
   type CreateOfferRequest,
 } from '../../api/listings.types';
+import { readParameters } from '../create-offer-request-to-form-values';
 import type { ErliCreateOfferValues } from './erli-create-offer.schema';
 import { isValidDispatch, type ErliDispatchTimeParam } from './erli-offer-fields.schema';
 
@@ -62,6 +63,10 @@ export function createErliOfferRequestToFormValues(
     publishImmediately: request.publishImmediately,
     dispatchPeriod: dispatch.period,
     dispatchUnit: dispatch.unit,
+    // Reuses the Allegro retry mapper's heuristic (#1384) — both platforms
+    // persist the same neutral `overrides.parameters` wire shape, so a
+    // retried offer re-opens with its previously entered parameter values.
+    parameters: readParameters(overrides),
   };
 }
 

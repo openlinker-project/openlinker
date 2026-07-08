@@ -340,6 +340,7 @@ export type { IListingCreationQueryService } from './application/interfaces/list
 export type { IBulkShopPublishSubmitService } from './application/interfaces/bulk-shop-publish-submit.service.interface';
 export type {
   BulkShopPublishSubmitInput,
+  BulkShopPublishSubmitItemInput,
   BulkShopPublishSubmitResult,
   BulkShopPublishItem,
   BulkShopPublishBatchSummary,

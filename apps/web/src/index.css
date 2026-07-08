@@ -9440,6 +9440,31 @@ html[data-density='compact'] .status-badge {
   white-space: nowrap;
 }
 
+/* Removable chip variant — selection tray + configure-step summary (#1414) */
+.shop-publish-chip--removable {
+  gap: var(--space-1);
+  max-width: 220px;
+}
+.shop-publish-chip--removable span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop-publish-chip--removable button {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0 0 var(--space-1);
+  border-radius: var(--radius-pill);
+}
+.shop-publish-chip--removable button:hover {
+  color: var(--status-error-fg);
+}
+
 /* Stock + price-override two-column row */
 .shop-publish-field-row {
   display: grid;
@@ -9486,6 +9511,141 @@ html[data-density='compact'] .status-badge {
   border: 1px dashed var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-3);
+}
+
+/* ── Publish-to-shop dialog: width, truncation, tray, config table (#1414) ── */
+
+/* Wider than the 520px dialog default — enough room for the config table's
+ * 2-column Stock/Price fields without wrapping, and for real product names
+ * to have space to truncate gracefully instead of overflowing at 520px. */
+.dialog__content--publish {
+  width: min(680px, 94vw);
+  max-height: min(90vh, 800px);
+}
+
+/* Product/variant name truncation in the search picker — names spilled past
+ * the dialog edge and pushed the SKU/EAN column off-canvas before this. */
+.shop-publish-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+.shop-publish-picker__product-name,
+.shop-publish-picker__variant-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop-publish-picker__code {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Selection tray — accumulates checked variants across searches before
+ * "Continue" locks in single vs. bulk mode. */
+.shop-publish-tray {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.shop-publish-tray__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+.shop-publish-tray__count {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.shop-publish-tray__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-height: 4.5rem;
+  overflow-y: auto;
+}
+.shop-publish-tray__empty-hint {
+  font-size: 0.75rem;
+  font-style: italic;
+  margin: 0;
+}
+
+/* Per-product configure table — stock/price are per-product (#1414), not one
+ * shared field for the whole batch. */
+.shop-publish-config-table {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.shop-publish-config-table__body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.shop-publish-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.shop-publish-config-row + .shop-publish-config-row {
+  border-top: 1px solid var(--border-subtle);
+}
+.shop-publish-config-row__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.shop-publish-config-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+.shop-publish-config-row__remove {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.shop-publish-config-row__remove:hover {
+  color: var(--status-error-fg);
+  background: var(--status-error-soft);
+}
+.shop-publish-config-row__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+@media (max-width: 480px) {
+  .shop-publish-config-row__fields {
+    grid-template-columns: 1fr;
+  }
+}
+.shop-publish-config-table__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-shell);
+  border-top: 1px solid var(--border-subtle);
+}
+.shop-publish-config-table__foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 /* Review key-value list (also reused by the single tracker) */
@@ -10302,6 +10462,16 @@ html[data-density='compact'] .status-badge {
   flex-shrink: 0;
   font-size: 14px;
   line-height: 1;
+}
+
+/* Analytics-consent CTA (#1301) — appended to the demo banner only when a
+   demo-only integration (e.g. PostHog) is configured and unconsented. */
+.demo-banner__consent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Login / register page: info bar at top of the form-card. */

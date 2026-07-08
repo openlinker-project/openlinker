@@ -42,6 +42,7 @@ import type {
   InboundWebhookDecoderRegistryService,
   ConnectionConfigShapeValidatorRegistryService,
   ConnectionCredentialsShapeValidatorRegistryService,
+  ConnectionCredentialsRewriterRegistryService,
   OAuthCompletionRegistryService,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
@@ -150,6 +151,20 @@ export interface HostServices {
    * `ConnectionTesterPort` against the live API.
    */
   readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService;
+
+  /**
+   * Per-plugin credentials-rewriter registry (#1387, ADR-031). A plugin
+   * registers a `ConnectionCredentialsRewriterPort` here to transform the raw
+   * credentials payload BEFORE it is merged onto the existing stored blob
+   * and shape-validated — e.g. resolving a caller-supplied reference into
+   * concrete secret values fetched server-side. Absence is a deliberate
+   * skip — most plugins persist the submitted payload verbatim. Rewriters
+   * that need a dependency outside this bag (e.g. `ConnectionPort` to
+   * resolve a sibling connection) register from a companion NestJS module
+   * that injects this registry's token directly instead, mirroring the
+   * existing webhook-provisioner pattern.
+   */
+  readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService;
 
   /**
    * Per-plugin OAuth-completion registry (#859). A plugin whose platform uses
