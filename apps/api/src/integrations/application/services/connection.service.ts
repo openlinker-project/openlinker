@@ -43,8 +43,11 @@ import {
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsShapeValidatorRegistryService,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
+  ConnectionCredentialsRewriterRegistryService,
+  CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
+  ConnectionCredentialsRewriteException,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -72,6 +75,8 @@ export class ConnectionService implements IConnectionService {
     private readonly connectionConfigShapeValidatorRegistry: ConnectionConfigShapeValidatorRegistryService,
     @Inject(CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN)
     private readonly connectionCredentialsShapeValidatorRegistry: ConnectionCredentialsShapeValidatorRegistryService,
+    @Inject(CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN)
+    private readonly connectionCredentialsRewriterRegistry: ConnectionCredentialsRewriterRegistryService,
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort
   ) {}
@@ -112,6 +117,32 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(credentials);
     } catch (error) {
       if (error instanceof InvalidCredentialsShapeException) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Run the plugin's credentials rewriter if one is registered for this
+   * adapterKey (#1387, ADR-031). A rewriter transforms the raw credentials
+   * payload BEFORE it is merged onto the existing stored blob and shape-
+   * validated — e.g. Erli resolves `reuseAllegroConnectionId` into a concrete
+   * `allegroClientId`/`allegroClientSecret` pair fetched server-side, so the
+   * raw Allegro `clientSecret` never round-trips through this HTTP layer.
+   * This service has zero platform-specific knowledge of what a rewriter
+   * does — it's a no-op passthrough when nothing is registered.
+   */
+  private async rewriteCredentials(
+    adapterKey: string,
+    credentials: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const rewriter = this.connectionCredentialsRewriterRegistry.get(adapterKey);
+    if (!rewriter) return credentials;
+    try {
+      return await rewriter.rewrite(credentials);
+    } catch (error) {
+      if (error instanceof ConnectionCredentialsRewriteException) {
         throw new BadRequestException(error.message);
       }
       throw error;
@@ -416,9 +447,17 @@ export class ConnectionService implements IConnectionService {
       platformType: connection.platformType,
       adapterKey: connection.adapterKey,
     });
-    await this.validateCredentialsShape(metadata.adapterKey, credentials);
+    const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
     const ref = connection.credentialsRef.slice('db:'.length);
-    await this.credentials.update(ref, { credentialsJson: credentials });
+    // Merge onto the existing stored credentials rather than replacing the
+    // whole blob: callers only send the fields they actually changed (e.g.
+    // rotating just `apiKey`), and a full replace would silently delete any
+    // other previously-stored field (e.g. Erli's optional Allegro
+    // `allegroClientId`/`allegroClientSecret` pair, #1401 review).
+    const existing = await this.credentials.getByRef(ref);
+    const mergedCredentials = { ...existing.credentialsJson, ...resolvedCredentials };
+    await this.validateCredentialsShape(metadata.adapterKey, mergedCredentials);
+    await this.credentials.update(ref, { credentialsJson: mergedCredentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
   }
 

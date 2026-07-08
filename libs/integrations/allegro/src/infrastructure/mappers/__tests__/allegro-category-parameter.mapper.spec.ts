@@ -9,6 +9,12 @@
  *   - all other parameters have no parameter-level dependency and empty
  *     `dependsOnValueIds` on their entries.
  *
+ * Parity note (#1382 review): `libs/integrations/erli/src/infrastructure/http
+ * /__tests__/allegro-category-catalog-client.spec.ts` runs this same fixture
+ * through `AllegroCategoryCatalogClient`'s independently-maintained copy of
+ * `toNeutralCategoryParameter` with mirrored assertions — a change to this
+ * mapper's behavior should prompt updating both spec files.
+ *
  * @module libs/integrations/allegro/src/infrastructure/mappers
  */
 import { readFileSync } from 'fs';

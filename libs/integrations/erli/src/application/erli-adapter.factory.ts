@@ -10,6 +10,16 @@
  * Not `@Injectable` — a plain class; the client it builds closes over one
  * connection's API key (ADR-025 static-key model, never a DI singleton).
  *
+ * Allegro category-catalog wiring (#1382/#1383, ADR-031): when the resolved
+ * credentials carry BOTH `allegroClientId` and `allegroClientSecret`,
+ * `createAdapters` also builds an `AllegroCategoryCatalogClient` (environment
+ * from `config.allegroEnvironment ?? 'production'`, sharing `host.cache` for
+ * its app-token cache — #1399 review) and passes it into the offer-manager
+ * constructor, which wires `fetchCategories`/`fetchCategoryParameters` as
+ * per-instance properties. Absent or partial credentials → `undefined` is
+ * passed instead, leaving those properties unset for this connection (never a
+ * static, connection-independent capability).
+ *
  * @module libs/integrations/erli/src/application
  */
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
@@ -24,6 +34,7 @@ import {
   type ErliCredentials,
 } from '../domain/types/erli-connection.types';
 import { ERLI_ADAPTER_KEY } from '../erli.constants';
+import { AllegroCategoryCatalogClient } from '../infrastructure/http/allegro-category-catalog-client';
 import { ErliOfferManagerAdapter } from '../infrastructure/adapters/erli-offer-manager.adapter';
 import { ErliOrderSourceAdapter } from '../infrastructure/adapters/erli-order-source.adapter';
 import { ErliHttpClient } from '../infrastructure/http/erli-http-client';
@@ -63,8 +74,14 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     cache?: CachePort,
     inventoryQuery?: IInventoryQueryService,
   ): Promise<ErliAdapters> {
-    const httpClient = await this.createHttpClient(connection, credentialsResolver);
+    // Resolved once and reused for both the Erli http client (apiKey) and the
+    // optional Allegro category-catalog client (allegroClientId/Secret) — a
+    // prior version resolved twice per call (#1399 review), paying a second
+    // credentialsRef DB round-trip + decrypt on every adapter construction.
+    const credentials = await this.resolveCredentials(connection, credentialsResolver);
+    const httpClient = this.buildHttpClient(connection, credentials);
     const config = (connection.config ?? {}) as ErliConnectionConfig;
+    const allegroCategoryCatalog = this.buildAllegroCategoryCatalog(credentials, config, cache);
     // Construct the offer manager first so its reference can be shared with the
     // order-source adapter (which needs it for the `cancelled` stock-restore path).
     const offerManager = new ErliOfferManagerAdapter(
@@ -73,6 +90,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       httpClient,
       config.defaultDispatchTime,
       cache,
+      allegroCategoryCatalog,
     );
     return {
       offerManager,
@@ -98,9 +116,18 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
     retryConfig?: Partial<RetryConfig>,
   ): Promise<IErliHttpClient> {
-    const { apiKey } = await this.resolveCredentials(connection, credentialsResolver);
+    const credentials = await this.resolveCredentials(connection, credentialsResolver);
+    return this.buildHttpClient(connection, credentials, retryConfig);
+  }
+
+  /** Shared by `createHttpClient` and `createAdapters` so a resolved `ErliCredentials` is never re-fetched to build the client. */
+  private buildHttpClient(
+    connection: Connection,
+    credentials: ErliCredentials,
+    retryConfig?: Partial<RetryConfig>,
+  ): IErliHttpClient {
     const baseUrl = this.resolveBaseUrl(connection);
-    return new ErliHttpClient(connection.id, baseUrl, apiKey, retryConfig);
+    return new ErliHttpClient(connection.id, baseUrl, credentials.apiKey, retryConfig);
   }
 
   private async resolveCredentials(
@@ -121,6 +148,33 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       );
     }
     return credentials;
+  }
+
+  /**
+   * Build the optional Allegro category-catalog client (#1382/#1383, ADR-031).
+   * Requires BOTH `allegroClientId` and `allegroClientSecret` — re-checked here
+   * as defense-in-depth alongside `ErliConnectionCredentialsShapeValidatorAdapter`
+   * (a pre-existing or externally-written credentials row could carry exactly
+   * one). Absent or partial credentials return `undefined`, which the offer
+   * adapter treats as "no category browsing wired for this connection" —
+   * never a static, connection-independent capability.
+   */
+  private buildAllegroCategoryCatalog(
+    credentials: ErliCredentials,
+    config: ErliConnectionConfig,
+    cache?: CachePort,
+  ): AllegroCategoryCatalogClient | undefined {
+    const clientId = credentials.allegroClientId?.trim();
+    const clientSecret = credentials.allegroClientSecret?.trim();
+    if (!clientId || !clientSecret) {
+      return undefined;
+    }
+    return new AllegroCategoryCatalogClient(
+      clientId,
+      clientSecret,
+      config.allegroEnvironment ?? 'production',
+      cache,
+    );
   }
 
   private resolveBaseUrl(connection: Connection): string {
