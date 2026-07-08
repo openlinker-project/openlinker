@@ -22,4 +22,24 @@ describe('OrderDeliveryPanel', () => {
     expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
     expect(screen.getByText(/operator-selected|buyer-selected/)).toBeInTheDocument();
   });
+
+  it('prefixes the pickup code with the point kind when pointType is present (#1433)', () => {
+    renderWithProviders(
+      <OrderDeliveryPanel
+        pickupPoint={{ id: 'POP-OLS19', pointType: 'pop' }}
+        sourcePlatformType="allegro"
+      />,
+    );
+    expect(screen.getByText(/PaczkoPunkt\s+POP-OLS19/)).toBeInTheDocument();
+  });
+
+  it('labels an apm point as Paczkomat (#1433)', () => {
+    renderWithProviders(
+      <OrderDeliveryPanel
+        pickupPoint={{ id: 'OLS06A', pointType: 'apm' }}
+        sourcePlatformType="allegro"
+      />,
+    );
+    expect(screen.getByText(/Paczkomat\s+OLS06A/)).toBeInTheDocument();
+  });
 });

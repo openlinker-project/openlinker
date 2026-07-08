@@ -803,6 +803,7 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: 'Stacja paliw BP',
+          pointType: 'apm',
         });
         // shippingAddress geography comes from the locker; recipient name+phone
         // remain the buyer's (the parcel is collected by the buyer).
@@ -845,11 +846,51 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: undefined,
+          pointType: 'apm',
         });
         // Falls back to buyer.address since neither delivery.address nor
         // pickupPoint.address has geography.
         expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
         expect(incoming.shippingAddress?.city).toBe('BuyerCity');
+      });
+
+      it('should infer pointType pop for a POP- prefixed pickup-point id (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'POP-OLS19', name: 'PaczkoPunkt POP-OLS19' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBe('pop');
+      });
+
+      it('should infer pointType pop from a PaczkoPunkt name without a POP- id (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'OLS19X', name: 'InPost PaczkoPunkt at OLS19X' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBe('pop');
+      });
+
+      it('should infer pointType apm for a plain locker id (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'OLS06A', name: 'InPost Paczkomat OLS06A' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBe('apm');
       });
     });
 

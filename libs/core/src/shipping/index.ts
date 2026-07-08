@@ -35,6 +35,8 @@ export {
   PICKUP_POINT_STATUS,
   PickupPointDayValues,
   PICKUP_POINT_DAY,
+  PickupPointTypeValues,
+  PICKUP_POINT_TYPE,
 } from './domain/types/pickup-point.types';
 export type {
   PickupPoint,
@@ -43,6 +45,7 @@ export type {
   PickupPointDay,
   PickupPointDayHours,
   PickupPointOpeningHours,
+  PickupPointType,
   FindPickupPointsQuery,
 } from './domain/types/pickup-point.types';
 

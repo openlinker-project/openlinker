@@ -27,6 +27,7 @@ import type {
   IncomingOrderAddress,
   OrderShipping,
   OrderPickupPoint,
+  OrderPickupPointType,
   OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -491,7 +492,28 @@ export class AllegroOrderSourceAdapter
     if (!pp?.id) {
       return undefined;
     }
-    return { id: pp.id, name: pp.name, description: pp.description };
+    return {
+      id: pp.id,
+      name: pp.name,
+      description: pp.description,
+      pointType: this.classifyPickupPointType(pp.id, pp.name),
+    };
+  }
+
+  /**
+   * Infer the InPost point kind (#1433) from the id/name only — no network
+   * call in the ingestion hot path. A POP-prefixed id (case-insensitive) or a
+   * "PaczkoPunkt" label ⇒ `pop`, else `apm`. This is the heuristic half of the
+   * authoritative InPost classifier; it is duplicated here as a tiny local
+   * rule rather than imported from `@openlinker/integrations-inpost` to avoid
+   * an integration→integration package dependency (the ShipX `type`-based
+   * authoritative path lives in the InPost mapper, used by the pickup-point
+   * finder where a `/v1/points` lookup already happens).
+   */
+  private classifyPickupPointType(id: string, name?: string): OrderPickupPointType {
+    const idIsPop = id.toLowerCase().startsWith('pop-');
+    const nameIsPop = (name ?? '').toLowerCase().includes('paczkopunkt');
+    return idIsPop || nameIsPop ? 'pop' : 'apm';
   }
 
   /**

@@ -166,6 +166,17 @@ export interface OrderDispatchWindow {
 }
 
 /**
+ * Pickup-point kind (#1433) carried on a source order — `apm` (InPost
+ * Paczkomat / unattended locker) vs `pop` (PaczkoPunkt / attended partner
+ * point). Defined locally in `orders` rather than reused from
+ * `@openlinker/core/shipping` to avoid an `orders → shipping` cross-context
+ * edge (shipping already depends on orders). Kept value-identical to
+ * `PickupPointType` in shipping.
+ */
+export const OrderPickupPointTypeValues = ['apm', 'pop'] as const;
+export type OrderPickupPointType = (typeof OrderPickupPointTypeValues)[number];
+
+/**
  * Pickup-point reference (InPost Paczkomat locker etc.). `id` is the bare
  * locker code (e.g. `POZ08A`); `name` and `description` are operator-facing
  * labels (`Paczkomat POZ08A` / `Stacja paliw BP`).
@@ -174,6 +185,12 @@ export interface OrderPickupPoint {
   id: string;
   name?: string;
   description?: string;
+  /**
+   * Classified point kind (#1433). For Allegro pickup-point orders the
+   * ingestion adapter infers this from the id/name heuristic (no network
+   * call in the hot path). Absent when no signal is available.
+   */
+  pointType?: OrderPickupPointType;
 }
 
 export interface OrderItem {
