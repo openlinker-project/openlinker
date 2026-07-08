@@ -48,6 +48,7 @@ import {
 } from '../../domain/delivery-intent-resolution';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
+import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
@@ -271,8 +272,17 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       return generated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Surface the carrier's structured rejection (code + field errors) in the
+      // log — the top-level message alone is often a generic "validation error"
+      // that hides which field the provider rejected (#1428).
+      const rejectionDetail =
+        error instanceof ShippingProviderRejectionException
+          ? ` [provider=${error.providerName} code=${error.providerCode ?? 'null'} details=${JSON.stringify(
+              error.providerDetails ?? null,
+            )}]`
+          : '';
       this.logger.warn(
-        `generateLabel failed for shipment ${shipment.id} (order ${input.orderId}): ${message}`,
+        `generateLabel failed for shipment ${shipment.id} (order ${input.orderId}): ${message}${rejectionDetail}`,
       );
       // Persist the visible failure (surfaces in /shipments + enables retry),
       // then propagate the domain error so the caller can render it.
