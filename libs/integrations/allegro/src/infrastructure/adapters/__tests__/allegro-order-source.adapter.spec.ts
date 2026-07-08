@@ -329,6 +329,8 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
       // #928 — prepaid ONLINE order with finishedAt → paid (dispatch permitted).
       expect(incoming.paymentStatus).toBe('paid');
+      // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
+      expect(incoming.codToCollect).toBeUndefined();
     });
 
     it('should report pending status when the buyer has not yet completed payment', async () => {
@@ -355,6 +357,9 @@ describe('AllegroOrderSourceAdapter', () => {
       // #928 — CASH_ON_DELIVERY → cod regardless of order-lifecycle status
       // (dispatch is permitted for COD; the order ships and is paid on receipt).
       expect(incoming.paymentStatus).toBe('cod');
+      // #1435 — a COD order carries the sourced collect amount (the full
+      // order total the buyer pays on delivery) from summary.totalToPay.
+      expect(incoming.codToCollect).toEqual({ amount: '10.00', currency: 'PLN' });
     });
 
     describe('dispatch time / ship-by (#927)', () => {

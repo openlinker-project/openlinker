@@ -72,6 +72,7 @@ export {
 } from './domain/types/order.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+export type { CodToCollect } from './domain/types/cod-to-collect.types';
 export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,

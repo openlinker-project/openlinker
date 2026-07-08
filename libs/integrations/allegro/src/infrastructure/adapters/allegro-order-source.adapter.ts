@@ -10,6 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
+import { PAYMENT_STATUS } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -306,6 +307,20 @@ export class AllegroOrderSourceAdapter
         ? Number.parseFloat(checkoutForm.delivery.cost.amount)
         : Math.max(0, total - subtotal);
 
+      // #1435 — for a cash-on-delivery order the buyer pays the full order total
+      // on delivery, so the collectable amount is `summary.totalToPay` verbatim
+      // (decimal string preserved, no float round-trip). Keyed off the neutral
+      // payment status (reusing `deriveAllegroPaymentStatus`, not a duplicate
+      // COD-type compare); absent for prepaid / awaiting orders.
+      const paymentStatus = deriveAllegroPaymentStatus(checkoutForm.payment);
+      const codToCollect =
+        paymentStatus === PAYMENT_STATUS.Cod
+          ? {
+              amount: checkoutForm.summary.totalToPay.amount,
+              currency: checkoutForm.summary.totalToPay.currency,
+            }
+          : undefined;
+
       return {
         externalOrderId: checkoutFormId,
         orderNumber: checkoutFormId,
@@ -340,7 +355,8 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
-        paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
+        paymentStatus,
+        codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,
         createdAt,
