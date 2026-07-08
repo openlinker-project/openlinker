@@ -24,9 +24,11 @@ describe('BulkShopPublishSubmitService', () => {
   const input = {
     connectionId: CONN,
     initiatedBy: USER,
-    internalVariantIds: ['v1', 'v2'],
+    items: [
+      { internalVariantId: 'v1', stock: 3 },
+      { internalVariantId: 'v2', stock: 5 },
+    ],
     status: 'published' as const,
-    stock: 3,
   };
 
   beforeEach(() => {
@@ -58,13 +60,13 @@ describe('BulkShopPublishSubmitService', () => {
   });
 
   it('should reject an empty submission', async () => {
-    await expect(service.submit({ ...input, internalVariantIds: [] })).rejects.toBeInstanceOf(
+    await expect(service.submit({ ...input, items: [] })).rejects.toBeInstanceOf(
       EmptyBulkSubmissionException,
     );
     expect(batchRepo.create).not.toHaveBeenCalled();
   });
 
-  it('should persist the batch, fan out one publish per variant with bulkBatchId, and flip to running', async () => {
+  it('should persist the batch, fan out one publish per variant with bulkBatchId and its own stock, and flip to running', async () => {
     const result = await service.submit(input);
 
     expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONN, 'ProductPublisher');
@@ -74,6 +76,9 @@ describe('BulkShopPublishSubmitService', () => {
     expect(enqueue.enqueuePublish).toHaveBeenCalledTimes(2);
     expect(enqueue.enqueuePublish).toHaveBeenCalledWith(
       expect.objectContaining({ internalVariantId: 'v1', bulkBatchId: 'batch-1', stock: 3 }),
+    );
+    expect(enqueue.enqueuePublish).toHaveBeenCalledWith(
+      expect.objectContaining({ internalVariantId: 'v2', bulkBatchId: 'batch-1', stock: 5 }),
     );
     expect(batchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     expect(result).toEqual({

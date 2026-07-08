@@ -74,10 +74,12 @@ export class BulkShopPublishController {
       const { batchId, items } = await this.bulkSubmit.submit({
         connectionId: dto.connectionId,
         initiatedBy: user.id,
-        internalVariantIds: dto.internalVariantIds,
+        items: dto.items.map((item) => ({
+          internalVariantId: item.internalVariantId,
+          stock: item.stock,
+          ...(item.price !== undefined && { price: item.price }),
+        })),
         status: dto.status,
-        stock: dto.stock,
-        ...(dto.price !== undefined && { price: dto.price }),
         ...(dto.content !== undefined && { content: dto.content }),
       });
       return { batchId, items };

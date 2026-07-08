@@ -16,19 +16,28 @@ import type {
   PublishProductStatus,
 } from '../../domain/types/product-publish.types';
 
+/**
+ * One child publish within a bulk submission — variant id plus its own stock
+ * and optional price override (#1414: stock/price are per-product, not
+ * batch-shared; a bulk publish is N independent publish decisions that happen
+ * to share a connection, status, and content).
+ */
+export interface BulkShopPublishSubmitItemInput {
+  internalVariantId: string;
+  stock: number;
+  /** Omitted ⇒ this child falls back to its master product's price. */
+  price?: { amount: number; currency: string };
+}
+
 export interface BulkShopPublishSubmitInput {
   /** Target shop connection id. */
   connectionId: string;
   /** Operator user id that submitted the bulk request. */
   initiatedBy: string;
-  /** Internal variant ids to publish — one child publish each. */
-  internalVariantIds: string[];
+  /** One child publish (variant + own stock/price) each. */
+  items: BulkShopPublishSubmitItemInput[];
   /** Shared target publication state applied to every child. */
   status: PublishProductStatus;
-  /** Shared stock applied to every child. */
-  stock: number;
-  /** Optional shared price override; omitted ⇒ each child falls back to its master product. */
-  price?: { amount: number; currency: string };
   /** Optional shared content overrides applied to every child. */
   content?: PublishProductContent;
 }

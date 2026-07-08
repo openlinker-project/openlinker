@@ -84,9 +84,11 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     const result = await submitService().submit({
       connectionId: shopConnectionId,
       initiatedBy: 'user-int',
-      internalVariantIds: [VARIANT_A, VARIANT_B],
+      items: [
+        { internalVariantId: VARIANT_A, stock: 4 },
+        { internalVariantId: VARIANT_B, stock: 4 },
+      ],
       status: 'published',
-      stock: 4,
     });
 
     expect(result.items).toHaveLength(2);
@@ -117,9 +119,11 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     const { batchId, items } = await submitService().submit({
       connectionId: shopConnectionId,
       initiatedBy: 'user-int',
-      internalVariantIds: [VARIANT_A, VARIANT_B],
+      items: [
+        { internalVariantId: VARIANT_A, stock: 1 },
+        { internalVariantId: VARIANT_B, stock: 1 },
+      ],
       status: 'published',
-      stock: 1,
     });
     const [childA, childB] = items;
     const progress = progressService();
@@ -155,9 +159,11 @@ describe('Bulk Shop Publish Integration (#1044)', () => {
     const { batchId, items } = await submitService().submit({
       connectionId: shopConnectionId,
       initiatedBy: 'user-int',
-      internalVariantIds: [VARIANT_A, VARIANT_B],
+      items: [
+        { internalVariantId: VARIANT_A, stock: 1 },
+        { internalVariantId: VARIANT_B, stock: 1 },
+      ],
       status: 'published',
-      stock: 1,
     });
     const [childA] = items;
     const progress = progressService();

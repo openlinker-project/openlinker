@@ -6,12 +6,20 @@
  * this component receives the resolved `Connection` as a prop and renders
  * wizard body + footer actions directly.
  *
- * Two modes, driven by props:
- *   - **single** — `defaultVariantId` set: one product. Optional Review step
- *     before submit. Submits via `useShopPublishMutation`, reports
- *     `{ recordId }`.
- *   - **bulk** — `defaultVariantIds` (>1): one product per variant. Submits
- *     via `useBulkShopPublishMutation`, reports `{ batchId }`.
+ * Two modes, resolved from props OR from the in-dialog picker when the
+ * top-level "Publish to shop" CTA opens with no variant context at all:
+ *   - **single** — one product. Optional Review step before submit. Submits
+ *     via `useShopPublishMutation`, reports `{ recordId }`.
+ *   - **bulk** — 2+ products, one per variant. Each product gets its own
+ *     Stock + Price override row in Configure (#1414 — these are independent
+ *     publish decisions, not one shared value for the batch). Submits via
+ *     `useBulkShopPublishMutation`, reports `{ batchId }`.
+ *
+ * When entered with no `defaultVariantId(s)` (the top-level CTA), the wizard
+ * runs a **selection step** first: search + checkbox multi-select collecting
+ * into a persistent tray, then "Continue" locks in single vs. bulk mode based
+ * on how many variants were checked. Entering with props already set
+ * (row-level "Publish"/bulk actions) skips straight to Configure, unchanged.
  *
  * Category placement, attributes, and images are resolved server-side from
  * the master product at publish time (the #1042 builder), so the wizard is
@@ -26,7 +34,7 @@
  * @module apps/web/src/features/listings/components
  */
 import { useMemo, useRef, useState, type ReactElement } from 'react';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -42,6 +50,7 @@ import type { Product, ProductVariant } from '../../products';
 import { useShopPublishMutation } from '../hooks/use-shop-publish-mutation';
 import { useBulkShopPublishMutation } from '../hooks/use-bulk-shop-publish-mutation';
 import type {
+  BulkShopPublishItemRequest,
   BulkShopPublishRequest,
   ShopPublishContent,
   ShopPublishPrice,
@@ -63,6 +72,8 @@ interface WoocommercePublishWizardProps {
   onSubmitted: (result: { recordId?: string; batchId?: string }, connectionId: string) => void;
 }
 
+type PublishMode = 'single' | 'bulk';
+
 const VARIANT_SEARCH_DEBOUNCE_MS = 300;
 const VARIANT_PICKER_PAGE_SIZE = 10;
 
@@ -77,25 +88,25 @@ function variantLabel(product: Product, variant: ProductVariant): string {
   return product.name;
 }
 
-/** Whole-flow mode derived from the props the launcher passes. Bulk wins
- *  when more than one id is supplied; otherwise single. */
-function resolveVariantIds(
-  defaultVariantId?: string,
-  defaultVariantIds?: string[],
-): { ids: string[]; mode: 'single' | 'bulk' } {
+/** Ids supplied directly by props (row-level "Publish"/bulk actions). Empty
+ *  when the top-level CTA opened with no variant context — the operator picks
+ *  via the in-dialog selection step instead. */
+function resolvePropsIds(defaultVariantId?: string, defaultVariantIds?: string[]): string[] {
   const bulkIds = (defaultVariantIds ?? []).filter(Boolean);
-  if (bulkIds.length > 1) {
-    return { ids: bulkIds, mode: 'bulk' };
-  }
-  if (bulkIds.length === 1) {
-    return { ids: bulkIds, mode: 'single' };
-  }
-  return { ids: defaultVariantId ? [defaultVariantId] : [], mode: 'single' };
+  if (bulkIds.length > 0) return bulkIds;
+  return defaultVariantId ? [defaultVariantId] : [];
 }
 
-function buildPrice(values: WoocommercePublishWizardSubmission): ShopPublishPrice | undefined {
-  if (values.priceAmount === '') return undefined;
-  return { amount: Number(values.priceAmount), currency: values.priceCurrency };
+function modeForIds(ids: string[]): PublishMode {
+  return ids.length > 1 ? 'bulk' : 'single';
+}
+
+function buildPrice(
+  priceAmount: string,
+  priceCurrency: string,
+): ShopPublishPrice | undefined {
+  if (priceAmount === '') return undefined;
+  return { amount: Number(priceAmount), currency: priceCurrency };
 }
 
 function buildContent(): ShopPublishContent | undefined {
@@ -111,18 +122,30 @@ export function WoocommercePublishWizard({
   onCancel,
   onSubmitted,
 }: WoocommercePublishWizardProps): ReactElement {
-  const { ids, mode } = useMemo(
-    () => resolveVariantIds(defaultVariantId, defaultVariantIds),
+  const propsIds = useMemo(
+    () => resolvePropsIds(defaultVariantId, defaultVariantIds),
     [defaultVariantId, defaultVariantIds],
   );
   // The top-level "Publish to shop" CTA opens this wizard with no variant
   // context at all (no row/product to publish from). In that case the
-  // operator has to search and pick one here instead of the field silently
+  // operator runs the selection step below instead of the field silently
   // rendering blank.
-  const needsVariantPicker = mode === 'single' && ids.length === 0;
+  const needsVariantPicker = propsIds.length === 0;
 
-  const [pickedVariantId, setPickedVariantId] = useState<string | null>(null);
-  const [pickedVariantLabel, setPickedVariantLabel] = useState<string | null>(null);
+  // Multi-select tray state — only used during the selection step. Map
+  // preserves insertion order, matching the tray's expected chip order.
+  const [selectedVariants, setSelectedVariants] = useState<Map<string, string>>(new Map());
+  // null while the operator is still picking (selection step showing);
+  // locked in once "Continue" is pressed, or immediately when props already
+  // supplied ids.
+  const [finalMode, setFinalMode] = useState<PublishMode | null>(
+    needsVariantPicker ? null : modeForIds(propsIds),
+  );
+  const [singleVariantId, setSingleVariantId] = useState<string | null>(
+    !needsVariantPicker && propsIds.length === 1 ? propsIds[0] : null,
+  );
+  const [singleVariantLabel, setSingleVariantLabel] = useState<string | null>(null);
+
   const [productSearchInput, setProductSearchInput] = useState('');
   const [productOffset, setProductOffset] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -134,11 +157,24 @@ export function WoocommercePublishWizard({
   );
   const productDetailQuery = useProductQuery(selectedProductId ?? '');
 
-  const effectiveIds = ids.length > 0 ? ids : pickedVariantId ? [pickedVariantId] : [];
+  function toggleVariant(variantId: string, label: string, checked: boolean): void {
+    setSelectedVariants((prev) => {
+      const next = new Map(prev);
+      if (checked) {
+        next.set(variantId, label);
+      } else {
+        next.delete(variantId);
+      }
+      return next;
+    });
+  }
 
-  function handleVariantPick(product: Product, variant: ProductVariant): void {
-    setPickedVariantId(variant.id);
-    setPickedVariantLabel(variantLabel(product, variant));
+  function removeFromTray(variantId: string): void {
+    setSelectedVariants((prev) => {
+      const next = new Map(prev);
+      next.delete(variantId);
+      return next;
+    });
   }
 
   const singleMutation = useShopPublishMutation();
@@ -148,50 +184,110 @@ export function WoocommercePublishWizard({
 
   const [reviewing, setReviewing] = useState(false);
 
+  // Initial defaultValues cover both non-picker entry points synchronously
+  // (props ids are stable and known at mount); the picker path starts from
+  // the single-mode shape as a placeholder and is fully reset once the
+  // operator hits "Continue" (see handleContinue below).
+  const initialDefaults: WoocommercePublishWizardValues =
+    !needsVariantPicker && propsIds.length > 1
+      ? {
+          ...WOOCOMMERCE_PUBLISH_BULK_DEFAULTS,
+          items: propsIds.map((variantId) => ({
+            variantId,
+            label: variantId,
+            stock: '',
+            priceAmount: '',
+          })),
+        }
+      : WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS;
+
   const form = useForm<
     WoocommercePublishWizardValues,
     undefined,
     WoocommercePublishWizardSubmission
   >({
-    defaultValues:
-      mode === 'bulk' ? WOOCOMMERCE_PUBLISH_BULK_DEFAULTS : WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS,
+    defaultValues: initialDefaults,
     resolver: zodResolver(woocommercePublishWizardSchema),
     mode: 'onBlur',
   });
 
+  const itemsFieldArray = useFieldArray({ control: form.control, name: 'items' });
+
+  function handleContinue(): void {
+    const chosen = Array.from(selectedVariants.entries());
+    if (chosen.length === 0) return;
+    if (chosen.length > 1) {
+      form.reset({
+        ...WOOCOMMERCE_PUBLISH_BULK_DEFAULTS,
+        items: chosen.map(([variantId, label]) => ({
+          variantId,
+          label,
+          stock: '',
+          priceAmount: '',
+        })),
+      });
+      setFinalMode('bulk');
+    } else {
+      const [[variantId, label]] = chosen;
+      setSingleVariantId(variantId);
+      setSingleVariantLabel(label);
+      form.reset(WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS);
+      setFinalMode('single');
+    }
+  }
+
+  function handleVariantPick(product: Product, variant: ProductVariant, checked: boolean): void {
+    toggleVariant(variant.id, variantLabel(product, variant), checked);
+  }
+
+  const mode = finalMode;
   const status = form.watch('status');
   const mutationError = mode === 'bulk' ? bulkMutation.error : singleMutation.error;
   const isPending = singleMutation.isPending || bulkMutation.isPending;
 
   const validationMessages = Object.values(form.formState.errors)
-    .map((e) => e?.message)
+    .map((e) => (Array.isArray(e) ? undefined : e?.message))
     .filter((m): m is string => typeof m === 'string');
 
+  const singleId = !needsVariantPicker ? propsIds[0] : singleVariantId;
+
+  function resetColumn(field: 'stock' | 'priceAmount'): void {
+    itemsFieldArray.fields.forEach((_, index) => {
+      form.setValue(`items.${index}.${field}`, '', { shouldDirty: true });
+    });
+  }
+
   const submit = form.handleSubmit(async (values) => {
-    const stockValue = values.stock === '' ? 0 : Number(values.stock);
-    const price = buildPrice(values);
     const content = buildContent();
 
     try {
       if (mode === 'bulk') {
+        const items: BulkShopPublishItemRequest[] = values.items.map((item) => {
+          const price = buildPrice(item.priceAmount, values.priceCurrency);
+          return {
+            internalVariantId: item.variantId,
+            stock: item.stock === '' ? 0 : Number(item.stock),
+            ...(price ? { price } : {}),
+          };
+        });
         const request: BulkShopPublishRequest = {
           connectionId: connection.id,
-          internalVariantIds: effectiveIds,
+          items,
           status: values.status,
-          stock: stockValue,
-          ...(price ? { price } : {}),
           ...(content ? { content } : {}),
         };
         const result = await bulkMutation.mutateAsync({ request });
         showToast({
           tone: 'success',
           title: 'Bulk publish started',
-          description: `Publishing ${effectiveIds.length} products to ${connection.name}.`,
+          description: `Publishing ${items.length} products to ${connection.name}.`,
         });
         onSubmitted({ batchId: result.batchId }, connection.id);
       } else {
+        const stockValue = values.stock === '' ? 0 : Number(values.stock);
+        const price = buildPrice(values.priceAmount, values.priceCurrency);
         const request: ShopPublishRequest = {
-          internalVariantId: effectiveIds[0],
+          internalVariantId: singleId ?? '',
           status: values.status,
           stock: stockValue,
           ...(price ? { price } : {}),
@@ -239,6 +335,186 @@ export function WoocommercePublishWizard({
     </div>
   );
 
+  // ── Selection step (top-level CTA, no props ids yet) ──────────────────
+  if (needsVariantPicker && mode === null) {
+    const selectedList = Array.from(selectedVariants.entries());
+    return (
+      <div className="wizard-card">
+        <FormField
+          label="Search products"
+          name="productSearch"
+          description="Search by product name, SKU, or EAN. Check one or more variants — they all publish together."
+        >
+          <Input
+            value={productSearchInput}
+            onChange={(e) => {
+              setProductSearchInput(e.target.value);
+              setProductOffset(0);
+            }}
+            placeholder="e.g. T-shirt, SKU-123, 5901234567890"
+          />
+        </FormField>
+
+        <div className="shop-publish-picker">
+          {productsQuery.isLoading ? (
+            <p className="muted-text">Loading products…</p>
+          ) : (productsQuery.data?.items.length ?? 0) === 0 ? (
+            <p className="muted-text">No products match.</p>
+          ) : (
+            <ul className="create-offer-variant-picker__list">
+              {(productsQuery.data?.items ?? []).map((product) => {
+                const isExpanded = selectedProductId === product.id;
+                return (
+                  <li key={product.id} className="create-offer-variant-picker__product">
+                    <button
+                      type="button"
+                      className="create-offer-variant-picker__product-row"
+                      onClick={() => setSelectedProductId(isExpanded ? null : product.id)}
+                      aria-expanded={isExpanded}
+                    >
+                      <span className="shop-publish-picker__product-name" title={product.name}>
+                        {product.name}
+                      </span>
+                      <span className="mono-text muted-text shop-publish-picker__code">
+                        {product.sku ?? '-'}
+                      </span>
+                    </button>
+
+                    {isExpanded ? (
+                      <ul className="create-offer-variant-picker__variants">
+                        {productDetailQuery.isLoading ? (
+                          <li className="muted-text">Loading variants…</li>
+                        ) : (productDetailQuery.data?.variants ?? []).length === 0 ? (
+                          <li className="muted-text">No variants on this product.</li>
+                        ) : (
+                          (productDetailQuery.data?.variants ?? []).map((variant) => {
+                            const label = variantLabel(productDetailQuery.data ?? product, variant);
+                            const checked = selectedVariants.has(variant.id);
+                            return (
+                              <li key={variant.id}>
+                                <label className="create-offer-variant-picker__variant">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) =>
+                                      handleVariantPick(
+                                        productDetailQuery.data ?? product,
+                                        variant,
+                                        e.target.checked,
+                                      )
+                                    }
+                                  />
+                                  <span
+                                    className="create-offer-variant-picker__variant-name shop-publish-picker__variant-name"
+                                    title={label}
+                                  >
+                                    {label}
+                                  </span>
+                                  <span className="mono-text muted-text shop-publish-picker__code">
+                                    SKU {variant.sku ?? '-'} · EAN {variant.ean ?? '-'}
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {(() => {
+            const total = productsQuery.data?.total ?? 0;
+            if (total <= VARIANT_PICKER_PAGE_SIZE) return null;
+            const pageEnd = Math.min(productOffset + VARIANT_PICKER_PAGE_SIZE, total);
+            return (
+              <div className="create-offer-variant-picker__pagination">
+                <span className="muted-text">
+                  {productOffset + 1}-{pageEnd} of {total}
+                </span>
+                <div className="create-offer-variant-picker__pagination-actions">
+                  <Button
+                    tone="secondary"
+                    type="button"
+                    aria-label="Previous page of products"
+                    disabled={productOffset === 0}
+                    onClick={() =>
+                      setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
+                    }
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    tone="secondary"
+                    type="button"
+                    aria-label="Next page of products"
+                    disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
+                    onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="shop-publish-tray">
+          <div className="shop-publish-tray__head">
+            <span className="shop-publish-tray__count">
+              Selected for this batch: <span className="mono-text">{selectedList.length}</span>
+            </span>
+            {selectedList.length > 0 ? (
+              <Button
+                tone="ghost"
+                type="button"
+                className="button--sm"
+                onClick={() => setSelectedVariants(new Map())}
+              >
+                Clear all
+              </Button>
+            ) : null}
+          </div>
+          {selectedList.length > 0 ? (
+            <div className="shop-publish-tray__chips">
+              {selectedList.map(([variantId, label]) => (
+                <span key={variantId} className="shop-publish-chip shop-publish-chip--removable">
+                  <span title={label}>{label}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${label} from batch`}
+                    onClick={() => removeFromTray(variantId)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="shop-publish-tray__empty-hint muted-text">
+              Check one or more variants above to add them here.
+            </p>
+          )}
+        </div>
+
+        <div className="wizard-actions">
+          <div className="wizard-actions__group">
+            <Button type="button" tone="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+          <div className="wizard-actions__group">
+            <Button type="button" disabled={selectedList.length === 0} onClick={handleContinue}>
+              Continue with {selectedList.length} product{selectedList.length === 1 ? '' : 's'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Single-mode Review step ───────────────────────────────────────────
   if (mode === 'single' && reviewing) {
     const values = form.getValues();
@@ -263,8 +539,8 @@ export function WoocommercePublishWizard({
           <div className="shop-publish-kv__row">
             <dt>Variant</dt>
             <dd>
-              {pickedVariantLabel ? <div>{pickedVariantLabel}</div> : null}
-              <span className="mono-text muted-text">{effectiveIds[0]}</span>
+              {singleVariantLabel ? <div>{singleVariantLabel}</div> : null}
+              <span className="mono-text muted-text">{singleId}</span>
             </dd>
           </div>
           <div className="shop-publish-kv__row">
@@ -300,161 +576,13 @@ export function WoocommercePublishWizard({
     );
   }
 
-  // ── Form step (single + bulk share the field layout) ──────────────────
+  // ── Configure step (single + bulk share the field layout) ─────────────
   return (
     <form onSubmit={(e) => void submit(e)} noValidate className="wizard-card">
       {mutationError ? <Alert tone="error">{mutationError.message}</Alert> : null}
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
-
-      {mode === 'bulk' ? (
-        <div className="form-field">
-          <span className="form-field__label">
-            Variants <span className="shop-publish-hint">{effectiveIds.length} selected</span>
-          </span>
-          <div className="shop-publish-chips">
-            {effectiveIds.map((id) => (
-              <span key={id} className="shop-publish-chip mono-text" title={id}>
-                {id}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : needsVariantPicker && pickedVariantId === null ? (
-        <div className="form-field">
-          <FormField
-            label="Search products"
-            name="productSearch"
-            description="Search by product name, SKU, or EAN."
-          >
-            <Input
-              value={productSearchInput}
-              onChange={(e) => {
-                setProductSearchInput(e.target.value);
-                setProductOffset(0);
-              }}
-              placeholder="e.g. T-shirt, SKU-123, 5901234567890"
-            />
-          </FormField>
-
-          <div className="create-offer-variant-picker">
-            {productsQuery.isLoading ? (
-              <p className="muted-text">Loading products…</p>
-            ) : (productsQuery.data?.items.length ?? 0) === 0 ? (
-              <p className="muted-text">No products match.</p>
-            ) : (
-              <ul className="create-offer-variant-picker__list">
-                {(productsQuery.data?.items ?? []).map((product) => {
-                  const isExpanded = selectedProductId === product.id;
-                  return (
-                    <li key={product.id} className="create-offer-variant-picker__product">
-                      <button
-                        type="button"
-                        className="create-offer-variant-picker__product-row"
-                        onClick={() => setSelectedProductId(isExpanded ? null : product.id)}
-                        aria-expanded={isExpanded}
-                      >
-                        <span>{product.name}</span>
-                        <span className="mono-text muted-text">{product.sku ?? '-'}</span>
-                      </button>
-
-                      {isExpanded ? (
-                        <ul className="create-offer-variant-picker__variants">
-                          {productDetailQuery.isLoading ? (
-                            <li className="muted-text">Loading variants…</li>
-                          ) : (productDetailQuery.data?.variants ?? []).length === 0 ? (
-                            <li className="muted-text">No variants on this product.</li>
-                          ) : (
-                            (productDetailQuery.data?.variants ?? []).map((variant) => (
-                              <li key={variant.id}>
-                                <label className="create-offer-variant-picker__variant">
-                                  <input
-                                    type="radio"
-                                    name="wooPublishVariantId"
-                                    value={variant.id}
-                                    checked={false}
-                                    onChange={() =>
-                                      handleVariantPick(productDetailQuery.data ?? product, variant)
-                                    }
-                                  />
-                                  <span className="create-offer-variant-picker__variant-name">
-                                    {variantLabel(productDetailQuery.data ?? product, variant)}
-                                  </span>
-                                  <span className="mono-text muted-text">
-                                    SKU {variant.sku ?? '-'} · EAN {variant.ean ?? '-'}
-                                  </span>
-                                </label>
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {(() => {
-              const total = productsQuery.data?.total ?? 0;
-              if (total <= VARIANT_PICKER_PAGE_SIZE) return null;
-              const pageEnd = Math.min(productOffset + VARIANT_PICKER_PAGE_SIZE, total);
-              return (
-                <div className="create-offer-variant-picker__pagination">
-                  <span className="muted-text">
-                    {productOffset + 1}-{pageEnd} of {total}
-                  </span>
-                  <div className="create-offer-variant-picker__pagination-actions">
-                    <Button
-                      tone="secondary"
-                      type="button"
-                      aria-label="Previous page of products"
-                      disabled={productOffset === 0}
-                      onClick={() =>
-                        setProductOffset((o) => Math.max(0, o - VARIANT_PICKER_PAGE_SIZE))
-                      }
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      tone="secondary"
-                      type="button"
-                      aria-label="Next page of products"
-                      disabled={productOffset + VARIANT_PICKER_PAGE_SIZE >= total}
-                      onClick={() => setProductOffset((o) => o + VARIANT_PICKER_PAGE_SIZE)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      ) : (
-        <div className="form-field">
-          <span className="form-field__label">Variant</span>
-          <div className="shop-publish-variant-line">
-            {pickedVariantLabel ? <span>{pickedVariantLabel}</span> : null}
-            <span className="mono-text muted-text" title={effectiveIds[0]}>
-              {effectiveIds[0]}
-            </span>
-            {needsVariantPicker ? (
-              <Button
-                type="button"
-                tone="ghost"
-                className="button--sm"
-                onClick={() => {
-                  setPickedVariantId(null);
-                  setPickedVariantLabel(null);
-                }}
-              >
-                Change
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      )}
 
       <div className="form-field">
         <span className="form-field__label">
@@ -469,51 +597,155 @@ export function WoocommercePublishWizard({
         ) : null}
       </div>
 
-      <div className="shop-publish-field-row">
-        <FormField
-          label={
-            <>
-              Stock{' '}
-              {mode === 'bulk' ? (
-                <span className="shop-publish-hint">per master if blank</span>
-              ) : null}
-            </>
-          }
-          name="stock"
-          error={form.formState.errors.stock?.message}
-        >
-          <Input
-            inputMode="numeric"
-            className="input--mono"
-            placeholder={mode === 'bulk' ? 'from master' : '0'}
-            {...form.register('stock')}
-          />
-        </FormField>
-        <FormField
-          label={
-            <>
-              Price override <span className="shop-publish-hint">optional</span>
-            </>
-          }
-          name="priceAmount"
-          error={form.formState.errors.priceAmount?.message}
-        >
-          <div className="shop-publish-affix">
-            <span className="shop-publish-affix__pre mono-text">{form.watch('priceCurrency')}</span>
-            <Input
-              inputMode="decimal"
-              className="input--mono shop-publish-affix__input"
-              placeholder="from master"
-              {...form.register('priceAmount')}
-            />
+      {mode === 'bulk' ? (
+        <div className="form-field">
+          <span className="form-field__label">
+            Products{' '}
+            <span className="shop-publish-hint">{itemsFieldArray.fields.length} selected</span>{' '}
+            <span className="shop-publish-hint">— stock &amp; price set per product</span>
+          </span>
+          <div className="shop-publish-config-table">
+            <div className="shop-publish-config-table__body">
+              {itemsFieldArray.fields.map((field, index) => (
+                <div key={field.id} className="shop-publish-config-row">
+                  <div className="shop-publish-config-row__top">
+                    <span className="shop-publish-config-row__name" title={field.label}>
+                      {field.label}
+                    </span>
+                    <button
+                      type="button"
+                      className="shop-publish-config-row__remove"
+                      aria-label={`Remove ${field.label} from batch`}
+                      onClick={() => itemsFieldArray.remove(index)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="shop-publish-config-row__fields">
+                    <FormField
+                      label="Stock"
+                      name={`items.${index}.stock`}
+                      error={form.formState.errors.items?.[index]?.stock?.message}
+                    >
+                      <Input
+                        inputMode="numeric"
+                        className="input--mono"
+                        placeholder="master"
+                        {...form.register(`items.${index}.stock`)}
+                      />
+                    </FormField>
+                    <FormField
+                      label="Price override"
+                      name={`items.${index}.priceAmount`}
+                      error={form.formState.errors.items?.[index]?.priceAmount?.message}
+                    >
+                      <div className="shop-publish-affix">
+                        <span className="shop-publish-affix__pre mono-text">
+                          {form.watch('priceCurrency')}
+                        </span>
+                        <Input
+                          inputMode="decimal"
+                          className="input--mono shop-publish-affix__input"
+                          placeholder="master"
+                          {...form.register(`items.${index}.priceAmount`)}
+                        />
+                      </div>
+                    </FormField>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="shop-publish-config-table__foot">
+              <span className="form-field__description">
+                Blank stock/price falls back to the master product's value at publish time.
+              </span>
+              <div className="shop-publish-config-table__foot-actions">
+                <Button
+                  tone="ghost"
+                  type="button"
+                  className="button--sm"
+                  onClick={() => resetColumn('stock')}
+                >
+                  Use master stock for all
+                </Button>
+                <Button
+                  tone="ghost"
+                  type="button"
+                  className="button--sm"
+                  onClick={() => resetColumn('priceAmount')}
+                >
+                  Use master price for all
+                </Button>
+              </div>
+            </div>
           </div>
-        </FormField>
-      </div>
+        </div>
+      ) : (
+        <>
+          <div className="form-field">
+            <span className="form-field__label">Variant</span>
+            <div className="shop-publish-variant-line">
+              {singleVariantLabel ? <span>{singleVariantLabel}</span> : null}
+              <span className="mono-text muted-text" title={singleId ?? ''}>
+                {singleId}
+              </span>
+              {needsVariantPicker ? (
+                <Button
+                  type="button"
+                  tone="ghost"
+                  className="button--sm"
+                  onClick={() => {
+                    setSingleVariantId(null);
+                    setSingleVariantLabel(null);
+                    setSelectedVariants(new Map());
+                    setFinalMode(null);
+                  }}
+                >
+                  Change
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="shop-publish-field-row">
+            <FormField label="Stock" name="stock" error={form.formState.errors.stock?.message}>
+              <Input
+                inputMode="numeric"
+                className="input--mono"
+                placeholder="0"
+                {...form.register('stock')}
+              />
+            </FormField>
+            <FormField
+              label={
+                <>
+                  Price override <span className="shop-publish-hint">optional</span>
+                </>
+              }
+              name="priceAmount"
+              error={form.formState.errors.priceAmount?.message}
+            >
+              <div className="shop-publish-affix">
+                <span className="shop-publish-affix__pre mono-text">
+                  {form.watch('priceCurrency')}
+                </span>
+                <Input
+                  inputMode="decimal"
+                  className="input--mono shop-publish-affix__input"
+                  placeholder="from master"
+                  {...form.register('priceAmount')}
+                />
+              </div>
+            </FormField>
+          </div>
+        </>
+      )}
 
       {mode === 'bulk' ? (
         <Alert tone="info">
-          Each variant publishes as its own simple WooCommerce product. Out-of-stock variants list
-          with their master stock (0 is honored).
+          Each product publishes independently — one can list at a different price or stock level
+          than the rest of the batch. Out-of-stock variants list with their master stock (0 is
+          honored).
         </Alert>
       ) : (
         <div className="shop-publish-callout">
@@ -534,7 +766,7 @@ export function WoocommercePublishWizard({
             <Button
               type="button"
               tone="secondary"
-              disabled={isPending || effectiveIds.length === 0}
+              disabled={isPending || !singleId}
               onClick={() => {
                 void form.trigger().then((ok) => {
                   if (ok) setReviewing(true);
@@ -544,11 +776,16 @@ export function WoocommercePublishWizard({
               Review
             </Button>
           ) : null}
-          <Button type="submit" disabled={isPending || effectiveIds.length === 0}>
+          <Button
+            type="submit"
+            disabled={
+              isPending || (mode === 'bulk' ? itemsFieldArray.fields.length === 0 : !singleId)
+            }
+          >
             {isPending
               ? 'Publishing…'
               : mode === 'bulk'
-                ? `Publish ${effectiveIds.length} products`
+                ? `Publish ${itemsFieldArray.fields.length} products`
                 : 'Publish'}
           </Button>
         </div>
