@@ -134,8 +134,19 @@ export function toGenerateLabelResult(shipment: ShipXShipment): GenerateLabelRes
  * shipments; no brokerage layer to disambiguate, unlike Allegro Delivery —
  * see `KnownCarrierValues` in core).
  */
-export function toTrackingSnapshot(status: ShipmentStatus, providerStatus: string): TrackingSnapshot {
-  return { status, providerStatus, carrier: 'inpost' };
+export function toTrackingSnapshot(
+  status: ShipmentStatus,
+  providerStatus: string,
+  trackingNumber?: string,
+): TrackingSnapshot {
+  // Backfill the waybill once ShipX mints it at confirmation — the status-sync
+  // service diffs this onto `Shipment.trackingNumber` (never overwrites).
+  return {
+    status,
+    providerStatus,
+    carrier: 'inpost',
+    ...(trackingNumber ? { trackingNumber } : {}),
+  };
 }
 
 /** Map a ShipX point to the neutral `PickupPoint`. */

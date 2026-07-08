@@ -96,13 +96,14 @@ export class InpostShippingAdapter
       path: `/v1/shipments/${input.providerShipmentId}`,
     });
     const mapped = mapShipXStatus(shipment.status);
+    const trackingNumber = shipment.tracking_number ?? undefined;
     if (mapped === null) {
       this.logger.warn(
         `Unknown ShipX status '${shipment.status}' for shipment ${input.providerShipmentId}; treating as in-transit`,
       );
-      return toTrackingSnapshot('in-transit', shipment.status);
+      return toTrackingSnapshot('in-transit', shipment.status, trackingNumber);
     }
-    return toTrackingSnapshot(mapped, shipment.status);
+    return toTrackingSnapshot(mapped, shipment.status, trackingNumber);
   }
 
   async cancelShipment(input: { providerShipmentId: string }): Promise<void> {

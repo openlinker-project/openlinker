@@ -162,7 +162,34 @@ describe('InpostShippingAdapter', () => {
       const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
 
       expect(request).toHaveBeenCalledWith({ method: 'GET', path: '/v1/shipments/1' });
-      expect(snapshot).toEqual({ status: 'delivered', providerStatus: 'delivered', carrier: 'inpost' });
+      expect(snapshot).toEqual({
+        status: 'delivered',
+        providerStatus: 'delivered',
+        carrier: 'inpost',
+        trackingNumber: 'X',
+      });
+    });
+
+    it('should carry the ShipX tracking number into the snapshot so it backfills (#1426)', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({
+        id: 1,
+        status: 'confirmed',
+        tracking_number: '602222118600000022831478',
+      });
+
+      const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
+
+      expect(snapshot.trackingNumber).toBe('602222118600000022831478');
+    });
+
+    it('should omit trackingNumber when ShipX has not minted one yet', async () => {
+      const { adapter, request } = makeAdapter();
+      request.mockResolvedValueOnce({ id: 1, status: 'created', tracking_number: null });
+
+      const snapshot = await adapter.getTracking({ providerShipmentId: '1' });
+
+      expect(snapshot.trackingNumber).toBeUndefined();
     });
 
     it('should fall back to in-transit for an unknown ShipX status', async () => {
