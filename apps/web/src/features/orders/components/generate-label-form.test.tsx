@@ -253,9 +253,9 @@ describe('GenerateLabelForm — happy path', () => {
     fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
 
     // Segmented control: pick "large" (was defaulted to medium).
-    const large = screen.getByRole('button', { name: /large/i });
+    const large = screen.getByRole('radio', { name: /large/i });
     fireEvent.click(large);
-    expect(large).toHaveAttribute('aria-pressed', 'true');
+    expect(large).toHaveAttribute('aria-checked', 'true');
 
     fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
 
