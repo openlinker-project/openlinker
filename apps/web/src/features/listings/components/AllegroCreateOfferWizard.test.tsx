@@ -5,7 +5,11 @@
  */
 import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  renderWithProviders,
+  createMockApiClient,
+} from '../../../test/test-utils';
 import { AllegroCreateOfferWizard } from './AllegroCreateOfferWizard';
 // NOTE: tests for the connection-picker UX moved to OfferCreationLauncher.test.tsx
 // as part of #608. The wizard is now content-only; the launcher owns the
@@ -1264,11 +1268,18 @@ describe('AllegroCreateOfferWizard', () => {
           onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
-        { apiClient: mockApi },
+        // Authenticated (admin) session — the "Suggest with AI" trigger is
+        // gated on the `ai:suggest` permission (#1379 re-scope), not demo mode.
+        { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
       );
 
       await advanceToStep2();
 
+      // Session hydration is async — the trigger renders locked until the
+      // authenticated (admin) session resolves.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeEnabled(),
+      );
       fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
       fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
       fireEvent.click(await screen.findByRole('button', { name: /apply to editor/i }));

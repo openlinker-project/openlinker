@@ -12,6 +12,7 @@ import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
 import type { Session, SessionUser } from '../shared/auth/session.types';
 import { ToastProvider } from '../shared/ui/toast-provider';
+import { TooltipProvider } from '../shared/ui/tooltip';
 import { LocaleProvider } from '../shared/i18n';
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { PluginRegistryProvider } from '../shared/plugins';
@@ -497,6 +498,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'products:read', 'products:write',
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
+    'ai:suggest',
   ],
 };
 
@@ -576,9 +578,11 @@ export function renderWithProviders(
           <PluginRegistryProvider plugins={plugins}>
             <SessionProvider adapter={sessionAdapter}>
               <ToastProvider>
-                <ApiClientProvider client={apiClient}>
-                  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-                </ApiClientProvider>
+                <TooltipProvider>
+                  <ApiClientProvider client={apiClient}>
+                    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+                  </ApiClientProvider>
+                </TooltipProvider>
               </ToastProvider>
             </SessionProvider>
           </PluginRegistryProvider>
