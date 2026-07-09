@@ -9043,6 +9043,259 @@ html[data-density='compact'] .status-badge {
   }
 }
 
+/* ── Shipment lifecycle redesign (#1425) ────────────────────────────────────
+ * Signature lifecycle rail for the order-detail shipment panel + the
+ * segmented locker-size control and checkbox-gated COD reveal in the
+ * generate-label form. Token-only: status hues carry lifecycle meaning; the
+ * signal-orange accent is reserved for the current live node, the pressed
+ * segment, and focus rings.
+ */
+
+/* Lifecycle rail — 4 stages: Label ready → Dispatched → In transit → Delivered */
+.shipment-lifecycle-rail {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shipment-lifecycle-rail__step {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+/* Connectors: two half-width rules per step so each leg can be tinted by the
+   step that owns it (incoming ::before, outgoing ::after). */
+.shipment-lifecycle-rail__step::before,
+.shipment-lifecycle-rail__step::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  height: 2px;
+  background: var(--border-default);
+}
+
+.shipment-lifecycle-rail__step::before {
+  left: 0;
+  right: 50%;
+}
+
+.shipment-lifecycle-rail__step::after {
+  left: 50%;
+  right: 0;
+}
+
+.shipment-lifecycle-rail__step:first-child::before,
+.shipment-lifecycle-rail__step:last-child::after {
+  display: none;
+}
+
+.shipment-lifecycle-rail__node {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 2px solid var(--border-default);
+}
+
+.shipment-lifecycle-rail__label {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+/* Done: filled success node + solid success connectors. */
+.shipment-lifecycle-rail__step--done .shipment-lifecycle-rail__node {
+  background: var(--status-success-fg);
+  border-color: var(--status-success-fg);
+}
+
+.shipment-lifecycle-rail__step--done::before,
+.shipment-lifecycle-rail__step--done::after {
+  background: var(--status-success-fg);
+}
+
+.shipment-lifecycle-rail__step--done .shipment-lifecycle-rail__label {
+  color: var(--text-secondary);
+}
+
+/* Current (in-flight): accent node + emphasised label; the incoming leg reads
+   as completed. Excludes the terminal-delivered (also --done) and halt cases. */
+.shipment-lifecycle-rail__step--current:not(.shipment-lifecycle-rail__step--done):not(.shipment-lifecycle-rail__step--halt)::before {
+  background: var(--status-success-fg);
+}
+
+.shipment-lifecycle-rail__step--current:not(.shipment-lifecycle-rail__step--done):not(.shipment-lifecycle-rail__step--halt)
+  .shipment-lifecycle-rail__node {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4px var(--accent-primary-soft);
+}
+
+.shipment-lifecycle-rail__step--current .shipment-lifecycle-rail__label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Terminal delivered: success fill (done) kept, with an accent ring so the node
+   still reads as "you are here". */
+.shipment-lifecycle-rail__step--current.shipment-lifecycle-rail__step--done
+  .shipment-lifecycle-rail__node {
+  box-shadow: 0 0 0 4px var(--accent-primary-soft);
+}
+
+/* Live pulse on a non-terminal current node. */
+.shipment-lifecycle-rail__step--current.shipment-lifecycle-rail__step--live
+  .shipment-lifecycle-rail__node {
+  animation: shipment-lifecycle-rail-pulse 1.8s var(--ease-in-out) infinite;
+}
+
+@keyframes shipment-lifecycle-rail-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--accent-primary-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shipment-lifecycle-rail__step--live .shipment-lifecycle-rail__node {
+    animation: none;
+  }
+}
+
+/* Interrupted rail — failed: error-tinted halt node at the dispatch stage. */
+.shipment-lifecycle-rail--halted .shipment-lifecycle-rail__step--halt .shipment-lifecycle-rail__node {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-fg);
+}
+
+.shipment-lifecycle-rail--halted .shipment-lifecycle-rail__step--halt::before {
+  background: var(--status-error-fg);
+}
+
+.shipment-lifecycle-rail--halted .shipment-lifecycle-rail__step--halt .shipment-lifecycle-rail__label {
+  color: var(--status-error-fg);
+  font-weight: 600;
+}
+
+/* Interrupted rail — cancelled: dashed, muted halt node. */
+.shipment-lifecycle-rail--cancelled
+  .shipment-lifecycle-rail__step--halt
+  .shipment-lifecycle-rail__node {
+  background: var(--status-disabled-soft);
+  border-color: var(--status-disabled-fg);
+  border-style: dashed;
+}
+
+.shipment-lifecycle-rail--cancelled .shipment-lifecycle-rail__step--halt::before {
+  background: var(--status-disabled-border);
+}
+
+.shipment-lifecycle-rail--cancelled
+  .shipment-lifecycle-rail__step--halt
+  .shipment-lifecycle-rail__label {
+  color: var(--status-disabled-fg);
+  font-weight: 600;
+}
+
+/* Segmented control — shared SegmentedControl primitive (shared/ui). */
+.segmented-control {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.segmented-control__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-right: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.segmented-control__option:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.segmented-control__option:last-child {
+  border-right: none;
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.segmented-control__option:hover {
+  background: var(--bg-surface-hover);
+}
+
+.segmented-control__option--active {
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+
+.segmented-control__option--active:hover {
+  background: var(--accent-primary-hover);
+}
+
+.segmented-control__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  z-index: 1;
+}
+
+.segmented-control__hint {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  opacity: 0.7;
+}
+
+/* COD reveal (#1425) — checkbox toggle; the amount row mounts only when on. */
+.generate-label-form__cod-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.generate-label-form__cod-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.generate-label-form__cod-toggle input[type='checkbox']:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    Order detail redesign (#924)
    Operator cockpit: derived health header + strip, failure banner, pricing,

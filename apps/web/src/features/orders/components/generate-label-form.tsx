@@ -35,6 +35,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
@@ -55,6 +56,7 @@ import {
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
+  type LockerTemplate,
 } from './generate-label-form.schema';
 import {
   buildDispatchItem,
@@ -74,6 +76,17 @@ interface GenerateLabelFormProps {
 }
 
 const SLOW_NOTICE_DELAY_MS = 5_000;
+
+/**
+ * InPost gabaryt (size class) shown as a subtle hint on each locker-size option
+ * (#1425). Small → A, Medium → B, Large → C — the operator-facing shorthand
+ * InPost prints on the locker doors.
+ */
+const LOCKER_TEMPLATE_GABARYT: Record<LockerTemplate, string> = {
+  small: 'A',
+  medium: 'B',
+  large: 'C',
+};
 
 /**
  * Window during which a missing Allegro pickup-point is considered "still
@@ -190,14 +203,23 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
-  const lockerTemplateRegister = form.register('lockerTemplate');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
+  // Locker size is driven imperatively via a segmented control (#1425). The
+  // registration is bound to a hidden input at the control (so RHF holds a real
+  // ref and tracks the field); the pressed state is set via `setValue` and read
+  // via `watch`.
+  const lockerTemplateRegister = form.register('lockerTemplate');
+  const lockerTemplate = form.watch('lockerTemplate');
 
   // COD orders are flagged by the snapshot's payment status (#928). The COD
   // amount itself isn't persisted (decision A) — the operator enters what to
   // collect here at dispatch.
   const isCodOrder = snapshot.paymentStatus === 'cod';
+  // COD is revealed behind a checkbox (#1425). Pre-checked when the source
+  // order is already flagged cash-on-delivery, otherwise off (prepaid default).
+  const [codEnabled, setCodEnabled] = useState(isCodOrder);
+  const codFieldId = useId();
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -233,7 +255,7 @@ export function GenerateLabelForm({
         },
         paczkomatId: values.paczkomatId,
         cod:
-          values.codAmount && values.codAmount.length > 0
+          codEnabled && values.codAmount && values.codAmount.length > 0
             ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
             : undefined,
       }),
@@ -442,50 +464,90 @@ export function GenerateLabelForm({
           </FormField>
         ) : null}
 
+        {/* Locker size (#1425) — the shared SegmentedControl replacing the
+            Select. Multi-child, so it renders the `.form-field` markup directly
+            (like the dimensions composite) rather than through FormField, which
+            clones a single control child. The group is labelled by aria-label
+            and wired to its description + error via aria-describedby /
+            aria-errormessage; driven imperatively via `setValue`, with a hidden
+            registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
-          <FormField
-            label="Locker size"
-            name="lockerTemplate"
-            description="InPost parcel template — required for a paczkomat shipment."
-            error={form.formState.errors.lockerTemplate?.message}
-          >
-            <Select {...lockerTemplateRegister} aria-label="Locker size">
-              {LOCKER_TEMPLATE_VALUES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          <div className="form-field">
+            <span className="form-field__label">Locker size</span>
+            <p className="form-field__description" id="lockerTemplate-description">
+              InPost parcel template — required for a paczkomat shipment.
+            </p>
+            <SegmentedControl
+              aria-label="Locker size"
+              aria-describedby="lockerTemplate-description"
+              aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
+              aria-errormessage={
+                form.formState.errors.lockerTemplate ? 'lockerTemplate-error' : undefined
+              }
+              value={lockerTemplate ?? 'medium'}
+              onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
+              options={LOCKER_TEMPLATE_VALUES.map((t) => ({
+                value: t,
+                label: t,
+                hint: LOCKER_TEMPLATE_GABARYT[t],
+              }))}
+            />
+            <input type="hidden" {...lockerTemplateRegister} />
+            <FieldError
+              id="lockerTemplate-error"
+              message={form.formState.errors.lockerTemplate?.message}
+            />
+          </div>
         ) : null}
 
-        {/* Cash on delivery (#966, decision A) — optional, operator-entered.
-            COD-incapable carriers ignore it; DPD translates it to its COD
-            service. Pre-flagged when the order's payment status is COD. */}
+        {/* Cash on delivery (#966, decision A / #1425) — behind a checkbox. The
+            amount + currency reveal only when it's checked; unchecked submits
+            no COD (same as a blank amount). COD-incapable carriers ignore it;
+            DPD translates it to its COD service. Pre-checked when the order's
+            payment status is COD. */}
         <div className="form-field">
-          <p className="form-field__label">Cash on delivery (optional)</p>
+          <label className="generate-label-form__cod-toggle" htmlFor={codFieldId}>
+            <input
+              id={codFieldId}
+              type="checkbox"
+              checked={codEnabled}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setCodEnabled(enabled);
+                if (!enabled) {
+                  // Drop any typed amount so the payload can't carry stale COD.
+                  form.setValue('codAmount', '', { shouldValidate: true });
+                }
+              }}
+            />
+            Cash on delivery
+          </label>
           <p className="form-field__description">
             {isCodOrder
               ? 'This order is cash-on-delivery — enter the amount to collect at the door.'
-              : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
+              : 'Collect payment when the buyer picks up. Off means a prepaid shipment.'}
           </p>
-          <div className="generate-label-form__cod">
-            <Input
-              {...codAmountRegister}
-              inputMode="decimal"
-              placeholder="129.90"
-              aria-label="COD amount to collect"
-              invalid={Boolean(form.formState.errors.codAmount)}
-            />
-            <Select {...codCurrencyRegister} aria-label="COD currency">
-              {COD_CURRENCY_VALUES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
+          {codEnabled ? (
+            <>
+              <div className="generate-label-form__cod">
+                <Input
+                  {...codAmountRegister}
+                  inputMode="decimal"
+                  placeholder="129.90"
+                  aria-label="COD amount to collect"
+                  invalid={Boolean(form.formState.errors.codAmount)}
+                />
+                <Select {...codCurrencyRegister} aria-label="COD currency">
+                  {COD_CURRENCY_VALUES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
+            </>
+          ) : null}
         </div>
 
         {showSlowNotice ? (
