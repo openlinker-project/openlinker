@@ -15,6 +15,7 @@ export function buildWooCommerceSchedulerTasks(): SchedulerTaskConfig[] {
     {
       taskId: 'woocommerce-orders-poll',
       platformType: 'woocommerce',
+      requiredCapability: 'OrderSource',
       jobType: 'marketplace.orders.poll',
       cronExpression: '*/5 * * * *',
       enabledEnvVar: 'OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED',
