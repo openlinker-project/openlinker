@@ -250,6 +250,26 @@ describe('ErliOrderSourceAdapter', () => {
       expect(nextCursor).toBe('00000105');
     });
 
+    it('should advance the cursor past a productsNeedSync event that carries no payload.id at all (real wire shape, #1322 manual E2E)', async () => {
+      const warnSpy = jest
+        .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      client.get.mockResolvedValue(
+        ok([{ id: '00000200', shopId: 99990, created: 'x', read: false, type: 'productsNeedSync' }]),
+      );
+
+      const { items, nextCursor } = await adapter.listOrderFeed(
+        feedInput({ fromCursor: '00000100' }),
+      );
+
+      // No feed item (not an order event), but the cursor must still advance
+      // over it — it must not be dropped as "malformed" just for lacking an
+      // order id it was never going to carry.
+      expect(items).toEqual([]);
+      expect(nextCursor).toBe('00000200');
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
     it('should skip a malformed inbox item (missing payload.id) and process the rest', async () => {
       const warnSpy = jest
         .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
