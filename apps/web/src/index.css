@@ -9009,6 +9009,46 @@ html[data-density='compact'] .status-badge {
   gap: var(--space-2);
 }
 
+/* ── COD payment panel (#1435) ──────────────────────────────────────────────
+ * Payment-status-driven COD surface. Neutral recap container shared by the
+ * read-only "from Allegro" amount and the fallback manual input, so both read
+ * as siblings; the status is carried by a StatusBadge pill (reused, not a new
+ * hue). No heavy tone-filled panel. */
+.generate-label-form__cod-panel {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.generate-label-form__cod-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.generate-label-form__cod-source {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.generate-label-form__cod-amount {
+  margin: var(--space-2) 0 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.generate-label-form__cod-note {
+  margin: var(--space-1) 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.generate-label-form__cod-panel .generate-label-form__cod {
+  margin-top: var(--space-2);
+}
+
 .generate-label-form__slow-notice {
   font-size: 0.8125rem;
   color: var(--text-secondary);

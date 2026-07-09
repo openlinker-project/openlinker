@@ -37,6 +37,7 @@ import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -192,7 +193,9 @@ export function GenerateLabelForm({
       paczkomatId: snapshot.pickupPoint?.id ?? '',
       // Locker size — required by the BE for paczkomat shipments (#764).
       lockerTemplate: 'medium',
-      // COD (#966, decision A) — operator-entered at dispatch; not order-sourced.
+      // COD (#1435) — payment-status-driven. The amount is sourced from the
+      // order (Allegro) for a COD order; these fields back only the fallback
+      // manual input shown for a COD order with no sourced amount.
       codAmount: '',
       codCurrency: 'PLN',
     },
@@ -216,14 +219,27 @@ export function GenerateLabelForm({
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
-  // COD orders are flagged by the snapshot's payment status (#928). The COD
-  // amount itself isn't persisted (decision A) — the operator enters what to
-  // collect here at dispatch.
-  const isCodOrder = snapshot.paymentStatus === 'cod';
-  // COD is revealed behind a checkbox (#1425). Pre-checked when the source
-  // order is already flagged cash-on-delivery, otherwise off (prepaid default).
-  const [codEnabled, setCodEnabled] = useState(isCodOrder);
-  const codFieldId = useId();
+  // COD is driven by the order's payment status + the marketplace-sourced
+  // amount (#1435). The gate is a block-list on the one prepaid status, not an
+  // allow-list, so sources that don't report payment (PrestaShop / WooCommerce /
+  // DPD) keep the manual-COD path (#966). States:
+  //   - COD + sourced amount            → read-only "from Allegro" panel; submit
+  //                                       sends the sourced amount.
+  //   - COD + no sourced amount         → fallback manual input.
+  //   - unknown / unreported payment    → fallback manual input (DPD/PrestaShop
+  //                                       operator-typed COD, as before).
+  //   - explicitly prepaid (`paid`) /   → NO COD UI, submit sends no cod.
+  //     dispatch-blocked (awaiting/refunded, already blocked upstream)
+  const paymentStatus = snapshot.paymentStatus;
+  const sourcedCod = snapshot.codToCollect;
+  const isCodOrder = paymentStatus === 'cod';
+  // COD surface is allowed unless the order is explicitly prepaid or otherwise
+  // payment-blocked (awaiting/refunded never dispatch, but stay defensive here).
+  const codAllowed =
+    paymentStatus !== 'paid' && paymentStatus !== 'awaiting' && paymentStatus !== 'refunded';
+  // The read-only "from Allegro" panel only applies to a marketplace COD order
+  // that carried a sourced amount; every other allowed state uses the input.
+  const showSourcedCod = isCodOrder && sourcedCod !== undefined;
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -244,6 +260,19 @@ export function GenerateLabelForm({
   }, [mutation.isPending]);
 
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
+    // COD payload by state (#1435). Prepaid / blocked orders never send COD; a
+    // marketplace-sourced amount is sent verbatim; otherwise the operator-typed
+    // amount is honoured (COD-unsourced marketplace order, or an unreported-
+    // payment source like PrestaShop/DPD). The BE re-enforces the gate — the FE
+    // is not authorization — but sending the right shape keeps the two aligned.
+    const cod = !codAllowed
+      ? undefined
+      : showSourcedCod && sourcedCod
+        ? { amount: sourcedCod.amount, currency: sourcedCod.currency }
+        : values.codAmount && values.codAmount.length > 0
+          ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
+          : undefined;
+
     const input: GenerateLabelInput = {
       sourceConnectionId: order.sourceConnectionId,
       ...buildDispatchItem({
@@ -258,10 +287,7 @@ export function GenerateLabelForm({
           template: shippingMethod === 'paczkomat' ? values.lockerTemplate : undefined,
         },
         paczkomatId: values.paczkomatId,
-        cod:
-          codEnabled && values.codAmount && values.codAmount.length > 0
-            ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
-            : undefined,
+        cod,
       }),
     };
     try {
@@ -504,55 +530,60 @@ export function GenerateLabelForm({
           </div>
         ) : null}
 
-        {/* Cash on delivery (#966, decision A / #1425) — behind a checkbox. The
-            amount + currency reveal only when it's checked; unchecked submits
-            no COD (same as a blank amount). COD-incapable carriers ignore it;
-            DPD translates it to its COD service. Pre-checked when the order's
-            payment status is COD. */}
-        <div className="form-field">
-          <label className="generate-label-form__cod-toggle" htmlFor={codFieldId}>
-            <input
-              id={codFieldId}
-              type="checkbox"
-              checked={codEnabled}
-              onChange={(e) => {
-                const enabled = e.target.checked;
-                setCodEnabled(enabled);
-                if (!enabled) {
-                  // Drop any typed amount so the payload can't carry stale COD.
-                  form.setValue('codAmount', '', { shouldValidate: true });
-                }
-              }}
-            />
-            Cash on delivery
-          </label>
-          <p className="form-field__description">
-            {isCodOrder
-              ? 'This order is cash-on-delivery — enter the amount to collect at the door.'
-              : 'Collect payment when the buyer picks up. Off means a prepaid shipment.'}
-          </p>
-          {codEnabled ? (
-            <>
-              <div className="generate-label-form__cod">
-                <Input
-                  {...codAmountRegister}
-                  inputMode="decimal"
-                  placeholder="129.90"
-                  aria-label="COD amount to collect"
-                  invalid={Boolean(form.formState.errors.codAmount)}
-                />
-                <Select {...codCurrencyRegister} aria-label="COD currency">
-                  {COD_CURRENCY_VALUES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
-            </>
-          ) : null}
-        </div>
+        {/* Cash on delivery (#1435) — payment-status-driven. Explicitly prepaid
+            (and dispatch-blocked) orders render nothing. A marketplace COD order
+            shows the read-only sourced amount ("from Allegro"); a COD order with
+            no sourced amount, or a source that doesn't report payment
+            (PrestaShop / DPD / legacy), shows a manual input (the operator-typed
+            path, #966). */}
+        {codAllowed ? (
+          <div className="form-field generate-label-form__cod-panel">
+            <div className="generate-label-form__cod-head">
+              <StatusBadge tone="warning" withDot>
+                Cash on delivery
+              </StatusBadge>
+              {showSourcedCod ? (
+                <span className="generate-label-form__cod-source">from Allegro</span>
+              ) : null}
+            </div>
+
+            {showSourcedCod && sourcedCod ? (
+              <>
+                <p className="generate-label-form__cod-amount tabular">
+                  {sourcedCod.amount} {sourcedCod.currency}
+                </p>
+                <p className="generate-label-form__cod-note">
+                  Collected on delivery — set by the order, not editable here.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="generate-label-form__cod-note">
+                  {isCodOrder
+                    ? "This order is cash-on-delivery, but the collect amount didn't come from the source (non-Allegro or missing). Enter the amount to collect."
+                    : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
+                </p>
+                <div className="generate-label-form__cod">
+                  <Input
+                    {...codAmountRegister}
+                    inputMode="decimal"
+                    placeholder="129.90"
+                    aria-label="COD amount to collect"
+                    invalid={Boolean(form.formState.errors.codAmount)}
+                  />
+                  <Select {...codCurrencyRegister} aria-label="COD currency">
+                    {COD_CURRENCY_VALUES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
+              </>
+            )}
+          </div>
+        ) : null}
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">
