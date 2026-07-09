@@ -21,9 +21,10 @@ import type {
   PickupPoint,
   PickupPointAddress,
   PickupPointStatus,
+  PickupPointType,
   FindPickupPointsQuery,
 } from '@openlinker/core/shipping';
-import { PICKUP_POINT_STATUS } from '@openlinker/core/shipping';
+import { PICKUP_POINT_STATUS, PICKUP_POINT_TYPE } from '@openlinker/core/shipping';
 import type { InpostConnectionConfig, InpostSenderContact } from '../../domain/types/inpost-config.types';
 import type {
   ShipXAddress,
@@ -151,14 +152,60 @@ export function toTrackingSnapshot(
 
 /** Map a ShipX point to the neutral `PickupPoint`. */
 export function toPickupPoint(point: ShipXPoint): PickupPoint {
-  return {
+  const type = normalizePointTypeTokens(point.type);
+  const result: PickupPoint = {
     providerId: point.name,
     name: point.name,
     address: toPickupPointAddress(point),
     status: mapPickupPointStatus(point.status),
     lat: point.location?.latitude,
     lon: point.location?.longitude,
+    pointType: classifyInpostPointType({ id: point.name, name: point.display_name, type }),
   };
+  if (type !== undefined) {
+    result.type = type;
+  }
+  return result;
+}
+
+/**
+ * Classify an InPost pickup point as a Paczkomat (`apm`) or a PaczkoPunkt
+ * (`pop`), #1433.
+ *
+ * Authoritative when the ShipX `type` list is present: a list carrying `pop`
+ * or `parcel_locker_superpop` is a PaczkoPunkt, otherwise a Paczkomat (both
+ * carry the shared `parcel_locker` token, so it never discriminates). When
+ * `type` is absent, falls back to a heuristic on the point `id`
+ * (`POP-` prefix, case-insensitive) or display `name` (contains
+ * "PaczkoPunkt"). Pure — no I/O.
+ *
+ * The Allegro order-source adapter (`AllegroOrderSourceAdapter.
+ * classifyPickupPointType`) carries a deliberately-duplicated copy of the
+ * fallback branch only (no ShipX `type` list at ingestion). Keep the two in
+ * sync — a change to this heuristic should prompt an equivalent edit there.
+ */
+export function classifyInpostPointType(input: {
+  id?: string;
+  name?: string;
+  type?: readonly string[];
+}): PickupPointType {
+  if (input.type && input.type.length > 0) {
+    const tokens = input.type.map((t) => t.toLowerCase());
+    return tokens.includes('pop') || tokens.includes('parcel_locker_superpop')
+      ? PICKUP_POINT_TYPE.PartnerPoint
+      : PICKUP_POINT_TYPE.Automat;
+  }
+  const idIsPop = (input.id ?? '').toLowerCase().startsWith('pop-');
+  const nameIsPop = (input.name ?? '').toLowerCase().includes('paczkopunkt');
+  return idIsPop || nameIsPop ? PICKUP_POINT_TYPE.PartnerPoint : PICKUP_POINT_TYPE.Automat;
+}
+
+/** Normalize the ShipX `type` (string | string[]) to a token array. */
+function normalizePointTypeTokens(raw?: readonly string[] | string): readonly string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  return typeof raw === 'string' ? [raw] : raw;
 }
 
 /** Build the `GET /v1/points` query string from the neutral finder query. */

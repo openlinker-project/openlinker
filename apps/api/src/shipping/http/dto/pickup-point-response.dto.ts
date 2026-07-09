@@ -10,10 +10,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   PickupPointStatusValues,
+  PickupPointTypeValues,
   type PickupPoint,
   type PickupPointAddress,
   type PickupPointOpeningHours,
   type PickupPointStatus,
+  type PickupPointType,
 } from '@openlinker/core/shipping';
 
 class PickupPointAddressDto implements PickupPointAddress {
@@ -48,6 +50,18 @@ export class PickupPointResponseDto {
   })
   openingHours?: PickupPointOpeningHours;
 
+  @ApiPropertyOptional({
+    enum: PickupPointTypeValues,
+    description: 'Classified point kind (#1433): apm (Paczkomat) vs pop (PaczkoPunkt)',
+  })
+  pointType?: PickupPointType;
+
+  @ApiPropertyOptional({
+    description: 'Raw provider-reported point-type tokens (e.g. ShipX type list)',
+    type: [String],
+  })
+  type?: readonly string[];
+
   static fromDomain(point: PickupPoint): PickupPointResponseDto {
     const dto = new PickupPointResponseDto();
     dto.providerId = point.providerId;
@@ -57,6 +71,8 @@ export class PickupPointResponseDto {
     dto.lat = point.lat;
     dto.lon = point.lon;
     dto.openingHours = point.openingHours;
+    dto.pointType = point.pointType;
+    dto.type = point.type;
     return dto;
   }
 }

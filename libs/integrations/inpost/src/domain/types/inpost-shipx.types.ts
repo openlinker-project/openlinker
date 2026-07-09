@@ -83,7 +83,14 @@ export interface ShipXTrackingResponse {
 export interface ShipXPoint {
   /** Locker code (e.g. `'POZ08A'`). */
   name: string;
+  /**
+   * Point-type tokens from `/v1/points` (e.g. `['parcel_locker']` for an
+   * automat, `['parcel_locker','parcel_locker_superpop','pok','pop']` for a
+   * PaczkoPunkt). String form tolerated for defensive parsing.
+   */
   type?: readonly string[] | string;
+  /** Human display name (e.g. `'InPost PaczkoPunkt POP-OLS19'`). */
+  display_name?: string;
   status?: string;
   location?: { latitude: number; longitude: number };
   address?: { line1?: string; line2?: string };
