@@ -55,19 +55,35 @@ export interface ErliExternalCategory {
 }
 
 /**
+ * A single `dictionary`-type attribute value — Erli's Shop API rejects a bare
+ * string/id here (`externalAttributes[N].values[M] must be of type object`,
+ * confirmed live against the sandbox, #1384 follow-up); `name` is optional
+ * (`additionalProperties: false`, only `id` is required per
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`).
+ */
+export interface ErliDictionaryAttributeValue {
+  id: string | number;
+  name?: string;
+}
+
+/**
  * Attribute entry in `externalAttributes`. `source:"allegro"` reuses an
  * OL-resolved Allegro parameter id (#985); `source:"shop"` carries a shop-native
  * attribute — used to express a variant's distinguishing axes for grouping
  * (#986), since Erli's `externalVariantGroup.attributes` references entries here
  * by `index` (verified against the Shop API). `index` defaults to the array
  * position; set explicitly when a grouping ref must point at a specific entry.
+ *
+ * `values`' element shape is keyed by `type` per the verified sandbox schema:
+ * `string` → plain strings, `dictionary` → `{ id, name? }` objects. `number`/
+ * `range` types exist in the schema but this adapter never emits them today.
  */
 export interface ErliExternalAttribute {
   source: 'allegro' | 'shop';
   id: string;
   name?: string;
   type: ErliExternalAttributeType;
-  values: string[];
+  values: string[] | ErliDictionaryAttributeValue[];
   index?: number;
   unit?: string;
 }
