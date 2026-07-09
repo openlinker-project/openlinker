@@ -10,7 +10,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { LessThan, QueryFailedError, Repository } from 'typeorm';
 import { User } from '../../../domain/entities/user.entity';
 import { UserAlreadyExistsException } from '../../../domain/exceptions/user-already-exists.exception';
 import type { UserRepositoryPort } from '../../../domain/ports/user-repository.port';
@@ -79,6 +79,13 @@ export class UserRepository implements UserRepositoryPort {
 
   async deleteById(userId: string): Promise<void> {
     await this.ormRepository.delete({ id: userId });
+  }
+
+  async findStaleViewerAccounts(olderThan: Date): Promise<User[]> {
+    const entities = await this.ormRepository.find({
+      where: { role: 'viewer', status: 'active', createdAt: LessThan(olderThan) },
+    });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async save(
