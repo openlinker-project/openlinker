@@ -190,23 +190,86 @@ describe('GenerateLabelForm — happy path', () => {
     resolveRef.current?.({ kind: 'dispatched', shipment: null });
   });
 
-  it('should include COD in the dispatch payload when an amount is entered, normalising the decimal (#966)', async () => {
+  it('should send the read-only sourced Allegro amount for a COD order with codToCollect (#1435)', async () => {
     const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
     const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    const order = makeOrder({
+      orderSnapshot: {
+        ...makeOrder().orderSnapshot,
+        paymentStatus: 'cod',
+        codToCollect: { amount: '510.94', currency: 'PLN' },
+      },
+    });
 
-    renderWithProviders(
-      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
-      { apiClient },
-    );
+    renderWithProviders(<GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    // Read-only "from Allegro" panel: amount shown, no manual input rendered.
+    expect(screen.getByText(/from Allegro/i)).toBeInTheDocument();
+    expect(screen.getByText(/510\.94/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/COD amount to collect/i)).toBeNull();
 
     fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
-    // COD is behind a checkbox (#1425) — reveal the amount input first.
-    fireEvent.click(screen.getByLabelText(/^Cash on delivery$/i));
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '510.94', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should render no COD UI and send no cod for a prepaid order (#1435)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    const order = makeOrder({
+      orderSnapshot: { ...makeOrder().orderSnapshot, paymentStatus: 'paid' },
+    });
+
+    renderWithProviders(<GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    expect(screen.queryByText(/Cash on delivery/i)).toBeNull();
+    expect(screen.queryByLabelText(/COD amount to collect/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect((generateLabel.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
+  });
+
+  it('should show the fallback manual COD input for a COD order with no sourced amount and send it, normalising the decimal (#1435)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    const order = makeOrder({
+      orderSnapshot: { ...makeOrder().orderSnapshot, paymentStatus: 'cod' },
+    });
+
+    renderWithProviders(<GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    // Fallback: a manual amount input is the only typed case.
+    const codInput = screen.getByLabelText(/COD amount to collect/i);
+    expect(codInput).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
     // Comma decimal separator → normalised to a dot for the wire shape.
-    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '129,90' } });
+    fireEvent.change(codInput, { target: { value: '129,90' } });
 
     fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
 
@@ -217,14 +280,38 @@ describe('GenerateLabelForm — happy path', () => {
     );
   });
 
-  it('should omit COD from the payload when no amount is entered', async () => {
+  it('should allow manual COD for an order with no reported payment status (DPD/PrestaShop) and send it (#1435 regression)', async () => {
     const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
     const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    // Default makeOrder() has no paymentStatus — the non-marketplace path.
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
 
-    renderWithProviders(
-      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
-      { apiClient },
+    const codInput = screen.getByLabelText(/COD amount to collect/i);
+    expect(codInput).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.change(codInput, { target: { value: '129.90' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      ),
     );
+  });
+
+  it('should omit COD when an unknown-payment order leaves the amount blank (#1435)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
 
     fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
