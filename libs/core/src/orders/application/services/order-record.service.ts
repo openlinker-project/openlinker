@@ -90,6 +90,10 @@ export class OrderRecordService implements IOrderRecordService {
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
+      // Marketplace-sourced COD collect amount (#1435) — present-only, like
+      // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
+      // COD gate; absent for prepaid orders and sources that don't expose it.
+      ...(order.codToCollect !== undefined && { codToCollect: order.codToCollect }),
       // Dispatch (ship-by) window carried through for fidelity; the scalar
       // deadline is denormalized to the `dispatchByAt` column below (#927).
       ...(order.dispatchTime !== undefined && { dispatchTime: order.dispatchTime }),
@@ -172,6 +176,8 @@ export class OrderRecordService implements IOrderRecordService {
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
+      // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
+      ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),
       // Buyer-placed-on-marketplace time (#926) — ISO string passed through verbatim.
       ...(incoming.placedAt !== undefined && { placedAt: incoming.placedAt }),

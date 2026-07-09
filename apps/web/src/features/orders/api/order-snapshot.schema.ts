@@ -89,11 +89,24 @@ const orderPickupPointSchema = z.object({
   pointType: z.enum(ParsedOrderPickupPointTypeValues).nullish(),
 });
 
+/**
+ * Marketplace-sourced cash-on-delivery collect amount (#1435). Persisted onto
+ * the snapshot by the backend for a COD order whose source exposes the amount
+ * (Allegro `summary.totalToPay`). Absent for prepaid orders and legacy /
+ * non-Allegro COD. `amount` is a decimal string (money crosses the boundary as
+ * a string to avoid float drift), currency an ISO 4217 code.
+ */
+const codToCollectSchema = z.object({
+  amount: z.string(),
+  currency: z.string(),
+});
+
 export type ParsedOrderItem = z.infer<typeof orderItemSchema>;
 export type ParsedAddress = z.infer<typeof addressSchema>;
 export type ParsedOrderTotals = z.infer<typeof orderTotalsSchema>;
 export type ParsedOrderShipping = z.infer<typeof orderShippingSchema>;
 export type ParsedOrderPickupPoint = z.infer<typeof orderPickupPointSchema>;
+export type ParsedCodToCollect = z.infer<typeof codToCollectSchema>;
 
 export interface ParseWarning {
   field: string;
@@ -146,6 +159,12 @@ export interface ParsedOrderSnapshot {
   pickupPoint?: ParsedOrderPickupPoint;
   /** Source-reported payment status (#928); absent when the source didn't report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * Marketplace-sourced COD collect amount (#1435). Present only for a COD order
+   * whose source exposed the amount; drives the read-only "from Allegro" COD
+   * panel on the Generate-label form. Absent ⇒ the operator-typed COD fallback.
+   */
+  codToCollect?: ParsedCodToCollect;
   parseWarnings: ParseWarning[];
 }
 
@@ -293,6 +312,22 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     }
   }
 
+  // Sourced COD collect amount (#1435) — optional (COD orders with a sourced amount).
+  let codToCollect: ParsedCodToCollect | undefined;
+  if (snapshot.codToCollect !== undefined && snapshot.codToCollect !== null) {
+    const candidate = asRecord(snapshot.codToCollect);
+    if (candidate === null) {
+      warnings.push({ field: 'codToCollect', message: 'expected an object' });
+    } else {
+      const result = codToCollectSchema.safeParse(candidate);
+      if (result.success) {
+        codToCollect = result.data;
+      } else {
+        warnings.push({ field: 'codToCollect', message: firstZodMessage(result.error) });
+      }
+    }
+  }
+
   return {
     id,
     orderNumber,
@@ -306,6 +341,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     shipping,
     pickupPoint,
     paymentStatus: readPaymentStatus(snapshot.paymentStatus, warnings),
+    codToCollect,
     parseWarnings: warnings,
   };
 }

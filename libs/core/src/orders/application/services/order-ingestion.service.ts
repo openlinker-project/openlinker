@@ -591,6 +591,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
       paymentStatus: incoming.paymentStatus,
+      codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,
       placedAt: incoming.placedAt ? new Date(incoming.placedAt) : undefined,
       createdAt: new Date(incoming.createdAt),
