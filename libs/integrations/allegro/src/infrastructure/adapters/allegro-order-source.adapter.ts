@@ -27,6 +27,7 @@ import type {
   IncomingOrderAddress,
   OrderShipping,
   OrderPickupPoint,
+  OrderPickupPointType,
   OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -491,7 +492,38 @@ export class AllegroOrderSourceAdapter
     if (!pp?.id) {
       return undefined;
     }
-    return { id: pp.id, name: pp.name, description: pp.description };
+    return {
+      id: pp.id,
+      name: pp.name,
+      description: pp.description,
+      pointType: this.classifyPickupPointType(pp.id, pp.name),
+    };
+  }
+
+  /**
+   * Infer the InPost point kind (#1433) from the id/name only — no network
+   * call in the ingestion hot path. A POP-prefixed id (case-insensitive) or a
+   * "PaczkoPunkt" label ⇒ `pop`. Returns `undefined` when neither a POP signal
+   * nor any other classifiable signal is present: Allegro exposes no locker-vs-
+   * partner-point discriminator here, so absent a POP signal we stay truthful
+   * (`undefined`) rather than confidently guessing `apm`.
+   *
+   * This is the heuristic half of the authoritative InPost classifier; it is
+   * duplicated here as a tiny local rule rather than imported from
+   * `@openlinker/integrations-inpost` to avoid an integration→integration
+   * package dependency. Keep in sync with `classifyInpostPointType` in the
+   * InPost ShipX mapper, whose ShipX `type`-based authoritative path runs where
+   * a `/v1/points` lookup already happens (the pickup-point finder).
+   *
+   * The result is therefore best-effort at ingestion time: a `pop` here is a
+   * heuristic match, and it (or the `undefined`) is superseded by the
+   * authoritative ShipX `type`-based classification once the `/v1/points`
+   * path resolves the point.
+   */
+  private classifyPickupPointType(id: string, name?: string): OrderPickupPointType | undefined {
+    const idIsPop = id.toLowerCase().startsWith('pop-');
+    const nameIsPop = (name ?? '').toLowerCase().includes('paczkopunkt');
+    return idIsPop || nameIsPop ? 'pop' : undefined;
   }
 
   /**
