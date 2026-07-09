@@ -1,18 +1,23 @@
 /**
  * Write-Guard Coverage Invariant
  *
- * Asserts that every non-GET route handler on the 17 controllers modified by
- * #1124 / #1126 / #1357 carries @Roles metadata. This guards the posture shift
- * from deny-by-default (class-level guard) to opt-in-per-endpoint: any future PR
+ * Asserts that every non-GET route handler on the controllers listed in
+ * CONTROLLERS carries @Roles metadata. This guards the posture shift from
+ * deny-by-default (class-level guard) to opt-in-per-endpoint: any future PR
  * that adds a write endpoint to one of these controllers without the decorator
  * will fail this test immediately rather than silently granting viewer access.
  *
- * Scope: bounded to the 17 controllers listed in CONTROLLERS. This includes the
- * read-only controllers converted to the per-method opt-in posture by #1357
- * (Customers / Cursors / WebhookDelivery) which have no write handlers today —
- * covering them here means a future write endpoint added without @Roles fails
- * this test rather than silently granting viewer mutate access. When a new
- * controller with write endpoints is added to the API, extend CONTROLLERS here.
+ * Scope: bounded to the controllers listed in CONTROLLERS — originally the 17
+ * from #1124 / #1126 / #1357, plus AiProviderSettingsController /
+ * PromptTemplatesController / ContentController (#1454 follow-up audit —
+ * these three already gate every write handler with @Roles, but were missing
+ * from this invariant, so a future regression on them would have gone
+ * uncaught). This includes the read-only controllers converted to the
+ * per-method opt-in posture by #1357 (Customers / Cursors / WebhookDelivery)
+ * which have no write handlers today — covering them here means a future
+ * write endpoint added without @Roles fails this test rather than silently
+ * granting viewer mutate access. When a new controller with write endpoints
+ * is added to the API, extend CONTROLLERS here.
  *
  * Implementation: reads NestJS HTTP-method metadata off each prototype method
  * via Reflect.getMetadata. No DI or database required — decorator metadata is
@@ -39,6 +44,9 @@ import { InvoicingController } from '../invoicing/http/invoicing.controller';
 import { CustomersController } from '../customers/http/customers.controller';
 import { CursorsController } from '../cursors/http/cursors.controller';
 import { WebhookDeliveryController } from '../webhooks/http/webhook-delivery.controller';
+import { AiProviderSettingsController } from '../ai/http/ai-provider-settings.controller';
+import { PromptTemplatesController } from '../ai/http/prompt-templates.controller';
+import { ContentController } from '../content/http/content.controller';
 
 const METHOD_METADATA = 'method';
 
@@ -67,6 +75,9 @@ const CONTROLLERS = [
   CustomersController,
   CursorsController,
   WebhookDeliveryController,
+  AiProviderSettingsController,
+  PromptTemplatesController,
+  ContentController,
 ];
 
 describe('Write-guard coverage invariant (#1124 / #1126 / #1357)', () => {
