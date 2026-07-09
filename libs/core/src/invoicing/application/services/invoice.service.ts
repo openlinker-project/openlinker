@@ -49,6 +49,7 @@ import type {
   IssuedDocumentSeller,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
+  IssueInvoiceResult,
   PaginatedInvoiceRecords,
   RegulatoryClearanceResult,
   TaxBreakdownEntry,
@@ -519,9 +520,9 @@ export class InvoiceService implements IInvoiceService {
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
     }
 
-    let issued: InvoiceRecord;
+    let issueResult: IssueInvoiceResult;
     try {
-      issued = await adapter.issueCorrection(cmd);
+      issueResult = await adapter.issueCorrection(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
       const failureMode = this.classifyFailure(error);
@@ -541,19 +542,43 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
+    const { record: issued, seller, sourceDocument } = issueResult;
+
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
     // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
     // the "before" state) with the per-line deltas applied. Only when the caller
     // supplied `originalDocument` (order still resolvable); absent → persist null
     // and the next correction falls back to order-derived reconstruction.
-    const issuedLineSnapshot: IssuedLineSnapshot | null = cmd.originalDocument
-      ? {
-          buyer: cmd.originalDocument.buyer,
-          currency: cmd.originalDocument.currency,
-          lines: applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines),
-        }
+    const correctedLines = cmd.originalDocument
+      ? applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines)
       : null;
+    const issuedLineSnapshot: IssuedLineSnapshot | null =
+      cmd.originalDocument && correctedLines
+        ? {
+            buyer: cmd.originalDocument.buyer,
+            currency: cmd.originalDocument.currency,
+            lines: correctedLines,
+          }
+        : null;
+    // W2/W3 (#1229 follow-up): a correction's displayed content and source
+    // document were previously never persisted at all — every corrected
+    // invoice's "View"/"Preview" 409'd with "no source document available"
+    // even when the adapter (KSeF) had built and submitted a real FA(3) XML.
+    // Mirrors `issueInvoice`'s persistence exactly, built from the corrected
+    // ("after") lines rather than the original ones.
+    const documentContent =
+      correctedLines && cmd.originalDocument
+        ? this.buildContent(
+            {
+              lines: correctedLines,
+              buyer: cmd.originalDocument.buyer,
+              currency: cmd.originalDocument.currency,
+            },
+            issued,
+            seller ?? null,
+          )
+        : null;
 
     return this.repo.updateOutcome(pending.id, {
       status: 'issued',
@@ -571,6 +596,8 @@ export class InvoiceService implements IInvoiceService {
       failureReason: null,
       leaseExpiresAt: null,
       issuedLineSnapshot,
+      documentContent,
+      sourceDocument: sourceDocument ?? null,
     });
   }
 
@@ -647,7 +674,7 @@ export class InvoiceService implements IInvoiceService {
    * revision rather than relying on this recomputation.
    */
   private buildContent(
-    cmd: IssueInvoiceCommand,
+    cmd: Pick<IssueInvoiceCommand, 'lines' | 'buyer' | 'currency'>,
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
   ): IssuedDocumentContent {

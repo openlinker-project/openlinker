@@ -561,7 +561,7 @@ export class InfaktInvoicingAdapter
     return { paymentStatus: toPaymentStatus(invoice) };
   }
 
-  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
     const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } =
       cmd;
 
@@ -679,28 +679,33 @@ export class InfaktInvoicingAdapter
     const ksefResult = await this.sendToKsef(invoice.uuid, 'corrective_invoices');
 
     const now = new Date();
-    return new InvoiceRecord(
-      randomUUID(),
-      this.connectionId,
-      orderId,
-      INFAKT_PROVIDER_TYPE,
-      documentType ?? 'corrected',
-      'issued',
-      invoice.uuid,
-      invoice.number ?? null,
-      toRegulatoryStatus(ksefResult.status),
-      ksefResult.ksef_number,
-      idempotencyKey ?? null,
-      // Infakt's invoice resource carries no `pdf_url` field (verified live
-      // against the sandbox, #1321) — the real PDF path is
-      // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
-      // below, which hits the dedicated `pdf.json` endpoint.
-      null,
-      now,
-      null,
-      now,
-      now,
-    );
+    return {
+      record: new InvoiceRecord(
+        randomUUID(),
+        this.connectionId,
+        orderId,
+        INFAKT_PROVIDER_TYPE,
+        documentType ?? 'corrected',
+        'issued',
+        invoice.uuid,
+        invoice.number ?? null,
+        toRegulatoryStatus(ksefResult.status),
+        ksefResult.ksef_number,
+        idempotencyKey ?? null,
+        // Infakt's invoice resource carries no `pdf_url` field (verified live
+        // against the sandbox, #1321) — the real PDF path is
+        // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
+        // below, which hits the dedicated `pdf.json` endpoint.
+        null,
+        now,
+        null,
+        now,
+        now,
+      ),
+      // Infakt builds and owns its own FA(3)/KSeF session server-side (see the
+      // module docstring) — there is no machine-readable document for OL to
+      // capture, same as issueInvoice.
+    };
   }
 
   // --- Infakt-specific: trigger KSeF submission ---

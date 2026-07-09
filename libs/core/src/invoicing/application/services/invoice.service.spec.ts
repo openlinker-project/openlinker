@@ -823,9 +823,9 @@ describe('InvoiceService', () => {
         getInvoice: jest.fn(),
         upsertCustomer: jest.fn(),
         getSupportedDocumentTypes: jest.fn(),
-        issueCorrection: jest.fn().mockResolvedValue(
-          makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
-        ),
+        issueCorrection: jest.fn().mockResolvedValue({
+          record: makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+        }),
       };
       integrations.getCapabilityAdapter.mockResolvedValue(correctionAdapter);
       repo.create.mockResolvedValue(
@@ -894,6 +894,60 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenLastCalledWith(
         'corr-rec',
         expect.objectContaining({ issuedLineSnapshot: null }),
+      );
+    });
+
+    // #1229 follow-up regression: a correction's source document (e.g. KSeF's
+    // FA(3) XML) was previously discarded entirely — `issueCorrection` never
+    // persisted `documentContent`/`sourceDocument` at all, so a corrected
+    // invoice's "View"/"Preview" always 409'd with "no source document
+    // available" even when the adapter had built and submitted a real one.
+    it('persists the adapter-supplied source document for a correction, same as issueInvoice', async () => {
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PEZha3R1cmE+a29yZWtjamE8L0Zha3R1cmE+',
+      };
+      correctionAdapter.issueCorrection.mockResolvedValue({
+        record: makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+        sourceDocument,
+      });
+
+      await service.issueCorrection(makeCorrectionCmd());
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ sourceDocument }),
+      );
+    });
+
+    it('persists sourceDocument:null for a correction when the adapter surfaces none', async () => {
+      await service.issueCorrection(makeCorrectionCmd());
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ sourceDocument: null }),
+      );
+    });
+
+    it('snapshots documentContent from the corrected ("after") lines, not the original', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ lines: [{ originalLineNumber: 1, newUnitPriceGross: 90 }] }),
+      );
+
+      const [, patch] = repo.updateOutcome.mock.calls.at(-1) as [string, Record<string, unknown>];
+      const content = patch['documentContent'] as { lines: { unitNet: number }[] } | null;
+      expect(content).not.toBeNull();
+      // Line 1's price was corrected 100 -> 90 gross; documentContent must
+      // reflect the corrected value, not the original document's 100.
+      expect(content?.lines[0].unitNet).toBeCloseTo(90 / 1.23, 2);
+    });
+
+    it('persists documentContent:null for a correction when the caller supplied no originalDocument', async () => {
+      await service.issueCorrection(makeCorrectionCmd({ originalDocument: undefined }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ documentContent: null }),
       );
     });
   });

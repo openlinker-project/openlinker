@@ -763,7 +763,7 @@ describe('InfaktInvoicingAdapter', () => {
       // uuids; verified live, 2026-07-03).
       http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
 
-      const record = await adapter.issueCorrection(baseCmd);
+      const { record } = await adapter.issueCorrection(baseCmd);
 
       expect(record).toBeInstanceOf(InvoiceRecord);
       expect(record.providerInvoiceId).toBe('corr-uuid-1');

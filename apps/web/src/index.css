@@ -10697,6 +10697,22 @@ html[data-density='compact'] .status-badge {
 }
 .ksef-fa3-view__lineitems tbody tr:last-child td { border-bottom: none; }
 
+/* ── KOR "before correction" lines (#1364 follow-up) ──────────────────
+ * A correction document's pre-correction rows are collapsed by default —
+ * kept out of the main lines/totals table, but reachable for audit.
+ */
+.ksef-fa3-view__before-correction { margin-top: var(--space-3, 0.75rem); }
+.ksef-fa3-view__before-correction summary {
+  cursor: pointer;
+  list-style: none;
+}
+.ksef-fa3-view__before-correction summary::-webkit-details-marker { display: none; }
+.ksef-fa3-view__before-correction summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
 /* ── Inline Disclosure (#1303) ───────────────────────────────────────
  * Native <details>/<summary> "collapsed value + Change affordance"
  * pattern. First use: Infakt's default-payment-method field, which

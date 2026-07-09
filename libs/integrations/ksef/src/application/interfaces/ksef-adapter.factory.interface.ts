@@ -7,9 +7,8 @@
  * precedent so consumers depend on the abstraction rather than the concrete
  * factory class.
  *
- * C2 builds only the `Invoicing` capability (stub). C3 adds the concrete HTTP
- * client; C4 fills in the issuance mechanics. The signature stays stable across
- * those phases.
+ * Builds the `Invoicing` capability adapter (FA(3) issuance + clearance,
+ * `KsefInvoicingAdapter`) — the only capability KSeF's manifest declares.
  *
  * @module libs/integrations/ksef/src/application/interfaces
  */
@@ -24,10 +23,10 @@ export interface KsefAdapters {
 
 export interface IKsefAdapterFactory {
   /**
-   * Build the per-connection capability adapters. `identifierMapping` is kept on
-   * the signature (unused by the C2 stub) so later phases extend behaviour
-   * without churning this contract or the plugin's dispatch call site — mirrors
-   * the Allegro/Erli precedent.
+   * Build the per-connection capability adapters. `identifierMapping` is kept
+   * on the signature — unused today (KSeF has no identifier-mapping need) —
+   * so a future capability can be added without churning this contract or the
+   * plugin's dispatch call site. Mirrors the Allegro/Erli precedent.
    */
   createAdapters(
     connection: Connection,

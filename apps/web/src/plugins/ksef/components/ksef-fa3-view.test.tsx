@@ -50,6 +50,7 @@ function buildXml({
     netUnitPrice: string;
     netTotal: string;
     vatRate: string;
+    isBeforeCorrection?: boolean;
   }>;
   vatNet23?: string | null;
   vatTax23?: string | null;
@@ -67,6 +68,7 @@ function buildXml({
       <P_9A>${l.netUnitPrice}</P_9A>
       <P_11>${l.netTotal}</P_11>
       <P_12>${l.vatRate}</P_12>
+      ${l.isBeforeCorrection ? '<StanPrzed>1</StanPrzed>' : ''}
     </FaWiersz>`,
     )
     .join('');
@@ -148,6 +150,48 @@ describe('KsefFa3View', () => {
     expect(screen.getAllByText('1000.00').length).toBeGreaterThanOrEqual(1);
     // 100.00 appears as netTotal for line 2 and netUnitPrice for line 1
     expect(screen.getAllByText('100.00').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should render only the "after" line in the main table for a KOR correction, with the "before" line collapsed separately (#1364 follow-up)', () => {
+    renderWithProviders(
+      <KsefFa3View
+        xmlText={buildXml({
+          lines: [
+            {
+              lineNo: '1',
+              description: 'Widget A',
+              unit: 'pcs',
+              quantity: '10',
+              netUnitPrice: '100.00',
+              netTotal: '1000.00',
+              vatRate: '23',
+              isBeforeCorrection: true,
+            },
+            {
+              lineNo: '1',
+              description: 'Widget A',
+              unit: 'pcs',
+              quantity: '5',
+              netUnitPrice: '100.00',
+              netTotal: '500.00',
+              vatRate: '23',
+            },
+          ],
+        })}
+      />,
+    );
+
+    // Main table renders the "after" line only.
+    const mainTable = document.querySelector('.ksef-fa3-view__lines .ksef-fa3-view__lineitems');
+    expect(mainTable?.textContent).toContain('500.00');
+    expect(mainTable?.textContent).not.toContain('1000.00');
+
+    // The "before" line is present, but only inside the collapsed disclosure.
+    expect(screen.getByText('Lines before correction')).toBeInTheDocument();
+    const beforeTable = document.querySelector(
+      '.ksef-fa3-view__before-correction .ksef-fa3-view__lineitems',
+    );
+    expect(beforeTable?.textContent).toContain('1000.00');
   });
 
   it('should show grand total when present in XML', () => {

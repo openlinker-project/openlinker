@@ -8,7 +8,9 @@
  *   - Seller identity (name + NIP)
  *   - Buyer identity (name + NIP)
  *   - Invoice number and issue date
- *   - Invoice lines table (line#, description, unit, qty, net price, net total, VAT rate)
+ *   - Invoice lines table (line#, description, unit, qty, net price, net total, VAT rate) —
+ *     current ("after") lines only; a KOR correction's `StanPrzed=1` "before" rows render in
+ *     a separate collapsed section so they never mix into the main table/totals (#1364 follow-up)
  *   - VAT band summary (23%, 8%, 5%, 0%)
  *   - Grand total
  *   - KSeF assigned number (if present)
@@ -83,6 +85,7 @@ function parseFa3Xml(xmlText: string): FaData | null {
     netUnitPrice: getText(el, 'P_9A'),
     netTotal: getText(el, 'P_11'),
     vatRate: getText(el, 'P_12'),
+    isBeforeCorrection: getText(el, 'StanPrzed') === '1',
   }));
 
   const vatNet23 = fa ? getText(fa, 'P_13_1') : null;
@@ -130,6 +133,14 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
     data.vatNet8 !== null ||
     data.vatNet5 !== null ||
     data.vatNet0 !== null;
+
+  // A KOR correction emits one "before" row (StanPrzed=1) per changed line
+  // plus every current "after" line. The VAT summary / grand total below
+  // already reflect only the "after" state, so the main table must too —
+  // otherwise line counts and totals double up (#1364 follow-up). The
+  // "before" rows are still shown, but in a separate, clearly labeled set.
+  const currentLines = data.lines.filter((line) => !line.isBeforeCorrection);
+  const beforeCorrectionLines = data.lines.filter((line) => line.isBeforeCorrection);
 
   return (
     <div className="ksef-fa3-view">
@@ -188,8 +199,8 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
         </div>
       ) : null}
 
-      {/* Line items */}
-      {data.lines.length > 0 ? (
+      {/* Line items (current / "after" state) */}
+      {currentLines.length > 0 ? (
         <div className="ksef-fa3-view__lines">
           <div className="slot-row__label ksef-fa3-view__lines-title">
             {t('invoice.ksef.fa3Lines', 'Invoice lines')}
@@ -208,7 +219,7 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
                 </tr>
               </thead>
               <tbody>
-                {data.lines.map((line, idx) => (
+                {currentLines.map((line, idx) => (
                   <tr key={line.lineNo ?? idx}>
                     <td>{line.lineNo ?? String(idx + 1)}</td>
                     <td>{line.description ?? '—'}</td>
@@ -223,6 +234,44 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
             </table>
           </div>
         </div>
+      ) : null}
+
+      {/* KOR "before correction" lines — shown separately so they never mix
+          into the current-state table/totals above. */}
+      {beforeCorrectionLines.length > 0 ? (
+        <details className="ksef-fa3-view__before-correction">
+          <summary className="slot-row__label ksef-fa3-view__lines-title">
+            {t('invoice.ksef.fa3LinesBefore', 'Lines before correction')}
+          </summary>
+          <div className="ksef-fa3-view__lines-table-wrap">
+            <table className="ksef-fa3-view__lineitems">
+              <thead>
+                <tr>
+                  <th>{t('invoice.ksef.fa3LineNo', '#')}</th>
+                  <th>{t('invoice.ksef.fa3LineDesc', 'Description')}</th>
+                  <th>{t('invoice.ksef.fa3LineUnit', 'Unit')}</th>
+                  <th>{t('invoice.ksef.fa3LineQty', 'Qty')}</th>
+                  <th>{t('invoice.ksef.fa3LineNetPrice', 'Net price')}</th>
+                  <th>{t('invoice.ksef.fa3LineNetTotal', 'Net total')}</th>
+                  <th>{t('invoice.ksef.fa3LineVat', 'VAT')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {beforeCorrectionLines.map((line, idx) => (
+                  <tr key={line.lineNo ?? idx}>
+                    <td>{line.lineNo ?? String(idx + 1)}</td>
+                    <td>{line.description ?? '—'}</td>
+                    <td>{line.unit ?? '—'}</td>
+                    <td>{line.quantity ?? '—'}</td>
+                    <td>{line.netUnitPrice ?? '—'}</td>
+                    <td>{line.netTotal ?? '—'}</td>
+                    <td>{line.vatRate ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       ) : null}
 
       {/* VAT bands */}
