@@ -23,6 +23,20 @@
 export const PickupPointStatusValues = ['active', 'temporarily-unavailable'] as const;
 export type PickupPointStatus = (typeof PickupPointStatusValues)[number];
 
+/**
+ * Pickup-point kind (#1433). Distinguishes an InPost Paczkomat (`apm` —
+ * unattended parcel locker) from a PaczkoPunkt (`pop` — attended partner
+ * point). Both accept the same locker service, so this is a display /
+ * routing distinction, not a shipping-service discriminator.
+ */
+export const PickupPointTypeValues = ['apm', 'pop'] as const;
+export type PickupPointType = (typeof PickupPointTypeValues)[number];
+
+export const PICKUP_POINT_TYPE = {
+  Automat: 'apm',
+  PartnerPoint: 'pop',
+} as const satisfies Record<'Automat' | 'PartnerPoint', PickupPointType>;
+
 export const PICKUP_POINT_STATUS = {
   Active: 'active',
   TemporarilyUnavailable: 'temporarily-unavailable',
@@ -73,6 +87,17 @@ export interface PickupPoint {
   lat?: number;
   lon?: number;
   openingHours?: PickupPointOpeningHours;
+  /**
+   * Classified point kind (#1433) — `apm` (Paczkomat) vs `pop` (PaczkoPunkt).
+   * Derived from the provider `type` list when present, else a heuristic on
+   * id/name. Absent when the provider gives no signal.
+   */
+  pointType?: PickupPointType;
+  /**
+   * Raw provider-reported point-type tokens (InPost ShipX `type`, e.g.
+   * `['parcel_locker','pop']`). Preserved for auditing / future filtering.
+   */
+  type?: readonly string[];
 }
 
 /**
