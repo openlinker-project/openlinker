@@ -569,6 +569,24 @@ export interface PlatformContribution {
    */
   bulkOfferRowSection?: ComponentType<BulkOfferRowSectionProps>;
   /**
+   * Bulk offer creation: per-connection override for whether the Review edit
+   * modal shows the browsable category tree (`CategoryPicker` +
+   * category-parameters step) instead of the manual Allegro-category-id
+   * input. The default signal (`connection.supportedCapabilities.includes
+   * ('CategoryBrowser')`) is a static, manifest-level flag — it can never be
+   * true for a `borrows`-taxonomy destination like Erli, whose category
+   * browsing is a *dynamic per-connection* toggle
+   * (`config.allegroCategoryAccessEnabled`, set via the credentials panel),
+   * not a capability the adapter always has. The single-offer
+   * `ErliCreateOfferWizard` already reads this config flag directly; this
+   * slot lets the bulk flow reach the same per-connection signal without a
+   * `platformType ===` check in the shared bulk components. ORed with the
+   * static capability check, never replacing it — a real `CategoryBrowser`
+   * adapter (Allegro) keeps working with no contribution needed. Absent ⇒
+   * only the static capability decides.
+   */
+  bulkCategoryBrowsingEnabled?: (connection: Connection) => boolean;
+  /**
    * Offer creation: declare the platform's blocker chips + row validator once
    * (#1096), consumed by BOTH the bulk Review step and the single-offer wizard.
    * Resolved via `usePlatform(platformType)`. Absent ⇒ only the host-neutral

@@ -151,7 +151,10 @@ export function BulkWizard({
     ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;
   const destinationBrowsesCategories =
-    batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false;
+    (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
+    (batchConnection
+      ? (batchPlatform?.bulkCategoryBrowsingEnabled?.(batchConnection) ?? false)
+      : false);
 
   // Reconcile the `needs-product-parameters` blocker whenever a category's
   // schema resolves (it loads after the operator picks the category, so it
