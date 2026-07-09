@@ -8544,6 +8544,29 @@ html[data-density='compact'] .status-badge {
   margin-top: var(--space-2);
 }
 
+/* Erli credentials panel (#1387 review) — checkbox/radio option rows,
+   hint text, and the reuse-picker indent, extracted from inline styles. */
+.erli-credentials-panel__option-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.erli-credentials-panel__hint {
+  display: block;
+  color: var(--text-muted);
+}
+
+.erli-credentials-panel__indent {
+  margin-left: calc(0.875rem + var(--space-2));
+}
+
+.erli-credentials-panel__input-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 /* Marketplace picker modal (#1096) — shown from Products with 2+ OfferManager connections. */
 .marketplace-picker {
   display: flex;
