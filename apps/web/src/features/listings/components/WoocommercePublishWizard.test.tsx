@@ -272,7 +272,7 @@ describe('WoocommercePublishWizard', () => {
       { apiClient },
     );
 
-    const stockInput = await screen.findByPlaceholderText('0');
+    const stockInput = await screen.findByPlaceholderText('master');
     fireEvent.change(stockInput, { target: { value: '-3' } });
     fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
 
