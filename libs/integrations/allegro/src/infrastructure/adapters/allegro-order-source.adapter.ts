@@ -287,7 +287,25 @@ export class AllegroOrderSourceAdapter
 
       const checkoutForm = response.data;
 
-      const status = checkoutForm.payment.finishedAt ? 'processing' : 'pending';
+      // #1160 follow-up: a checkout-form cancelled on Allegro's side — either
+      // the transaction itself voided (`status === 'CANCELLED'`) or the
+      // seller manually cancelling via the panel's "Status zamówienia"
+      // dropdown (`fulfillment.status === 'CANCELLED'`, the ANULOWANE option)
+      // — must surface as 'cancelled' here, or a resync that re-hydrates the
+      // full order (as opposed to reacting to a `/order/events` CANCEL-type
+      // feed entry) silently keeps reporting 'processing' forever, breaking
+      // both the PrestaShop OrderStatusWriteback relay and the marketplace
+      // stock-restore hook, which both key off `incoming.status ===
+      // 'cancelled'`. Confirmed live during manual E2E testing of #1322: a
+      // real Allegro sandbox order cancelled via the seller-panel dropdown
+      // stayed 'processing' in OL after a poll re-synced it.
+      const isCancelled =
+        checkoutForm.status === 'CANCELLED' || checkoutForm.fulfillment?.status === 'CANCELLED';
+      const status = isCancelled
+        ? 'cancelled'
+        : checkoutForm.payment.finishedAt
+          ? 'processing'
+          : 'pending';
       // Allegro's checkout-form carries no order-level created timestamp, so
       // `createdAt` is OpenLinker's ingestion time. The buyer-placed time lives
       // on `lineItems[].boughtAt` and is surfaced separately as `placedAt` (#926).
