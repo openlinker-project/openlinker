@@ -11,6 +11,7 @@
 import type { PickupPointType } from '@openlinker/core/shipping';
 
 import type { PaymentStatus } from './payment-status.types';
+import type { CodToCollect } from './cod-to-collect.types';
 
 /**
  * Order status values
@@ -123,6 +124,14 @@ export interface Order {
   deliverySmart?: boolean;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * Marketplace-sourced cash-on-delivery collect amount (#1435). Present only
+   * for a cash-on-delivery order whose source exposes the collectable amount
+   * (Allegro `summary.totalToPay`). Absent for prepaid orders and for sources
+   * that don't surface it (legacy / non-Allegro COD → operator-typed fallback).
+   * The dispatch gate prefers this over the operator-supplied dispatch amount.
+   */
+  codToCollect?: CodToCollect;
   /**
    * When the buyer placed the order on the source marketplace (#926). Distinct
    * from `createdAt`/`updatedAt`, which are OpenLinker's ingestion clocks — this
