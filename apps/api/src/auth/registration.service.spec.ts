@@ -4,10 +4,12 @@
  * @module apps/api/src/auth
  */
 import type { ConfigService } from '@nestjs/config';
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import { RegistrationService } from './registration.service';
 import type { IDemoModeService } from './demo-mode.service.interface';
 import {
   RegistrationDisabledException,
+  RegistrationRateLimitedException,
   UserAlreadyExistsException,
   User,
   type UserRepositoryPort,
@@ -16,11 +18,9 @@ import {
 const makeUser = (username: string): User =>
   new User('id', username, `${username}@test.com`, 'hash', 'viewer', 'pending', new Date(), new Date());
 
-const makeConfig = (enabled: string): ConfigService =>
+const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
   ({
-    get: jest.fn((key: string, defaultValue?: string) =>
-      key === 'OL_REGISTRATION_ENABLED' ? enabled : defaultValue
-    ),
+    get: jest.fn((key: string, defaultValue?: string) => overrides[key] ?? defaultValue),
   }) as unknown as ConfigService;
 
 const makeDemoService = (enabled: boolean): IDemoModeService => ({
@@ -41,12 +41,13 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   deactivateAdminAtomically: jest.fn(),
   updateAdminRoleAtomically: jest.fn(),
   deleteAdminAtomically: jest.fn(),
+  findStaleViewerAccounts: jest.fn(),
 });
 
 describe('RegistrationService', () => {
   it('should throw RegistrationDisabledException when registration is disabled', async () => {
     const repo = makeRepo();
-    const service = new RegistrationService(repo, makeConfig('false'), makeDemoService(false));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'false' }), makeDemoService(false), new InMemoryCacheAdapter());
 
     await expect(service.register('alice', 'alice@test.com', 'pass123')).rejects.toThrow(
       RegistrationDisabledException
@@ -58,7 +59,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(makeUser('alice'));
     repo.findByEmail.mockResolvedValue(null);
-    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
 
     await expect(service.register('alice', 'newemail@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -70,7 +71,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(makeUser('bob'));
-    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
 
     await expect(service.register('alice', 'bob@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -83,7 +84,7 @@ describe('RegistrationService', () => {
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
-    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(false));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
 
     await service.register('alice', 'alice@test.com', 'pass123');
 
@@ -101,7 +102,7 @@ describe('RegistrationService', () => {
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
-    const service = new RegistrationService(repo, makeConfig('true'), makeDemoService(true));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(true), new InMemoryCacheAdapter());
 
     await service.register('demo_user', 'demo@test.com', 'pass123');
 
@@ -109,5 +110,86 @@ describe('RegistrationService', () => {
     const saved = repo.save.mock.calls[0][0];
     expect(saved.status).toBe('active');
     expect(saved.role).toBe('viewer');
+  });
+
+  describe('rate limiting (#1469)', () => {
+    it('should throw RegistrationRateLimitedException after the configured limit is reached', async () => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const cache = new InMemoryCacheAdapter();
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '2' }),
+        makeDemoService(true),
+        cache,
+      );
+
+      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
+      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4');
+
+      await expect(
+        service.register('user3', 'user3@test.com', 'pass123', '1.2.3.4'),
+      ).rejects.toThrow(RegistrationRateLimitedException);
+      expect(repo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('should track separate IPs independently', async () => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const cache = new InMemoryCacheAdapter();
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
+        makeDemoService(true),
+        cache,
+      );
+
+      await service.register('user1', 'user1@test.com', 'pass123', '1.1.1.1');
+      await service.register('user2', 'user2@test.com', 'pass123', '2.2.2.2');
+
+      expect(repo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not rate-limit when demo mode is off, even with a clientIp', async () => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const cache = new InMemoryCacheAdapter();
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
+        makeDemoService(false),
+        cache,
+      );
+
+      await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
+      await service.register('user2', 'user2@test.com', 'pass123', '1.2.3.4');
+
+      expect(repo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not rate-limit when no clientIp is provided', async () => {
+      const repo = makeRepo();
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+      const cache = new InMemoryCacheAdapter();
+      const service = new RegistrationService(
+        repo,
+        makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
+        makeDemoService(true),
+        cache,
+      );
+
+      await service.register('user1', 'user1@test.com', 'pass123');
+      await service.register('user2', 'user2@test.com', 'pass123');
+
+      expect(repo.save).toHaveBeenCalledTimes(2);
+    });
   });
 });

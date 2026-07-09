@@ -30,6 +30,7 @@ import { RegistrationService } from './registration.service';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import { DemoModeService } from './demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from './demo-mode.service.interface';
+import { DemoAccountCleanupService } from './demo-account-cleanup.service';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { DEMO_MODE_SERVICE_TOKEN } from './demo-mode.service.interface';
     { provide: REGISTRATION_SERVICE_TOKEN, useExisting: RegistrationService },
     DemoModeService,
     { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
+    DemoAccountCleanupService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

@@ -407,6 +407,14 @@ const ALLOW_LIST = new Map([
     'apps/api/src/users/user-management.service.spec.ts',
     new Set(['UserRepositoryPort']),
   ],
+  [
+    'apps/api/src/auth/demo-account-cleanup.service.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/demo-account-cleanup.service.spec.ts',
+    new Set(['UserRepositoryPort']),
+  ],
 ]);
 
 const DENY_PATTERNS = [
