@@ -4,7 +4,8 @@
  * Single-step wizard for creating an Erli connection. Collects:
  *   - Connection name
  *   - Shop API key (the only credential — sent as a Bearer token by the BE)
- *   - Optional advanced base URL override (config)
+ *   - Environment (Production/Sandbox, #1377) — persisted as the neutral
+ *     `config.environment` choice; the BE resolves it to a base URL
  *
  * Simpler than the WooCommerce form — one credential, no capabilities step
  * (capabilities default silently to the adapter manifest's supported set on
@@ -35,6 +36,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 export function ErliSetupForm(): ReactElement {
@@ -144,18 +146,15 @@ export function ErliSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-        label="Base URL (optional)"
-        name="baseUrl"
-        error={form.formState.errors.baseUrl?.message}
-        description="Advanced — override the default Erli API base URL. Must use HTTPS. Leave blank to use the default."
+        label="Environment"
+        name="environment"
+        error={form.formState.errors.environment?.message}
+        description="Choose Sandbox to test against Erli's sandbox before switching to production."
       >
-        <Input
-          {...form.register('baseUrl')}
-          className="mono-text"
-          placeholder="https://api.erli.pl"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.baseUrl)}
-        />
+        <Select {...form.register('environment')}>
+          <option value="sandbox">Sandbox - https://sandbox.erli.dev</option>
+          <option value="production">Production - https://erli.pl</option>
+        </Select>
       </FormField>
 
       {createdConnectionId ? (
