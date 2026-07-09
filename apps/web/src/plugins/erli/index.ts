@@ -7,10 +7,12 @@
  * bearer token by the BE adapter, #981), so the only credential the operator
  * supplies is `apiKey`; `baseUrl` is an optional advanced config override.
  *
- * Structured config *editing* is intentionally not contributed — the only
- * config field is the optional `baseUrl`, set at create time via the guided
- * wizard; the edit form falls back to the generic raw-JSON config block for
- * the rare post-create change.
+ * Structured config editing contributes exactly one field: `callbackBaseUrl`
+ * (#1454 follow-up) — the public OL URL Erli posts webhook events to, needed
+ * before "Configure webhooks" can do anything. Every other config field
+ * (`baseUrl`, `masterCatalogConnectionId`, `allegroCategoryAccessEnabled`) is
+ * either set at create time via the guided wizard or rare enough that the
+ * generic raw-JSON config block remains the right place to edit it.
  *
  * @module plugins/erli
  */
@@ -21,6 +23,7 @@ import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { ErliConnectionActions } from './components/erli-connection-actions';
 import { ErliCredentialsPanel } from './components/erli-credentials-panel';
+import { ErliStructuredSection } from './components/erli-structured-section';
 import { erliSetupRoute } from './erli-setup.route';
 
 // Lazy-loaded so adding marketplaces doesn't bloat the main bundle (#1096).
@@ -57,6 +60,9 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/erli',
       badge: 'API key',
     },
+    getCallbackUrlDefault: () =>
+      typeof window !== 'undefined' ? window.location.origin : undefined,
+    StructuredConfigSection: ErliStructuredSection,
     CredentialsPanel: ErliCredentialsPanel,
     ConnectionActions: ErliConnectionActions,
     // Bulk offer creation (#1096): dispatch time, no policies, PLN-only.
