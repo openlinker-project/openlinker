@@ -66,6 +66,7 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
     tasks.push({
       taskId: 'allegro-orders-poll',
       platformType: 'allegro',
+      requiredCapability: 'OrderSource',
       jobType: 'marketplace.orders.poll',
       cronExpression,
       enabledEnvVar: 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED',

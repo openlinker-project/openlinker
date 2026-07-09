@@ -287,6 +287,48 @@ describe('SchedulerService', () => {
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
+    it('should skip a platformType-scoped connection missing requiredCapability (#1452 no-starvation follow-up)', async () => {
+      const withCapability = createConnection('conn-with', 'woocommerce');
+      const withoutCapability = new Connection(
+        'conn-without',
+        'woocommerce',
+        'Test conn-without',
+        'active',
+        {},
+        'cred-ref',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductPublisher', 'CategoryProvisioner']
+      );
+      connectionPort.list.mockResolvedValue([withCapability, withoutCapability]);
+      const task = makeTask('woocommerce-orders-poll', {
+        platformType: 'woocommerce',
+        requiredCapability: 'OrderSource',
+      });
+
+      await (
+        service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
+      ).executeTask(task);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: 'conn-with' })
+      );
+    });
+
+    it('should enqueue for every connection when requiredCapability is absent (backward-compatible default)', async () => {
+      const conn = createConnection('conn-1', 'allegro');
+      connectionPort.list.mockResolvedValue([conn]);
+      const task = makeTask('allegro-orders-poll');
+
+      await (
+        service as unknown as { executeTask: (t: SchedulerTaskConfig) => Promise<void> }
+      ).executeTask(task);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    });
+
     it('should not throw when connectionPort.list resolves to undefined', async () => {
       connectionPort.list.mockResolvedValue(undefined as unknown as Connection[]);
       const task: SchedulerTaskConfig = {

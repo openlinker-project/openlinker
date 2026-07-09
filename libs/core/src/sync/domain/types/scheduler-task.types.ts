@@ -75,6 +75,23 @@ export interface SchedulerTaskConfig {
   connectionFilter?: () => Promise<Connection[]>;
 
   /**
+   * Optional capability gate applied ON TOP of `platformType`-based lookup
+   * (ignored when `connectionFilter` is set — that callback owns its own
+   * filtering). When present, a connection is only enqueued if
+   * `connection.enabledCapabilities` includes this value.
+   *
+   * Without this, a `platformType`-scoped task (e.g. a per-platform
+   * orders-poll) enqueues for every active connection of that platform
+   * regardless of whether the connection actually has the relevant
+   * capability enabled — a connection with `OrderSource` deliberately
+   * disabled (e.g. a WooCommerce connection used only for product
+   * publishing) still got polled every tick, failed every time with
+   * `CapabilityNotEnabledException`, and spammed ERROR logs forever
+   * (confirmed live during manual E2E testing of #1322).
+   */
+  requiredCapability?: string;
+
+  /**
    * Generate the job payload for a specific connection. Invoked once per
    * tick per active connection.
    */
