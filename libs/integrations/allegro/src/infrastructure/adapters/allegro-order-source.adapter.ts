@@ -514,6 +514,11 @@ export class AllegroOrderSourceAdapter
    * package dependency. Keep in sync with `classifyInpostPointType` in the
    * InPost ShipX mapper, whose ShipX `type`-based authoritative path runs where
    * a `/v1/points` lookup already happens (the pickup-point finder).
+   *
+   * The result is therefore best-effort at ingestion time: a `pop` here is a
+   * heuristic match, and it (or the `undefined`) is superseded by the
+   * authoritative ShipX `type`-based classification once the `/v1/points`
+   * path resolves the point.
    */
   private classifyPickupPointType(id: string, name?: string): OrderPickupPointType | undefined {
     const idIsPop = id.toLowerCase().startsWith('pop-');
