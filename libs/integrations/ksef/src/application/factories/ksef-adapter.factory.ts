@@ -4,10 +4,10 @@
  * Single per-connection construction seam for the KSeF plugin. Resolves the
  * connection's credentials via the host `CredentialsResolverPort`, validates
  * the config + credential shape, and builds the concrete `KsefHttpClient` (auth
- * header injection, retry/backoff, token lifecycle) wired to the per-connection
- * capability adapters. C4 wires the issuance mechanics onto the same client.
- * Routing all construction through here keeps credential + environment
- * resolution in one place (the Allegro/Erli precedent).
+ * header injection, retry/backoff, token lifecycle) wired to the FA(3)
+ * issuance + clearance mechanics on the same client. Routing all construction
+ * through here keeps credential + environment resolution in one place (the
+ * Allegro/Erli precedent).
  *
  * Not `@Injectable` — a plain class; the client it builds closes over one
  * connection's resolved secret, never a DI singleton.
@@ -17,9 +17,10 @@
  * malformed credential shape fails fast with `KsefConfigException` before any
  * request leaves the client (ADR-003).
  *
- * Qualified-seal (X.509) connections are not constructable until C4 — they
- * throw `KsefConfigException` here so the connection fails loudly rather than
- * half-wiring an unusable client.
+ * Qualified-seal (X.509) connections need real X.509/HSM signing material this
+ * package does not yet implement — they throw `KsefConfigException` here so
+ * the connection fails loudly rather than half-wiring an unusable client. See
+ * `KsefAuthXmlBuilder.signXades` for the deferred signing implementation.
  *
  * @module libs/integrations/ksef/src/application/factories
  */
@@ -233,9 +234,9 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
    */
   private resolveAuthMaterial(connection: Connection, credentials: KsefCredentials): KsefTokenAuthMaterial {
     if (credentials.authType !== 'ksef-token') {
-      // Qualified-seal needs real X.509/HSM material — deferred to C4.
+      // Qualified-seal needs real X.509/HSM signing material — not yet implemented.
       throw new KsefConfigException(
-        `KSeF authType '${credentials.authType}' is not constructable until C4 (qualified-seal)`,
+        `KSeF authType '${credentials.authType}' is not yet supported (qualified-seal signing is not implemented)`,
         connection.id,
       );
     }
