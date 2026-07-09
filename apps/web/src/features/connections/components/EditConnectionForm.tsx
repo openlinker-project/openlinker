@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
+import { useApiClient } from '../../../app/api/api-client-provider';
 import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
@@ -278,6 +279,7 @@ function isParseableJson(text: string): boolean {
 }
 
 export function EditConnectionForm({ connection }: EditConnectionFormProps): ReactElement {
+  const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -518,9 +520,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
+      const input = toUpdateConnectionInput(values);
+      // A sibling plugin-owned panel (e.g. a platform's CredentialsPanel) may
+      // have written its own config field independently of this form, at any
+      // point after this component mounted — the raw-JSON textarea's snapshot
+      // predates that write and knows nothing about it. Refetching the
+      // connection right before submit and layering this form's edits on top
+      // (rather than sending the load-time snapshot wholesale) means a field
+      // the operator never touched survives a concurrent sibling write, while
+      // anything the operator actually edited in the raw JSON still wins.
+      const fresh = await apiClient.connections.getById(connection.id);
       await updateConnection.mutateAsync({
         connectionId: connection.id,
-        input: toUpdateConnectionInput(values),
+        input: { ...input, config: { ...fresh.config, ...input.config } },
       });
       showToast({
         tone: 'success',

@@ -344,7 +344,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 
@@ -373,7 +373,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
           { source: 'allegro', id: '224017', type: 'string', values: ['Acme'] },
         ]);
       });
@@ -421,7 +421,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 

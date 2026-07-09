@@ -853,7 +853,15 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
       continue;
     }
     if (param.valuesIds !== undefined && param.valuesIds.length > 0) {
-      attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
+      // Erli's `dictionary` type requires `values` as `{ id }` objects, not
+      // bare ids — a bare string/id array is rejected wire-side with
+      // `values[N] must be of type object` (confirmed live, #1384 follow-up).
+      attributes.push({
+        source: 'allegro',
+        id: param.id,
+        type: 'dictionary',
+        values: param.valuesIds.map((id) => ({ id })),
+      });
     } else if (param.values !== undefined && param.values.length > 0) {
       attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
     } else {
