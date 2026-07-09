@@ -47,6 +47,7 @@ const HOST_STRUCTURED_FIELDS = [
   'shopId',
   'storefrontBaseUrl',
   'openlinkerCallbackBaseUrl',
+  'callbackBaseUrl',
   'masterCatalogConnectionId',
   'defaultCarrierId',
   'unmanagedStockQuantity',
@@ -309,6 +310,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // (e.g. http://host.docker.internal:3000) by editing the field.
       openlinkerCallbackBaseUrl:
         readConfigString(connection.config, 'openlinkerCallbackBaseUrl') ||
+        plugin?.getCallbackUrlDefault?.() ||
+        '',
+      // Erli's own callback-URL config key (#1454 follow-up) — same
+      // pre-fill convenience as PrestaShop's `openlinkerCallbackBaseUrl`.
+      callbackBaseUrl:
+        readConfigString(connection.config, 'callbackBaseUrl') ||
         plugin?.getCallbackUrlDefault?.() ||
         '',
       masterCatalogConnectionId: readConfigString(connection.config, 'masterCatalogConnectionId'),

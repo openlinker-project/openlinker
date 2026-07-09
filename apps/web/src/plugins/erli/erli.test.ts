@@ -49,8 +49,11 @@ describe('erliPlugin', () => {
     it('contributes a credentials panel', () => {
       expect(erliPlugin.platform?.CredentialsPanel).toBeDefined();
     });
-    it('does NOT contribute a structured-config edit slot', () => {
-      expect(erliPlugin.platform?.StructuredConfigSection).toBeUndefined();
+    it('contributes a structured-config edit slot for the callback URL (#1454 follow-up)', () => {
+      expect(erliPlugin.platform?.StructuredConfigSection).toBeDefined();
+    });
+    it('contributes a getCallbackUrlDefault matching the PrestaShop precedent', () => {
+      expect(erliPlugin.platform?.getCallbackUrlDefault).toBeInstanceOf(Function);
     });
     it('contributes a ConnectionActions component for webhook install (#1216)', () => {
       expect(erliPlugin.platform?.ConnectionActions).toBeDefined();

@@ -5,7 +5,9 @@
  * Erli connections. Exposes the "Configure webhooks" action (#1216) — guards
  * against a missing `config.callbackBaseUrl` (required by the backend before
  * it can register Erli webhook subscriptions) with an instructional message
- * instead of surfacing a raw 400.
+ * instead of surfacing a raw 400. The hint now points at the dedicated
+ * "Callback URL" field (`ErliStructuredSection`, #1454 follow-up) rather than
+ * the raw-JSON config block.
  *
  * @module plugins/erli/components
  */
@@ -78,9 +80,9 @@ export function ErliConnectionActions({
           </p>
         ) : (
           <p className="muted-text">
-            Set <code>callbackBaseUrl</code> on this connection before configuring webhooks. Open{' '}
-            <strong>Edit connection</strong>, add <code>callbackBaseUrl</code> (the public
-            OpenLinker URL Erli posts webhooks to), then return here.
+            Set the <strong>Callback URL</strong> field on this connection before configuring
+            webhooks. Open <strong>Edit connection</strong>, fill in the Callback URL (the public
+            OpenLinker URL Erli posts webhooks to), save, then return here.
           </p>
         )}
       </div>
