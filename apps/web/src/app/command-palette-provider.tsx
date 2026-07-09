@@ -34,6 +34,7 @@ import { useDebouncedValue } from '../shared/hooks/use-debounced-value';
 import { CommandPalette } from '../shared/ui/command-palette';
 import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
+import { useDemoMode } from '../features/system';
 import { BASE_NAV_GROUPS } from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
@@ -157,6 +158,8 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     { limit: 10 },
   );
   const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 });
+  const demoMode = useDemoMode();
+  const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
 
   // ── Navigation source ─────────────────────────────────────────────
 
@@ -165,6 +168,10 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     for (const group of BASE_NAV_GROUPS) {
       if (group.kind !== 'live') continue;
       const liveGroup = group as LiveNavGroup;
+      // In demo mode the admin areas are locked in the sidebar for non-admins —
+      // keep them out of the command palette too, so ⌘K can't bypass the lock.
+      // Admins keep full access in every mode (#1379).
+      if (demoMode && !isAdmin && liveGroup.requiresRole !== undefined) continue;
       for (const item of liveGroup.items) {
         if (
           searchTerm.length === 0 ||
@@ -182,7 +189,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       }
     }
     return items;
-  }, [searchTerm, handleSelect]);
+  }, [searchTerm, handleSelect, demoMode, isAdmin]);
 
   // ── Connection source ─────────────────────────────────────────────
 

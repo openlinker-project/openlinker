@@ -76,7 +76,8 @@ describe('inpost-shipx.mapper', () => {
       expect(request.service).toBe('inpost_locker_standard');
       expect(request.reference).toBe('ol_shipment_abc');
       expect(request.custom_attributes?.target_point).toBe('POZ08A');
-      expect(request.custom_attributes?.sending_method).toBe('dispatch_order');
+      // Locker self-drop → parcel_locker, not the courier-collection dispatch_order (#1427).
+      expect(request.custom_attributes?.sending_method).toBe('parcel_locker');
       expect((request.parcels as ShipXLockerParcel).template).toBe('small');
       // Locker receiver carries no address (addressed by the locker).
       expect(request.receiver.address).toBeUndefined();
@@ -92,6 +93,8 @@ describe('inpost-shipx.mapper', () => {
       expect(parcel.dimensions).toEqual({ length: '80', width: '360', height: '640', unit: 'mm' });
       expect(parcel.weight).toEqual({ amount: '2.50', unit: 'kg' });
       expect(request.receiver.address?.post_code).toBe('02-677');
+      // Courier keeps dispatch_order (courier collects from the sender) (#1427).
+      expect(request.custom_attributes?.sending_method).toBe('dispatch_order');
     });
 
     it('should throw a typed rejection (preflight.missing-paczkomat-id) when paczkomat shipment lacks paczkomatId (#885)', () => {

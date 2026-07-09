@@ -91,4 +91,12 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.viewer).toContain('webhooks:read');
     });
   });
+
+  describe('ai:suggest (#1379 re-scope)', () => {
+    it('should be admin-only — operator and viewer must not hold it', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('ai:suggest');
+      expect(ROLE_PERMISSIONS.operator).not.toContain('ai:suggest');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('ai:suggest');
+    });
+  });
 });
