@@ -68,6 +68,17 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
     bulkOfferRowSection: ErliBulkRowSectionLazy,
     // Shared single+bulk blocker: Erli requires ≥1 image (declared once).
     offerValidation: erliOfferValidation,
+    // Bulk Review edit modal: Erli's category browsing is a dynamic
+    // per-connection toggle (`allegroCategoryAccessEnabled`, set via the
+    // credentials panel), not a static adapter capability — the manifest
+    // deliberately never declares `CategoryBrowser` (most Erli connections
+    // don't have Allegro category access configured). Without this, the
+    // bulk edit modal always falls back to the manual Allegro-category-id
+    // input even when the operator *has* configured category access; the
+    // single-offer `ErliCreateOfferWizard` already reads the same config
+    // flag directly.
+    bulkCategoryBrowsingEnabled: (connection) =>
+      connection.config.allegroCategoryAccessEnabled === true,
     // Listing-detail: opt into the generic "Edit offer" drawer (#1215). The BE
     // adapter already implements OfferFieldUpdater; this exposes the FE button.
     supportsListingEdit: true,
