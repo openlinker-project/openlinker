@@ -8561,8 +8561,10 @@ html[data-density='compact'] .status-badge {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  height: auto;
+  white-space: normal;
   background: var(--bg-surface);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
 }
@@ -8585,9 +8587,11 @@ html[data-density='compact'] .status-badge {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .marketplace-picker__name {
+  color: var(--text-primary);
   font-weight: 600;
   font-size: 0.9rem;
 }
