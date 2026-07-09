@@ -29,6 +29,7 @@ import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 import { GenerateLabelForm } from './generate-label-form';
 import { ShipmentActionButtons } from './shipment-action-buttons';
+import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -108,12 +109,20 @@ export function OrderShipmentPanel({ order }: OrderShipmentPanelProps): ReactEle
           }
         />
       ) : activeShipment ? (
-        <OrderShipmentPanelBody
-          shipment={activeShipment}
-          shippingPlatformType={shippingConnection?.platformType ?? null}
-          paymentStatus={paymentStatus}
-          mutationError={null /* surfaced via the action-buttons own state */}
-        />
+        <>
+          {/* Lifecycle rail (#1425) — between the header and the facts. Skipped
+              for destination-fulfilled (OMP) shipments, which carry no OL
+              dispatch lifecycle. */}
+          {activeShipment.shippingMethod !== 'omp' ? (
+            <ShipmentLifecycleRail status={activeShipment.status} />
+          ) : null}
+          <OrderShipmentPanelBody
+            shipment={activeShipment}
+            shippingPlatformType={shippingConnection?.platformType ?? null}
+            paymentStatus={paymentStatus}
+            mutationError={null /* surfaced via the action-buttons own state */}
+          />
+        </>
       ) : formOpen ? null : (
         <EmptyState
           title="No shipment yet"
