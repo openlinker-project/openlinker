@@ -87,6 +87,41 @@ describe('ErliAdapterFactory', () => {
     expect(lastFetchHeaders().Authorization).toBe('Bearer k-123');
   });
 
+  it('should resolve the sandbox base URL when config.environment is sandbox (#1377)', async () => {
+    const client = await factory.createHttpClient(
+      connection({ config: { environment: 'sandbox' } }),
+      resolverFor({ apiKey: 'k-123' }),
+    );
+    await client.get('/probe');
+
+    expect(lastFetchUrl()).toBe('https://sandbox.erli.dev/svc/shop-api/probe');
+  });
+
+  it('should resolve the default prod base URL when config.environment is production (#1377)', async () => {
+    const client = await factory.createHttpClient(
+      connection({ config: { environment: 'production' } }),
+      resolverFor({ apiKey: 'k-123' }),
+    );
+    await client.get('/probe');
+
+    expect(lastFetchUrl()).toBe('https://erli.pl/svc/shop-api/probe');
+  });
+
+  it('should let an explicit legacy config.baseUrl win over config.environment (backward compat, #1377)', async () => {
+    // Connections created before the environment select persisted the derived
+    // sandbox URL directly on config.baseUrl (with no config.environment). That
+    // explicit override must still resolve the same host.
+    const client = await factory.createHttpClient(
+      connection({
+        config: { baseUrl: 'https://sandbox.erli.dev/svc/shop-api', environment: 'production' },
+      }),
+      resolverFor({ apiKey: 'k-123' }),
+    );
+    await client.get('/probe');
+
+    expect(lastFetchUrl()).toBe('https://sandbox.erli.dev/svc/shop-api/probe');
+  });
+
   it('should honour a config.baseUrl override', async () => {
     const client = await factory.createHttpClient(
       connection({ config: { baseUrl: 'https://sandbox.erli.dev/svc/shop-api' } }),

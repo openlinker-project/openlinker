@@ -21,7 +21,7 @@ describe('ErliSetupForm', () => {
     renderWithProviders(<ErliSetupForm />);
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('API key')).toBeInTheDocument();
-    expect(screen.getByLabelText('Base URL (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Environment')).toBeInTheDocument();
   });
 
   it('requires connection name to be non-empty', async () => {
@@ -45,25 +45,12 @@ describe('ErliSetupForm', () => {
     });
   });
 
-  it('rejects a non-HTTPS base URL override', async () => {
+  it('defaults the environment select to Sandbox', () => {
     renderWithProviders(<ErliSetupForm />);
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
-    fireEvent.change(screen.getByLabelText('Base URL (optional)'), {
-      target: { value: 'http://api.erli.pl' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Base URL must use HTTPS')[0]).toBeInTheDocument();
-    });
+    expect(screen.getByLabelText('Environment')).toHaveValue('sandbox');
   });
 
-  it('submits the API key and omits config when no base URL is given', async () => {
+  it('submits the neutral production environment in config when Production is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -74,6 +61,9 @@ describe('ErliSetupForm', () => {
     });
     fireEvent.change(screen.getByLabelText('API key'), {
       target: { value: 'sk_test_123' },
+    });
+    fireEvent.change(screen.getByLabelText('Environment'), {
+      target: { value: 'production' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
@@ -83,7 +73,7 @@ describe('ErliSetupForm', () => {
           name: 'My Erli Store',
           platformType: 'erli',
           adapterKey: 'erli.shopapi.v1',
-          config: {},
+          config: { environment: 'production' },
           credentials: { apiKey: 'sk_test_123' },
         }),
       );
@@ -91,7 +81,7 @@ describe('ErliSetupForm', () => {
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
-  it('includes baseUrl in config when supplied', async () => {
+  it('submits the neutral sandbox environment in config when Sandbox is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -103,15 +93,15 @@ describe('ErliSetupForm', () => {
     fireEvent.change(screen.getByLabelText('API key'), {
       target: { value: 'sk_test_123' },
     });
-    fireEvent.change(screen.getByLabelText('Base URL (optional)'), {
-      target: { value: 'https://api.erli.pl' },
+    fireEvent.change(screen.getByLabelText('Environment'), {
+      target: { value: 'sandbox' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { baseUrl: 'https://api.erli.pl' },
+          config: { environment: 'sandbox' },
         }),
       );
     });

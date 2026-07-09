@@ -109,6 +109,32 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
     });
   });
 
+  describe('environment (#1377)', () => {
+    it('should resolve when environment is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when environment is "sandbox"', async () => {
+      await expect(validator.validate({ environment: 'sandbox' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when environment is "production"', async () => {
+      await expect(validator.validate({ environment: 'production' })).resolves.toBeUndefined();
+    });
+
+    it('should reject an unknown environment value', async () => {
+      await expect(validator.validate({ environment: 'staging' })).rejects.toMatchObject({
+        errors: [{ path: 'environment', message: expect.any(String) }],
+      });
+    });
+
+    it('should reject a non-string environment value', async () => {
+      await expect(validator.validate({ environment: 123 })).rejects.toMatchObject({
+        errors: [{ path: 'environment', message: expect.any(String) }],
+      });
+    });
+  });
+
   describe('allegroEnvironment (#1382/#1383, ADR-031)', () => {
     it('should resolve when allegroEnvironment is absent', async () => {
       await expect(validator.validate({})).resolves.toBeUndefined();

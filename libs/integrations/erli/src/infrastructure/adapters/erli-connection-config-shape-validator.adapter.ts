@@ -26,7 +26,10 @@ import {
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { ERLI_ALLOWED_BASE_URL_HOSTS, isAllowedErliHost } from '../../domain/policies/erli-base-url.policy';
-import { AllegroCatalogEnvironmentValues } from '../../domain/types/erli-connection.types';
+import {
+  AllegroCatalogEnvironmentValues,
+  ErliEnvironmentValues,
+} from '../../domain/types/erli-connection.types';
 
 export class ErliConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -53,6 +56,7 @@ export class ErliConnectionConfigShapeValidatorAdapter
       }
     }
 
+    this.validateEnvironment(config.environment, issues);
     this.validateDispatchTime(config.defaultDispatchTime, issues);
     this.validateAllegroEnvironment(config.allegroEnvironment, issues);
     this.validateAllegroCategoryAccessEnabled(config.allegroCategoryAccessEnabled, issues);
@@ -115,6 +119,24 @@ export class ErliConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'defaultDispatchTime.unit',
         message: "must be 'hour', 'day', or 'month'",
+      });
+    }
+  }
+
+  /**
+   * `environment` (#1377), when present, must be exactly `'sandbox'` or
+   * `'production'` — the neutral Shop API environment choice the factory maps to
+   * a base URL. Absent is valid (legacy connections used `baseUrl` directly, and
+   * the factory falls back to the prod default).
+   */
+  private validateEnvironment(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'string' || !(ErliEnvironmentValues as readonly string[]).includes(value)) {
+      issues.push({
+        path: 'environment',
+        message: `must be one of: ${ErliEnvironmentValues.join(', ')}`,
       });
     }
   }

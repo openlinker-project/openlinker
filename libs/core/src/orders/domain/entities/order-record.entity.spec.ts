@@ -43,3 +43,26 @@ describe('OrderRecord.paymentStatus', () => {
     expect(makeRecord({ paymentStatus: null }).paymentStatus).toBeUndefined();
   });
 });
+
+describe('OrderRecord.codToCollect (#1435)', () => {
+  it('returns the sourced amount when the snapshot carries a well-formed pair', () => {
+    expect(makeRecord({ codToCollect: { amount: '510.94', currency: 'PLN' } }).codToCollect).toEqual({
+      amount: '510.94',
+      currency: 'PLN',
+    });
+  });
+
+  it('returns undefined when the snapshot has no codToCollect key', () => {
+    expect(makeRecord({}).codToCollect).toBeUndefined();
+  });
+
+  it('returns undefined when the value is not an object', () => {
+    expect(makeRecord({ codToCollect: '510.94' }).codToCollect).toBeUndefined();
+    expect(makeRecord({ codToCollect: null }).codToCollect).toBeUndefined();
+  });
+
+  it('returns undefined when amount or currency is missing / non-string', () => {
+    expect(makeRecord({ codToCollect: { amount: '510.94' } }).codToCollect).toBeUndefined();
+    expect(makeRecord({ codToCollect: { amount: 510.94, currency: 'PLN' } }).codToCollect).toBeUndefined();
+  });
+});

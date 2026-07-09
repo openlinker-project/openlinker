@@ -17,6 +17,7 @@ import type {
   PriceTaxTreatment,
 } from './order.types';
 import type { PaymentStatus } from './payment-status.types';
+import type { CodToCollect } from './cod-to-collect.types';
 
 export interface IncomingOrder {
   /**
@@ -80,6 +81,14 @@ export interface IncomingOrder {
   deliverySmart?: boolean;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+
+  /**
+   * Marketplace-sourced cash-on-delivery collect amount (#1435). Set by the
+   * source adapter only for a cash-on-delivery order (Allegro maps
+   * `summary.totalToPay` — the buyer pays the full order total on delivery).
+   * Absent for prepaid orders and for sources that don't expose it.
+   */
+  codToCollect?: CodToCollect;
 
   /**
    * Marketplace dispatch (ship-by) commitment window (#927). The SLA deadline
