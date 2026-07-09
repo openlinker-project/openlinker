@@ -35,6 +35,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -56,6 +57,7 @@ import {
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
+  type LockerTemplate,
 } from './generate-label-form.schema';
 import {
   buildDispatchItem,
@@ -75,6 +77,17 @@ interface GenerateLabelFormProps {
 }
 
 const SLOW_NOTICE_DELAY_MS = 5_000;
+
+/**
+ * InPost gabaryt (size class) shown as a subtle hint on each locker-size option
+ * (#1425). Small → A, Medium → B, Large → C — the operator-facing shorthand
+ * InPost prints on the locker doors.
+ */
+const LOCKER_TEMPLATE_GABARYT: Record<LockerTemplate, string> = {
+  small: 'A',
+  medium: 'B',
+  large: 'C',
+};
 
 /**
  * Window during which a missing Allegro pickup-point is considered "still
@@ -105,6 +118,10 @@ export function GenerateLabelForm({
   // or a locker-classified method ⇒ paczkomat flow.
   const methodClass = classifyDeliveryMethod(snapshot.shipping);
   const shippingMethod = resolveShippingMethod(snapshot);
+  // Point-kind label (#1433) — `pop` ⇒ PaczkoPunkt, `apm` or absent ⇒
+  // Paczkomat (mirrors the order-delivery panel mapping; the pickup field only
+  // renders for the paczkomat flow, so absent defaults to Paczkomat here).
+  const pickupFieldLabel = snapshot.pickupPoint?.pointType === 'pop' ? 'PaczkoPunkt' : 'Paczkomat';
   // Clear courier signal: the method is known-courier, or — until the snapshot
   // carries the method (#952) — the order has a full street address but no
   // pickup point. Suppresses the locker retry hint on courier orders that will
@@ -193,9 +210,14 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
-  const lockerTemplateRegister = form.register('lockerTemplate');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
+  // Locker size is driven imperatively via a segmented control (#1425). The
+  // registration is bound to a hidden input at the control (so RHF holds a real
+  // ref and tracks the field); the pressed state is set via `setValue` and read
+  // via `watch`.
+  const lockerTemplateRegister = form.register('lockerTemplate');
+  const lockerTemplate = form.watch('lockerTemplate');
 
   // COD is driven by the order's payment status + the marketplace-sourced
   // amount (#1435). The gate is a block-list on the one prepaid status, not an
@@ -454,12 +476,12 @@ export function GenerateLabelForm({
 
         {shippingMethod === 'paczkomat' ? (
           <FormField
-            label="Paczkomat"
+            label={pickupFieldLabel}
             name="paczkomatId"
             description={
               paczkomatIsBuyerSelected
                 ? 'Buyer-selected via Allegro — read-only.'
-                : 'Type the paczkomat code (e.g. POZ08A). Picker coming in a follow-up.'
+                : `Type the ${pickupFieldLabel} code (e.g. POZ08A). Picker coming in a follow-up.`
             }
             error={form.formState.errors.paczkomatId?.message}
           >
@@ -472,21 +494,40 @@ export function GenerateLabelForm({
           </FormField>
         ) : null}
 
+        {/* Locker size (#1425) — the shared SegmentedControl replacing the
+            Select. Multi-child, so it renders the `.form-field` markup directly
+            (like the dimensions composite) rather than through FormField, which
+            clones a single control child. The group is labelled by aria-label
+            and wired to its description + error via aria-describedby /
+            aria-errormessage; driven imperatively via `setValue`, with a hidden
+            registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
-          <FormField
-            label="Locker size"
-            name="lockerTemplate"
-            description="InPost parcel template — required for a paczkomat shipment."
-            error={form.formState.errors.lockerTemplate?.message}
-          >
-            <Select {...lockerTemplateRegister} aria-label="Locker size">
-              {LOCKER_TEMPLATE_VALUES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          <div className="form-field">
+            <span className="form-field__label">Locker size</span>
+            <p className="form-field__description" id="lockerTemplate-description">
+              InPost parcel template — required for a paczkomat shipment.
+            </p>
+            <SegmentedControl
+              aria-label="Locker size"
+              aria-describedby="lockerTemplate-description"
+              aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
+              aria-errormessage={
+                form.formState.errors.lockerTemplate ? 'lockerTemplate-error' : undefined
+              }
+              value={lockerTemplate ?? 'medium'}
+              onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
+              options={LOCKER_TEMPLATE_VALUES.map((t) => ({
+                value: t,
+                label: t,
+                hint: LOCKER_TEMPLATE_GABARYT[t],
+              }))}
+            />
+            <input type="hidden" {...lockerTemplateRegister} />
+            <FieldError
+              id="lockerTemplate-error"
+              message={form.formState.errors.lockerTemplate?.message}
+            />
+          </div>
         ) : null}
 
         {/* Cash on delivery (#1435) — payment-status-driven. Explicitly prepaid

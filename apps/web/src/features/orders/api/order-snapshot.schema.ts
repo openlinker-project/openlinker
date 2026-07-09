@@ -70,6 +70,14 @@ const orderShippingSchema = z.object({
   methodName: z.string().nullish(),
 });
 
+/**
+ * Pickup-point kind (#1433) — hand-mirrored from the backend
+ * `OrderPickupPointType` union (`@openlinker/core/orders`). `apm` = InPost
+ * Paczkomat, `pop` = PaczkoPunkt. Keep in sync with the core union.
+ */
+export const ParsedOrderPickupPointTypeValues = ['apm', 'pop'] as const;
+export type ParsedOrderPickupPointType = (typeof ParsedOrderPickupPointTypeValues)[number];
+
 const orderPickupPointSchema = z.object({
   /** Bare locker code (e.g. `POZ08A`). */
   id: z.string(),
@@ -77,6 +85,8 @@ const orderPickupPointSchema = z.object({
   name: z.string().nullish(),
   /** Locker-side description (e.g. `Stacja paliw BP`). `.nullish()` — see addressSchema. */
   description: z.string().nullish(),
+  /** Classified point kind (#1433). Absent when the source gave no signal. */
+  pointType: z.enum(ParsedOrderPickupPointTypeValues).nullish(),
 });
 
 /**

@@ -68,8 +68,10 @@ export {
   Address,
   OrderShipping,
   OrderPickupPoint,
+  OrderPickupPointType,
   OrderDispatchWindow,
 } from './domain/types/order.types';
+export { OrderPickupPointTypeValues } from './domain/types/order.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';

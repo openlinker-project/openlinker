@@ -132,6 +132,30 @@ describe('GenerateLabelForm — happy path', () => {
     expect(screen.queryByText(/Missing recipient data/i)).toBeNull();
   });
 
+  it('should label the pickup field Paczkomat when pointType is absent (#1433)', async () => {
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    expect(await screen.findByLabelText('Paczkomat')).toBeInTheDocument();
+    expect(screen.queryByLabelText('PaczkoPunkt')).toBeNull();
+  });
+
+  it('should label the pickup field PaczkoPunkt when pointType is pop (#1433)', async () => {
+    const baseSnapshot = makeOrder().orderSnapshot as Record<string, unknown>;
+    const order = makeOrder({
+      orderSnapshot: {
+        ...baseSnapshot,
+        pickupPoint: { id: 'POP-OLS19', name: 'PaczkoPunkt POP-OLS19', pointType: 'pop' },
+      },
+    });
+
+    renderWithProviders(<GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(await screen.findByLabelText('PaczkoPunkt')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Paczkomat')).toBeNull();
+  });
+
   it('should disable submit and switch the label while generation is pending', async () => {
     const resolveRef: { current: ((value: unknown) => void) | null } = { current: null };
     const apiClient = createMockApiClient({
@@ -320,6 +344,36 @@ describe('GenerateLabelForm — happy path', () => {
       expect(generateLabel).toHaveBeenCalledWith(
         expect.objectContaining({
           parcel: expect.objectContaining({ template: 'medium' }),
+        }),
+      ),
+    );
+  });
+
+  it('should send the selected locker size via the segmented control (#1425)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    // Segmented control: pick "large" (was defaulted to medium).
+    const large = screen.getByRole('radio', { name: /large/i });
+    fireEvent.click(large);
+    expect(large).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parcel: expect.objectContaining({ template: 'large' }),
         }),
       ),
     );

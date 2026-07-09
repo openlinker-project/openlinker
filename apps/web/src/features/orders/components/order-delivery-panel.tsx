@@ -85,6 +85,15 @@ export function OrderDeliveryPanel({
       ? `buyer-selected via ${sourcePlatform.displayName}`
       : 'operator-selected';
 
+  // Point-kind label (#1433) — Paczkomat (apm) vs PaczkoPunkt (pop). Absent
+  // pointType falls back to no kind label (pre-#1433 behaviour).
+  const pickupKindLabel =
+    pickupPoint?.pointType === 'pop'
+      ? 'PaczkoPunkt'
+      : pickupPoint?.pointType === 'apm'
+        ? 'Paczkomat'
+        : undefined;
+
   return (
     <section className="detail-section order-delivery" aria-label="Delivery">
       <h3 className="detail-section__title">Delivery</h3>
@@ -92,7 +101,10 @@ export function OrderDeliveryPanel({
         {items.length > 0 ? <KeyValueList items={items} /> : null}
         {pickupPoint ? (
           <div className="order-delivery__pickup">
-            <div className="order-delivery__pickup-code mono-text">{pickupPoint.id}</div>
+            <div className="order-delivery__pickup-code mono-text">
+              {pickupKindLabel ? `${pickupKindLabel} ` : ''}
+              {pickupPoint.id}
+            </div>
             <div className="order-delivery__pickup-caption text-muted">
               {pickupPoint.description ? `${pickupPoint.description} · ` : ''}
               {pickupCaption}
