@@ -119,6 +119,44 @@ describe('EditConnectionForm', () => {
     expect(await screen.findByText('Server error')).toBeInTheDocument();
   });
 
+  it('preserves a config field written by a sibling panel after this form mounted, instead of clobbering it with the load-time snapshot', async () => {
+    // Simulates the real bug: a plugin-owned CredentialsPanel (e.g. Erli's)
+    // PATCHes its own config field independently, sometime after this form
+    // mounted with `sampleConnection`'s original config. This form's raw-JSON
+    // textarea snapshot predates that write and knows nothing about it — the
+    // fix refetches the connection right before submit and merges onto that,
+    // rather than sending the stale mount-time snapshot wholesale.
+    const siblingWrittenConnection: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, allegroCategoryAccessEnabled: true },
+    };
+    const updateFn = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        getById: vi.fn().mockResolvedValue(siblingWrittenConnection),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    // Operator changes something unrelated and saves — never touches the raw
+    // JSON block, so `allegroCategoryAccessEnabled` never appears in this
+    // form's own state at all.
+    fireEvent.change(screen.getByDisplayValue(sampleConnection.name), {
+      target: { value: 'Renamed Store' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalledWith(
+        sampleConnection.id,
+        expect.objectContaining({
+          config: expect.objectContaining({ allegroCategoryAccessEnabled: true }),
+        }),
+      );
+    });
+  });
+
   describe('structured PrestaShop inputs + raw JSON toggle', () => {
     it('renders Shop URL / Storefront URL / Shop ID inputs for a PrestaShop connection', () => {
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
@@ -478,7 +516,7 @@ describe('EditConnectionForm', () => {
     it('auto-select does not flip form dirty state (Save changes submits unchanged config)', async () => {
       const updateFn = vi.fn().mockResolvedValue(allegroConnection);
       const apiClient = apiClientWithCandidates([candidatePrestashop], {
-        connections: { update: updateFn },
+        connections: { update: updateFn, getById: vi.fn().mockResolvedValue(allegroConnection) },
       });
       renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
@@ -547,7 +585,7 @@ describe('EditConnectionForm', () => {
     it('submits the picked value and preserves other config keys', async () => {
       const updateFn = vi.fn().mockResolvedValue(allegroConnection);
       const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop], {
-        connections: { update: updateFn },
+        connections: { update: updateFn, getById: vi.fn().mockResolvedValue(allegroConnection) },
       });
       renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
@@ -575,13 +613,13 @@ describe('EditConnectionForm', () => {
 
     it('persists "" when the operator picks None (preserves explicit opt-out, does not delete the key)', async () => {
       const updateFn = vi.fn().mockResolvedValue(allegroConnection);
-      const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop], {
-        connections: { update: updateFn },
-      });
       const linked: Connection = {
         ...allegroConnection,
         config: { environment: 'sandbox', masterCatalogConnectionId: candidatePrestashop.id },
       };
+      const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop], {
+        connections: { update: updateFn, getById: vi.fn().mockResolvedValue(linked) },
+      });
       renderWithProviders(<EditConnectionForm connection={linked} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
