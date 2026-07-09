@@ -357,6 +357,61 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.paymentStatus).toBe('cod');
     });
 
+    it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {
+      // Even though payment.finishedAt is set (the order WAS paid before the
+      // buyer/seller cancelled it), status must be 'cancelled', not
+      // 'processing' — this is exactly the live bug: a cancelled-but-paid
+      // order silently kept reporting 'processing' forever.
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-3',
+        status: 'CANCELLED',
+        updatedAt: '2024-01-03T00:00:00Z',
+        buyer: { id: 'b3', email: 'b3@example.com', login: 'b3' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE', finishedAt: '2024-01-03T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-3' });
+
+      expect(incoming.status).toBe('cancelled');
+    });
+
+    it('should report cancelled status when the seller cancelled via the panel dropdown (fulfillment.status, #1322 manual E2E)', async () => {
+      // The real live bug the manual test hit: the seller used the "Status
+      // zamówienia" dropdown's ANULOWANE option, which sets
+      // fulfillment.status — NOT the transaction-level `status` field.
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-4',
+        fulfillment: { status: 'CANCELLED' },
+        updatedAt: '2024-01-04T00:00:00Z',
+        buyer: { id: 'b4', email: 'b4@example.com', login: 'b4' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE', finishedAt: '2024-01-04T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-4' });
+
+      expect(incoming.status).toBe('cancelled');
+    });
+
     describe('dispatch time / ship-by (#927)', () => {
       const formWithDelivery = (
         delivery: NonNullable<AllegroCheckoutForm['delivery']>
