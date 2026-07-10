@@ -236,6 +236,26 @@ export interface MarketplaceOfferCategory {
   name?: string;
 }
 
+/**
+ * A filled, section-tagged parameter on the live marketplace offer (#1482 —
+ * present only when the running API exposes the extended MarketplaceOffer
+ * read model; older stacks omit the field entirely).
+ */
+export interface MarketplaceOfferParameter {
+  id: string;
+  name?: string;
+  values?: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
+/** Product-set linkage for catalog-grouped offers (#1482). */
+export interface MarketplaceOfferProductSetItem {
+  productId?: string;
+  quantity?: number;
+}
+
 /** Adapter-fetched live offer (GET /listings/:id/offer). */
 export interface MarketplaceOffer {
   externalId: string;
@@ -248,6 +268,8 @@ export interface MarketplaceOffer {
   category?: MarketplaceOfferCategory;
   marketplaceUrl?: string;
   endsAt?: string;
+  parameters?: MarketplaceOfferParameter[];
+  productSet?: MarketplaceOfferProductSetItem[];
 }
 
 export type CategoryParameterSection = 'offer' | 'product';

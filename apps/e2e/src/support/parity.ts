@@ -17,6 +17,8 @@ import type {
   CategoryParameter,
   IssuedDocumentContent,
   MarketplaceOffer,
+  MarketplaceOfferParameter,
+  SubmittedOfferParameter,
 } from '../api/api.types';
 
 /** Currencies whose minor unit is not 10^-2. Everything else defaults to 2. */
@@ -173,6 +175,61 @@ export function assertOfferParameterParity(
       match,
       `${label}: expected ${want.section}-section parameter "${want.name}" in category directory`,
     ).toBeTruthy();
+  }
+}
+
+/** Order-insensitive multiset equality on normalised string values. */
+function sameValues(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = a.map(norm).sort();
+  const right = b.map(norm).sort();
+  return left.every((v, i) => v === right[i]);
+}
+
+/**
+ * Marketplace-side round-trip parity (#1482): every parameter OL SUBMITTED on
+ * offer creation must come back on the live offer read with the same section
+ * and the same value — proving the marketplace ACCEPTED it, not just that OL
+ * sent it. Dictionary parameters round-trip by `valuesIds` (Allegro may add
+ * display `values` alongside); free-text by `values`; ranges by `rangeValue`.
+ */
+export function assertMarketplaceParameterRoundTrip(
+  label: string,
+  submitted: readonly SubmittedOfferParameter[],
+  live: readonly MarketplaceOfferParameter[],
+): void {
+  const liveById = new Map(live.map((p) => [p.id, p]));
+  for (const sent of submitted) {
+    const got = liveById.get(sent.id);
+    expect(
+      got,
+      `${label}: submitted parameter ${sent.id} is present on the live marketplace offer`,
+    ).toBeTruthy();
+    if (!got) continue;
+    const name = got.name ?? sent.id;
+    expect(got.section, `${label}: parameter "${name}" section round-trips`).toBe(sent.section);
+    if ((sent.valuesIds?.length ?? 0) > 0) {
+      expect(
+        sameValues(sent.valuesIds!, got.valuesIds ?? []),
+        `${label}: parameter "${name}" dictionary valuesIds round-trip ` +
+          `(sent ${JSON.stringify(sent.valuesIds)}, got ${JSON.stringify(got.valuesIds)})`,
+      ).toBe(true);
+    } else if ((sent.values?.length ?? 0) > 0) {
+      expect(
+        sameValues(sent.values!, got.values ?? []),
+        `${label}: parameter "${name}" values round-trip ` +
+          `(sent ${JSON.stringify(sent.values)}, got ${JSON.stringify(got.values)})`,
+      ).toBe(true);
+    } else if (sent.rangeValue) {
+      expect(
+        got.rangeValue,
+        `${label}: parameter "${name}" rangeValue present on the live offer`,
+      ).toBeTruthy();
+      expect(
+        [got.rangeValue?.from, got.rangeValue?.to],
+        `${label}: parameter "${name}" rangeValue round-trips`,
+      ).toEqual([sent.rangeValue.from, sent.rangeValue.to]);
+    }
   }
 }
 

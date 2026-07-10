@@ -124,17 +124,21 @@ run leaves a durable trail.
   (cancel / return / out-of-stock / multi-item / invoice-reject /
   correction-of-correction) are follow-up scenarios on the same substrate.
 - **Field parity for Allegro/Erli/KSeF covers what OL's neutral model exposes.**
-  OL's live-offer read (`getOffer`) returns category id + price + quantity +
-  status but **not** the marketplace-side *filled* parameter values or variant
-  grouping. The full flow asserts the **submitted** parameter values from the
-  persisted creation-request snapshot (value-level, vs the category directory +
-  master variant attributes) — what actually landed on the marketplace side is
-  confirmed visually via the Allegro/Erli manual checkpoints. Values the builder
-  projects server-side (attribute projection, catalog-card inheritance) are not
-  in the snapshot and stay checkpoint-verified. The Erli adapter ships no
-  `OfferReader`, so its live parity degrades to mapping-level assertions.
-  A raw platform field OL does not model stays manual or needs a targeted OL-read
-  extension (case-by-case).
+  With #1482 deployed, OL's live-offer read (`getOffer`) carries the
+  marketplace-side **filled parameter values** (offer + product section) and
+  productSet linkage, so the flow asserts a full **round-trip**: the SUBMITTED
+  values from the persisted creation-request snapshot (value-level, vs the
+  category directory + master variant attributes) AND that Allegro **accepted**
+  them (`assertMarketplaceParameterRoundTrip` — submitted == live, by
+  valuesIds / values / rangeValue). On a stack whose API predates #1482 the
+  field is absent and the marketplace-side half degrades to the Allegro manual
+  checkpoint (annotated, non-fatal). Values the builder projects server-side
+  (attribute projection, catalog-card inheritance) are not in the snapshot;
+  with #1482 they ARE included in the live read's filled values (the
+  offer-section presence assertion covers e.g. condition). The Erli adapter
+  ships no `OfferReader`, so its live parity degrades to mapping-level
+  assertions. A raw platform field OL does not model stays manual or needs a
+  targeted OL-read extension (case-by-case).
 - **Attended run, not unattended CI.** The buyer purchase and external dashboards
   are human-in-the-loop.
 - **Role/text selectors (no `data-testid`)** — some UI fragility until testids

@@ -42,6 +42,7 @@ import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot }
 import { snapshotOrderIds, waitForOrder } from '../../src/support/orders';
 import { manualCheckpoint } from '../../src/support/manual-checkpoint';
 import {
+  assertMarketplaceParameterRoundTrip,
   assertMoneyEqual,
   assertProductFieldParity,
   assertInvoiceAmounts,
@@ -255,6 +256,34 @@ test.describe('golden path — full flow (S0-S9)', () => {
           'creation-request snapshot carries no operator-submitted parameters — value-level ' +
           'parity not applicable for this record (builder-projected values are confirmed via ' +
           'the Allegro manual checkpoint)',
+      });
+    }
+
+    // Marketplace-side round-trip (#1482): the live offer read now carries the
+    // parameter values Allegro ACCEPTED. Assert submitted == accepted; on a
+    // stack whose API predates #1482 the field is absent — annotate and fall
+    // back to the manual checkpoint instead of failing.
+    if (offer.parameters !== undefined) {
+      expect(
+        offer.parameters.length,
+        'live Allegro offer carries filled parameters',
+      ).toBeGreaterThan(0);
+      if (submitted.length > 0) {
+        assertMarketplaceParameterRoundTrip('OL↔Allegro', submitted, offer.parameters);
+      }
+      const condition = offer.parameters.find(
+        (p) => p.section === 'offer' && (p.values?.length ?? 0) > 0,
+      );
+      expect(
+        condition,
+        'live offer carries at least one filled offer-section parameter (e.g. condition)',
+      ).toBeTruthy();
+    } else {
+      testInfo.annotations.push({
+        type: 'parameter-parity',
+        description:
+          'running API does not expose MarketplaceOffer.parameters (#1482 not deployed) — ' +
+          'marketplace-side value parity degraded to the Allegro manual checkpoint',
       });
     }
 
