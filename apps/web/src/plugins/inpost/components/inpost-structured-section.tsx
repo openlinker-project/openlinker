@@ -6,6 +6,9 @@
  *
  *   - Environment (sandbox / production) → flat `config.environment`
  *   - Organization id → flat `config.organizationId`
+ *   - OpenLinker public API base URL → flat `config.openlinkerCallbackBaseUrl`
+ *     (the host-generic callback field; used by the webhook runbook to build the
+ *     inbound webhook URL InPost delivers to, #1473)
  *   - Sender address (name?, email, phone, street, building number, city,
  *     postcode, country) → whole-object `config.senderAddress`
  *
@@ -84,6 +87,26 @@ export function InpostStructuredSection({
           placeholder="123456"
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.inpostOrganizationId)}
+        />
+      </FormField>
+
+      <FormField
+        label={t('inpost.settings.apiBaseUrl.label', 'OpenLinker public API base URL (optional)')}
+        name="openlinkerCallbackBaseUrl"
+        error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
+        description={t(
+          'inpost.settings.apiBaseUrl.description',
+          "OpenLinker's public API URL that serves inbound webhooks (POST /webhooks) — this is where InPost delivers tracking events, so it must be the API host, not this admin UI. Leave blank only when the API and this UI share one origin (e.g. behind a single reverse proxy); otherwise set the API's public base URL. Drives the webhook URL shown in the setup runbook below.",
+        )}
+      >
+        <Input
+          value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
+          onChange={(event) =>
+            syncStructuredToJson('openlinkerCallbackBaseUrl', event.target.value)
+          }
+          placeholder="https://api.openlinker.example"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
         />
       </FormField>
 
