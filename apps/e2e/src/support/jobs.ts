@@ -9,6 +9,7 @@
  *
  * @module support
  */
+import { randomUUID } from 'node:crypto';
 import type { ApiClient } from '../api/api-client';
 import type { EnqueueSyncJobInput, SyncJob } from '../api/api.types';
 import { pollUntil } from './poller';
@@ -42,7 +43,12 @@ export class SyncJobs {
 
   /** Enqueue a sync job and return its id. */
   async trigger(input: EnqueueSyncJobInput): Promise<string> {
-    const response = await this.api.syncJobs.enqueue(input);
+    const response = await this.api.syncJobs.enqueue({
+      ...input,
+      payload: input.payload ?? {},
+      idempotencyKey:
+        input.idempotencyKey ?? `e2e:${input.jobType}:${input.connectionId}:${randomUUID()}`,
+    });
     return response.jobId;
   }
 
