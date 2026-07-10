@@ -267,52 +267,62 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // Value-level parameter parity (#8): the persisted creation-request snapshot
     // carries the SUBMITTED section-tagged parameter values (#1071 —
     // `request.overrides.parameters`; `platformParams` holds only policy knobs).
-    // Assert each submitted parameter against the category directory and, where
-    // it mirrors a master variant attribute, against the master value.
-    // Directory presence stays as the secondary assertion.
-    const batch = await api.listings.getBulkBatch(batchId);
-    const record =
-      batch.records.find((r) => r.internalVariantId === state.primaryVariant!.id) ??
-      batch.records[0];
-    expect(record, 'bulk batch exposes a creation record').toBeTruthy();
-    const creation = await api.listings.getOfferCreationRecord(allegro!.id, record.id);
-    const submitted = creation.request?.overrides?.parameters ?? [];
+    // Only available when THIS run created the offer (batchId set); on the reuse
+    // path there is no fresh creation record, so the submitted-side parity is
+    // skipped and the marketplace-side round-trip below carries the load.
+    let submitted: import('../../src/api/api.types').SubmittedOfferParameter[] = [];
+    if (batchId) {
+      const batch = await api.listings.getBulkBatch(batchId);
+      const record =
+        batch.records.find((r) => r.internalVariantId === state.primaryVariant!.id) ??
+        batch.records[0];
+      expect(record, 'bulk batch exposes a creation record').toBeTruthy();
+      const creation = await api.listings.getOfferCreationRecord(allegro!.id, record.id);
+      submitted = creation.request?.overrides?.parameters ?? [];
 
-    if (offer.category?.id) {
-      const directory = await api.listings.categoryParameters(allegro!.id, offer.category.id);
-      expect(directory.length, 'Allegro category exposes parameters').toBeGreaterThan(0);
+      if (offer.category?.id) {
+        const directory = await api.listings.categoryParameters(allegro!.id, offer.category.id);
+        expect(directory.length, 'Allegro category exposes parameters').toBeGreaterThan(0);
 
-      const byId = new Map(directory.map((p) => [p.id, p]));
-      const attributes = (state.primaryVariant!.attributes ?? {}) as Record<string, unknown>;
-      for (const param of submitted) {
-        const dirEntry = byId.get(param.id);
-        expect(
-          dirEntry,
-          `submitted parameter ${param.id} exists in the Allegro category directory`,
-        ).toBeTruthy();
-        if (!dirEntry) continue;
-        expect(param.section, `parameter "${dirEntry.name}" section`).toBe(dirEntry.section);
-        const carriesValue =
-          (param.values?.length ?? 0) > 0 ||
-          (param.valuesIds?.length ?? 0) > 0 ||
-          !!param.rangeValue;
-        expect(carriesValue, `parameter "${dirEntry.name}" carries a submitted value`).toBe(true);
-        const masterValue = attributes[dirEntry.name];
-        if (typeof masterValue === 'string' && (param.values?.length ?? 0) > 0) {
+        const byId = new Map(directory.map((p) => [p.id, p]));
+        const attributes = (state.primaryVariant!.attributes ?? {}) as Record<string, unknown>;
+        for (const param of submitted) {
+          const dirEntry = byId.get(param.id);
           expect(
-            param.values,
-            `parameter "${dirEntry.name}" submitted value matches the master attribute`,
-          ).toContain(masterValue);
+            dirEntry,
+            `submitted parameter ${param.id} exists in the Allegro category directory`,
+          ).toBeTruthy();
+          if (!dirEntry) continue;
+          expect(param.section, `parameter "${dirEntry.name}" section`).toBe(dirEntry.section);
+          const carriesValue =
+            (param.values?.length ?? 0) > 0 ||
+            (param.valuesIds?.length ?? 0) > 0 ||
+            !!param.rangeValue;
+          expect(carriesValue, `parameter "${dirEntry.name}" carries a submitted value`).toBe(true);
+          const masterValue = attributes[dirEntry.name];
+          if (typeof masterValue === 'string' && (param.values?.length ?? 0) > 0) {
+            expect(
+              param.values,
+              `parameter "${dirEntry.name}" submitted value matches the master attribute`,
+            ).toContain(masterValue);
+          }
         }
       }
-    }
-    if (submitted.length === 0) {
+      if (submitted.length === 0) {
+        testInfo.annotations.push({
+          type: 'parameter-parity',
+          description:
+            'creation-request snapshot carries no operator-submitted parameters — value-level ' +
+            'parity not applicable for this record (builder-projected values are confirmed via ' +
+            'the Allegro manual checkpoint)',
+        });
+      }
+    } else {
       testInfo.annotations.push({
-        type: 'parameter-parity',
+        type: 'reuse',
         description:
-          'creation-request snapshot carries no operator-submitted parameters — value-level ' +
-          'parity not applicable for this record (builder-projected values are confirmed via ' +
-          'the Allegro manual checkpoint)',
+          'reused an existing Allegro offer for the driver product (create-if-missing, else ' +
+          'reuse) — submitted-parameter parity skipped; marketplace-side round-trip still runs',
       });
     }
 
@@ -967,9 +977,19 @@ async function createBulkOffers(ctx: {
   connectionId: string;
   connectionName: string;
   platform: KnownPlatformType;
-}): Promise<string> {
+}): Promise<string | null> {
   const { api, pages, poll, connectionId, connectionName, platform } = ctx;
-  const before = (await api.listings.list({ connectionId, limit: 1 })).total;
+
+  // Create-if-missing, else reuse (approved design #1): if the driver product's
+  // primary variant already has an offer mapping on this connection, reuse it
+  // and skip the wizard — this both avoids duplicate offers on a re-run and
+  // sidesteps the fresh-creation category prerequisite. Returns null on reuse
+  // (no creation batch), so the caller skips the creation-snapshot parity.
+  const existing = await api.listings.list({ connectionId, limit: 50 });
+  if (existing.items.some((m) => m.internalId === state.primaryVariant!.id)) {
+    return null;
+  }
+  const before = existing.total;
 
   await pages.productsList.goto();
   await pages.productsList.selectProduct(state.product!.name);
