@@ -51,17 +51,33 @@ export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
   /** Enqueue a sync job and return its id. */
-  async trigger(input: EnqueueSyncJobInput): Promise<string> {
-    const response = await this.api.syncJobs.enqueue({
-      ...input,
-      payload: input.payload ?? {},
-      idempotencyKey:
-        input.idempotencyKey ?? `e2e:${input.jobType}:${input.connectionId}:${randomUUID()}`,
-    });
-    return response.jobId;
+  /** Mint the per-call unique dedup key the enqueue + wait pair share. */
+  private mintKey(input: EnqueueSyncJobInput): string {
+    return `e2e:${input.jobType}:${input.connectionId}:${randomUUID()}`;
   }
 
-  /** Poll a job until it reaches a terminal status (`succeeded` or `dead`). */
+  /**
+   * Enqueue a sync job and return the idempotency key that identifies it. The
+   * API requires a `payload` object and an `idempotencyKey`; both are defaulted
+   * here (empty payload + a per-call unique key).
+   *
+   * NOTE: the enqueue response's `jobId` is the Redis Stream ENTRY id (e.g.
+   * `1783689833780-0`), NOT the `sync_jobs` row UUID — `GET /sync/jobs/:id`
+   * rejects it with 400. The idempotency key is the only client-known handle
+   * that survives intake, so that is what this returns and what the waiters
+   * match on.
+   */
+  async trigger(input: EnqueueSyncJobInput): Promise<string> {
+    const idempotencyKey = input.idempotencyKey ?? this.mintKey(input);
+    await this.api.syncJobs.enqueue({
+      ...input,
+      payload: input.payload ?? {},
+      idempotencyKey,
+    });
+    return idempotencyKey;
+  }
+
+  /** Poll a job by its `sync_jobs` row UUID until it reaches a terminal status. */
   async waitForJob(jobId: string, options: WaitForJobOptions = {}): Promise<SyncJob> {
     return pollUntil(
       () => this.api.syncJobs.getById(jobId),
@@ -75,7 +91,36 @@ export class SyncJobs {
   }
 
   /**
-   * Enqueue a job and wait for it to reach a terminal status.
+   * Poll the jobs list for the row carrying `idempotencyKey` until it reaches a
+   * terminal status. The row only exists after the intake consumer has drained
+   * the stream entry, so "not found yet" is a normal transient state here.
+   */
+  async waitForJobByKey(
+    input: { connectionId: string; jobType: string; idempotencyKey: string },
+    options: WaitForJobOptions = {},
+  ): Promise<SyncJob> {
+    const job = await pollUntil<SyncJob | undefined>(
+      async () => {
+        const page = await this.api.syncJobs.list({
+          connectionId: input.connectionId,
+          jobType: input.jobType,
+          limit: 50,
+        });
+        return page.items.find((j) => j.idempotencyKey === input.idempotencyKey);
+      },
+      (j) => j !== undefined && TERMINAL_STATUSES.has(j.status),
+      {
+        timeoutMs: options.timeoutMs ?? 60_000,
+        intervalMs: options.intervalMs ?? 1_500,
+        message: `sync job ${input.jobType} (${input.idempotencyKey}) to reach a terminal status`,
+      },
+    );
+    return job!;
+  }
+
+  /**
+   * Enqueue a job and wait for it to reach a terminal status (matched by
+   * idempotency key — see `trigger` for why the enqueue-returned id is unusable).
    *
    * A `succeeded` status alone is not a pass: the job may carry
    * `outcome: 'business_failure'` (status tracks orchestration, outcome tracks
@@ -86,13 +131,17 @@ export class SyncJobs {
     input: EnqueueSyncJobInput,
     options: TriggerAndWaitOptions = {},
   ): Promise<SyncJob> {
-    const jobId = await this.trigger(input);
-    const job = await this.waitForJob(jobId, options);
+    const idempotencyKey = input.idempotencyKey ?? this.mintKey(input);
+    await this.trigger({ ...input, idempotencyKey });
+    const job = await this.waitForJobByKey(
+      { connectionId: input.connectionId, jobType: input.jobType, idempotencyKey },
+      options,
+    );
     if (options.expectSuccess !== false) {
       const failed = job.status !== 'succeeded' || job.outcome === 'business_failure';
       if (failed) {
         throw new Error(
-          `sync job ${jobId} (${input.jobType}) finished with status=${job.status} ` +
+          `sync job ${job.id} (${input.jobType}) finished with status=${job.status} ` +
             `outcome=${job.outcome ?? 'null'}${job.lastError ? `: ${job.lastError}` : ''}`,
         );
       }

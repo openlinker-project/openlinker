@@ -41,8 +41,15 @@ export interface World {
   connectionsWithCapability(capability: string): Connection[];
   /** Fetch a page of master products (first `limit`). */
   listProducts(limit?: number): Promise<Product[]>;
-  /** Find the first product with at least `minVariants` variants. */
-  findMultiVariantProduct(minVariants?: number): Promise<Product | undefined>;
+  /**
+   * Find the first product with at least `minVariants` variants. With
+   * `requireEans` every variant must carry an EAN/GTIN (the golden path's
+   * offer mapping and order resolution key on barcodes).
+   */
+  findMultiVariantProduct(
+    minVariants?: number,
+    opts?: { requireEans?: boolean },
+  ): Promise<Product | undefined>;
   /** Resolve a product's variants. */
   variantsOf(productId: string): Promise<ProductVariant[]>;
 }
@@ -90,13 +97,17 @@ export async function buildWorld(api: ApiClient): Promise<World> {
 
   const findMultiVariantProduct = async (
     minVariants = 2,
+    opts: { requireEans?: boolean } = {},
   ): Promise<Product | undefined> => {
     const products = await listProducts(50);
     for (const summary of products) {
       const variants = await variantsOf(summary.id);
-      if (variants.length >= minVariants) {
-        return { ...summary, variants };
-      }
+      if (variants.length < minVariants) continue;
+      // The golden path maps offers and resolves orders BY EAN — a
+      // multi-variant product whose variants lack barcodes (e.g. the demo
+      // "Resin Ring") would pass S0 and then strand every later segment.
+      if (opts.requireEans && !variants.every((v) => !!(v.ean ?? v.gtin))) continue;
+      return { ...summary, variants };
     }
     return undefined;
   };

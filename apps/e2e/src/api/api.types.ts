@@ -167,8 +167,23 @@ export interface SyncJob {
   attempts: number;
   maxAttempts: number;
   lastError: string | null;
+  idempotencyKey: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SyncJobListQuery {
+  connectionId?: string;
+  jobType?: string;
+  status?: SyncJobStatus;
+  limit?: number;
+}
+
+export interface SyncJobListResponse {
+  items: SyncJob[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface EnqueueSyncJobInput {
