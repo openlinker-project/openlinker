@@ -100,10 +100,12 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
   // "reuse this app's credentials" pick list. Filtered client-side (not just
   // trusted from the `platformType` query param) so a mocked/misbehaving
   // response never renders a non-Allegro connection as a reuse target.
-  const allegroConnectionsQuery = useConnectionsQuery({
-    platformType: 'allegro',
-    status: 'active',
-  });
+  // Gated on `showRotate` (#1405 review) so the query doesn't fire on every
+  // page render — only when the operator actually opens "Rotate API key".
+  const allegroConnectionsQuery = useConnectionsQuery(
+    { platformType: 'allegro', status: 'active' },
+    { enabled: showRotate }
+  );
 
   if (!connection.credentialsBacked) {
     return (
@@ -117,6 +119,11 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
     (c) => c.platformType === 'allegro' && c.status === 'active'
   );
   const hasAllegroConnections = allegroConnections.length > 0;
+  // The query is gated on `showRotate` (#1405 review), so the first render
+  // after opening the panel is a loading gap — don't render the "no Allegro
+  // connection" empty state during that gap, it would misleadingly suggest
+  // there's nothing to reuse before the fetch has even resolved.
+  const isLoadingAllegroConnections = showRotate && allegroConnectionsQuery.isLoading;
   // Zero Allegro connections collapses the choice to manual entry regardless
   // of the radio's own state — there's nothing to reuse.
   const effectiveCredSource: AllegroCredentialSource = hasAllegroConnections
@@ -279,7 +286,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
         description="Stored securely on the server. Rotate to replace the key without restarting the API."
       >
         {showRotate ? (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <div className="erli-credentials-panel__input-row">
             <Input
               type="password"
               autoComplete="off"
@@ -302,7 +309,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
        * category-browsing access shouldn't have to open (or fill in) the key
        * rotation flow to reach this. */}
       <div>
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+        <label className="erli-credentials-panel__option-label">
           <input
             type="checkbox"
             checked={allegroEnabled}
@@ -310,7 +317,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
           />
           <span>
             <strong>Browse Allegro categories when creating Erli offers</strong>
-            <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+            <small className="erli-credentials-panel__hint">
               Turn this on to pick categories and fill required parameters from a list, the same
               way you do for Allegro. Leave it off and you&apos;ll enter category IDs by hand.
             </small>
@@ -319,9 +326,11 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
 
         {allegroEnabled ? (
           <div className="form-grid">
-            {hasAllegroConnections ? (
+            {isLoadingAllegroConnections ? (
+              <Alert tone="info">Checking for existing Allegro connections...</Alert>
+            ) : hasAllegroConnections ? (
               <div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                <label className="erli-credentials-panel__option-label">
                   <input
                     type="radio"
                     name="erli-allegro-cred-source"
@@ -330,14 +339,14 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                   />
                   <span>
                     <strong>Reuse credentials from an existing Allegro connection</strong>
-                    <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                    <small className="erli-credentials-panel__hint">
                       Recommended - uses the same app credentials already configured on that
                       connection. Nothing new to register.
                     </small>
                   </span>
                 </label>
                 {effectiveCredSource === 'reuse' ? (
-                  <div style={{ marginLeft: 'calc(0.875rem + var(--space-2))' }}>
+                  <div className="erli-credentials-panel__indent">
                     <Select
                       aria-label="Allegro connection to reuse"
                       value={selectedAllegroConnectionId}
@@ -350,18 +359,18 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                         </option>
                       ))}
                     </Select>
-                    <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                    <small className="erli-credentials-panel__hint">
                       Only read access to the public category catalog is used - this
                       connection&apos;s seller credentials are never touched.
                     </small>
                     {selectedAllegroConnection ? (
-                      <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                      <small className="erli-credentials-panel__hint">
                         Will use that connection&apos;s environment: <strong>{reuseEnvironment}</strong>.
                       </small>
                     ) : null}
                   </div>
                 ) : null}
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                <label className="erli-credentials-panel__option-label">
                   <input
                     type="radio"
                     name="erli-allegro-cred-source"
@@ -370,7 +379,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                   />
                   <span>
                     <strong>Enter Allegro app credentials manually</strong>
-                    <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                    <small className="erli-credentials-panel__hint">
                       Use a different Allegro app - e.g. one dedicated just for category browsing.
                     </small>
                   </span>
@@ -396,7 +405,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                     <option value="production">Production</option>
                     <option value="sandbox">Sandbox</option>
                   </Select>
-                  <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                  <small className="erli-credentials-panel__hint">
                     Sandbox and production Allegro apps are registered separately - pick the one
                     this Client ID/Secret belongs to, or category requests will fail
                     authentication.
@@ -409,14 +418,14 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                     value={allegroClientId}
                     onChange={(event) => setAllegroClientId(event.target.value)}
                   />
-                  <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                  <small className="erli-credentials-panel__hint">
                     From an Allegro app you register at apps.developer.allegro.pl. Used only to
                     read the public category catalog - never to sign in as a seller or place
                     offers.
                   </small>
                 </div>
                 <div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <div className="erli-credentials-panel__input-row">
                     <Input
                       type={showSecret ? 'text' : 'password'}
                       autoComplete="off"
@@ -433,7 +442,7 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
                       {showSecret ? 'Hide' : 'Show'}
                     </Button>
                   </div>
-                  <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+                  <small className="erli-credentials-panel__hint">
                     Stored encrypted. You won&apos;t see it again after saving.
                   </small>
                 </div>

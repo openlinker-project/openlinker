@@ -212,6 +212,36 @@ describe('AppShell', () => {
     expect(promptTemplates.closest('a')).toHaveAttribute('href', '/ai/prompt-templates');
   });
 
+  it('shows the demo banner for a viewer session in demo mode (#1468)', async () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: [],
+    });
+    const demoApiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient, sessionAdapter: viewerAdapter });
+
+    expect(await screen.findByRole('note', { name: 'Demo mode notice' })).toBeInTheDocument();
+  });
+
+  it('hides the demo banner for an admin session in demo mode (#1468)', async () => {
+    const demoApiClient = createMockApiClient({
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+    renderShell({ pathname: '/', apiClient: demoApiClient });
+
+    // Wait for the demo-mode config to resolve (same signal the sibling
+    // nav-lock tests use) before asserting the banner's absence. Scoped to
+    // the primary nav — desktop + mobile drawer both render the label.
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    await within(primary).findByText('Prompt templates');
+    expect(screen.queryByRole('note', { name: 'Demo mode notice' })).toBeNull();
+  });
+
   it('uses "Connections" as the nav label (not "Integrations")', () => {
     renderShell({ pathname: '/' });
     const primary = screen.getByRole('navigation', { name: 'Primary' });

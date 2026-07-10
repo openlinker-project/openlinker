@@ -5,7 +5,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 
 export function useConnectionsQuery(
   filters?: ConnectionFilters,
-  options?: { refetchInterval?: number | false },
+  options?: { refetchInterval?: number | false; enabled?: boolean },
 ): UseQueryResult<Connection[]> {
   const apiClient = useApiClient();
 

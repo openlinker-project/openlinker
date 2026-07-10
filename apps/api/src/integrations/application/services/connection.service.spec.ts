@@ -288,6 +288,51 @@ describe('ConnectionService', () => {
       );
     });
 
+    it('should run the registered rewriter on the create path before persisting credentials (#1405 review)', async () => {
+      connectionPort.create.mockResolvedValue(mockConnection);
+      const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+        rewrite: jest
+          .fn()
+          .mockResolvedValue({ webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' }),
+      };
+      credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+      await service.create({
+        name: 'Wizard Connection',
+        platformType: 'prestashop',
+        config: { baseUrl: 'https://new.com' },
+        credentials: { webserviceApiKey: 'RAW' },
+      });
+
+      expect(stubRewriter.rewrite).toHaveBeenCalledWith({ webserviceApiKey: 'RAW' });
+      expect(credentials.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentialsJson: { webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' },
+        })
+      );
+    });
+
+    it('should map a ConnectionCredentialsRewriteException from the rewriter to BadRequestException on create (#1405 review)', async () => {
+      const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+        rewrite: jest
+          .fn()
+          .mockRejectedValue(
+            new ConnectionCredentialsRewriteException('Stub', 'source connection is invalid')
+          ),
+      };
+      credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+      await expect(
+        service.create({
+          name: 'Wizard Connection',
+          platformType: 'prestashop',
+          config: { baseUrl: 'https://new.com' },
+          credentials: { webserviceApiKey: 'RAW' },
+        })
+      ).rejects.toThrow(BadRequestException);
+      expect(credentials.create).not.toHaveBeenCalled();
+    });
+
     it('should reject PrestaShop credentials missing webserviceApiKey', async () => {
       await expect(
         service.create({

@@ -248,12 +248,13 @@ export class ConnectionService implements IConnectionService {
       let resolvedCredentialsRef = credentialsRef;
       let createdCredentialRef: string | null = null;
       if (credentials) {
-        await this.validateCredentialsShape(metadata.adapterKey, credentials);
+        const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
+        await this.validateCredentialsShape(metadata.adapterKey, resolvedCredentials);
         const ref = randomUUID();
         await this.credentials.create({
           ref,
           platformType: rest.platformType,
-          credentialsJson: credentials,
+          credentialsJson: resolvedCredentials,
         });
         createdCredentialRef = ref;
         resolvedCredentialsRef = `db:${ref}`;
