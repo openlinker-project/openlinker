@@ -9,6 +9,7 @@
  *
  * @module support
  */
+import { randomUUID } from 'node:crypto';
 import type { ApiClient } from '../api/api-client';
 import type { EnqueueSyncJobInput, SyncJob } from '../api/api.types';
 import { pollUntil } from './poller';
@@ -25,6 +26,7 @@ export const JobType = {
   marketplaceOffersSync: 'marketplace.offers.sync',
   marketplaceOrdersPoll: 'marketplace.orders.poll',
   inventoryPropagateToMarketplaces: 'inventory.propagateToMarketplaces',
+  invoicingIssue: 'invoicing.issue',
   invoicingRegulatoryStatusReconcile: 'invoicing.regulatoryStatus.reconcile',
 } as const;
 
@@ -40,9 +42,18 @@ export interface WaitForJobOptions {
 export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
-  /** Enqueue a sync job and return its id. */
+  /**
+   * Enqueue a sync job and return its id. The API requires a `payload` object and
+   * a `idempotencyKey`; both are defaulted here (empty payload + a per-call unique
+   * key) so callers only supply them when they need specific values.
+   */
   async trigger(input: EnqueueSyncJobInput): Promise<string> {
-    const response = await this.api.syncJobs.enqueue(input);
+    const response = await this.api.syncJobs.enqueue({
+      ...input,
+      payload: input.payload ?? {},
+      idempotencyKey:
+        input.idempotencyKey ?? `e2e:${input.jobType}:${input.connectionId}:${randomUUID()}`,
+    });
     return response.jobId;
   }
 
@@ -86,5 +97,15 @@ export class SyncJobs {
   /** Propagate OL master inventory out to a marketplace's offers. */
   propagateInventory(connectionId: string): Promise<string> {
     return this.trigger({ connectionId, jobType: JobType.inventoryPropagateToMarketplaces });
+  }
+
+  /** Refresh OL master inventory from a shop's stock. */
+  syncAllInventory(connectionId: string): Promise<string> {
+    return this.trigger({ connectionId, jobType: JobType.masterInventorySyncAll });
+  }
+
+  /** Reconcile a provider's regulatory (e.g. KSeF) clearance status into OL. */
+  reconcileRegulatoryStatus(connectionId: string): Promise<string> {
+    return this.trigger({ connectionId, jobType: JobType.invoicingRegulatoryStatusReconcile });
   }
 }

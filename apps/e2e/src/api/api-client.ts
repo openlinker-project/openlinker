@@ -15,26 +15,34 @@
  */
 import { ApiError } from './api-error';
 import type {
+  CategoryParameter,
+  CategoryParametersResponse,
   Connection,
   ConnectionFilters,
+  DispatchResult,
   EnqueueSyncJobInput,
   EnqueueSyncJobResponse,
+  GenerateLabelInput,
   InternalHealthResponse,
   InventoryAvailability,
   InventoryAvailabilityResponse,
   InvoiceRecord,
+  IssuedDocumentContent,
   ListInvoicesQuery,
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
   LoginResponse,
+  MarketplaceOffer,
   OfferMapping,
   OrderRecord,
   Paginated,
   Product,
   ProductVariant,
+  RawResponse,
   RoutingRule,
   RoutingRuleInput,
+  Shipment,
   SyncJob,
 } from './api.types';
 
@@ -141,6 +149,36 @@ export class ApiClient {
     }
   }
 
+  /**
+   * Fetch a binary endpoint (label PDF, UPO/XML) and report metadata only. The
+   * body is drained but not returned — the E2E assertions care that bytes exist
+   * and the content-type is right, not the document contents.
+   */
+  private async requestRaw(path: string): Promise<RawResponse> {
+    const headers = new Headers();
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const buffer = await response.arrayBuffer();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: buffer.byteLength,
+    };
+  }
+
   // ── Health ──────────────────────────────────────────────────────────────
   health = {
     liveness: (): Promise<InternalHealthResponse> =>
@@ -193,6 +231,14 @@ export class ApiClient {
       ),
     getById: (id: string): Promise<OfferMapping> =>
       this.request<OfferMapping>(`/listings/${id}`),
+    /** Adapter-fetched live offer (category id + price + qty + status). */
+    getOffer: (id: string): Promise<MarketplaceOffer> =>
+      this.request<MarketplaceOffer>(`/listings/${id}/offer`),
+    /** Category parameter directory (offer- + product-section) for a connection. */
+    categoryParameters: (connectionId: string, categoryId: string): Promise<CategoryParameter[]> =>
+      this.request<CategoryParametersResponse>(
+        `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      ).then((response) => response.items),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────
@@ -228,6 +274,33 @@ export class ApiClient {
       this.request<InvoiceRecord>(
         `/orders/${orderId}/invoice${buildQuery({ connectionId })}`,
       ),
+    /** Amount/tax surface of an issued document (per-line net/VAT/gross, totals, buyer tax id). */
+    getContent: (invoiceId: string): Promise<IssuedDocumentContent> =>
+      this.request<IssuedDocumentContent>(`/invoices/${invoiceId}/content`),
+    /** UPO / clearance confirmation document — bytes-only check. */
+    getUpo: (invoiceId: string): Promise<RawResponse> =>
+      this.requestRaw(`/invoices/${invoiceId}/upo`),
+    /** Source FA(3) XML document — bytes-only check. */
+    getSourceDocument: (invoiceId: string): Promise<RawResponse> =>
+      this.requestRaw(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+  };
+
+  // ── Shipments ───────────────────────────────────────────────────────────
+  shipments = {
+    active: (orderId: string): Promise<Shipment | null> =>
+      this.request<Shipment | null>(`/shipments/active${buildQuery({ orderId })}`),
+    getById: (id: string): Promise<Shipment> => this.request<Shipment>(`/shipments/${id}`),
+    /** Retrieve the generated label bytes (PDF/ZPL/PNG). */
+    getLabel: (id: string): Promise<RawResponse> => this.requestRaw(`/shipments/${id}/label`),
+    /** Generate a carrier label for an order (mutating — attended run only). */
+    generateLabel: (input: GenerateLabelInput): Promise<DispatchResult> =>
+      this.request<DispatchResult>('/shipments/generate-label', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Mark a shipment dispatched (mutating — attended run only). */
+    notifyDispatched: (id: string): Promise<Shipment> =>
+      this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
   };
 
   // ── Sync jobs ───────────────────────────────────────────────────────────

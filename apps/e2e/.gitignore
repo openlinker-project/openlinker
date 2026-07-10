@@ -4,6 +4,9 @@
 # Playwright browser auth state captured by global setup
 .auth/
 
+# Manual-checkpoint resume/fail sentinels (attended runs)
+.e2e/
+
 # Playwright artifacts
 playwright-report/
 test-results/

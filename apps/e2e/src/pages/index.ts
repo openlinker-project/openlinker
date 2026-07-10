@@ -19,6 +19,8 @@ import { BulkOfferWizard } from './bulk-offer-wizard.page';
 import { BulkBatchProgressPage } from './bulk-batch-progress.page';
 import { TriggerSyncDialog } from './trigger-sync-dialog.page';
 import { OrdersListPage, OrderDetailPage } from './orders.page';
+import { PrestashopAdminPage } from './prestashop-admin.page';
+import { WooCommerceAdminPage } from './woocommerce-admin.page';
 
 export interface PageObjects {
   login: LoginPage;
@@ -34,6 +36,8 @@ export interface PageObjects {
   triggerSync: TriggerSyncDialog;
   ordersList: OrdersListPage;
   orderDetail: OrderDetailPage;
+  prestashopAdmin: PrestashopAdminPage;
+  woocommerceAdmin: WooCommerceAdminPage;
 }
 
 export function createPageObjects(page: Page): PageObjects {
@@ -51,6 +55,8 @@ export function createPageObjects(page: Page): PageObjects {
     triggerSync: new TriggerSyncDialog(page),
     ordersList: new OrdersListPage(page),
     orderDetail: new OrderDetailPage(page),
+    prestashopAdmin: new PrestashopAdminPage(page),
+    woocommerceAdmin: new WooCommerceAdminPage(page),
   };
 }
 
@@ -67,3 +73,5 @@ export * from './trigger-sync-dialog.page';
 export * from './orders.page';
 export * from './shipment-panel.page';
 export * from './invoice-panel.page';
+export * from './prestashop-admin.page';
+export * from './woocommerce-admin.page';

@@ -24,6 +24,26 @@ export interface E2eEnv {
   adminPass: string;
   /** Optional pinned order id for post-purchase segments (follow-up). */
   orderId: string | null;
+  /** Directory holding the `resume` sentinel the manual checkpoints wait on. */
+  resumeDir: string;
+  /** PrestaShop webservice API key (secret — never exposed by the OL API). */
+  psWebserviceKey: string | null;
+  /**
+   * Optional override for the PrestaShop admin base URL. When unset the spec
+   * derives it from the connection's `config.baseUrl` (the tunnel), because
+   * `ps_shop_url.domain` is the tunnel and `localhost:8080` 301-redirects.
+   */
+  psAdminUrl: string | null;
+  /** PrestaShop back-office login. */
+  psAdminUser: string;
+  psAdminPass: string;
+  /** WooCommerce REST consumer key/secret (secret — never exposed by the OL API). */
+  wcConsumerKey: string | null;
+  wcConsumerSecret: string | null;
+  /** WooCommerce wp-admin base URL + login. */
+  wcAdminUrl: string;
+  wcAdminUser: string;
+  wcAdminPass: string;
 }
 
 const DEFAULTS = {
@@ -31,7 +51,18 @@ const DEFAULTS = {
   apiUrl: 'http://localhost:3000',
   adminUser: 'admin',
   adminPass: 'admin',
+  resumeDir: '.e2e',
+  psAdminUser: 'demo@prestashop.com',
+  psAdminPass: 'prestashop_demo',
+  wcAdminUrl: 'http://localhost:8082/wp-admin',
+  wcAdminUser: 'admin',
+  wcAdminPass: 'admin123',
 } as const;
+
+function optional(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
 
 let dotenvLoaded = false;
 
@@ -86,5 +117,17 @@ export function resolveEnv(): E2eEnv {
     adminUser: process.env.OL_ADMIN_USER?.trim() || DEFAULTS.adminUser,
     adminPass: process.env.OL_ADMIN_PASS?.trim() || DEFAULTS.adminPass,
     orderId: orderId && orderId.length > 0 ? orderId : null,
+    resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
+    psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),
+    psAdminUrl: optional(process.env.OL_PS_ADMIN_URL)
+      ? stripTrailingSlash(process.env.OL_PS_ADMIN_URL!.trim())
+      : null,
+    psAdminUser: process.env.OL_PS_ADMIN_USER?.trim() || DEFAULTS.psAdminUser,
+    psAdminPass: process.env.OL_PS_ADMIN_PASS?.trim() || DEFAULTS.psAdminPass,
+    wcConsumerKey: optional(process.env.OL_WC_CONSUMER_KEY),
+    wcConsumerSecret: optional(process.env.OL_WC_CONSUMER_SECRET),
+    wcAdminUrl: stripTrailingSlash(process.env.OL_WC_ADMIN_URL?.trim() || DEFAULTS.wcAdminUrl),
+    wcAdminUser: process.env.OL_WC_ADMIN_USER?.trim() || DEFAULTS.wcAdminUser,
+    wcAdminPass: process.env.OL_WC_ADMIN_PASS?.trim() || DEFAULTS.wcAdminPass,
   };
 }

@@ -156,6 +156,147 @@ export interface InvoiceRecord {
   updatedAt: string;
 }
 
+export interface MarketplaceOfferPrice {
+  amount: string;
+  currency: string;
+}
+
+export interface MarketplaceOfferCategory {
+  id: string;
+  name?: string;
+}
+
+/** Adapter-fetched live offer (GET /listings/:id/offer). */
+export interface MarketplaceOffer {
+  externalId: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  price: MarketplaceOfferPrice;
+  availableQuantity: number;
+  status: string;
+  category?: MarketplaceOfferCategory;
+  marketplaceUrl?: string;
+  endsAt?: string;
+}
+
+export type CategoryParameterSection = 'offer' | 'product';
+
+/** A single category parameter definition (GET .../categories/:id/parameters). */
+export interface CategoryParameter {
+  id: string;
+  name: string;
+  type: string;
+  required: boolean;
+  unit?: string;
+  section: CategoryParameterSection;
+}
+
+export interface CategoryParametersResponse {
+  items: CategoryParameter[];
+}
+
+export interface InvoiceTaxId {
+  scheme: string;
+  value: string;
+}
+
+export interface InvoiceParty {
+  name: string;
+  taxId: InvoiceTaxId | null;
+  address?: Record<string, unknown>;
+}
+
+export interface InvoiceContentLine {
+  name: string;
+  quantity: number;
+  unitNet: string;
+  taxRate: string;
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+export interface InvoiceTaxBreakdown {
+  rate: string;
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+export interface InvoiceContentTotals {
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+/** Amount/tax surface of an issued document (GET /invoices/:id/content). */
+export interface IssuedDocumentContent {
+  seller: InvoiceParty | null;
+  buyer: InvoiceParty;
+  lines: InvoiceContentLine[];
+  taxBreakdown: InvoiceTaxBreakdown[];
+  totals: InvoiceContentTotals;
+  currency: string;
+  issueDate: string | null;
+  saleDate: string | null;
+  payment?: { method: string; paidAt: string | null } | null;
+}
+
+export type ShipmentStatus =
+  | 'draft'
+  | 'generated'
+  | 'dispatched'
+  | 'in-transit'
+  | 'delivered'
+  | 'failed'
+  | 'cancelled';
+
+export interface Shipment {
+  id: string;
+  orderId: string;
+  connectionId: string;
+  shippingMethod: string;
+  status: ShipmentStatus;
+  providerShipmentId: string | null;
+  paczkomatId: string | null;
+  sourceDeliveryMethodId: string | null;
+  trackingNumber: string | null;
+  carrier: string | null;
+  labelPdfRef: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  failedAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateLabelInput {
+  sourceConnectionId: string;
+  sourceDeliveryMethodId?: string;
+  orderId: string;
+  deliveryIntent?: 'pickup_point' | 'address';
+  paczkomatId?: string;
+  recipient?: Record<string, unknown>;
+  parcel?: Record<string, unknown>;
+  cod?: { amount: string; currency: string };
+}
+
+export interface DispatchResult {
+  kind: 'dispatched' | 'omp_fulfilled';
+  shipment?: Shipment;
+}
+
+/** A raw (binary) response — used for label PDF / UPO retrieval. */
+export interface RawResponse {
+  status: number;
+  ok: boolean;
+  contentType: string | null;
+  byteLength: number;
+}
+
 export type SyncJobStatus = 'queued' | 'running' | 'succeeded' | 'dead';
 
 export interface SyncJob {
