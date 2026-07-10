@@ -47,6 +47,8 @@ import type {
   RoutingRuleInput,
   Shipment,
   SyncJob,
+  SyncJobListQuery,
+  SyncJobListResponse,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -373,6 +375,15 @@ export class ApiClient {
         body: JSON.stringify(input),
       }),
     getById: (id: string): Promise<SyncJob> => this.request<SyncJob>(`/sync/jobs/${id}`),
+    list: (query: SyncJobListQuery = {}): Promise<SyncJobListResponse> => {
+      const params = new URLSearchParams();
+      if (query.connectionId) params.set('connectionId', query.connectionId);
+      if (query.jobType) params.set('jobType', query.jobType);
+      if (query.status) params.set('status', query.status);
+      if (query.limit !== undefined) params.set('limit', String(query.limit));
+      const qs = params.toString();
+      return this.request<SyncJobListResponse>(`/sync/jobs${qs ? `?${qs}` : ''}`);
+    },
   };
 
   // ── Routing rules ───────────────────────────────────────────────────────
