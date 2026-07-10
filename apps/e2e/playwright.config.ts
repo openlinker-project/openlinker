@@ -71,6 +71,10 @@ export default defineConfig({
       name: 'full-flow',
       testMatch: /golden-path\/full-flow\.spec\.ts/,
       retries: 0,
+      // The attended flow waits on worker jobs (up to 300 s), manual dashboard
+      // checkpoints and the purchase pause (up to 30 min) — the global 90 s
+      // per-test timeout would kill S0 before the first sync completes.
+      timeout: 40 * 60_000,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
