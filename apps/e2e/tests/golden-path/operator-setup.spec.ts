@@ -63,6 +63,7 @@ test.describe('operator setup (S1-S4)', () => {
     api,
     world,
     pages,
+    poll,
   }) => {
     const woocommerce = world.connectionsWithCapability('ProductPublisher')[0];
     test.skip(!woocommerce, 'no ProductPublisher (shop) connection on this stack');
@@ -74,21 +75,25 @@ test.describe('operator setup (S1-S4)', () => {
     const dialog = await pages.listingsList.openPublishToShop();
     await dialog.chooseConnection(woocommerce!.name);
 
-    // Select the first product and drive the wizard to publish.
+    // Select the first product's variant (row-scoped) and drive the wizard to publish.
     const firstProduct = (await api.products.list({ limit: 1 })).items[0];
     expect(firstProduct, 'a product must exist to publish (run S1 first)').toBeTruthy();
-    await dialog.productSearchField.fill(firstProduct.name);
-    await dialog.dialog.getByRole('checkbox').first().check();
+    await dialog.selectFirstVariantOf(firstProduct.name);
     await dialog.continueWithSelectionButton.click();
     if (await dialog.reviewButton.count()) {
       await dialog.reviewButton.click();
     }
     await dialog.confirmPublishButton.click();
 
-    // OL records the publish as a new listing/mapping for the shop connection.
+    // OL records the publish as a new listing/mapping for the shop connection —
+    // the count must strictly grow past the pre-publish baseline.
     const after = await test.step('poll OL listings for the new shop mapping', async () =>
-      api.listings.list({ connectionId: woocommerce!.id, limit: 1 }));
-    expect(after.total).toBeGreaterThanOrEqual(beforeCount);
+      poll.until(
+        () => api.listings.list({ connectionId: woocommerce!.id, limit: 1 }),
+        (page) => page.total > beforeCount,
+        { message: 'a new WooCommerce listing mapping to appear', timeoutMs: 120_000 },
+      ));
+    expect(after.total).toBeGreaterThan(beforeCount);
   });
 
   test('S3 — Allegro bulk offer wizard creates and maps variant offers', async ({
@@ -136,16 +141,12 @@ async function runBulkOfferSegment(ctx: {
 
   await pages.productsList.goto();
   await pages.productsList.selectProduct(product!.name);
-  const wizard = await pages.productsList.startBulkOfferCreation();
+  const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
 
-  // Advance Config → Resolving → Review until the confirm modal is reachable.
-  for (let step = 0; step < 3; step += 1) {
-    if (await wizard.confirmModalConfirmButton.count()) break;
-    if (await wizard.nextButton.count()) {
-      await wizard.nextButton.first().click();
-    }
-  }
+  // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
+  // failing fast if any review row needs attention.
+  await wizard.advanceToConfirmModal();
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 

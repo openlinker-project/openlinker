@@ -7,8 +7,10 @@
  *   - `golden-path`  — the S1-S4 operator-setup flow; serial (`workers: 1`) so
  *                      the mutating steps don't interleave.
  *
- * Reporters: html + list. `retries: 1`, trace on-first-retry, and
- * video/screenshot retained on failure per the issue's requirements.
+ * Reporters: html + list. Retries are per-project: read-only projects (setup,
+ * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
+ * a silent retry would double-mutate the stack (publish twice, create offers
+ * twice). Trace/video/screenshot retained on failure.
  *
  * @module playwright.config
  */
@@ -24,14 +26,14 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: 1,
+  retries: 0,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   timeout: 90_000,
   expect: { timeout: 15_000 },
   use: {
     baseURL: env.webUrl,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
     actionTimeout: 15_000,
@@ -41,17 +43,21 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /.*\.setup\.ts/,
+      retries: 1,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'smoke',
       testMatch: /smoke\/.*\.spec\.ts/,
+      retries: 1,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Mutating project — never retried (a retry would double-mutate).
       name: 'golden-path',
       testMatch: /golden-path\/.*\.spec\.ts/,
+      retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
