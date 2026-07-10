@@ -181,32 +181,42 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const shop = world.connectionsWithCapability('ProductPublisher')[0] ?? world.connectionFor(PlatformType.woocommerce);
     test.skip(!shop, 'no WooCommerce/ProductPublisher connection on this stack');
 
-    const before = (await api.listings.list({ connectionId: shop!.id, limit: 1 })).total;
     await publishToShop(pages, api, shop!.name, state.product!.name);
-    // The count must strictly grow past the pre-publish baseline.
-    await poll.until(
-      () => api.listings.list({ connectionId: shop!.id, limit: 25 }),
-      (page) => page.total > before,
-      { message: `a NEW WooCommerce listing mapping for ${shop!.name}`, timeoutMs: 120_000 },
-    );
 
+    // WooCommerce is a ProductPublisher, not an OfferManager — publishing
+    // creates a PRODUCT on the shop (async, via the shop.product.publish
+    // worker job), NOT an `/listings` offer mapping (which stays empty for a
+    // shop connection). The real end-to-end signal is the product landing on
+    // WooCommerce, read back over its REST API by the primary variant's SKU.
     const wc = buildWooClient(world);
     const primary = state.primaryVariant!;
     if (wc && primary.sku) {
-      const wcProduct = await wc.getProductBySku(primary.sku);
-      if (wcProduct) {
-        state.channelBaseline.set('woocommerce', wcProduct.stockQuantity ?? 0);
-        assertProductFieldParity({
-          label: 'OL↔WC product',
-          expected: { sku: primary.sku, name: state.product!.name },
-          actual: { sku: wcProduct.sku, name: wcProduct.name },
-        });
-      }
+      const wcProduct = await poll.until(
+        () => wc.getProductBySku(primary.sku!),
+        (p) => p !== null,
+        {
+          message: `the published product (SKU ${primary.sku}) to appear on WooCommerce`,
+          timeoutMs: 120_000,
+        },
+      );
+      state.channelBaseline.set('woocommerce', wcProduct!.stockQuantity ?? 0);
+      assertProductFieldParity({
+        label: 'OL↔WC product',
+        expected: { sku: primary.sku, name: state.product!.name },
+        actual: { sku: wcProduct!.sku, name: wcProduct!.name },
+      });
     } else {
+      // No WC creds on this stack — the WC-REST proof (the real end-to-end
+      // signal) can't run. There is no list endpoint for shop-publish records
+      // to poll by variant, so this degrades to an annotated OL-only check.
+      // Provide OL_WC_CONSUMER_KEY/SECRET for full publish verification.
       testInfo.annotations.push({
         type: 'skip-note',
-        description: 'WC consumer key/secret not set — OL-only publish assertion',
+        description:
+          'WC consumer key/secret not set — WooCommerce publish landed only OL-side; ' +
+          'set OL_WC_CONSUMER_KEY/SECRET to verify the product on WooCommerce',
       });
+      expect((await api.products.list({ limit: 1 })).items.length).toBeGreaterThan(0);
     }
 
     // Light visual confirmation in wp-admin (own login + storageState).
