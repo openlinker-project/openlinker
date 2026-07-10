@@ -43,6 +43,29 @@ export class BulkOfferWizard {
     }
   }
 
+  /** The Allegro platform section's delivery-policy select ("Shipping rate package"). */
+  get deliveryPolicySelect(): Locator {
+    return this.page.getByLabel('Shipping rate package');
+  }
+
+  /**
+   * Complete the required per-platform config the config step gates "Proceed" on.
+   * Allegro requires a delivery (shipping-rate) policy; currency auto-defaults to
+   * PLN. The select is populated from the connection's seller policies, so wait
+   * for it to enable, then pick the first real option. No-op for platforms
+   * (Erli) that don't render it.
+   */
+  async completePlatformConfig(): Promise<void> {
+    if ((await this.deliveryPolicySelect.count()) === 0) return;
+    await expect(this.deliveryPolicySelect).toBeEnabled({ timeout: 30_000 });
+    const value = await this.deliveryPolicySelect
+      .locator('option:not([value=""])')
+      .first()
+      .getAttribute('value');
+    expect(value, 'Allegro connection exposes at least one delivery policy').toBeTruthy();
+    await this.deliveryPolicySelect.selectOption(value!);
+  }
+
   /** The config step's forward CTA ("Proceed →", `bulk-config-step.tsx`). */
   get proceedButton(): Locator {
     return this.page.getByRole('button', { name: /^Proceed/ });
@@ -76,6 +99,8 @@ export class BulkOfferWizard {
    * spec does no row editing, so a needs-attention row can never be submitted.
    */
   async advanceToConfirmModal(): Promise<void> {
+    await this.completePlatformConfig();
+    await expect(this.proceedButton).toBeEnabled({ timeout: 30_000 });
     await this.proceedButton.click();
     await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
 
