@@ -39,6 +39,15 @@ export interface WaitForJobOptions {
   intervalMs?: number;
 }
 
+export interface TriggerAndWaitOptions extends WaitForJobOptions {
+  /**
+   * When true (default), throw if the job dies or succeeds with
+   * `outcome: 'business_failure'` (ADR-007: orchestration ran but the business
+   * operation was rejected terminally). Pass false to inspect the job yourself.
+   */
+  expectSuccess?: boolean;
+}
+
 export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
@@ -70,13 +79,30 @@ export class SyncJobs {
     );
   }
 
-  /** Enqueue a job and wait for it to reach a terminal status. */
+  /**
+   * Enqueue a job and wait for it to reach a terminal status.
+   *
+   * A `succeeded` status alone is not a pass: the job may carry
+   * `outcome: 'business_failure'` (status tracks orchestration, outcome tracks
+   * the business result — ADR-007). By default both a dead job and a
+   * business failure throw, with `lastError` surfaced in the message.
+   */
   async triggerAndWait(
     input: EnqueueSyncJobInput,
-    options: WaitForJobOptions = {},
+    options: TriggerAndWaitOptions = {},
   ): Promise<SyncJob> {
     const jobId = await this.trigger(input);
-    return this.waitForJob(jobId, options);
+    const job = await this.waitForJob(jobId, options);
+    if (options.expectSuccess !== false) {
+      const failed = job.status !== 'succeeded' || job.outcome === 'business_failure';
+      if (failed) {
+        throw new Error(
+          `sync job ${jobId} (${input.jobType}) finished with status=${job.status} ` +
+            `outcome=${job.outcome ?? 'null'}${job.lastError ? `: ${job.lastError}` : ''}`,
+        );
+      }
+    }
+    return job;
   }
 
   /** Sync a marketplace/shop's master product catalogue into OL. */
