@@ -28,9 +28,13 @@ export class PrestashopAdminPage {
     await this.page.locator('#email').fill(email);
     await this.page.locator('#passwd').fill(password);
     await this.page.locator('#submit_login').click();
-    await expect(this.page.locator('#header, .header-toolbar, nav.main-header').first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // "Logged in" = the login form is gone. Header chrome can be collapsed/
+    // attached-but-hidden on a narrow viewport, so assert attachment, not
+    // visibility.
+    await expect(this.page.locator('#submit_login')).toHaveCount(0, { timeout: 30_000 });
+    await expect(
+      this.page.locator('#header, .header-toolbar, nav.main-header').first(),
+    ).toBeAttached({ timeout: 30_000 });
   }
 
   async isLoggedIn(): Promise<boolean> {

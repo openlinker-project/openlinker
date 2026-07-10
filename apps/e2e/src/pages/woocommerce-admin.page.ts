@@ -25,7 +25,11 @@ export class WooCommerceAdminPage {
     await this.page.locator('#user_login').fill(user);
     await this.page.locator('#user_pass').fill(password);
     await this.page.locator('#wp-submit').click();
-    await expect(this.page.locator('#wpadminbar, #adminmenumain').first()).toBeVisible({
+    // "Logged in" = the login form is gone. Don't assert visibility of the
+    // admin menu/bar: WordPress folds `#adminmenumain` on a narrow/headless
+    // viewport, so it is attached-but-hidden even on a successful login.
+    await expect(this.page.locator('#wp-submit')).toHaveCount(0, { timeout: 30_000 });
+    await expect(this.page.locator('#wpadminbar, #adminmenumain').first()).toBeAttached({
       timeout: 30_000,
     });
   }
