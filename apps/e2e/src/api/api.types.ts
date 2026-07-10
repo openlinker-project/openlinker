@@ -100,6 +100,70 @@ export interface OfferCreationSummary {
   externalOfferId?: string | null;
 }
 
+/**
+ * A submitted section-tagged category parameter, as persisted on the
+ * offer-creation request snapshot (`overrides.parameters`, #1071).
+ */
+export interface SubmittedOfferParameter {
+  id: string;
+  values?: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
+export interface OfferCreationRequestOverrides {
+  title?: string;
+  description?: string | null;
+  categoryId?: string;
+  productCardId?: string;
+  imageUrls?: string[] | null;
+  /** Submitted neutral category parameters (#1071). */
+  parameters?: SubmittedOfferParameter[];
+  /** Un-modeled platform knobs only (policy ids, etc.) — NOT category params. */
+  platformParams?: Record<string, unknown>;
+}
+
+/** Persisted snapshot of the create-offer request payload (schemaVersion 1). */
+export interface OfferCreationRequestPayload {
+  schemaVersion: number;
+  internalVariantId: string;
+  stock: number;
+  publishImmediately: boolean;
+  price?: { amount: number; currency: string };
+  overrides?: OfferCreationRequestOverrides;
+}
+
+/** GET /listings/connections/:connectionId/offers/creation/:recordId */
+export interface OfferCreationStatus {
+  id: string;
+  connectionId: string;
+  internalVariantId: string;
+  status: string;
+  externalOfferId: string | null;
+  request?: OfferCreationRequestPayload | null;
+}
+
+export interface BulkBatchRecordSummary {
+  id: string;
+  internalVariantId: string;
+  status: string;
+  externalOfferId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /listings/bulk-create/:batchId */
+export interface BulkBatchSummary {
+  id: string;
+  connectionId: string;
+  status: string;
+  totalCount: number;
+  succeededCount: number;
+  failedCount: number;
+  records: BulkBatchRecordSummary[];
+}
+
 export interface OfferMapping {
   id: string;
   entityType: string;
@@ -133,6 +197,12 @@ export interface OrderRecord {
   recordStatus: 'ready' | 'awaiting_mapping';
   createdAt: string;
   updatedAt: string;
+}
+
+/** POST /invoices — server assembles lines/buyer from the order. */
+export interface IssueInvoiceInput {
+  connectionId: string;
+  orderId: string;
 }
 
 export interface InvoiceRecord {

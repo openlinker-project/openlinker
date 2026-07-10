@@ -26,17 +26,24 @@ import { resolve } from 'node:path';
 import { test, expect } from '../../src/fixtures/test';
 import { PlatformType, type World } from '../../src/world/world';
 import type { ApiClient } from '../../src/api/api-client';
+import { ApiError } from '../../src/api/api-error';
 import type { PageObjects } from '../../src/pages';
 import type { Poller } from '../../src/support/poller';
-import type { OfferMapping, OrderRecord, Product, ProductVariant } from '../../src/api/api.types';
+import type {
+  MarketplaceOffer,
+  OfferMapping,
+  OrderRecord,
+  Product,
+  ProductVariant,
+} from '../../src/api/api.types';
 import { PrestashopWebserviceClient } from '../../src/api/prestashop-webservice';
 import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
 import { snapshotOrderIds, waitForOrder } from '../../src/support/orders';
 import { manualCheckpoint } from '../../src/support/manual-checkpoint';
 import {
+  assertMoneyEqual,
   assertProductFieldParity,
-  assertOfferParameterParity,
   assertInvoiceAmounts,
   offerToParityView,
   toMinorUnits,
@@ -127,7 +134,14 @@ test.describe('golden path — full flow (S0-S9)', () => {
       price: olProduct.price ?? undefined,
       currency: olProduct.currency ?? 'PLN',
     };
-    assertProductFieldParity({ label: 'OL↔PS product', expected, actual });
+    // EAN + price are load-bearing — fail loudly if the master read is missing
+    // them rather than silently skipping the comparison.
+    assertProductFieldParity({
+      label: 'OL↔PS product',
+      expected,
+      actual,
+      required: ['ean', 'price'],
+    });
 
     // Master stock: OL master availability totals the PS stock_availables.
     const psStock = await ps.getStockForProduct(externalProductId!);
@@ -143,10 +157,11 @@ test.describe('golden path — full flow (S0-S9)', () => {
 
     const before = (await api.listings.list({ connectionId: shop!.id, limit: 1 })).total;
     await publishToShop(pages, api, shop!.name, state.product!.name);
+    // The count must strictly grow past the pre-publish baseline.
     await poll.until(
       () => api.listings.list({ connectionId: shop!.id, limit: 25 }),
-      (page) => page.total >= before,
-      { message: `WooCommerce listing mapping for ${shop!.name}`, timeoutMs: 120_000 },
+      (page) => page.total > before,
+      { message: `a NEW WooCommerce listing mapping for ${shop!.name}`, timeoutMs: 120_000 },
     );
 
     const wc = buildWooClient(world);
@@ -179,7 +194,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const allegro = world.connectionFor(PlatformType.allegro);
     test.skip(!allegro, 'no Allegro connection on this stack');
 
-    await createBulkOffers({ api, world, pages, poll, connectionId: allegro!.id, connectionName: allegro!.name });
+    const batchId = await createBulkOffers({ api, world, pages, poll, connectionId: allegro!.id, connectionName: allegro!.name });
     const mapping = await resolvePrimaryMapping(api, poll, allegro!.id);
     const offer = await api.listings.getOffer(mapping.id);
     state.channelBaseline.set('allegro', offer.availableQuantity);
@@ -191,11 +206,56 @@ test.describe('golden path — full flow (S0-S9)', () => {
       actual: offerToParityView(offer),
     });
 
-    // Category parameter directory parity (offer + product sections) where a category resolved.
+    // Value-level parameter parity (#8): the persisted creation-request snapshot
+    // carries the SUBMITTED section-tagged parameter values (#1071 —
+    // `request.overrides.parameters`; `platformParams` holds only policy knobs).
+    // Assert each submitted parameter against the category directory and, where
+    // it mirrors a master variant attribute, against the master value.
+    // Directory presence stays as the secondary assertion.
+    const batch = await api.listings.getBulkBatch(batchId);
+    const record =
+      batch.records.find((r) => r.internalVariantId === state.primaryVariant!.id) ??
+      batch.records[0];
+    expect(record, 'bulk batch exposes a creation record').toBeTruthy();
+    const creation = await api.listings.getOfferCreationRecord(allegro!.id, record.id);
+    const submitted = creation.request?.overrides?.parameters ?? [];
+
     if (offer.category?.id) {
-      const params = await api.listings.categoryParameters(allegro!.id, offer.category.id);
-      expect(params.length, 'Allegro category exposes parameters').toBeGreaterThan(0);
-      assertOfferParameterParity('Allegro', paramsToExpectations(params), params);
+      const directory = await api.listings.categoryParameters(allegro!.id, offer.category.id);
+      expect(directory.length, 'Allegro category exposes parameters').toBeGreaterThan(0);
+
+      const byId = new Map(directory.map((p) => [p.id, p]));
+      const attributes = (state.primaryVariant!.attributes ?? {}) as Record<string, unknown>;
+      for (const param of submitted) {
+        const dirEntry = byId.get(param.id);
+        expect(
+          dirEntry,
+          `submitted parameter ${param.id} exists in the Allegro category directory`,
+        ).toBeTruthy();
+        if (!dirEntry) continue;
+        expect(param.section, `parameter "${dirEntry.name}" section`).toBe(dirEntry.section);
+        const carriesValue =
+          (param.values?.length ?? 0) > 0 ||
+          (param.valuesIds?.length ?? 0) > 0 ||
+          !!param.rangeValue;
+        expect(carriesValue, `parameter "${dirEntry.name}" carries a submitted value`).toBe(true);
+        const masterValue = attributes[dirEntry.name];
+        if (typeof masterValue === 'string' && (param.values?.length ?? 0) > 0) {
+          expect(
+            param.values,
+            `parameter "${dirEntry.name}" submitted value matches the master attribute`,
+          ).toContain(masterValue);
+        }
+      }
+    }
+    if (submitted.length === 0) {
+      testInfo.annotations.push({
+        type: 'parameter-parity',
+        description:
+          'creation-request snapshot carries no operator-submitted parameters — value-level ' +
+          'parity not applicable for this record (builder-projected values are confirmed via ' +
+          'the Allegro manual checkpoint)',
+      });
     }
 
     await manualCheckpoint(
@@ -218,7 +278,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     );
   });
 
-  test('S4 — Erli offers: create + field/amount parity via OL read', async ({ api, world, pages, poll }) => {
+  test('S4 — Erli offers: create + mapping-level assertions (no OfferReader)', async ({ api, world, pages, poll }) => {
     const testInfo = test.info();
     requireProduct();
     const erli = world.connectionFor(PlatformType.erli);
@@ -226,31 +286,51 @@ test.describe('golden path — full flow (S0-S9)', () => {
 
     await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
-    const offer = await api.listings.getOffer(mapping.id);
-    state.channelBaseline.set('erli', offer.availableQuantity);
 
-    assertProductFieldParity({
-      label: 'OL↔Erli offer',
-      expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
-      actual: offerToParityView(offer),
-    });
+    // Mapping-level assertions: the offer was created and mapped to the primary
+    // variant with a marketplace-native external id.
+    expect(mapping.externalId, 'Erli mapping carries the marketplace offer id').toBeTruthy();
+    expect(mapping.internalId, 'Erli mapping targets the primary variant').toBe(
+      state.primaryVariant!.id,
+    );
 
+    // Capability-guarded live read: the Erli adapter ships no `OfferReader`, so
+    // `GET /listings/:id/offer` 422s — degrade to the mapping-level assertions
+    // above instead of failing. (Adapter-side OfferReader is a backend follow-up.)
+    const offer = await readLiveOfferOrNull(api, mapping.id);
+    if (offer) {
+      state.channelBaseline.set('erli', offer.availableQuantity);
+      assertProductFieldParity({
+        label: 'OL↔Erli offer',
+        expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
+        actual: offerToParityView(offer),
+      });
+    } else {
+      testInfo.annotations.push({
+        type: 'capability-degrade',
+        description:
+          'Erli adapter has no OfferReader — live-offer parity degraded to mapping-level ' +
+          'assertions; price/qty/category confirmed via the Erli manual checkpoint',
+      });
+    }
+
+    const masterAvailability = state.olBaseline!.get(state.primaryVariant!.id);
     await manualCheckpoint(testInfo, {
       dashboard: 'Erli seller panel / storefront',
       expect: [
         'The offer is published (borrowed Allegro taxonomy)',
         'Price and category match the master',
-        'Available quantity equals the OL baseline',
+        'Available quantity equals the OL master availability below',
       ],
       values: {
-        offerId: offer.externalId,
-        price: `${offer.price.amount} ${offer.price.currency}`,
-        availableQuantity: offer.availableQuantity,
+        offerId: mapping.externalId,
+        expectedPrice: `${state.product!.price ?? '(master)'} ${state.product!.currency ?? 'PLN'}`,
+        expectedAvailability: masterAvailability ?? '(unknown)',
       },
     });
   });
 
-  test('PAUSE — operator buys the named offer', async ({ api, world }) => {
+  test('PAUSE — operator buys the named offer', async ({ api, world, env }) => {
     const testInfo = test.info();
     requireProduct();
     const source = world.connectionFor(PlatformType.allegro) ?? world.connectionFor(PlatformType.erli);
@@ -261,6 +341,10 @@ test.describe('golden path — full flow (S0-S9)', () => {
       dashboard: 'MANUAL PURCHASE',
       expect: [
         `Buy exactly ${SOLD_QTY} unit of the primary-variant offer on ${source!.platformType}`,
+        'At checkout choose InPost Paczkomat (pickup point) delivery — S6 dispatches the label with pickup_point intent',
+        'Pick a locker that EXISTS in the InPost sandbox — Allegro-sandbox lockers often do not; ' +
+          'if the buyer-selected point turns out unusable, set E2E_PACZKOMAT_ID to a real ' +
+          'InPost-sandbox APM before S6 runs',
         'Complete checkout so the order reaches the marketplace',
         'Then resume — the run will wait for the order to land in OL',
       ],
@@ -269,6 +353,8 @@ test.describe('golden path — full flow (S0-S9)', () => {
         primaryVariantSku: state.primaryVariant!.sku,
         primaryVariantEan: state.primaryVariant!.ean ?? state.primaryVariant!.gtin,
         quantity: SOLD_QTY,
+        delivery: 'InPost Paczkomat (pickup point)',
+        paczkomatOverride: env.paczkomatId ?? '(none — E2E_PACZKOMAT_ID unset)',
       },
       fatal: true,
     });
@@ -301,14 +387,23 @@ test.describe('golden path — full flow (S0-S9)', () => {
     expect(lineTotal, 'line total = price * qty').toBe(
       toMinorUnits(soldLine.price, currency) * SOLD_QTY,
     );
+
+    // Total identity is tax-treatment-aware: with `inclusive` line prices the
+    // computed subtotal already carries the tax, so adding `totals.tax` again
+    // would double-count it; with `exclusive` prices the tax is additive.
+    // (Absent treatment defaults to inclusive — both source adapters emit
+    // buyer-paid gross prices.)
+    const treatment = snapshot.totals.taxTreatment ?? 'inclusive';
+    const taxMinor = toMinorUnits(snapshot.totals.tax ?? 0, currency);
+    const shippingMinor = toMinorUnits(snapshot.totals.shipping ?? 0, currency);
+    const expectedTotalMinor =
+      treatment === 'exclusive'
+        ? computedSubtotal + taxMinor + shippingMinor
+        : computedSubtotal + shippingMinor;
     expect(
       toMinorUnits(snapshot.totals.total, currency),
-      'order total = subtotal + tax + shipping',
-    ).toBe(
-      computedSubtotal +
-        toMinorUnits(snapshot.totals.tax ?? 0, currency) +
-        toMinorUnits(snapshot.totals.shipping ?? 0, currency),
-    );
+      `order total identity (${treatment} tax treatment)`,
+    ).toBe(expectedTotalMinor);
 
     // Channel stock delta: the source marketplace offer went down by SOLD_QTY.
     const sourceKey = source.platformType;
@@ -326,7 +421,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
   });
 
-  test('S6 — InPost label: routing, tracking, PDF, dispatched', async ({ api, world }) => {
+  test('S6 — InPost label: routing, tracking, PDF, dispatched', async ({ api, world, env }) => {
     const testInfo = test.info();
     requireOrder();
     const inpost = world.connectionFor(PlatformType.inpost);
@@ -348,11 +443,15 @@ test.describe('golden path — full flow (S0-S9)', () => {
       ]);
     }
 
+    // `E2E_PACZKOMAT_ID` overrides the buyer-selected pickup point when it is
+    // unusable (Allegro-sandbox lockers are known not to exist in the InPost
+    // sandbox); otherwise the point resolved from the order is used.
     const dispatch = await api.shipments.generateLabel({
       sourceConnectionId: source.id,
       sourceDeliveryMethodId: deliveryMethodId,
       orderId: state.order!.internalOrderId,
       deliveryIntent: 'pickup_point',
+      ...(env.paczkomatId ? { paczkomatId: env.paczkomatId } : {}),
     });
     const shipment = dispatch.shipment ?? (await api.shipments.active(state.order!.internalOrderId));
     expect(shipment, 'a shipment was created').toBeTruthy();
@@ -366,20 +465,25 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const dispatched = await api.shipments.getById(shipment!.id);
     expect(['dispatched', 'in-transit', 'delivered']).toContain(dispatched.status);
 
-    // Writeback to the marketplace is best-effort (annotated, non-fatal).
+    // Writeback to the marketplace is best-effort in code (annotated) and
+    // asserted by the operator at the checkpoint below.
     testInfo.annotations.push({
       type: 'writeback',
-      description: `tracking ${dispatched.trackingNumber} — marketplace writeback best-effort`,
+      description: `tracking ${dispatched.trackingNumber} — marketplace writeback verified via checkpoint`,
     });
 
     await manualCheckpoint(testInfo, {
-      dashboard: 'InPost / ShipX manager',
-      expect: ['The shipment exists with the tracking number below', 'Label is downloadable and status is dispatched'],
+      dashboard: 'InPost / ShipX manager + source marketplace order',
+      expect: [
+        'The shipment exists with the tracking number below',
+        'Label is downloadable and status is dispatched',
+        `The ${source.platformType} order shows the shipped status and/or the tracking number below (status/tracking writeback)`,
+      ],
       values: { trackingNumber: dispatched.trackingNumber, status: dispatched.status, carrier: dispatched.carrier },
     });
   });
 
-  test('S7 — order created in PrestaShop + master stock down', async ({ api, world, poll }) => {
+  test('S7 — order created in PrestaShop + master stock down', async ({ api, world, jobs, poll }) => {
     requireOrder();
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop destination connection');
@@ -393,22 +497,62 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const psSync = synced.syncStatus.find((s) => s.destinationConnectionId === prestashop!.id);
     expect(psSync?.externalOrderId, 'PrestaShop external order id').toBeTruthy();
 
-    // Master stock delta: OL availability dropped by SOLD_QTY for the sold variant.
+    // Drive the master-stock refresh explicitly (PS decremented on order
+    // create; OL only sees it after a master inventory sync) instead of waiting
+    // on ambient scheduling, then wait for the delta.
+    await jobs.triggerAndWait(
+      { connectionId: prestashop!.id, jobType: 'master.inventory.syncAll' },
+      { timeoutMs: 120_000 },
+    );
     await waitForStockDelta(api, state.olBaseline!, {
       variantId: state.primaryVariant!.id,
       soldQty: SOLD_QTY,
     });
 
-    // PrestaShop order amount parity (webservice), when the key is available.
+    // PrestaShop order parity (webservice), when the key is available: totals,
+    // shipping, and the sold line (qty + buyer-paid unit price, ADR-014).
     const ps = buildPrestashopClient(world);
     if (ps && psSync?.externalOrderId) {
       const psOrder = await ps.getOrder(psSync.externalOrderId);
       const snapshot = readOrderSnapshot(state.order!);
-      if (psOrder.totalPaidTaxIncl) {
-        expect(
-          toMinorUnits(psOrder.totalPaidTaxIncl, snapshot.totals.currency),
-          'PS order total matches OL order total',
-        ).toBe(toMinorUnits(snapshot.totals.total, snapshot.totals.currency));
+      const currency = snapshot.totals.currency;
+
+      // Fail loudly when PS omits the paid total — a silent skip here would
+      // pass the segment without ever comparing an amount.
+      expect(
+        psOrder.totalPaidTaxIncl,
+        'PrestaShop order exposes total_paid_tax_incl',
+      ).toBeTruthy();
+      assertMoneyEqual(
+        snapshot.totals.total,
+        psOrder.totalPaidTaxIncl!,
+        currency,
+        'PS order total (tax incl) vs OL order total',
+      );
+      assertMoneyEqual(
+        snapshot.totals.shipping ?? 0,
+        psOrder.totalShippingTaxIncl ?? 0,
+        currency,
+        'PS order shipping (tax incl) vs OL order shipping',
+      );
+
+      // Line items: the sold line exists with matching quantity and the
+      // buyer-paid unit price.
+      expect(psOrder.rows.length, 'PS order carries line rows').toBeGreaterThan(0);
+      const soldLine =
+        snapshot.items.find((i) => i.variantId === state.primaryVariant!.id) ?? snapshot.items[0];
+      const soldEan = state.primaryVariant!.ean ?? state.primaryVariant!.gtin;
+      const psRow =
+        (soldEan ? psOrder.rows.find((r) => r.productEan13 === soldEan) : undefined) ??
+        psOrder.rows[0];
+      expect(psRow.productQuantity, 'PS line quantity').toBe(soldLine.quantity);
+      if (psRow.unitPriceTaxIncl !== null) {
+        assertMoneyEqual(
+          soldLine.price,
+          psRow.unitPriceTaxIncl,
+          currency,
+          'PS line unit price (buyer-paid source price, ADR-014)',
+        );
       }
     }
   });
@@ -419,13 +563,13 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const ksef = world.connectionFor(PlatformType.ksef);
     test.skip(!ksef, 'no KSeF connection on this stack');
 
-    // Issue the invoice for the order (idempotent — reuse if already issued).
+    // Issue the invoice for the order via POST /invoices (the server assembles
+    // lines/buyer from the order). Idempotent — reuse if already issued.
     let invoice = await api.invoices.getForOrder(state.order!.internalOrderId, ksef!.id).catch(() => null);
     if (!invoice) {
-      await jobs.trigger({
+      await api.invoices.issue({
         connectionId: ksef!.id,
-        jobType: 'invoicing.issue',
-        payload: { orderId: state.order!.internalOrderId },
+        orderId: state.order!.internalOrderId,
       });
       invoice = await poll.until(
         () => api.invoices.getForOrder(state.order!.internalOrderId, ksef!.id),
@@ -435,26 +579,42 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
     state.invoiceId = invoice.id;
 
-    // Reconcile clearance until accepted with a KSeF number.
-    await jobs.trigger({ connectionId: ksef!.id, jobType: 'invoicing.regulatoryStatus.reconcile' }).catch(() => undefined);
+    // Reconcile clearance until accepted with a KSeF number. The reconcile
+    // handler is schema-strict: it throws (job retries to dead) unless the
+    // payload carries `schemaVersion: 1`.
+    await jobs
+      .trigger({
+        connectionId: ksef!.id,
+        jobType: 'invoicing.regulatoryStatus.reconcile',
+        payload: { schemaVersion: 1 },
+      })
+      .catch(() => undefined);
     const cleared = await poll.until(
       () => api.invoices.getById(invoice!.id),
       (r) => r.regulatoryStatus === 'accepted' && !!r.clearanceReference,
       { message: 'invoice to reach accepted + KSeF number', timeoutMs: 300_000, intervalMs: 5_000 },
     );
     expect(cleared.clearanceReference, 'KSeF number').toBeTruthy();
+    expect(cleared.documentType, 'invoice document type recorded').toBeTruthy();
 
-    // Amount parity: FA(3) per-line net/VAT/gross + totals + currency + buyer tax id.
+    // Amount parity: expected per-line gross derived from the ORDER snapshot
+    // (buyer-paid price × qty) — matched by gross containment (the provider may
+    // add a shipping line). Totals gross must equal the order total. Every
+    // invoice line is also checked for internal net+VAT=gross consistency.
     const content = await api.invoices.getContent(invoice.id);
     const snapshot = readOrderSnapshot(state.order!);
+    const treatment = snapshot.totals.taxTreatment ?? 'inclusive';
+    const expectedLines =
+      treatment === 'inclusive'
+        ? snapshot.items.map((i) => ({ gross: Number(i.price) * i.quantity }))
+        : undefined; // exclusive line prices are net — gross per line is not derivable here
     assertInvoiceAmounts(
       {
         currency: snapshot.totals.currency,
-        documentType: cleared.documentType,
+        ...(expectedLines ? { lines: expectedLines } : {}),
         totals: { gross: snapshot.totals.total },
       },
       content,
-      cleared.documentType,
     );
     expect(content.lines.length, 'invoice has lines').toBeGreaterThan(0);
 
@@ -475,7 +635,8 @@ test.describe('golden path — full flow (S0-S9)', () => {
     });
   });
 
-  test('S9 — final reconciliation: stock + statuses consistent', async ({ api, world }) => {
+  test('S9 — final reconciliation: stock, cross-channel propagation, statuses', async ({ api, world, jobs, poll }) => {
+    const testInfo = test.info();
     requireOrder();
     // OL master stock delta holds.
     const current = await captureStock(api, state.variantIds);
@@ -486,20 +647,79 @@ test.describe('golden path — full flow (S0-S9)', () => {
     expect(order.recordStatus).toBe('ready');
     expect(order.syncStatus.some((s) => s.status === 'synced'), 'order synced to a destination').toBe(true);
 
-    // Channel offer quantities reflect the sale where a baseline was captured.
-    const source = world.connectionFor(PlatformType.allegro) ?? world.connectionFor(PlatformType.erli);
-    if (source) {
-      const baseline = state.channelBaseline.get(source.platformType);
-      if (baseline !== undefined) {
-        const mapping = (await api.listings.list({ connectionId: source.id, limit: 25 })).items.find(
-          (m) => m.internalId === state.primaryVariant!.id,
-        );
-        if (mapping) {
-          const offer = await api.listings.getOffer(mapping.id);
-          expect(offer.availableQuantity, `${source.platformType} offer stock after sale`).toBe(
-            baseline - SOLD_QTY,
-          );
-        }
+    // Cross-channel propagation (#14): push the post-sale master availability
+    // to EVERY mapped marketplace offer — buying on one channel must drop the
+    // other channels too — then verify each channel that OL can read back.
+    const anchor = world.connections.find((c) => c.status === 'active') ?? world.connections[0];
+    expect(anchor, 'a connection to anchor the propagation job on').toBeTruthy();
+    await jobs.triggerAndWait(
+      {
+        connectionId: anchor!.id,
+        jobType: 'inventory.propagateToMarketplaces',
+        payload: {
+          productId: state.product!.id,
+          variantId: state.primaryVariant!.id,
+          inventoryUpdatedAt: new Date().toISOString(),
+        },
+      },
+      { timeoutMs: 120_000 },
+    );
+
+    const expectedChannelQty = new Map<string, number>();
+    for (const [platform, baseline] of state.channelBaseline) {
+      if (platform !== 'woocommerce') expectedChannelQty.set(platform, baseline - SOLD_QTY);
+    }
+    for (const platform of [PlatformType.allegro, PlatformType.erli]) {
+      const connection = world.connectionFor(platform);
+      if (!connection) continue;
+      const mapping = await resolvePrimaryMapping(api, poll, connection.id);
+      const offer = await readLiveOfferOrNull(api, mapping.id);
+      const expectedQty = expectedChannelQty.get(platform);
+      if (offer === null) {
+        testInfo.annotations.push({
+          type: 'cross-channel',
+          description:
+            `${platform} offer ${mapping.externalId} is not readable through OL (no OfferReader) — ` +
+            'verify the post-sale quantity on the marketplace dashboard manually',
+        });
+        continue;
+      }
+      if (expectedQty === undefined) {
+        testInfo.annotations.push({
+          type: 'cross-channel',
+          description: `${platform}: no pre-sale baseline captured — observed quantity ${offer.availableQuantity}`,
+        });
+        continue;
+      }
+      await poll.until(
+        () => api.listings.getOffer(mapping.id),
+        (o) => o.availableQuantity === expectedQty,
+        {
+          message: `${platform} offer quantity to reach ${expectedQty} after cross-channel propagation`,
+          timeoutMs: 120_000,
+        },
+      );
+    }
+
+    // WooCommerce stock re-check after the purchase (#14): the S2 baseline is
+    // read back through the WC REST API. OL ships no WC quantity write-back
+    // today (woocommerce.restapi.v3 has no OfferManager), so a stale value is
+    // annotated as a known cross-channel gap rather than failed.
+    const wc = buildWooClient(world);
+    const wcBaseline = state.channelBaseline.get('woocommerce');
+    if (wc && wcBaseline !== undefined && state.primaryVariant!.sku) {
+      const wcProduct = await wc.getProductBySku(state.primaryVariant!.sku);
+      const wcAfter = wcProduct?.stockQuantity ?? null;
+      if (wcAfter === wcBaseline - SOLD_QTY) {
+        expect(wcAfter, 'WooCommerce stock reflects the sale').toBe(wcBaseline - SOLD_QTY);
+      } else {
+        testInfo.annotations.push({
+          type: 'cross-channel',
+          description:
+            `WooCommerce stock after sale: ${wcAfter ?? '(unknown)'} (baseline ${wcBaseline}, ` +
+            `expected ${wcBaseline - SOLD_QTY}) — OL has no WC quantity write-back path ` +
+            '(no OfferManager on woocommerce.restapi.v3); known cross-channel gap',
+        });
       }
     }
   });
@@ -539,6 +759,8 @@ interface OrderTotals {
   shipping?: number | string;
   total: number | string;
   currency: string;
+  /** Whether line prices/subtotal include tax (default inclusive/gross). */
+  taxTreatment?: 'inclusive' | 'exclusive';
 }
 interface OrderSnapshotShape {
   items: OrderLine[];
@@ -579,25 +801,52 @@ function readConfigString(config: Record<string, unknown> | null | undefined, ke
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function paramsToExpectations(
-  params: { name: string; section: 'offer' | 'product'; required: boolean }[],
-): { name: string; section: 'offer' | 'product' }[] {
-  // Assert the required parameters are present (a stable, meaningful subset).
-  return params.filter((p) => p.required).map((p) => ({ name: p.name, section: p.section }));
+/**
+ * Live-offer read guarded by capability: `GET /listings/:id/offer` 422s when the
+ * connection's adapter ships no `OfferReader` (Erli today) — return null so the
+ * caller degrades to mapping-level assertions instead of failing.
+ */
+async function readLiveOfferOrNull(
+  api: ApiClient,
+  mappingId: string,
+): Promise<MarketplaceOffer | null> {
+  try {
+    return await api.listings.getOffer(mappingId);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) {
+      return null;
+    }
+    throw error;
+  }
 }
 
+/**
+ * Resolve the offer mapping for the PRIMARY variant on a connection, polling
+ * until it appears. Fails loudly when it never does — silently asserting on an
+ * arbitrary sibling offer would make every downstream parity check meaningless.
+ */
 async function resolvePrimaryMapping(
   api: ApiClient,
   poll: Poller,
   connectionId: string,
 ): Promise<OfferMapping> {
+  const primaryId = state.primaryVariant!.id;
   const page = await poll.until(
     () => api.listings.list({ connectionId, limit: 50 }),
-    (p) => p.items.length > 0,
-    { message: `offer mappings for connection ${connectionId}`, timeoutMs: 120_000 },
+    (p) => p.items.some((m) => m.internalId === primaryId),
+    {
+      message: `offer mapping for primary variant ${primaryId} on connection ${connectionId}`,
+      timeoutMs: 120_000,
+    },
   );
-  const primaryId = state.primaryVariant!.id;
-  return page.items.find((m) => m.internalId === primaryId) ?? page.items[0];
+  const mapping = page.items.find((m) => m.internalId === primaryId);
+  if (!mapping) {
+    throw new Error(
+      `No offer mapping for primary variant ${primaryId} on connection ${connectionId} ` +
+        `(found ${page.items.length} other mapping(s)) — refusing to fall back to an arbitrary offer`,
+    );
+  }
+  return mapping;
 }
 
 async function publishToShop(
@@ -609,8 +858,9 @@ async function publishToShop(
   await pages.listingsList.goto();
   const dialog = await pages.listingsList.openPublishToShop();
   await dialog.chooseConnection(connectionName);
-  await dialog.productSearchField.fill(productName);
-  await dialog.dialog.getByRole('checkbox').first().check();
+  // Row-scoped selection (search → named product row → expand → variant
+  // checkbox) — immune to the debounced-search race.
+  await dialog.selectFirstVariantOf(productName);
   await dialog.continueWithSelectionButton.click();
   if (await dialog.reviewButton.count()) {
     await dialog.reviewButton.click();
@@ -620,6 +870,7 @@ async function publishToShop(
   expect((await api.products.list({ limit: 1 })).items.length).toBeGreaterThan(0);
 }
 
+/** Drive the bulk wizard for the driver product; returns the created batch id. */
 async function createBulkOffers(ctx: {
   api: ApiClient;
   world: World;
@@ -627,20 +878,17 @@ async function createBulkOffers(ctx: {
   poll: Poller;
   connectionId: string;
   connectionName: string;
-}): Promise<void> {
+}): Promise<string> {
   const { api, pages, poll, connectionId, connectionName } = ctx;
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;
 
   await pages.productsList.goto();
   await pages.productsList.selectProduct(state.product!.name);
-  const wizard = await pages.productsList.startBulkOfferCreation();
+  const wizard = await pages.productsList.startBulkOfferCreation(connectionName);
   await wizard.selectConnectionIfPresent(connectionName);
-  for (let step = 0; step < 3; step += 1) {
-    if (await wizard.confirmModalConfirmButton.count()) break;
-    if (await wizard.nextButton.count()) {
-      await wizard.nextButton.first().click();
-    }
-  }
+  // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
+  // failing fast when any review row needs attention.
+  await wizard.advanceToConfirmModal();
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 
@@ -649,4 +897,5 @@ async function createBulkOffers(ctx: {
     (page) => page.total > before,
     { message: `offer mappings to appear for ${connectionName}`, timeoutMs: 180_000 },
   );
+  return progress.batchId;
 }

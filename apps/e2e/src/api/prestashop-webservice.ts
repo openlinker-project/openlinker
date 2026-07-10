@@ -30,6 +30,15 @@ export interface PrestashopStockView {
   quantity: number;
 }
 
+export interface PrestashopOrderRowView {
+  productId: string | null;
+  productAttributeId: string | null;
+  productReference: string | null;
+  productEan13: string | null;
+  productQuantity: number | null;
+  unitPriceTaxIncl: string | null;
+}
+
 export interface PrestashopOrderView {
   id: string;
   reference: string | null;
@@ -37,6 +46,8 @@ export interface PrestashopOrderView {
   totalPaidTaxIncl: string | null;
   totalShippingTaxIncl: string | null;
   currentState: string | null;
+  /** Line rows from `associations.order_rows` (empty if PS omits them). */
+  rows: PrestashopOrderRowView[];
 }
 
 export interface PrestashopWebserviceOptions {
@@ -76,23 +87,44 @@ export class PrestashopWebserviceClient {
     };
   }
 
-  /** Sum available quantity across a product's `stock_availables` rows. */
+  /**
+   * Sum available quantity across a product's `stock_availables` rows.
+   *
+   * For a product with combinations PrestaShop keeps one row per combination
+   * PLUS an `id_product_attribute=0` aggregate row holding their sum — summing
+   * everything would double-count. When combination rows exist, only they are
+   * summed; a simple product (single `id_product_attribute=0` row) uses it.
+   */
   async getStockForProduct(productId: string): Promise<number> {
     const body = await this.get(
       `/api/stock_availables?filter[id_product]=${productId}&display=full`,
     );
-    const rows = asArray(pick(body, 'stock_availables'));
-    let total = 0;
-    for (const row of rows) {
+    const rows = asArray(pick(body, 'stock_availables')).map((row) => {
       const record = asRecord(row);
-      total += asNumberOrNull(pick(record, 'quantity')) ?? 0;
-    }
-    return total;
+      return {
+        attributeId: asStringOrNull(pick(record, 'id_product_attribute')) ?? '0',
+        quantity: asNumberOrNull(pick(record, 'quantity')) ?? 0,
+      };
+    });
+    const combinationRows = rows.filter((row) => row.attributeId !== '0');
+    const relevant = combinationRows.length > 0 ? combinationRows : rows;
+    return relevant.reduce((total, row) => total + row.quantity, 0);
   }
 
   async getOrder(orderId: string): Promise<PrestashopOrderView> {
     const body = await this.get(`/api/orders/${orderId}`);
     const order = asRecord(pick(body, 'order'));
+    const rows = asArray(pick(asRecord(pick(order, 'associations')), 'order_rows')).map((row) => {
+      const record = asRecord(row);
+      return {
+        productId: asStringOrNull(pick(record, 'product_id')),
+        productAttributeId: asStringOrNull(pick(record, 'product_attribute_id')),
+        productReference: asStringOrNull(pick(record, 'product_reference')),
+        productEan13: asStringOrNull(pick(record, 'product_ean13')),
+        productQuantity: asNumberOrNull(pick(record, 'product_quantity')),
+        unitPriceTaxIncl: asStringOrNull(pick(record, 'unit_price_tax_incl')),
+      };
+    });
     return {
       id: String(pick(order, 'id') ?? orderId),
       reference: asStringOrNull(pick(order, 'reference')),
@@ -100,6 +132,7 @@ export class PrestashopWebserviceClient {
       totalPaidTaxIncl: asStringOrNull(pick(order, 'total_paid_tax_incl')),
       totalShippingTaxIncl: asStringOrNull(pick(order, 'total_shipping_tax_incl')),
       currentState: asStringOrNull(pick(order, 'current_state')),
+      rows,
     };
   }
 

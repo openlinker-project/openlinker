@@ -8,15 +8,17 @@
  *
  *   1. It prints the concrete expected values the operator should see (never a
  *      vague "check the dashboard").
- *   2. It blocks until the operator signals completion — by creating a
- *      `<resumeDir>/resume` sentinel file, or by pressing Enter in the terminal.
- *      To record a failure, the operator writes `fail` into the sentinel (or
- *      creates a `<resumeDir>/fail` file) before resuming.
+ *   2. It blocks until the operator signals completion by creating a
+ *      `<resumeDir>/resume` sentinel file. To record a failure, the operator
+ *      writes `fail` into the sentinel (or creates a `<resumeDir>/fail` file)
+ *      before resuming. The sentinel file is the ONLY resume mechanism —
+ *      Playwright workers are child processes whose stdin is not the terminal,
+ *      so a "press Enter" path can never fire.
  *   3. It records a pass/fail annotation in the Playwright HTML report so the
  *      attended run leaves a durable trail.
  *
- * A failed checkpoint is *soft* by default (annotated, non-fatal) so the run can
- * continue to later segments; pass `{ fatal: true }` to hard-fail instead.
+ * A failed checkpoint is *soft* by default (`expect.soft` — recorded, the run
+ * continues to later segments); pass `{ fatal: true }` to hard-fail instead.
  *
  * @module support
  */
@@ -95,9 +97,8 @@ export async function manualCheckpoint(
     if (options.fatal) {
       expect(verdict.passed, description).toBe(true);
     } else {
-      // Soft failure: mark the test as failed at the end without aborting the flow.
-      testInfo.status = 'failed';
-      testInfo.errors.push({ message: `Manual checkpoint failed — ${description}` });
+      // Soft failure: recorded on the test result, but the flow continues.
+      expect.soft(verdict.passed, `Manual checkpoint failed — ${description}`).toBe(true);
     }
   }
 
@@ -125,8 +126,8 @@ function printBanner(
     }
   }
   lines.push('  --------------------------------------------------------------------');
-  lines.push('  To CONTINUE (pass): press Enter, or `touch ' + resumeFile + '`');
-  lines.push('  To record a FAIL:   `echo reason > ' + failFile + '` (or write to resume)');
+  lines.push('  To CONTINUE (pass): `touch ' + resumeFile + '`');
+  lines.push('  To record a FAIL:   `echo reason > ' + failFile + '` (or write "fail …" into resume)');
   lines.push('════════════════════════════════════════════════════════════════════');
   lines.push('');
   // eslint-disable-next-line no-console -- attended-run operator prompt, not app logging
@@ -145,53 +146,32 @@ function format(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Poll for the resume/fail sentinel until the operator responds or the timeout
+ * elapses. Single mechanism — no stdin listener (worker stdin is not the
+ * operator's terminal) and therefore no racing loops to cancel.
+ */
 async function waitForResume(
   resumeFile: string,
   failFile: string,
   timeoutMs: number,
 ): Promise<ManualCheckpointResult> {
   const deadline = Date.now() + timeoutMs;
-
-  const stdinResume = new Promise<ManualCheckpointResult>((resolvePromise) => {
-    const onData = (): void => {
-      cleanup();
-      resolvePromise({ passed: true, note: 'resumed via Enter' });
-    };
-    const cleanup = (): void => {
-      process.stdin.off('data', onData);
-      try {
-        process.stdin.pause();
-      } catch {
-        /* stdin may not be a TTY under CI — ignored */
-      }
-    };
-    try {
-      process.stdin.resume();
-      process.stdin.once('data', onData);
-    } catch {
-      /* no interactive stdin — file sentinel is the only path */
+  while (Date.now() < deadline) {
+    if (existsSync(failFile)) {
+      const note = readNote(failFile);
+      rmSync(failFile, { force: true });
+      return { passed: false, note: note ?? 'fail sentinel' };
     }
-  });
-
-  const filePoll = (async (): Promise<ManualCheckpointResult> => {
-    while (Date.now() < deadline) {
-      if (existsSync(failFile)) {
-        const note = readNote(failFile);
-        rmSync(failFile, { force: true });
-        return { passed: false, note: note ?? 'fail sentinel' };
-      }
-      if (existsSync(resumeFile)) {
-        const note = readNote(resumeFile);
-        rmSync(resumeFile, { force: true });
-        const failed = note !== null && /^fail/i.test(note);
-        return { passed: !failed, note };
-      }
-      await delay(POLL_INTERVAL_MS);
+    if (existsSync(resumeFile)) {
+      const note = readNote(resumeFile);
+      rmSync(resumeFile, { force: true });
+      const failed = note !== null && /^fail/i.test(note);
+      return { passed: !failed, note };
     }
-    return { passed: false, note: `timed out after ${timeoutMs}ms` };
-  })();
-
-  return Promise.race([stdinResume, filePoll]);
+    await delay(POLL_INTERVAL_MS);
+  }
+  return { passed: false, note: `timed out after ${timeoutMs}ms` };
 }
 
 function readNote(file: string): string | null {

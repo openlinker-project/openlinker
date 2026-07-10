@@ -15,6 +15,7 @@
  */
 import { ApiError } from './api-error';
 import type {
+  BulkBatchSummary,
   CategoryParameter,
   CategoryParametersResponse,
   Connection,
@@ -27,6 +28,7 @@ import type {
   InventoryAvailability,
   InventoryAvailabilityResponse,
   InvoiceRecord,
+  IssueInvoiceInput,
   IssuedDocumentContent,
   ListInvoicesQuery,
   ListListingsQuery,
@@ -34,6 +36,7 @@ import type {
   ListProductsQuery,
   LoginResponse,
   MarketplaceOffer,
+  OfferCreationStatus,
   OfferMapping,
   OrderRecord,
   Paginated,
@@ -79,6 +82,10 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export class ApiClient {
   private accessToken: string | null = null;
 
+  private credentials: { username: string; password: string } | null = null;
+
+  private reloginPromise: Promise<void> | null = null;
+
   private readonly baseUrl: string;
 
   private readonly requestTimeoutMs: number;
@@ -101,11 +108,31 @@ export class ApiClient {
       skipAuth: true,
     });
     this.accessToken = result.access_token;
+    this.credentials = { username, password };
+  }
+
+  /**
+   * Re-acquire the bearer token after a 401 (single-flight: concurrent 401s
+   * share one login call). OL access tokens expire after ~15 minutes, which is
+   * shorter than the attended run's purchase pause — without this, every
+   * post-pause call would 401 and pollers would mask it as a timeout.
+   */
+  private relogin(): Promise<void> {
+    if (!this.credentials) {
+      return Promise.reject(new Error('Cannot re-login: no credentials captured (call login first)'));
+    }
+    this.reloginPromise ??= this.login(this.credentials.username, this.credentials.password).finally(
+      () => {
+        this.reloginPromise = null;
+      },
+    );
+    return this.reloginPromise;
   }
 
   private async request<T>(
     path: string,
     init: RequestInit & { skipAuth?: boolean } = {},
+    isRetryAfterRelogin = false,
   ): Promise<T> {
     const { skipAuth, ...requestInit } = init;
     const method = requestInit.method ?? 'GET';
@@ -135,6 +162,12 @@ export class ApiClient {
     const body: unknown = raw.length > 0 ? this.tryParseJson(raw) : undefined;
 
     if (!response.ok) {
+      // Expired access token: re-login once with the captured credentials and
+      // retry the request. Never loops — a 401 on the retried request throws.
+      if (response.status === 401 && !skipAuth && !isRetryAfterRelogin && this.credentials) {
+        await this.relogin();
+        return this.request<T>(path, init, true);
+      }
       throw new ApiError(response.status, method, path, body);
     }
 
@@ -154,7 +187,7 @@ export class ApiClient {
    * body is drained but not returned — the E2E assertions care that bytes exist
    * and the content-type is right, not the document contents.
    */
-  private async requestRaw(path: string): Promise<RawResponse> {
+  private async requestRaw(path: string, isRetryAfterRelogin = false): Promise<RawResponse> {
     const headers = new Headers();
     if (this.accessToken !== null) {
       headers.set('Authorization', `Bearer ${this.accessToken}`);
@@ -169,6 +202,11 @@ export class ApiClient {
       });
     } finally {
       clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.arrayBuffer();
+      await this.relogin();
+      return this.requestRaw(path, true);
     }
     const buffer = await response.arrayBuffer();
     return {
@@ -239,6 +277,20 @@ export class ApiClient {
       this.request<CategoryParametersResponse>(
         `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
       ).then((response) => response.items),
+    /** Bulk offer-creation batch progress: per-variant creation records. */
+    getBulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
+      this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
+    /**
+     * Offer-creation record detail, incl. the persisted request snapshot
+     * (`request.overrides.parameters` = submitted category-parameter values).
+     */
+    getOfferCreationRecord: (
+      connectionId: string,
+      offerCreationRecordId: string,
+    ): Promise<OfferCreationStatus> =>
+      this.request<OfferCreationStatus>(
+        `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
+      ),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────
@@ -274,6 +326,16 @@ export class ApiClient {
       this.request<InvoiceRecord>(
         `/orders/${orderId}/invoice${buildQuery({ connectionId })}`,
       ),
+    /**
+     * Issue a fiscal document for an order (POST /invoices). The server
+     * assembles lines/buyer from the order — the correct seam for the E2E flow
+     * (the `invoicing.issue` job requires a fully pre-assembled payload).
+     */
+    issue: (input: IssueInvoiceInput): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>('/invoices', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     /** Amount/tax surface of an issued document (per-line net/VAT/gross, totals, buyer tax id). */
     getContent: (invoiceId: string): Promise<IssuedDocumentContent> =>
       this.request<IssuedDocumentContent>(`/invoices/${invoiceId}/content`),

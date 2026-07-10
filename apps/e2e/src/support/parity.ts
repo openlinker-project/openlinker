@@ -79,16 +79,33 @@ export interface ProductFieldParityInput {
   actual: ProductParityView;
   /** Currency used for the price comparison (falls back to either view's currency). */
   currency?: string;
+  /**
+   * Load-bearing fields that must NOT be silently skipped: if the expected side
+   * is missing one of these (null/undefined), the assertion fails loudly
+   * instead of dropping the check (e.g. EAN/price parity quietly not running
+   * because the master read came back empty).
+   */
+  required?: readonly (keyof ProductParityView)[];
 }
 
 /**
  * Field-by-field parity between an expected (master) view and an actual (channel)
  * view. Only fields present (non-undefined) in `expected` are asserted, so each
- * surface asserts the subset it actually exposes.
+ * surface asserts the subset it actually exposes — except `required` fields,
+ * which fail loudly when the expected side is missing them.
  */
 export function assertProductFieldParity(input: ProductFieldParityInput): void {
   const { label, expected, actual } = input;
   const currency = input.currency ?? expected.currency ?? actual.currency ?? 'PLN';
+
+  for (const field of input.required ?? []) {
+    const value = expected[field];
+    expect(
+      value !== undefined && value !== null,
+      `${label}: load-bearing field "${String(field)}" is missing on the expected (master) side — ` +
+        'the parity check would silently skip it',
+    ).toBe(true);
+  }
 
   if (expected.name !== undefined && expected.name !== null) {
     expect(norm(actual.name), `${label} name`).toBe(norm(expected.name));
@@ -160,16 +177,23 @@ export function assertOfferParameterParity(
 }
 
 export interface ExpectedInvoiceLine {
-  net: number | string;
+  /** Line gross total (the buyer-paid amount — always derivable from the order). */
+  gross: number | string;
+  /** Line net total, when the caller knows the tax split. */
+  net?: number | string;
   taxRate?: string;
   taxAmount?: number | string;
-  gross: number | string;
 }
 
 export interface ExpectedInvoiceAmounts {
   currency: string;
   documentType?: string;
   buyerTaxId?: string;
+  /**
+   * Expected lines matched by gross amount (containment — the provider may add
+   * lines the order does not carry, e.g. a shipping line). `net`/`taxAmount`/
+   * `taxRate` are asserted on the matched line when provided.
+   */
   lines?: readonly ExpectedInvoiceLine[];
   totals?: { net?: number | string; tax?: number | string; gross?: number | string };
 }
@@ -177,7 +201,8 @@ export interface ExpectedInvoiceAmounts {
 /**
  * Assert an issued document's amounts match expectations, money-safe. Compares
  * per-line net/VAT/gross, totals, currency, and (optionally) buyer tax id and
- * document type.
+ * document type. Every actual line is additionally checked for internal
+ * consistency (`net + tax = gross`), regardless of expectations.
  */
 export function assertInvoiceAmounts(
   expected: ExpectedInvoiceAmounts,
@@ -194,12 +219,30 @@ export function assertInvoiceAmounts(
     expect(actual.buyer.taxId?.value ?? null, 'invoice buyer tax id').toBe(expected.buyerTaxId);
   }
 
+  // Internal consistency of every actual line: net + VAT = gross.
+  actual.lines.forEach((line, i) => {
+    expect(
+      toMinorUnits(line.net, currency) + toMinorUnits(line.tax, currency),
+      `invoice line ${i + 1} internal consistency (net ${line.net} + VAT ${line.tax} = gross ${line.gross})`,
+    ).toBe(toMinorUnits(line.gross, currency));
+  });
+
   if (expected.lines) {
-    expect(actual.lines.length, 'invoice line count').toBe(expected.lines.length);
+    expect(
+      actual.lines.length,
+      `invoice line count (>= ${expected.lines.length} expected order lines)`,
+    ).toBeGreaterThanOrEqual(expected.lines.length);
     expected.lines.forEach((line, i) => {
-      const got = actual.lines[i];
-      assertMoneyEqual(line.net, got.net, currency, `invoice line ${i + 1} net`);
-      assertMoneyEqual(line.gross, got.gross, currency, `invoice line ${i + 1} gross`);
+      const wantGross = toMinorUnits(line.gross, currency);
+      const got = actual.lines.find((l) => toMinorUnits(l.gross, currency) === wantGross);
+      expect(
+        got,
+        `invoice line for expected gross ${line.gross} ${currency} (order line ${i + 1}) present`,
+      ).toBeTruthy();
+      if (!got) return;
+      if (line.net !== undefined) {
+        assertMoneyEqual(line.net, got.net, currency, `invoice line ${i + 1} net`);
+      }
       if (line.taxAmount !== undefined) {
         assertMoneyEqual(line.taxAmount, got.tax, currency, `invoice line ${i + 1} VAT amount`);
       }

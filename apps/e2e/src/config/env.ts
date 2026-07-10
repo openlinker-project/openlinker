@@ -24,6 +24,12 @@ export interface E2eEnv {
   adminPass: string;
   /** Optional pinned order id for post-purchase segments (follow-up). */
   orderId: string | null;
+  /**
+   * Optional InPost locker id override for label generation (S6). Used when the
+   * buyer-selected pickup point is unusable — Allegro-sandbox lockers are known
+   * not to exist in the InPost sandbox.
+   */
+  paczkomatId: string | null;
   /** Directory holding the `resume` sentinel the manual checkpoints wait on. */
   resumeDir: string;
   /** PrestaShop webservice API key (secret — never exposed by the OL API). */
@@ -117,6 +123,7 @@ export function resolveEnv(): E2eEnv {
     adminUser: process.env.OL_ADMIN_USER?.trim() || DEFAULTS.adminUser,
     adminPass: process.env.OL_ADMIN_PASS?.trim() || DEFAULTS.adminPass,
     orderId: orderId && orderId.length > 0 ? orderId : null,
+    paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),
     psAdminUrl: optional(process.env.OL_PS_ADMIN_URL)

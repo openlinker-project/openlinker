@@ -120,9 +120,25 @@ export class SyncJobs {
     return this.trigger({ connectionId, jobType: JobType.marketplaceOrdersPoll });
   }
 
-  /** Propagate OL master inventory out to a marketplace's offers. */
-  propagateInventory(connectionId: string): Promise<string> {
-    return this.trigger({ connectionId, jobType: JobType.inventoryPropagateToMarketplaces });
+  /**
+   * Propagate OL master inventory out to every mapped marketplace offer of a
+   * product/variant. The handler requires `productId` (+ optional `variantId`)
+   * and fans out one quantity-update job per offer mapping across connections;
+   * `connectionId` is only the enqueue anchor (any valid connection id).
+   */
+  propagateInventory(
+    connectionId: string,
+    target: { productId: string; variantId?: string },
+  ): Promise<string> {
+    return this.trigger({
+      connectionId,
+      jobType: JobType.inventoryPropagateToMarketplaces,
+      payload: {
+        productId: target.productId,
+        variantId: target.variantId ?? null,
+        inventoryUpdatedAt: new Date().toISOString(),
+      },
+    });
   }
 
   /** Refresh OL master inventory from a shop's stock. */
