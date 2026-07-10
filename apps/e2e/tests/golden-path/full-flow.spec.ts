@@ -123,9 +123,27 @@ test.describe('golden path — full flow (S0-S9)', () => {
     test.skip(!externalProductId, 'no PrestaShop external id mapped for the product');
     const psProduct = await ps.getProduct(externalProductId!);
 
+    // PrestaShop stores barcodes on COMBINATIONS for multi-variant products —
+    // the parent's `ean13` is empty there. Variant-level EAN parity compares
+    // the OL variant EAN set against the PS combination EAN set; a simple
+    // product falls back to the parent-level field.
+    const psCombEans = await ps.getCombinationEans(externalProductId!);
+    const olVariants = await world.variantsOf(state.product!.id);
+    if (psCombEans.length > 0) {
+      const olEans = olVariants
+        .map((v) => v.ean ?? v.gtin)
+        .filter((e): e is string => !!e)
+        .sort();
+      expect(olEans.length, 'OL variants carry EANs').toBeGreaterThan(0);
+      expect(
+        olEans,
+        'OL variant EAN set equals the PS combination EAN set',
+      ).toEqual([...psCombEans].sort());
+    }
+
     const expected: ProductParityView = {
       name: psProduct.name,
-      ean: psProduct.ean13,
+      ean: psCombEans.length > 0 ? (primary.ean ?? primary.gtin) : psProduct.ean13,
       price: psProduct.price ?? undefined,
       currency: olProduct.currency ?? 'PLN',
     };
@@ -136,7 +154,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
       currency: olProduct.currency ?? 'PLN',
     };
     // EAN + price are load-bearing — fail loudly if the master read is missing
-    // them rather than silently skipping the comparison.
+    // them rather than silently skipping the comparison. For the multi-variant
+    // case the EAN slot is satisfied by the set assertion above (the primary
+    // variant's EAN stands in on both sides so the required-field gate holds).
     assertProductFieldParity({
       label: 'OL↔PS product',
       expected,

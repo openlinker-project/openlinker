@@ -88,6 +88,21 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * EAN-13 of every combination of a product. For a multi-variant product
+   * PrestaShop stores barcodes on the COMBINATIONS, not the parent product
+   * (the parent's `ean13` is typically empty) — variant-level parity must
+   * compare against this set.
+   */
+  async getCombinationEans(productId: string): Promise<string[]> {
+    const body = await this.get(
+      `/api/combinations?filter[id_product]=${productId}&display=full`,
+    );
+    return asArray(pick(body, 'combinations'))
+      .map((row) => asStringOrNull(pick(asRecord(row), 'ean13')))
+      .filter((ean): ean is string => !!ean && ean.trim().length > 0);
+  }
+
+  /**
    * Sum available quantity across a product's `stock_availables` rows.
    *
    * For a product with combinations PrestaShop keeps one row per combination
