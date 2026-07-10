@@ -1,0 +1,10 @@
+# Local env overrides (never commit stack credentials)
+.env
+
+# Playwright browser auth state captured by global setup
+.auth/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
