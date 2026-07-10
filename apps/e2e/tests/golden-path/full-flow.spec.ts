@@ -24,7 +24,7 @@
  */
 import { resolve } from 'node:path';
 import { test, expect } from '../../src/fixtures/test';
-import { PlatformType, type World } from '../../src/world/world';
+import { PlatformType, type KnownPlatformType, type World } from '../../src/world/world';
 import type { ApiClient } from '../../src/api/api-client';
 import { ApiError } from '../../src/api/api-error';
 import type { PageObjects } from '../../src/pages';
@@ -252,7 +252,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const allegro = world.connectionFor(PlatformType.allegro);
     test.skip(!allegro, 'no Allegro connection on this stack');
 
-    const batchId = await createBulkOffers({ api, world, pages, poll, connectionId: allegro!.id, connectionName: allegro!.name });
+    const batchId = await createBulkOffers({ api, world, pages, poll, connectionId: allegro!.id, connectionName: allegro!.name, platform: PlatformType.allegro });
     const mapping = await resolvePrimaryMapping(api, poll, allegro!.id);
     const offer = await api.listings.getOffer(mapping.id);
     state.channelBaseline.set('allegro', offer.availableQuantity);
@@ -370,7 +370,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
 
-    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name });
+    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
 
     // Mapping-level assertions: the offer was created and mapped to the primary
@@ -966,8 +966,9 @@ async function createBulkOffers(ctx: {
   poll: Poller;
   connectionId: string;
   connectionName: string;
+  platform: KnownPlatformType;
 }): Promise<string> {
-  const { api, pages, poll, connectionId, connectionName } = ctx;
+  const { api, pages, poll, connectionId, connectionName, platform } = ctx;
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;
 
   await pages.productsList.goto();
@@ -976,7 +977,7 @@ async function createBulkOffers(ctx: {
   await wizard.selectConnectionIfPresent(connectionName);
   // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
   // failing fast when any review row needs attention.
-  await wizard.advanceToConfirmModal();
+  await wizard.advanceToConfirmModal({ requiresDeliveryPolicy: platform === PlatformType.allegro });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 

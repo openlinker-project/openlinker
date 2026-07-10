@@ -51,12 +51,19 @@ export class BulkOfferWizard {
   /**
    * Complete the required per-platform config the config step gates "Proceed" on.
    * Allegro requires a delivery (shipping-rate) policy; currency auto-defaults to
-   * PLN. The select is populated from the connection's seller policies, so wait
-   * for it to enable, then pick the first real option. No-op for platforms
-   * (Erli) that don't render it.
+   * PLN. The Allegro section is lazy-loaded and its select is populated
+   * asynchronously from the connection's seller policies, so a one-shot
+   * count check right after picking the connection races the mount — when the
+   * caller says the platform requires it, WAIT for the select to appear, enable,
+   * pick the first real option, and verify the value stuck. No-op otherwise
+   * (Erli's dispatch-time section carries its own defaults).
    */
-  async completePlatformConfig(): Promise<void> {
-    if ((await this.deliveryPolicySelect.count()) === 0) return;
+  async completePlatformConfig(opts: { requiresDeliveryPolicy?: boolean } = {}): Promise<void> {
+    if (opts.requiresDeliveryPolicy) {
+      await this.deliveryPolicySelect.waitFor({ state: 'visible', timeout: 30_000 });
+    } else if ((await this.deliveryPolicySelect.count()) === 0) {
+      return;
+    }
     await expect(this.deliveryPolicySelect).toBeEnabled({ timeout: 30_000 });
     const value = await this.deliveryPolicySelect
       .locator('option:not([value=""])')
@@ -64,6 +71,8 @@ export class BulkOfferWizard {
       .getAttribute('value');
     expect(value, 'Allegro connection exposes at least one delivery policy').toBeTruthy();
     await this.deliveryPolicySelect.selectOption(value!);
+    // Confirm the controlled select actually committed the value into the form.
+    await expect(this.deliveryPolicySelect).toHaveValue(value!);
   }
 
   /** The config step's forward CTA ("Proceed →", `bulk-config-step.tsx`). */
@@ -98,8 +107,8 @@ export class BulkOfferWizard {
    * fast when any review row needs attention (missing category/params) — the
    * spec does no row editing, so a needs-attention row can never be submitted.
    */
-  async advanceToConfirmModal(): Promise<void> {
-    await this.completePlatformConfig();
+  async advanceToConfirmModal(opts: { requiresDeliveryPolicy?: boolean } = {}): Promise<void> {
+    await this.completePlatformConfig(opts);
     await expect(this.proceedButton).toBeEnabled({ timeout: 30_000 });
     await this.proceedButton.click();
     await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
