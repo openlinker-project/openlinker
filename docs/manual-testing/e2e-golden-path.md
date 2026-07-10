@@ -168,3 +168,40 @@ The point of this flow is the **reusable helpers** — new scenarios compose the
 Add a new segment by triggering work explicitly (a sync job via
 `src/support/jobs.ts`, or a UI wizard) then `poll.until(...)` OL state — never a
 blind sleep.
+
+## First full-run findings & prerequisites (2026-07-10)
+
+The first end-to-end attended run (S0-S3 automated-verified against a live demo
+stack) surfaced these. Framework fixes are already committed; the items marked
+PREREQUISITE / PRODUCT are for whoever runs the attended half.
+
+### Stack prerequisites (do these before the run)
+- **WooCommerce connection needs `config.masterCatalogConnectionId`** pointing at
+  the PrestaShop (master) connection — without it shop publish fails
+  `MASTER_CATALOG_NOT_CONFIGURED`. Set it on the connection-edit page.
+- **Allegro fresh-offer creation needs the product's category resolvable** (a
+  PS→Allegro category mapping, or a working EAN category match). On a stack where
+  the driver product has **no** existing Allegro offer, S3 runs the bulk wizard
+  and a review row flags "manual category" (needs attention) if the category does
+  not auto-resolve. The flow now **reuses** an existing offer when present
+  (create-if-missing, else reuse), so a stack that already has the offer mapped
+  skips this; a truly clean stack must have the category mapping configured.
+- `.env` must carry `OL_PS_WEBSERVICE_KEY`, `OL_WC_CONSUMER_KEY/SECRET` for full
+  parity (else those segments degrade to annotated OL-only checks).
+
+### Product findings (tracked as issues on main)
+- **Shop publish drops the SKU** (#1485): the neutral `PublishProductCommand`
+  carries no `sku`, so published WooCommerce products have an empty SKU — the
+  flow matches the WC product by **name**, not SKU, and annotates the gap.
+- **Filled offer parameter values in the read model** (#1482): needed for
+  marketplace-side value parity; when deployed, S3 asserts submitted == accepted.
+- WooCommerce publish lands **uncategorised** (category mapping "not implemented
+  in MVP") — annotated, not failed.
+
+### How the attended half completes (S3 checkpoint → S9)
+The run pauses at each external dashboard checkpoint (Allegro/Erli/InPost/KSeF)
+and at the purchase step. To continue a checkpoint: `touch .e2e/resume`
+(record a fail with `echo reason > .e2e/fail`). At the PAUSE, buy the named
+offer on the marketplace (delivery = InPost Paczkomat; a sandbox-valid locker,
+or set `E2E_PACZKOMAT_ID`), then resume. These steps require a human and cannot
+be run unattended.
