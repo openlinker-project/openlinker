@@ -1,0 +1,110 @@
+/**
+ * Test world
+ *
+ * A snapshot of the running stack's topology, resolved dynamically from the API
+ * so specs never hardcode connection ids, product ids, or tunnel URLs. Connections
+ * are indexed by `platformType`; product/variant lookups are lazy helpers over
+ * the live catalogue.
+ *
+ * @module world
+ */
+import type { ApiClient } from '../api/api-client';
+import type { Connection, Product, ProductVariant } from '../api/api.types';
+
+/** Platform types the operator flows care about. */
+export const PlatformType = {
+  prestashop: 'prestashop',
+  woocommerce: 'woocommerce',
+  allegro: 'allegro',
+  erli: 'erli',
+  inpost: 'inpost',
+  ksef: 'ksef',
+} as const;
+
+export type KnownPlatformType = (typeof PlatformType)[keyof typeof PlatformType];
+
+export interface World {
+  /** Every connection on the stack, in list order. */
+  readonly connections: readonly Connection[];
+  /** First active connection for a platform type, or undefined. */
+  connectionFor(platformType: string): Connection | undefined;
+  /** First active connection for a platform type, throwing if absent. */
+  requireConnection(platformType: string): Connection;
+  /** All connections for a platform type. */
+  connectionsFor(platformType: string): Connection[];
+  /** Connections that declare a capability in `enabledCapabilities`. */
+  connectionsWithCapability(capability: string): Connection[];
+  /** Fetch a page of master products (first `limit`). */
+  listProducts(limit?: number): Promise<Product[]>;
+  /** Find the first product with at least `minVariants` variants. */
+  findMultiVariantProduct(minVariants?: number): Promise<Product | undefined>;
+  /** Resolve a product's variants. */
+  variantsOf(productId: string): Promise<ProductVariant[]>;
+}
+
+function isActive(connection: Connection): boolean {
+  return connection.status === 'active';
+}
+
+/**
+ * Resolve the world from the API. Requires the client to be authenticated.
+ */
+export async function buildWorld(api: ApiClient): Promise<World> {
+  const connections = await api.connections.list();
+
+  const connectionsFor = (platformType: string): Connection[] =>
+    connections.filter((c) => c.platformType === platformType);
+
+  const connectionFor = (platformType: string): Connection | undefined =>
+    connectionsFor(platformType).find(isActive) ?? connectionsFor(platformType)[0];
+
+  const requireConnection = (platformType: string): Connection => {
+    const connection = connectionFor(platformType);
+    if (!connection) {
+      const available = [...new Set(connections.map((c) => c.platformType))].join(', ');
+      throw new Error(
+        `No connection found for platformType "${platformType}". Available: ${available || '(none)'}`,
+      );
+    }
+    return connection;
+  };
+
+  const listProducts = async (limit = 50): Promise<Product[]> => {
+    const page = await api.products.list({ limit });
+    return page.items;
+  };
+
+  const variantsOf = async (productId: string): Promise<ProductVariant[]> => {
+    const product = await api.products.getById(productId);
+    if (product.variants && product.variants.length > 0) {
+      return product.variants;
+    }
+    const page = await api.products.listVariants(productId);
+    return page.items;
+  };
+
+  const findMultiVariantProduct = async (
+    minVariants = 2,
+  ): Promise<Product | undefined> => {
+    const products = await listProducts(50);
+    for (const summary of products) {
+      const variants = await variantsOf(summary.id);
+      if (variants.length >= minVariants) {
+        return { ...summary, variants };
+      }
+    }
+    return undefined;
+  };
+
+  return {
+    connections,
+    connectionFor,
+    requireConnection,
+    connectionsFor,
+    connectionsWithCapability: (capability: string): Connection[] =>
+      connections.filter((c) => c.enabledCapabilities.includes(capability)),
+    listProducts,
+    findMultiVariantProduct,
+    variantsOf,
+  };
+}
