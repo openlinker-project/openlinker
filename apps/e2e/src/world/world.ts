@@ -32,7 +32,12 @@ export interface World {
   requireConnection(platformType: string): Connection;
   /** All connections for a platform type. */
   connectionsFor(platformType: string): Connection[];
-  /** Connections that declare a capability in `enabledCapabilities`. */
+  /**
+   * Connections that declare a capability in `enabledCapabilities` OR
+   * `supportedCapabilities`. The FE gates surfaces on either field (products
+   * page → supported, shop-publish launcher → enabled), so the union mirrors
+   * what the UI actually offers.
+   */
   connectionsWithCapability(capability: string): Connection[];
   /** Fetch a page of master products (first `limit`). */
   listProducts(limit?: number): Promise<Product[]>;
@@ -102,7 +107,11 @@ export async function buildWorld(api: ApiClient): Promise<World> {
     requireConnection,
     connectionsFor,
     connectionsWithCapability: (capability: string): Connection[] =>
-      connections.filter((c) => c.enabledCapabilities.includes(capability)),
+      connections.filter(
+        (c) =>
+          c.enabledCapabilities.includes(capability) ||
+          c.supportedCapabilities.includes(capability),
+      ),
     listProducts,
     findMultiVariantProduct,
     variantsOf,

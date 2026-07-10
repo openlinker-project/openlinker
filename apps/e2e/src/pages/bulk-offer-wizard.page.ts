@@ -6,6 +6,13 @@
  * the confirm modal, and the transition to the batch progress page
  * (`/listings/bulk-batches/:batchId`).
  *
+ * Step CTAs mirror the real components: "Proceed →" on the config step
+ * (`bulk-config-step.tsx`), the resolve step auto-advances when its batch
+ * queries settle (`bulk-resolve-step.tsx`), and "Approve all (N)" on the
+ * review step opens the confirm modal (`bulk-review-step.tsx`). "Approve all"
+ * stays disabled while any row needs attention, so the flow fails fast on a
+ * non-zero needs-attention count instead of timing out on a disabled button.
+ *
  * Marketplace connection selection is only shown when more than one eligible
  * connection exists; with a single connection the wizard shows "Publishing as
  * {name}" and no select.
@@ -36,9 +43,53 @@ export class BulkOfferWizard {
     }
   }
 
-  /** Advance Config → Resolving → Review by clicking the stepper's forward action. */
-  get nextButton(): Locator {
-    return this.page.getByRole('button', { name: /^(Next|Continue|Review)/ });
+  /** The config step's forward CTA ("Proceed →", `bulk-config-step.tsx`). */
+  get proceedButton(): Locator {
+    return this.page.getByRole('button', { name: /^Proceed/ });
+  }
+
+  /** The review step's submit CTA ("Approve all (N)", `bulk-review-step.tsx`). */
+  get approveAllButton(): Locator {
+    return this.page.getByRole('button', { name: /^Approve all \(\d+\)$/ });
+  }
+
+  /**
+   * The needs-attention count on the review step (0 when the hint is absent).
+   * Rendered as a `role="status"` hint: "N row(s) need attention…".
+   */
+  async needsAttentionCount(): Promise<number> {
+    const hint = this.page.getByRole('status').filter({ hasText: /needs? attention/ });
+    if ((await hint.count()) === 0) {
+      return 0;
+    }
+    const text = (await hint.first().innerText()).trim();
+    const match = /^(\d+)/.exec(text);
+    return match ? Number(match[1]) : 1;
+  }
+
+  /**
+   * Drive Config → Resolving → Review and open the confirm modal.
+   *
+   * The resolve step runs two batch queries and auto-advances to Review on
+   * settle, so the only clicks are "Proceed →" and "Approve all (N)". Fails
+   * fast when any review row needs attention (missing category/params) — the
+   * spec does no row editing, so a needs-attention row can never be submitted.
+   */
+  async advanceToConfirmModal(): Promise<void> {
+    await this.proceedButton.click();
+    await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
+
+    const needsAttention = await this.needsAttentionCount();
+    expect(
+      needsAttention,
+      `${needsAttention} review row(s) need attention (missing category/params); ` +
+        'the automated flow does no row editing — fix the rows on the stack first',
+    ).toBe(0);
+
+    // `canApprove` also waits out platform parameter resolution (`paramsResolving`).
+    await expect(this.approveAllButton).toBeEnabled({ timeout: 30_000 });
+    await this.approveAllButton.click();
+    await expect(this.confirmModalConfirmButton).toBeVisible();
   }
 
   get confirmModalConfirmButton(): Locator {
