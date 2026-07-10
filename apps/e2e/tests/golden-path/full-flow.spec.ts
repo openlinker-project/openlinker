@@ -81,14 +81,19 @@ test.describe('golden path — full flow (S0-S9)', () => {
     );
     expect(job.status).toBe('succeeded');
 
-    // Pick the driver product: a multi-variant product whose primary variant has an EAN.
+    // Pick the driver product: a multi-variant product where EVERY variant
+    // carries an EAN — the flow maps offers and resolves orders by barcode, so
+    // an EAN-less pick (demo "Resin Ring") would strand every later segment.
     const product = (await poll.until<Product | undefined>(
-      () => world.findMultiVariantProduct(2),
+      () => world.findMultiVariantProduct(2, { requireEans: true }),
       (p) => !!p,
-      { message: 'a multi-variant product to appear after PrestaShop sync', timeoutMs: 60_000 },
+      {
+        message: 'an EAN-complete multi-variant product to appear after PrestaShop sync',
+        timeoutMs: 60_000,
+      },
     ))!;
     const variants = await world.variantsOf(product.id);
-    const primary = variants.find((v) => (v.ean ?? v.gtin)) ?? variants[0];
+    const primary = variants.find((v) => v.ean ?? v.gtin);
     expect(primary, 'a primary variant with an EAN is required').toBeTruthy();
 
     state.product = product;
