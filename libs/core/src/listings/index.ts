@@ -265,6 +265,8 @@ export type {
   MarketplaceOffer,
   MarketplaceOfferPrice,
   MarketplaceOfferCategory,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
 } from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
