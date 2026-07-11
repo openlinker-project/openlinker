@@ -6,6 +6,7 @@ import type {
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  RotateWebhookSecretResult,
   SubiektBankAccount,
   SubiektCashRegister,
   UpdateConnectionInput,
@@ -20,6 +21,7 @@ export interface ConnectionsApi {
   getDiagnostics: (connectionId: string) => Promise<ConnectionDiagnostics>;
   getById: (connectionId: string) => Promise<Connection>;
   installWebhooks: (connectionId: string) => Promise<InstallWebhooksResult>;
+  rotateWebhookSecret: (connectionId: string) => Promise<RotateWebhookSecretResult>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
@@ -90,6 +92,12 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
       return request<InstallWebhooksResult>(`/connections/${connectionId}/webhooks/install`, {
         method: 'POST',
       });
+    },
+    rotateWebhookSecret(connectionId): Promise<RotateWebhookSecretResult> {
+      return request<RotateWebhookSecretResult>(
+        `/connections/${connectionId}/webhooks/secret/rotate`,
+        { method: 'POST' },
+      );
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);
