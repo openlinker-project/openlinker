@@ -46,7 +46,10 @@ import type {
   CreateOfferValidationError,
   OfferCategory,
   CategoryParameter,
+  CategoryParameterSection,
   MarketplaceOffer,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
   SellerPolicies,
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,
@@ -686,7 +689,67 @@ export class AllegroOfferManagerAdapter
       category: offer.category ? { id: offer.category.id } : undefined,
       marketplaceUrl: this.buildMarketplaceUrl(offer.id),
       endsAt: offer.publication?.endingAt,
+      parameters: this.mapOfferParameters(offer),
+      productSet: this.mapOfferProductSet(offer),
     };
+  }
+
+  /**
+   * Collect the offer's filled parameter values into the neutral shape
+   * (#1482). Offer-section values come from `offer.parameters`; product-
+   * section values (Brand, Model, manufacturer code, ...) come from each
+   * `productSet[].product.parameters` - both already present on the
+   * `GET /sale/product-offers/{offerId}` response, so no extra API call.
+   * Returns undefined when the response carries no parameter data at all,
+   * keeping the previous DTO shape for sparse offers.
+   */
+  private mapOfferParameters(offer: AllegroProductOffer): MarketplaceOfferParameter[] | undefined {
+    const mapped: MarketplaceOfferParameter[] = [];
+    for (const parameter of offer.parameters ?? []) {
+      mapped.push(this.toMarketplaceOfferParameter(parameter, 'offer'));
+    }
+    for (const entry of offer.productSet ?? []) {
+      for (const parameter of entry.product?.parameters ?? []) {
+        mapped.push(this.toMarketplaceOfferParameter(parameter, 'product'));
+      }
+    }
+    return mapped.length > 0 ? mapped : undefined;
+  }
+
+  private toMarketplaceOfferParameter(
+    parameter: AllegroOfferParameter,
+    section: CategoryParameterSection
+  ): MarketplaceOfferParameter {
+    return {
+      id: parameter.id,
+      name: parameter.name,
+      values: parameter.values ?? [],
+      valuesIds: parameter.valuesIds,
+      rangeValue: parameter.rangeValue
+        ? { from: parameter.rangeValue.from, to: parameter.rangeValue.to }
+        : undefined,
+      section,
+    };
+  }
+
+  /**
+   * Map `productSet[]` into the neutral catalog-linkage shape (#1482).
+   * `product.id` is only present on smart-linked entries (inline products
+   * carry no card id); `quantity.value` is Allegro's per-item unit count.
+   * Returns undefined when the offer has no product set so adapters without
+   * catalog linkage keep the previous shape.
+   */
+  private mapOfferProductSet(
+    offer: AllegroProductOffer
+  ): MarketplaceOfferProductSetItem[] | undefined {
+    const entries = offer.productSet ?? [];
+    if (entries.length === 0) {
+      return undefined;
+    }
+    return entries.map((entry) => ({
+      productId: entry.product?.id,
+      quantity: entry.quantity?.value,
+    }));
   }
 
   /**
@@ -838,7 +901,7 @@ export class AllegroOfferManagerAdapter
    * failure.
    */
   async resolveCategoriesForBatchByEan(
-    input: BatchCategoryByEanInput,
+    input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
     return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
   }
