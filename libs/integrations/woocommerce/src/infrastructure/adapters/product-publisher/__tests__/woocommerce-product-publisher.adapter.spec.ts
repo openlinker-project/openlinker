@@ -80,7 +80,30 @@ describe('WooCommerceProductPublisherAdapter', () => {
         categories: [{ id: 12 }],
         attributes: [{ name: 'Color', options: ['Red'], visible: true }],
       });
+      // baseCommand carries no sku ⇒ the key must be absent. `toMatchObject`
+      // above ignores missing keys, so this negative assertion is what guards
+      // against the field being silently dropped again (#1485).
+      expect(body).not.toHaveProperty('sku');
       expect(result).toEqual({ externalProductId: '100', status: 'published' });
+    });
+
+    it('should write the SKU to the body when the command carries one (create + upsert)', async () => {
+      http.post.mockResolvedValue({ id: 5, status: 'publish' });
+      http.put.mockResolvedValue({ id: 5, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ sku: 'SKU-1' }));
+      expect(http.post.mock.calls[0][1]).toMatchObject({ sku: 'SKU-1' });
+
+      await adapter.publishProduct(baseCommand({ sku: 'SKU-1', externalProductId: '5' }));
+      expect(http.put.mock.calls[0][1]).toMatchObject({ sku: 'SKU-1' });
+    });
+
+    it('should omit the SKU key when the command has none', async () => {
+      http.post.mockResolvedValue({ id: 6, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand());
+
+      expect(http.post.mock.calls[0][1]).not.toHaveProperty('sku');
     });
 
     it('should PUT to the product id on upsert (externalProductId present)', async () => {
