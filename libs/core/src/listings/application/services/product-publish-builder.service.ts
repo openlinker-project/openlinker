@@ -113,6 +113,10 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       price: price as { amount: number; currency: string },
       stock: input.stock,
       status: input.status,
+      // Thread the variant SKU so shop products publish with a reference the
+      // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
+      // variant has no SKU, matching the spread-omit convention below.
+      ...(variant.sku ? { sku: variant.sku } : {}),
       ...(content ? { content } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
