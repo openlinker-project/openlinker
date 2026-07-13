@@ -6,7 +6,7 @@
  * @module libs/core/src/sync/domain/types
  */
 
-import type { CreateOfferOverrides, OfferFieldUpdate } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition, OfferFieldUpdate } from '@openlinker/core/listings';
 import type { OrderFeedEventType } from '@openlinker/core/orders';
 
 export interface MarketplaceOrdersPollPayloadV1 {
@@ -84,6 +84,13 @@ export interface MarketplaceOfferCreatePayloadV1 {
    * expected to carry `null` description/imageUrls.
    */
   overrides?: CreateOfferOverrides;
+  /**
+   * Optional neutral item condition (#1500). Carried so a programmatic caller's
+   * choice survives the enqueue → worker round-trip; the builder defaults it to
+   * `'new'` when absent. The operator's wizard Stan choice rides on `overrides`
+   * instead, so wizard payloads normally omit this.
+   */
+  condition?: OfferCondition;
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
   /**
@@ -117,6 +124,8 @@ export interface MarketplaceOfferCreatePayloadV2 {
   price?: { amount: number; currency: string };
   /** Optional overrides — same shape as V1. */
   overrides?: CreateOfferOverrides;
+  /** Optional neutral item condition (#1500) — same seam as V1. */
+  condition?: OfferCondition;
   /** Optional idempotency key forwarded to the adapter. */
   idempotencyKey?: string;
   /** Pre-created OfferCreationRecord id — always set for V2 (bulk pre-creates). */

@@ -32,7 +32,7 @@ const allegroConnection: Connection = {
   credentialsBacked: true,
   adapterKey: 'allegro.publicapi.v1',
   enabledCapabilities: ['OfferManager'],
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'OfferCreator'],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
@@ -49,7 +49,7 @@ const prestashopConnection: Connection = {
   // This fixture deliberately advertises OfferManager so the launcher
   // surfaces it in the picker — exercising the "unsupported platform"
   // branch when the operator picks it (no FE plugin registers Prestashop).
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'OfferCreator'],
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };

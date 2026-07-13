@@ -35,7 +35,9 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 import type { OrderRecord } from '../api/orders.types';
@@ -55,6 +57,7 @@ import {
   generateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
+  type LockerTemplate,
 } from './generate-label-form.schema';
 import {
   buildDispatchItem,
@@ -74,6 +77,17 @@ interface GenerateLabelFormProps {
 }
 
 const SLOW_NOTICE_DELAY_MS = 5_000;
+
+/**
+ * InPost gabaryt (size class) shown as a subtle hint on each locker-size option
+ * (#1425). Small → A, Medium → B, Large → C — the operator-facing shorthand
+ * InPost prints on the locker doors.
+ */
+const LOCKER_TEMPLATE_GABARYT: Record<LockerTemplate, string> = {
+  small: 'A',
+  medium: 'B',
+  large: 'C',
+};
 
 /**
  * Window during which a missing Allegro pickup-point is considered "still
@@ -104,6 +118,10 @@ export function GenerateLabelForm({
   // or a locker-classified method ⇒ paczkomat flow.
   const methodClass = classifyDeliveryMethod(snapshot.shipping);
   const shippingMethod = resolveShippingMethod(snapshot);
+  // Point-kind label (#1433) — `pop` ⇒ PaczkoPunkt, `apm` or absent ⇒
+  // Paczkomat (mirrors the order-delivery panel mapping; the pickup field only
+  // renders for the paczkomat flow, so absent defaults to Paczkomat here).
+  const pickupFieldLabel = snapshot.pickupPoint?.pointType === 'pop' ? 'PaczkoPunkt' : 'Paczkomat';
   // Clear courier signal: the method is known-courier, or — until the snapshot
   // carries the method (#952) — the order has a full street address but no
   // pickup point. Suppresses the locker retry hint on courier orders that will
@@ -175,7 +193,9 @@ export function GenerateLabelForm({
       paczkomatId: snapshot.pickupPoint?.id ?? '',
       // Locker size — required by the BE for paczkomat shipments (#764).
       lockerTemplate: 'medium',
-      // COD (#966, decision A) — operator-entered at dispatch; not order-sourced.
+      // COD (#1435) — payment-status-driven. The amount is sourced from the
+      // order (Allegro) for a COD order; these fields back only the fallback
+      // manual input shown for a COD order with no sourced amount.
       codAmount: '',
       codCurrency: 'PLN',
     },
@@ -190,14 +210,36 @@ export function GenerateLabelForm({
   const heightRegister = form.register('height');
   const weightRegister = form.register('weightGrams');
   const paczkomatRegister = form.register('paczkomatId');
-  const lockerTemplateRegister = form.register('lockerTemplate');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
+  // Locker size is driven imperatively via a segmented control (#1425). The
+  // registration is bound to a hidden input at the control (so RHF holds a real
+  // ref and tracks the field); the pressed state is set via `setValue` and read
+  // via `watch`.
+  const lockerTemplateRegister = form.register('lockerTemplate');
+  const lockerTemplate = form.watch('lockerTemplate');
 
-  // COD orders are flagged by the snapshot's payment status (#928). The COD
-  // amount itself isn't persisted (decision A) — the operator enters what to
-  // collect here at dispatch.
-  const isCodOrder = snapshot.paymentStatus === 'cod';
+  // COD is driven by the order's payment status + the marketplace-sourced
+  // amount (#1435). The gate is a block-list on the one prepaid status, not an
+  // allow-list, so sources that don't report payment (PrestaShop / WooCommerce /
+  // DPD) keep the manual-COD path (#966). States:
+  //   - COD + sourced amount            → read-only "from Allegro" panel; submit
+  //                                       sends the sourced amount.
+  //   - COD + no sourced amount         → fallback manual input.
+  //   - unknown / unreported payment    → fallback manual input (DPD/PrestaShop
+  //                                       operator-typed COD, as before).
+  //   - explicitly prepaid (`paid`) /   → NO COD UI, submit sends no cod.
+  //     dispatch-blocked (awaiting/refunded, already blocked upstream)
+  const paymentStatus = snapshot.paymentStatus;
+  const sourcedCod = snapshot.codToCollect;
+  const isCodOrder = paymentStatus === 'cod';
+  // COD surface is allowed unless the order is explicitly prepaid or otherwise
+  // payment-blocked (awaiting/refunded never dispatch, but stay defensive here).
+  const codAllowed =
+    paymentStatus !== 'paid' && paymentStatus !== 'awaiting' && paymentStatus !== 'refunded';
+  // The read-only "from Allegro" panel only applies to a marketplace COD order
+  // that carried a sourced amount; every other allowed state uses the input.
+  const showSourcedCod = isCodOrder && sourcedCod !== undefined;
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -218,6 +260,19 @@ export function GenerateLabelForm({
   }, [mutation.isPending]);
 
   const onSubmit: SubmitHandler<GenerateLabelFormSubmission> = async (values) => {
+    // COD payload by state (#1435). Prepaid / blocked orders never send COD; a
+    // marketplace-sourced amount is sent verbatim; otherwise the operator-typed
+    // amount is honoured (COD-unsourced marketplace order, or an unreported-
+    // payment source like PrestaShop/DPD). The BE re-enforces the gate — the FE
+    // is not authorization — but sending the right shape keeps the two aligned.
+    const cod = !codAllowed
+      ? undefined
+      : showSourcedCod && sourcedCod
+        ? { amount: sourcedCod.amount, currency: sourcedCod.currency }
+        : values.codAmount && values.codAmount.length > 0
+          ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
+          : undefined;
+
     const input: GenerateLabelInput = {
       sourceConnectionId: order.sourceConnectionId,
       ...buildDispatchItem({
@@ -232,10 +287,7 @@ export function GenerateLabelForm({
           template: shippingMethod === 'paczkomat' ? values.lockerTemplate : undefined,
         },
         paczkomatId: values.paczkomatId,
-        cod:
-          values.codAmount && values.codAmount.length > 0
-            ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
-            : undefined,
+        cod,
       }),
     };
     try {
@@ -424,12 +476,12 @@ export function GenerateLabelForm({
 
         {shippingMethod === 'paczkomat' ? (
           <FormField
-            label="Paczkomat"
+            label={pickupFieldLabel}
             name="paczkomatId"
             description={
               paczkomatIsBuyerSelected
                 ? 'Buyer-selected via Allegro — read-only.'
-                : 'Type the paczkomat code (e.g. POZ08A). Picker coming in a follow-up.'
+                : `Type the ${pickupFieldLabel} code (e.g. POZ08A). Picker coming in a follow-up.`
             }
             error={form.formState.errors.paczkomatId?.message}
           >
@@ -442,51 +494,96 @@ export function GenerateLabelForm({
           </FormField>
         ) : null}
 
+        {/* Locker size (#1425) — the shared SegmentedControl replacing the
+            Select. Multi-child, so it renders the `.form-field` markup directly
+            (like the dimensions composite) rather than through FormField, which
+            clones a single control child. The group is labelled by aria-label
+            and wired to its description + error via aria-describedby /
+            aria-errormessage; driven imperatively via `setValue`, with a hidden
+            registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
-          <FormField
-            label="Locker size"
-            name="lockerTemplate"
-            description="InPost parcel template — required for a paczkomat shipment."
-            error={form.formState.errors.lockerTemplate?.message}
-          >
-            <Select {...lockerTemplateRegister} aria-label="Locker size">
-              {LOCKER_TEMPLATE_VALUES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          <div className="form-field">
+            <span className="form-field__label">Locker size</span>
+            <p className="form-field__description" id="lockerTemplate-description">
+              InPost parcel template — required for a paczkomat shipment.
+            </p>
+            <SegmentedControl
+              aria-label="Locker size"
+              aria-describedby="lockerTemplate-description"
+              aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
+              aria-errormessage={
+                form.formState.errors.lockerTemplate ? 'lockerTemplate-error' : undefined
+              }
+              value={lockerTemplate ?? 'medium'}
+              onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
+              options={LOCKER_TEMPLATE_VALUES.map((t) => ({
+                value: t,
+                label: t,
+                hint: LOCKER_TEMPLATE_GABARYT[t],
+              }))}
+            />
+            <input type="hidden" {...lockerTemplateRegister} />
+            <FieldError
+              id="lockerTemplate-error"
+              message={form.formState.errors.lockerTemplate?.message}
+            />
+          </div>
         ) : null}
 
-        {/* Cash on delivery (#966, decision A) — optional, operator-entered.
-            COD-incapable carriers ignore it; DPD translates it to its COD
-            service. Pre-flagged when the order's payment status is COD. */}
-        <div className="form-field">
-          <p className="form-field__label">Cash on delivery (optional)</p>
-          <p className="form-field__description">
-            {isCodOrder
-              ? 'This order is cash-on-delivery — enter the amount to collect at the door.'
-              : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
-          </p>
-          <div className="generate-label-form__cod">
-            <Input
-              {...codAmountRegister}
-              inputMode="decimal"
-              placeholder="129.90"
-              aria-label="COD amount to collect"
-              invalid={Boolean(form.formState.errors.codAmount)}
-            />
-            <Select {...codCurrencyRegister} aria-label="COD currency">
-              {COD_CURRENCY_VALUES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
+        {/* Cash on delivery (#1435) — payment-status-driven. Explicitly prepaid
+            (and dispatch-blocked) orders render nothing. A marketplace COD order
+            shows the read-only sourced amount ("from Allegro"); a COD order with
+            no sourced amount, or a source that doesn't report payment
+            (PrestaShop / DPD / legacy), shows a manual input (the operator-typed
+            path, #966). */}
+        {codAllowed ? (
+          <div className="form-field generate-label-form__cod-panel">
+            <div className="generate-label-form__cod-head">
+              <StatusBadge tone="warning" withDot>
+                Cash on delivery
+              </StatusBadge>
+              {showSourcedCod ? (
+                <span className="generate-label-form__cod-source">from Allegro</span>
+              ) : null}
+            </div>
+
+            {showSourcedCod && sourcedCod ? (
+              <>
+                <p className="generate-label-form__cod-amount tabular">
+                  {sourcedCod.amount} {sourcedCod.currency}
+                </p>
+                <p className="generate-label-form__cod-note">
+                  Collected on delivery — set by the order, not editable here.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="generate-label-form__cod-note">
+                  {isCodOrder
+                    ? "This order is cash-on-delivery, but the collect amount didn't come from the source (non-Allegro or missing). Enter the amount to collect."
+                    : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
+                </p>
+                <div className="generate-label-form__cod">
+                  <Input
+                    {...codAmountRegister}
+                    inputMode="decimal"
+                    placeholder="129.90"
+                    aria-label="COD amount to collect"
+                    invalid={Boolean(form.formState.errors.codAmount)}
+                  />
+                  <Select {...codCurrencyRegister} aria-label="COD currency">
+                    {COD_CURRENCY_VALUES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
+              </>
+            )}
           </div>
-          <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
-        </div>
+        ) : null}
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">

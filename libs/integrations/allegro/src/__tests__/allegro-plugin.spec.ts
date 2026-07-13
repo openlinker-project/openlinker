@@ -31,6 +31,15 @@ describe('allegroAdapterManifest', () => {
       expect.arrayContaining(['CategoryBrowser', 'EanCategoryMatcher']),
     );
   });
+
+  it('advertises OfferCreator + OfferEventReader so FE offer flows gate on the finer sub-capabilities (#1498)', () => {
+    // FE offer-creation pickers gate on `OfferCreator` and the offers-sync
+    // trigger on `OfferEventReader` — a quantity-only OfferManager
+    // (WooCommerce stock write-back) must not surface in those flows.
+    expect(allegroAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['OfferCreator', 'OfferEventReader']),
+    );
+  });
 });
 
 describe('createAllegroPlugin → register(host)', () => {

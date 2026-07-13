@@ -225,6 +225,11 @@ export class OfferBuilderService implements IOfferBuilderService {
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
       idempotencyKey: input.idempotencyKey,
+      // #1500 — marketplaces require a condition ("Stan") on offer creation.
+      // Default to 'new' when the operator supplies none so non-UI / borrows
+      // paths never silently omit it; an explicit operator condition wins. The
+      // neutral value stays platform-free — each adapter maps it to its wire id.
+      condition: input.condition ?? 'new',
       ...(sourceCategories.length > 0 ? { sourceCategories } : {}),
       ...(sourceAttributes.length > 0 ? { sourceAttributes } : {}),
       // Neutral parameters (#1039/#1071): projected attributes merged with

@@ -313,7 +313,7 @@ describe('SubiektInvoicingAdapter', () => {
     it('issues a quantity-only correction via the bridge correction endpoint', async () => {
       const { adapter, bridge } = makeAdapter();
       const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
-      const record = await adapter.issueCorrection(
+      const { record } = await adapter.issueCorrection(
         correctionCommand({ lines: [{ originalLineNumber: 1, newQuantity: 5 }] }),
       );
       // origId path arg parsed from originalProviderInvoiceId; body carries only nowaIlosc.
@@ -364,7 +364,7 @@ describe('SubiektInvoicingAdapter', () => {
 
     it('echoes the command idempotencyKey onto the returned record', async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueCorrection(correctionCommand({ idempotencyKey: 'idem-kor' }));
+      const { record } = await adapter.issueCorrection(correctionCommand({ idempotencyKey: 'idem-kor' }));
       expect(record.idempotencyKey).toBe('idem-kor');
     });
 
@@ -398,9 +398,9 @@ describe('SubiektInvoicingAdapter', () => {
 
     it("defaults documentType to 'corrected' when the command omits it, honours an explicit one", async () => {
       const { adapter } = makeAdapter();
-      const def = await adapter.issueCorrection(correctionCommand());
+      const { record: def } = await adapter.issueCorrection(correctionCommand());
       expect(def.documentType).toBe('corrected');
-      const explicit = await adapter.issueCorrection(
+      const { record: explicit } = await adapter.issueCorrection(
         correctionCommand({ documentType: 'credit-note' }),
       );
       expect(explicit.documentType).toBe('credit-note');
@@ -408,7 +408,7 @@ describe('SubiektInvoicingAdapter', () => {
 
     it("defaults regulatoryStatus to 'submitted' (the korekta response carries none)", async () => {
       const { adapter } = makeAdapter();
-      const record = await adapter.issueCorrection(correctionCommand());
+      const { record } = await adapter.issueCorrection(correctionCommand());
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.pdfUrl).toBeNull();
     });

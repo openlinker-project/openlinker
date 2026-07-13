@@ -30,6 +30,7 @@ import { ErliConfigException } from '../domain/exceptions/erli-config.exception'
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
   ERLI_DEFAULT_BASE_URL,
+  ERLI_SANDBOX_BASE_URL,
   type ErliConnectionConfig,
   type ErliCredentials,
 } from '../domain/types/erli-connection.types';
@@ -177,23 +178,33 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     );
   }
 
+  /**
+   * Resolve the Shop API base URL. Precedence (#1377):
+   *   1. Explicit `config.baseUrl` — honoured for backward compatibility, since
+   *      connections created before the environment select persisted the derived
+   *      sandbox URL here. Re-validated through the SSRF/cleartext allowlist.
+   *   2. `config.environment` — the neutral choice the FE now persists:
+   *      `'sandbox'` → the sandbox host, anything else → the prod default. These
+   *      constants are trusted (not operator-supplied), so no allowlist re-check.
+   *   3. Default prod base URL.
+   */
   private resolveBaseUrl(connection: Connection): string {
     const config = (connection.config ?? {}) as ErliConnectionConfig;
     const override = config.baseUrl?.trim();
-    if (!override || override.length === 0) {
-      return ERLI_DEFAULT_BASE_URL;
+    if (override && override.length > 0) {
+      // Defense-in-depth: the config-shape validator enforces the https + Erli-host
+      // allowlist at create/update, but a pre-existing or externally-written row
+      // could carry a plain-http or off-host baseUrl — which would send the bearer
+      // key over cleartext or to an attacker-controlled host (SSRF). Re-check here
+      // so the property doesn't rest solely on create-time validation (PR1057-TECH-03).
+      if (!isAllowedErliBaseUrl(override)) {
+        throw new ErliConfigException(
+          `Erli connection ${connection.id} has a disallowed baseUrl (must be https and an Erli-owned host)`,
+          connection.id,
+        );
+      }
+      return override;
     }
-    // Defense-in-depth: the config-shape validator enforces the https + Erli-host
-    // allowlist at create/update, but a pre-existing or externally-written row
-    // could carry a plain-http or off-host baseUrl — which would send the bearer
-    // key over cleartext or to an attacker-controlled host (SSRF). Re-check here
-    // so the property doesn't rest solely on create-time validation (PR1057-TECH-03).
-    if (!isAllowedErliBaseUrl(override)) {
-      throw new ErliConfigException(
-        `Erli connection ${connection.id} has a disallowed baseUrl (must be https and an Erli-owned host)`,
-        connection.id,
-      );
-    }
-    return override;
+    return config.environment === 'sandbox' ? ERLI_SANDBOX_BASE_URL : ERLI_DEFAULT_BASE_URL;
   }
 }

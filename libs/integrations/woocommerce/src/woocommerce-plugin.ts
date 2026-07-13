@@ -29,6 +29,7 @@ import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-con
 import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
 import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
 import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/product-publisher/woocommerce-product-publisher.adapter';
+import { WooCommerceOfferManagerAdapter } from './infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
@@ -51,6 +52,14 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'ProductPublisher',
     'CategoryProvisioner',
+    // Inventory write-back to published products (#1498). Quantity-only —
+    // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
+    // OfferLister sub-capabilities, so offer-creation flows (gated on
+    // OfferCreator) never surface WC. Defaults OFF on new connections when
+    // InventoryMaster is also in the manifest set (ConnectionService excludes
+    // it), and is mutually exclusive with InventoryMaster per connection —
+    // the inventory master must never be a write-back target.
+    'OfferManager',
   ],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
@@ -142,6 +151,7 @@ export function createWooCommercePlugin(): AdapterPlugin {
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
               CategoryProvisioner: () =>
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
+              OfferManager: () => new WooCommerceOfferManagerAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,
           ),

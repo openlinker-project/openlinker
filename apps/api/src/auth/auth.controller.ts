@@ -20,6 +20,7 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Inject,
   Post,
@@ -33,6 +34,7 @@ import { Request, Response } from 'express';
 import {
   InvalidPasswordResetTokenException,
   RegistrationDisabledException,
+  RegistrationRateLimitedException,
   RefreshTokenReuseDetectedException,
   UserAlreadyExistsException,
   WeakPasswordException,
@@ -117,15 +119,19 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'Registration submitted — awaiting admin approval', type: OkResponseDto })
   @ApiResponse({ status: 403, description: 'Registration is disabled for this installation' })
   @ApiResponse({ status: 409, description: 'Username or email already taken' })
-  async register(@Body() dto: RegisterDto): Promise<OkResponseDto> {
+  @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })
+  async register(@Body() dto: RegisterDto, @Req() req: Request): Promise<OkResponseDto> {
     try {
-      await this.registrationService.register(dto.username, dto.email, dto.password);
+      await this.registrationService.register(dto.username, dto.email, dto.password, req.ip);
     } catch (error) {
       if (error instanceof RegistrationDisabledException) {
         throw new ForbiddenException(error.message);
       }
       if (error instanceof UserAlreadyExistsException) {
         throw new ConflictException(error.message);
+      }
+      if (error instanceof RegistrationRateLimitedException) {
+        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
       }
       throw error;
     }

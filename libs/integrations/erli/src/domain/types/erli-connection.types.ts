@@ -33,6 +33,16 @@
 export const AllegroCatalogEnvironmentValues = ['sandbox', 'production'] as const;
 export type AllegroCatalogEnvironment = (typeof AllegroCatalogEnvironmentValues)[number];
 
+/**
+ * Erli Shop API environment (#1377). The neutral choice the FE create-wizard
+ * persists on `connection.config.environment`; the adapter factory maps it to
+ * the concrete base URL ({@link ERLI_SANDBOX_BASE_URL} / {@link ERLI_DEFAULT_BASE_URL}).
+ * Persisting the choice rather than a derived URL means a future base-URL change
+ * never leaves a stale literal in an existing connection's config.
+ */
+export const ErliEnvironmentValues = ['sandbox', 'production'] as const;
+export type ErliEnvironment = (typeof ErliEnvironmentValues)[number];
+
 /** Encrypted credentials for an Erli connection (resolved via host.credentialsResolver). */
 export interface ErliCredentials {
   apiKey: string;
@@ -56,7 +66,21 @@ export interface ErliDispatchTime {
 
 /** Non-secret per-connection config stored on `connection.config`. */
 export interface ErliConnectionConfig {
-  /** Optional Shop API base URL override; defaults to {@link ERLI_DEFAULT_BASE_URL}. */
+  /**
+   * Neutral Shop API environment choice (#1377) the FE create-wizard persists.
+   * The factory maps `'sandbox'` → {@link ERLI_SANDBOX_BASE_URL} and anything
+   * else → {@link ERLI_DEFAULT_BASE_URL}. Superseded by an explicit
+   * {@link ErliConnectionConfig.baseUrl} when both are present (legacy
+   * connections stored the derived URL directly).
+   */
+  environment?: ErliEnvironment;
+  /**
+   * Optional explicit Shop API base URL override; defaults to
+   * {@link ERLI_DEFAULT_BASE_URL}. Takes precedence over
+   * {@link ErliConnectionConfig.environment} so connections created before
+   * #1377 (which persisted the resolved sandbox URL here) keep resolving the
+   * same host.
+   */
   baseUrl?: string;
   /**
    * Shop-wide default dispatch time applied to every created offer when the
@@ -104,3 +128,10 @@ export interface ErliConnectionConfig {
  * Erli allowlist — see `domain/policies/erli-base-url.policy.ts`.
  */
 export const ERLI_DEFAULT_BASE_URL = 'https://erli.pl/svc/shop-api';
+
+/**
+ * Sandbox Erli Shop API base URL (confirmed by the #992 spike). The adapter
+ * factory resolves it when `connection.config.environment === 'sandbox'` (#1377)
+ * — the single source of truth for the sandbox host, no longer duplicated on the FE.
+ */
+export const ERLI_SANDBOX_BASE_URL = 'https://sandbox.erli.dev/svc/shop-api';

@@ -175,7 +175,17 @@ export class KsefInvoicingAdapter
     // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
     // order id) before prod. Owned by the core InvoiceService numbering
     // follow-up (#1118), not the C6 clearance-read (#1150).
-    const documentNumber = cmd.orderId;
+    //
+    // #1364 interim fix: a correction MUST NOT reuse the original document's
+    // P_2 — KSeF rejects it live with "Duplikat faktury" (confirmed against
+    // the real test environment) once the same order is corrected a second
+    // time. Give every correction a distinct suffix so it never collides with
+    // the document it corrects (or an earlier correction of the same order).
+    // Not the real sequential-numbering source #1364 ultimately wants — just
+    // enough to stop the collision until that lands.
+    const documentNumber = cmd.correction
+      ? this.buildCorrectionDocumentNumber(cmd.orderId, cmd.idempotencyKey, issuedAt)
+      : cmd.orderId;
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
@@ -264,6 +274,24 @@ export class KsefInvoicingAdapter
     return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
   }
 
+  /**
+   * #1364 interim fix: derive a P_2 for a correction that is distinct from the
+   * original document's P_2 (`orderId`) and from any earlier correction of the
+   * same order. Keyed off `idempotencyKey` when the caller supplied one (stable
+   * across retries of the SAME correction attempt — a retry must reuse the same
+   * P_2, not mint a new one), else falls back to the issue timestamp. Not the
+   * real per-seller sequential FA(3) numbering source #1364 ultimately wants —
+   * just enough to stop the live "Duplikat faktury" collision until that lands.
+   */
+  private buildCorrectionDocumentNumber(
+    orderId: string,
+    idempotencyKey: string | undefined,
+    issuedAt: Date,
+  ): string {
+    const suffix = idempotencyKey ? idempotencyKey.slice(0, 16) : issuedAt.getTime().toString(36);
+    return `${orderId}-KOR-${suffix}`;
+  }
+
   /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
   private toSourceDocument(xml: string): StoredDocument {
     return {
@@ -309,7 +337,7 @@ export class KsefInvoicingAdapter
    * stays on the base `IssueCorrectionCommand` for adapters (e.g. Subiekt)
    * whose provider-native id IS the correction target.
    */
-  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecordType> {
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
     if (!cmd.originalDocument) {
       throw new KsefInvalidCorrectionException(
         `Cannot issue a KSeF correction for order ${cmd.orderId}: the original invoice ` +
@@ -317,15 +345,9 @@ export class KsefInvoicingAdapter
       );
     }
     const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
-    // NOTE (#1338 review follow-up, tracked in #1364): delegating to issueInvoice
-    // with the SAME `orderId` means a KOR stamps P_2 = the original document's
-    // P_2 — the correction and the invoice it corrects share a document number,
-    // which is wrong for FA(3) (P_2 must be unique per document). Pre-existing
-    // (the orderId-as-P_2 placeholder predates this fix); now more visible
-    // because `providerInvoiceNumber` is actually persisted and consumed by the
-    // correction precondition. Must be resolved together with the real
-    // per-seller sequential FA(3) numbering source (see the `documentNumber`
-    // TODO in issueInvoice above) — a correction needs its own distinct number.
+    // #1364: `issueInvoice` below stamps a distinct P_2 whenever `correction` is
+    // present (see `buildCorrectionDocumentNumber`), so delegating with the same
+    // `orderId` here no longer collides with the original document's P_2.
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
@@ -346,11 +368,12 @@ export class KsefInvoicingAdapter
       },
       idempotencyKey: cmd.idempotencyKey,
     };
-    // `CorrectionIssuer.issueCorrection` returns the plain neutral `InvoiceRecord`
-    // (unlike `issueInvoice`, which wraps it in `IssueInvoiceResult` alongside the
-    // optional seller/sourceDocument the UPO/document-retrieval flow needs).
-    const { record } = await this.issueInvoice(issueCmd);
-    return record;
+    // `CorrectionIssuer.issueCorrection` now returns the full `IssueInvoiceResult`
+    // (record + seller + sourceDocument), same as `issueInvoice` — a KOR's FA(3)
+    // XML must be persisted and re-servable just like the original invoice's
+    // (#1229 follow-up: the source document was previously discarded here,
+    // leaving every correction's "View"/"Preview" with nothing to render).
+    return this.issueInvoice(issueCmd);
   }
 
   /**

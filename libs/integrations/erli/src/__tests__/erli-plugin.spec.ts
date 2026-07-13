@@ -100,7 +100,15 @@ describe('erliAdapterManifest', () => {
     // Each capability is declared in lockstep with its adapter; declaring a
     // capability the factory cannot build would let listCapabilityAdapters
     // request an undeliverable adapter.
-    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OfferManager', 'OrderSource']);
+    expect(erliAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['OfferManager', 'OrderSource'])
+    );
+  });
+
+  it('should advertise the OfferCreator sub-capability so FE offer-creation flows keep showing Erli (#1498)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
+    // Erli has no offer-event journal — the offers-sync trigger stays hidden.
+    expect(erliAdapterManifest.supportedCapabilities).not.toContain('OfferEventReader');
   });
 
   it('should be the platform-default adapter', () => {
@@ -285,6 +293,14 @@ describe('createErliPlugin', () => {
       await expect(
         createErliPlugin().createCapabilityAdapter(connection, 'ProductMaster', makeDispatchHost()),
       ).rejects.toThrow('Erli adapter does not support capability: ProductMaster');
+    });
+
+    it('should advertise OfferCreator but reject dispatching it directly — it is narrow-only via isOfferCreator on the OfferManager adapter (#1498)', async () => {
+      expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
+
+      await expect(
+        createErliPlugin().createCapabilityAdapter(connection, 'OfferCreator', makeDispatchHost()),
+      ).rejects.toThrow('Erli adapter does not support capability: OfferCreator');
     });
   });
 });

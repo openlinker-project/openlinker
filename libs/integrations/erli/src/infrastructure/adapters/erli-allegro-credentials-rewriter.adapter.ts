@@ -82,6 +82,13 @@ export class ErliAllegroCredentialsRewriterAdapter implements ConnectionCredenti
           `(platformType: ${sourceConnection.platformType}); cannot reuse its credentials`
       );
     }
+    if (sourceConnection.status !== 'active') {
+      throw new ConnectionCredentialsRewriteException(
+        this.pluginName,
+        `Allegro connection ${reuseAllegroConnectionId} is not active ` +
+          `(status: ${sourceConnection.status}); cannot reuse its credentials`
+      );
+    }
 
     const sourceCredentials = await this.credentialsResolver.get<AllegroAppCredentials>(
       sourceConnection.credentialsRef

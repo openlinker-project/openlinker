@@ -161,6 +161,17 @@ export interface InstallWebhooksResult {
   warning?: string;
 }
 
+/**
+ * Response from `POST /connections/:id/webhooks/secret/rotate`. The plaintext
+ * secret is revealed exactly once here and is never retrievable again — callers
+ * must surface it immediately for the operator to store.
+ */
+export interface RotateWebhookSecretResult {
+  secret: string;
+  revealedOnce: boolean;
+  warning: string;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

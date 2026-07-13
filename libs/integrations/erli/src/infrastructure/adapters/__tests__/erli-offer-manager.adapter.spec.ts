@@ -344,7 +344,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 
@@ -373,7 +373,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
           { source: 'allegro', id: '224017', type: 'string', values: ['Acme'] },
         ]);
       });
@@ -421,7 +421,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 
@@ -441,6 +441,112 @@ describe('ErliOfferManagerAdapter', () => {
         } finally {
           debugSpy.mockRestore();
         }
+      });
+    });
+
+    describe('condition default (#1500)', () => {
+      it('maps neutral condition "new" to a source:"allegro" Stan (11323_1) attribute', async () => {
+        await adapter.createOffer(createCmd({ condition: 'new' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
+        ]);
+      });
+
+      it('maps neutral condition "used" to Stan value 11323_2', async () => {
+        await adapter.createOffer(createCmd({ condition: 'used' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+      });
+
+      it('does NOT double-set condition when the operator already supplied a Stan (11323) param', async () => {
+        await adapter.createOffer(
+          createCmd({
+            condition: 'new',
+            parameters: [{ id: '11323', valuesIds: ['11323_2'], section: 'offer' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        // Operator's Stan wins; the default 'new' condition is not appended.
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+      });
+
+      it('does not emit a Stan attribute when condition is absent', async () => {
+        // Mirrors the Allegro "absent -> no Stan param" coverage: with no
+        // condition and no operator params, no Stan (11323) attribute is added.
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toBeUndefined();
+      });
+
+      it('appends condition before variant-group axes so group index refs stay valid', async () => {
+        const groupId = `ol_product_${'c'.repeat(32)}`;
+        await adapter.createOffer(
+          createCmd({
+            condition: 'new',
+            variantGroup: { groupId, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<{ id: string; index?: number }>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Condition attribute precedes the group axis; the group references the
+        // axis by its absolute index (1), unaffected by the prepended condition.
+        expect(body.externalAttributes?.[0]).toEqual({
+          source: 'allegro',
+          id: '11323',
+          type: 'dictionary',
+          values: [{ id: '11323_1' }],
+        });
+        expect(body.externalAttributes?.[1]).toMatchObject({
+          source: 'shop',
+          name: 'Color',
+          values: ['Red'],
+          index: 1,
+        });
+        expect(body.externalVariantGroup?.attributes).toEqual([1]);
+      });
+
+      it('keeps operator-Stan dedup and variant-group index integrity together', async () => {
+        const groupId = `ol_product_${'d'.repeat(32)}`;
+        await adapter.createOffer(
+          createCmd({
+            // Default condition 'new' plus an operator-supplied Stan param: the
+            // operator wins (no double-set), and the appended group axis still
+            // references its own absolute index after the operator attribute.
+            condition: 'new',
+            parameters: [{ id: '11323', valuesIds: ['11323_2'], section: 'offer' }],
+            variantGroup: { groupId, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<{ id: string; index?: number }>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Exactly one Stan attribute — the operator's (11323_2), not the default.
+        const stanAttrs = (body.externalAttributes ?? []).filter((a) => a.id === '11323');
+        expect(stanAttrs).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+        // The group axis follows the single param attribute at index 1.
+        expect(body.externalAttributes?.[1]).toMatchObject({
+          source: 'shop',
+          name: 'Color',
+          values: ['Red'],
+          index: 1,
+        });
+        expect(body.externalVariantGroup?.attributes).toEqual([1]);
       });
     });
 

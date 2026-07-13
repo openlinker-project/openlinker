@@ -7,9 +7,11 @@
  * capabilities its factory can build.
  *
  * Side-registrations land in `register(host)` (`createNestAdapterModule`
- * invokes it): the connection config + credentials shape validators (C2) and
- * the retry classifier (so the worker runner treats terminal KSeF failures as
- * non-retryable instead of defaulting unknown errors to retryable). These
+ * invokes it): the connection config + credentials shape validators (C2), the
+ * retry classifier (so the worker runner treats terminal KSeF failures as
+ * non-retryable instead of defaulting unknown errors to retryable), and the
+ * connection tester (runs the real `ksef-token` auth handshake so "Test
+ * connection" proves the token actually authenticates). The shape validators
  * reject malformed payloads before a connection is persisted, so C3+ never sees
  * a connection with an invalid environment or an unresolvable credential.
  *
@@ -29,6 +31,7 @@ import { KsefAdapterFactory } from './application/factories/ksef-adapter.factory
 import { KSEF_ADAPTER_KEY, KSEF_BRAND } from './ksef.constants';
 import { KsefConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/ksef-connection-config-shape-validator.adapter';
 import { KsefConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/ksef-connection-credentials-shape-validator.adapter';
+import { KsefConnectionTesterAdapter } from './infrastructure/adapters/ksef-connection-tester.adapter';
 import { KsefRetryClassifierAdapter } from './infrastructure/adapters/ksef-retry-classifier.adapter';
 
 /**
@@ -65,6 +68,7 @@ export function createKsefPlugin(): AdapterPlugin {
         new KsefConnectionCredentialsShapeValidatorAdapter(KSEF_BRAND),
       );
       host.retryClassifierRegistry.register(KSEF_ADAPTER_KEY, new KsefRetryClassifierAdapter());
+      host.connectionTesterRegistry.register(KSEF_ADAPTER_KEY, new KsefConnectionTesterAdapter());
     },
 
     async createCapabilityAdapter<T>(

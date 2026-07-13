@@ -21,6 +21,26 @@
  */
 export interface AllegroCheckoutForm {
   id: string;
+  /**
+   * Checkout-form transaction status. `CANCELLED` means the transaction
+   * itself was voided (payment timeout, buyer-initiated cancellation before
+   * a sale completes, etc). Other known values: `BOUGHT`, `FILLED_IN`,
+   * `READY_FOR_PROCESSING`. Optional because older fixtures/mocks predate
+   * this field; absence is treated as not-cancelled.
+   */
+  status?: string;
+  /**
+   * The SELLER's own delivery/fulfillment status — what the "Status
+   * zamówienia" dropdown in Allegro's seller panel sets (`NOWE`,
+   * `W_REALIZACJI`, `WSTRZYMANE`, `DO_WYSLANIA`, `DO_ODBIORU`, `WYSLANE`,
+   * `ODEBRANE`, `ANULOWANE`/`CANCELLED`). `AllegroOrderSourceAdapter.write()`
+   * also SETS this same field when relaying an externally-authored (e.g.
+   * PrestaShop-side) cancellation INTO Allegro — reading it back out here to
+   * detect a seller-initiated cancellation is safe despite that, because the
+   * order-ingestion transition-gate (`priorStatus !== 'cancelled'`) already
+   * suppresses a re-fire once OL's own record is cancelled.
+   */
+  fulfillment?: { status?: string };
   messageToSeller?: string;
   buyer: {
     id: string;
@@ -294,6 +314,13 @@ export interface AllegroProductSetEntry {
     parameters?: AllegroOfferParameter[];
     images?: string[];
   };
+  /**
+   * How many units of the catalog product one offer item contains
+   * (`quantity.value`, default 1 - Allegro uses it for bundles/sets).
+   * Read-side field consumed by `getOffer` (#1482); the create path never
+   * sets it.
+   */
+  quantity?: { value?: number };
   /**
    * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
    * Allegro on every `productSet[]` entry when the entry creates an inline
@@ -778,7 +805,6 @@ export interface AllegroWarrantiesResponse {
 export interface AllegroImpliedWarrantiesResponse {
   impliedWarranties: AllegroSellerPolicyEntry[];
 }
-
 
 /**
  * Response from `GET /sale/offers/{offerId}/smart` (#737) — Allegro Smart!

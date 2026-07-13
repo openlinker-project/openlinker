@@ -247,6 +247,11 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
           );
         }
         connections = result ?? [];
+        if (task.requiredCapability) {
+          connections = connections.filter((connection) =>
+            connection.enabledCapabilities.includes(task.requiredCapability as string)
+          );
+        }
       } else {
         this.logger.error(
           `Scheduler task ${task.taskId} has neither platformType nor connectionFilter — skipping`

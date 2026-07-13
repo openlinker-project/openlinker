@@ -43,4 +43,23 @@ export interface IInventoryService {
     productVariantId?: string | null,
     locationId?: string | null
   ): Promise<InventoryItem | null>;
+
+  /**
+   * Prune stale variants after a master sync (#1478).
+   *
+   * Soft-marks every currently-live inventory row for `productId` whose variant
+   * is NOT in `currentVariantIds` (the variant keys present in the master's
+   * latest `listInventory` response, including `null` for a product-level row).
+   * Rows for variants deleted at the master are flagged `isStale` and excluded
+   * from the variant-availability read the offer flows act on. A variant that
+   * reappears clears its own flag via `setInventory`.
+   *
+   * @param productId internal OpenLinker product ID
+   * @param currentVariantIds variant keys still present at the master (may include `null`)
+   * @returns number of rows newly marked stale
+   */
+  pruneStaleVariants(
+    productId: string,
+    currentVariantIds: readonly (string | null)[]
+  ): Promise<number>;
 }

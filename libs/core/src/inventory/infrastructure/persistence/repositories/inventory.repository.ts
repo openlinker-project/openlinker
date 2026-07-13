@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
@@ -111,6 +111,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
+      // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
+      .andWhere('inv.isStale = false')
       .groupBy('inv.productVariantId')
       .getRawMany<{
         productVariantId: string;
@@ -126,6 +128,42 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
     }));
+  }
+
+  async markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly (string | null)[]
+  ): Promise<number> {
+    const nonNullKeep = keepVariantIds.filter((v): v is string => v !== null);
+    const keepNull = keepVariantIds.includes(null);
+
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(InventoryItemOrmEntity)
+      .set({ isStale: true })
+      .where('productId = :productId', { productId })
+      .andWhere('isStale = false')
+      .andWhere(
+        // A row is stale iff its variant is not in the keep set. Each branch
+        // guards its own NULL so the predicate is total (never three-valued),
+        // and NOT IN is only applied to guaranteed-non-null values.
+        new Brackets((qb) => {
+          if (nonNullKeep.length > 0) {
+            qb.where(
+              'productVariantId IS NOT NULL AND productVariantId NOT IN (:...keep)',
+              { keep: nonNullKeep }
+            );
+          } else {
+            qb.where('productVariantId IS NOT NULL');
+          }
+          if (!keepNull) {
+            qb.orWhere('productVariantId IS NULL');
+          }
+        })
+      )
+      .execute();
+
+    return result.affected ?? 0;
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {
@@ -183,7 +221,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       entity.availableQuantity,
       entity.reservedQuantity,
       entity.locationId,
-      entity.updatedAt
+      entity.updatedAt,
+      entity.isStale
     );
   }
 
@@ -198,6 +237,9 @@ export class InventoryRepository implements InventoryRepositoryPort {
     entity.availableQuantity = item.availableQuantity;
     entity.reservedQuantity = item.reservedQuantity;
     entity.locationId = item.locationId;
+    // A freshly-synced/upserted row is always live — this is what clears a
+    // previously-stale flag when a deleted variant reappears at the master (#1478).
+    entity.isStale = item.isStale;
     entity.updatedAt = item.updatedAt;
     return entity;
   }

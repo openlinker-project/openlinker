@@ -24,12 +24,14 @@ import {
   UnsupportedRegulatoryDocumentKindError,
   DuplicateInvoiceRecordException,
   BuyerProfile,
+  PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
 } from '@openlinker/core/invoicing';
 import type {
   IInvoiceService,
   InvoiceRecord,
   InvoicingPort,
   IssuedDocumentContent,
+  IPaymentStatusRefreshService,
   RegulatoryDocument,
   StoredDocument,
 } from '@openlinker/core/invoicing';
@@ -46,6 +48,7 @@ import {
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 import { InvoicingController } from './invoicing.controller';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
@@ -271,6 +274,7 @@ describe('InvoicingController', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
   let orders: jest.Mocked<IOrderRecordService>;
   let integrations: jest.Mocked<IIntegrationsService>;
+  let paymentStatusRefreshService: jest.Mocked<IPaymentStatusRefreshService>;
 
   beforeEach(async () => {
     invoiceService = {
@@ -289,12 +293,17 @@ describe('InvoicingController', () => {
       getCapabilityAdapter: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    paymentStatusRefreshService = {
+      refreshByExternalId: jest.fn().mockResolvedValue({ outcome: 'updated', paymentStatus: 'paid' }),
+    } as unknown as jest.Mocked<IPaymentStatusRefreshService>;
+
     const moduleRef = await Test.createTestingModule({
       controllers: [InvoicingController],
       providers: [
         { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
+        { provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN, useValue: paymentStatusRefreshService },
       ],
     }).compile();
 
@@ -1520,6 +1529,155 @@ describe('InvoicingController', () => {
 
       expect(warnSpy).toHaveBeenCalledWith(expect.not.stringContaining('bob+invoices@secret.pl'));
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[redacted-email]'));
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('POST /invoices/:invoiceId/mark-paid (#1362)', () => {
+    const actor: AuthenticatedUser = { id: 'user_1', username: 'admin', role: 'admin' };
+
+    it('should mark paid with the record providerInvoiceId and return the refreshed record', async () => {
+      invoiceService.getInvoiceById
+        .mockResolvedValueOnce(makeInvoiceRecord({ providerInvoiceId: 'inv-uuid-9' }))
+        .mockResolvedValueOnce(makeInvoiceRecord({ providerInvoiceId: 'inv-uuid-9' }));
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+
+      const result = await controller.markInvoicePaid(
+        'inv_1',
+        { paidDate: '2026-07-08' },
+        actor,
+      );
+
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn_1', 'Invoicing');
+      expect(markPaid).toHaveBeenCalledWith({
+        externalInvoiceId: 'inv-uuid-9',
+        paidDate: new Date('2026-07-08'),
+      });
+      expect(paymentStatusRefreshService.refreshByExternalId).toHaveBeenCalledWith(
+        'conn_1',
+        'inv-uuid-9',
+      );
+      // 'updated' outcome (beforeEach default) re-reads the projection: once for
+      // validation, once for the fresh DTO.
+      expect(invoiceService.getInvoiceById).toHaveBeenCalledTimes(2);
+      expect(result.id).toBe('inv_1');
+    });
+
+    it('should default paidDate to today when omitted', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ providerInvoiceId: 'inv-uuid-9' }),
+      );
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-08T12:00:00Z'));
+
+      await controller.markInvoicePaid('inv_1', {}, actor);
+
+      expect(markPaid).toHaveBeenCalledWith({
+        externalInvoiceId: 'inv-uuid-9',
+        paidDate: new Date('2026-07-08T12:00:00Z'),
+      });
+      jest.useRealTimers();
+    });
+
+    it('should 404 when the invoice id is unknown', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      await expect(controller.markInvoicePaid('missing', {}, actor)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('should 422 when the invoice has no provider invoice id', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord({ providerInvoiceId: null }));
+
+      await expect(controller.markInvoicePaid('inv_1', {}, actor)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('should 501 when the adapter does not implement PaymentMarker', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      integrations.getCapabilityAdapter.mockResolvedValue({} as InvoicingPort);
+
+      await expect(controller.markInvoicePaid('inv_1', {}, actor)).rejects.toBeInstanceOf(
+        NotImplementedException,
+      );
+      expect(paymentStatusRefreshService.refreshByExternalId).not.toHaveBeenCalled();
+    });
+
+    it('should 502 when the live markPaid call fails', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const markPaid = jest.fn().mockRejectedValue(new Error('inFakt 404'));
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+
+      await expect(controller.markInvoicePaid('inv_1', {}, actor)).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+      expect(paymentStatusRefreshService.refreshByExternalId).not.toHaveBeenCalled();
+    });
+
+    it('should still return 200 when the post-mark refresh outcome is "unchanged" (not an error)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+      paymentStatusRefreshService.refreshByExternalId.mockResolvedValue({
+        outcome: 'unchanged',
+        paymentStatus: 'unpaid',
+      });
+
+      const result = await controller.markInvoicePaid('inv_1', {}, actor);
+
+      expect(result).toBeDefined();
+      expect(markPaid).toHaveBeenCalled();
+      // No redundant re-read: 'unchanged' means the projection is already current.
+      expect(invoiceService.getInvoiceById).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still return 200 when the post-mark refresh throws (best-effort, swallowed)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+      paymentStatusRefreshService.refreshByExternalId.mockRejectedValue(new Error('transport error'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await controller.markInvoicePaid('inv_1', {}, actor);
+
+      expect(result).toBeDefined();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('inv_1'));
+      // A swallowed refresh failure leaves the projection untouched - no re-read.
+      expect(invoiceService.getInvoiceById).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+    });
+
+    it('should warn (not block) when the local payment status is already paid', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord({ paymentStatus: 'paid' }));
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await controller.markInvoicePaid('inv_1', {}, actor);
+
+      expect(result).toBeDefined();
+      expect(markPaid).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("already 'paid'"));
+      warnSpy.mockRestore();
+    });
+
+    it('should warn (not block) when marking a correction document as paid', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected' }),
+      );
+      const markPaid = jest.fn().mockResolvedValue(undefined);
+      integrations.getCapabilityAdapter.mockResolvedValue({ markPaid } as unknown as InvoicingPort);
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await controller.markInvoicePaid('inv_1', {}, actor);
+
+      expect(result).toBeDefined();
+      expect(markPaid).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('correction document'));
       warnSpy.mockRestore();
     });
   });

@@ -14,6 +14,10 @@
  *  - Ack is `POST /inbox/mark-read` with `{ lastMessageId }` (mark-up-to-id) —
  *    NOT a per-message `PATCH /inbox/{id}`.
  *  - `type` vocabulary: `orderCreated`, `orderStatusChanged`, `productsNeedSync`.
+ *  - `productsNeedSync` carries NO `payload.id` on the real sandbox (confirmed
+ *    live #1322 manual E2E) — it is a generic "some products need syncing"
+ *    notification, not tied to one order. `payload.id` is only guaranteed
+ *    present on the two order-event types.
  *
  * `ErliInboxMessage` below is the adapter-internal NORMALISED shape (id + the
  * extracted order id + type + timestamp); `validateInboxMessage` maps the raw
@@ -40,11 +44,15 @@ export const ERLI_INBOX_PRODUCTS_NEED_SYNC = 'productsNeedSync';
  * `eventKey`/`eventId` AND the cursor; `orderId` is the Erli-native order id
  * extracted from `payload.id` (becomes `externalOrderId`); `occurredAt` is the
  * wire `created` timestamp.
+ *
+ * `orderId` is optional: it is required (and validated) for the two
+ * order-event types, but absent for non-order types like `productsNeedSync`,
+ * which the real wire never carries a `payload.id` for.
  */
 export interface ErliInboxMessage {
   id: string;
   type: ErliInboxEventType;
-  orderId: string;
+  orderId?: string;
   occurredAt?: string;
   read?: boolean;
 }

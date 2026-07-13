@@ -33,7 +33,7 @@
  *
  * @module apps/web/src/features/listings/components
  */
-import { useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
@@ -45,6 +45,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
+import { useInventoryAvailabilityBatchQuery } from '../../inventory';
 import { useProductQuery, useProductsQuery } from '../../products';
 import type { Product, ProductVariant } from '../../products';
 import { useShopPublishMutation } from '../hooks/use-shop-publish-mutation';
@@ -134,7 +135,12 @@ export function WoocommercePublishWizard({
 
   // Multi-select tray state — only used during the selection step. Map
   // preserves insertion order, matching the tray's expected chip order.
-  const [selectedVariants, setSelectedVariants] = useState<Map<string, string>>(new Map());
+  // Carries master price alongside the label so Configure can prefill the
+  // price override field with the real current value instead of leaving it
+  // blank behind a "master" placeholder (#1414 follow-up).
+  const [selectedVariants, setSelectedVariants] = useState<
+    Map<string, { label: string; price: number | null }>
+  >(new Map());
   // null while the operator is still picking (selection step showing);
   // locked in once "Continue" is pressed, or immediately when props already
   // supplied ids.
@@ -157,11 +163,16 @@ export function WoocommercePublishWizard({
   );
   const productDetailQuery = useProductQuery(selectedProductId ?? '');
 
-  function toggleVariant(variantId: string, label: string, checked: boolean): void {
+  function toggleVariant(
+    variantId: string,
+    label: string,
+    price: number | null,
+    checked: boolean,
+  ): void {
     setSelectedVariants((prev) => {
       const next = new Map(prev);
       if (checked) {
-        next.set(variantId, label);
+        next.set(variantId, { label, price });
       } else {
         next.delete(variantId);
       }
@@ -219,25 +230,29 @@ export function WoocommercePublishWizard({
     if (chosen.length > 1) {
       form.reset({
         ...WOOCOMMERCE_PUBLISH_BULK_DEFAULTS,
-        items: chosen.map(([variantId, label]) => ({
+        items: chosen.map(([variantId, { label, price }]) => ({
           variantId,
           label,
           stock: '',
-          priceAmount: '',
+          priceAmount: price !== null ? String(price) : '',
         })),
       });
       setFinalMode('bulk');
     } else {
-      const [[variantId, label]] = chosen;
+      const [[variantId, { label, price }]] = chosen;
       setSingleVariantId(variantId);
       setSingleVariantLabel(label);
-      form.reset(WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS);
+      form.reset({
+        ...WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS,
+        priceAmount: price !== null ? String(price) : '',
+      });
       setFinalMode('single');
     }
   }
 
   function handleVariantPick(product: Product, variant: ProductVariant, checked: boolean): void {
-    toggleVariant(variant.id, variantLabel(product, variant), checked);
+    const price = variant.price ?? product.price ?? null;
+    toggleVariant(variant.id, variantLabel(product, variant), price, checked);
   }
 
   const mode = finalMode;
@@ -251,10 +266,76 @@ export function WoocommercePublishWizard({
 
   const singleId = !needsVariantPicker ? propsIds[0] : singleVariantId;
 
+  // Master stock, fetched once per row set so Configure can prefill the
+  // stock field with the real current value instead of leaving it blank
+  // behind a "master" placeholder (#1414 follow-up — mirrors the price
+  // prefill, which comes from the picker's already-loaded Product/Variant
+  // instead of a dedicated query).
+  const relevantVariantIds = useMemo(() => {
+    if (mode === 'bulk') return itemsFieldArray.fields.map((f) => f.variantId);
+    if (mode === 'single' && singleId) return [singleId];
+    return [];
+  }, [mode, itemsFieldArray.fields, singleId]);
+  const availabilityQuery = useInventoryAvailabilityBatchQuery(relevantVariantIds, {
+    enabled: mode !== null && relevantVariantIds.length > 0,
+  });
+  const masterStockByVariantId = useMemo(
+    () => new Map((availabilityQuery.data?.items ?? []).map((i) => [i.productVariantId, i.totalAvailable])),
+    [availabilityQuery.data],
+  );
+  const priceByVariantId = useMemo(
+    () => new Map(Array.from(selectedVariants.entries()).map(([id, v]) => [id, v.price])),
+    [selectedVariants],
+  );
+
+  // Prefill stock once master availability resolves — only for fields the
+  // operator hasn't already touched, so a slow/refetching query never
+  // clobbers a manual edit.
+  useEffect(() => {
+    if (masterStockByVariantId.size === 0) return;
+    if (mode === 'bulk') {
+      itemsFieldArray.fields.forEach((row, index) => {
+        if (form.getValues(`items.${index}.stock`) !== '') return;
+        const avail = masterStockByVariantId.get(row.variantId);
+        if (avail !== undefined) form.setValue(`items.${index}.stock`, String(avail));
+      });
+    } else if (mode === 'single' && singleId) {
+      if (form.getValues('stock') !== '') return;
+      const avail = masterStockByVariantId.get(singleId);
+      if (avail !== undefined) form.setValue('stock', String(avail));
+    }
+  }, [masterStockByVariantId, mode, singleId, itemsFieldArray.fields, form]);
+
   function resetColumn(field: 'stock' | 'priceAmount'): void {
-    itemsFieldArray.fields.forEach((_, index) => {
-      form.setValue(`items.${index}.${field}`, '', { shouldDirty: true });
+    itemsFieldArray.fields.forEach((row, index) => {
+      if (field === 'stock') {
+        const avail = masterStockByVariantId.get(row.variantId);
+        form.setValue(`items.${index}.stock`, avail !== undefined ? String(avail) : '', {
+          shouldDirty: true,
+        });
+      } else {
+        const price = priceByVariantId.get(row.variantId);
+        form.setValue(
+          `items.${index}.priceAmount`,
+          price !== undefined && price !== null ? String(price) : '',
+          { shouldDirty: true },
+        );
+      }
     });
+    showToast({
+      tone: 'success',
+      description:
+        field === 'stock'
+          ? "Stock reset to each product's current master stock."
+          : "Price reset to each product's current master price.",
+    });
+  }
+
+  function backToSelection(): void {
+    setSingleVariantId(null);
+    setSingleVariantLabel(null);
+    setSelectedVariants(new Map());
+    setFinalMode(null);
   }
 
   const submit = form.handleSubmit(async (values) => {
@@ -479,7 +560,7 @@ export function WoocommercePublishWizard({
           </div>
           {selectedList.length > 0 ? (
             <div className="shop-publish-tray__chips">
-              {selectedList.map(([variantId, label]) => (
+              {selectedList.map(([variantId, { label }]) => (
                 <span key={variantId} className="shop-publish-chip shop-publish-chip--removable">
                   <span title={label}>{label}</span>
                   <button
@@ -690,17 +771,7 @@ export function WoocommercePublishWizard({
                 {singleId}
               </span>
               {needsVariantPicker ? (
-                <Button
-                  type="button"
-                  tone="ghost"
-                  className="button--sm"
-                  onClick={() => {
-                    setSingleVariantId(null);
-                    setSingleVariantLabel(null);
-                    setSelectedVariants(new Map());
-                    setFinalMode(null);
-                  }}
-                >
+                <Button type="button" tone="ghost" className="button--sm" onClick={backToSelection}>
                   Change
                 </Button>
               ) : null}
@@ -712,7 +783,7 @@ export function WoocommercePublishWizard({
               <Input
                 inputMode="numeric"
                 className="input--mono"
-                placeholder="0"
+                placeholder="master"
                 {...form.register('stock')}
               />
             </FormField>
@@ -757,6 +828,11 @@ export function WoocommercePublishWizard({
 
       <div className="wizard-actions">
         <div className="wizard-actions__group">
+          {needsVariantPicker ? (
+            <Button type="button" tone="ghost" onClick={backToSelection}>
+              ← Back
+            </Button>
+          ) : null}
           <Button type="button" tone="ghost" onClick={onCancel}>
             Cancel
           </Button>

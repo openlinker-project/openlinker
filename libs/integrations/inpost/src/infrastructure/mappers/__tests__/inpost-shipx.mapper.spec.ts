@@ -14,6 +14,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import {
   buildCreateShipmentRequest,
   buildPointsQuery,
+  classifyInpostPointType,
   mapShipXStatus,
   toGenerateLabelResult,
   toPickupPoint,
@@ -197,6 +198,64 @@ describe('inpost-shipx.mapper', () => {
       expect(result.status).toBe('active');
       expect(result.address.city).toBe('Poznań');
       expect(result.lat).toBe(52.4);
+    });
+
+    it('should carry pointType and raw type for a parcel_locker automat', () => {
+      const point: ShipXPoint = {
+        name: 'OLS06A',
+        display_name: 'InPost Paczkomat OLS06A',
+        type: ['parcel_locker'],
+      };
+      const result = toPickupPoint(point);
+      expect(result.pointType).toBe('apm');
+      expect(result.type).toEqual(['parcel_locker']);
+    });
+
+    it('should classify a PaczkoPunkt as pop from the type list', () => {
+      const point: ShipXPoint = {
+        name: 'POP-OLS19',
+        display_name: 'InPost PaczkoPunkt POP-OLS19',
+        type: ['parcel_locker', 'parcel_locker_superpop', 'pok', 'pop'],
+      };
+      const result = toPickupPoint(point);
+      expect(result.pointType).toBe('pop');
+      expect(result.type).toEqual(['parcel_locker', 'parcel_locker_superpop', 'pok', 'pop']);
+    });
+
+    it('should leave raw type absent when the point omits it', () => {
+      const result = toPickupPoint({ name: 'POZ08A' });
+      expect(result.type).toBeUndefined();
+      expect(result.pointType).toBe('apm');
+    });
+  });
+
+  describe('classifyInpostPointType', () => {
+    it('should return pop when the type list contains pop (authoritative path)', () => {
+      expect(classifyInpostPointType({ id: 'OLS06A', type: ['parcel_locker', 'pop'] })).toBe('pop');
+    });
+
+    it('should return pop for a parcel_locker_superpop token', () => {
+      expect(
+        classifyInpostPointType({ type: ['parcel_locker', 'parcel_locker_superpop'] }),
+      ).toBe('pop');
+    });
+
+    it('should return apm for a plain parcel_locker type list', () => {
+      expect(classifyInpostPointType({ id: 'POP-OLS19', type: ['parcel_locker'] })).toBe('apm');
+    });
+
+    it('should fall back to the POP- id prefix when type is absent', () => {
+      expect(classifyInpostPointType({ id: 'POP-OLS19' })).toBe('pop');
+      expect(classifyInpostPointType({ id: 'pop-ols19' })).toBe('pop');
+    });
+
+    it('should fall back to the PaczkoPunkt name when type is absent', () => {
+      expect(classifyInpostPointType({ id: 'X', name: 'InPost PaczkoPunkt POP-OLS19' })).toBe('pop');
+    });
+
+    it('should default to apm on the heuristic path when no POP signal is present', () => {
+      expect(classifyInpostPointType({ id: 'OLS06A', name: 'InPost Paczkomat OLS06A' })).toBe('apm');
+      expect(classifyInpostPointType({})).toBe('apm');
     });
   });
 

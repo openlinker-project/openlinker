@@ -19,18 +19,21 @@
  *
  * @module libs/core/src/invoicing/domain/ports/capabilities
  */
-import type { InvoiceRecord } from '../../entities/invoice-record.entity';
-import type { IssueCorrectionCommand } from '../../types/invoicing.types';
+import type { IssueCorrectionCommand, IssueInvoiceResult } from '../../types/invoicing.types';
 import type { InvoicingPort } from '../invoicing.port';
 
 export interface CorrectionIssuer {
   /**
-   * Issue a correction of an already-issued document. Returns a transient issued
-   * `InvoiceRecord` (the core service persists). A business rejection throws a
-   * terminal error; a transport/infrastructure failure throws for the caller to
-   * retry. Performs no identifier mapping.
+   * Issue a correction of an already-issued document. Returns the same
+   * {@link IssueInvoiceResult} shape `issueInvoice` does (transient issued
+   * `record` the core service persists, plus the optional `seller`/
+   * `sourceDocument` an adapter that builds its own machine-readable document
+   * — e.g. KSeF's FA(3) XML — surfaces so `GET .../document?kind=source`
+   * works for corrections too, #1229 follow-up). A business rejection throws
+   * a terminal error; a transport/infrastructure failure throws for the
+   * caller to retry. Performs no identifier mapping.
    */
-  issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord>;
+  issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult>;
 }
 
 export function isCorrectionIssuer(

@@ -57,7 +57,7 @@ export const WOOCOMMERCE_PUBLISH_DEFAULT_CURRENCY = 'PLN';
 
 export const WOOCOMMERCE_PUBLISH_SINGLE_DEFAULTS: WoocommercePublishWizardValues = {
   status: 'published',
-  stock: '0',
+  stock: '',
   priceAmount: '',
   priceCurrency: WOOCOMMERCE_PUBLISH_DEFAULT_CURRENCY,
   items: [],

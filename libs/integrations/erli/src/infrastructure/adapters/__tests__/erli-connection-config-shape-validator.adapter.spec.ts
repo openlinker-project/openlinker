@@ -109,6 +109,32 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
     });
   });
 
+  describe('environment (#1377)', () => {
+    it('should resolve when environment is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when environment is "sandbox"', async () => {
+      await expect(validator.validate({ environment: 'sandbox' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when environment is "production"', async () => {
+      await expect(validator.validate({ environment: 'production' })).resolves.toBeUndefined();
+    });
+
+    it('should reject an unknown environment value', async () => {
+      await expect(validator.validate({ environment: 'staging' })).rejects.toMatchObject({
+        errors: [{ path: 'environment', message: expect.any(String) }],
+      });
+    });
+
+    it('should reject a non-string environment value', async () => {
+      await expect(validator.validate({ environment: 123 })).rejects.toMatchObject({
+        errors: [{ path: 'environment', message: expect.any(String) }],
+      });
+    });
+  });
+
   describe('allegroEnvironment (#1382/#1383, ADR-031)', () => {
     it('should resolve when allegroEnvironment is absent', async () => {
       await expect(validator.validate({})).resolves.toBeUndefined();
@@ -157,6 +183,42 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
         validator.validate({ allegroCategoryAccessEnabled: 'true' })
       ).rejects.toMatchObject({
         errors: [{ path: 'allegroCategoryAccessEnabled', message: expect.any(String) }],
+      });
+    });
+  });
+
+  describe('masterCatalogConnectionId (#1501)', () => {
+    it('should resolve when masterCatalogConnectionId is absent (ingestion-only connection)', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when masterCatalogConnectionId is a valid UUID', async () => {
+      await expect(
+        validator.validate({ masterCatalogConnectionId: '3f7c1e2a-9b4d-4c6e-8a1f-2d5e6f7a8b9c' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when masterCatalogConnectionId is an empty string (blank = not configured / opt-out)', async () => {
+      await expect(validator.validate({ masterCatalogConnectionId: '' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when masterCatalogConnectionId is null (treated as not configured)', async () => {
+      await expect(
+        validator.validate({ masterCatalogConnectionId: null }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a malformed masterCatalogConnectionId', async () => {
+      await expect(
+        validator.validate({ masterCatalogConnectionId: 'not-a-uuid' }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'masterCatalogConnectionId', message: expect.any(String) }],
+      });
+    });
+
+    it('should reject a non-string masterCatalogConnectionId', async () => {
+      await expect(validator.validate({ masterCatalogConnectionId: 123 })).rejects.toMatchObject({
+        errors: [{ path: 'masterCatalogConnectionId', message: expect.any(String) }],
       });
     });
   });

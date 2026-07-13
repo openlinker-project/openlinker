@@ -76,6 +76,7 @@ describe('InventoryQueryService', () => {
       findById: jest.fn(),
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      markStaleExceptVariants: jest.fn(),
     };
 
     productsService = {

@@ -8,7 +8,10 @@
  *
  * @module libs/core/src/orders/domain/types
  */
+import type { PickupPointType } from '@openlinker/core/shipping';
+
 import type { PaymentStatus } from './payment-status.types';
+import type { CodToCollect } from './cod-to-collect.types';
 
 /**
  * Order status values
@@ -122,6 +125,14 @@ export interface Order {
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
   /**
+   * Marketplace-sourced cash-on-delivery collect amount (#1435). Present only
+   * for a cash-on-delivery order whose source exposes the collectable amount
+   * (Allegro `summary.totalToPay`). Absent for prepaid orders and for sources
+   * that don't surface it (legacy / non-Allegro COD → operator-typed fallback).
+   * The dispatch gate prefers this over the operator-supplied dispatch amount.
+   */
+  codToCollect?: CodToCollect;
+  /**
    * When the buyer placed the order on the source marketplace (#926). Distinct
    * from `createdAt`/`updatedAt`, which are OpenLinker's ingestion clocks — this
    * is the operationally meaningful date for SLA and "how old is this order"
@@ -166,6 +177,36 @@ export interface OrderDispatchWindow {
 }
 
 /**
+ * Pickup-point kind (#1433) carried on a source order — `apm` (InPost
+ * Paczkomat / unattended locker) vs `pop` (PaczkoPunkt / attended partner
+ * point). Defined locally in `orders` (its own runtime `as const` source of
+ * truth) rather than value-imported from `@openlinker/core/shipping`, to avoid
+ * a runtime `orders → shipping` edge (shipping already depends on orders). Kept
+ * value-identical to `PickupPointType` in shipping — enforced at type-check
+ * time by the `_OrderPickupPointTypeParity` drift guard below (type-only, so it
+ * erases at build time).
+ */
+export const OrderPickupPointTypeValues = ['apm', 'pop'] as const;
+export type OrderPickupPointType = (typeof OrderPickupPointTypeValues)[number];
+
+/**
+ * Compile-time drift guard (#1433): `OrderPickupPointType` must stay
+ * value-identical to shipping's `PickupPointType`. The `import type` above
+ * erases at build time, so this adds NO runtime `orders → shipping` edge — the
+ * local `OrderPickupPointTypeValues` remains the runtime source of truth; this
+ * only borrows the shipping type at the type level. If either union gains or
+ * drops a member the two stop being mutually assignable and
+ * `OrderPickupPointTypeParity` fails its `extends true` constraint at
+ * type-check time. Exported (not re-exported from the `orders` barrel) so the
+ * `tsc -b` unused-declaration check counts it as used.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertTrue<T extends true> = T;
+export type OrderPickupPointTypeParity = AssertTrue<
+  MutuallyAssignable<OrderPickupPointType, PickupPointType>
+>;
+
+/**
  * Pickup-point reference (InPost Paczkomat locker etc.). `id` is the bare
  * locker code (e.g. `POZ08A`); `name` and `description` are operator-facing
  * labels (`Paczkomat POZ08A` / `Stacja paliw BP`).
@@ -174,6 +215,12 @@ export interface OrderPickupPoint {
   id: string;
   name?: string;
   description?: string;
+  /**
+   * Classified point kind (#1433). For Allegro pickup-point orders the
+   * ingestion adapter infers this from the id/name heuristic (no network
+   * call in the hot path). Absent when no signal is available.
+   */
+  pointType?: OrderPickupPointType;
 }
 
 export interface OrderItem {

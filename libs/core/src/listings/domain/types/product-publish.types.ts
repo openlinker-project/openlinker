@@ -66,6 +66,13 @@ export interface PublishProductContent {
 export interface PublishProductCommand {
   /** OL internal variant id being published. */
   internalVariantId: string;
+  /**
+   * Variant SKU / reference (OL variants own the SKU). Populated from
+   * `ProductVariant.sku` by the publish builder. Optional: publishers that
+   * expose a SKU field map it; those that don't simply ignore it. Absent ⇒ the
+   * publisher does not set a SKU (created without one / left unchanged on update).
+   */
+  sku?: string;
   /** Target shop connection id. */
   connectionId: string;
   /**

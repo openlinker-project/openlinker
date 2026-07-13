@@ -90,6 +90,7 @@ export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
   tasks.push({
     taskId: 'erli-orders-poll',
     platformType: 'erli',
+    requiredCapability: 'OrderSource',
     jobType: 'marketplace.orders.poll',
     cronExpression: ERLI_ORDERS_POLL_CRON,
     enabledEnvVar: 'OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED',

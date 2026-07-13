@@ -62,6 +62,12 @@ export class InventoryItemOrmEntity {
   @Column({ type: 'varchar', nullable: true })
   locationId!: string | null;
 
+  // Soft-mark for a row whose variant no longer appears in the master's
+  // listInventory response (#1478). Excluded from the variant-availability read;
+  // cleared when the variant reappears (upsert writes false).
+  @Column({ type: 'boolean', default: false })
+  isStale!: boolean;
+
   @UpdateDateColumn()
   updatedAt!: Date;
 }
