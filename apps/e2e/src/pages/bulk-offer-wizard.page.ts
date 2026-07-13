@@ -23,6 +23,20 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { selectOptionByText } from '../support/selectors';
 import { BulkBatchProgressPage } from './bulk-batch-progress.page';
 
+/**
+ * Dictionary entries that mean "new / unused" condition, matched
+ * case-insensitively against a native <select>'s option text. Mirrors the
+ * single-offer wizard's `NEW_VALUE_PATTERNS`
+ * (`apps/web/.../auto-prefill-parameters.ts`) so the bulk flow prefills the
+ * `Stan` (condition) parameter to the same canonical "Nowy" value.
+ */
+const CONDITION_NEW_PATTERN = /\b(nowy|nowe|nowa|new)\b/i;
+
+/** Upper bound on per-row edits so an unfillable parameter fails loudly, not forever. */
+const MAX_ROW_EDITS = 25;
+/** Upper bound on fill passes over one row's required parameters (dependent params can appear). */
+const MAX_PARAM_PASSES = 10;
+
 export class BulkOfferWizard {
   constructor(private readonly page: Page) {}
 
@@ -103,9 +117,14 @@ export class BulkOfferWizard {
    * Drive Config → Resolving → Review and open the confirm modal.
    *
    * The resolve step runs two batch queries and auto-advances to Review on
-   * settle, so the only clicks are "Proceed →" and "Approve all (N)". Fails
-   * fast when any review row needs attention (missing category/params) — the
-   * spec does no row editing, so a needs-attention row can never be submitted.
+   * settle, so the config click is just "Proceed →". At Review, any row flagged
+   * "needs attention" is resolved by driving the wizard's OWN per-row edit modal
+   * — the bulk wizard is OpenLinker's own UI, so the automated flow fills it
+   * fully (required category parameters + description) rather than hard-failing.
+   * A fresh, attribute-less product (no auto-prefilled `Stan`) is therefore
+   * listable without operator intervention. The fast path (zero needs-attention
+   * rows) stays a no-op. Finally "Publish immediately" is asserted checked so the
+   * offers are created ACTIVE, not as drafts. (#1481)
    */
   async advanceToConfirmModal(opts: { requiresDeliveryPolicy?: boolean } = {}): Promise<void> {
     await this.completePlatformConfig(opts);
@@ -113,17 +132,256 @@ export class BulkOfferWizard {
     await this.proceedButton.click();
     await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
 
-    const needsAttention = await this.needsAttentionCount();
-    expect(
-      needsAttention,
-      `${needsAttention} review row(s) need attention (missing category/params); ` +
-        'the automated flow does no row editing — fix the rows on the stack first',
-    ).toBe(0);
+    await this.resolveNeedsAttentionRows();
 
     // `canApprove` also waits out platform parameter resolution (`paramsResolving`).
     await expect(this.approveAllButton).toBeEnabled({ timeout: 30_000 });
     await this.approveAllButton.click();
     await expect(this.confirmModalConfirmButton).toBeVisible();
+
+    // Publish the offers ACTIVE, not as drafts. The config default is already
+    // `true`, but assert it explicitly (idempotent) so a changed default can't
+    // silently create drafts.
+    await this.publishImmediatelyCheckbox.check();
+  }
+
+  /** The Review-step DataTable (its sr-only caption is its accessible name). */
+  private get reviewTable(): Locator {
+    return this.page.getByRole('table', { name: 'Bulk listing review' });
+  }
+
+  /**
+   * The first review row that needs attention: a listable row (exposes an
+   * "Edit" button; a no-variant row shows "No variant" instead) whose status
+   * cell is NOT "ready" (ready rows carry a lone "ready" badge, flagged rows
+   * carry blocker chips like "add product params").
+   */
+  private firstNeedsAttentionRow(): Locator {
+    return this.reviewTable
+      .getByRole('row')
+      .filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) })
+      .filter({ hasNotText: /\bready\b/i })
+      .first();
+  }
+
+  /**
+   * Resolve every "needs attention" review row via the per-row edit modal until
+   * the needs-attention count reaches 0. Bounded, and requires forward progress
+   * per edit so a parameter that can't be auto-filled fails loudly (naming the
+   * offending row) instead of looping.
+   */
+  private async resolveNeedsAttentionRows(): Promise<void> {
+    for (let attempt = 0; attempt < MAX_ROW_EDITS; attempt += 1) {
+      const before = await this.needsAttentionCount();
+      if (before === 0) return; // fast path (nothing to edit) or done.
+
+      const row = this.firstNeedsAttentionRow();
+      await expect(
+        row,
+        `a review row needing attention should be editable (needsAttention=${before})`,
+      ).toBeVisible({ timeout: 15_000 });
+      const rowSummary = (await row.innerText()).replace(/\s+/g, ' ').trim();
+
+      await this.resolveRowViaEditor(row);
+
+      // The Save recomputes the row's blockers synchronously; require the count
+      // to drop so an unfilled required field surfaces here with its row.
+      try {
+        await expect(async () => {
+          expect(await this.needsAttentionCount()).toBeLessThan(before);
+        }).toPass({ timeout: 15_000 });
+      } catch {
+        throw new Error(
+          `Editing a review row did not clear its blocker (needsAttention stuck at ${before}). ` +
+            `Row: "${rowSummary}". A required field/parameter could not be auto-filled.`,
+        );
+      }
+    }
+    const remaining = await this.needsAttentionCount();
+    if (remaining > 0) {
+      throw new Error(
+        `Bulk review still shows ${remaining} row(s) needing attention after ${MAX_ROW_EDITS} edits.`,
+      );
+    }
+  }
+
+  /**
+   * Open a row's edit modal, ensure its category resolved, fill the required
+   * fields (description + every required, still-empty category parameter), and
+   * save. The modal reuses the single-offer wizard's `CategoryPicker` +
+   * `CategoryParametersStep`, so the controls are the same primitives.
+   */
+  private async resolveRowViaEditor(row: Locator): Promise<void> {
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = this.page.getByRole('dialog');
+    await expect(dialog.getByText(/^Edit offer/)).toBeVisible({ timeout: 15_000 });
+
+    await this.ensureCategoryResolved(dialog);
+    await this.fillRequiredTextField(dialog, 'Title', 'E2E offer');
+    await this.fillRequiredTextField(dialog, 'Description', 'Automated E2E golden-path offer.');
+    await this.fillRequiredCategoryParameters(dialog);
+
+    await dialog.getByRole('button', { name: 'Save row' }).click();
+    // A successful save closes the modal; a validation error keeps it open.
+    try {
+      await expect(dialog).toBeHidden({ timeout: 15_000 });
+    } catch {
+      const errors = await dialog.locator('.form-field__error').allTextContents();
+      throw new Error(
+        `Bulk edit modal did not close after "Save row" — validation failed: ${
+          errors.length ? errors.join('; ') : '(no field errors surfaced)'
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Guard against an unresolved category. The Allegro (browse-mode) picker shows
+   * a resolved id as a prefill row and an unresolved one as an empty category
+   * tree — the latter is a distinct, clearly-surfaced failure (the S0 PS→Allegro
+   * category mapping didn't apply). Erli (borrows taxonomy) renders a plain
+   * "Allegro category ID" input where blank is valid, so only the browse tree is
+   * a fault.
+   */
+  private async ensureCategoryResolved(dialog: Locator): Promise<void> {
+    if ((await dialog.locator('.category-tree-browser').count()) > 0) {
+      throw new Error(
+        'Bulk edit modal shows an EMPTY Allegro category picker (category tree, no resolved id). ' +
+          'The PS→Allegro category mapping did not resolve this product — fix the category mapping ' +
+          '(S0) before the offer can be created automatically.',
+      );
+    }
+  }
+
+  /**
+   * Fill a required top-level text control (Title / Description) when empty.
+   * Freshly-provisioned products carry no description, and the modal schema
+   * requires a non-empty one, so an empty value would block the save.
+   */
+  private async fillRequiredTextField(dialog: Locator, label: string, value: string): Promise<void> {
+    const field = dialog.getByLabel(label, { exact: true }).first();
+    if ((await field.count()) === 0) return;
+    if ((await field.inputValue()).trim() !== '') return;
+    await field.fill(value);
+  }
+
+  /**
+   * Fill every required, still-empty category parameter in the edit modal,
+   * type-driven and generic (not hardcoded to one category). Re-scans each pass
+   * so parameters that appear only after a parent value is set (dependency-gated
+   * fields) are also filled. Optional parameters live in a collapsed <details>
+   * and are intentionally left untouched — only required params gate submit.
+   */
+  private async fillRequiredCategoryParameters(dialog: Locator): Promise<void> {
+    // Wait out the per-category schema load before deciding there's nothing to
+    // fill (the fieldset only appears once parameters resolve).
+    await expect(async () => {
+      expect(await dialog.getByText('Loading category parameters').count()).toBe(0);
+    }).toPass({ timeout: 20_000 });
+
+    const requiredFieldset = dialog.locator(
+      'fieldset.category-parameters-step__group:not(.category-parameters-step__group--optional)',
+    );
+
+    for (let pass = 0; pass < MAX_PARAM_PASSES; pass += 1) {
+      if ((await requiredFieldset.count()) === 0) return; // no required params for this category.
+      let filledSomething = false;
+
+      // Native dictionaries (small, single-select) — e.g. `Stan`: prefer "Nowy".
+      const selects = requiredFieldset.locator('select.control');
+      for (let i = 0; i < (await selects.count()); i += 1) {
+        if (await this.fillNativeSelectIfEmpty(selects.nth(i))) filledSomething = true;
+      }
+      // Free-text parameters.
+      const texts = requiredFieldset.locator('input.control[type="text"]');
+      for (let i = 0; i < (await texts.count()); i += 1) {
+        if (await this.fillTextInputIfEmpty(texts.nth(i))) filledSomething = true;
+      }
+      // Numeric parameters (scalars + both ends of a range).
+      const numbers = requiredFieldset.locator('input.control[type="number"]');
+      for (let i = 0; i < (await numbers.count()); i += 1) {
+        if (await this.fillNumberInputIfEmpty(numbers.nth(i))) filledSomething = true;
+      }
+      // Large / multi / custom-value dictionaries rendered as a Combobox.
+      const combos = requiredFieldset.locator('button[role="combobox"]');
+      for (let i = 0; i < (await combos.count()); i += 1) {
+        if (await this.fillComboboxIfEmpty(combos.nth(i))) filledSomething = true;
+      }
+
+      if (!filledSomething) return; // steady state — every required control has a value.
+    }
+  }
+
+  /** Select the best option in an empty native dictionary select (prefer "Nowy"). */
+  private async fillNativeSelectIfEmpty(select: Locator): Promise<boolean> {
+    if ((await select.inputValue()) !== '') return false;
+    const options = select.locator('option');
+    const count = await options.count();
+    let firstRealValue: string | null = null;
+    let newValue: string | null = null;
+    for (let i = 0; i < count; i += 1) {
+      const option = options.nth(i);
+      const value = await option.getAttribute('value');
+      if (!value) continue; // skip the "Select…" placeholder (value="").
+      if (firstRealValue === null) firstRealValue = value;
+      if (CONDITION_NEW_PATTERN.test((await option.innerText()).trim())) {
+        newValue = value;
+        break;
+      }
+    }
+    const chosen = newValue ?? firstRealValue;
+    if (chosen === null) return false;
+    await select.selectOption(chosen);
+    return true;
+  }
+
+  /** Enter a placeholder into an empty free-text parameter. */
+  private async fillTextInputIfEmpty(input: Locator): Promise<boolean> {
+    if ((await input.inputValue()).trim() !== '') return false;
+    await input.fill('E2E');
+    return true;
+  }
+
+  /** Enter a valid default into an empty numeric parameter (respecting `min`). */
+  private async fillNumberInputIfEmpty(input: Locator): Promise<boolean> {
+    if ((await input.inputValue()).trim() !== '') return false;
+    const min = await input.getAttribute('min');
+    await input.fill(min && Number(min) > 1 ? min : '1');
+    return true;
+  }
+
+  /**
+   * Pick the first real option in an empty single-select Combobox. Large
+   * (filter-first) dictionaries render nothing until the user types, so a broad
+   * letter reveals real entries (e.g. brands containing "a") before picking.
+   * An empty trigger shows its "Pick …" placeholder; a filled one shows the
+   * chosen label.
+   */
+  private async fillComboboxIfEmpty(trigger: Locator): Promise<boolean> {
+    if (!/^pick\b/i.test((await trigger.innerText()).trim())) return false; // already has a value.
+
+    await trigger.click();
+    // The popover is portaled to the document body — scope to the page, not the dialog.
+    const search = this.page.locator('.combobox__search');
+    await expect(search).toBeVisible({ timeout: 10_000 });
+    const options = this.page
+      .getByRole('listbox')
+      .locator('[role="option"]:not(.combobox__option--disabled)');
+
+    if ((await options.count()) === 0) {
+      await search.fill('a');
+    }
+    try {
+      await expect(options.first()).toBeVisible({ timeout: 10_000 });
+    } catch {
+      await this.page.keyboard.press('Escape');
+      throw new Error(
+        'A required Combobox parameter exposed no selectable options (even after searching) — ' +
+          'cannot auto-fill it.',
+      );
+    }
+    await options.first().click();
+    return true;
   }
 
   get confirmModalConfirmButton(): Locator {
