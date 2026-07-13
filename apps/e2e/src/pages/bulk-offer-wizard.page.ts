@@ -49,6 +49,14 @@ const MAX_PARAM_PASSES = 10;
 export class BulkOfferWizard {
   constructor(private readonly page: Page) {}
 
+  /**
+   * Explicit category breadcrumb (ancestor names ending at the leaf) used to
+   * drive the per-row `CategoryTreeBrowser` for a `borrows`-taxonomy destination
+   * (Erli) whose category did not auto-resolve. Set per-run by
+   * `advanceToConfirmModal`; when unset the picker falls back to first-reachable.
+   */
+  private categoryPath: string[] | undefined;
+
   async expectOnConfigStep(): Promise<void> {
     await expect(
       this.page.getByRole('heading', { name: 'Bulk marketplace offer creation' }),
@@ -141,8 +149,9 @@ export class BulkOfferWizard {
    * the placeholder (only correct when the category has no GTIN param).
    */
   async advanceToConfirmModal(
-    opts: { requiresDeliveryPolicy?: boolean; gtin?: string } = {},
+    opts: { requiresDeliveryPolicy?: boolean; gtin?: string; categoryPath?: string[] } = {},
   ): Promise<void> {
+    this.categoryPath = opts.categoryPath;
     await this.completePlatformConfig(opts);
     await expect(this.proceedButton).toBeEnabled({ timeout: 30_000 });
     await this.proceedButton.click();
@@ -396,7 +405,7 @@ export class BulkOfferWizard {
 
     // Unresolved borrows row — pick a leaf the way an operator does, then wait
     // for the schema to load off the chosen category.
-    await this.selectFirstReachableCategoryLeaf(dialog);
+    await this.selectFirstReachableCategoryLeaf(dialog, this.categoryPath);
     if (await this.isVisibleWithin(paramsSignal, 20_000)) return;
 
     throw new Error(
@@ -417,8 +426,17 @@ export class BulkOfferWizard {
    * drives which parameter schema the wizard renders (matching the operator's
    * "any leaf loads params" behaviour).
    */
-  private async selectFirstReachableCategoryLeaf(dialog: Locator): Promise<void> {
+  private async selectFirstReachableCategoryLeaf(dialog: Locator, categoryPath?: string[]): Promise<void> {
     const tree = dialog.locator('.category-tree-browser');
+    // When the caller supplies the exact breadcrumb (ancestor names ending at the
+    // leaf), drill it deterministically — the picked category then MATCHES the
+    // Allegro row's mapped category (golden-path parity) and loads that category's
+    // known parameter schema, instead of whatever first-reachable leaf the tree
+    // happens to expose. Falls back to first-reachable when no path is given.
+    if (categoryPath && categoryPath.length > 0) {
+      await this.drillCategoryPath(tree, categoryPath);
+      return;
+    }
     for (let depth = 0; depth < 12; depth += 1) {
       // A leaf at this level exposes a "Select" button (exact — never "Selected").
       const selectButton = tree.getByRole('button', { name: 'Select', exact: true }).first();
@@ -436,14 +454,45 @@ export class BulkOfferWizard {
         );
       }
       await browseButton.click();
-      // Wait out the child-level fetch (the primitive shows a loading state) so
-      // the next iteration scans the new level, not the stale one.
-      await this.isVisibleWithin(tree.getByText('Fetching categories'), 1_000);
-      await expect(async () => {
-        expect(await tree.getByText('Fetching categories').count()).toBe(0);
-      }).toPass({ timeout: 15_000 });
+      await this.waitForTreeLevelSettled(tree);
     }
     throw new Error('Could not reach a selectable category leaf within 12 tree levels.');
+  }
+
+  /**
+   * Drill the category tree along an explicit breadcrumb of node names. Every
+   * name except the last is a non-leaf drilled via its "Browse into {name}"
+   * button; the last name is the leaf selected via its row "Select" button. Each
+   * node row is matched by its `.category-tree-browser__name` text, scoped to the
+   * `<li>` so the button click targets the right row.
+   */
+  private async drillCategoryPath(tree: Locator, path: string[]): Promise<void> {
+    for (let i = 0; i < path.length; i += 1) {
+      const name = path[i];
+      const isLeaf = i === path.length - 1;
+      const row = tree
+        .locator('li.category-tree-browser__item')
+        .filter({ has: this.page.getByText(name, { exact: true }) })
+        .first();
+      await expect(
+        row,
+        `category tree node "${name}" (depth ${i}) should be present`,
+      ).toBeVisible({ timeout: 15_000 });
+      if (isLeaf) {
+        await row.getByRole('button', { name: 'Select', exact: true }).click();
+        return;
+      }
+      await row.getByRole('button', { name: `Browse into ${name}` }).click();
+      await this.waitForTreeLevelSettled(tree);
+    }
+  }
+
+  /** Wait out the tree's child-level fetch so the next scan sees the new level. */
+  private async waitForTreeLevelSettled(tree: Locator): Promise<void> {
+    await this.isVisibleWithin(tree.getByText('Fetching categories'), 1_000);
+    await expect(async () => {
+      expect(await tree.getByText('Fetching categories').count()).toBe(0);
+    }).toPass({ timeout: 15_000 });
   }
 
   /**
@@ -517,9 +566,47 @@ export class BulkOfferWizard {
       }
 
       filledAny = filledAny || filledSomething;
-      if (!filledSomething) return filledAny; // steady state — every required control has a value.
+      if (!filledSomething) {
+        await this.logRequiredParamReadback(requiredFieldset);
+        return filledAny; // steady state — every required control has a value.
+      }
     }
+    await this.logRequiredParamReadback(requiredFieldset);
     return filledAny;
+  }
+
+  /**
+   * Diagnostic: dump every required control's current value once the fill has
+   * reached steady state, so a run log shows whether the DOM values actually
+   * stuck (vs. a serialization gap where the values are present in the DOM but
+   * missing from the submitted override). Never throws — pure observation.
+   */
+  private async logRequiredParamReadback(requiredFieldset: Locator): Promise<void> {
+    try {
+      if ((await requiredFieldset.count()) === 0) {
+        // eslint-disable-next-line no-console
+        console.log('[e2e][param-readback] no required fieldset present');
+        return;
+      }
+      const controls = requiredFieldset.locator(
+        'select.control, input.control, button[role="combobox"]',
+      );
+      const n = await controls.count();
+      const readback: string[] = [];
+      for (let i = 0; i < n; i += 1) {
+        const c = controls.nth(i);
+        const tag = await c.evaluate((el) => el.tagName.toLowerCase());
+        const label =
+          (await c.getAttribute('aria-label')) ?? (await c.getAttribute('name')) ?? `#${i}`;
+        const value =
+          tag === 'button' ? (await c.innerText()).trim() : await c.inputValue().catch(() => '?');
+        readback.push(`${label}=${JSON.stringify(value)}`);
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[e2e][param-readback] required controls (${n}): ${readback.join(', ')}`);
+    } catch {
+      // Diagnostic only — never let it affect the run.
+    }
   }
 
   /** Select the best option in an empty native dictionary select (prefer "Nowy"). */

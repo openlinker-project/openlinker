@@ -454,13 +454,13 @@ test.describe('golden path — full flow (S0-S9)', () => {
     );
   });
 
-  test('S4 — Erli offers: create + mapping-level assertions (no OfferReader)', async ({ api, world, pages, poll }) => {
+  test('S4 — Erli offers: create + mapping-level assertions (no OfferReader)', async ({ api, world, pages, poll, env }) => {
     const testInfo = test.info();
     requireProduct();
     const erli = world.connectionFor(PlatformType.erli);
     test.skip(!erli, 'no Erli connection on this stack');
 
-    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli });
+    await createBulkOffers({ api, world, pages, poll, connectionId: erli!.id, connectionName: erli!.name, platform: PlatformType.erli, categoryPath: env.freshAllegroCategoryPath });
     const mapping = await resolvePrimaryMapping(api, poll, erli!.id);
 
     // Mapping-level assertions: the offer was created and mapped to the primary
@@ -1213,8 +1213,9 @@ async function createBulkOffers(ctx: {
   connectionId: string;
   connectionName: string;
   platform: KnownPlatformType;
+  categoryPath?: string[];
 }): Promise<string | null> {
-  const { api, pages, poll, connectionId, connectionName, platform } = ctx;
+  const { api, pages, poll, connectionId, connectionName, platform, categoryPath } = ctx;
   const primaryId = state.primaryVariant!.id;
 
   // Create-if-missing, else reuse (approved design #1): reuse when the driver
@@ -1241,6 +1242,12 @@ async function createBulkOffers(ctx: {
     // Stamp the driver variant's REAL barcode into the category's GTIN/EAN
     // parameter — Allegro's validator rejects a placeholder GTIN (#1481).
     gtin: state.primaryVariant!.ean ?? state.primaryVariant!.gtin ?? undefined,
+    // A borrows-taxonomy destination (Erli) resolves no category in the wizard
+    // preview, so its edit modal shows the browsable tree with nothing selected.
+    // Drive it to the SAME leaf the Allegro row mapped to (golden-path parity)
+    // so the picked category + its parameter schema match. Allegro prefills its
+    // category, so the path is ignored there.
+    categoryPath: platform === PlatformType.erli ? categoryPath : undefined,
   });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();

@@ -56,6 +56,16 @@ export interface E2eEnv {
    */
   freshAllegroCategoryId: string;
   /**
+   * Breadcrumb (ancestor names ending at the leaf) for `freshAllegroCategoryId`,
+   * used to drive the bulk-wizard `CategoryTreeBrowser` for a borrows-taxonomy
+   * destination (Erli) whose category does not auto-resolve. Must lead to the
+   * SAME leaf as `freshAllegroCategoryId` so Erli's picked category matches the
+   * Allegro row (golden-path parity) and loads that category's parameter schema.
+   * Pipe-separated; defaults to the path for the default leaf `261481`
+   * (Wino bezalkoholowe). Keep in sync with `freshAllegroCategoryId`.
+   */
+  freshAllegroCategoryPath: string[];
+  /**
    * Optional InPost locker id override for label generation (S6). Used when the
    * buyer-selected pickup point is unusable — Allegro-sandbox lockers are known
    * not to exist in the InPost sandbox.
@@ -166,6 +176,13 @@ export function resolveEnv(): E2eEnv {
     freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
     freshCategoryPsId: process.env.E2E_FRESH_CATEGORY_PS?.trim() || '2',
     freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '89508',
+    freshAllegroCategoryPath: (
+      process.env.E2E_FRESH_ALLEGRO_CATEGORY_PATH?.trim() ||
+      'Supermarket|Produkty spożywcze|Alkohol free|Wino bezalkoholowe'
+    )
+      .split('|')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
     paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),
