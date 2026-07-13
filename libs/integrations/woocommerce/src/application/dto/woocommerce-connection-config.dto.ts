@@ -40,6 +40,7 @@ import {
   IsInt,
   IsOptional,
   IsUrl,
+  IsUUID,
   Min,
   ValidateNested,
   Validate,
@@ -80,6 +81,14 @@ export class WooCommerceConnectionConfigDto {
   @IsUrl({ require_tld: false, require_protocol: true, protocols: ['https'] })
   @Validate(IsSsrfSafeUrlConstraint)
   siteUrl!: string;
+
+  // Shape-only when present: a malformed catalog-connection id is caught at
+  // save time rather than surfacing as a late offer/publish business_failure
+  // (#1501). Presence is NOT enforced here — order-ingestion-only connections
+  // legitimately omit it; requiring it is a capability-gated follow-up.
+  @IsUUID('4', { message: 'masterCatalogConnectionId must be a valid UUID' })
+  @IsOptional()
+  masterCatalogConnectionId?: string;
 
   @IsOptional()
   @ValidateNested()

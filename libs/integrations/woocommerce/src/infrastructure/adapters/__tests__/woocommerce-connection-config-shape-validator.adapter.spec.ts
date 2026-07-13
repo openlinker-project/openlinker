@@ -111,4 +111,30 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
       validator.validate({ siteUrl: 'https://127.0.0.1' }),
     ).resolves.toBeUndefined();
   });
+
+  // ── masterCatalogConnectionId shape (#1501) ────────────────────────────────
+
+  it('should pass when masterCatalogConnectionId is a valid UUID', async () => {
+    await expect(
+      validator.validate({
+        siteUrl: 'https://myshop.com',
+        masterCatalogConnectionId: '3f7c1e2a-9b4d-4c6e-8a1f-2d5e6f7a8b9c',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should pass when masterCatalogConnectionId is absent (ingestion-only connection)', async () => {
+    await expect(
+      validator.validate({ siteUrl: 'https://myshop.com' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should throw when masterCatalogConnectionId is a malformed UUID', async () => {
+    await expect(
+      validator.validate({
+        siteUrl: 'https://myshop.com',
+        masterCatalogConnectionId: 'not-a-uuid',
+      }),
+    ).rejects.toThrow(InvalidConnectionConfigException);
+  });
 });

@@ -31,6 +31,14 @@ import {
   ErliEnvironmentValues,
 } from '../../domain/types/erli-connection.types';
 
+/**
+ * UUID v4 shape, mirroring `class-validator`'s `isUUID('4')` predicate so the
+ * Erli check stays consistent with Allegro's `@IsUUID('4')` posture without
+ * pulling class-validator into this dependency-light hand-rolled validator.
+ */
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export class ErliConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
 {
@@ -60,6 +68,7 @@ export class ErliConnectionConfigShapeValidatorAdapter
     this.validateDispatchTime(config.defaultDispatchTime, issues);
     this.validateAllegroEnvironment(config.allegroEnvironment, issues);
     this.validateAllegroCategoryAccessEnabled(config.allegroCategoryAccessEnabled, issues);
+    this.validateMasterCatalogConnectionId(config.masterCatalogConnectionId, issues);
 
     const callbackBaseUrl = config.callbackBaseUrl;
     if (callbackBaseUrl !== undefined) {
@@ -176,6 +185,25 @@ export class ErliConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'allegroCategoryAccessEnabled',
         message: 'must be a boolean when provided',
+      });
+    }
+  }
+
+  /**
+   * `masterCatalogConnectionId`, when present, must be a valid UUID v4 — the id
+   * of the connection whose catalog offers/publishes source from (#1501).
+   * Shape-only: an absent value is valid so order-ingestion-only connections are
+   * not blocked (presence is a capability-gated follow-up, not enforced here).
+   * Mirrors Allegro's `@IsOptional() @IsUUID('4')` posture.
+   */
+  private validateMasterCatalogConnectionId(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+      issues.push({
+        path: 'masterCatalogConnectionId',
+        message: 'must be a valid UUID',
       });
     }
   }
