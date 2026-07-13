@@ -32,6 +32,15 @@ import { BulkBatchProgressPage } from './bulk-batch-progress.page';
  */
 const CONDITION_NEW_PATTERN = /\b(nowy|nowe|nowa|new)\b/i;
 
+/**
+ * Matches an Allegro category parameter that expects the product's barcode —
+ * "EAN (GTIN)", "EAN", "GTIN", "Kod EAN". Case-insensitive, matched against the
+ * control's `aria-label` (== the parameter name). A GTIN param must carry the
+ * product's REAL barcode: the generic text placeholder ("E2E") is rejected by
+ * Allegro's validator, stranding the offer (#1481).
+ */
+const GTIN_PARAM_PATTERN = /\b(gtin|ean)\b/i;
+
 /** Upper bound on per-row edits so an unfillable parameter fails loudly, not forever. */
 const MAX_ROW_EDITS = 25;
 /** Upper bound on fill passes over one row's required parameters (dependent params can appear). */
@@ -125,14 +134,21 @@ export class BulkOfferWizard {
    * listable without operator intervention. The fast path (zero needs-attention
    * rows) stays a no-op. Finally "Publish immediately" is asserted checked so the
    * offers are created ACTIVE, not as drafts. (#1481)
+   *
+   * `gtin` is the driver variant's real barcode; it is stamped into any
+   * GTIN/EAN-typed category parameter so Allegro's validator accepts the offer
+   * (the generic placeholder is rejected). Absent → the GTIN param falls back to
+   * the placeholder (only correct when the category has no GTIN param).
    */
-  async advanceToConfirmModal(opts: { requiresDeliveryPolicy?: boolean } = {}): Promise<void> {
+  async advanceToConfirmModal(
+    opts: { requiresDeliveryPolicy?: boolean; gtin?: string } = {},
+  ): Promise<void> {
     await this.completePlatformConfig(opts);
     await expect(this.proceedButton).toBeEnabled({ timeout: 30_000 });
     await this.proceedButton.click();
     await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
 
-    await this.resolveNeedsAttentionRows();
+    await this.resolveNeedsAttentionRows(opts.gtin);
 
     // `canApprove` also waits out platform parameter resolution (`paramsResolving`).
     await expect(this.approveAllButton).toBeEnabled({ timeout: 30_000 });
@@ -204,7 +220,7 @@ export class BulkOfferWizard {
    * category-parameter resolution (`waitForReviewSettled`) so a late-appearing
    * platform blocker is never missed.
    */
-  private async resolveNeedsAttentionRows(): Promise<void> {
+  private async resolveNeedsAttentionRows(gtin?: string): Promise<void> {
     for (let attempt = 0; attempt < MAX_ROW_EDITS; attempt += 1) {
       await this.waitForReviewSettled();
       const before = await this.needsAttentionCount();
@@ -217,7 +233,7 @@ export class BulkOfferWizard {
       ).toBeVisible({ timeout: 15_000 });
       const rowSummary = (await row.innerText()).replace(/\s+/g, ' ').trim();
 
-      await this.resolveRowViaEditor(row);
+      await this.resolveRowViaEditor(row, gtin);
 
       // The Save recomputes the row's blockers; require the count to drop so an
       // unfilled required field surfaces here with its row. Re-settle first so a
@@ -248,7 +264,7 @@ export class BulkOfferWizard {
    * save. The modal reuses the single-offer wizard's `CategoryPicker` +
    * `CategoryParametersStep`, so the controls are the same primitives.
    */
-  private async resolveRowViaEditor(row: Locator): Promise<void> {
+  private async resolveRowViaEditor(row: Locator, gtin?: string): Promise<void> {
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
     const dialog = this.page.getByRole('dialog');
     await expect(dialog.getByText(/^Edit offer/)).toBeVisible({ timeout: 15_000 });
@@ -256,7 +272,7 @@ export class BulkOfferWizard {
     await this.ensureCategoryResolved(dialog);
     await this.fillRequiredTextField(dialog, 'Title', 'E2E offer');
     await this.fillRequiredTextField(dialog, 'Description', 'Automated E2E golden-path offer.');
-    await this.fillRequiredCategoryParameters(dialog);
+    await this.fillRequiredCategoryParameters(dialog, gtin);
 
     await dialog.getByRole('button', { name: 'Save row' }).click();
     // A successful save closes the modal; a validation error keeps it open.
@@ -309,7 +325,7 @@ export class BulkOfferWizard {
    * fields) are also filled. Optional parameters live in a collapsed <details>
    * and are intentionally left untouched — only required params gate submit.
    */
-  private async fillRequiredCategoryParameters(dialog: Locator): Promise<void> {
+  private async fillRequiredCategoryParameters(dialog: Locator, gtin?: string): Promise<void> {
     // Wait out the per-category schema load before deciding there's nothing to
     // fill (the fieldset only appears once parameters resolve).
     await expect(async () => {
@@ -329,10 +345,11 @@ export class BulkOfferWizard {
       for (let i = 0; i < (await selects.count()); i += 1) {
         if (await this.fillNativeSelectIfEmpty(selects.nth(i))) filledSomething = true;
       }
-      // Free-text parameters.
+      // Free-text parameters. A GTIN/EAN param gets the product's real barcode
+      // (Allegro rejects a placeholder); everything else gets the placeholder.
       const texts = requiredFieldset.locator('input.control[type="text"]');
       for (let i = 0; i < (await texts.count()); i += 1) {
-        if (await this.fillTextInputIfEmpty(texts.nth(i))) filledSomething = true;
+        if (await this.fillTextInputIfEmpty(texts.nth(i), gtin)) filledSomething = true;
       }
       // Numeric parameters (scalars + both ends of a range).
       const numbers = requiredFieldset.locator('input.control[type="number"]');
@@ -372,10 +389,20 @@ export class BulkOfferWizard {
     return true;
   }
 
-  /** Enter a placeholder into an empty free-text parameter. */
-  private async fillTextInputIfEmpty(input: Locator): Promise<boolean> {
+  /**
+   * Fill an empty free-text parameter. A GTIN/EAN-typed param (detected by its
+   * `aria-label`, which mirrors the parameter name) gets the product's REAL
+   * barcode when one is available — Allegro's validator rejects a placeholder
+   * GTIN and strands the offer (#1481). Every other text param gets the generic
+   * placeholder. When a GTIN param is present but no barcode was threaded in, it
+   * still falls back to the placeholder (surfaced downstream as an Allegro
+   * rejection rather than silently mis-filling).
+   */
+  private async fillTextInputIfEmpty(input: Locator, gtin?: string): Promise<boolean> {
     if ((await input.inputValue()).trim() !== '') return false;
-    await input.fill('E2E');
+    const label = (await input.getAttribute('aria-label')) ?? '';
+    const value = gtin && GTIN_PARAM_PATTERN.test(label) ? gtin : 'E2E';
+    await input.fill(value);
     return true;
   }
 

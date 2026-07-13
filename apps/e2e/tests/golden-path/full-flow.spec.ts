@@ -1041,7 +1041,12 @@ async function provisionFreshProduct(
   const created = await ps.createProduct({
     name: `E2E Golden Path ${suffix}`,
     reference,
-    ean13: computeEan13(`20${suffix}`),
+    // GS1 prefix `590` (Poland) — a valid, non-restricted GTIN prefix. The old
+    // `20…` seed produced a barcode in the GS1 restricted-distribution range
+    // (`020–029`, `200–299`, reserved for in-store use), which Allegro's offer
+    // validator rejects as an invalid GTIN, stranding S3. Still synthetic (not a
+    // registered product), but structurally a valid public GTIN. (#1481)
+    ean13: computeEan13(`590${suffix}`),
     price: '19.99',
     quantity: 25,
     idCategoryDefault: prestashopCategoryId,
@@ -1224,7 +1229,12 @@ async function createBulkOffers(ctx: {
   await wizard.selectConnectionIfPresent(connectionName);
   // Config ("Proceed →") → auto-advancing Resolve → Review ("Approve all (N)"),
   // failing fast when any review row needs attention.
-  await wizard.advanceToConfirmModal({ requiresDeliveryPolicy: platform === PlatformType.allegro });
+  await wizard.advanceToConfirmModal({
+    requiresDeliveryPolicy: platform === PlatformType.allegro,
+    // Stamp the driver variant's REAL barcode into the category's GTIN/EAN
+    // parameter — Allegro's validator rejects a placeholder GTIN (#1481).
+    gtin: state.primaryVariant!.ean ?? state.primaryVariant!.gtin ?? undefined,
+  });
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 
