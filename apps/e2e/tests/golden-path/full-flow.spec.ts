@@ -120,6 +120,37 @@ test.describe('golden path — full flow (S0-S9)', () => {
     state.product = product;
     state.primaryVariant = primary;
     state.variantIds = variants.map((v) => v.id);
+
+    // E3: a brand-new product has NO master inventory row until an inventory sync
+    // runs. `master.product.syncAll` imports the catalogue only, and
+    // `master.inventory.syncAll` does NOT pick up a just-created product, so a
+    // targeted `master.inventory.syncByExternalId` is required before the baseline
+    // is meaningful (otherwise S1 sees OL master total 0 vs PS stock N).
+    if (env.freshProduct) {
+      // `product` came from the list endpoint, which omits externalIds — fetch
+      // the detail to resolve the PrestaShop external id for the targeted sync.
+      const detail = await api.products.getById(product.id);
+      const psExternalId = externalIdFor(detail.externalIds, prestashop!.id);
+      if (psExternalId) {
+        await jobs.triggerAndWait(
+          {
+            connectionId: prestashop!.id,
+            jobType: 'master.inventory.syncByExternalId',
+            payload: { externalId: psExternalId, objectType: 'Product' },
+          },
+          { timeoutMs: 60_000 },
+        );
+        await poll.until(
+          () => api.inventory.availability(state.variantIds!),
+          (rows) => rows.some((r) => r.totalAvailable > 0),
+          {
+            message: 'fresh product master availability after inventory sync',
+            timeoutMs: 30_000,
+          },
+        );
+      }
+    }
+
     state.olBaseline = await captureStock(api, state.variantIds);
 
     // Every variant has a master-sourced availability row.
