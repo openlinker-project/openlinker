@@ -358,17 +358,29 @@ export class BulkOfferWizard {
   }
 
   /**
-   * Ensure the row's category has resolved so its parameter schema can load.
+   * Ensure the row's category is resolved so its parameter schema can load.
    *
    * The browse-mode picker (`CategoryPicker`) shows a resolved id as a prefill
-   * row and an unresolved one as the category tree. A tree is NOT automatically
-   * a fault: a `borrows`-taxonomy destination (Erli) resolves its category from
-   * the barcode AFTER the modal mounts (#985/#1481), and the picker keeps the
-   * tree mounted from the mount-time race even once `categoryId` is set — but
-   * the parameter section renders as soon as the category resolves. So wait for
-   * the parameter section to appear (Stan et al.); only a category that never
-   * resolves (e.g. a missing S0 PS→Allegro mapping) leaves the tree standing
-   * with no parameters, which is the genuine fault surfaced here.
+   * row and an unresolved one as the browsable category tree
+   * (`CategoryTreeBrowser`). Two legitimate states reach the parameter schema:
+   *
+   * 1. **Auto-resolved** (Allegro, and any row whose EAN/mapping resolved in the
+   *    Resolve step): the picker prefills the id, so `.category-tree-browser`
+   *    is absent — nothing to do here.
+   * 2. **Operator-picked** (a `borrows`-taxonomy destination like Erli whose
+   *    preview came back `no-match`, ADR-025 §3 / #1522): the batch resolve
+   *    deliberately degrades borrows destinations to `no-match`, so the row
+   *    carries no category and the modal shows the tree with nothing selected.
+   *    A human operator then browses the tree and Selects a leaf — the offer's
+   *    real category is resolved server-side at submit from the barcode +
+   *    configured mapping (#1045/#1096), so the picked leaf only drives the
+   *    param schema the wizard renders. This is NOT a fault (params load fine
+   *    once a leaf is chosen — verified against the live UI); the previous
+   *    "empty picker = fault" assumption was an E2E gap: the flow never drove
+   *    the picker the way an operator does. So drive it.
+   *
+   * Only a tree that stays empty *after* driving the picker — no selectable
+   * leaf reachable at all — is a genuine fault.
    */
   private async ensureCategoryResolved(dialog: Locator): Promise<void> {
     if ((await dialog.locator('.category-tree-browser').count()) === 0) return; // prefill / non-browse.
@@ -378,13 +390,60 @@ export class BulkOfferWizard {
       .or(dialog.getByText('Loading category parameters'))
       .or(dialog.getByText('No category parameters required'))
       .or(dialog.getByText('Could not load category parameters'));
-    if (await this.isVisibleWithin(paramsSignal, 15_000)) return;
+    // Already resolved (barcode/mapping hit, or a prior pass picked a leaf that
+    // stuck): the param section is present even though the tree is still mounted.
+    if (await this.isVisibleWithin(paramsSignal, 3_000)) return;
+
+    // Unresolved borrows row — pick a leaf the way an operator does, then wait
+    // for the schema to load off the chosen category.
+    await this.selectFirstReachableCategoryLeaf(dialog);
+    if (await this.isVisibleWithin(paramsSignal, 20_000)) return;
 
     throw new Error(
-      'Bulk edit modal shows an EMPTY Allegro category picker (category tree, no resolved id) ' +
-        'and no category parameters loaded. The PS→Allegro category mapping did not resolve this ' +
-        'product — fix the category mapping (S0) before the offer can be created automatically.',
+      'Bulk edit modal category picker did not surface a parameter schema even after ' +
+        'selecting a category leaf in the tree. The category-parameters query for the picked ' +
+        'leaf never resolved.',
     );
+  }
+
+  /**
+   * Drive the `CategoryTreeBrowser` to select a category leaf, mirroring what an
+   * operator does for a `borrows`-taxonomy row (Erli) whose category did not
+   * auto-resolve. Drills into the first browsable child at each level until a
+   * selectable leaf is reachable, then clicks its "Select" button. Bounded by
+   * tree depth so an unexpectedly childless level fails loudly rather than
+   * looping. The specific leaf is immaterial for a borrows destination — the
+   * real offer category is resolved server-side at submit (#1045); the pick only
+   * drives which parameter schema the wizard renders (matching the operator's
+   * "any leaf loads params" behaviour).
+   */
+  private async selectFirstReachableCategoryLeaf(dialog: Locator): Promise<void> {
+    const tree = dialog.locator('.category-tree-browser');
+    for (let depth = 0; depth < 12; depth += 1) {
+      // A leaf at this level exposes a "Select" button (exact — never "Selected").
+      const selectButton = tree.getByRole('button', { name: 'Select', exact: true }).first();
+      if (await this.isVisibleWithin(selectButton, 1_500)) {
+        await selectButton.click();
+        return;
+      }
+      // No leaf here — drill into the first browsable child and let the next
+      // level's children load before re-scanning.
+      const browseButton = tree.locator('button[aria-label^="Browse into"]').first();
+      if (!(await this.isVisibleWithin(browseButton, 1_500))) {
+        throw new Error(
+          `Category tree level ${depth} has neither a selectable leaf nor a browsable child — ` +
+            'cannot pick a category.',
+        );
+      }
+      await browseButton.click();
+      // Wait out the child-level fetch (the primitive shows a loading state) so
+      // the next iteration scans the new level, not the stale one.
+      await this.isVisibleWithin(tree.getByText('Fetching categories'), 1_000);
+      await expect(async () => {
+        expect(await tree.getByText('Fetching categories').count()).toBe(0);
+      }).toPass({ timeout: 15_000 });
+    }
+    throw new Error('Could not reach a selectable category leaf within 12 tree levels.');
   }
 
   /**
