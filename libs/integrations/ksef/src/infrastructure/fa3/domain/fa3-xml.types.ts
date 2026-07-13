@@ -194,6 +194,44 @@ export const FA3_RACHUNEK_BANKOWY_CHILD_ORDER = [
 ] as const;
 
 /**
+ * XSD-mandated child order of the `Fa` sequence (FA(3) v1-0E, XSD line ~2439),
+ * restricted to the elements the builder can emit (#1525 review). Notably `P_6`
+ * (the optional sale-date choice) sits between `P_2` and the `P_13_x`/`P_14_x`
+ * band aggregates - a position regression fails the local validator instead of
+ * KSeF clearance. Same flat first-occurrence caveat as the other order lists:
+ * none of these names may also occur nested inside another listed element's
+ * subtree (true for the builder's output - FaWiersz children are `P_7`/`P_8A`/
+ * `P_8B`/`P_9A`/`P_11`/`P_12`, disjoint from this list).
+ */
+export const FA3_FA_CHILD_ORDER = [
+  'KodWaluty',
+  'P_1',
+  'P_2',
+  'P_6',
+  'P_13_1',
+  'P_14_1',
+  'P_13_2',
+  'P_14_2',
+  'P_13_3',
+  'P_14_3',
+  'P_13_6_1',
+  'P_13_6_2',
+  'P_13_6_3',
+  'P_13_7',
+  'P_13_8',
+  'P_13_9',
+  'P_13_10',
+  'P_15',
+  'Adnotacje',
+  'RodzajFaktury',
+  'PrzyczynaKorekty',
+  'TypKorekty',
+  'DaneFaKorygowanej',
+  'FaWiersz',
+  'Platnosc',
+] as const;
+
+/**
  * XSD-mandated child order of the `FaWiersz` sequence (FA(3) v1-0E, XSD line
  * ~3080), restricted to the elements the builder can emit (#1525). Notably
  * `P_8A` (unit of measure) comes immediately before `P_8B` (quantity), and

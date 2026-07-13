@@ -160,7 +160,7 @@ export const KSEF_SETUP_DEFAULT_VALUES: KsefSetupFormValues = {
  * Suggested units for the default-line-unit datalist (#1525) - free text is
  * still allowed; these are just the common PL invoice units.
  */
-export const KSEF_LINE_UNIT_SUGGESTIONS = ['szt.', 'kg', 'godz.', 'usl.', 'kpl.', 'm'] as const;
+export const KSEF_LINE_UNIT_SUGGESTIONS = ['szt.', 'kg', 'godz.', 'usł.', 'kpl.', 'm'] as const;
 
 // `buildKsefSellerConfig` (assembly) lives in the shared `ksef-seller-config`
 // module so the create path here and the edit path

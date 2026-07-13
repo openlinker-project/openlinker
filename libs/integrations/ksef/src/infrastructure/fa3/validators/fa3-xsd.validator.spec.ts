@@ -164,6 +164,35 @@ describe('validateFa3Xml', () => {
     }
   });
 
+  it('should reject a P_6 emitted after the P_13_x aggregates (#1525 Fa-order guard)', () => {
+    // Simulate a builder regression by moving P_6 after P_13_1 in a valid doc.
+    const withSaleDate = buildFa3Xml({
+      seller,
+      buyer: { kind: 'nip', nip: '9876543210' },
+      buyerName: 'Buyer GmbH',
+      buyerAddress: { line1: 'Main St 5', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+      currency: 'PLN',
+      issueDate: '2026-06-23',
+      invoiceNumber: 'FV/2026/06/0001',
+      generatedAt: '2026-06-23T10:15:30Z',
+      saleDate: '2026-06-20',
+      lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23' }],
+    });
+    const bad = withSaleDate.replace(
+      /(<P_6>[^<]*<\/P_6>)(<P_13_1>[^<]*<\/P_13_1>)/,
+      '$2$1',
+    ) as RawFa3Xml;
+    expect(bad).not.toEqual(withSaleDate);
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/P_13_1');
+    }
+  });
+
   it('should reject a FaWiersz that emits P_8A after P_8B (#1525 ordering guard)', () => {
     const input: Fa3BuilderInput = {
       seller,

@@ -575,6 +575,27 @@ describe('buildFa3Xml', () => {
       // Both rows share the same unit price, so both emit the same P_9A.
       expect(xml.match(/<P_9A>100\.00<\/P_9A>/g)?.length).toBe(2);
     });
+
+    it('should omit P_9A (never emit NaN) for a zero-quantity line', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, p12: '23' }],
+        correction: {
+          typKorekty: '2',
+          reason: 'Full return',
+          originalIssueDate: '2026-05-01',
+          originalInvoiceNumber: 'FV/2026/05/0042',
+          originalKsefNumber: null,
+          // A full return zeroes the "after" row - quantity 0 must not divide
+          // P_9A to NaN (KSeF would reject the literal at clearance).
+          correctedLines: [{ name: 'Widget', quantity: 0, unitPriceGross: 123.0, p12: '23' }],
+        },
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('NaN');
+      // Exactly one P_9A: the "before" row's. The zero-quantity row omits it.
+      expect(xml.match(/<P_9A>/g)?.length).toBe(1);
+    });
   });
 
   describe('P_8A unit of measure (#1525)', () => {

@@ -68,6 +68,7 @@ const INVOICING_CAPABILITY = 'Invoicing';
  */
 const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'InvalidBuyerProfileError',
+  'InvalidInvoiceLineError',
   'UnsupportedPriceTreatmentError',
   'BatchedTriggerNotImplementedError',
 ]);
@@ -257,6 +258,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     if (command.documentType !== undefined) {
       payload.documentType = command.documentType;
+    }
+    // #1525: without this the field-by-field flatten silently drops the sale
+    // date and the auto-issued document loses its P_6 counterpart.
+    if (command.saleDate !== undefined) {
+      payload.saleDate = command.saleDate;
     }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;

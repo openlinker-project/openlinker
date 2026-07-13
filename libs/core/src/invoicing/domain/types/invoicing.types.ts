@@ -261,7 +261,7 @@ export interface IssuedLineSnapshot {
   buyer: IssuedSnapshotBuyer;
   /** ISO 4217 currency code, echoed from the issue command. */
   currency: string;
-  /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate). */
+  /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate/unit). */
   lines: InvoiceLine[];
 }
 

@@ -185,7 +185,13 @@ function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObj
     // P_11 by cents (e.g. net 100.00 / qty 3 -> P_9A 33.33, x3 = 99.99) - an
     // accepted, documented drift; P_11 remains authoritative (#1525). Applies
     // to KOR before/after rows identically (no correction special-casing).
-    P_9A: money(lineNet(line) / line.quantity),
+    // Guarded to quantity > 0: a non-positive quantity (a zero-quantity KOR
+    // "after" row, or a malformed snapshot's 0 default) would divide to NaN
+    // and render a literal "NaN" that the local structural validator cannot
+    // catch but KSeF rejects at clearance - the optional element is omitted
+    // instead (defense-in-depth with the command composer's positive-quantity
+    // gate, which covers only the plain-issue path).
+    ...(line.quantity > 0 ? { P_9A: money(lineNet(line) / line.quantity) } : {}),
     // P_11 is the line's NET sale value — never the gross. Shared with the
     // band aggregation via `lineNet` so the two can't diverge.
     P_11: money(lineNet(line)),

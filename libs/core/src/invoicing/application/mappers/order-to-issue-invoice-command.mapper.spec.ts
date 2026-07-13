@@ -10,6 +10,7 @@
 import type { Address, Order, OrderItem } from '@openlinker/core/orders';
 
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
+import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import { toIssueInvoiceCommand } from './order-to-issue-invoice-command.mapper';
 
@@ -98,6 +99,28 @@ describe('toIssueInvoiceCommand', () => {
     });
 
     expect(cmd.saleDate).toBe('2026-06-20');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -2],
+    ['NaN', Number.NaN],
+  ])('should throw InvalidInvoiceLineError for a %s item quantity (#1525 review)', (_label, quantity) => {
+    const order = makeOrder({ items: [makeItem({ quantity })] });
+    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+      InvalidInvoiceLineError,
+    );
+  });
+
+  it('InvalidInvoiceLineError is PII-clean: cites only the order id', () => {
+    const order = makeOrder({ items: [makeItem({ quantity: 0, name: 'SECRET_ITEM' })] });
+    try {
+      toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+      fail('expected InvalidInvoiceLineError');
+    } catch (error) {
+      expect((error as Error).message).toContain('order-1');
+      expect((error as Error).message).not.toContain('SECRET_ITEM');
+    }
   });
 
   it('should leave saleDate undefined when placedAt is absent (never substitute createdAt)', () => {

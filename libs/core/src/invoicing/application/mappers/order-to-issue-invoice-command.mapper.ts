@@ -20,6 +20,7 @@ import type {
   TaxIdentifier,
 } from '../../domain/types/invoicing.types';
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
+import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 
 /** Inputs to {@link toIssueInvoiceCommand}. */
@@ -35,8 +36,10 @@ export interface OrderToIssueInvoiceCommandInput {
 
 /**
  * Compose an `IssueInvoiceCommand` from an `Order`. Throws `InvalidBuyerProfileError`
- * when no address/buyer-name can be derived, and `UnsupportedPriceTreatmentError`
- * when the order is net-priced (`taxTreatment === 'exclusive'`).
+ * when no address/buyer-name can be derived, `UnsupportedPriceTreatmentError`
+ * when the order is net-priced (`taxTreatment === 'exclusive'`), and
+ * `InvalidInvoiceLineError` when an item's quantity is not a positive finite
+ * number (#1525).
  */
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
@@ -53,7 +56,7 @@ export function toIssueInvoiceCommand(
   }
 
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null);
-  const lines = order.items.map(toInvoiceLine);
+  const lines = order.items.map((item) => toInvoiceLine(item, order.id));
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -127,7 +130,16 @@ function deriveBuyerName(order: Order, address: Address): string {
   return person;
 }
 
-/** Format a timestamp as an ISO 8601 calendar date (`YYYY-MM-DD`, UTC). */
+/**
+ * Format a timestamp as an ISO 8601 calendar date (`YYYY-MM-DD`).
+ *
+ * UTC-day semantics, ACCEPTED trade-off (#1525 review, mirrors the
+ * `toIsoDateOnly` precedent in `invoicing.controller.ts`): the calendar day is
+ * taken from the instant's UTC representation, so an order placed 00:30 local
+ * time in UTC+2 reports the PREVIOUS UTC day as the sale date. Doing better
+ * would require a seller-timezone setting core does not have; the sale date is
+ * legally tolerant of this off-by-one at day boundaries.
+ */
 function toIsoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
@@ -149,8 +161,18 @@ function toBuyerAddress(address: Address): BuyerAddress {
  * `sku` then `productId` when the source omitted a label. `taxRate` is left
  * empty here — the provider adapter resolves the regime rate; core never names
  * a tax rate on the order contract.
+ *
+ * Throws {@link InvalidInvoiceLineError} (PII-clean, cites only `orderId`) when
+ * the quantity is not a positive finite number - a malformed order snapshot
+ * defaults it to 0, and letting that through would corrupt per-unit derivations
+ * downstream (division to NaN, #1525).
  */
-function toInvoiceLine(item: OrderItem): InvoiceLine {
+function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
+  if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} has an item with a non-positive quantity; cannot compose an invoice line`,
+    );
+  }
   return {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,

@@ -62,6 +62,15 @@ export function orderFromReadySnapshot(record: OrderRecord): Order {
   if (typeof snapshot.orderNumber === 'string') {
     order.orderNumber = snapshot.orderNumber;
   }
+  // placedAt is optional on Order (unlike createdAt/updatedAt) so there is no
+  // record-level fallback to substitute - a snapshot without it stays without
+  // it (invoicing then omits the sale date rather than guessing, #1525).
+  if (typeof snapshot.placedAt === 'string') {
+    const placedAt = new Date(snapshot.placedAt);
+    if (!Number.isNaN(placedAt.getTime())) {
+      order.placedAt = placedAt;
+    }
+  }
   if (typeof snapshot.customerId === 'string') {
     order.customerId = snapshot.customerId;
   }

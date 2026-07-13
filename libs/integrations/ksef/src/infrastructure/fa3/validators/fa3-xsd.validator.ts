@@ -24,6 +24,7 @@ import {
   type Fa3ValidationIssue,
 } from '../../../domain/exceptions/fa3-validation.exception';
 import {
+  FA3_FA_CHILD_ORDER,
   FA3_FA_WIERSZ_CHILD_ORDER,
   FA3_NAMESPACE,
   FA3_PLATNOSC_CHILD_ORDER,
@@ -120,6 +121,14 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     }
     if (!/<FaWiersz[\s/>]/.test(xml)) {
       issues.push({ path: `${root}/Fa/FaWiersz`, message: 'Fa must contain at least one FaWiersz line' });
+    }
+    // `Fa` child ordering (#1525 review): notably P_6 must sit between P_2 and
+    // the P_13_x aggregates - a position regression fails here instead of at
+    // KSeF clearance. Flat first-occurrence scan over the Fa block; the listed
+    // names do not recur nested inside Fa's children (see FA3_FA_CHILD_ORDER).
+    const faMatch = xml.match(/<Fa>([^]*?)<\/Fa>/);
+    if (faMatch !== null) {
+      pushChildOrderIssues(faMatch[1], FA3_FA_CHILD_ORDER, `${root}/Fa`, issues);
     }
     // `FaWiersz` child ordering (#1525): the XSD mandates a fixed sequence
     // (notably P_8A immediately before P_8B and P_9A immediately after) - a
