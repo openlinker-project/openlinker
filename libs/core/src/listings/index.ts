@@ -155,13 +155,14 @@ export type {
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
 export type { OfferCategory } from './domain/types/category.types';
-export { CreateOfferResultStatusValues } from './domain/types/offer-create.types';
+export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
   CreateOfferOverrides,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferCondition,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,

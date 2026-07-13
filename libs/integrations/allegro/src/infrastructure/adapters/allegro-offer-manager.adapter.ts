@@ -40,6 +40,7 @@ import type {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
   CreateOfferCommand,
+  OfferCondition,
   OfferParameter,
   CreateOfferResult,
   CreateOfferResultStatus,
@@ -108,6 +109,19 @@ import { AllegroQuantityCommand } from '../../index';
 
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
+
+/**
+ * Allegro "Stan" (condition) parameter id and its dictionary value ids (#1500).
+ * "Stan" is an offer-section parameter; the adapter owns this neutral → wire
+ * mapping so core carries only the neutral `CreateOfferCommand.condition`. Value
+ * ids are Allegro's stable global dictionary entries (`11323_1` = Nowy / new,
+ * `11323_2` = Używany / used).
+ */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+const ALLEGRO_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
+  new: '11323_1',
+  used: '11323_2',
+};
 
 /** Default cache TTL (24h) for `/sale/categories/{id}/parameters` responses. */
 const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
@@ -1544,7 +1558,7 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult);
+    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
 
     return body;
   }
@@ -1566,11 +1580,36 @@ export class AllegroOfferManagerAdapter
     }));
   }
 
+  /**
+   * Build the Allegro "Stan" (condition) offer-section parameter from the neutral
+   * `cmd.condition` (#1500). Returns `undefined` when no condition is set OR when
+   * the operator already supplied a Stan parameter (id 11323) among the
+   * offer-section params — operator intent wins and condition is never
+   * double-set. `valuesIds` carries the dictionary entry id ("Stan" is a
+   * dictionary parameter).
+   */
+  private buildConditionParameter(
+    condition: OfferCondition | undefined,
+    existingOfferParameters: readonly AllegroOfferParameter[]
+  ): AllegroOfferParameter | undefined {
+    if (!condition) {
+      return undefined;
+    }
+    if (existingOfferParameters.some((p) => p.id === ALLEGRO_CONDITION_PARAMETER_ID)) {
+      return undefined;
+    }
+    return {
+      id: ALLEGRO_CONDITION_PARAMETER_ID,
+      valuesIds: [ALLEGRO_CONDITION_VALUE_IDS[condition]],
+    };
+  }
+
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
     parameters: readonly OfferParameter[] | undefined,
-    cardLinkResult: ResolveProductCardResult
+    cardLinkResult: ResolveProductCardResult,
+    condition: OfferCondition | undefined
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -1614,6 +1653,13 @@ export class AllegroOfferManagerAdapter
     const offerParameters = this.toAllegroParameters(
       (parameters ?? []).filter((p) => p.section === 'offer')
     );
+    // #1500 — default marketplace-required condition ("Stan"). Skip when the
+    // operator already supplied a Stan parameter (offer-section id 11323) so
+    // operator intent wins and condition is never double-set.
+    const conditionParameter = this.buildConditionParameter(condition, offerParameters);
+    if (conditionParameter) {
+      offerParameters.push(conditionParameter);
+    }
     if (offerParameters.length > 0) {
       body.parameters = offerParameters;
     }
