@@ -194,10 +194,17 @@ export class ErliConnectionConfigShapeValidatorAdapter
    * of the connection whose catalog offers/publishes source from (#1501).
    * Shape-only: an absent value is valid so order-ingestion-only connections are
    * not blocked (presence is a capability-gated follow-up, not enforced here).
-   * Mirrors Allegro's `@IsOptional() @IsUUID('4')` posture.
+   *
+   * An absent-or-blank value (`undefined`, `null`, or `''`) is treated as "not
+   * configured", not rejected: core reads a blank id as unset (offer-builder /
+   * product-publish-builder coerce '' to null) and, in offer-mapping-sync, as
+   * the explicit opt-out from barcode auto-resolve — so a cleared field must
+   * save rather than 400. The UUID check runs only on a non-empty value. This
+   * mirrors Allegro's / WooCommerce's `@IsOptional() @IsUUID('4')` posture,
+   * which likewise skips null/undefined.
    */
   private validateMasterCatalogConnectionId(value: unknown, issues: FlatValidationIssue[]): void {
-    if (value === undefined) {
+    if (value === undefined || value === null || value === '') {
       return;
     }
     if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {

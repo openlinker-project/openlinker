@@ -129,11 +129,32 @@ describe('WooCommerceConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('should pass when masterCatalogConnectionId is an empty string (blank = not configured / opt-out)', async () => {
+    await expect(
+      validator.validate({ siteUrl: 'https://myshop.com', masterCatalogConnectionId: '' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should pass when masterCatalogConnectionId is null (treated as not configured)', async () => {
+    await expect(
+      validator.validate({ siteUrl: 'https://myshop.com', masterCatalogConnectionId: null }),
+    ).resolves.toBeUndefined();
+  });
+
   it('should throw when masterCatalogConnectionId is a malformed UUID', async () => {
     await expect(
       validator.validate({
         siteUrl: 'https://myshop.com',
         masterCatalogConnectionId: 'not-a-uuid',
+      }),
+    ).rejects.toThrow(InvalidConnectionConfigException);
+  });
+
+  it('should throw when masterCatalogConnectionId is a non-string value', async () => {
+    await expect(
+      validator.validate({
+        siteUrl: 'https://myshop.com',
+        masterCatalogConnectionId: 123,
       }),
     ).rejects.toThrow(InvalidConnectionConfigException);
   });

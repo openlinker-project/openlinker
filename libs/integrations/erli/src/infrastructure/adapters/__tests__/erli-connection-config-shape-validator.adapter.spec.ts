@@ -198,6 +198,16 @@ describe('ErliConnectionConfigShapeValidatorAdapter', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('should resolve when masterCatalogConnectionId is an empty string (blank = not configured / opt-out)', async () => {
+      await expect(validator.validate({ masterCatalogConnectionId: '' })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when masterCatalogConnectionId is null (treated as not configured)', async () => {
+      await expect(
+        validator.validate({ masterCatalogConnectionId: null }),
+      ).resolves.toBeUndefined();
+    });
+
     it('should reject a malformed masterCatalogConnectionId', async () => {
       await expect(
         validator.validate({ masterCatalogConnectionId: 'not-a-uuid' }),
