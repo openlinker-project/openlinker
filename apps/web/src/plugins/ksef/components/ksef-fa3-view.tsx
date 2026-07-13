@@ -32,6 +32,7 @@
  *
  * @module plugins/ksef/components
  */
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
@@ -239,6 +240,11 @@ function parseFa3Xml(xmlText: string): FaData | null {
     ksefNumber: ksef ? getText(ksef, 'NrKSeF') : null,
     correctionReason: getText(fa, 'PrzyczynaKorekty'),
     correctedInvoiceNumber: korygowanaEl ? getText(korygowanaEl, 'NrFaKorygowanej') : null,
+    // Emitted whenever the corrected original was cleared through KSeF (the
+    // normal OL case); the sibling NrKSeF element is only the choice FLAG.
+    correctedInvoiceKsefNumber: korygowanaEl
+      ? getText(korygowanaEl, 'NrKSeFFaKorygowanej')
+      : null,
     payment: parsePayment(fa),
   };
 }
@@ -316,8 +322,10 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
           </tr>
         </thead>
         <tbody>
+          {/* lineNo '2' and index 2 stringify identically - prefix the index
+              fallback so partially-numbered documents can't collide. */}
           {lines.map((line, idx) => (
-            <tr key={line.lineNo ?? idx}>
+            <tr key={line.lineNo ?? `idx-${idx}`}>
               <td>{line.lineNo ?? String(idx + 1)}</td>
               <td className="ksef-fa3-view__col-desc">{line.description ?? '-'}</td>
               {showNetUnitPrice ? (
@@ -354,8 +362,9 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
           {t('invoice.ksef.fa3Nip', 'NIP')}: <span className="mono-text">{party.nip}</span>
         </div>
       ) : null}
-      {party.addressLines.map((line) => (
-        <div key={line} className="ksef-fa3-view__party-line">
+      {party.addressLines.map((line, idx) => (
+        // Keyed by position, not content - AdresL1 may equal AdresL2.
+        <div key={idx} className="ksef-fa3-view__party-line">
           {line}
         </div>
       ))}
@@ -368,7 +377,9 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
 
 export function KsefFa3View({ xmlText, ksefNumber }: KsefFa3ViewProps): ReactElement | null {
   const { t } = useTranslation();
-  const data = parseFa3Xml(xmlText);
+  // The parse is a full DOMParser pass + ~35 subtree scans; the parent
+  // re-renders on unrelated state (toasts, query refetches), so memoize.
+  const data = useMemo(() => parseFa3Xml(xmlText), [xmlText]);
   if (!data) return null;
 
   const isCorrection = data.invoiceType === 'KOR';
@@ -455,6 +466,14 @@ export function KsefFa3View({ xmlText, ksefNumber }: KsefFa3ViewProps): ReactEle
                 {t('invoice.ksef.fa3CorrectedInvoice', 'Corrects invoice')}
               </span>{' '}
               <span className="mono-text">{data.correctedInvoiceNumber}</span>
+            </div>
+          ) : null}
+          {data.correctedInvoiceKsefNumber !== null ? (
+            <div>
+              <span className="ksef-fa3-view__field-label">
+                {t('invoice.ksef.fa3CorrectedKsefNumber', 'KSeF number of corrected invoice')}
+              </span>{' '}
+              <span className="mono-text">{data.correctedInvoiceKsefNumber}</span>
             </div>
           ) : null}
           {data.correctionReason !== null ? (

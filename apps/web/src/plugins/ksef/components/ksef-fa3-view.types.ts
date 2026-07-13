@@ -80,5 +80,10 @@ export interface FaData {
   correctionReason: string | null;
   /** KOR only: `Fa/DaneFaKorygowanej/NrFaKorygowanej`. */
   correctedInvoiceNumber: string | null;
+  /**
+   * KOR only: `Fa/DaneFaKorygowanej/NrKSeFFaKorygowanej` - the KSeF number of
+   * the corrected original, present whenever it was cleared through KSeF.
+   */
+  correctedInvoiceKsefNumber: string | null;
   payment: FaPayment | null;
 }

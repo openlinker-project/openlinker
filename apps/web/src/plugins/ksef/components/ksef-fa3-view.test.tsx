@@ -40,7 +40,7 @@ interface FixtureOptions {
   vatTax23?: string | null;
   grandTotal?: string | null;
   ksefNumber?: string | null;
-  correction?: { reason: string; correctedNumber: string } | null;
+  correction?: { reason: string; correctedNumber: string; correctedKsefNumber?: string } | null;
   payment?: {
     formCode?: string;
     termDate?: string;
@@ -100,7 +100,13 @@ function buildXml({
     <DaneFaKorygowanej>
       <DataWystFaKorygowanej>2026-06-01</DataWystFaKorygowanej>
       <NrFaKorygowanej>${correction.correctedNumber}</NrFaKorygowanej>
-      <NrKSeFN>1</NrKSeFN>
+      ${
+        correction.correctedKsefNumber !== undefined
+          ? // The builder's KSeF branch: NrKSeF is the choice FLAG ('1');
+            // NrKSeFFaKorygowanej carries the actual 35-char number.
+            `<NrKSeF>1</NrKSeF><NrKSeFFaKorygowanej>${correction.correctedKsefNumber}</NrKSeFFaKorygowanej>`
+          : '<NrKSeFN>1</NrKSeFN>'
+      }
     </DaneFaKorygowanej>`
     : '';
 
@@ -402,6 +408,25 @@ describe('KsefFa3View', () => {
       expect(screen.getByText('Quantity reduced on line 1')).toBeInTheDocument();
       const correction = document.querySelector('.ksef-fa3-view__correction');
       expect(correction?.textContent).toContain('FV/2026/07/001');
+    });
+
+    it('should render the KSeF number of the corrected invoice when the original was cleared through KSeF', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({
+            invoiceType: 'KOR',
+            correction: {
+              reason: 'Price fix',
+              correctedNumber: 'FV/2026/07/001',
+              correctedKsefNumber: '1234567890-20260601-ABCDEF123456-7F',
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText('KSeF number of corrected invoice')).toBeInTheDocument();
+      const correction = document.querySelector('.ksef-fa3-view__correction');
+      expect(correction?.textContent).toContain('1234567890-20260601-ABCDEF123456-7F');
     });
 
     it('should render only the "after" line in the main table with the "before" line collapsed separately (#1364 follow-up)', () => {
