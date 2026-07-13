@@ -81,7 +81,10 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'OfferManager',
+    // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
+    // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
+    // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
+    requiredCapability: 'OfferEventReader',
   },
   {
     jobType: 'marketplace.orders.poll',
@@ -103,7 +106,10 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: '100',
       },
     ],
-    requiredCapability: 'OfferManager',
+    // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
+    // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
+    // its scheduler, so the manual trigger should match that set.
+    requiredCapability: 'OrderSource',
   },
   {
     jobType: 'inventory.propagateToMarketplaces',

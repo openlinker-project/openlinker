@@ -43,7 +43,7 @@ function makeConnectionClient() {
     name: 'My Allegro',
     status: 'active',
     platformType: 'allegro',
-    supportedCapabilities: ['OfferManager'],
+    supportedCapabilities: ['OfferManager', 'OfferCreator'],
   } as unknown as Connection;
   return createMockApiClient({
     connections: { list: vi.fn().mockResolvedValue([connection]) },
@@ -161,7 +161,7 @@ describe('BulkConfigStep', () => {
               name: 'My Allegro',
               status: 'active',
               platformType: 'allegro',
-              supportedCapabilities: ['OfferManager'],
+              supportedCapabilities: ['OfferManager', 'OfferCreator'],
             } as unknown as Connection,
           ]),
         },

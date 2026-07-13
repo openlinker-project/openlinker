@@ -2,8 +2,10 @@
  * Inventory Propagate to Marketplaces Handler
  *
  * Handles sync jobs of type 'inventory.propagateToMarketplaces'. Propagates
- * inventory changes from canonical storage to marketplace offers (e.g., Allegro).
- * Finds offer mappings for the product and enqueues offer quantity update jobs.
+ * inventory changes from canonical storage to marketplace offers (e.g., Allegro)
+ * and, since #1498, to shop-published products (WooCommerce) via their
+ * `ShopProduct` mappings. Finds both mapping kinds for the product/variant and
+ * enqueues one offer quantity update job per target.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -15,8 +17,14 @@ import type {
   SyncJobRequest,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type { ExternalIdMapping } from '@openlinker/core/identifier-mapping';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
 type SyncJob = SyncJobEntity;
 import { Logger } from '@openlinker/shared/logging';
@@ -37,8 +45,10 @@ interface InventoryPropagateToMarketplacesPayload {
  * Workflow:
  * 1. Validate payload (productId, optional variantId)
  * 2. Get current inventory for product
- * 3. Find all offer mappings for product
- * 4. For each mapping, enqueue marketplace.offerQuantity.update job
+ * 3. Find all offer mappings for product; enqueue one
+ *    marketplace.offerQuantity.update job per mapping
+ * 4. Find all ShopProduct mappings for the variant (#1498); enqueue the same
+ *    job per mapping on connections eligible for stock write-back
  */
 @Injectable()
 export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
@@ -50,7 +60,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -86,57 +98,100 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // Step 3: Find all marketplace offers mapped to this internal product
       // (Offer mappings are stored in identifier_mappings as entityType='Offer')
       const mappingTargetId = payload.variantId || payload.productId;
-      const mappings = await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId);
+      const offerMappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Offer,
+        mappingTargetId
+      );
 
-      if (mappings.length === 0) {
-        this.logger.debug(
-          `No offer mappings found for product ${payload.productId}. Skipping propagation.`
+      const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
+
+      // Offer branch stays check-free: offers only exist on marketplace
+      // connections, and per-platform behaviour belongs in the adapter, not in
+      // this thin handler (#582). The downstream
+      // MarketplaceOfferQuantityUpdateHandler delegates to
+      // `InventorySyncService.updateOfferQuantity`, which resolves
+      // `OfferManager` via `IntegrationsService.getCapabilityAdapter` and
+      // surfaces a missing-capability connection as a clean domain error.
+      if (offerMappings.length > 0) {
+        this.logger.log(
+          `Found ${offerMappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`
         );
-        return { outcome: 'ok' };
+        await Promise.all(
+          offerMappings.map((mapping) =>
+            this.enqueueQuantityUpdate(
+              mapping,
+              availableQuantity,
+              // Include write-event token to avoid suppressing legitimate
+              // quantity oscillations (e.g. 5->6->5).
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}`
+            )
+          )
+        );
+      } else {
+        this.logger.debug(
+          `No offer mappings found for product ${payload.productId}. Skipping marketplace propagation.`
+        );
+      }
+
+      // Step 4 (#1498): shop-published products. ShopProduct mappings are
+      // variant-keyed (internal variant id -> external shop product id), so
+      // legacy product-level inventory rows (variantId = null) skip this
+      // branch — master inventory has been variant-keyed since #822/#823.
+      //
+      // UNLIKE the Offer branch, this branch checks eligibility at enqueue
+      // time: most shop connections are publish-only (write-back defaults
+      // OFF), so unconditional enqueue would produce guaranteed-fail jobs by
+      // default. `listCapabilityAdapters` (lazy — no adapter construction)
+      // narrows to active connections with `OfferManager` enabled; the
+      // inventory-master exclusion is the authoritative runtime authority
+      // guard — the master connection must never be a write-back target.
+      const shopMappings = payload.variantId
+        ? await this.identifierMapping.getExternalIds(
+            CORE_ENTITY_TYPE.ShopProduct,
+            payload.variantId
+          )
+        : [];
+
+      let enqueuedShopCount = 0;
+      if (shopMappings.length > 0) {
+        const writeBackTargets = await this.integrationsService.listCapabilityAdapters({
+          capability: 'OfferManager',
+          lazy: true,
+        });
+        const eligibleConnectionIds = new Set(
+          writeBackTargets
+            .filter((entry) => !entry.connection.enabledCapabilities.includes('InventoryMaster'))
+            .map((entry) => entry.connectionId)
+        );
+
+        const eligibleShopMappings = shopMappings.filter((mapping) => {
+          if (eligibleConnectionIds.has(mapping.connectionId)) {
+            return true;
+          }
+          this.logger.debug(
+            `Skipping stock write-back for shop product ${mapping.externalId} (connection: ${mapping.connectionId}) — connection is not an eligible write-back target (OfferManager disabled, connection inactive, or connection is the inventory master).`
+          );
+          return false;
+        });
+
+        await Promise.all(
+          eligibleShopMappings.map((mapping) =>
+            this.enqueueQuantityUpdate(
+              mapping,
+              availableQuantity,
+              // Same key scheme as the Offer branch PLUS a branch discriminator
+              // + external id: the Offer key omits the target id, so reusing it
+              // verbatim would dedupe an Offer update against a ShopProduct
+              // update for the same connection/variant/quantity.
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}:shop:${mapping.externalId}`
+            )
+          )
+        );
+        enqueuedShopCount = eligibleShopMappings.length;
       }
 
       this.logger.log(
-        `Found ${mappings.length} offer mapping(s) for product ${payload.productId}. Enqueuing quantity update jobs.`
-      );
-
-      // Step 4: For each mapping, enqueue marketplace.offerQuantity.update job.
-      // Per-platform behaviour belongs in the adapter, not in this thin handler
-      // (#582). The downstream MarketplaceOfferQuantityUpdateHandler delegates
-      // to `InventorySyncService.updateOfferQuantity`
-      // (`libs/core/src/inventory/application/services/inventory-sync.service.ts:41-43`),
-      // which resolves `OfferManager` via `IntegrationsService.getCapabilityAdapter`
-      // and surfaces a missing-capability connection as a clean domain error —
-      // so a capability check at enqueue time would duplicate that policy.
-      const writeEventToken = payload.inventoryUpdatedAt || 'legacy';
-      const enqueuePromises = mappings.map(async (mapping) => {
-        // Include write-event token to avoid suppressing legitimate quantity oscillations (e.g. 5->6->5).
-        const idempotencyKey = `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}`;
-
-        const updatePayload = {
-          schemaVersion: 1 as const,
-          offerId: mapping.externalId,
-          quantity: availableQuantity,
-          idempotencyKey,
-        };
-
-        const updateJobRequest: SyncJobRequest = {
-          jobType: 'marketplace.offerQuantity.update',
-          connectionId: mapping.connectionId,
-          payload: updatePayload as unknown as Record<string, unknown>,
-          idempotencyKey, // Use same idempotency key for job deduplication
-        };
-
-        await this.jobEnqueue.enqueueJob(updateJobRequest);
-
-        this.logger.debug(
-          `Enqueued offer quantity update job for offer ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${availableQuantity})`
-        );
-      });
-
-      await Promise.all(enqueuePromises);
-
-      this.logger.log(
-        `Successfully enqueued ${mappings.length} offer quantity update job(s) for product ${payload.productId}`
+        `Enqueued ${offerMappings.length} offer + ${enqueuedShopCount} shop-product quantity update job(s) for product ${payload.productId}`
       );
 
       return { outcome: 'ok' };
@@ -150,6 +205,36 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         error instanceof Error ? error : undefined
       );
     }
+  }
+
+  /**
+   * Enqueue one marketplace.offerQuantity.update job for a mapping target.
+   * Shared by both fan-out branches — only the idempotency key differs.
+   */
+  private async enqueueQuantityUpdate(
+    mapping: ExternalIdMapping,
+    quantity: number,
+    idempotencyKey: string
+  ): Promise<void> {
+    const updatePayload = {
+      schemaVersion: 1 as const,
+      offerId: mapping.externalId,
+      quantity,
+      idempotencyKey,
+    };
+
+    const updateJobRequest: SyncJobRequest = {
+      jobType: 'marketplace.offerQuantity.update',
+      connectionId: mapping.connectionId,
+      payload: updatePayload as unknown as Record<string, unknown>,
+      idempotencyKey, // Use same idempotency key for job deduplication
+    };
+
+    await this.jobEnqueue.enqueueJob(updateJobRequest);
+
+    this.logger.debug(
+      `Enqueued offer quantity update job for ${mapping.entityType} ${mapping.externalId} (connection: ${mapping.connectionId}, quantity: ${quantity})`
+    );
   }
 
   /**

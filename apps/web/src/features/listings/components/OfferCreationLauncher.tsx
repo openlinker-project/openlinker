@@ -50,16 +50,14 @@ interface OfferCreationLauncherProps {
 
 /**
  * Marketplace connections eligible for offer creation. Filters by the
- * `OfferManager` capability (#578/#579) — the previous `platformType ===
- * 'allegro'` grandfather arm was a transitional backstop for connections
- * registered before #570/#571 wired adapter metadata; every Allegro
- * connection now reports `OfferManager` in `supportedCapabilities`. Once
- * the BE exposes `OfferCreator` capability metadata to the FE (#573/#574
- * follow-up) this should narrow to that specifically.
+ * `OfferCreator` sub-capability (#1498) — the earlier coarse `OfferManager`
+ * gate (#578/#579) stopped discriminating once WooCommerce gained a
+ * quantity-only `OfferManager` for stock write-back: creation flows must
+ * only list adapters that can actually create offers (Allegro, Erli).
  */
 function selectMarketplaceConnections(all: ReadonlyArray<Connection>): Connection[] {
   return all
-    .filter((c) => c.status === 'active' && c.supportedCapabilities.includes('OfferManager'))
+    .filter((c) => c.status === 'active' && c.supportedCapabilities.includes('OfferCreator'))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 }

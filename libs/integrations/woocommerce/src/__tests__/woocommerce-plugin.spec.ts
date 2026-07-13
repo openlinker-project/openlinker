@@ -96,6 +96,15 @@ describe('woocommerceAdapterManifest', () => {
     expect(woocommerceAdapterManifest.supportedCapabilities).toContain('OrderSource');
   });
 
+  it('should include OfferManager in supportedCapabilities (#1498)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).toContain('OfferManager');
+  });
+
+  it('should NOT declare offer-creation sub-capabilities (WC is a destination shop, #1498)', () => {
+    expect(woocommerceAdapterManifest.supportedCapabilities).not.toContain('OfferCreator');
+    expect(woocommerceAdapterManifest.supportedCapabilities).not.toContain('OfferEventReader');
+  });
+
   it('should be marked as the default adapter for the platform', () => {
     expect(woocommerceAdapterManifest.isDefault).toBe(true);
   });
@@ -157,11 +166,21 @@ describe('createWooCommercePlugin → createCapabilityAdapter', () => {
     expect(typeof (adapter as { getOrder?: unknown }).getOrder).toBe('function');
   });
 
+  it('should resolve OfferManager adapter when capability is OfferManager (#1498)', async () => {
+    const { host } = makeHostStub();
+    const plugin = createWooCommercePlugin();
+    const adapter = await plugin.createCapabilityAdapter(mockConnection, 'OfferManager', host);
+    expect(adapter).toBeDefined();
+    expect(typeof (adapter as { updateOfferQuantity?: unknown }).updateOfferQuantity).toBe(
+      'function',
+    );
+  });
+
   it('should reject unsupported capability with descriptive error', async () => {
     const { host } = makeHostStub();
     const plugin = createWooCommercePlugin();
     await expect(
-      plugin.createCapabilityAdapter(mockConnection, 'OfferManager', host),
+      plugin.createCapabilityAdapter(mockConnection, 'Invoicing', host),
     ).rejects.toThrow('WooCommerce');
   });
 });
