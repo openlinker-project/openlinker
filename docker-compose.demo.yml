@@ -31,6 +31,15 @@ services:
       # production-safe credential.
       NODE_ENV: production
       OL_BOOTSTRAP_ADMIN_PASSWORD: '${OL_BOOTSTRAP_ADMIN_PASSWORD:-admin}'
+      # Booting the demo overlay is itself the operator's signal that they
+      # want a demo deployment (self-registration auto-activation, the
+      # read-only banner, rate-limited registration + account cleanup —
+      # see apps/api/src/auth/demo-mode.service.ts and its consumers).
+      # Previously this had no compose wiring at all, so `pnpm demo:up`
+      # never actually enabled demo mode regardless of .env (#1499). Set
+      # OL_DEMO_MODE=false in .env to run the full demo container set
+      # without the demo-mode restrictions.
+      OL_DEMO_MODE: '${OL_DEMO_MODE:-true}'
       # CORS allow-list must include the browser origin the web UI is served
       # from (the `web` service publishes :8090), or login fails with a
       # "NetworkError when attempting to fetch resource" (#1368). The API
