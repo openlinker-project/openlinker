@@ -15,6 +15,7 @@
  */
 import { ApiError } from './api-error';
 import type {
+  ApproveUserInput,
   BulkBatchSummary,
   CategoryParameter,
   CategoryParametersResponse,
@@ -34,8 +35,10 @@ import type {
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
+  ListUsersQuery,
   LoginResponse,
   MarketplaceOffer,
+  MeResponse,
   OfferCreationStatus,
   OfferMapping,
   OrderRecord,
@@ -43,12 +46,15 @@ import type {
   Product,
   ProductVariant,
   RawResponse,
+  RegisterInput,
   RoutingRule,
   RoutingRuleInput,
   Shipment,
   SyncJob,
   SyncJobListQuery,
   SyncJobListResponse,
+  SystemConfig,
+  UserListResponse,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -219,11 +225,60 @@ export class ApiClient {
     };
   }
 
+  /**
+   * The authenticated user's role + derived permissions (GET /auth/me).
+   * Throws `ApiError` with status 401 when the client is not authenticated.
+   */
+  me(): Promise<MeResponse> {
+    return this.request<MeResponse>('/auth/me');
+  }
+
   // ── Health ──────────────────────────────────────────────────────────────
   health = {
     liveness: (): Promise<InternalHealthResponse> =>
       this.request<InternalHealthResponse>('/health'),
     devStack: (): Promise<unknown> => this.request<unknown>('/health/dev-stack'),
+  };
+
+  // ── System (public) ───────────────────────────────────────────────────────
+  system = {
+    /** Public runtime flags (demoMode, …). No auth header sent. */
+    config: (): Promise<SystemConfig> =>
+      this.request<SystemConfig>('/system/config', { skipAuth: true }),
+  };
+
+  // ── Auth (registration) ───────────────────────────────────────────────────
+  auth = {
+    /**
+     * Self-service registration (public). Resolves on 201; throws `ApiError`
+     * on 403 (disabled), 409 (duplicate), or 429 (demo per-IP rate limit).
+     */
+    register: (input: RegisterInput): Promise<void> =>
+      this.request<void>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        skipAuth: true,
+      }),
+  };
+
+  // ── Users (admin only) ────────────────────────────────────────────────────
+  users = {
+    list: (query?: ListUsersQuery): Promise<UserListResponse> =>
+      this.request<UserListResponse>(
+        `/users${buildQuery({ status: query?.status, page: query?.page, pageSize: query?.pageSize })}`,
+      ),
+    /** Approve a pending registration with a role. Returns 204 (no body). */
+    approve: (userId: string, roleBody: ApproveUserInput): Promise<void> =>
+      this.request<void>(`/users/${userId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify(roleBody),
+      }),
+  };
+
+  // ── AI provider settings (admin only) ─────────────────────────────────────
+  aiProviderSettings = {
+    /** Admin-only read; the E2E specs assert only on the resolved/failed status. */
+    get: (): Promise<unknown> => this.request<unknown>('/ai-provider-settings'),
   };
 
   // ── Connections ─────────────────────────────────────────────────────────

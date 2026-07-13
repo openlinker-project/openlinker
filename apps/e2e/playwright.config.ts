@@ -9,6 +9,10 @@
  *   - `full-flow`    — the attended S0-S9 full golden path across all 6 systems;
  *                      serial, `retries: 0` (a re-run would double-mutate), driven
  *                      headed in a coordinated operator session.
+ *   - `access-control` — demo mode, registration, RBAC, and UI-reflection checks.
+ *                      Self-configuring (asserts correct-for-mode, skips otherwise);
+ *                      independent of the golden-path projects. `retries: 1`
+ *                      (idempotent: each run provisions a fresh unique viewer).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -75,6 +79,18 @@ export default defineConfig({
       // checkpoints and the purchase pause (up to 30 min) — the global 90 s
       // per-test timeout would kill S0 before the first sync completes.
       timeout: 40 * 60_000,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Access-control coverage — independent of golden-path/full-flow. Depends
+      // only on `setup` for the admin storageState the UI-reflection spec's
+      // admin-session assertions consume; the viewer/guest browser cases build
+      // their own fresh contexts. `retries: 1` is safe — every run provisions a
+      // fresh, uniquely-named viewer (no double-mutation of shared state).
+      name: 'access-control',
+      testMatch: /access-control\/.*\.spec\.ts/,
+      retries: 1,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

@@ -50,6 +50,13 @@ export interface E2eEnv {
   wcAdminUrl: string;
   wcAdminUser: string;
   wcAdminPass: string;
+  /**
+   * Opt-in flag for the destructive register rate-limit assertion (S: access
+   * control). Hammering `POST /auth/register` burns the per-IP demo budget that
+   * the other access-control specs share, so the 429 test is skipped unless
+   * `E2E_TEST_RATE_LIMIT=true`.
+   */
+  testRateLimit: boolean;
 }
 
 const DEFAULTS = {
@@ -136,5 +143,6 @@ export function resolveEnv(): E2eEnv {
     wcAdminUrl: stripTrailingSlash(process.env.OL_WC_ADMIN_URL?.trim() || DEFAULTS.wcAdminUrl),
     wcAdminUser: process.env.OL_WC_ADMIN_USER?.trim() || DEFAULTS.wcAdminUser,
     wcAdminPass: process.env.OL_WC_ADMIN_PASS?.trim() || DEFAULTS.wcAdminPass,
+    testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
   };
 }

@@ -13,6 +13,64 @@ export interface LoginResponse {
   access_token: string;
 }
 
+// ── Access control (demo mode, registration, RBAC) ──────────────────────────
+
+/** GET /system/config (public) — server-driven runtime flags read at startup. */
+export interface SystemConfig {
+  /** True when OL_DEMO_MODE=true is set in the API's environment. */
+  demoMode: boolean;
+  /** Demo-only third-party integration config (present only in demo mode). */
+  demoIntegrations?: Record<string, unknown>;
+}
+
+/**
+ * GET /auth/me — the authenticated user's role + derived permissions. The
+ * endpoint lives under `/auth/me` (not `/me`); the client prepends `/v1`.
+ */
+export interface MeResponse {
+  id: string;
+  username: string;
+  email: string | null;
+  role: string;
+  /** Permissions derived from the role (`{resource}:{action}`), e.g. `orders:read`. */
+  permissions: string[];
+}
+
+/** POST /auth/register (public) request body. */
+export interface RegisterInput {
+  username: string;
+  email: string;
+  password: string;
+}
+
+/** A single row of GET /users (admin only). */
+export interface UserSummary {
+  id: string;
+  username: string;
+  email: string | null;
+  role: string;
+  status: string;
+  createdAt?: string;
+}
+
+/** GET /users (admin only) response — note the `users` key, not `items`. */
+export interface UserListResponse {
+  users: UserSummary[];
+  total: number;
+}
+
+/** POST /users/:id/approve request body — the role to assign on approval. */
+export interface ApproveUserInput {
+  role: string;
+}
+
+/** Optional server-side filter/pagination for GET /users. */
+export interface ListUsersQuery {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface ServiceHealth {
   status: 'ok' | 'warning' | 'error';
   message?: string;
