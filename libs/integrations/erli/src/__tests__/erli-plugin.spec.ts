@@ -294,6 +294,14 @@ describe('createErliPlugin', () => {
         createErliPlugin().createCapabilityAdapter(connection, 'ProductMaster', makeDispatchHost()),
       ).rejects.toThrow('Erli adapter does not support capability: ProductMaster');
     });
+
+    it('should advertise OfferCreator but reject dispatching it directly — it is narrow-only via isOfferCreator on the OfferManager adapter (#1498)', async () => {
+      expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
+
+      await expect(
+        createErliPlugin().createCapabilityAdapter(connection, 'OfferCreator', makeDispatchHost()),
+      ).rejects.toThrow('Erli adapter does not support capability: OfferCreator');
+    });
   });
 });
 

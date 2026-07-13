@@ -17,18 +17,14 @@ import type {
   SyncJobRequest,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import type {
-  ExternalIdMapping} from '@openlinker/core/identifier-mapping';
+import type { ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
-  CORE_ENTITY_TYPE
+  CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
 import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import {
-  IIntegrationsService,
-  INTEGRATIONS_SERVICE_TOKEN,
-} from '@openlinker/core/integrations';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 
 type SyncJob = SyncJobEntity;
 import { Logger } from '@openlinker/shared/logging';

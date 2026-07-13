@@ -87,9 +87,11 @@ export class ConnectionService implements IConnectionService {
    * the source of truth for stock, so it must never also be a stock
    * write-back target (the write would echo the master back at itself,
    * last-write-wins). This connection-management check is advisory; the
-   * authoritative runtime guard lives in the propagation fan-out
-   * (`InventoryPropagateToMarketplacesHandler` skips InventoryMaster-enabled
-   * connections regardless of their OfferManager state).
+   * authoritative runtime guard is `IntegrationsService.getCapabilityAdapter`
+   * throwing `CapabilityNotEnabledException` at execution time. A capability
+   * flip between a job's enqueue and its run (the fan-out's own eligibility
+   * check runs at enqueue time, not execution time) therefore fails that job
+   * cleanly instead of writing back to the master.
    */
   private assertNoWriteBackAuthorityConflict(enabledCapabilities: string[]): void {
     if (

@@ -27,11 +27,7 @@ describe('toPositiveInt', () => {
     expect(toPositiveInt(7)).toBe(7);
   });
 
-  it('should floor a positive non-integer', () => {
-    expect(toPositiveInt('12.9')).toBe(12);
-  });
-
-  it.each([null, undefined, '', 'abc', NaN, Infinity, 0, -1, '-5'])(
+  it.each([null, undefined, '', 'abc', NaN, Infinity, 0, -1, '-5', '12.9', 12.9])(
     'should throw WooCommerceInvalidIdentifierException for invalid input %p',
     (value) => {
       expect(() => toPositiveInt(value)).toThrow(WooCommerceInvalidIdentifierException);
