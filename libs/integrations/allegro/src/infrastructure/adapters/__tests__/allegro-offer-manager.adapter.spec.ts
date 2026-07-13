@@ -723,14 +723,11 @@ describe('AllegroOfferManagerAdapter', () => {
     // tests assert the public boundary contract (categoryId | null) plus the
     // outgoing endpoint shape. Cache + multi-match nuances are covered by
     // the batch util's own spec.
-    type ProductCardFixture = Pick<
-      AllegroProductCardSummary,
-      'id' | 'category' | 'parameters'
-    >;
+    type ProductCardFixture = Pick<AllegroProductCardSummary, 'id' | 'category' | 'parameters'>;
     function buildProductCard(
       ean: string,
       categoryId: string,
-      productId = 'prod-id',
+      productId = 'prod-id'
     ): ProductCardFixture {
       return {
         id: productId,
@@ -930,6 +927,105 @@ describe('AllegroOfferManagerAdapter', () => {
         marketplaceUrl: 'https://allegro.pl/oferta/7781562864',
         endsAt: undefined,
       });
+    });
+
+    it('should map offer-section and product-section parameters with productSet linkage (#1482)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562865',
+          name: 'Parameterised Offer',
+          sellingMode: { price: { amount: '99.00', currency: 'PLN' } },
+          stock: { available: 2 },
+          publication: { status: 'ACTIVE' },
+          parameters: [
+            { id: '11323', name: 'Stan', values: ['Nowy'], valuesIds: ['11323_1'] },
+            // Range parameter with no name - Allegro may omit `name` on reads.
+            { id: '224017', rangeValue: { from: '10', to: '20' } },
+          ],
+          productSet: [
+            {
+              product: {
+                id: 'product-card-1',
+                parameters: [
+                  { id: '17448', name: 'Marka', values: ['Canon'], valuesIds: ['17448_2'] },
+                ],
+              },
+              quantity: { value: 1 },
+            },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.getOffer({ externalId: '7781562865' });
+
+      expect(result.parameters).toEqual([
+        {
+          id: '11323',
+          name: 'Stan',
+          values: ['Nowy'],
+          valuesIds: ['11323_1'],
+          rangeValue: undefined,
+          section: 'offer',
+        },
+        {
+          id: '224017',
+          name: undefined,
+          values: [],
+          valuesIds: undefined,
+          rangeValue: { from: '10', to: '20' },
+          section: 'offer',
+        },
+        {
+          id: '17448',
+          name: 'Marka',
+          values: ['Canon'],
+          valuesIds: ['17448_2'],
+          rangeValue: undefined,
+          section: 'product',
+        },
+      ]);
+      expect(result.productSet).toEqual([{ productId: 'product-card-1', quantity: 1 }]);
+    });
+
+    it('should map inline productSet entries (no product.id) with productId absent (#1482)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562866',
+          name: 'Inline Product Offer',
+          sellingMode: { price: { amount: '15.00', currency: 'PLN' } },
+          stock: { available: 1 },
+          publication: { status: 'ACTIVE' },
+          productSet: [{ product: { name: 'Inline Product' } }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.getOffer({ externalId: '7781562866' });
+
+      expect(result.parameters).toBeUndefined();
+      expect(result.productSet).toEqual([{ productId: undefined, quantity: undefined }]);
+    });
+
+    it('should leave parameters and productSet absent when the response carries neither (#1482)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: '7781562867',
+          name: 'No Params Offer',
+          sellingMode: { price: { amount: '20.00', currency: 'PLN' } },
+          stock: { available: 4 },
+          publication: { status: 'ACTIVE' },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter.getOffer({ externalId: '7781562867' });
+
+      expect(result.parameters).toBeUndefined();
+      expect(result.productSet).toBeUndefined();
     });
 
     it('should omit marketplaceUrl when storefrontBaseUrl is unset', async () => {

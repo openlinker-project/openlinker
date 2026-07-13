@@ -315,6 +315,13 @@ export interface AllegroProductSetEntry {
     images?: string[];
   };
   /**
+   * How many units of the catalog product one offer item contains
+   * (`quantity.value`, default 1 - Allegro uses it for bundles/sets).
+   * Read-side field consumed by `getOffer` (#1482); the create path never
+   * sets it.
+   */
+  quantity?: { value?: number };
+  /**
    * EU GPSR (Reg. 2023/988) responsible-producer reference. Required by
    * Allegro on every `productSet[]` entry when the entry creates an inline
    * product (no `product.id`). Smart-linked entries inherit this from the
@@ -798,7 +805,6 @@ export interface AllegroWarrantiesResponse {
 export interface AllegroImpliedWarrantiesResponse {
   impliedWarranties: AllegroSellerPolicyEntry[];
 }
-
 
 /**
  * Response from `GET /sale/offers/{offerId}/smart` (#737) — Allegro Smart!

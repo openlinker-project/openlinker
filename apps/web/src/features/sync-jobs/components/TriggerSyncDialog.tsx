@@ -117,7 +117,25 @@ const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
         placeholder: 'ol_product_…',
       },
     ],
-    // No requiredCapability — this is a cross-connection fan-out job, valid for any active connection.
+    // Gated to InventoryMaster (the capability whose inventory it propagates) so it
+    // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
+    requiredCapability: 'InventoryMaster',
+  },
+  {
+    jobType: 'invoicing.regulatoryStatus.reconcile',
+    label: 'Reconcile regulatory status',
+    description: 'Poll the tax authority for clearance status of submitted invoices.',
+    payloadFields: [
+      {
+        name: 'limit',
+        label: 'Max invoices',
+        required: false,
+        type: 'number',
+        defaultValue: '100',
+        placeholder: '100',
+      },
+    ],
+    requiredCapability: 'Invoicing',
   },
 ];
 
@@ -166,6 +184,7 @@ export function TriggerSyncDialog({
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
+  const hasTriggers = triggerableJobs.length > 0;
 
   useEffect(() => {
     if (open) {
@@ -248,19 +267,27 @@ export function TriggerSyncDialog({
             </Alert>
           ) : null}
 
-          <FormField label="Job type" name="jobType">
-            <Select
-              value={selectedJobType}
-              onChange={(e) => handleJobTypeChange(e.target.value)}
-              disabled={enqueueSyncJob.isPending}
-            >
-              {triggerableJobs.map((job) => (
-                <option key={job.jobType} value={job.jobType}>
-                  {job.label}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          {!hasTriggers ? (
+            <p className="trigger-sync-dialog__description muted-text" role="status">
+              No sync triggers available for this connection.
+            </p>
+          ) : null}
+
+          {hasTriggers ? (
+            <FormField label="Job type" name="jobType">
+              <Select
+                value={selectedJobType}
+                onChange={(e) => handleJobTypeChange(e.target.value)}
+                disabled={enqueueSyncJob.isPending}
+              >
+                {triggerableJobs.map((job) => (
+                  <option key={job.jobType} value={job.jobType}>
+                    {job.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          ) : null}
 
           {selectedJob?.description ? (
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
@@ -293,7 +320,7 @@ export function TriggerSyncDialog({
           <Button
             tone="primary"
             onClick={() => void handleSubmit()}
-            disabled={enqueueSyncJob.isPending || intentKey === null}
+            disabled={enqueueSyncJob.isPending || intentKey === null || !hasTriggers}
           >
             {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
           </Button>

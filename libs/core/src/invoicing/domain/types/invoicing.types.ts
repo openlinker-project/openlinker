@@ -171,6 +171,20 @@ export interface PaymentStatusResult {
   paymentStatus: PaymentStatus;
 }
 
+/**
+ * Command to push an authoritative "paid" state to the provider for an
+ * already-issued document (#1362) - the OUTBOUND counterpart to
+ * `PaymentStatusReader`. `externalInvoiceId` is always the provider-native id
+ * read from a previously-issued `InvoiceRecord.providerInvoiceId` - never
+ * client-supplied directly. Country/provider-agnostic: no `paid_date`
+ * vocabulary here - the adapter formats `paidDate` in whatever wire shape its
+ * provider expects.
+ */
+export interface MarkInvoicePaidCommand {
+  externalInvoiceId: string;
+  paidDate: Date;
+}
+
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];

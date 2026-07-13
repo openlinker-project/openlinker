@@ -647,6 +647,46 @@ describe('InfaktInvoicingAdapter', () => {
     });
   });
 
+  describe('markPaid (#1362)', () => {
+    it('should POST the mark-paid task with the formatted date', async () => {
+      http.seed('POST', 'async/invoices/inv-uuid-1/paid.json', {});
+
+      await adapter.markPaid({
+        externalInvoiceId: 'inv-uuid-1',
+        paidDate: new Date('2026-07-08T12:34:56Z'),
+      });
+
+      expect(http.calls).toContainEqual({
+        method: 'POST',
+        path: 'async/invoices/inv-uuid-1/paid.json',
+        body: { invoice: { paid_date: '2026-07-08' } },
+      });
+    });
+
+    it('should URL-encode the external invoice id', async () => {
+      http.seed('POST', 'async/invoices/inv%2Fuuid/paid.json', {});
+
+      await adapter.markPaid({
+        externalInvoiceId: 'inv/uuid',
+        paidDate: new Date('2026-07-08T00:00:00Z'),
+      });
+
+      expect(http.calls[0]?.path).toBe('async/invoices/inv%2Fuuid/paid.json');
+    });
+
+    it('should propagate a transport error', async () => {
+      http.seedError(
+        'POST',
+        'async/invoices/inv-uuid-1/paid.json',
+        new InfaktApiError('not found', 404, {}),
+      );
+
+      await expect(
+        adapter.markPaid({ externalInvoiceId: 'inv-uuid-1', paidDate: new Date('2026-07-08') }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
   describe('resubmitForClearance (#1356)', () => {
     function issuedRecord(): InvoiceRecord {
       return new InvoiceRecord(
