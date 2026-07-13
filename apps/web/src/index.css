@@ -10179,6 +10179,45 @@ html[data-density='compact'] .status-badge {
 
 /* ── Invoicing redesign (#1240) ── */
 
+/* ── Invoice panel card parity with Shipment (#1449) ──────────────────
+ * Brings `.order-invoice-panel` to the same card chrome, header layout,
+ * and action-row treatment as `.order-shipment-panel` (see that rule
+ * set above). Body/KV/provider-slot spacing lives in the sections below.
+ */
+.order-invoice-panel {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.order-invoice-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.order-invoice-panel__header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.order-invoice-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.order-invoice-panel__actions .spacer {
+  flex: 1;
+}
+
 /* ─ Skeletons (shared shimmer for panel + detail page) ─ */
 .order-invoice-panel__skeleton,
 .invoice-detail__skeleton {
@@ -10207,10 +10246,20 @@ html[data-density='compact'] .status-badge {
   }
 }
 
-/* ─ Panel KV block ─ */
-.invoice-panel__body {
-  padding: var(--space-3) 0;
+/* ─ Panel body wrapper (#1449 — replaces the old padding-only wrapper now
+   that KeyValueList + the provider slot are siblings needing consistent
+   vertical rhythm; outer spacing is owned by `.order-invoice-panel`'s own
+   grid gap + padding, so this wrapper no longer adds its own padding) ─ */
+.order-invoice-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
+
+/* `.invoice-panel__kv` is kept — `OrderInvoicePanel` no longer renders it
+   (#1449 migrated it to `KeyValueList`), but `SubiektInvoiceDetailSection`
+   and `invoice-detail-page.tsx` still do; removing it would regress those
+   unrelated, out-of-scope surfaces. */
 .invoice-panel__kv {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -10240,11 +10289,16 @@ html[data-density='compact'] .status-badge {
   gap: var(--space-2);
   padding: var(--space-3) 0;
 }
+/* Muted mono-caps treatment matching `.key-value-list__label` (#1449) —
+   reads as a sub-region label, not a second heading. */
 .invoice-detail-section__title {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 .invoice-detail-section__kv {
   display: grid;

@@ -32,10 +32,12 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
+import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 
 import type { OrderRecord } from '../../orders';
+import type { InvoiceRecord } from '../api/invoicing.types';
 import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage } from '../lib/issue-error-message';
@@ -74,6 +76,74 @@ function selectReauthConnections(connections: readonly Connection[]): Connection
       (c.status === 'needs_reauth' || c.status === 'error') &&
       c.supportedCapabilities.includes(INVOICING_CAPABILITY),
   );
+}
+
+/**
+ * Build the `KeyValueList` rows for the "issued" state — mirrors
+ * `buildShipmentFieldItems` in `order-shipment-panel.tsx`. Preserves every
+ * existing sub-component and i18n key verbatim; only the wrapping markup
+ * changed from a bespoke `<dl>` to the shared primitive (#1449).
+ */
+function buildInvoiceFieldItems(
+  invoice: InvoiceRecord,
+  invoicingConnection: Connection | null,
+  showRegulatoryBadge: boolean,
+  t: (key: string, fallback: string) => string,
+): KeyValueItem[] {
+  const items: KeyValueItem[] = [
+    {
+      id: 'number',
+      label: t('invoice.field.number', 'Number'),
+      value: invoice.providerInvoiceNumber ? (
+        <InvoicePdfLink
+          invoiceNumber={invoice.providerInvoiceNumber}
+          pdfUrl={invoice.pdfUrl}
+        />
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+    },
+    {
+      id: 'document',
+      label: t('invoice.field.document', 'Document'),
+      value: t(
+        `invoice.documentType.${invoice.documentType}`,
+        DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+      ),
+    },
+  ];
+
+  if (showRegulatoryBadge) {
+    items.push({
+      id: 'clearance',
+      label: t('invoice.field.clearance', 'Clearance'),
+      value: <RegulatoryStatusBadge status={invoice.regulatoryStatus} />,
+    });
+  }
+
+  items.push(
+    {
+      id: 'issued',
+      label: t('invoice.field.issued', 'Issued'),
+      value: invoice.issuedAt ? (
+        <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
+      ) : (
+        <span className="text-muted">—</span>
+      ),
+    },
+    {
+      id: 'via',
+      label: t('invoice.field.via', 'Invoiced via'),
+      value: (
+        <>
+          {invoicingConnection?.name ?? invoice.connectionId}{' '}
+          <span className="text-muted">· {t('invoice.field.locked', 'locked')}</span>
+        </>
+      ),
+    },
+  );
+
+  return items;
 }
 
 export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactElement | null {
@@ -132,7 +202,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           <h3 className="detail-section__title">{t('invoice.panel.title', 'Invoice')}</h3>
           <InvoiceStatusBadge status="not-issued" />
         </header>
-        <div className="invoice-panel__body">
+        <div className="order-invoice-panel__body">
           <Alert tone="warning">
             <strong>
               {t(
@@ -147,7 +217,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           </Alert>
         </div>
         <div className="order-invoice-panel__actions">
-          <div className="spacer" style={{ flex: 1 }} />
+          <span className="spacer" />
           <Link className="button button--primary" to={`/connections/${reauthConn.id}`}>
             {t('invoice.panel.reauth', 'Re-authenticate')}
           </Link>
@@ -274,7 +344,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       {/* ── Pending: skeleton + notice, no action ── */}
       {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'pending' ? (
         <>
-          <div className="invoice-panel__body">
+          <div className="order-invoice-panel__body">
             <div className="order-invoice-panel__skeleton" style={{ width: '60%' }} aria-hidden="true" />
             <div className="order-invoice-panel__skeleton" style={{ width: '40%', marginTop: '6px' }} aria-hidden="true" />
           </div>
@@ -289,50 +359,10 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
 
       {/* ── Issued: read-only KV + provider slot ── */}
       {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'issued' && invoice ? (
-        <div className="invoice-panel__body">
-          <dl className="invoice-panel__kv">
-            <dt>{t('invoice.field.number', 'Number')}</dt>
-            <dd>
-              {invoice.providerInvoiceNumber ? (
-                <InvoicePdfLink
-                  invoiceNumber={invoice.providerInvoiceNumber}
-                  pdfUrl={invoice.pdfUrl}
-                />
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </dd>
-            <dt>{t('invoice.field.document', 'Document')}</dt>
-            <dd>
-              {t(
-                `invoice.documentType.${invoice.documentType}`,
-                DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-              )}
-            </dd>
-            {showRegulatoryBadge ? (
-              <>
-                <dt>{t('invoice.field.clearance', 'Clearance')}</dt>
-                <dd>
-                  <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
-                </dd>
-              </>
-            ) : null}
-            <dt>{t('invoice.field.issued', 'Issued')}</dt>
-            <dd>
-              {invoice.issuedAt ? (
-                <TimeDisplay iso={invoice.issuedAt} format="datetime" className="mono-text" />
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </dd>
-            <dt>{t('invoice.field.via', 'Invoiced via')}</dt>
-            <dd>
-              {invoicingConnection?.name ?? invoice.connectionId}{' '}
-              <span className="text-muted">
-                · {t('invoice.field.locked', 'locked')}
-              </span>
-            </dd>
-          </dl>
+        <div className="order-invoice-panel__body">
+          <KeyValueList
+            items={buildInvoiceFieldItems(invoice, invoicingConnection, showRegulatoryBadge, t)}
+          />
 
           {/* Provider extras slot (e.g. KSeF UPO, Subiekt KSeF status) */}
           {InvoiceDetailSection && invoicingConnection ? (
@@ -367,7 +397,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       {/* ── Failed (rejected): directive error + Retry ── */}
       {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'failed' && invoice ? (
         <>
-          <div className="invoice-panel__body">
+          <div className="order-invoice-panel__body">
             <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
               <span className="invoice-panel__inline-alert-bar" />
               <span>
@@ -383,7 +413,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
                   'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.',
                 )}
               </span>
-              <div style={{ flex: 1 }} />
+              <span className="spacer" />
               <Button
                 tone="secondary"
                 onClick={handleIssue}
@@ -399,7 +429,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
       {/* ── In-doubt: warning + Check/Mark-resolved, NO Retry ── */}
       {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'in-doubt' && invoice ? (
         <>
-          <div className="invoice-panel__body">
+          <div className="order-invoice-panel__body">
             <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
               <span className="invoice-panel__inline-alert-bar" />
               <div>
@@ -414,7 +444,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             </div>
           </div>
           <div className="order-invoice-panel__actions">
-            <div style={{ flex: 1 }} />
+            <span className="spacer" />
             <Button
               tone="secondary"
               onClick={() => {
