@@ -111,6 +111,15 @@ describe('orderFromReadySnapshot', () => {
     expect(order.placedAt).toBeUndefined();
   });
 
+  it('rehydrates placedAt from a Date instance too (same string|Date acceptance as createdAt/updatedAt)', () => {
+    const order = orderFromReadySnapshot(
+      makeRecord({ ...READY_SNAPSHOT, placedAt: new Date('2026-06-19T14:30:00.000Z') }),
+    );
+
+    expect(order.placedAt).toBeInstanceOf(Date);
+    expect(order.placedAt?.toISOString()).toBe('2026-06-19T14:30:00.000Z');
+  });
+
   it('falls back to shipping address when billing is absent', () => {
     const { billingAddress: _omit, ...rest } = READY_SNAPSHOT;
     void _omit;
