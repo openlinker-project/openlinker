@@ -245,7 +245,7 @@ export function KsefInvoiceDetailSection({
               {fa3.viewError ? (
                 <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
               ) : fa3.viewText !== null ? (
-                <KsefFa3View xmlText={fa3.viewText} />
+                <KsefFa3View xmlText={fa3.viewText} ksefNumber={ksefNumber} />
               ) : (
                 <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
               )}

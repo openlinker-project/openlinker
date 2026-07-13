@@ -41,11 +41,18 @@ interface FixtureOptions {
   grandTotal?: string | null;
   ksefNumber?: string | null;
   correction?: { reason: string; correctedNumber: string } | null;
-  payment?: { formCode?: string; termDate?: string; bankAccount?: string } | null;
+  payment?: {
+    formCode?: string;
+    termDate?: string;
+    termOpis?: { count: string; unit: string };
+    bankAccount?: string;
+    skonto?: { conditions: string; amount: string };
+  } | null;
 }
 
-// Builder-produced-like FA(3) XML (default xmlns, no prefix - the component's
-// getElementsByTagName lookup is namespace/prefix agnostic anyway).
+// Builder-produced-like FA(3) XML (default xmlns, no prefix - the OL builder
+// emits a default namespace; prefixed documents are covered by a dedicated
+// test below since getElementsByTagName does NOT match prefixed tags).
 function buildXml({
   invoiceNumber = 'FV/2026/07/001',
   issueDate = '2026-07-01',
@@ -97,12 +104,22 @@ function buildXml({
     </DaneFaKorygowanej>`
     : '';
 
+  const terminXml =
+    payment?.termDate !== undefined
+      ? `<TerminPlatnosci><Termin>${payment.termDate}</Termin></TerminPlatnosci>`
+      : payment?.termOpis !== undefined
+        ? // The OL builder emits the descriptive TerminOpis branch, never a bare
+          // Termin date (fa3-xml.builder.ts platnoscNode).
+          `<TerminPlatnosci><TerminOpis><Ilosc>${payment.termOpis.count}</Ilosc><Jednostka>${payment.termOpis.unit}</Jednostka><ZdarzeniePoczatkowe>data wystawienia faktury</ZdarzeniePoczatkowe></TerminOpis></TerminPlatnosci>`
+        : '';
+
   const paymentXml = payment
     ? `
     <Platnosc>
-      ${payment.termDate !== undefined ? `<TerminPlatnosci><Termin>${payment.termDate}</Termin></TerminPlatnosci>` : ''}
+      ${terminXml}
       ${payment.formCode !== undefined ? `<FormaPlatnosci>${payment.formCode}</FormaPlatnosci>` : ''}
       ${payment.bankAccount !== undefined ? `<RachunekBankowy><NrRB>${payment.bankAccount}</NrRB></RachunekBankowy>` : ''}
+      ${payment.skonto !== undefined ? `<Skonto><WarunkiSkonta>${payment.skonto.conditions}</WarunkiSkonta><WysokoscSkonta>${payment.skonto.amount}</WysokoscSkonta></Skonto>` : ''}
     </Platnosc>`
     : '';
 
@@ -245,12 +262,77 @@ describe('KsefFa3View', () => {
       expect(total?.textContent).toContain('1230.00 PLN');
     });
 
-    it('should render the KSeF assigned number when present', () => {
+    it('should render the KSeF number passed as a prop from the invoice record', () => {
       renderWithProviders(
-        <KsefFa3View xmlText={buildXml({ ksefNumber: '1234567890-20260701-ABCDEF123456-AB' })} />,
+        <KsefFa3View xmlText={buildXml()} ksefNumber="1234567890-20260701-ABCDEF123456-AB" />,
       );
 
       expect(screen.getByText('1234567890-20260701-ABCDEF123456-AB')).toBeInTheDocument();
+    });
+
+    it('should fall back to a document-embedded KSeF number when no prop is passed (foreign documents)', () => {
+      renderWithProviders(
+        <KsefFa3View xmlText={buildXml({ ksefNumber: 'KSEF-FROM-XML-123' })} />,
+      );
+
+      expect(screen.getByText('KSEF-FROM-XML-123')).toBeInTheDocument();
+    });
+
+    it('should not render the KSeF number row when neither prop nor document carries one', () => {
+      renderWithProviders(<KsefFa3View xmlText={buildXml()} />);
+
+      expect(document.querySelector('.ksef-fa3-view__ksef-number')).toBeNull();
+    });
+
+    it('should normalize a zero-rate band code (0 EX) in the line table to the summary-style label', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({
+            lines: [
+              {
+                lineNo: '1',
+                description: 'Export item',
+                quantity: '1',
+                netTotal: '300.00',
+                vatRate: '0 EX',
+              },
+            ],
+            vatNet23: null,
+            vatTax23: null,
+          })}
+        />,
+      );
+
+      const mainTable = document.querySelector('.ksef-fa3-view__lines .ksef-fa3-view__table');
+      expect(mainTable?.textContent).toContain('0% EX');
+      expect(mainTable?.textContent).not.toContain('0 EX');
+    });
+  });
+
+  describe('namespace handling', () => {
+    it('should parse a namespace-prefixed FA(3) document (tns:)', () => {
+      // Real FA(3) documents may prefix every element; qualified-name lookup
+      // (getElementsByTagName) would return zero matches for these.
+      const prefixedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<tns:Faktura xmlns:tns="http://crd.gov.pl/wzor/2025/06/25/06251/">
+  <tns:Podmiot1>
+    <tns:DaneIdentyfikacyjne>
+      <tns:NIP>1234567890</tns:NIP>
+      <tns:Nazwa>Prefixed Seller</tns:Nazwa>
+    </tns:DaneIdentyfikacyjne>
+  </tns:Podmiot1>
+  <tns:Fa>
+    <tns:KodWaluty>PLN</tns:KodWaluty>
+    <tns:P_1>2026-07-01</tns:P_1>
+    <tns:P_2>FV/PREFIXED/001</tns:P_2>
+    <tns:P_15>100.00</tns:P_15>
+    <tns:RodzajFaktury>VAT</tns:RodzajFaktury>
+  </tns:Fa>
+</tns:Faktura>`;
+      renderWithProviders(<KsefFa3View xmlText={prefixedXml} />);
+
+      expect(screen.getByText('FV/PREFIXED/001')).toBeInTheDocument();
+      expect(screen.getByText('Prefixed Seller')).toBeInTheDocument();
     });
   });
 
@@ -335,6 +417,48 @@ describe('KsefFa3View', () => {
       );
       expect(beforeTable?.textContent).toContain('1000.00');
     });
+
+    it('should compute the conditional columns per table when only the before rows carry unit and net unit price', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({
+            invoiceType: 'KOR',
+            correction: { reason: 'Fix', correctedNumber: 'FV/2026/07/001' },
+            lines: [
+              {
+                lineNo: '1',
+                description: 'Widget A',
+                unit: 'szt.',
+                quantity: '10',
+                netUnitPrice: '100.00',
+                netTotal: '1000.00',
+                vatRate: '23',
+                isBeforeCorrection: true,
+              },
+              {
+                lineNo: '2',
+                description: 'Widget A',
+                quantity: '5',
+                netTotal: '500.00',
+                vatRate: '23',
+              },
+            ],
+          })}
+        />,
+      );
+
+      // The main ("after") table has no unit / net-unit-price values, so its
+      // columns are hidden; the before table carries them, so it shows both.
+      const mainTable = document.querySelector('.ksef-fa3-view__lines .ksef-fa3-view__table');
+      expect(mainTable?.textContent).not.toContain('Unit');
+      expect(mainTable?.textContent).not.toContain('Net unit price');
+      const beforeTable = document.querySelector(
+        '.ksef-fa3-view__before-correction .ksef-fa3-view__table',
+      );
+      expect(beforeTable?.textContent).toContain('Unit');
+      expect(beforeTable?.textContent).toContain('Net unit price');
+      expect(beforeTable?.textContent).toContain('szt.');
+    });
   });
 
   describe('payment section', () => {
@@ -361,6 +485,44 @@ describe('KsefFa3View', () => {
       renderWithProviders(<KsefFa3View xmlText={buildXml({ payment: { formCode: '1' } })} />);
 
       expect(screen.getByText('Cash')).toBeInTheDocument();
+    });
+
+    it('should render the descriptive TerminOpis payment term the OL builder emits', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({
+            payment: { formCode: '6', termOpis: { count: '14', unit: 'dni' } },
+          })}
+        />,
+      );
+
+      expect(screen.getByText('Payment term')).toBeInTheDocument();
+      expect(screen.getByText('14 dni')).toBeInTheDocument();
+    });
+
+    it('should render the skonto row when the document carries Platnosc/Skonto', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({
+            payment: {
+              formCode: '6',
+              skonto: { conditions: 'Payment within 7 days', amount: '2%' },
+            },
+          })}
+        />,
+      );
+
+      expect(screen.getByText('Early-payment discount (skonto)')).toBeInTheDocument();
+      const payment = document.querySelector('.ksef-fa3-view__payment');
+      expect(payment?.textContent).toContain('2% - Payment within 7 days');
+    });
+
+    it('should render the raw code for an unmapped FormaPlatnosci value instead of dropping the row', () => {
+      renderWithProviders(<KsefFa3View xmlText={buildXml({ payment: { formCode: '9' } })} />);
+
+      const payment = document.querySelector('.ksef-fa3-view__payment');
+      expect(payment?.textContent).toContain('Payment form');
+      expect(payment?.textContent).toContain('9');
     });
   });
 

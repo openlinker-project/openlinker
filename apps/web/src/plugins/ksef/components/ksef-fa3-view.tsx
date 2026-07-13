@@ -7,16 +7,17 @@
  *
  * Displays:
  *   - Header: invoice number (P_2), invoice type subtitle (RodzajFaktury),
- *     KSeF assigned number when present
+ *     KSeF assigned number when known (passed by the parent from the
+ *     InvoiceRecord; the builder does not embed it in the document)
  *   - Two-column Seller/Buyer blocks with NIP and address
  *   - Details row: issue date (P_1), sale date (P_6), currency (KodWaluty)
  *   - Line-items table with render-derived gross per line; the Unit and
- *     Net unit price columns render only when at least one current line
- *     carries the value (documents issued before the backend emitted
- *     P_8A/P_9A get no dash-only columns)
+ *     Net unit price columns render only when at least one line in the
+ *     given table carries the value (documents issued before the backend
+ *     emitted P_8A/P_9A get no dash-only columns)
  *   - VAT summary per band (net / tax / gross) + total due with currency
  *   - Payment section (Platnosc): form label from the 1-7 code map (#1311),
- *     payment term, bank account
+ *     payment term (date or descriptive TerminOpis), bank account, skonto
  *   - KOR: correction reason + corrected-invoice number; `StanPrzed=1`
  *     "before" rows stay in a separate collapsed section (#1364 follow-up)
  *
@@ -25,17 +26,26 @@
  * Returns `null` if the XML cannot be parsed or required fields are missing -
  * the parent (`ksef-invoice-detail-section`) falls through to the placeholder.
  *
- * FA(3) uses XML namespaces; element lookup uses `getElementsByTagName(tagName)`
- * which matches regardless of namespace prefix (the local name is sufficient).
+ * FA(3) uses XML namespaces and real documents may prefix elements (`tns:`);
+ * element lookup matches by `localName` regardless of the prefix or
+ * namespace used (see `collectByLocalName`).
  *
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
+import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
+import type { KsefFormaPlatnosci } from './ksef-setup.schema';
 import type { FaData, FaLine, FaParty, FaPayment, FaVatBand } from './ksef-fa3-view.types';
 
 interface KsefFa3ViewProps {
   xmlText: string;
+  /**
+   * KSeF-assigned number from the InvoiceRecord (clearance reference). The
+   * FA(3) document itself does not carry it - the number is assigned by the
+   * authority AFTER the document is built - so the parent passes it in.
+   */
+  ksefNumber?: string | null;
 }
 
 /**
@@ -57,11 +67,24 @@ const VAT_BAND_ELEMENTS: ReadonlyArray<{ net: string; tax: string | null; label:
 ];
 
 /**
- * `FormaPlatnosci` code (`TFormaPlatnosci`, 1-7) to i18n key + English
- * fallback. Mirrors `KSEF_FORMA_PLATNOSCI_VALUES` / `FORMA_PLATNOSCI_LABELS`
- * from the connection setup form (#1311).
+ * Line-table display labels for the `P_12` zero-rate band codes, kept
+ * consistent with the VAT-summary band labels above.
  */
-const PAYMENT_FORM_LABELS: Readonly<Record<string, { key: string; fallback: string }>> = {
+const ZERO_RATE_LINE_LABELS: Readonly<Record<string, string>> = {
+  '0 KR': '0%',
+  '0 WDT': '0% WDT',
+  '0 EX': '0% EX',
+};
+
+/**
+ * `FormaPlatnosci` code (`TFormaPlatnosci`, 1-7) to i18n key + English
+ * fallback. Keyed by `KsefFormaPlatnosci` from the setup schema (#1311) so
+ * the compiler enforces exhaustiveness against the guarded vocabulary -
+ * adding an 8th code to `KSEF_FORMA_PLATNOSCI_VALUES` fails compilation here.
+ */
+const PAYMENT_FORM_LABELS: Readonly<
+  Record<KsefFormaPlatnosci, { key: string; fallback: string }>
+> = {
   '1': { key: 'invoice.ksef.fa3PaymentFormCash', fallback: 'Cash' },
   '2': { key: 'invoice.ksef.fa3PaymentFormCard', fallback: 'Card' },
   '3': { key: 'invoice.ksef.fa3PaymentFormVoucher', fallback: 'Voucher' },
@@ -71,18 +94,37 @@ const PAYMENT_FORM_LABELS: Readonly<Record<string, { key: string; fallback: stri
   '7': { key: 'invoice.ksef.fa3PaymentFormMobile', fallback: 'Mobile' },
 };
 
-/** Extract text content from the first matching element (namespace-agnostic). */
-function getText(root: Element | Document, tagName: string): string | null {
-  // getElementsByTagName matches regardless of namespace prefix, making it safe
-  // for FA(3) XML which uses `tns:` or other namespace prefixes.
-  const el = root.getElementsByTagName(tagName).item(0);
-  return el?.textContent?.trim() ?? null;
+function isKsefFormaPlatnosci(code: string): code is KsefFormaPlatnosci {
+  return (KSEF_FORMA_PLATNOSCI_VALUES as readonly string[]).includes(code);
+}
+
+/**
+ * Collect descendant elements matching a local name, ignoring namespace
+ * prefixes. `getElementsByTagName('Faktura')` does NOT match `<tns:Faktura>`
+ * (the qualified-name comparison includes the prefix), and happy-dom's
+ * `getElementsByTagNameNS('*', name)` returns nothing even for
+ * default-namespace documents, so we filter the `'*'` wildcard - which every
+ * DOM implements - by `localName`. FA(3) documents are small, so the linear
+ * scan is negligible.
+ */
+function collectByLocalName(root: Element | Document, localName: string): Element[] {
+  return Array.from(root.getElementsByTagName('*')).filter((el) => el.localName === localName);
+}
+
+/** Find the first element matching a local name, ignoring namespace prefixes. */
+function firstByLocalName(root: Element | Document, localName: string): Element | null {
+  return collectByLocalName(root, localName)[0] ?? null;
+}
+
+/** Extract text content from the first matching element (prefix-agnostic). */
+function getText(root: Element | Document, localName: string): string | null {
+  return firstByLocalName(root, localName)?.textContent?.trim() ?? null;
 }
 
 /** Parse a `Podmiot1`/`Podmiot2` element into name + NIP + address. */
 function parseParty(podmiot: Element | null): FaParty {
-  const idEl = podmiot?.getElementsByTagName('DaneIdentyfikacyjne').item(0) ?? null;
-  const adresEl = podmiot?.getElementsByTagName('Adres').item(0) ?? null;
+  const idEl = podmiot ? firstByLocalName(podmiot, 'DaneIdentyfikacyjne') : null;
+  const adresEl = podmiot ? firstByLocalName(podmiot, 'Adres') : null;
   const addressLines: string[] = [];
   if (adresEl) {
     const l1 = getText(adresEl, 'AdresL1');
@@ -102,29 +144,30 @@ function parseParty(podmiot: Element | null): FaParty {
 
 /** Parse the optional `Platnosc` block. Returns null when absent/empty. */
 function parsePayment(fa: Element): FaPayment | null {
-  const platnosc = fa.getElementsByTagName('Platnosc').item(0);
+  const platnosc = firstByLocalName(fa, 'Platnosc');
   if (!platnosc) return null;
-  const terminEl = platnosc.getElementsByTagName('TerminPlatnosci').item(0);
+  const terminEl = firstByLocalName(platnosc, 'TerminPlatnosci');
   const termDate = terminEl ? getText(terminEl, 'Termin') : null;
   let termDescription: string | null = null;
-  const opisEl = terminEl?.getElementsByTagName('TerminOpis').item(0) ?? null;
+  const opisEl = terminEl ? firstByLocalName(terminEl, 'TerminOpis') : null;
   if (opisEl) {
+    // The OL builder emits the descriptive branch: `{Ilosc} {Jednostka}`
+    // counted from `ZdarzeniePoczatkowe` (e.g. "14 dni").
     const count = getText(opisEl, 'Ilosc');
     const unit = getText(opisEl, 'Jednostka');
     termDescription = [count, unit].filter((part) => part !== null).join(' ') || null;
   }
-  const bankEl = platnosc.getElementsByTagName('RachunekBankowy').item(0);
+  const bankEl = firstByLocalName(platnosc, 'RachunekBankowy');
+  const skontoEl = firstByLocalName(platnosc, 'Skonto');
   const payment: FaPayment = {
     termDate,
     termDescription,
     formCode: getText(platnosc, 'FormaPlatnosci'),
     bankAccount: bankEl ? getText(bankEl, 'NrRB') : null,
+    skontoConditions: skontoEl ? getText(skontoEl, 'WarunkiSkonta') : null,
+    skontoAmount: skontoEl ? getText(skontoEl, 'WysokoscSkonta') : null,
   };
-  const hasContent =
-    payment.termDate !== null ||
-    payment.termDescription !== null ||
-    payment.formCode !== null ||
-    payment.bankAccount !== null;
+  const hasContent = Object.values(payment).some((value) => value !== null);
   return hasContent ? payment : null;
 }
 
@@ -134,7 +177,7 @@ function parseFa3Xml(xmlText: string): FaData | null {
     const parser = new DOMParser();
     doc = parser.parseFromString(xmlText, 'application/xml');
     // DOMParser signals parse errors via a <parsererror> element rather than throwing.
-    if (doc.getElementsByTagName('parsererror').length > 0) {
+    if (collectByLocalName(doc, 'parsererror').length > 0) {
       return null;
     }
   } catch {
@@ -142,10 +185,10 @@ function parseFa3Xml(xmlText: string): FaData | null {
   }
 
   // Locate the root <Faktura> element (tag may be namespace-prefixed in real docs).
-  const faktura = doc.getElementsByTagName('Faktura').item(0);
+  const faktura = firstByLocalName(doc, 'Faktura');
   if (!faktura) return null;
 
-  const fa = faktura.getElementsByTagName('Fa').item(0);
+  const fa = firstByLocalName(faktura, 'Fa');
   if (!fa) return null;
 
   // FA(3): P_1 = issue date, P_2 = invoice number (previously swapped, #1526).
@@ -153,7 +196,7 @@ function parseFa3Xml(xmlText: string): FaData | null {
   // Require at minimum the invoice number to consider the parse successful.
   if (invoiceNumber === null) return null;
 
-  const lineEls = Array.from(fa.getElementsByTagName('FaWiersz'));
+  const lineEls = collectByLocalName(fa, 'FaWiersz');
   const lines: FaLine[] = lineEls.map((el) => ({
     lineNo: getText(el, 'NrWierszaFa'),
     description: getText(el, 'P_7'),
@@ -176,8 +219,11 @@ function parseFa3Xml(xmlText: string): FaData | null {
     });
   }
 
-  const korygowanaEl = fa.getElementsByTagName('DaneFaKorygowanej').item(0);
-  const ksef = faktura.getElementsByTagName('KSeF').item(0);
+  const korygowanaEl = firstByLocalName(fa, 'DaneFaKorygowanej');
+  // The OL builder never embeds the KSeF number (it is assigned post-issue
+  // and passed in as a prop) - this parse path only fires for foreign
+  // documents that carry a non-schema <KSeF><NrKSeF> extension.
+  const ksef = firstByLocalName(faktura, 'KSeF');
 
   return {
     invoiceNumber,
@@ -185,8 +231,8 @@ function parseFa3Xml(xmlText: string): FaData | null {
     saleDate: getText(fa, 'P_6'),
     currency: getText(fa, 'KodWaluty'),
     invoiceType: getText(fa, 'RodzajFaktury'),
-    seller: parseParty(faktura.getElementsByTagName('Podmiot1').item(0)),
-    buyer: parseParty(faktura.getElementsByTagName('Podmiot2').item(0)),
+    seller: parseParty(firstByLocalName(faktura, 'Podmiot1')),
+    buyer: parseParty(firstByLocalName(faktura, 'Podmiot2')),
     lines,
     vatBands,
     grandTotal: getText(fa, 'P_15'),
@@ -206,7 +252,8 @@ function deriveGross(net: string | null, vatRate: string | null): string | null 
   if (net === null) return null;
   const netValue = Number(net);
   if (!Number.isFinite(netValue)) return null;
-  const rate = vatRate !== null && /^\d+([.,]\d+)?$/.test(vatRate) ? Number(vatRate.replace(',', '.')) : 0;
+  const rate =
+    vatRate !== null && /^\d+([.,]\d+)?$/.test(vatRate) ? Number(vatRate.replace(',', '.')) : 0;
   return (netValue * (1 + rate / 100)).toFixed(2);
 }
 
@@ -219,20 +266,30 @@ function bandGross(band: FaVatBand): string | null {
   return (netValue + taxValue).toFixed(2);
 }
 
-/** Format a `P_12` band for display: numeric bands get a `%` suffix. */
+/**
+ * Format a `P_12` band for display: numeric bands get a `%` suffix; the
+ * `0 KR`/`0 WDT`/`0 EX` codes normalize to the VAT-summary band labels;
+ * other non-numeric bands (zw, np, oo) render verbatim.
+ */
 function formatVatRate(vatRate: string | null): string {
   if (vatRate === null) return '-';
+  const zeroLabel = ZERO_RATE_LINE_LABELS[vatRate];
+  if (zeroLabel !== undefined) return zeroLabel;
   return /^\d+([.,]\d+)?$/.test(vatRate) ? `${vatRate}%` : vatRate;
 }
 
 interface LinesTableProps {
   lines: FaLine[];
-  showUnit: boolean;
-  showNetUnitPrice: boolean;
 }
 
-function LinesTable({ lines, showUnit, showNetUnitPrice }: LinesTableProps): ReactElement {
+function LinesTable({ lines }: LinesTableProps): ReactElement {
   const { t } = useTranslation();
+  // Documents issued before the backend emitted P_8A/P_9A must not render
+  // dash-only columns - show each column only when a line in THIS table
+  // carries the value (a KOR's before rows may carry them while the after
+  // rows do not, and vice versa).
+  const showUnit = lines.some((line) => line.unit !== null);
+  const showNetUnitPrice = lines.some((line) => line.netUnitPrice !== null);
   return (
     <div className="ksef-fa3-view__table-wrap">
       <table className="ksef-fa3-view__table">
@@ -309,7 +366,7 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
   );
 }
 
-export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null {
+export function KsefFa3View({ xmlText, ksefNumber }: KsefFa3ViewProps): ReactElement | null {
   const { t } = useTranslation();
   const data = parseFa3Xml(xmlText);
   if (!data) return null;
@@ -319,6 +376,10 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
     ? t('invoice.ksef.fa3TypeCorrection', 'Correction invoice')
     : t('invoice.ksef.fa3TypeStandard', 'Standard invoice');
 
+  // Prefer the record-sourced KSeF number (prop); the XML-parsed value only
+  // exists for foreign documents carrying a non-schema extension element.
+  const displayKsefNumber = ksefNumber ?? data.ksefNumber;
+
   // A KOR correction emits one "before" row (StanPrzed=1) per changed line
   // plus every current "after" line. The VAT summary / grand total below
   // already reflect only the corrected delta/state, so the main table must
@@ -327,15 +388,11 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
   const currentLines = data.lines.filter((line) => !line.isBeforeCorrection);
   const beforeCorrectionLines = data.lines.filter((line) => line.isBeforeCorrection);
 
-  // Documents issued before the backend emitted P_8A/P_9A must not render
-  // dash-only columns - show them only when a current line carries the value.
-  const showUnit = currentLines.some((line) => line.unit !== null);
-  const showNetUnitPrice = currentLines.some((line) => line.netUnitPrice !== null);
-
+  const paymentFormCode = data.payment?.formCode ?? null;
   const paymentFormLabel =
-    data.payment?.formCode !== null && data.payment?.formCode !== undefined
-      ? PAYMENT_FORM_LABELS[data.payment.formCode]
-      : undefined;
+    paymentFormCode !== null && isKsefFormaPlatnosci(paymentFormCode)
+      ? PAYMENT_FORM_LABELS[paymentFormCode]
+      : null;
 
   return (
     <div className="ksef-fa3-view">
@@ -345,12 +402,12 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           <div className="ksef-fa3-view__doc-number mono-text">{data.invoiceNumber}</div>
           <div className="ksef-fa3-view__doc-type">{subtitle}</div>
         </div>
-        {data.ksefNumber !== null ? (
+        {displayKsefNumber !== null && displayKsefNumber !== undefined ? (
           <div className="ksef-fa3-view__ksef-number">
             <div className="ksef-fa3-view__field-label">
               {t('invoice.ksef.fa3KsefNumber', 'KSeF number')}
             </div>
-            <div className="mono-text text-sm">{data.ksefNumber}</div>
+            <div className="mono-text text-sm">{displayKsefNumber}</div>
           </div>
         ) : null}
       </header>
@@ -417,11 +474,7 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           <div className="ksef-fa3-view__section-title">
             {t('invoice.ksef.fa3Lines', 'Invoice lines')}
           </div>
-          <LinesTable
-            lines={currentLines}
-            showUnit={showUnit}
-            showNetUnitPrice={showNetUnitPrice}
-          />
+          <LinesTable lines={currentLines} />
         </section>
       ) : null}
 
@@ -432,11 +485,7 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           <summary className="ksef-fa3-view__section-title">
             {t('invoice.ksef.fa3LinesBefore', 'Lines before correction')}
           </summary>
-          <LinesTable
-            lines={beforeCorrectionLines}
-            showUnit={showUnit}
-            showNetUnitPrice={showNetUnitPrice}
-          />
+          <LinesTable lines={beforeCorrectionLines} />
         </details>
       ) : null}
 
@@ -492,12 +541,16 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
           <div className="ksef-fa3-view__section-title">
             {t('invoice.ksef.fa3Payment', 'Payment')}
           </div>
-          {paymentFormLabel !== undefined ? (
+          {paymentFormCode !== null ? (
             <div className="ksef-fa3-view__payment-row">
               <span className="ksef-fa3-view__field-label">
                 {t('invoice.ksef.fa3PaymentForm', 'Payment form')}
               </span>{' '}
-              {t(paymentFormLabel.key, paymentFormLabel.fallback)}
+              {paymentFormLabel !== null
+                ? t(paymentFormLabel.key, paymentFormLabel.fallback)
+                : // Unmapped code (future TFormaPlatnosci extension): show the
+                  // raw code rather than dropping the row.
+                  paymentFormCode}
             </div>
           ) : null}
           {data.payment.termDate !== null || data.payment.termDescription !== null ? (
@@ -516,6 +569,16 @@ export function KsefFa3View({ xmlText }: KsefFa3ViewProps): ReactElement | null 
                 {t('invoice.ksef.fa3PaymentAccount', 'Bank account')}
               </span>{' '}
               <span className="mono-text">{data.payment.bankAccount}</span>
+            </div>
+          ) : null}
+          {data.payment.skontoConditions !== null || data.payment.skontoAmount !== null ? (
+            <div className="ksef-fa3-view__payment-row">
+              <span className="ksef-fa3-view__field-label">
+                {t('invoice.ksef.fa3PaymentSkonto', 'Early-payment discount (skonto)')}
+              </span>{' '}
+              {[data.payment.skontoAmount, data.payment.skontoConditions]
+                .filter((part) => part !== null)
+                .join(' - ')}
             </div>
           ) : null}
         </section>

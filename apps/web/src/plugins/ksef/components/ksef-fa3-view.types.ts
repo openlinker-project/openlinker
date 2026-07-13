@@ -53,6 +53,10 @@ export interface FaPayment {
   formCode: string | null;
   /** `Platnosc/RachunekBankowy/NrRB`. */
   bankAccount: string | null;
+  /** `Platnosc/Skonto/WarunkiSkonta` - early-payment discount conditions. */
+  skontoConditions: string | null;
+  /** `Platnosc/Skonto/WysokoscSkonta` - early-payment discount amount. */
+  skontoAmount: string | null;
 }
 
 export interface FaData {
