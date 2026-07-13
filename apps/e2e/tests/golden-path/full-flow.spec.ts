@@ -38,6 +38,7 @@ import type {
   ProductVariant,
 } from '../../src/api/api.types';
 import { PrestashopWebserviceClient } from '../../src/api/prestashop-webservice';
+import { buildFreshProductImages } from '../../src/api/generate-image';
 import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
 import { snapshotOrderIds, waitForOrder } from '../../src/support/orders';
@@ -1051,6 +1052,12 @@ async function provisionFreshProduct(
     quantity: 25,
     idCategoryDefault: prestashopCategoryId,
   });
+  // Attach several DISTINCT photos: Allegro rejects a photo-less offer ("Wymagane
+  // jest co najmniej 1 zdjęcie"). Images are synthesized offline (no network) and
+  // uploaded BEFORE the master sync so OL imports them onto the product. (#1481)
+  for (const image of buildFreshProductImages()) {
+    await ps.addProductImage(created.id, image);
+  }
   return { sku: created.reference, prestashopCategoryId };
 }
 

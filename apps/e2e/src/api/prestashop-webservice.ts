@@ -300,6 +300,51 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Upload an image to a product via the webservice image endpoint
+   * (`POST /api/images/products/{id}`, multipart/form-data, file field `image`).
+   *
+   * A fresh product is created without any photo, but Allegro rejects a photo-less
+   * offer ("Wymagane jest co najmniej 1 zdjęcie"). We synthesize valid PNGs (see
+   * `generate-image.ts`) and attach them here BEFORE the master sync so OL imports
+   * the product with its images and forwards their (tunnel-hosted) URLs to Allegro.
+   *
+   * Multipart is sent via the global `FormData`/`Blob` (undici) — `fetch` sets the
+   * boundary itself, so we must NOT set `Content-Type` manually here.
+   */
+  async addProductImage(
+    productId: string,
+    image: { bytes: Buffer | Uint8Array; filename: string; contentType: string },
+  ): Promise<void> {
+    const url = `${this.baseUrl}/api/images/products/${productId}?output_format=JSON`;
+    const form = new FormData();
+    const view = new Uint8Array(
+      image.bytes.buffer,
+      image.bytes.byteOffset,
+      image.bytes.byteLength,
+    );
+    form.append('image', new Blob([view], { type: image.contentType }), image.filename);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: this.authHeader, Accept: 'application/json' },
+        body: form,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const raw = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `PrestaShop webservice POST /api/images/products/${productId} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
+  }
+
+  /**
    * Set the quantity on a simple product's auto-created `stock_available` row
    * (the `id_product_attribute=0` aggregate). PrestaShop creates the row on
    * product-create; this reads it back and PUTs the new quantity.
