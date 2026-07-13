@@ -185,10 +185,11 @@ describe('OfferCreationExecutionService', () => {
       // reaches the adapter — proving the orchestrator wires input.condition
       // end-to-end (builder → createOffer), not just at the builder unit level.
       builder.buildCreateOfferCommand.mockImplementationOnce(
-        async (input): Promise<CreateOfferCommand> => ({
-          ...builtCommand,
-          condition: input.condition,
-        })
+        (input): Promise<CreateOfferCommand> =>
+          Promise.resolve({
+            ...builtCommand,
+            condition: input.condition,
+          })
       );
 
       await service.executeCreation({ ...baseInput, condition: 'used' });
