@@ -75,6 +75,30 @@ export interface CategoryResolutionInput {
   sourceConnectionId?: string;
 }
 
+/**
+ * One variant's input to the bulk Resolve batch (#795, mapping-aware #1522).
+ * `sourceCategoryIds` is the per-source-category mapping fallback input —
+ * ordered deepest-first — consulted when the EAN yields no catalogue match
+ * (mirrors `CategoryResolutionInput.sourceCategoryIds` on the single-resolve
+ * chain). Absent/empty ⇒ EAN-only for that item (legacy behaviour).
+ */
+export interface BatchCategoryResolveItem {
+  variantId: string;
+  ean: string | null;
+  sourceCategoryIds?: string[];
+}
+
+/**
+ * Batch input for `ICategoryResolutionService.resolveCategoriesBatch` (#1522).
+ * A superset of the adapter-facing `BatchCategoryByEanInput`: each item may
+ * additionally carry `sourceCategoryIds` so the service can fall back to the
+ * configured mapping on an EAN no-match. The adapter still receives only
+ * `{ variantId, ean }` — the mapping fallback is a core concern.
+ */
+export interface BatchCategoryResolveInput {
+  items: BatchCategoryResolveItem[];
+}
+
 export interface CategoryResolutionResult {
   /** Resolved destination category ID, or null if manual pick is needed */
   destinationCategoryId: string | null;

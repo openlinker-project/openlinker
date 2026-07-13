@@ -21,7 +21,6 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   OfferManagerPort,
-  BatchCategoryByEanInput,
   EanMatchResult,
 } from '@openlinker/core/listings';
 import {
@@ -34,6 +33,7 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type {
+  BatchCategoryResolveInput,
   CategoryProvenance,
   CategoryResolutionInput,
   CategoryResolutionResult,
@@ -108,7 +108,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
   async resolveCategoriesBatch(
     connectionId: string,
-    input: BatchCategoryByEanInput
+    input: BatchCategoryResolveInput
   ): Promise<Map<string, EanMatchResult>> {
     // Resolving the OfferManager adapter validates the connection up front:
     // unknown/disabled connections surface as 404/409, and a non-marketplace
@@ -120,10 +120,10 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // A destination that can't batch-match EANs (it `borrows` its taxonomy, e.g.
     // Erli per ADR-025 §3 — reuses already-resolved Allegro ids, has no catalog
     // of its own) degrades to `no-match` for every variant rather than aborting
-    // the whole batch. The operator then supplies the category per row in Review
-    // (manual / configured mapping). This mirrors the single-resolve chain's
-    // graceful fall-through and the per-item no-throw contract — "can't match →
-    // no-match" — and is gated on the declared capability, never `platformType`.
+    // the whole batch. It resolves the category server-side at submit instead
+    // (the wizard suppresses the pre-flight blocker for it). This mirrors the
+    // single-resolve chain's graceful fall-through and the per-item no-throw
+    // contract, and is gated on the declared capability, never `platformType`.
     if (!isEanCategoryMatcher(adapter)) {
       this.logger.debug(
         `Adapter lacks EanCategoryMatcher; degrading ${input.items.length} variant(s) to no-match ` +
@@ -136,7 +136,43 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     this.logger.debug(
       `Batch-resolving ${input.items.length} variant EAN(s) (connection=${connectionId})`
     );
-    return adapter.resolveCategoriesForBatchByEan(input);
+    // EAN catalogue match stays the PRIMARY path — the adapter only needs
+    // `{ variantId, ean }`; `sourceCategoryIds` is a core-owned fallback input.
+    const eanResults = await adapter.resolveCategoriesForBatchByEan({
+      items: input.items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
+    });
+
+    // #1522 — mapping fallback. When the EAN yields no catalogue match (or the
+    // variant has no EAN) and the item supplies source categories, consult the
+    // operator's configured per-source-category mapping — the same mapping
+    // `OfferBuilderService` honours at offer-build time — so the wizard preview
+    // agrees with the build. A hit resolves to a `matched` result with no
+    // catalogue card (the offer self-links by barcode at build time).
+    const resolved = new Map<string, EanMatchResult>();
+    for (const item of input.items) {
+      const eanResult = eanResults.get(item.variantId) ?? { kind: 'no-match' };
+      if (
+        (eanResult.kind === 'no-match' || eanResult.kind === 'no-ean') &&
+        item.sourceCategoryIds &&
+        item.sourceCategoryIds.length > 0
+      ) {
+        const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {});
+        if (mapped) {
+          this.logger.debug(
+            `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
+          );
+          resolved.set(item.variantId, {
+            kind: 'matched',
+            allegroCategoryId: mapped,
+            productCardId: '',
+            method: 'category_mapping',
+          });
+          continue;
+        }
+      }
+      resolved.set(item.variantId, eanResult);
+    }
+    return resolved;
   }
 
   /**

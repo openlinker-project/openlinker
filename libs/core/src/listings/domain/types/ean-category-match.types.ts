@@ -29,13 +29,31 @@ export const EanMatchResultKindValues = [
 export type EanMatchResultKind = (typeof EanMatchResultKindValues)[number];
 
 /**
+ * How a `matched` batch result was resolved (#1522).
+ *
+ * - `auto_detect`: unique product card found in the marketplace catalogue by
+ *   EAN (the adapter's `EanCategoryMatcher` path). This is the default and the
+ *   only value adapters ever produce — the field is absent on their results.
+ * - `category_mapping`: no catalogue match for the EAN, but the operator's
+ *   configured per-source-category mapping resolved the destination category.
+ *   Set only by `CategoryResolutionService.resolveCategoriesBatch` on the
+ *   mapping-fallback path; carries no catalogue card (`productCardId` is empty).
+ */
+export const EanMatchMethodValues = ['auto_detect', 'category_mapping'] as const;
+
+export type EanMatchMethod = (typeof EanMatchMethodValues)[number];
+
+/**
  * Per-EAN outcome of a batch category match call.
  *
- * - `matched`: unique product card found in Allegro's catalogue with this EAN;
- *   `allegroCategoryId` is the category-id reported on that card, ready to
- *   pre-fill the review-table row. `productCardId` is the Allegro
- *   product-card UUID — passed through to `productSet[0].product.id` at
- *   offer-create time so the offer smart-links to the catalogue card.
+ * - `matched`: a destination category was resolved for this variant.
+ *   `allegroCategoryId` is the resolved category-id, ready to pre-fill the
+ *   review-table row. `productCardId` is the marketplace product-card UUID
+ *   (Allegro) — passed through to `productSet[0].product.id` at offer-create
+ *   time so the offer smart-links to the catalogue card; it is empty on the
+ *   `category_mapping` fallback path (no catalogue card, #1522). `method`
+ *   distinguishes an EAN catalogue match (`auto_detect`, the default when the
+ *   field is absent) from the configured-mapping fallback (`category_mapping`).
  * - `multi-match`: more than one product card matched the EAN (rare but
  *   real — duplicate cards exist on Allegro's catalogue). Caller MUST surface
  *   candidate selection UX (#740). Ordering preserves Allegro's relevance
@@ -47,7 +65,7 @@ export type EanMatchResultKind = (typeof EanMatchResultKindValues)[number];
  *   no-throw contract).
  */
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
+  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };

@@ -818,6 +818,39 @@ describe('ListingsController', () => {
       });
     });
 
+    it('forwards sourceCategoryIds and surfaces a category_mapping result (#1522)', async () => {
+      const serviceResult = new Map<string, EanMatchResult>([
+        [
+          'v1',
+          {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
+        ],
+      ]);
+      categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
+
+      const result = await controller.resolveCategoriesBatch('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+
+      expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+      expect(result).toEqual({
+        results: {
+          v1: {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
+        },
+      });
+    });
+
     it('maps AdapterCapabilityNotSupportedException to 422', async () => {
       categoryResolution.resolveCategoriesBatch.mockRejectedValue(
         new AdapterCapabilityNotSupportedException('conn-1', 'EanCategoryMatcher')

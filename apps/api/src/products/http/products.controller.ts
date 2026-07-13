@@ -218,6 +218,7 @@ export class ProductsController {
       currency: product.currency ?? null,
       description: product.description,
       images: product.images,
+      categories: product.categories ?? null,
       createdAt: product.createdAt!.toISOString(),
       updatedAt: product.updatedAt!.toISOString(),
     };
