@@ -334,7 +334,7 @@ export class ApiClient {
     categoryParameters: (connectionId: string, categoryId: string): Promise<CategoryParameter[]> =>
       this.request<CategoryParametersResponse>(
         `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
-      ).then((response) => response.items),
+      ).then((response) => response.parameters),
     /** Bulk offer-creation batch progress: per-variant creation records. */
     getBulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
       this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),

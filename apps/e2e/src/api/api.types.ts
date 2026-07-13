@@ -343,7 +343,7 @@ export interface CategoryParameter {
 }
 
 export interface CategoryParametersResponse {
-  items: CategoryParameter[];
+  parameters: CategoryParameter[];
 }
 
 export interface InvoiceTaxId {
