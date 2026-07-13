@@ -1340,6 +1340,61 @@ describe('AllegroOfferManagerAdapter', () => {
       ]);
     });
 
+    it('maps neutral condition "new" to the "Stan" (11323) offer-section parameter (#1500)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-cond-new', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({ ...baseCmd, condition: 'new' });
+
+      const body = httpClient.post.mock.calls[0][1] as {
+        parameters?: Array<{ id: string; valuesIds?: string[] }>;
+      };
+      expect(body.parameters).toEqual([{ id: '11323', valuesIds: ['11323_1'] }]);
+    });
+
+    it('maps neutral condition "used" to Stan value 11323_2 (#1500)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-cond-used', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({ ...baseCmd, condition: 'used' });
+
+      const body = httpClient.post.mock.calls[0][1] as {
+        parameters?: Array<{ id: string; valuesIds?: string[] }>;
+      };
+      expect(body.parameters).toEqual([{ id: '11323', valuesIds: ['11323_2'] }]);
+    });
+
+    it('does NOT override an operator-supplied Stan (11323) parameter with the default condition (#1500)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-cond-op', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer({
+        ...baseCmd,
+        condition: 'new',
+        parameters: [{ id: '11323', valuesIds: ['11323_2'], section: 'offer' }],
+      });
+
+      const body = httpClient.post.mock.calls[0][1] as {
+        parameters?: Array<{ id: string; valuesIds?: string[] }>;
+      };
+      // Operator's Stan wins; the default 'new' condition is not double-set.
+      expect(body.parameters).toEqual([{ id: '11323', valuesIds: ['11323_2'] }]);
+    });
+
+    it('does not emit a Stan parameter when condition is absent (#1500)', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-no-cond', publication: { status: 'INACTIVE' } })
+      );
+
+      await adapter.createOffer(baseCmd);
+
+      const body = httpClient.post.mock.calls[0][1] as { parameters?: unknown };
+      expect(body).not.toHaveProperty('parameters');
+    });
+
     it('emits rangeValue from a neutral cmd.parameters entry (#1071)', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-range', publication: { status: 'INACTIVE' } })

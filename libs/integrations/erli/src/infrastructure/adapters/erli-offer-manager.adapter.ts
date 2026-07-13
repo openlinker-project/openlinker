@@ -107,6 +107,7 @@ import {
   type CreateOfferResult,
   type CreateOfferValidationError,
   type OfferCategory,
+  type OfferCondition,
   type OfferCreator,
   type OfferDescriptionUpdate,
   type OfferFieldUpdate,
@@ -166,6 +167,19 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
  * different name, this is the single change point alongside that map.
  */
 const ERLI_FROZEN_STOCK_FIELD = 'stock';
+
+/**
+ * Erli condition ("Stan") parameter id and its dictionary value ids (#1500).
+ * Erli borrows Allegro's taxonomy (ADR-025 §3), so condition rides as the Allegro
+ * "Stan" parameter (`11323`) with the same dictionary value id (`11323_1` = new,
+ * `11323_2` = used), emitted `source:"allegro"`. The adapter owns this neutral →
+ * wire mapping; core carries only the neutral `CreateOfferCommand.condition`.
+ */
+const ERLI_CONDITION_PARAMETER_ID = '11323';
+const ERLI_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
+  new: '11323_1',
+  used: '11323_2',
+};
 
 /**
  * Frozen-stock cache TTL (#1066). Sized for the WORST-case reconciliation cadence
@@ -585,6 +599,17 @@ export class ErliOfferManagerAdapter
       );
     }
 
+    // #1500 — default marketplace-required condition ("Stan"). Erli borrows
+    // Allegro's taxonomy, so condition rides as a source:"allegro" dictionary
+    // attribute. Appended to the Allegro-param attributes BEFORE the variant-group
+    // index calc below so the group's index refs (which point at the axes that
+    // come after) stay valid. Skipped when the operator already supplied a Stan
+    // parameter in cmd.parameters (operator intent wins, never double-set).
+    const conditionAttribute = buildConditionAttribute(cmd);
+    if (conditionAttribute) {
+      paramAttributes.push(conditionAttribute);
+    }
+
     // #986/#1065: explicit multi-variant grouping. A sibling's distinguishing
     // axes become shop-source `externalAttributes` entries, and the group
     // references them by **index** — Erli's verified wire shape. There is NO
@@ -872,6 +897,30 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
+}
+
+/**
+ * Build the Erli condition ("Stan") attribute from the neutral `cmd.condition`
+ * (#1500). Erli borrows Allegro's taxonomy (ADR-025 §3), so condition is emitted
+ * as a `source:"allegro"` dictionary attribute (parameter id `11323`, value id
+ * `11323_1`/`11323_2`). Returns `undefined` when no condition is set OR when the
+ * operator already supplied a Stan parameter in `cmd.parameters` — operator
+ * intent wins and condition is never double-set.
+ */
+function buildConditionAttribute(cmd: CreateOfferCommand): ErliExternalAttribute | undefined {
+  const condition = cmd.condition;
+  if (!condition) {
+    return undefined;
+  }
+  if ((cmd.parameters ?? []).some((p) => p.id === ERLI_CONDITION_PARAMETER_ID)) {
+    return undefined;
+  }
+  return {
+    source: 'allegro',
+    id: ERLI_CONDITION_PARAMETER_ID,
+    type: 'dictionary',
+    values: [{ id: ERLI_CONDITION_VALUE_IDS[condition] }],
+  };
 }
 
 /**

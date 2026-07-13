@@ -150,6 +150,8 @@ describe('OfferBuilderService', () => {
           imageUrls: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
         },
         idempotencyKey: undefined,
+        // #1500 — marketplace-required condition defaulted to 'new'.
+        condition: 'new',
         // #431 — barcode threaded through for adapter-side smart-link.
         variantBarcode: '5901234123457',
         // #808 — no pre-resolved card on this input.
@@ -930,6 +932,29 @@ describe('OfferBuilderService', () => {
 
       expect(first.variantGroup?.groupId).toBe('ol_product_456');
       expect(second.variantGroup?.groupId).toBe('ol_product_456');
+    });
+  });
+
+  describe('condition default (#1500)', () => {
+    it('defaults condition to "new" when the operator supplies none', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.condition).toBe('new');
+    });
+
+    it('uses an explicit operator-supplied condition over the default', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        condition: 'used',
+      });
+
+      expect(result.condition).toBe('used');
     });
   });
 });
