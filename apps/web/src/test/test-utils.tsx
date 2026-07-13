@@ -137,6 +137,9 @@ export function createMockApiClient(
       test: vi.fn().mockResolvedValue({ success: true, status: 200, message: 'OK', latencyMs: 42 }),
       update: vi.fn().mockResolvedValue(sampleConnection),
       updateCredentials: vi.fn().mockResolvedValue(undefined),
+      rotateWebhookSecret: vi
+        .fn()
+        .mockResolvedValue({ secret: 'whsec_test', revealedOnce: true, warning: 'Store it now.' }),
       ...overrides.connections,
     } as ApiClient['connections'],
     content: {

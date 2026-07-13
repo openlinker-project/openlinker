@@ -67,6 +67,7 @@ describe('MasterInventorySyncService', () => {
     inventoryService = {
       setInventory: jest.fn().mockImplementation((item: InventoryItem) => Promise.resolve(item)),
       getInventory: jest.fn().mockResolvedValue(null),
+      pruneStaleVariants: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IInventoryService>;
 
     productsService = {
@@ -307,6 +308,69 @@ describe('MasterInventorySyncService', () => {
       await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+    });
+  });
+
+  // Stale-variant pruning (#1478): after writing the current master response,
+  // the sync soft-marks any previously-known variant absent from it as stale.
+  describe('stale-variant pruning', () => {
+    it('prunes with the variant keys just written after the upsert loop', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-a',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 10,
+          reserved: 1,
+          available: 9,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+        {
+          id: 'inv-b',
+          productId: internalProductId,
+          variantId: 'ol_variant_b',
+          quantity: 5,
+          reserved: 0,
+          available: 5,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledTimes(1);
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [
+        'ol_variant_a',
+        'ol_variant_b',
+      ]);
+    });
+
+    it('prunes with an empty keep set when the master returns no inventory (product fully removed)', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).not.toHaveBeenCalled();
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, []);
+    });
+
+    it('prunes with the resolved variant key (null) when the row keys product-level', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-pl',
+          productId: internalProductId,
+          // no variantId — resolveVariantId safety net yields null (zero/many variants)
+          quantity: 5,
+          reserved: 0,
+          available: 5,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        } as unknown as InventoryPortInterface,
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [null]);
     });
   });
 

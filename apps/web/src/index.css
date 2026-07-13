@@ -3257,6 +3257,18 @@ textarea,
   border-bottom: none;
 }
 
+/* ── InPost webhook runbook (#1473) ── */
+.action-list__item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.inpost-webhook-runbook__secret {
+  margin-top: var(--space-3);
+}
+
 /* Diagnostics errors */
 .diagnostics-errors {
   margin-top: 0.5rem;

@@ -252,6 +252,16 @@ describe('Viewer Role Authorization', () => {
         .expect(403);
     });
 
+    it('POST /invoices/:invoiceId/mark-paid (#1362)', async () => {
+      const { http, viewerToken } = await seeds();
+      // Guard fires before the handler, so a fake id still yields 403 (not 404).
+      await http
+        .post('/v1/invoices/00000000-0000-4000-8000-000000000009/mark-paid')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({})
+        .expect(403);
+    });
+
     it('POST /shipments/generate-label', async () => {
       const { http, viewerToken } = await seeds();
       await http

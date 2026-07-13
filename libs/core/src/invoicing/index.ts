@@ -21,6 +21,8 @@ export * from './domain/ports/invoicing.port';
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
 export * from './domain/ports/capabilities/payment-status-reader.capability';
+// Re-exports both `PaymentMarker` and `isPaymentMarker` (#1362).
+export * from './domain/ports/capabilities/payment-marker.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';

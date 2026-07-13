@@ -43,6 +43,7 @@ describe('InventoryService', () => {
     inventoryRepository = {
       findByProductAndVariant: jest.fn(),
       upsert: jest.fn(),
+      markStaleExceptVariants: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<InventoryRepositoryPort>;
 
     jobQueue = {
@@ -176,6 +177,18 @@ describe('InventoryService', () => {
         },
       })
     );
+  });
+
+  it('delegates pruneStaleVariants to the repository and returns the marked count', async () => {
+    (inventoryRepository.markStaleExceptVariants as jest.Mock).mockResolvedValue(3);
+
+    const marked = await service.pruneStaleVariants('product-id', ['ol_variant_a', null]);
+
+    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith('product-id', [
+      'ol_variant_a',
+      null,
+    ]);
+    expect(marked).toBe(3);
   });
 
   it('uses persisted updatedAt as write event token', async () => {

@@ -117,6 +117,10 @@ export class WooCommerceProductPublisherAdapter
       stock_quantity: cmd.stock,
     };
 
+    // Truthy (not `!= null`) so an empty string is treated as absent, matching
+    // the builder's spread-omit and avoiding an empty `sku` clearing the WC
+    // product's SKU on upsert.
+    if (cmd.sku) typed.sku = cmd.sku;
     if (content?.title != null) typed.name = content.title;
     if (content?.description != null) typed.description = content.description;
     if (content?.imageUrls != null) typed.images = content.imageUrls.map((src) => ({ src }));
