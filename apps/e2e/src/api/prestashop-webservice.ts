@@ -89,6 +89,14 @@ export interface CreatedProductRef {
   reference: string;
 }
 
+/** Input for `createCategory` — a leaf category under an existing parent. */
+export interface CreateCategoryInput {
+  /** Category display name (localized under language id 1). */
+  name: string;
+  /** Parent category id. Defaults to `2` (Home). */
+  parentId?: string;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class PrestashopWebserviceClient {
@@ -183,6 +191,57 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Look up an existing category id by exact name so provisioning can REUSE a
+   * category across runs instead of creating a duplicate every time. Returns the
+   * first match's id, or null when no category with that name exists.
+   */
+  async getCategoryIdByName(name: string): Promise<string | null> {
+    const body = await this.get(
+      `/api/categories?filter[name]=${encodeURIComponent(name)}&display=[id,name]`,
+    );
+    const categories = asArray(pick(body, 'categories'));
+    if (categories.length === 0) return null;
+    return asStringOrNull(pick(asRecord(categories[0]), 'id'));
+  }
+
+  /**
+   * Create a real category under an existing parent (default `2` = Home).
+   *
+   * A fresh product needs a REAL (non-Home) source category: OL's
+   * `getProductCategories` excludes Root/Home as pseudo-categories (#1502), so a
+   * product landing in Home has no resolvable source category and the Allegro
+   * bulk-wizard category picker is empty. PrestaShop requires, per active
+   * language, both `name` and a URL-safe `link_rewrite`, plus `id_parent` and
+   * `active`. Returns the new category id (parsed from the webservice response).
+   */
+  async createCategory(input: CreateCategoryInput): Promise<{ id: string }> {
+    const languageId = '1';
+    const parentId = input.parentId ?? '2';
+    const linkRewrite = slugify(input.name) || 'e2e-category';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <category>',
+      `    <id_parent>${escapeXml(parentId)}</id_parent>`,
+      '    <active>1</active>',
+      `    <name><language id="${escapeXml(languageId)}">${escapeXml(input.name)}</language></name>`,
+      `    <link_rewrite><language id="${escapeXml(languageId)}">${escapeXml(linkRewrite)}</language></link_rewrite>`,
+      '  </category>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/categories', xml);
+    const category = asRecord(pick(body, 'category'));
+    const id = asStringOrNull(pick(category, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createCategory returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /**
    * Create a fresh SIMPLE master product (E3) and set its starting stock.
    *
    * Returns the created product's id + reference (== SKU) so the caller can pin
@@ -195,14 +254,16 @@ export class PrestashopWebserviceClient {
    *   - TAX: `price` is the net price; the product inherits whatever tax rule the
    *     store assigns by default. A run that asserts a specific gross may need an
    *     explicit `id_tax_rules_group`.
-   *   - This write path has not been exercised against a live PrestaShop; treat
-   *     the XML shape below as a first cut and verify the POST is accepted (some
-   *     stores require additional required fields, e.g. `state`, `link_rewrite`).
    */
   async createProduct(input: CreateProductInput): Promise<CreatedProductRef> {
     const languageId = input.languageId ?? '1';
     const categoryId = input.idCategoryDefault ?? '2';
     const linkRewrite = slugify(input.reference) || 'e2e-product';
+    // A category ASSOCIATION is required, not just `id_category_default`: OL's
+    // `getProductCategories` resolves the source category from
+    // `associations.categories`, and a product created with only the default set
+    // comes back with `associations.categories = null` (so OL can't resolve a
+    // source category and the Allegro bulk-wizard category picker is empty).
     const xml = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<prestashop>',
@@ -217,6 +278,11 @@ export class PrestashopWebserviceClient {
       `    <ean13>${escapeXml(input.ean13)}</ean13>`,
       `    <name><language id="${escapeXml(languageId)}">${escapeXml(input.name)}</language></name>`,
       `    <link_rewrite><language id="${escapeXml(languageId)}">${escapeXml(linkRewrite)}</language></link_rewrite>`,
+      '    <associations>',
+      '      <categories>',
+      `        <category><id>${escapeXml(categoryId)}</id></category>`,
+      '      </categories>',
+      '    </associations>',
       '  </product>',
       '</prestashop>',
     ].join('\n');

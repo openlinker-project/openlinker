@@ -83,8 +83,13 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // fresh offers/order rather than reusing existing state. The generated SKU
     // becomes the pin, so selection flows through the deterministic pin path.
     let pinnedSku = env.productSku;
+    // The real PS category the fresh product lands in — resolved at provision
+    // time so S0 can map exactly that category (not the Home default) to Allegro.
+    let freshCategoryPsId: string | undefined;
     if (env.freshProduct) {
-      pinnedSku = await provisionFreshProduct(world);
+      const provisioned = await provisionFreshProduct(world);
+      pinnedSku = provisioned.sku;
+      freshCategoryPsId = provisioned.prestashopCategoryId;
     }
 
     const job = await jobs.triggerAndWait(
@@ -158,7 +163,11 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // covers the Erli offer (S4) too.
       const allegroConn = world.connectionFor(PlatformType.allegro);
       if (allegroConn) {
-        await api.mappings.upsertCategoryMapping(allegroConn.id, env.freshCategoryPsId, {
+        // Map the REAL category the product was provisioned into (the
+        // `env.freshCategoryPsId` default '2'/Home is only an override fallback
+        // for a product provisioned outside this flow).
+        const sourceCategoryId = freshCategoryPsId ?? env.freshCategoryPsId;
+        await api.mappings.upsertCategoryMapping(allegroConn.id, sourceCategoryId, {
           allegroCategoryId: env.freshAllegroCategoryId,
           allegroCategoryName: 'E2E golden-path category',
         });
@@ -992,20 +1001,41 @@ async function pickDriverProduct(ctx: {
 }
 
 /**
+ * Deterministic name of the real source category a fresh product lands in.
+ * Reused across runs (looked up by name before creating) so the store doesn't
+ * accumulate a duplicate category per run.
+ */
+const FRESH_PRODUCT_CATEGORY_NAME = 'E2E Golden Path Category';
+
+/**
  * Provision a BRAND-NEW simple PrestaShop product (E3) and return its unique
- * reference (== SKU) so S0 can pin the run to it. Requires the PS webservice key.
+ * reference (== SKU) plus the id of the real source category it lands in, so S0
+ * can pin the run to it and map that category to Allegro. Requires the PS
+ * webservice key.
+ *
+ * The product is created in a REAL (non-Home) category with an explicit category
+ * ASSOCIATION — not just `id_category_default`. OL's `getProductCategories`
+ * excludes Root/Home as pseudo-categories (#1502) and reads the source category
+ * from `associations.categories`, so a Home-only product has no resolvable source
+ * category and S3's Allegro bulk-wizard category picker comes up empty. The
+ * category is created once and reused across runs (looked up by name first).
  *
  * Creates a SIMPLE (single-variant) product. Multi-variant fresh provisioning
  * (combinations + per-combination EAN/stock) and tax-group control are documented
  * TODOs — see `PrestashopWebserviceClient.createProduct` and the golden-path docs.
  */
-async function provisionFreshProduct(world: World): Promise<string> {
+async function provisionFreshProduct(
+  world: World,
+): Promise<{ sku: string; prestashopCategoryId: string }> {
   const ps = buildPrestashopClient(world);
   if (!ps) {
     throw new Error(
       'E2E_FRESH_PRODUCT requires OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL) to create a product',
     );
   }
+  const prestashopCategoryId =
+    (await ps.getCategoryIdByName(FRESH_PRODUCT_CATEGORY_NAME)) ??
+    (await ps.createCategory({ name: FRESH_PRODUCT_CATEGORY_NAME })).id;
   const suffix = Date.now().toString();
   const reference = `E2E-${suffix}`;
   const created = await ps.createProduct({
@@ -1014,8 +1044,9 @@ async function provisionFreshProduct(world: World): Promise<string> {
     ean13: computeEan13(`20${suffix}`),
     price: '19.99',
     quantity: 25,
+    idCategoryDefault: prestashopCategoryId,
   });
-  return created.reference;
+  return { sku: created.reference, prestashopCategoryId };
 }
 
 /** Build a valid EAN-13 (12 data digits + check digit) from a numeric seed. */
