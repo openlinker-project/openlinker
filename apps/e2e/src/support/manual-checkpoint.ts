@@ -17,14 +17,26 @@
  *   3. It records a pass/fail annotation in the Playwright HTML report so the
  *      attended run leaves a durable trail.
  *
- * A failed checkpoint is *soft* by default (`expect.soft` — recorded, the run
- * continues to later segments); pass `{ fatal: true }` to hard-fail instead.
+ * Severity of a FAILED checkpoint (`severity`, default `observational`):
+ *   - `observational` — record-only: annotated, never fails the test. Used for
+ *     the external-dashboard confirmations (Allegro / Erli / InPost / KSeF). This
+ *     matters because the suite runs `serial`: a checkpoint that FAILED its test
+ *     would skip EVERY downstream segment (the purchase + S5-S9), so a "not
+ *     active" / visual mismatch must be recorded, not fatal.
+ *   - `soft` — recorded via `expect.soft`; fails the test at the end (kept for
+ *     callers that want a non-blocking-but-reported assertion).
+ *   - `fatal` — hard-fail immediately (e.g. the purchase pause — nothing
+ *     downstream can run without it).
  *
  * @module support
  */
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
+
+/** How a FAILED manual checkpoint affects the run. */
+export const ManualCheckpointSeverityValues = ['observational', 'soft', 'fatal'] as const;
+export type ManualCheckpointSeverity = (typeof ManualCheckpointSeverityValues)[number];
 
 export interface ManualCheckpointOptions {
   /** Human name of the surface being confirmed, e.g. "Allegro seller panel". */
@@ -35,8 +47,13 @@ export interface ManualCheckpointOptions {
   expect: string[];
   /** Concrete expected values printed under the checklist (label → value). */
   values?: Record<string, unknown>;
-  /** Turn a failed checkpoint into a hard test failure. Default: soft. */
-  fatal?: boolean;
+  /**
+   * How a failed checkpoint affects the run. Default `observational`
+   * (record-only) so a failed external-dashboard confirmation never aborts the
+   * downstream serial segments. Use `fatal` only when the run genuinely cannot
+   * proceed (the purchase pause).
+   */
+  severity?: ManualCheckpointSeverity;
   /** Override the resume-sentinel directory (defaults to the env resumeDir). */
   resumeDir?: string;
   /** Max time to wait for the operator before giving up (ms). Default 30 min. */
@@ -94,12 +111,15 @@ export async function manualCheckpoint(
   });
 
   if (!verdict.passed) {
-    if (options.fatal) {
+    const severity: ManualCheckpointSeverity = options.severity ?? 'observational';
+    if (severity === 'fatal') {
       expect(verdict.passed, description).toBe(true);
-    } else {
-      // Soft failure: recorded on the test result, but the flow continues.
+    } else if (severity === 'soft') {
+      // Recorded on the test result (fails at the end), but the flow continues.
       expect.soft(verdict.passed, `Manual checkpoint failed — ${description}`).toBe(true);
     }
+    // 'observational' → the annotation above is the only record; the run
+    // continues and downstream serial segments still execute.
   }
 
   return { passed: verdict.passed, note: verdict.note };

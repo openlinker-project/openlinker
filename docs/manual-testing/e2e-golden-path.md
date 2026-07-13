@@ -60,7 +60,7 @@ All money is compared in **minor units, currency-aware** (`toMinorUnits`), so
 
 | # | Segment | Key assertions |
 |---|---|---|
-| **S0** | Baseline: sync master catalogue, snapshot stock | multi-variant driver product picked; primary variant has an EAN; OL availability captured per variant |
+| **S0** | Baseline: sync master catalogue, snapshot stock | driver product picked (default: EAN-complete multi-variant whose primary variant has an ACTIVE, mapped offer on the purchase source; falls back to the first EAN-complete multi-variant on a fresh stack; `E2E_PRODUCT_SKU` pins an exact product); primary variant has an EAN; OL availability captured per variant |
 | **S1** | PrestaShop parity | OL product name/EAN/price/currency == PS webservice; OL master total == PS `stock_availables` total |
 | **S2** | WooCommerce publish + REST parity | listing mapping appears in OL; OL SKU/name == WC REST; wp-admin visual |
 | **S3** | Allegro offers | offers created + mapped; OL adapter read price/currency/category/qty parity; **value-level parameter parity** — submitted values from the persisted creation-request snapshot vs the category directory + master variant attributes; **manual** Allegro panel |
@@ -101,6 +101,51 @@ Run:
 pnpm --filter @openlinker/e2e test:e2e -- --project=full-flow --headed
 ```
 
+### Optional run knobs
+
+| Env | Effect |
+|---|---|
+| `E2E_PRODUCT_SKU` | Pin the driver product by SKU (S0 escape hatch). Overrides the heuristic — use it when the default pick's marketplace offer is a draft/inactive listing, or to re-run against a known-good product. Single-variant products are allowed on this path. |
+| `E2E_SOURCE_PLATFORM` | Purchase-source marketplace (`allegro` \| `erli`, default `allegro`). Threads through the purchase pause, order ingestion (S5) and label dispatch (S6), so the flow can run with **Erli** as the marketplace source. S3 (Allegro) and S4 (Erli) still create offers on both channels for the cross-channel checks; only the *purchase* source is switched. |
+| `E2E_FRESH_PRODUCT` | Opt-in (`true`). Provision a brand-new PrestaShop product before the catalogue sync so the run exercises the create-paths everywhere. See § Fresh product per run. |
+
+### Driver-product selection (S0)
+
+The default picker requires the chosen product's primary variant to have an
+**ACTIVE, OL-mapped marketplace offer** on the purchase source — a draft/inactive
+offer would strand S3, the purchase, and S5. When no candidate has an active offer
+yet (a genuinely fresh stack where S3/S4 will create them), it falls back to the
+first EAN-complete multi-variant product so a clean run is never blocked. For a
+source adapter with no `OfferReader` (Erli), "active" degrades to "mapped". Set
+`E2E_PRODUCT_SKU` to bypass the heuristic entirely.
+
+### Fresh product per run (E3)
+
+By default the flow **reuses** an existing driver product (and its offers, via
+create-if-missing-else-reuse). Reuse is fast and deterministic, but it means a run
+does **not** exercise the brand-new-create paths (#1500 / #1502 / #1498) — a
+regression in offer/order creation can hide behind reuse.
+
+`E2E_FRESH_PRODUCT=true` provisions a new PrestaShop product at the start of S0
+(via the PS webservice, `PrestashopWebserviceClient.createProduct`) with a unique
+timestamped `reference`/SKU and EAN, then pins the run to it — so every offer and
+the order are created fresh.
+
+**Implemented now:** a **simple (single-variant)** product — name, unique
+reference/SKU, parent-level valid EAN-13, price, default category, and starting
+stock (`stock_availables`). Requires `OL_PS_WEBSERVICE_KEY`.
+
+**TODO (deferred — needs live verification):**
+- **Multi-variant provisioning** — `combinations` + per-combination `ean13` +
+  per-combination `stock_availables`. Today's scaffold is simple-product only, so
+  the multi-variant expansion paths (#824) are not exercised by the fresh flow.
+- **Tax** — `price` is net; the product inherits the store's default tax rule. A
+  run asserting a specific gross may need an explicit `id_tax_rules_group`.
+- **Live verification** — the write path (POST/PUT XML) has not been exercised
+  against a live PrestaShop; some stores require extra required fields. If the
+  create is rejected, drop `E2E_FRESH_PRODUCT` and fall back to the pin/heuristic
+  (the flag is off by default, so it never blocks a normal run).
+
 ### Driving the manual checkpoints
 
 When a segment needs eyes on a dashboard (or the purchase), the run prints a
@@ -111,6 +156,13 @@ is not your terminal, so pressing Enter can never work):
 - **Pass**: `touch .e2e/resume`.
 - **Fail**: `echo "reason" > .e2e/fail` (or write `fail …` into `.e2e/resume`)
   before resuming — the verdict is recorded as a report annotation.
+
+The external-dashboard checkpoints (Allegro / Erli / InPost / KSeF) are
+**observational**: a FAIL is annotated but does **not** abort the run, so the
+downstream serial segments (the purchase + S5-S9) still execute even if a visual
+confirmation is flagged. Only the **purchase pause is fatal** — nothing after it
+can run without a real order. (Severity is `manualCheckpoint`'s `severity` option:
+`observational` default, `soft`, `fatal`.)
 
 Checkpoint verdicts (pass/fail) land in the Playwright HTML report
 (`pnpm --filter @openlinker/e2e test:e2e:report`) as annotations, so the attended
@@ -190,9 +242,9 @@ PREREQUISITE / PRODUCT are for whoever runs the attended half.
   parity (else those segments degrade to annotated OL-only checks).
 
 ### Product findings (tracked as issues on main)
-- **Shop publish drops the SKU** (#1485): the neutral `PublishProductCommand`
-  carries no `sku`, so published WooCommerce products have an empty SKU — the
-  flow matches the WC product by **name**, not SKU, and annotates the gap.
+- **Shop publish carries the SKU** (#1485): S2 now prefers `getProductBySku`
+  (falling back to name for stacks predating #1485). A missing SKU is annotated as
+  a "stack predates #1485" gap rather than the previous name-only default.
 - **Filled offer parameter values in the read model** (#1482): needed for
   marketplace-side value parity; when deployed, S3 asserts submitted == accepted.
 - WooCommerce publish lands **uncategorised** (category mapping "not implemented
@@ -205,3 +257,28 @@ and at the purchase step. To continue a checkpoint: `touch .e2e/resume`
 offer on the marketplace (delivery = InPost Paczkomat; a sandbox-valid locker,
 or set `E2E_PACZKOMAT_ID`), then resume. These steps require a human and cannot
 be run unattended.
+
+## Second-run hardening (2026-07-13)
+
+A second attended run surfaced framework issues E1-E7, now fixed:
+
+- **E1 — picker requires an active mapped offer.** S0 now prefers a driver product
+  whose primary variant has an ACTIVE, OL-mapped offer on the purchase source
+  (degrades to "mapped" for Erli; falls back to the first EAN-complete
+  multi-variant on a fresh stack). See § Driver-product selection.
+- **E2 — WooCommerce SKU lookup.** S2 prefers `getProductBySku` with a name
+  fallback (SKU set on publish per #1485); more robust for names with `/`.
+- **E3 — fresh product per run.** `E2E_FRESH_PRODUCT` + a PS-webservice
+  `createProduct` scaffold (simple product). Multi-variant / tax / live
+  verification remain TODO — see § Fresh product per run.
+- **E4 — S3/S4 speed.** Reuse-detection and mapping resolution are now EXACT
+  (filtered by `internalId`) instead of scanning a page, so a reused offer resolves
+  on the first poll rather than missing the window, re-running the wizard, and
+  blocking on the create-wait. Mapping-resolution timeout right-sized to 60 s.
+- **E5 — checkpoints no longer abort the chain.** External-dashboard checkpoints
+  are `observational` (record-only); only the purchase pause is `fatal`. A flagged
+  visual mismatch no longer skips the whole downstream serial chain.
+- **E6 — configurable purchase source.** `E2E_SOURCE_PLATFORM=allegro|erli` threads
+  through the pause + S5 + S6, so the run can use Erli as the marketplace source.
+- **E7 — `E2E_PRODUCT_SKU` pin** retained as the deterministic escape hatch (see
+  § Optional run knobs).

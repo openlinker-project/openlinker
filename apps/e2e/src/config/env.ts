@@ -25,6 +25,26 @@ export interface E2eEnv {
   /** Optional pinned order id for post-purchase segments (follow-up). */
   orderId: string | null;
   /**
+   * Pin the driver product by SKU (S0 escape hatch). When set, S0 selects this
+   * exact product instead of the multi-variant/active-offer heuristic — the
+   * deterministic override when the heuristic picks a non-purchasable product.
+   */
+  productSku: string | null;
+  /**
+   * Purchase-source marketplace platform (`allegro` | `erli`). The attended
+   * purchase, order ingestion (S5), and label dispatch (S6) all target this
+   * connection. Defaults to `allegro`; set `E2E_SOURCE_PLATFORM=erli` to run the
+   * flow with Erli as the marketplace source.
+   */
+  sourcePlatform: string;
+  /**
+   * Opt-in: provision a BRAND-NEW PrestaShop product at the start of the run so
+   * every downstream segment exercises the create-paths (fresh offers, fresh
+   * order) rather than reusing existing state. Requires `OL_PS_WEBSERVICE_KEY`.
+   * Off by default. See docs/manual-testing/e2e-golden-path.md § Fresh product.
+   */
+  freshProduct: boolean;
+  /**
    * Optional InPost locker id override for label generation (S6). Used when the
    * buyer-selected pickup point is unusable — Allegro-sandbox lockers are known
    * not to exist in the InPost sandbox.
@@ -130,6 +150,9 @@ export function resolveEnv(): E2eEnv {
     adminUser: process.env.OL_ADMIN_USER?.trim() || DEFAULTS.adminUser,
     adminPass: process.env.OL_ADMIN_PASS?.trim() || DEFAULTS.adminPass,
     orderId: orderId && orderId.length > 0 ? orderId : null,
+    productSku: optional(process.env.E2E_PRODUCT_SKU),
+    sourcePlatform: process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro',
+    freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
     paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),

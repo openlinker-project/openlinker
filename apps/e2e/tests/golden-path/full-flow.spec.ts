@@ -30,6 +30,7 @@ import { ApiError } from '../../src/api/api-error';
 import type { PageObjects } from '../../src/pages';
 import type { Poller } from '../../src/support/poller';
 import type {
+  Connection,
   MarketplaceOffer,
   OfferMapping,
   OrderRecord,
@@ -64,7 +65,7 @@ interface FlowState {
   knownOrderIds?: ReadonlySet<string>;
   shipmentId?: string;
   invoiceId?: string;
-  /** WooCommerce product id of the published product (SKU is unset in MVP). */
+  /** WooCommerce product id of the published product, captured in S2 for the post-sale re-read. */
   wcProductId?: number;
 }
 
@@ -73,9 +74,18 @@ const state: FlowState = { variantIds: [], channelBaseline: new Map() };
 test.describe.configure({ mode: 'serial' });
 
 test.describe('golden path — full flow (S0-S9)', () => {
-  test('S0 — baseline: sync master catalogue and snapshot stock', async ({ api, world, jobs, poll }) => {
+  test('S0 — baseline: sync master catalogue and snapshot stock', async ({ api, world, jobs, poll, env }) => {
     const prestashop = world.connectionFor(PlatformType.prestashop);
     test.skip(!prestashop, 'no PrestaShop connection on this stack');
+
+    // E3 (opt-in): provision a BRAND-NEW master product BEFORE the catalogue
+    // sync, so `master.product.syncAll` imports it and the whole run creates
+    // fresh offers/order rather than reusing existing state. The generated SKU
+    // becomes the pin, so selection flows through the deterministic pin path.
+    let pinnedSku = env.productSku;
+    if (env.freshProduct) {
+      pinnedSku = await provisionFreshProduct(world);
+    }
 
     const job = await jobs.triggerAndWait(
       { connectionId: prestashop!.id, jobType: 'master.product.syncAll' },
@@ -83,14 +93,23 @@ test.describe('golden path — full flow (S0-S9)', () => {
     );
     expect(job.status).toBe('succeeded');
 
-    // Pick the driver product: a multi-variant product where EVERY variant
-    // carries an EAN — the flow maps offers and resolves orders by barcode, so
-    // an EAN-less pick (demo "Resin Ring") would strand every later segment.
+    // Pick the driver product. Default (E1): the first EAN-complete multi-variant
+    // product whose primary variant ALSO has an ACTIVE, mapped marketplace offer
+    // on the purchase source — a draft/inactive offer would strand S3, the
+    // purchase and S5. Falls back to the first EAN-complete multi-variant product
+    // when none has an active offer yet (a fresh stack where S3/S4 create them).
+    // The flow maps offers and resolves orders by barcode, so an EAN-less pick
+    // (demo "Resin Ring") is never chosen. Override with E2E_PRODUCT_SKU to pin a
+    // specific product by SKU (single-variant allowed) — the deterministic escape
+    // hatch when the heuristic picks a non-purchasable product.
+    const source = resolveSourceConnection(world, env.sourcePlatform);
     const product = (await poll.until<Product | undefined>(
-      () => world.findMultiVariantProduct(2, { requireEans: true }),
+      () => pickDriverProduct({ api, world, pinnedSku, source }),
       (p) => !!p,
       {
-        message: 'an EAN-complete multi-variant product to appear after PrestaShop sync',
+        message: pinnedSku
+          ? `pinned product (SKU ${pinnedSku}) to appear after PrestaShop sync`
+          : 'an EAN-complete multi-variant product with an active offer to appear after PrestaShop sync',
         timeoutMs: 60_000,
       },
     ))!;
@@ -192,10 +211,15 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // WooCommerce, read back over its REST API by name.
     const wc = buildWooClient(world);
     if (wc) {
-      // Match by NAME, not SKU: the OL WooCommerce publisher (MVP) creates the
-      // product without a SKU, so a SKU lookup never resolves.
+      // Prefer SKU lookup (the shop publisher now carries the variant SKU, #1485),
+      // falling back to name for products published before that landed. Name-only
+      // matching is fragile for names with punctuation (e.g. "Drill / Driver"),
+      // where the exact-name match misses and the search fallback picks the wrong row.
+      const wcSku = state.primaryVariant?.sku ?? undefined;
       const wcProduct = await poll.until(
-        () => wc.getProductByName(state.product!.name),
+        async () =>
+          (wcSku ? await wc.getProductBySku(wcSku) : null) ??
+          (await wc.getProductByName(state.product!.name)),
         (p) => p !== null,
         {
           message: `the published product "${state.product!.name}" to appear on WooCommerce`,
@@ -204,10 +228,10 @@ test.describe('golden path — full flow (S0-S9)', () => {
       );
       state.wcProductId = wcProduct!.id;
       state.channelBaseline.set('woocommerce', wcProduct!.stockQuantity ?? 0);
-      // Name + price are the fields the MVP publisher actually maps. SKU and
-      // category are known WooCommerce-publish MVP gaps (the neutral
-      // PublishProductCommand carries no sku; categories are "not implemented in
-      // MVP") — record them rather than fail, so the report stays honest.
+      // Name + price are asserted for parity. The publisher now carries the SKU
+      // (#1485); category mapping is still a known WooCommerce-publish gap ("not
+      // implemented in MVP") — recorded below rather than failed, so the report
+      // stays honest.
       assertProductFieldParity({
         label: 'OL↔WC product',
         expected: { name: state.product!.name, price: state.product!.price ?? undefined },
@@ -217,8 +241,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
         testInfo.annotations.push({
           type: 'wc-publish-gap',
           description:
-            'WooCommerce product published without a SKU (PublishProductCommand carries no sku) — ' +
-            'SKU-level parity + stock reconciliation by SKU not possible; see MASTER follow-up',
+            'WooCommerce product published without a SKU — the publisher is expected to carry the ' +
+            'variant SKU (#1485); a missing SKU here means the API predates #1485, so SKU-level ' +
+            'parity + stock reconciliation by SKU are not possible on this stack',
         });
       }
       if (wcProduct!.categories.every((c) => c.name.toLowerCase() === 'uncategorized')) {
@@ -429,7 +454,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   test('PAUSE — operator buys the named offer', async ({ api, world, env }) => {
     const testInfo = test.info();
     requireProduct();
-    const source = world.connectionFor(PlatformType.allegro) ?? world.connectionFor(PlatformType.erli);
+    const source = resolveSourceConnection(world, env.sourcePlatform);
     test.skip(!source, 'no marketplace source connection to buy from');
     state.knownOrderIds = await snapshotOrderIds(api, source!.id);
 
@@ -452,18 +477,20 @@ test.describe('golden path — full flow (S0-S9)', () => {
         delivery: 'InPost Paczkomat (pickup point)',
         paczkomatOverride: env.paczkomatId ?? '(none — E2E_PACZKOMAT_ID unset)',
       },
-      fatal: true,
+      // Genuinely fatal: nothing downstream (S5-S9) can run without the purchase.
+      severity: 'fatal',
     });
   });
 
-  test('S5 — order ready in OL + channel stock down', async ({ api, world, jobs, poll }) => {
+  test('S5 — order ready in OL + channel stock down', async ({ api, world, jobs, poll, env }) => {
     requireProduct();
-    const source = world.connectionFor(PlatformType.allegro) ?? world.requireConnection(PlatformType.erli);
+    const source = resolveSourceConnection(world, env.sourcePlatform);
+    expect(source, 'a marketplace source connection is required').toBeTruthy();
 
     // Nudge ingestion, then wait for a new ready order (webhook or poll heals it).
-    await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
+    await jobs.trigger({ connectionId: source!.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
     const order = await waitForOrder(api, {
-      sourceConnectionId: source.id,
+      sourceConnectionId: source!.id,
       knownOrderIds: state.knownOrderIds,
     });
     state.order = order;
@@ -502,10 +529,10 @@ test.describe('golden path — full flow (S0-S9)', () => {
     ).toBe(expectedTotalMinor);
 
     // Channel stock delta: the source marketplace offer went down by SOLD_QTY.
-    const sourceKey = source.platformType;
+    const sourceKey = source!.platformType;
     const channelBefore = state.channelBaseline.get(sourceKey);
     if (channelBefore !== undefined) {
-      const mapping = await resolvePrimaryMapping(api, poll, source.id);
+      const mapping = await resolvePrimaryMapping(api, poll, source!.id);
       await poll.until(
         () => api.listings.getOffer(mapping.id),
         (o) => o.availableQuantity === channelBefore - SOLD_QTY,
@@ -522,14 +549,15 @@ test.describe('golden path — full flow (S0-S9)', () => {
     requireOrder();
     const inpost = world.connectionFor(PlatformType.inpost);
     test.skip(!inpost, 'no InPost connection on this stack');
-    const source = world.connectionFor(PlatformType.allegro) ?? world.requireConnection(PlatformType.erli);
+    const source = resolveSourceConnection(world, env.sourcePlatform);
+    expect(source, 'a marketplace source connection is required').toBeTruthy();
 
     // Ensure a routing rule maps the source delivery method to OL-managed InPost.
     const snapshot = readOrderSnapshot(state.order!);
     const deliveryMethodId = snapshot.shipping?.methodId ?? 'default';
-    const existing = await api.routingRules.list(source.id).catch(() => []);
+    const existing = await api.routingRules.list(source!.id).catch(() => []);
     if (!existing.some((r) => r.sourceDeliveryMethodId === deliveryMethodId)) {
-      await api.routingRules.replace(source.id, [
+      await api.routingRules.replace(source!.id, [
         ...existing.map((r) => ({
           sourceDeliveryMethodId: r.sourceDeliveryMethodId,
           processorKind: r.processorKind,
@@ -543,7 +571,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // unusable (Allegro-sandbox lockers are known not to exist in the InPost
     // sandbox); otherwise the point resolved from the order is used.
     const dispatch = await api.shipments.generateLabel({
-      sourceConnectionId: source.id,
+      sourceConnectionId: source!.id,
       sourceDeliveryMethodId: deliveryMethodId,
       orderId: state.order!.internalOrderId,
       deliveryIntent: 'pickup_point',
@@ -573,7 +601,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
       expect: [
         'The shipment exists with the tracking number below',
         'Label is downloadable and status is dispatched',
-        `The ${source.platformType} order shows the shipped status and/or the tracking number below (status/tracking writeback)`,
+        `The ${source!.platformType} order shows the shipped status and/or the tracking number below (status/tracking writeback)`,
       ],
       values: { trackingNumber: dispatched.trackingNumber, status: dispatched.status, carrier: dispatched.carrier },
     });
@@ -804,8 +832,8 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const wc = buildWooClient(world);
     const wcBaseline = state.channelBaseline.get('woocommerce');
     if (wc && wcBaseline !== undefined && state.wcProductId !== undefined) {
-      // Re-read by the WC product id captured in S2 (the MVP publisher sets no
-      // SKU, so a SKU lookup is not an option).
+      // Re-read by the WC product id captured in S2 — a stable handle that holds
+      // regardless of whether the publisher set a SKU on this stack.
       const wcProduct = await wc.getProduct(state.wcProductId);
       const wcAfter = wcProduct?.stockQuantity ?? null;
       if (wcAfter === wcBaseline - SOLD_QTY) {
@@ -840,6 +868,121 @@ function externalIdFor(
   connectionId: string,
 ): string | undefined {
   return externalIds?.find((e) => e.connectionId === connectionId)?.externalId;
+}
+
+/**
+ * Resolve the purchase-source marketplace connection (E6). Prefers the configured
+ * `E2E_SOURCE_PLATFORM` (allegro | erli), falling back to whichever marketplace
+ * connection the stack has so an unconfigured run still resolves a source.
+ */
+function resolveSourceConnection(world: World, sourcePlatform: string): Connection | undefined {
+  return (
+    world.connectionFor(sourcePlatform) ??
+    world.connectionFor(PlatformType.allegro) ??
+    world.connectionFor(PlatformType.erli)
+  );
+}
+
+/**
+ * Whether the primary variant has an ACTIVE, OL-mapped marketplace offer on the
+ * source connection (E1). Erli ships no OfferReader (`getOffer` 422s), so a
+ * present mapping is the strongest available signal and counts as active.
+ */
+async function hasActiveMappedOffer(
+  api: ApiClient,
+  connectionId: string,
+  variantId: string,
+): Promise<boolean> {
+  const page = await api.listings.list({ connectionId, internalId: variantId, limit: 5 });
+  const mapping = page.items.find((m) => m.internalId === variantId);
+  if (!mapping) return false;
+  try {
+    const offer = await api.listings.getOffer(mapping.id);
+    return offer.status.toLowerCase() === 'active';
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) return true;
+    return false;
+  }
+}
+
+/**
+ * Choose the driver product for the run (E1 / E7).
+ *
+ * Pin path (E7): when `pinnedSku` is set, select that exact product by SKU — the
+ * deterministic escape hatch (single-variant allowed).
+ *
+ * Heuristic (E1): the first EAN-complete multi-variant product whose primary
+ * variant ALSO has an ACTIVE, mapped marketplace offer on the source connection.
+ * Falls back to the first EAN-complete multi-variant product when none has an
+ * active offer yet (a fresh stack where S3/S4 will create the offers), so a clean
+ * run is never blocked. Returns undefined while the catalogue is still empty, so
+ * the caller can poll.
+ */
+async function pickDriverProduct(ctx: {
+  api: ApiClient;
+  world: World;
+  pinnedSku: string | null;
+  source: Connection | undefined;
+}): Promise<Product | undefined> {
+  const { api, world, pinnedSku, source } = ctx;
+  if (pinnedSku) {
+    const page = await api.products.list({ search: pinnedSku, limit: 20 });
+    return page.items.find((p) => p.sku === pinnedSku) ?? page.items[0];
+  }
+
+  const products = await world.listProducts(50);
+  let fallback: Product | undefined;
+  for (const summary of products) {
+    const variants = await world.variantsOf(summary.id);
+    if (variants.length < 2) continue;
+    if (!variants.every((v) => !!(v.ean ?? v.gtin))) continue;
+    const candidate: Product = { ...summary, variants };
+    fallback ??= candidate;
+    const primary = variants.find((v) => v.ean ?? v.gtin);
+    if (source && primary && (await hasActiveMappedOffer(api, source.id, primary.id))) {
+      return candidate;
+    }
+  }
+  return fallback;
+}
+
+/**
+ * Provision a BRAND-NEW simple PrestaShop product (E3) and return its unique
+ * reference (== SKU) so S0 can pin the run to it. Requires the PS webservice key.
+ *
+ * Creates a SIMPLE (single-variant) product. Multi-variant fresh provisioning
+ * (combinations + per-combination EAN/stock) and tax-group control are documented
+ * TODOs — see `PrestashopWebserviceClient.createProduct` and the golden-path docs.
+ */
+async function provisionFreshProduct(world: World): Promise<string> {
+  const ps = buildPrestashopClient(world);
+  if (!ps) {
+    throw new Error(
+      'E2E_FRESH_PRODUCT requires OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL) to create a product',
+    );
+  }
+  const suffix = Date.now().toString();
+  const reference = `E2E-${suffix}`;
+  const created = await ps.createProduct({
+    name: `E2E Golden Path ${suffix}`,
+    reference,
+    ean13: computeEan13(`20${suffix}`),
+    price: '19.99',
+    quantity: 25,
+  });
+  return created.reference;
+}
+
+/** Build a valid EAN-13 (12 data digits + check digit) from a numeric seed. */
+function computeEan13(seed: string): string {
+  const digits = seed.replace(/\D/g, '').slice(0, 12).padStart(12, '0');
+  let sum = 0;
+  for (let i = 0; i < 12; i += 1) {
+    const digit = Number(digits[i]);
+    sum += i % 2 === 0 ? digit : digit * 3;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return `${digits}${check}`;
 }
 
 interface OrderLine {
@@ -929,12 +1072,17 @@ async function resolvePrimaryMapping(
   connectionId: string,
 ): Promise<OfferMapping> {
   const primaryId = state.primaryVariant!.id;
+  // Filter by internalId so the lookup is EXACT — it returns the primary
+  // variant's mapping directly instead of scanning a page and risking a miss on
+  // connections with many offers (E4). On the reuse path the mapping already
+  // exists, so this resolves on the first poll rather than waiting out a long
+  // budget.
   const page = await poll.until(
-    () => api.listings.list({ connectionId, limit: 50 }),
+    () => api.listings.list({ connectionId, internalId: primaryId, limit: 5 }),
     (p) => p.items.some((m) => m.internalId === primaryId),
     {
       message: `offer mapping for primary variant ${primaryId} on connection ${connectionId}`,
-      timeoutMs: 120_000,
+      timeoutMs: 60_000,
     },
   );
   const mapping = page.items.find((m) => m.internalId === primaryId);
@@ -979,17 +1127,20 @@ async function createBulkOffers(ctx: {
   platform: KnownPlatformType;
 }): Promise<string | null> {
   const { api, pages, poll, connectionId, connectionName, platform } = ctx;
+  const primaryId = state.primaryVariant!.id;
 
-  // Create-if-missing, else reuse (approved design #1): if the driver product's
-  // primary variant already has an offer mapping on this connection, reuse it
-  // and skip the wizard — this both avoids duplicate offers on a re-run and
-  // sidesteps the fresh-creation category prerequisite. Returns null on reuse
-  // (no creation batch), so the caller skips the creation-snapshot parity.
-  const existing = await api.listings.list({ connectionId, limit: 50 });
-  if (existing.items.some((m) => m.internalId === state.primaryVariant!.id)) {
+  // Create-if-missing, else reuse (approved design #1): reuse when the driver
+  // product's primary variant already has an offer mapping on this connection —
+  // this avoids duplicate offers on a re-run and sidesteps the fresh-creation
+  // category prerequisite. The reuse check is EXACT (filtered by internalId): a
+  // page scan missed mappings past the window on connections with many offers,
+  // silently re-running the wizard and then blocking the full create-wait on an
+  // offer that already existed (E4). Returns null on reuse (no creation batch),
+  // so the caller skips the creation-snapshot parity.
+  const existing = await api.listings.list({ connectionId, internalId: primaryId, limit: 5 });
+  if (existing.items.some((m) => m.internalId === primaryId)) {
     return null;
   }
-  const before = existing.total;
 
   await pages.productsList.goto();
   await pages.productsList.selectProduct(state.product!.name);
@@ -1001,10 +1152,15 @@ async function createBulkOffers(ctx: {
   const progress = await wizard.confirmCreation();
   expect(progress.batchId).toBeTruthy();
 
+  // Wait for the PRIMARY variant's mapping specifically (exact, by internalId) —
+  // more precise than "total went up" and consistent with the reuse check above.
   await poll.until(
-    () => api.listings.list({ connectionId, limit: 25 }),
-    (page) => page.total > before,
-    { message: `offer mappings to appear for ${connectionName}`, timeoutMs: 180_000 },
+    () => api.listings.list({ connectionId, internalId: primaryId, limit: 5 }),
+    (page) => page.items.some((m) => m.internalId === primaryId),
+    {
+      message: `offer mapping for the primary variant to appear for ${connectionName}`,
+      timeoutMs: 180_000,
+    },
   );
   return progress.batchId;
 }

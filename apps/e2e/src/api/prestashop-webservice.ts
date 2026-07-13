@@ -1,15 +1,22 @@
 /**
  * PrestaShop webservice client (thin)
  *
- * A minimal read-only client over the PrestaShop Webservice API, used to assert
- * field/amount parity directly against the master shop (product name, SKU, EAN,
- * price, stock, order amounts) rather than trusting OL's projection alone.
+ * A minimal client over the PrestaShop Webservice API, used to assert field /
+ * amount parity directly against the master shop (product name, SKU, EAN, price,
+ * stock, order amounts) rather than trusting OL's projection alone.
+ *
+ * Mostly read-only. `createProduct` / `setStock` (E3) are the sole WRITE paths:
+ * they provision a fresh master product so a run exercises the create-paths
+ * everywhere (opt-in via `E2E_FRESH_PRODUCT`). The write half is a SIMPLE-product
+ * scaffold (one variant, parent-level EAN) and needs live verification — see the
+ * TODO on `createProduct` and docs/manual-testing/e2e-golden-path.md § Fresh product.
  *
  * Auth is HTTP Basic with the webservice key as the username and an empty
  * password (`base64(key:)`). The key is a secret — it is NEVER returned by the
  * OL connection API, so it is supplied out-of-band (env `OL_PS_WEBSERVICE_KEY`).
- * Responses are requested as JSON (`output_format=JSON`); localized fields (name)
- * arrive as `[{ id, value }]` arrays and are flattened here.
+ * JSON responses are requested (`output_format=JSON`); localized fields (name)
+ * arrive as `[{ id, value }]` arrays and are flattened here. Writes POST/PUT an
+ * XML body (the format the webservice accepts) while still asking for JSON back.
  *
  * @module api
  */
@@ -56,6 +63,30 @@ export interface PrestashopWebserviceOptions {
   /** Webservice API key (secret). */
   apiKey: string;
   requestTimeoutMs?: number;
+}
+
+/** Input for `createProduct` — a SIMPLE (single-variant) master product. */
+export interface CreateProductInput {
+  /** Product display name (localized under `languageId`). */
+  name: string;
+  /** Unique `reference` (== SKU) — use a per-run suffix for a fresh product. */
+  reference: string;
+  /** Parent-level EAN-13 (simple product; combinations are a TODO). */
+  ean13: string;
+  /** Net price, as a decimal string (PS applies the product's tax rules). */
+  price: string;
+  /** Starting stock quantity for the product's single stock_available row. */
+  quantity: number;
+  /** Default category id (`id_category_default`). Defaults to `2` (Home). */
+  idCategoryDefault?: string;
+  /** Language id for localized fields. Defaults to `1`. */
+  languageId?: string;
+}
+
+/** The identifiers of a freshly-created product. */
+export interface CreatedProductRef {
+  id: string;
+  reference: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -151,6 +182,92 @@ export class PrestashopWebserviceClient {
     };
   }
 
+  /**
+   * Create a fresh SIMPLE master product (E3) and set its starting stock.
+   *
+   * Returns the created product's id + reference (== SKU) so the caller can pin
+   * the run to it after `master.product.syncAll` imports it into OL.
+   *
+   * TODO (needs live verification + follow-up work):
+   *   - MULTI-VARIANT: this creates a single-variant (simple) product with a
+   *     parent-level EAN. Real multi-variant coverage needs `combinations` +
+   *     per-combination `ean13` + per-combination `stock_availables`. Deferred.
+   *   - TAX: `price` is the net price; the product inherits whatever tax rule the
+   *     store assigns by default. A run that asserts a specific gross may need an
+   *     explicit `id_tax_rules_group`.
+   *   - This write path has not been exercised against a live PrestaShop; treat
+   *     the XML shape below as a first cut and verify the POST is accepted (some
+   *     stores require additional required fields, e.g. `state`, `link_rewrite`).
+   */
+  async createProduct(input: CreateProductInput): Promise<CreatedProductRef> {
+    const languageId = input.languageId ?? '1';
+    const categoryId = input.idCategoryDefault ?? '2';
+    const linkRewrite = slugify(input.reference) || 'e2e-product';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <product>',
+      `    <price>${escapeXml(input.price)}</price>`,
+      `    <id_category_default>${escapeXml(categoryId)}</id_category_default>`,
+      '    <active>1</active>',
+      '    <state>1</state>',
+      '    <available_for_order>1</available_for_order>',
+      '    <show_price>1</show_price>',
+      `    <reference>${escapeXml(input.reference)}</reference>`,
+      `    <ean13>${escapeXml(input.ean13)}</ean13>`,
+      `    <name><language id="${escapeXml(languageId)}">${escapeXml(input.name)}</language></name>`,
+      `    <link_rewrite><language id="${escapeXml(languageId)}">${escapeXml(linkRewrite)}</language></link_rewrite>`,
+      '  </product>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/products', xml);
+    const product = asRecord(pick(body, 'product'));
+    const id = asStringOrNull(pick(product, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createProduct returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    await this.setStock(id, input.quantity);
+    return { id, reference: input.reference };
+  }
+
+  /**
+   * Set the quantity on a simple product's auto-created `stock_available` row
+   * (the `id_product_attribute=0` aggregate). PrestaShop creates the row on
+   * product-create; this reads it back and PUTs the new quantity.
+   */
+  async setStock(productId: string, quantity: number): Promise<void> {
+    const listing = await this.get(
+      `/api/stock_availables?filter[id_product]=${productId}&display=full`,
+    );
+    const rows = asArray(pick(listing, 'stock_availables')).map(asRecord);
+    const row =
+      rows.find((r) => (asStringOrNull(pick(r, 'id_product_attribute')) ?? '0') === '0') ?? rows[0];
+    const stockId = row ? asStringOrNull(pick(row, 'id')) : null;
+    if (!row || !stockId) {
+      throw new Error(`PrestaShop setStock: no stock_available row for product ${productId}`);
+    }
+    const idProductAttribute = asStringOrNull(pick(row, 'id_product_attribute')) ?? '0';
+    const idShop = asStringOrNull(pick(row, 'id_shop')) ?? '1';
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <stock_available>',
+      `    <id>${escapeXml(stockId)}</id>`,
+      `    <id_product>${escapeXml(productId)}</id_product>`,
+      `    <id_product_attribute>${escapeXml(idProductAttribute)}</id_product_attribute>`,
+      `    <id_shop>${escapeXml(idShop)}</id_shop>`,
+      '    <depends_on_stock>0</depends_on_stock>',
+      '    <out_of_stock>2</out_of_stock>',
+      `    <quantity>${Math.trunc(quantity)}</quantity>`,
+      '  </stock_available>',
+      '</prestashop>',
+    ].join('\n');
+    await this.send('PUT', `/api/stock_availables/${stockId}`, xml);
+  }
+
   private async get(path: string): Promise<unknown> {
     const separator = path.includes('?') ? '&' : '?';
     const url = `${this.baseUrl}${path}${separator}output_format=JSON`;
@@ -175,6 +292,60 @@ export class PrestashopWebserviceClient {
       throw new Error(`PrestaShop webservice GET ${path} returned non-JSON: ${raw.slice(0, 200)}`);
     }
   }
+
+  /** POST/PUT an XML body, requesting a JSON response. Used by the write paths. */
+  private async send(method: 'POST' | 'PUT', path: string, xmlBody: string): Promise<unknown> {
+    const separator = path.includes('?') ? '&' : '?';
+    const url = `${this.baseUrl}${path}${separator}output_format=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: this.authHeader,
+          Accept: 'application/json',
+          'Content-Type': 'text/xml',
+        },
+        body: xmlBody,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const raw = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `PrestaShop webservice ${method} ${path} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error(
+        `PrestaShop webservice ${method} ${path} returned non-JSON: ${raw.slice(0, 200)}`,
+      );
+    }
+  }
+}
+
+/** Minimal XML text escaping for the write-path payloads. */
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/** Lowercase, hyphenated slug for `link_rewrite`. */
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
