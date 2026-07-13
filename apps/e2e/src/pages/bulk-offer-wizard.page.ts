@@ -149,6 +149,16 @@ export class BulkOfferWizard {
     await expect(this.approveAllButton).toBeVisible({ timeout: 60_000 });
 
     await this.resolveNeedsAttentionRows(opts.gtin);
+    // Blocker-clearing only edits rows the FE flags "needs attention". A
+    // destination whose FE validator does NOT surface missing required category
+    // parameters as a blocker (Erli — its only bulk blocker is missing-image;
+    // `Stan`/quantity are never blockers, #1096/#1367) therefore leaves a row
+    // READY with its required params still empty, and the fast path submits an
+    // empty `overrides.parameters` → the marketplace rejects with
+    // PARAMETER_REQUIRED (#1481). Allegro DOES surface those as
+    // `needs-product-parameters`, so its rows are covered by the loop above.
+    // Top up EVERY listable row's required params so both paths are covered.
+    await this.fillEveryRowRequiredParameters(opts.gtin);
 
     // `canApprove` also waits out platform parameter resolution (`paramsResolving`).
     await expect(this.approveAllButton).toBeEnabled({ timeout: 30_000 });
@@ -166,6 +176,14 @@ export class BulkOfferWizard {
     return this.page.getByRole('table', { name: 'Bulk listing review' });
   }
 
+  /** Every listable review row — one that exposes an "Edit" button (a
+   * no-variant row shows "No variant" instead and is skipped on submit). */
+  private editableRows(): Locator {
+    return this.reviewTable
+      .getByRole('row')
+      .filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) });
+  }
+
   /**
    * The first review row that needs attention: a listable row (exposes an
    * "Edit" button; a no-variant row shows "No variant" instead) whose status
@@ -173,11 +191,7 @@ export class BulkOfferWizard {
    * carry blocker chips like "add product params").
    */
   private firstNeedsAttentionRow(): Locator {
-    return this.reviewTable
-      .getByRole('row')
-      .filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) })
-      .filter({ hasNotText: /\bready\b/i })
-      .first();
+    return this.editableRows().filter({ hasNotText: /\bready\b/i }).first();
   }
 
   /**
@@ -259,20 +273,52 @@ export class BulkOfferWizard {
   }
 
   /**
-   * Open a row's edit modal, ensure its category resolved, fill the required
-   * fields (description + every required, still-empty category parameter), and
-   * save. The modal reuses the single-offer wizard's `CategoryPicker` +
-   * `CategoryParametersStep`, so the controls are the same primitives.
+   * Resolve a needs-attention row: open its editor, fill the required fields,
+   * and ALWAYS save (the fill is the resolution). Thin wrapper over
+   * `fillRowEditor` so the needs-attention loop and the top-up pass share one
+   * fill implementation.
    */
   private async resolveRowViaEditor(row: Locator, gtin?: string): Promise<void> {
+    await this.fillRowEditor(row, gtin, 'always');
+  }
+
+  /**
+   * Open a row's edit modal, ensure its category resolved, fill the required
+   * fields (title + description + every required, still-empty category
+   * parameter), and either always save or save only when something was filled.
+   * The modal reuses the single-offer wizard's `CategoryPicker` +
+   * `CategoryParametersStep`, so the controls are the same primitives.
+   *
+   * `save: 'if-changed'` (top-up pass) cancels out of an already-complete row
+   * so a ready row with its params intact isn't needlessly re-saved; a
+   * previously-saved row restores its values from the row's FE stash, so the
+   * fill helpers report "nothing empty" and the modal is dismissed untouched.
+   */
+  private async fillRowEditor(
+    row: Locator,
+    gtin: string | undefined,
+    save: 'always' | 'if-changed',
+  ): Promise<void> {
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
     const dialog = this.page.getByRole('dialog');
     await expect(dialog.getByText(/^Edit offer/)).toBeVisible({ timeout: 15_000 });
 
     await this.ensureCategoryResolved(dialog);
-    await this.fillRequiredTextField(dialog, 'Title', 'E2E offer');
-    await this.fillRequiredTextField(dialog, 'Description', 'Automated E2E golden-path offer.');
-    await this.fillRequiredCategoryParameters(dialog, gtin);
+    let changed = false;
+    changed = (await this.fillRequiredTextField(dialog, 'Title', 'E2E offer')) || changed;
+    changed =
+      (await this.fillRequiredTextField(
+        dialog,
+        'Description',
+        'Automated E2E golden-path offer.',
+      )) || changed;
+    changed = (await this.fillRequiredCategoryParameters(dialog, gtin)) || changed;
+
+    if (save === 'if-changed' && !changed) {
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toBeHidden({ timeout: 15_000 });
+      return;
+    }
 
     await dialog.getByRole('button', { name: 'Save row' }).click();
     // A successful save closes the modal; a validation error keeps it open.
@@ -289,33 +335,74 @@ export class BulkOfferWizard {
   }
 
   /**
-   * Guard against an unresolved category. The Allegro (browse-mode) picker shows
-   * a resolved id as a prefill row and an unresolved one as an empty category
-   * tree — the latter is a distinct, clearly-surfaced failure (the S0 PS→Allegro
-   * category mapping didn't apply). Erli (borrows taxonomy) renders a plain
-   * "Allegro category ID" input where blank is valid, so only the browse tree is
-   * a fault.
+   * Top up EVERY listable row's required category parameters via its edit
+   * modal, saving only rows that actually gained a value. This closes the gap
+   * for a destination whose FE surfaces required category params as an editor
+   * field but NOT as a review blocker (Erli — #1481): such a row is READY, so
+   * the needs-attention loop skips it, yet it still needs `Stan` + the required
+   * quantity parameter filled or the marketplace rejects with
+   * PARAMETER_REQUIRED. Idempotent for a destination already handled by the
+   * needs-attention loop (Allegro): the reopened row's params are restored from
+   * the FE stash, the fill finds nothing empty, and the modal is cancelled.
+   */
+  private async fillEveryRowRequiredParameters(gtin?: string): Promise<void> {
+    await this.waitForReviewSettled();
+    const rows = this.editableRows();
+    const count = await rows.count();
+    for (let i = 0; i < count; i += 1) {
+      await this.fillRowEditor(rows.nth(i), gtin, 'if-changed');
+      // A save recomputes the row's blockers / re-loads the schema; re-settle
+      // before touching the next row so a mid-flight recompute isn't read.
+      await this.waitForReviewSettled();
+    }
+  }
+
+  /**
+   * Ensure the row's category has resolved so its parameter schema can load.
+   *
+   * The browse-mode picker (`CategoryPicker`) shows a resolved id as a prefill
+   * row and an unresolved one as the category tree. A tree is NOT automatically
+   * a fault: a `borrows`-taxonomy destination (Erli) resolves its category from
+   * the barcode AFTER the modal mounts (#985/#1481), and the picker keeps the
+   * tree mounted from the mount-time race even once `categoryId` is set — but
+   * the parameter section renders as soon as the category resolves. So wait for
+   * the parameter section to appear (Stan et al.); only a category that never
+   * resolves (e.g. a missing S0 PS→Allegro mapping) leaves the tree standing
+   * with no parameters, which is the genuine fault surfaced here.
    */
   private async ensureCategoryResolved(dialog: Locator): Promise<void> {
-    if ((await dialog.locator('.category-tree-browser').count()) > 0) {
-      throw new Error(
-        'Bulk edit modal shows an EMPTY Allegro category picker (category tree, no resolved id). ' +
-          'The PS→Allegro category mapping did not resolve this product — fix the category mapping ' +
-          '(S0) before the offer can be created automatically.',
-      );
-    }
+    if ((await dialog.locator('.category-tree-browser').count()) === 0) return; // prefill / non-browse.
+
+    const paramsSignal = dialog
+      .locator('fieldset.category-parameters-step__group')
+      .or(dialog.getByText('Loading category parameters'))
+      .or(dialog.getByText('No category parameters required'))
+      .or(dialog.getByText('Could not load category parameters'));
+    if (await this.isVisibleWithin(paramsSignal, 15_000)) return;
+
+    throw new Error(
+      'Bulk edit modal shows an EMPTY Allegro category picker (category tree, no resolved id) ' +
+        'and no category parameters loaded. The PS→Allegro category mapping did not resolve this ' +
+        'product — fix the category mapping (S0) before the offer can be created automatically.',
+    );
   }
 
   /**
    * Fill a required top-level text control (Title / Description) when empty.
    * Freshly-provisioned products carry no description, and the modal schema
-   * requires a non-empty one, so an empty value would block the save.
+   * requires a non-empty one, so an empty value would block the save. Returns
+   * true when it actually wrote a value.
    */
-  private async fillRequiredTextField(dialog: Locator, label: string, value: string): Promise<void> {
+  private async fillRequiredTextField(
+    dialog: Locator,
+    label: string,
+    value: string,
+  ): Promise<boolean> {
     const field = dialog.getByLabel(label, { exact: true }).first();
-    if ((await field.count()) === 0) return;
-    if ((await field.inputValue()).trim() !== '') return;
+    if ((await field.count()) === 0) return false;
+    if ((await field.inputValue()).trim() !== '') return false;
     await field.fill(value);
+    return true;
   }
 
   /**
@@ -324,8 +411,9 @@ export class BulkOfferWizard {
    * so parameters that appear only after a parent value is set (dependency-gated
    * fields) are also filled. Optional parameters live in a collapsed <details>
    * and are intentionally left untouched — only required params gate submit.
+   * Returns true when it wrote at least one value.
    */
-  private async fillRequiredCategoryParameters(dialog: Locator, gtin?: string): Promise<void> {
+  private async fillRequiredCategoryParameters(dialog: Locator, gtin?: string): Promise<boolean> {
     // Wait out the per-category schema load before deciding there's nothing to
     // fill (the fieldset only appears once parameters resolve).
     await expect(async () => {
@@ -335,9 +423,16 @@ export class BulkOfferWizard {
     const requiredFieldset = dialog.locator(
       'fieldset.category-parameters-step__group:not(.category-parameters-step__group--optional)',
     );
+    // The required fieldset mounts a tick after the "Loading…" text clears, so a
+    // bare count check here races the render and can wrongly conclude "no
+    // required params" (submitting empty `parameters`). Give the resolved schema
+    // a bounded moment to mount before scanning; if it never appears the pass
+    // loop below still exits cheaply.
+    await this.isVisibleWithin(requiredFieldset, 5_000);
 
+    let filledAny = false;
     for (let pass = 0; pass < MAX_PARAM_PASSES; pass += 1) {
-      if ((await requiredFieldset.count()) === 0) return; // no required params for this category.
+      if ((await requiredFieldset.count()) === 0) return filledAny; // no required params.
       let filledSomething = false;
 
       // Native dictionaries (small, single-select) — e.g. `Stan`: prefer "Nowy".
@@ -362,8 +457,10 @@ export class BulkOfferWizard {
         if (await this.fillComboboxIfEmpty(combos.nth(i))) filledSomething = true;
       }
 
-      if (!filledSomething) return; // steady state — every required control has a value.
+      filledAny = filledAny || filledSomething;
+      if (!filledSomething) return filledAny; // steady state — every required control has a value.
     }
+    return filledAny;
   }
 
   /** Select the best option in an empty native dictionary select (prefer "Nowy"). */
