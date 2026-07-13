@@ -549,8 +549,22 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
    * breadcrumb), which excludes the Root/Home pseudo-categories. `depth` is
    * stamped from the root→leaf index so the builder's depth-ordered provision
    * path is deterministic. Best-effort by design: no path resolver wired, no
-   * default leaf, or an unresolvable walk yields `[]` (publish uncategorised) —
+   * default leaf, or an unresolvable walk yields `[]` (publish uncategorised) -
    * the builder tolerates an empty list.
+   *
+   * Single-branch by design (#1502 MVP scope): only `id_category_default` is
+   * followed, so exactly one root->leaf path is returned. A product's
+   * `associations.categories` (a product may sit in several categories) is
+   * intentionally ignored - a product whose intended placement lives in a
+   * non-default category, or whose default is Home, publishes
+   * uncategorised/mis-placed. Multi-branch placement is deferred, matching
+   * `toProvisionPath`'s documented single-branch assumption.
+   *
+   * NOTE: `depth` here is a RELATIVE breadcrumb index (0 = first non-excluded
+   * ancestor after Root/Home), unlike sibling `getCategories()`, which reports
+   * PrestaShop's ABSOLUTE `level_depth`. The builder only uses `depth` for
+   * relative ordering within a single path, so the relative index is sufficient
+   * and the two meanings never mix.
    */
   async getProductCategories(productId: string): Promise<Category[]> {
     this.logger.debug(
@@ -566,7 +580,6 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     );
 
     if (!prestashopId) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const error = new PrestashopResourceNotFoundException(
         `Product not found: ${productId} (no external ID mapping for connection ${this.connection.id})`,
         CORE_ENTITY_TYPE.Product,
@@ -583,6 +596,8 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     const path = await this.resolveCategoryBreadcrumb(prestashopProduct, this.resolveLangId());
 
+    // `depth` is the RELATIVE root->leaf index (0-based), not PrestaShop's
+    // absolute `level_depth` used by `getCategories()` - see the method note.
     return path.map((node, index) => ({ id: node.id, name: node.name, depth: index }));
   }
 
