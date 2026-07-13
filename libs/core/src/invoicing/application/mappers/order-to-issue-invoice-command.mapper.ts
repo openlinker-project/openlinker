@@ -63,6 +63,12 @@ export function toIssueInvoiceCommand(
     lines,
   };
 
+  // saleDate comes ONLY from the marketplace placement timestamp. When
+  // `placedAt` is absent the field stays undefined - `createdAt` is OL's
+  // ingestion clock, not the sale date, and must never substitute (#1525).
+  if (order.placedAt !== undefined) {
+    command.saleDate = toIsoDate(order.placedAt);
+  }
   // documentType is PASS-THROUGH ONLY. Undefined stays undefined; the adapter
   // derives it. No derivation, no faktura/paragon/NIP vocabulary here.
   if (documentType !== undefined) {
@@ -119,6 +125,11 @@ function deriveBuyerName(order: Order, address: Address): string {
     );
   }
   return person;
+}
+
+/** Format a timestamp as an ISO 8601 calendar date (`YYYY-MM-DD`, UTC). */
+function toIsoDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
 }
 
 /** Map a core {@link Address} onto the neutral {@link BuyerAddress}. */

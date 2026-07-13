@@ -218,6 +218,14 @@ export interface InvoiceLine {
   quantity: number;
   unitPriceGross: number;
   taxRate: string;
+  /**
+   * Unit of measure for the quantity (free text, e.g. a piece/kg/hour label in
+   * the seller's language). Country-agnostic (#1525): a neutral commercial
+   * concept, not a regime code. Optional - marketplace orders carry no unit,
+   * so the order mapper never sets it; the field is the seam for future
+   * sources that do. Providers without a unit concept ignore it.
+   */
+  unit?: string;
 }
 
 /**
@@ -409,6 +417,13 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /**
+   * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
+   * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
+   * OL's ingestion clock (`Order.createdAt`). Absent when the source order does
+   * not carry a placement date; adapters omit the corresponding wire field.
+   */
+  saleDate?: string;
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;

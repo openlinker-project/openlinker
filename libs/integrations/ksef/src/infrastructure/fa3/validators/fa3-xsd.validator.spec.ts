@@ -164,6 +164,34 @@ describe('validateFa3Xml', () => {
     }
   });
 
+  it('should reject a FaWiersz that emits P_8A after P_8B (#1525 ordering guard)', () => {
+    const input: Fa3BuilderInput = {
+      seller,
+      buyer: { kind: 'nip', nip: '9876543210' },
+      buyerName: 'Buyer GmbH',
+      buyerAddress: { line1: 'Main St 5', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+      currency: 'PLN',
+      issueDate: '2026-06-23',
+      invoiceNumber: 'FV/2026/06/0001',
+      generatedAt: '2026-06-23T10:15:30Z',
+      lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23', unit: 'szt.' }],
+    };
+    const doc = buildFa3Xml(input);
+    const bad = doc.replace(
+      /(<P_8A>[^<]*<\/P_8A>)(<P_8B>[^<]*<\/P_8B>)/,
+      '$2$1',
+    ) as RawFa3Xml;
+    expect(bad).not.toEqual(doc);
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/FaWiersz/P_8B');
+    }
+  });
+
   it('should not embed the raw XML in the exception message', () => {
     const bad = '<Faktura>SECRET_BUYER_NAME</Faktura>' as RawFa3Xml;
     try {

@@ -107,6 +107,14 @@ export const ksefSetupSchema = z
       ])
       .optional(),
     contextIdentifier: z.string().trim().max(64).optional(),
+    // Default unit of measure stamped on issued-document lines (#1525) -
+    // free text, max 20 chars after trim; empty = the unit element is not
+    // emitted. Prefilled 'szt.' on creation, clearable.
+    invoiceDefaultLineUnit: z
+      .string()
+      .trim()
+      .max(20, 'Default line unit must be at most 20 characters.')
+      .optional(),
     authType: z.enum(KSEF_AUTH_TYPE_VALUES),
     // Write-only secret (KSeF authorization token / qualified-seal reference).
     secret: z.string().trim().min(1, 'Authentication secret is required'),
@@ -141,9 +149,18 @@ export const KSEF_SETUP_DEFAULT_VALUES: KsefSetupFormValues = {
   sellerPostalCode: '',
   sellerCountryIso2: 'PL',
   contextIdentifier: '',
+  // Prefilled per #1525 - 'szt.' (pieces) is the overwhelmingly common PL
+  // retail unit; the operator can clear it to stop unit emission entirely.
+  invoiceDefaultLineUnit: 'szt.',
   authType: 'ksef-token',
   secret: '',
 };
+
+/**
+ * Suggested units for the default-line-unit datalist (#1525) - free text is
+ * still allowed; these are just the common PL invoice units.
+ */
+export const KSEF_LINE_UNIT_SUGGESTIONS = ['szt.', 'kg', 'godz.', 'usl.', 'kpl.', 'm'] as const;
 
 // `buildKsefSellerConfig` (assembly) lives in the shared `ksef-seller-config`
 // module so the create path here and the edit path
@@ -157,6 +174,10 @@ export function toCreateConnectionInput(values: KsefSetupFormSubmission): Create
   if (seller) config.seller = seller;
   if (values.contextIdentifier && values.contextIdentifier.length > 0) {
     config.contextIdentifier = values.contextIdentifier;
+  }
+  // Cleared field = no `invoiceDefaults` at all (P_8A not emitted), #1525.
+  if (values.invoiceDefaultLineUnit && values.invoiceDefaultLineUnit.length > 0) {
+    config.invoiceDefaults = { lineUnit: values.invoiceDefaultLineUnit };
   }
 
   return {

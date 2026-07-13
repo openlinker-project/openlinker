@@ -24,6 +24,7 @@ import {
   type Fa3ValidationIssue,
 } from '../../../domain/exceptions/fa3-validation.exception';
 import {
+  FA3_FA_WIERSZ_CHILD_ORDER,
   FA3_NAMESPACE,
   FA3_PLATNOSC_CHILD_ORDER,
   FA3_RACHUNEK_BANKOWY_CHILD_ORDER,
@@ -119,6 +120,13 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     }
     if (!/<FaWiersz[\s/>]/.test(xml)) {
       issues.push({ path: `${root}/Fa/FaWiersz`, message: 'Fa must contain at least one FaWiersz line' });
+    }
+    // `FaWiersz` child ordering (#1525): the XSD mandates a fixed sequence
+    // (notably P_8A immediately before P_8B and P_9A immediately after) - a
+    // wrong-order row is rejected by KSeF at clearance, and the presence-only
+    // checks above would not catch a builder ordering regression.
+    for (const row of xml.matchAll(/<FaWiersz>([^]*?)<\/FaWiersz>/g)) {
+      pushChildOrderIssues(row[1], FA3_FA_WIERSZ_CHILD_ORDER, `${root}/Fa/FaWiersz`, issues);
     }
   }
 

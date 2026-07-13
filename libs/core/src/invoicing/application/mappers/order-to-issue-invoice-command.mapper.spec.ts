@@ -91,6 +91,22 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.lines[2].name).toBe('PID-5');
   });
 
+  it('should fill saleDate from placedAt (ISO YYYY-MM-DD) when the order carries one', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({ placedAt: new Date('2026-06-20T14:30:00.000Z') }),
+      connectionId: 'conn-1',
+    });
+
+    expect(cmd.saleDate).toBe('2026-06-20');
+  });
+
+  it('should leave saleDate undefined when placedAt is absent (never substitute createdAt)', () => {
+    const cmd = toIssueInvoiceCommand({ order: makeOrder(), connectionId: 'conn-1' });
+
+    // createdAt is set on the fixture; it must NOT leak into saleDate.
+    expect(cmd.saleDate).toBeUndefined();
+  });
+
   it('documentType pass-through: undefined stays undefined; supplied value verbatim; NO derivation', () => {
     const noDoc = toIssueInvoiceCommand({ order: makeOrder(), connectionId: 'conn-1' });
     expect(noDoc.documentType).toBeUndefined();
