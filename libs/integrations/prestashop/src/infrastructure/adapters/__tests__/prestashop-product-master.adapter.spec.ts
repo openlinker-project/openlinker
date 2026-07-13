@@ -689,11 +689,92 @@ describe('PrestashopProductMasterAdapter', () => {
         PrestashopNotSupportedException
       );
     });
+  });
 
-    it('should throw PrestashopNotSupportedException for getProductCategories', async () => {
+  describe('getProductCategories (#1502)', () => {
+    const internalId = 'internal-product-123';
+    const externalId = '42';
+
+    function mapExternalId(): void {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId, entityType: 'Product' }]);
+    }
+
+    it('returns the product category tree root→leaf with depth when a path resolver is wired', async () => {
+      mapExternalId();
+      const productWithCategory: PrestashopProduct = {
+        ...samplePrestashopProduct,
+        id_category_default: '12',
+      };
+      const categories: Record<string, { id: string; name: string; id_parent: string }> = {
+        '5': { id: '5', name: 'Home & Garden', id_parent: '2' },
+        '12': { id: '12', name: 'Mugs', id_parent: '5' },
+      };
+      mockHttpClient.getResource = jest.fn((resource: string, id: string | number) => {
+        if (resource === 'categories') return Promise.resolve(categories[String(id)]);
+        return Promise.resolve(productWithCategory);
+      }) as unknown as jest.Mocked<IPrestashopWebserviceClient>['getResource'];
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver(),
+        new PrestashopFeatureResolver(),
+        new PrestashopCategoryPathResolver()
+      );
+
+      const result = await adapterWithResolver.getProductCategories(internalId);
+
+      expect(result).toEqual([
+        { id: '5', name: 'Home & Garden', depth: 0 },
+        { id: '12', name: 'Mugs', depth: 1 },
+      ]);
+    });
+
+    it('returns an empty list when the product has no default category (tolerated)', async () => {
+      mapExternalId();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue({
+        ...samplePrestashopProduct,
+        id_category_default: undefined,
+      });
+
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        new PrestashopAttributeResolver(),
+        new PrestashopFeatureResolver(),
+        new PrestashopCategoryPathResolver()
+      );
+
+      const result = await adapterWithResolver.getProductCategories(internalId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns an empty list when no path resolver is wired (tolerated)', async () => {
+      mapExternalId();
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, id_category_default: '12' });
+
+      const result = await adapter.getProductCategories(internalId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('throws PrestashopResourceNotFoundException when no external ID mapping exists', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
+
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- test mock: narrowing dynamic spy / fixture / response shape
-      await expect(adapter.getProductCategories('product-id')).rejects.toThrow(
-        PrestashopNotSupportedException
+      await expect(adapter.getProductCategories(internalId)).rejects.toThrow(
+        PrestashopResourceNotFoundException
       );
     });
   });
