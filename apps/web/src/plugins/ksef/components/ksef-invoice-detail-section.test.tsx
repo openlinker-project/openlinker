@@ -196,9 +196,9 @@ describe('KsefInvoiceDetailSection', () => {
       // Return a minimal valid FA(3) XML so KsefFa3View renders (not null).
       const fa3Xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura>
-  <Podmiot1><DaneIdentyfikacyjne><NIP>1111111111</NIP><NazwaSkrocona>Seller Ltd</NazwaSkrocona></DaneIdentyfikacyjne></Podmiot1>
-  <Podmiot2><DaneIdentyfikacyjne><NIP>2222222222</NIP><NazwaSkrocona>Buyer Ltd</NazwaSkrocona></DaneIdentyfikacyjne></Podmiot2>
-  <Fa><P_1>FV/2026/001</P_1><P_2>2026-01-01</P_2><P_15>123.00</P_15></Fa>
+  <Podmiot1><DaneIdentyfikacyjne><NIP>1111111111</NIP><Nazwa>Seller Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot1>
+  <Podmiot2><DaneIdentyfikacyjne><NIP>2222222222</NIP><Nazwa>Buyer Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot2>
+  <Fa><P_1>2026-01-01</P_1><P_2>FV/2026/001</P_2><P_15>123.00</P_15></Fa>
 </Faktura>`;
       const downloadDocument = vi
         .fn()
