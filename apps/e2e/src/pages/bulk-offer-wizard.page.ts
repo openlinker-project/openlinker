@@ -165,15 +165,50 @@ export class BulkOfferWizard {
   }
 
   /**
+   * Wait until the Review step has SETTLED — i.e. the async per-category
+   * parameter schema has resolved and the row blockers reflect it.
+   *
+   * The wizard gates "Approve all" on `!paramsResolving`
+   * (`bulk-review-step.tsx`), and Allegro's `needs-product-parameters` blocker
+   * (`allegro-offer-validation.ts`) only appears AFTER that per-category schema
+   * loads — an effect that races the operator landing on Review. So a naive
+   * needs-attention read right after "Proceed" can catch the transient limbo of
+   * "0 rows need attention, button disabled (still resolving)" and wrongly take
+   * the fast path; the blocker then appears and the button stays disabled at
+   * "Approve all (0)" forever.
+   *
+   * The settled state is unambiguous: EITHER the button is enabled (nothing
+   * needs attention) OR at least one row explicitly needs attention. Poll until
+   * one of those holds before reading the needs-attention count.
+   */
+  private async waitForReviewSettled(): Promise<void> {
+    await expect(async () => {
+      const [enabled, attention] = await Promise.all([
+        this.approveAllButton.isEnabled(),
+        this.needsAttentionCount(),
+      ]);
+      if (!enabled && attention === 0) {
+        throw new Error(
+          'Review still resolving: "Approve all" is disabled with no needs-attention rows — ' +
+            'the per-category parameter schema has not settled yet.',
+        );
+      }
+    }).toPass({ timeout: 60_000 });
+  }
+
+  /**
    * Resolve every "needs attention" review row via the per-row edit modal until
    * the needs-attention count reaches 0. Bounded, and requires forward progress
    * per edit so a parameter that can't be auto-filled fails loudly (naming the
-   * offending row) instead of looping.
+   * offending row) instead of looping. Each pass first waits out the async
+   * category-parameter resolution (`waitForReviewSettled`) so a late-appearing
+   * platform blocker is never missed.
    */
   private async resolveNeedsAttentionRows(): Promise<void> {
     for (let attempt = 0; attempt < MAX_ROW_EDITS; attempt += 1) {
+      await this.waitForReviewSettled();
       const before = await this.needsAttentionCount();
-      if (before === 0) return; // fast path (nothing to edit) or done.
+      if (before === 0) return; // settled + approvable (fast path or done).
 
       const row = this.firstNeedsAttentionRow();
       await expect(
@@ -184,10 +219,12 @@ export class BulkOfferWizard {
 
       await this.resolveRowViaEditor(row);
 
-      // The Save recomputes the row's blockers synchronously; require the count
-      // to drop so an unfilled required field surfaces here with its row.
+      // The Save recomputes the row's blockers; require the count to drop so an
+      // unfilled required field surfaces here with its row. Re-settle first so a
+      // recompute gated behind a (re)loading schema isn't read mid-flight.
       try {
         await expect(async () => {
+          await this.waitForReviewSettled();
           expect(await this.needsAttentionCount()).toBeLessThan(before);
         }).toPass({ timeout: 15_000 });
       } catch {
@@ -351,11 +388,17 @@ export class BulkOfferWizard {
   }
 
   /**
-   * Pick the first real option in an empty single-select Combobox. Large
-   * (filter-first) dictionaries render nothing until the user types, so a broad
-   * letter reveals real entries (e.g. brands containing "a") before picking.
-   * An empty trigger shows its "Pick …" placeholder; a filled one shows the
-   * chosen label.
+   * Pick the first selectable option in an empty single-select Combobox.
+   *
+   * A large (filter-first) dictionary renders nothing until the query matches,
+   * and its entries can be alphabetic (brands, materials) OR numeric (clothing
+   * sizes like 56/62/68) — so a single hardcoded letter probe (the old "a")
+   * matches nothing for a numeric dictionary and the fill wrongly reports "no
+   * options". Probe a broad alphabet (digits first — numeric dictionaries are
+   * common) and stop at the first probe that reveals a real dictionary option.
+   * Falls back to committing a custom value for a `customValuesEnabled` field
+   * whose dictionary matched nothing. An empty trigger shows its "Pick …"
+   * placeholder; a filled one shows the chosen label.
    */
   private async fillComboboxIfEmpty(trigger: Locator): Promise<boolean> {
     if (!/^pick\b/i.test((await trigger.innerText()).trim())) return false; // already has a value.
@@ -364,24 +407,54 @@ export class BulkOfferWizard {
     // The popover is portaled to the document body — scope to the page, not the dialog.
     const search = this.page.locator('.combobox__search');
     await expect(search).toBeVisible({ timeout: 10_000 });
-    const options = this.page
-      .getByRole('listbox')
-      .locator('[role="option"]:not(.combobox__option--disabled)');
 
-    if ((await options.count()) === 0) {
-      await search.fill('a');
+    const listbox = this.page.getByRole('listbox');
+    // Real dictionary rows — exclude the "use as custom value" affordance and
+    // any disabled (parent-filtered) rows.
+    const realOptions = listbox.locator(
+      '[role="option"]:not(.combobox__option--disabled):not(.combobox__option--custom)',
+    );
+    // Any committable row, including the custom-value affordance (last resort).
+    const anyOptions = listbox.locator('[role="option"]:not(.combobox__option--disabled)');
+
+    // Small, non-filter-first dictionaries render every option immediately.
+    if (await this.isVisibleWithin(realOptions, 800)) {
+      await realOptions.first().click();
+      return true;
     }
-    try {
-      await expect(options.first()).toBeVisible({ timeout: 10_000 });
-    } catch {
-      await this.page.keyboard.press('Escape');
-      throw new Error(
-        'A required Combobox parameter exposed no selectable options (even after searching) — ' +
-          'cannot auto-fill it.',
-      );
+
+    // Filter-first dictionary: probe until a real option surfaces.
+    const PROBES = '0123456789aeiouymslxrtnkpbcdfgh';
+    for (const probe of PROBES) {
+      await search.fill(probe);
+      if (await this.isVisibleWithin(realOptions, 400)) {
+        await realOptions.first().click();
+        return true;
+      }
     }
-    await options.first().click();
-    return true;
+
+    // No dictionary entry matched any probe — commit a custom value if the field
+    // offers one (customValuesEnabled renders a "use as custom value" row).
+    await search.fill('E2E');
+    if (await this.isVisibleWithin(anyOptions, 1_000)) {
+      await anyOptions.first().click();
+      return true;
+    }
+
+    await this.page.keyboard.press('Escape');
+    throw new Error(
+      'A required Combobox parameter exposed no selectable options after probing digits + ' +
+        'letters and a custom value — cannot auto-fill it.',
+    );
+  }
+
+  /** True if the locator's first match becomes visible within `timeoutMs`. */
+  private async isVisibleWithin(locator: Locator, timeoutMs: number): Promise<boolean> {
+    return locator
+      .first()
+      .waitFor({ state: 'visible', timeout: timeoutMs })
+      .then(() => true)
+      .catch(() => false);
   }
 
   get confirmModalConfirmButton(): Locator {
