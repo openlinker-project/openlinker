@@ -7,21 +7,18 @@ on:
       - 'v*'
 
 jobs:
-  # Placeholder for future deployment
   build-deploy:
     name: Build and deploy
     runs-on: self-hosted
     environment: demo
-    if: ${{ github.ref == 'refs/heads/main' }} # run only on main branch
+    if: ${{ github.event.base_ref == 'refs/heads/main' }} # run only on main branch
     steps:
       - uses: actions/checkout@v6
-      - name: Deployment placeholder
-        run: echo 'Deployment configuration coming soon'
 
       - name: Build web
         run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web
 
-      - name: Export openlinker-worker as tar
+      - name: Export openlinker-web as tar
         run: docker save -o openlinker-web.tar openlinker-web
 
       - name: Build worker
@@ -41,9 +38,6 @@ jobs:
 
       - name: Export openlinker-migrate as tar
         run: docker save -o openlinker-migrate.tar openlinker-migrate
-
-      - name: Export image as tar
-        run: docker save -o openlinker-web.tar openlinker-web
 
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
@@ -66,10 +60,10 @@ jobs:
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/prestashop/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_INITSCRIPTS }}/
 
       - name: Sync woocommerce init scripts
-        run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/prestashop/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_WC_INITSCRIPTS }}/
+        run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/woocommerce/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_WC_INITSCRIPTS }}/
 
       # - name: Copy variables on server
       #   run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" .env-docker ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_ENV }}/.env
 
       - name: Deploy
-        run: ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} "bash -s deploy.sh"
+        run: ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} "bash ~/deploy.sh"
