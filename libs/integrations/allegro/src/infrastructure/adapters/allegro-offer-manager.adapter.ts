@@ -1587,6 +1587,13 @@ export class AllegroOfferManagerAdapter
    * offer-section params — operator intent wins and condition is never
    * double-set. `valuesIds` carries the dictionary entry id ("Stan" is a
    * dictionary parameter).
+   *
+   * The operator-wins check inspects only the offer-section params
+   * (`existingOfferParameters`) by design: "Stan" is inherently an
+   * offer-section parameter on Allegro (fixture `describesProduct:false`; the
+   * wizard/mapper always treat it as offer-section), so a product-section Stan
+   * cannot legitimately arise. If that assumption ever breaks, extend the
+   * dedup to scan the product-section params too.
    */
   private buildConditionParameter(
     condition: OfferCondition | undefined,

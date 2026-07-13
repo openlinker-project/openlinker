@@ -7,7 +7,7 @@
  * @module libs/core/src/listings/application/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition } from '@openlinker/core/listings';
 import type { JobOutcome } from '@openlinker/core/sync';
 
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
@@ -25,6 +25,15 @@ export interface ExecuteOfferCreationInput {
   price?: { amount: number; currency: string };
   /** Optional overrides (title, description, category, images, platformParams). */
   overrides?: CreateOfferOverrides;
+  /**
+   * Optional explicit item condition (#1500). Forwarded verbatim to
+   * `OfferBuilderService.buildCreateOfferCommand`, which defaults it to `'new'`
+   * when omitted so every built command carries the marketplace-required
+   * condition. Programmatic seam only — an operator's wizard choice rides on
+   * `overrides.parameters` (the Stan param) instead, and the destination
+   * adapter never double-sets condition. Not exposed on any HTTP DTO.
+   */
+  condition?: OfferCondition;
   /** Optional idempotency key threaded to the adapter (e.g. Allegro external.id). */
   idempotencyKey?: string;
   /**
