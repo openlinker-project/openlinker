@@ -45,6 +45,17 @@ export interface E2eEnv {
    */
   freshProduct: boolean;
   /**
+   * PrestaShop category id a fresh product lands in (S0 scripts a PS→Allegro
+   * mapping for it so S3 can resolve the category). Defaults to `2` (Home) —
+   * the category `PrestashopWebserviceClient.createProduct` assigns by default.
+   */
+  freshCategoryPsId: string;
+  /**
+   * Allegro leaf category id the fresh product's PS category maps to (S0
+   * scripts the mapping). Defaults to `89508` (a general Allegro leaf).
+   */
+  freshAllegroCategoryId: string;
+  /**
    * Optional InPost locker id override for label generation (S6). Used when the
    * buyer-selected pickup point is unusable — Allegro-sandbox lockers are known
    * not to exist in the InPost sandbox.
@@ -153,6 +164,8 @@ export function resolveEnv(): E2eEnv {
     productSku: optional(process.env.E2E_PRODUCT_SKU),
     sourcePlatform: process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro',
     freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
+    freshCategoryPsId: process.env.E2E_FRESH_CATEGORY_PS?.trim() || '2',
+    freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '89508',
     paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),

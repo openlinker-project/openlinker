@@ -149,6 +149,20 @@ test.describe('golden path — full flow (S0-S9)', () => {
           },
         );
       }
+
+      // Operator's PS→Allegro category-mapping step, scripted: a brand-new
+      // product lands in a PS category with no destination mapping, so S3's
+      // bulk-offer wizard would flag "needs attention" and fail. Mapping that PS
+      // category to an Allegro leaf lets S3 resolve the category and create the
+      // offer. Erli borrows Allegro's taxonomy (#1045), so this one mapping
+      // covers the Erli offer (S4) too.
+      const allegroConn = world.connectionFor(PlatformType.allegro);
+      if (allegroConn) {
+        await api.mappings.upsertCategoryMapping(allegroConn.id, env.freshCategoryPsId, {
+          allegroCategoryId: env.freshAllegroCategoryId,
+          allegroCategoryName: 'E2E golden-path category',
+        });
+      }
     }
 
     state.olBaseline = await captureStock(api, state.variantIds);

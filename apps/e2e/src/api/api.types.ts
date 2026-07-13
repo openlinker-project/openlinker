@@ -505,6 +505,17 @@ export interface RoutingRuleInput {
   processorConnectionId: string;
 }
 
+/**
+ * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body —
+ * the destination (Allegro) category a source (PrestaShop) category maps to.
+ * Mirrors the FE `upsertCategoryMapping` payload.
+ */
+export interface CategoryMappingInput {
+  allegroCategoryId: string;
+  allegroCategoryName: string;
+  allegroCategoryPath?: string;
+}
+
 export interface ConnectionFilters {
   platformType?: string;
   status?: string;

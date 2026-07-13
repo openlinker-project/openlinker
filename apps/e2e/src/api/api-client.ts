@@ -17,6 +17,7 @@ import { ApiError } from './api-error';
 import type {
   ApproveUserInput,
   BulkBatchSummary,
+  CategoryMappingInput,
   CategoryParameter,
   CategoryParametersResponse,
   Connection,
@@ -439,6 +440,24 @@ export class ApiClient {
       const qs = params.toString();
       return this.request<SyncJobListResponse>(`/sync/jobs${qs ? `?${qs}` : ''}`);
     },
+  };
+
+  // ── Mappings ────────────────────────────────────────────────────────────
+  mappings = {
+    /**
+     * Upsert a source→destination category mapping (the operator's PS→Allegro
+     * category-mapping step). `connectionId` is the DESTINATION (Allegro)
+     * connection; `sourceCategoryId` is the source (PrestaShop) category id.
+     */
+    upsertCategoryMapping: (
+      connectionId: string,
+      sourceCategoryId: string,
+      body: CategoryMappingInput,
+    ): Promise<unknown> =>
+      this.request<unknown>(
+        `/connections/${connectionId}/mappings/categories/${sourceCategoryId}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      ),
   };
 
   // ── Routing rules ───────────────────────────────────────────────────────
