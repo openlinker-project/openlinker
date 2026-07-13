@@ -505,7 +505,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
 | `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
-**Current Implementations**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984).
+**Current Implementations**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984); `WooCommerceOfferManagerAdapter` (#1498 — base-port-only stock write-back to published shop products: `updateOfferQuantity` → `PUT /products/{id}` with `manage_stock: true`. No offer-creation sub-capabilities; the propagation fan-out reaches it via `ShopProduct` mappings (second fan-out branch in `InventoryPropagateToMarketplacesHandler`), not `Offer` mappings. Write-back defaults OFF on new WC connections and is mutually exclusive with `InventoryMaster` per connection — the inventory master is never a write-back target).
 
 **Future Implementations**: `ShopifyOfferManagerAdapter`, `EbayOfferManagerAdapter`.
 

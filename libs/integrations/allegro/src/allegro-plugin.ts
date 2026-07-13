@@ -84,12 +84,20 @@ export const allegroAdapterManifest: AdapterMetadata = {
   // both sub-capabilities are resolved by narrowing the `OfferManager` adapter
   // with `isCategoryBrowser` / `isEanCategoryMatcher`, never via
   // `getCapabilityAdapter('CategoryBrowser')`, so no dispatch-table entry is needed.
+  //
+  // `OfferCreator` + `OfferEventReader` (#1498) follow the same pattern:
+  // `AllegroOfferManagerAdapter` implements both, and the FE gates
+  // offer-creation flows on `OfferCreator` and the offer-events sync trigger on
+  // `OfferEventReader` — so a quantity-only `OfferManager` (WooCommerce stock
+  // write-back) never surfaces in marketplace-only offer flows.
   supportedCapabilities: [
     'OrderSource',
     'OfferManager',
     'ShippingProviderManager',
     'CategoryBrowser',
     'EanCategoryMatcher',
+    'OfferCreator',
+    'OfferEventReader',
   ],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
