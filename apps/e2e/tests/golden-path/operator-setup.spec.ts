@@ -134,7 +134,7 @@ async function runBulkOfferSegment(ctx: {
 }): Promise<void> {
   const { api, world, pages, poll, connectionName, connectionId } = ctx;
 
-  const product = await world.findMultiVariantProduct(2);
+  const product = await world.findMultiVariantProduct(2, { requireEans: true });
   expect(product, 'a multi-variant product must exist (run S1 first)').toBeTruthy();
 
   const before = (await api.listings.list({ connectionId, limit: 1 })).total;
