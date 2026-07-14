@@ -356,6 +356,10 @@ const ALLOW_LIST = new Map([
     new Set(['CustomerProjectionRepositoryPort']),
   ],
   [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.fulfillment-status.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
     'libs/integrations/prestashop/src/infrastructure/provisioners/__tests__/prestashop-address-provisioner.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],

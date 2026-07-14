@@ -11,6 +11,10 @@ import { WooCommerceOrderProcessorAdapter } from '../woocommerce-order-processor
 import { isFulfillmentStatusReader, FULFILLMENT_STATUS } from '@openlinker/core/orders';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { SyncLockPort } from '@openlinker/core/sync';
+import { WooCommerceCustomerProvisioner } from '../../../provisioners/woocommerce-customer-provisioner';
+import { WooCommerceAddressProvisioner } from '../../../provisioners/woocommerce-address-provisioner';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceInvalidArgumentException } from '../../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
@@ -52,10 +56,38 @@ function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
   };
 }
 
+function makeSyncLock(): SyncLockPort {
+  return {
+    acquire: jest.fn(() => Promise.resolve('tok')),
+    release: jest.fn(() => Promise.resolve(true)),
+  };
+}
+
+function makeProjectionRepo(): jest.Mocked<CustomerProjectionRepositoryPort> {
+  return {
+    findById: jest.fn(),
+    findByEmailHash: jest.fn(),
+    findMany: jest.fn(),
+    upsert: jest.fn(),
+    findAddressesByCustomerId: jest.fn(),
+    upsertAddress: jest.fn(),
+    findDestinationAddressMapping: jest.fn(),
+    upsertDestinationAddressMapping: jest.fn(),
+  } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
+}
+
 function makeAdapter(
   httpClient: jest.Mocked<IWooCommerceHttpClient>,
 ): WooCommerceOrderProcessorAdapter {
-  return new WooCommerceOrderProcessorAdapter(httpClient, makeIdentifierMapping(), mockConnection);
+  const syncLock = makeSyncLock();
+  return new WooCommerceOrderProcessorAdapter(
+    httpClient,
+    makeIdentifierMapping(),
+    mockConnection,
+    new WooCommerceCustomerProvisioner(syncLock),
+    new WooCommerceAddressProvisioner(syncLock),
+    makeProjectionRepo(),
+  );
 }
 
 describe('WooCommerceOrderProcessorAdapter — FulfillmentStatusReader', () => {
