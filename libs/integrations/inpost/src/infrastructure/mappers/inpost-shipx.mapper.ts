@@ -220,6 +220,28 @@ export function buildPointsQuery(
   };
 }
 
+/**
+ * Build the query for the handover-protocol printout
+ * (`GET /v1/organizations/:org/dispatch_orders/printouts`). ShipX renders one
+ * manifest PDF over the given already-confirmed shipments — it accepts the
+ * `shipment_ids[]` batch whether or not those shipments carry a dispatch order,
+ * so no courier-pickup order has to be created first. `format` has a single
+ * documented value (`Pdf`); ShipX caps a request at 100 shipments and rejects
+ * the call itself if any id is not `confirmed`, so those stay carrier-enforced.
+ */
+export function buildProtocolQuery(
+  providerShipmentIds: readonly string[],
+): { shipment_ids: readonly string[]; format: 'Pdf' } {
+  if (providerShipmentIds.length === 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.empty-protocol-batch',
+      'At least one shipment id is required to generate a handover protocol',
+    );
+  }
+  return { shipment_ids: providerShipmentIds, format: 'Pdf' };
+}
+
 // --- internals ---------------------------------------------------------------
 
 function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipXCreateShipmentRequest {

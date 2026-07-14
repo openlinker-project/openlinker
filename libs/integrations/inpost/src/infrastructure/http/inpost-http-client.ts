@@ -201,7 +201,15 @@ export class InpostHttpClient implements IInpostHttpClient {
     const url = new URL(path, this.baseUrl);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
-        if (value !== undefined) {
+        if (value === undefined) {
+          continue;
+        }
+        if (Array.isArray(value)) {
+          // ShipX list params use the Rails bracket form (`shipment_ids[]=1`).
+          for (const item of value) {
+            url.searchParams.append(`${key}[]`, String(item));
+          }
+        } else {
           url.searchParams.set(key, String(value));
         }
       }

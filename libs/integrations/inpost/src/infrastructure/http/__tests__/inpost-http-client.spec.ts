@@ -79,6 +79,29 @@ describe('InpostHttpClient', () => {
     );
   });
 
+  it('should serialise an array query param as repeated key[]= pairs (ShipX shipment_ids)', async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"ok":true}' }));
+
+    await client.request({
+      method: 'GET',
+      path: '/v1/organizations/org-1/dispatch_orders/printouts',
+      query: { shipment_ids: ['11', '22'], format: 'Pdf' },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('shipment_ids%5B%5D=11'),
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('shipment_ids%5B%5D=22'),
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('format=Pdf'),
+      expect.anything(),
+    );
+  });
+
   it('should resolve undefined for a 204 No Content response', async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse({ ok: true, status: 204 }));
 
