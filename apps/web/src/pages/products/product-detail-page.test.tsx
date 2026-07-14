@@ -69,19 +69,20 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi);
 
-    expect(await screen.findByText('Test Product')).toBeInTheDocument();
+    expect((await screen.findAllByText('Test Product')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('ol_product_abc123').length).toBeGreaterThan(0);
-    expect(screen.getByText('SKU-001')).toBeInTheDocument();
+    expect(screen.getAllByText('SKU-001').length).toBeGreaterThan(0);
     expect(screen.getByText('29.99')).toBeInTheDocument();
     expect(screen.getByText('A test product')).toBeInTheDocument();
 
-    // Variant data
+    // Variant & stock table
     expect(screen.getByText('SKU-001-M')).toBeInTheDocument();
     expect(screen.getByText('1234567890123')).toBeInTheDocument();
     expect(screen.getByText('size: M, color: blue')).toBeInTheDocument();
 
-    // External IDs
-    expect(screen.getByText('prestashop — 10')).toBeInTheDocument();
+    // External IDs (rendered as chips)
+    expect(screen.getByText('prestashop')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
   });
 
   it('should show error state when fetch fails', async () => {
