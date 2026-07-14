@@ -10,12 +10,20 @@
 import { z } from 'zod';
 
 /**
- * COD currencies the carrier accepts. **FE mirror** of the BE
- * `DpdCodCurrencyValues` (`libs/integrations/dpd-polska/.../dpd-rest.types.ts`).
- * DPD is the only COD-capable carrier today, so this carrier-neutral form
- * carries DPD's set; if a second COD carrier with a different set ships, source
- * this per-platform instead of widening here. Keep in sync with the BE — same
- * FE↔BE value-drift discipline as `SHIPPING_METHOD_VALUES` (#966).
+ * COD currencies offered by the picker — the **union** across COD-capable
+ * carriers. **FE mirror** of the BE `DpdCodCurrencyValues`
+ * (`libs/integrations/dpd-polska/.../dpd-rest.types.ts`), which is the widest
+ * set: DPD Polska accepts PLN/EUR/RON/CZK. InPost courier COD (enabled in
+ * #1541) is narrower — the ShipX mapper (`toShipXCod`) accepts PLN only and
+ * cleanly rejects any other value at preflight.
+ *
+ * This form is carrier-neutral: it never names a carrier — the concrete
+ * carrier (DPD vs InPost) is resolved server-side by fulfillment routing, so
+ * the picker can't scope the list to the routed carrier's supported set here.
+ * A non-PLN pick on an InPost-routed order therefore passes FE validation and
+ * is rejected at BE preflight (graceful, no data corruption). Per-carrier
+ * scoping is tracked in #1569. Keep in sync with the BE — same FE↔BE
+ * value-drift discipline as `SHIPPING_METHOD_VALUES` (#966).
  */
 export const COD_CURRENCY_VALUES = ['PLN', 'EUR', 'RON', 'CZK'] as const;
 export type CodCurrency = (typeof COD_CURRENCY_VALUES)[number];
@@ -49,8 +57,9 @@ export const generateLabelSchema = z.object({
   // surfaces the picker for the paczkomat flow.
   lockerTemplate: z.enum(LOCKER_TEMPLATE_VALUES).optional(),
   // Optional cash-on-delivery (operator-supplied, #966). Empty amount ⇒ no COD.
-  // COD-incapable carriers ignore it server-side; DPD translates it to the COD
-  // service. Amount accepts a decimal string (comma or dot) — normalised at submit.
+  // COD-incapable carriers ignore it server-side; DPD and InPost courier (#1541)
+  // translate it to their COD service (InPost is PLN-only, see COD_CURRENCY_VALUES).
+  // Amount accepts a decimal string (comma or dot) — normalised at submit.
   codAmount: z
     .union([
       z.string().trim().regex(/^\d+([.,]\d{1,2})?$/, 'Enter a valid amount, e.g. 129.90'),
