@@ -117,6 +117,8 @@ import {
   type OfferStatusReader,
   type OfferStockRestorer,
   type OfferStockRestoreTarget,
+  type ResponsibleProducerEntry,
+  type ResponsibleProducerReader,
   type TaxonomyBorrower,
   type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
@@ -137,6 +139,7 @@ import type {
   ErliProductImage,
   ErliProductPatchBody,
   ErliProductResource,
+  ErliResponsibleProducerItem,
 } from './erli-product.types';
 
 /**
@@ -192,6 +195,14 @@ const ERLI_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
  */
 export const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
 
+/**
+ * Responsible-producer cache TTL (#1531). The wizard reads this on each
+ * offer-create load; a short TTL keeps repeated loads off the Erli API without
+ * letting a newly-added producer stay hidden for long. Mirrors the ~10-min
+ * freshness the seller-policies read uses.
+ */
+export const ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC = 10 * 60;
+
 export class ErliOfferManagerAdapter
   implements
     OfferManagerPort,
@@ -199,7 +210,8 @@ export class ErliOfferManagerAdapter
     OfferFieldUpdater,
     OfferStatusReader,
     OfferStockRestorer,
-    TaxonomyBorrower
+    TaxonomyBorrower,
+    ResponsibleProducerReader
 {
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
@@ -359,6 +371,54 @@ export class ErliOfferManagerAdapter
     // (handled above → OfferNotFoundOnMarketplaceException) never reaches here.
     await this.writeFrozenStockFlag(externalOfferId, product.frozenFields);
     return mapErliStatusToReadResult(product);
+  }
+
+  /**
+   * ResponsibleProducerReader (#1531). Lists the seller's EU GPSR
+   * responsible-producer registry ("producent") from
+   * `GET /dictionaries/responsibleProducers` so the offer-creation wizard can
+   * render a picker; the operator's choice rides back on
+   * `overrides.platformParams.producer` and is stamped onto the create body so
+   * the created product is not blocked for a missing producer. Erli's dictionary
+   * carries no GPSR classification, so every entry maps to `'PRODUCER'`. Results
+   * are cached per connection for a short TTL to keep repeated wizard loads off
+   * the Erli API; a missing/failing cache simply falls through to a live read
+   * (fail-open).
+   */
+  async fetchResponsibleProducers(): Promise<ResponsibleProducerEntry[]> {
+    const cacheKey = `erli:responsible-producers:${this.connectionId}`;
+    if (this.cache) {
+      try {
+        const cached = await this.cache.get<ResponsibleProducerEntry[]>(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Responsible-producer cache read failed (live fetch) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const res = await this.httpClient.get<ErliResponsibleProducerItem[]>(
+      'dictionaries/responsibleProducers',
+    );
+    const items: ResponsibleProducerEntry[] = (res.data ?? [])
+      .filter((item) => typeof item?.name === 'string' && item.name.length > 0)
+      .map((item) => ({ id: String(item.id), name: item.name, kind: 'PRODUCER' as const }));
+    if (this.cache) {
+      try {
+        await this.cache.set(cacheKey, items, ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC);
+      } catch (error) {
+        this.logger.debug(
+          `Responsible-producer cache write failed (ignored) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return items;
   }
 
   /**
@@ -578,6 +638,14 @@ export class ErliOfferManagerAdapter
     };
     if (cmd.overrides?.description != null) {
       body.description = flattenDescription(cmd.overrides.description);
+    }
+    // #1531 — operator-selected responsible producer ("producent"). Erli keys it
+    // by the numeric dictionary id (`producerId`); absent ⇒ omit (the product
+    // stays blocked for a missing producer until the operator picks one,
+    // mirroring the dispatchTime/deliveryPriceList opt-in posture).
+    const producerId = readProducerParam(cmd.overrides?.platformParams);
+    if (producerId !== undefined) {
+      body.producerId = producerId;
     }
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
@@ -802,6 +870,33 @@ function readDispatchTimeParam(
   return candidate.unit === undefined
     ? { period }
     : { period, unit: candidate.unit as ErliDispatchTime['unit'] };
+}
+
+/**
+ * Read a per-offer `producer` selection off the un-modeled
+ * `overrides.platformParams` (#1531). The wizard carries the numeric Erli
+ * responsible-producer dictionary id as a string; this returns it as a positive
+ * integer for `body.producerId`, or `undefined` when absent/blank (no selection
+ * ⇒ the create body omits the field). A non-numeric value is ignored rather than
+ * thrown — the picker only ever emits a dictionary id, and a product with no
+ * producer is a valid (if blocked-until-set) create.
+ */
+function readProducerParam(
+  platformParams: Record<string, unknown> | undefined,
+): number | undefined {
+  const raw = platformParams?.producer;
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw > 0 ? raw : undefined;
+  }
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 /**

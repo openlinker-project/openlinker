@@ -130,6 +130,7 @@ export { OfferBuilderValidationException } from './domain/exceptions/offer-build
 export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
+export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,

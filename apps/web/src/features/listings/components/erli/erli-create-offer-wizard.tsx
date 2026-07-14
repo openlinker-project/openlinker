@@ -66,6 +66,7 @@ import {
   type ErliCreateOfferValues,
 } from './erli-create-offer.schema';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
+import { ErliProducerField } from './erli-producer-field';
 import {
   formatDispatch,
   parseErliConnectionDispatchDefault,
@@ -168,6 +169,7 @@ export function ErliCreateOfferWizard({
       priceAmount: '',
       stock: 0,
       description: '',
+      producer: '',
       publishImmediately: false,
       dispatchPeriod: dispatchDefault.period,
       dispatchUnit: dispatchDefault.unit,
@@ -394,6 +396,7 @@ export function ErliCreateOfferWizard({
         ...(parameters.length > 0 ? { parameters } : {}),
         platformParams: {
           dispatchTime: { period: submitted.dispatchPeriod, unit: submitted.dispatchUnit },
+          ...(submitted.producer ? { producer: submitted.producer } : {}),
         },
       },
     };
@@ -614,6 +617,11 @@ export function ErliCreateOfferWizard({
                   form.setValue('dispatchUnit', next.unit, { shouldDirty: true });
                 }}
                 error={form.formState.errors.dispatchPeriod?.message}
+              />
+              <ErliProducerField
+                connectionId={connection.id}
+                value={form.watch('producer') ?? ''}
+                onChange={(next) => form.setValue('producer', next, { shouldDirty: true })}
               />
               <p className="erli-config__note">
                 Erli has no seller/delivery policies — dispatch time stands in for Allegro's policy
