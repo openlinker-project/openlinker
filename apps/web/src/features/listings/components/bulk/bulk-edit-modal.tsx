@@ -46,6 +46,7 @@ import {
 import { SuggestionDialog } from '../../../content';
 import { CategoryPicker } from '../CategoryPicker';
 import { CategoryParametersStep } from '../category-parameters-step';
+import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import {
   MissingCategoryParameterSectionError,
@@ -89,6 +90,13 @@ interface BulkEditModalProps {
     priceCurrency: string;
   };
   /**
+   * Batch-wide delivery price list picked on the Config step (#1530). Seeds the
+   * per-row delivery-price-list override field so it starts inheriting the batch
+   * default; an empty string means the batch default is "none". Erli-only (the
+   * field renders only when the connection supports `DeliveryPriceListReader`).
+   */
+  batchDeliveryPriceList?: string;
+  /**
    * Save handler — receives the new override block keyed by variant id and
    * the FE-only form-values stash. The wizard stores `editFormValues` on
    * the row so reopening the modal restores entered values; it never gets
@@ -108,6 +116,7 @@ export function BulkEditModal({
   connection,
   canBrowseCategories,
   defaults,
+  batchDeliveryPriceList,
   onSave,
 }: BulkEditModalProps): ReactElement | null {
   if (!row.primaryVariant) return null;
@@ -120,6 +129,7 @@ export function BulkEditModal({
           connection={connection}
           canBrowseCategories={canBrowseCategories}
           defaults={defaults}
+          batchDeliveryPriceList={batchDeliveryPriceList ?? ''}
           onSave={onSave}
           onClose={() => { onOpenChange(false); }}
         />
@@ -133,6 +143,7 @@ interface BulkEditModalFormProps {
   connection: Connection;
   canBrowseCategories: boolean;
   defaults: BulkEditModalProps['defaults'];
+  batchDeliveryPriceList: string;
   onSave: BulkEditModalProps['onSave'];
   onClose: () => void;
 }
@@ -142,6 +153,7 @@ function BulkEditModalForm({
   connection,
   canBrowseCategories,
   defaults,
+  batchDeliveryPriceList,
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
@@ -438,6 +450,34 @@ function BulkEditModalForm({
               watchedCategoryId={watchedCategoryId}
               parametersQuery={parametersQuery}
               categoryParameters={categoryParameters}
+            />
+          ) : null}
+
+          {/* Per-row delivery-price-list override (#1530) — Erli-only, gated on
+              the connection's DeliveryPriceListReader capability. Inherits the
+              batch default until the operator overrides it; rides the same
+              `platformParams.deliveryPriceList` escape hatch as the batch default
+              (an absent key means the row inherits at submit). */}
+          {(connection.supportedCapabilities?.includes('DeliveryPriceListReader') ?? false) ? (
+            <ErliDeliveryPriceListOverrideField
+              connectionId={connectionId}
+              value={
+                typeof platformParams.deliveryPriceList === 'string'
+                  ? platformParams.deliveryPriceList
+                  : undefined
+              }
+              batchDefault={batchDeliveryPriceList}
+              onChange={(next) => {
+                setPlatformParams((prev) => {
+                  const copy = { ...prev };
+                  if (next === undefined) {
+                    delete copy.deliveryPriceList;
+                  } else {
+                    copy.deliveryPriceList = next;
+                  }
+                  return copy;
+                });
+              }}
             />
           ) : null}
 

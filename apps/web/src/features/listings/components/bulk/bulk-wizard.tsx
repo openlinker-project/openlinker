@@ -384,6 +384,11 @@ export function BulkWizard({
               paramsResolving={paramsResolving}
               platformBlockerChips={platformBlockerChips}
               canBrowseCategories={destinationBrowsesCategories}
+              batchDeliveryPriceList={
+                typeof config.platformParams.deliveryPriceList === 'string'
+                  ? config.platformParams.deliveryPriceList
+                  : ''
+              }
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}

@@ -65,6 +65,12 @@ interface BulkReviewStepProps {
    * §3) when false (a `borrows` destination like Erli).
    */
   canBrowseCategories: boolean;
+  /**
+   * Batch-wide delivery price list picked on the Config step (#1530). Threaded
+   * into the edit modal so the per-row delivery-price-list override starts
+   * inheriting the batch default. Empty string = the batch default is "none".
+   */
+  batchDeliveryPriceList?: string;
   onUpdateRow: (
     variantId: string,
     override: BulkPerProductOverride,
@@ -97,6 +103,7 @@ export function BulkReviewStep({
   paramsResolving,
   platformBlockerChips,
   canBrowseCategories,
+  batchDeliveryPriceList,
   onUpdateRow,
   onApproveAll,
   onBack,
@@ -312,6 +319,7 @@ export function BulkReviewStep({
             priceAmount: editingPrice.value !== null ? editingPrice.value.toFixed(2) : '',
             priceCurrency: currency,
           }}
+          batchDeliveryPriceList={batchDeliveryPriceList}
           onSave={onUpdateRow}
         />
       ) : null}
