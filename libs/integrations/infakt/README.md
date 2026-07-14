@@ -15,7 +15,7 @@ KSeF clearance-status reads through inFakt's own native KSeF integration.
 
 | Capability | Key sub-capabilities |
 |---|---|
-| `Invoicing` | `InvoicingPort` (`issueInvoice`, `getInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`), `RegulatoryStatusReader` (`getClearanceStatus`), `CorrectionIssuer` (`issueCorrection`), `BankAccountsReader` (`listBankAccounts`), `BankAccountDefaultSetter` (`setDefaultBankAccount`), `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) |
+| `Invoicing` | `InvoicingPort` (`issueInvoice`, `getInvoice`, `upsertCustomer`, `getSupportedDocumentTypes`), `RegulatoryStatusReader` (`getClearanceStatus`), `RegulatoryResubmitter` (`resubmitForClearance`), `CorrectionIssuer` (`issueCorrection`), `BankAccountsReader` (`listBankAccounts`), `BankAccountDefaultSetter` (`setDefaultBankAccount`), `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`), `PaymentStatusReader` (`getPaymentStatus`), `PaymentMarker` (`markPaid`), `InvoiceEmailSender` (`sendByEmail`) |
 
 `RegulatoryTransmitter` is deliberately **not** implemented — see
 [ADR-030](../../../docs/architecture/adrs/030-infakt-ksef-indirection.md). OL's adapter
@@ -68,9 +68,32 @@ omit both to fall back to `cash` with no stamped account.
 - **Gross→net conversion**: OL's neutral commands carry buyer-paid gross unit prices;
   the adapter converts to inFakt's expected net price per line using each line's
   `taxRate` before submitting.
-- **Corrections**: `issueCorrection` fetches the original invoice, then submits a
-  `corrective` document carrying a before/after row pair per corrected line
-  (`correction: false` / `correction: true`).
+- **Corrections**: `issueCorrection` fetches the original invoice, then submits to the
+  **dedicated** `POST /corrective_invoices.json` endpoint — the generic `invoices.json`
+  path 404s for corrective documents — carrying a before/after row pair per corrected
+  line (`correction: false` / `correction: true`). The KSeF submit step also switches
+  resource: `sendToKsef(uuid, 'corrective_invoices')`, since
+  `corrective_invoices/{uuid}/send_to_ksef.json` is the only path that resolves for a
+  corrective uuid (`invoices/{uuid}/send_to_ksef.json` 404s).
+- **Resend to KSeF** (#1356, `RegulatoryResubmitter`): `resubmitForClearance` re-hits
+  `send_to_ksef.json` for the SAME `providerInvoiceId` — it never re-POSTs
+  `invoices.json`, so it cannot create a second draft. Backs the operator "resend"
+  action on a document whose clearance ended in `rejected`; the HTTP layer gates the
+  action to that status so an in-flight or already-accepted document is never re-sent.
+- **Payment status sync** (#1354/#1362): `PaymentStatusReader.getPaymentStatus` reads
+  `GET /invoices/{uuid}.json` and maps inFakt's payment fields to the neutral
+  `PaymentStatus`; the inbound `invoice_marked_as_paid` / `invoice_marked_as_paid_via_async_api`
+  webhooks are only a TRIGGER for an immediate re-read (see Inbound webhooks below),
+  never trusted as the source of truth. The outbound counterpart, `PaymentMarker.
+  markPaid`, pushes an authoritative "paid" state via
+  `POST /async/invoices/{uuid}/paid.json` for orders settled elsewhere (e.g. a
+  marketplace order the buyer paid off-platform, so inFakt's own bank-statement
+  matching has nothing to reconcile against) — verified live to return a 201 async-task
+  envelope; re-marking an already-paid invoice is safe.
+- **Email delivery** (#1353, `InvoiceEmailSender`): `sendByEmail` triggers
+  `POST /invoices/{uuid}/deliver_via_email.json`; inFakt composes and sends the message
+  itself using the client's stored email (no recipient override) and flips the invoice
+  status to `sent` on its side.
 - **Per-connection default payment method** (#1309): `config.defaultPaymentMethod`
   (`cash | transfer`) is stamped as `payment_method` on every issued document;
   unset falls back to `cash`. `transfer` 422s on inFakt unless the seller's account
@@ -90,15 +113,23 @@ omit both to fall back to `cash` with no stamped account.
   `InfaktInboundWebhookDecoderAdapter` (`InboundWebhookDecoderPort`, ADR-021) wraps it
   to authenticate + decode at OL's generic `POST /webhooks/:provider/:connectionId`
   ingress. `InfaktWebhookEventTranslatorAdapter` (`WebhookEventTranslatorPort`,
-  ADR-015) then maps the decoded envelope to a `CanonicalInboundEvent` on the
-  `invoicing` domain for routing — only `send_to_ksef_success` /
-  `send_to_ksef_error` route through; every other event (`draft_invoice_created`,
-  `invoice_marked_as_paid`, …) is acknowledged and ignored. Webhook subscriptions
+  ADR-015) then maps the decoded envelope to one of TWO domains: `send_to_ksef_success`
+  / `send_to_ksef_error` route to `invoicing` (triggers a `getClearanceStatus`
+  re-read); `invoice_marked_as_paid` / `invoice_marked_as_paid_via_async_api` (#1354)
+  route to `invoice-payment` (triggers a `getPaymentStatus` re-read). Every other event
+  (e.g. `draft_invoice_created`) is acknowledged and ignored. Webhook subscriptions
   themselves are configured manually in the inFakt dashboard; there is no
   `WebhookProvisioningPort` for this adapter.
 - **Retry classification**: `InfaktRetryClassifierAdapter` marks rate-limit and
   transient-network failures retryable, and validation/auth failures terminal, for the
   worker's job runner.
+- **Shipping line on invoices** (#1517/#1562, core-level — not inFakt-specific): the
+  order → `IssueInvoiceCommand` mapper appends a neutral gross shipping line whenever
+  `order.totals.shipping > 0`, so the invoice gross total matches the buyer-paid order
+  total; the adapter consumes `cmd.lines` verbatim like any other line. The label
+  defaults to a neutral English string and can be overridden per-connection via
+  `config.invoicing.shippingLineName` (any non-empty string, e.g. `"Shipping"` /
+  `"Dostawa"`) — set it alongside `InfaktConnectionConfig` on the same connection row.
 
 ## Documentation
 

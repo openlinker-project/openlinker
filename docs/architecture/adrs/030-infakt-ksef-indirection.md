@@ -65,8 +65,12 @@ carries no independent retry/timing semantics of its own the way a true
   and routes them to trigger an immediate `getClearanceStatus()` re-read rather than
   trusting the webhook payload as the system of record — the same "webhook = trigger,
   poll = reconciliation backstop" posture the PrestaShop order pipeline already uses.
-  Every other inFakt event (`draft_invoice_created`, `invoice_marked_as_paid`, …) is
-  acknowledged and ignored (`toOlDomain()` returns `null`).
+  `invoice_marked_as_paid` / `invoice_marked_as_paid_via_async_api` (#1354) route the
+  same way to the `invoice-payment` domain, triggering a `getPaymentStatus()` re-read
+  via `PaymentStatusReader` instead — a sibling capability to `RegulatoryStatusReader`,
+  added after this ADR was first written, for the same "webhook = trigger" reason.
+  Every other inFakt event (e.g. `draft_invoice_created`) is acknowledged and ignored
+  (`toOlDomain()` returns `null`).
 
 ## Alternatives considered
 
@@ -108,6 +112,21 @@ carries no independent retry/timing semantics of its own the way a true
   operational, bookkeeping-side setting, not one OL surfaces or should re-implement
   (raised, not fixed, in the
   [setup guide](../../../libs/integrations/infakt/docs/setup-guide.md#troubleshooting)).
+
+## Amendments
+
+- **2026-07-06 — `RegulatoryResubmitter` (#1356).** This ADR's "Cons" section noted OL
+  "cannot retry a failed `sendToKsef` call independently of re-issuing the document."
+  `RegulatoryResubmitter.resubmitForClearance` closes that specific gap for the
+  operator-facing case: it re-hits `send_to_ksef.json` for the SAME
+  `providerInvoiceId` (never re-POSTs `invoices.json`, so it cannot double-issue) and
+  backs a "resend to KSeF" action gated to documents whose clearance ended in
+  `rejected`. It is a NEW, independent sub-capability, not a retrofit of
+  `RegulatoryTransmitter` — the decision above (no public `submitForClearance()`)
+  stands unchanged; a resubmitter is deliberately modeled `flat` (does not `extends
+  RegulatoryStatusReader`) precisely because it does not imply OL owns the session the
+  way a transmitter would. See `docs/capabilities.md` for the sub-capability's full
+  contract.
 
 ## References
 

@@ -115,16 +115,20 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PickupPointFinder` | Search the carrier's pickup points / lockers (e.g. Paczkomat). | `findPickupPoints` | `isPickupPointFinder` |
 | `ShipmentCanceller` | Cancel / void a registered shipment. | `cancelShipment` | `isShipmentCanceller` |
 
-### `InvoicingPort` (invoicing) — 6
+### `InvoicingPort` (invoicing) — 10
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `RegulatoryStatusReader` | Read the clearance status of a previously-submitted document. | `getClearanceStatus` | `isRegulatoryStatusReader` |
 | `RegulatoryTransmitter` *(extends `RegulatoryStatusReader`)* | Submit a document to the tax authority for clearance (+ read its status). | `submitForClearance` | `isRegulatoryTransmitter` |
+| `RegulatoryResubmitter` | Re-trigger transmission of an ALREADY-ISSUED document (e.g. the operator "resend to KSeF" action on a rejected document) — flat, not `extends RegulatoryStatusReader`. | `resubmitForClearance` | `isRegulatoryResubmitter` |
 | `RegulatoryDocumentReader` | Retrieve the authority's confirmation document (e.g. the PL UPO) or a rendered view for a cleared document. | `getRegulatoryDocument` | `isRegulatoryDocumentReader` |
 | `CorrectionIssuer` | Issue a correcting document (e.g. KSeF `KOR`) against an original. | `issueCorrection` | `isCorrectionIssuer` |
 | `BankAccountsReader` | List the seller's payable bank accounts known to the provider (live picker for Transfer invoices). | `listBankAccounts` | `isBankAccountsReader` |
 | `BankAccountDefaultSetter` *(extends `BankAccountsReader`)* | Mark an account as the provider's own default, keeping it in sync with the account OL stamps on Transfer invoices. | `setDefaultBankAccount` | `isBankAccountDefaultSetter` |
+| `PaymentStatusReader` | Authoritative re-read of a document's payment state (a provider payment webhook is only a trigger, never trusted as the system of record). | `getPaymentStatus` | `isPaymentStatusReader` |
+| `PaymentMarker` | Push an authoritative "paid" state to the provider for an order settled elsewhere (e.g. a marketplace order the seller's bank statement can't auto-match). | `markPaid` | `isPaymentMarker` |
+| `InvoiceEmailSender` | Trigger the provider to render and email the already-issued invoice to the buyer. | `sendByEmail` | `isInvoiceEmailSender` |
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.

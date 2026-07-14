@@ -19,9 +19,12 @@ full rationale behind that design.
 |---|---|---|
 | `Invoicing` (`issueInvoice` / `getInvoice` / `upsertCustomer` / `getSupportedDocumentTypes`) | ✅ | Document types: `invoice`, `corrected`, `proforma`, `prepayment`. |
 | `RegulatoryStatusReader` (`getClearanceStatus`) | ✅ | Reads `ksef_data.status` off the stored invoice. **Not** `RegulatoryTransmitter` — OL does trigger submission (`send_to_ksef.json`, called inline at issuance), but clearance timing and status ownership stay with inFakt's own KSeF integration, so that trigger isn't exposed as an independently-callable submit method. |
-| `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a `corrective` invoice against `POST /invoices.json` with a before/after line-pair payload. |
+| `RegulatoryResubmitter` (`resubmitForClearance`) | ✅ | Backs the **Resend to KSeF** action on a document whose clearance ended in `rejected` — re-hits `send_to_ksef.json` for the same document, never re-issues. |
+| `CorrectionIssuer` (`issueCorrection`) | ✅ | Issues a `corrective` invoice against the dedicated `POST /corrective_invoices.json` endpoint with a before/after line-pair payload. |
 | `BankAccountsReader` (`listBankAccounts`) + `BankAccountDefaultSetter` (`setDefaultBankAccount`) | ✅ | Backs the live bank-account picker for `Transfer` invoices - accounts are fetched from `GET /bank_accounts.json`, and the picked account is synced back as the inFakt default. |
 | `RegulatoryDocumentReader` (`getRegulatoryDocument`, kind `rendered`) | ✅ | Fetches the inFakt-rendered invoice PDF - powers the **Download PDF** button on the invoice detail page. |
+| `PaymentStatusReader` (`getPaymentStatus`) + `PaymentMarker` (`markPaid`) | ✅ | Payment-status round-trip: inbound `invoice_marked_as_paid` webhooks trigger a re-read (never trusted directly); the outbound **Mark as paid** action pushes an authoritative paid state to inFakt for orders settled elsewhere (e.g. a marketplace order). |
+| `InvoiceEmailSender` (`sendByEmail`) | ✅ | Backs the **Send to buyer** action — inFakt renders and emails the already-issued invoice using the client's stored email address. |
 
 The connection detail page shows the enabled capability roles for the connection:
 
@@ -117,7 +120,10 @@ auto-provisioning). Set it up manually:
 2. **URL**: `POST https://<your-ol-host>/webhooks/infakt/{connectionId}` — substitute
    the connection ID shown on the connection-detail page in OL.
 3. **Events**: subscribe at minimum to `send_to_ksef_success` and `send_to_ksef_error`
-   (every other event inFakt can send is accepted and silently ignored by OL).
+   for clearance-status updates. Also subscribe to `invoice_marked_as_paid` (and/or
+   `invoice_marked_as_paid_via_async_api`) if you want OL's payment status to reflect
+   payments recorded directly in inFakt (#1354) — every other event inFakt can send is
+   accepted and silently ignored by OL.
 4. inFakt sends a **verification ping** — a POST with `{"verification_code": "..."}` —
    to confirm the endpoint is live. OL's webhook decoder echoes the same code back
    automatically; the subscription activates once inFakt sees the matching echo.
@@ -203,6 +209,43 @@ after issuance does not shift the correction baseline.
 ![Correction issued](./assets/16-correction-issued.png)
 
 ![Invoices list, with correction linked to the original](./assets/17-invoices-list.png)
+
+### Resending a rejected invoice to KSeF
+
+If inFakt's own KSeF submission ends in `rejected` (e.g. the seller fixed a data
+problem after the fact), use **Resend to KSeF** on the invoice detail page. This
+re-triggers `send_to_ksef.json` for the same document — it never creates a second
+draft — and is only available while the document's regulatory status is `rejected`.
+
+*(screenshot pending)*
+
+### Emailing an invoice to the buyer
+
+**Send to buyer** on an issued invoice triggers inFakt to render and email the
+document to the client's stored email address (no recipient override on OL's side).
+The invoice flips to `sent` on inFakt's own side once delivered.
+
+*(screenshot pending)*
+
+### Marking an invoice as paid
+
+For orders settled somewhere inFakt cannot see on its own — most commonly a
+marketplace order the buyer paid off-platform — use **Mark as paid** on the invoice
+detail page to push an authoritative paid state to inFakt (`POST
+/async/invoices/{uuid}/paid.json`). This is an async operation on inFakt's side;
+OL re-reads the payment status afterward via `PaymentStatusReader` to reflect it.
+Re-marking an already-paid invoice is safe (no error).
+
+*(screenshot pending)*
+
+### Bulk-issuing invoices from the list
+
+The invoices list supports selecting multiple not-yet-issued orders and issuing them
+in one action; each selected order is issued independently through the same
+`issueInvoice` path used for a single order, so a failure on one order does not block
+the others.
+
+*(screenshot pending)*
 
 ---
 
