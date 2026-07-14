@@ -1,9 +1,10 @@
 /**
  * WooCommerce Order Processor Adapter
  *
- * Implements OrderProcessorManagerPort (createOrder) and the OrderFulfillmentUpdater
- * sub-capability (updateFulfillment — status updates, cancellations, refund transitions)
- * for WooCommerce REST API v3.
+ * Implements OrderProcessorManagerPort (createOrder), the OrderFulfillmentUpdater
+ * sub-capability (updateFulfillment — status updates, cancellations, refund transitions),
+ * and the OrderStatusWriteback sub-capability (write — the #1157 / ADR-027 lifecycle
+ * relay contract) for WooCommerce REST API v3.
  *
  * Key design decisions:
  * - createOrder: the adapter does NOT dedup. It POSTs to WC and returns the
@@ -27,6 +28,7 @@
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderFulfillmentUpdater}
+ * @implements {OrderStatusWriteback}
  */
 import type {
   OrderProcessorManagerPort,
@@ -36,7 +38,12 @@ import type {
   Address,
   OrderStatus,
 } from '@openlinker/core/orders';
-import type { OrderFulfillmentUpdater } from '@openlinker/core/orders';
+import type {
+  OrderFulfillmentUpdater,
+  OrderStatusWriteback,
+  OrderLifecycleEvent,
+  OrderWritebackResult,
+} from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -75,7 +82,7 @@ export function isValidEmail(value: unknown): value is string {
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
-  implements OrderProcessorManagerPort, OrderFulfillmentUpdater
+  implements OrderProcessorManagerPort, OrderFulfillmentUpdater, OrderStatusWriteback
 {
   private readonly logger = new Logger(WooCommerceOrderProcessorAdapter.name);
 
@@ -207,6 +214,80 @@ export class WooCommerceOrderProcessorAdapter
       this.logger.debug(
         `updateFulfillment: trackingNumber "${input.trackingNumber}" accepted but not persisted (WC has no core tracking field)`,
       );
+    }
+  }
+
+  // ─── OrderStatusWriteback ─────────────────────────────────────────────────
+
+  /**
+   * `OrderStatusWriteback` (#1157 / ADR-027): the single event-as-data writeback
+   * the lifecycle relay dispatches through. Maps each neutral lifecycle event
+   * onto WooCommerce's order status and PUTs it via `PUT /orders/{id}`.
+   *
+   * Never throws — the outcome is reported via `OrderWritebackResult`:
+   * - `dispatched` → set WC status `completed` (delegates to `updateFulfillment`,
+   *   the same neutral-`shipped` → WC-`completed` mapping). `applied`.
+   * - `cancelled`  → refuse (`rejected`) if WC has already reached a terminal
+   *   fulfilled state (`completed` / `refunded`) — the shop is authoritative for
+   *   its own live state, so we surface the conflict rather than force a
+   *   regressive transition. Idempotent when already `cancelled`. Otherwise PUT
+   *   `cancelled`. `applied`.
+   */
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    try {
+      if (!/^\d+$/.test(event.externalOrderId)) {
+        return {
+          outcome: 'rejected',
+          detail: `Invalid externalOrderId "${event.externalOrderId}" — expected a WC integer ID`,
+        };
+      }
+
+      if (event.type === 'dispatched') {
+        await this.updateFulfillment({
+          externalOrderId: event.externalOrderId,
+          status: 'shipped',
+          trackingNumber: event.trackingNumber,
+        });
+        return { outcome: 'applied' };
+      }
+
+      // event.type === 'cancelled' — one read to honour the shop's authoritative
+      // live state before forcing a regressive transition.
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(
+        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+      );
+      const currentStatus = order.status;
+
+      if (currentStatus === 'completed' || currentStatus === 'refunded') {
+        this.logger.warn(
+          `WooCommerce order ${event.externalOrderId} already in terminal state ` +
+            `'${currentStatus}' — refusing cancel writeback (connection: ${this.connection.id})`,
+        );
+        return { outcome: 'rejected', detail: `order already ${currentStatus}` };
+      }
+
+      if (currentStatus === 'cancelled') {
+        this.logger.debug(
+          `WooCommerce order ${event.externalOrderId} already cancelled — cancel writeback is a no-op ` +
+            `(connection: ${this.connection.id})`,
+        );
+        return { outcome: 'applied' };
+      }
+
+      const wcStatus = WC_ORDER_STATUS_MAP.cancelled;
+      await this.httpClient.put<WooCommerceOrderUpdateRequest>(
+        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+        { status: wcStatus } satisfies WooCommerceOrderUpdateRequest,
+      );
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `OrderStatusWriteback '${event.type}' failed for WooCommerce order ` +
+          `${event.externalOrderId}: ${detail} (connection: ${this.connection.id})`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return { outcome: 'rejected', detail };
     }
   }
 
