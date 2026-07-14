@@ -324,6 +324,51 @@ describe('GenerateLabelForm — happy path', () => {
     expect((generateLabel.mock.calls[0][0] as { cod?: unknown }).cod).toBeUndefined();
   });
 
+  it('should send the insured value and normalise the decimal when supplied (#1542)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    const insuredInput = screen.getByLabelText(/Declared value to insure/i);
+    expect(insuredInput).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+    fireEvent.change(insuredInput, { target: { value: '150,00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue: { amount: '150.00', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should omit the insured value when the amount is left blank (#1542)', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = createMockApiClient({ shipments: { generateLabel } });
+    renderWithProviders(<GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      apiClient,
+    });
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() => expect(generateLabel).toHaveBeenCalled());
+    expect(
+      (generateLabel.mock.calls[0][0] as { insuredValue?: unknown }).insuredValue,
+    ).toBeUndefined();
+  });
+
   it('should send parcel.template (locker size, default medium) for a paczkomat order (#1423)', async () => {
     const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
     const apiClient = createMockApiClient({ shipments: { generateLabel } });

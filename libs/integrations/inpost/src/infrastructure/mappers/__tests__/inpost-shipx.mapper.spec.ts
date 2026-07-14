@@ -14,6 +14,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import {
   buildCreateShipmentRequest,
   buildPointsQuery,
+  buildProtocolQuery,
   classifyInpostPointType,
   mapShipXStatus,
   toGenerateLabelResult,
@@ -154,6 +155,133 @@ describe('inpost-shipx.mapper', () => {
         });
       }
     });
+
+    it('should map cod onto the ShipX request (decimal string → number) for a courier shipment (#1541)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...courierCmd, cod: { amount: '39.99', currency: 'PLN' } },
+        config,
+      );
+      expect(request.cod).toEqual({ amount: 39.99, currency: 'PLN' });
+    });
+
+    it('should omit cod from the ShipX request when the command carries none (#1541)', () => {
+      expect(buildCreateShipmentRequest(courierCmd, config).cod).toBeUndefined();
+      expect(buildCreateShipmentRequest(paczkomatCmd, config).cod).toBeUndefined();
+    });
+
+    it('should throw a typed rejection (preflight.cod-locker-unsupported) when COD is requested for a paczkomat shipment (#1541)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...paczkomatCmd, cod: { amount: '39.99', currency: 'PLN' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        // Rejection is a limitation of this v1 adapter (locker COD not modelled
+        // yet, see #1554), not of InPost/ShipX being COD-incapable on lockers.
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.cod-locker-unsupported',
+        });
+      }
+    });
+
+    it.each(['abc', '0', '-5'])(
+      'should throw a typed rejection (preflight.cod-amount-invalid) when the COD amount is not a positive number: %s (#1541)',
+      (amount) => {
+        const call = (): unknown =>
+          buildCreateShipmentRequest(
+            { ...courierCmd, cod: { amount, currency: 'PLN' } },
+            config,
+          );
+        expect(call).toThrow(ShippingProviderRejectionException);
+        try {
+          call();
+        } catch (error) {
+          expect(error).toMatchObject({
+            providerName: 'inpost',
+            providerCode: 'preflight.cod-amount-invalid',
+          });
+        }
+      },
+    );
+
+    it('should throw a typed rejection (preflight.cod-currency-unsupported) when the COD currency is not PLN (#1541)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...courierCmd, cod: { amount: '39.99', currency: 'EUR' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.cod-currency-unsupported',
+        });
+      }
+    });
+
+    it('should map insuredValue onto the ShipX request (decimal string → number) for a courier shipment (#1542)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...courierCmd, insuredValue: { amount: '150.00', currency: 'PLN' } },
+        config,
+      );
+      expect(request.insurance).toEqual({ amount: 150, currency: 'PLN' });
+    });
+
+    it('should map insuredValue onto the ShipX request for a paczkomat shipment (insurance IS supported on lockers, unlike COD) (#1542)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...paczkomatCmd, insuredValue: { amount: '150.00', currency: 'PLN' } },
+        config,
+      );
+      expect(request.insurance).toEqual({ amount: 150, currency: 'PLN' });
+    });
+
+    it('should omit insurance from the ShipX request when the command carries none (#1542)', () => {
+      expect(buildCreateShipmentRequest(courierCmd, config).insurance).toBeUndefined();
+      expect(buildCreateShipmentRequest(paczkomatCmd, config).insurance).toBeUndefined();
+    });
+
+    it.each(['abc', '0', '-5'])(
+      'should throw a typed rejection (preflight.insurance-amount-invalid) when the insured amount is not a positive number: %s (#1542)',
+      (amount) => {
+        const call = (): unknown =>
+          buildCreateShipmentRequest(
+            { ...courierCmd, insuredValue: { amount, currency: 'PLN' } },
+            config,
+          );
+        expect(call).toThrow(ShippingProviderRejectionException);
+        try {
+          call();
+        } catch (error) {
+          expect(error).toMatchObject({
+            providerName: 'inpost',
+            providerCode: 'preflight.insurance-amount-invalid',
+          });
+        }
+      },
+    );
+
+    it('should throw a typed rejection (preflight.insurance-currency-unsupported) when the insurance currency is not PLN (#1542)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...courierCmd, insuredValue: { amount: '150.00', currency: 'EUR' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.insurance-currency-unsupported',
+        });
+      }
+    });
   });
 
   describe('mapShipXStatus', () => {
@@ -264,6 +392,29 @@ describe('inpost-shipx.mapper', () => {
       expect(
         buildPointsQuery({ city: 'Warszawa', postalCode: '00-001', searchText: 'POZ', limit: 10 }),
       ).toEqual({ city: 'Warszawa', post_code: '00-001', name: 'POZ', per_page: 10 });
+    });
+  });
+
+  describe('buildProtocolQuery', () => {
+    it('should carry the shipment_ids batch and format=Pdf', () => {
+      expect(buildProtocolQuery(['11', '22', '33'])).toEqual({
+        shipment_ids: ['11', '22', '33'],
+        format: 'Pdf',
+      });
+    });
+
+    it('should reject an empty batch with a preflight rejection', () => {
+      expect(() => buildProtocolQuery([])).toThrow(ShippingProviderRejectionException);
+    });
+
+    it('should accept a batch of exactly 100 shipments', () => {
+      const ids = Array.from({ length: 100 }, (_, i) => String(i));
+      expect(buildProtocolQuery(ids)).toEqual({ shipment_ids: ids, format: 'Pdf' });
+    });
+
+    it('should reject a batch larger than 100 shipments with a preflight rejection', () => {
+      const ids = Array.from({ length: 101 }, (_, i) => String(i));
+      expect(() => buildProtocolQuery(ids)).toThrow(ShippingProviderRejectionException);
     });
   });
 });

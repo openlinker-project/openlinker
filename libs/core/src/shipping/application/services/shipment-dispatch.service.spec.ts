@@ -411,6 +411,29 @@ describe('ShipmentDispatchService', () => {
       expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod: undefined }));
     });
 
+    it('should forward the caller-supplied insured value to the adapter unchanged (#1542)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('paid'));
+
+      const insuredValue = { amount: '150.00', currency: 'PLN' };
+      await service.dispatch(makeInput({ insuredValue }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue }),
+      );
+    });
+
+    it('should forward insuredValue as undefined when the caller omits it (#1542)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('paid'));
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue: undefined }),
+      );
+    });
+
     it('should dispatch source_brokered through the identical path (no rework for #833)', async () => {
       routing.resolve.mockResolvedValue(
         resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.SourceBrokered, processorConnectionId: SOURCE }),

@@ -276,4 +276,53 @@ describe('InpostShippingAdapter', () => {
       expect(result.contentType).toBe('application/pdf');
     });
   });
+
+  describe('generateProtocol', () => {
+    it('should GET the org printouts endpoint with the shipment_ids batch + format=Pdf and return the bytes', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+      requestBinary.mockResolvedValueOnce({ body: bytes, contentType: 'application/pdf' });
+
+      const result = await adapter.generateProtocol({ providerShipmentIds: ['11', '22', '33'] });
+
+      expect(requestBinary).toHaveBeenCalledWith({
+        method: 'GET',
+        path: '/v1/organizations/org-123/dispatch_orders/printouts',
+        query: { shipment_ids: ['11', '22', '33'], format: 'Pdf' },
+      });
+      expect(result).toEqual({ contentType: 'application/pdf', body: bytes });
+    });
+
+    it('should pass a ZIP content type through unchanged (mixed-service batch)', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      requestBinary.mockResolvedValueOnce({
+        body: new Uint8Array([0x50, 0x4b, 0x03, 0x04]), // PK..
+        contentType: 'application/zip',
+      });
+
+      const result = await adapter.generateProtocol({ providerShipmentIds: ['11', '22'] });
+
+      expect(result.contentType).toBe('application/zip');
+    });
+
+    it('should default to application/pdf when the response carries no content type', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+      requestBinary.mockResolvedValueOnce({ body: new Uint8Array([1]), contentType: '' });
+
+      const result = await adapter.generateProtocol({ providerShipmentIds: ['11'] });
+
+      expect(result.contentType).toBe('application/pdf');
+    });
+
+    it('should reject an empty batch before hitting ShipX', async () => {
+      const { adapter, requestBinary } = makeAdapter();
+
+      await expect(adapter.generateProtocol({ providerShipmentIds: [] })).rejects.toMatchObject({
+        name: 'ShippingProviderRejectionException',
+        providerName: 'inpost',
+        providerCode: 'preflight.empty-protocol-batch',
+      });
+      expect(requestBinary).not.toHaveBeenCalled();
+    });
+  });
 });

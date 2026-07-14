@@ -15,8 +15,12 @@ export interface InpostRequestOptions {
   method: InpostHttpMethod;
   /** Absolute path on the ShipX host, e.g. `/v1/organizations/{org}/shipments`. */
   path: string;
-  /** Query params; `undefined` values are dropped. */
-  query?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Query params; `undefined` values are dropped. An array value is serialised
+   * as repeated `key[]=v` pairs — the Rails-style bracket convention ShipX
+   * expects for list params like `dispatch_orders/printouts?shipment_ids[]=…`.
+   */
+  query?: Record<string, string | number | boolean | readonly (string | number)[] | undefined>;
   /** JSON request body (serialised by the client). */
   body?: unknown;
 }

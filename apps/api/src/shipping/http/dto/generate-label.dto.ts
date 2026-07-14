@@ -142,6 +142,22 @@ class ShipmentCodDto {
   currency!: string;
 }
 
+class ShipmentInsuredValueDto {
+  @ApiProperty({ description: 'Declared value to insure, as a decimal string (e.g. "150.00")' })
+  @IsString()
+  @IsNotEmpty()
+  // Defense-in-depth: the FE gates the decimal shape, but the API has other
+  // potential clients — reject a malformed amount here so it never reaches the
+  // carrier (mirrors ShipmentCodDto, #1542).
+  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'Insured amount must be a decimal string, e.g. "150.00"' })
+  amount!: string;
+
+  @ApiProperty({ description: 'ISO 4217 currency code (e.g. PLN). Carrier validates the supported set.' })
+  @IsString()
+  @IsNotEmpty()
+  currency!: string;
+}
+
 export class GenerateLabelDto {
   @ApiProperty({ description: 'Order-source connection id (the routing rule scope)' })
   @IsUUID()
@@ -208,4 +224,15 @@ export class GenerateLabelDto {
   @ValidateNested()
   @Type(() => ShipmentCodDto)
   cod?: ShipmentCodDto;
+
+  @ApiPropertyOptional({
+    type: ShipmentInsuredValueDto,
+    description:
+      'Declared value to insure the parcel for (operator-supplied, #1542). ' +
+      'Insurance-incapable carriers ignore it; InPost ShipX translates it to its `insurance` object.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ShipmentInsuredValueDto)
+  insuredValue?: ShipmentInsuredValueDto;
 }
