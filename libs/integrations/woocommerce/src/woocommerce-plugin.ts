@@ -31,6 +31,7 @@ import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocomm
 import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/product-publisher/woocommerce-product-publisher.adapter';
 import { WooCommerceOfferManagerAdapter } from './infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
+import { WooCommerceWebhookEventTranslatorAdapter } from './infrastructure/adapters/woocommerce-webhook-event-translator.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
 /**
@@ -89,6 +90,15 @@ export function createWooCommercePlugin(): AdapterPlugin {
       host.authFailureClassifierRegistry.register(
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      // Inbound webhook-event translator (ADR-015 / #1548) — decodes WC order
+      // webhook events into neutral CanonicalInboundEvents. The webhook
+      // PROVISIONER is registered by `WooCommerceWebhookProvisioningModule`
+      // (it needs NestJS-injected ConnectionPort + IWebhookSecretService, which
+      // are not in the HostServices bag).
+      host.webhookEventTranslatorRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceWebhookEventTranslatorAdapter(),
       );
       for (const task of buildWooCommerceSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);

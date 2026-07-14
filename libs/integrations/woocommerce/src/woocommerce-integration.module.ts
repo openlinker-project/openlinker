@@ -16,7 +16,12 @@
 import type { DynamicModule } from '@nestjs/common';
 import { createNestAdapterModule } from '@openlinker/plugin-sdk';
 import { createWooCommercePlugin } from './woocommerce-plugin';
+import { WooCommerceWebhookProvisioningModule } from './woocommerce-webhook-provisioning.module';
 
 export const WooCommerceIntegrationModule: DynamicModule = createNestAdapterModule({
   plugin: createWooCommercePlugin(),
+  // The inbound webhook provisioner (#1548) needs NestJS-injected ConnectionPort
+  // + IWebhookSecretService (not in the HostServices bag), so it self-registers
+  // from this companion module rather than from plugin.register(host).
+  imports: [WooCommerceWebhookProvisioningModule],
 });
