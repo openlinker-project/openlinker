@@ -11,7 +11,7 @@ Some of these pages are admin-only. If you don't see them in the nav or get a 40
 Open **Settings** in the sidebar (under **Platform**).
 
 <!-- screenshot: Settings page showing Environment, Account, and Upcoming tabs with the Runtime/Environment and Account info cards -->
-![Settings](./images/07-settings.png)
+![Settings](./images/08-settings.png)
 
 The Settings page is organized into three tabs:
 
@@ -46,7 +46,7 @@ Preview cards for settings features that are coming soon:
 
 Open **Provider settings** in the sidebar (under the **AI** group). This page controls which AI provider powers the offer-description suggestion feature.
 
-![AI Provider Settings](./images/07-provider-settings.png)
+![AI Provider Settings](./images/08-provider-settings.png)
 <!-- screenshot: AI Provider Settings page showing provider selector, API key field, and active provider indicator -->
 <!-- Note: screenshot not yet captured — page is at /ai/provider-settings in the web app -->
 
@@ -73,7 +73,7 @@ The **Active provider** selector controls which provider is used for all complet
 
 Open **Prompt templates** in the sidebar (under the **AI** group). Prompt templates are the instructions OpenLinker sends to the AI provider when generating content (currently: offer descriptions).
 
-![Prompt Templates](./images/07-prompt-templates.png)
+![Prompt Templates](./images/08-prompt-templates.png)
 <!-- screenshot: Prompt Templates list showing template rows with key, channel, status chips (draft/published/archived), and version number -->
 <!-- Note: screenshot not yet captured — page is at /ai/prompt-templates in the web app -->
 

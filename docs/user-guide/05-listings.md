@@ -10,7 +10,7 @@ For Allegro-specific category parameter details, see the **[Allegro Setup Guide]
 
 Open **Listings** in the sidebar (under **Operations**).
 
-![Listings list](./images/04-listings-list.png)
+![Listings list](./images/05-listings-list.png)
 
 The Listings page is the **offer mapping workbench** — it shows offer-to-variant identifier mappings across platforms. Each row represents one offer on a marketplace. Columns include:
 
@@ -29,13 +29,13 @@ Use the filters at the top (**External ID**, **Connection ID**, **Platform type*
 
 Click **Create offer** to open the connection picker dialog.
 
-![Create offer — connection picker](./images/04-offer-creation1.png)
+![Create offer — connection picker](./images/05-offer-creation1.png)
 
 A small modal appears with a **Connection** dropdown listing your configured marketplace accounts. Select the account (e.g. `Allegro (allegro)`) and click **Continue** — the offer-creation wizard opens.
 
 ### Step 1 — Variant
 
-![Offer wizard — step 1: Variant selection](./images/04-offer-creation.png)
+![Offer wizard — step 1: Variant selection](./images/05-offer-creation.png)
 
 The wizard header shows the 5 steps: **Variant → Offer details → Category parameters → Policies → Review**. Use the search field to find a product by name, SKU, or EAN. Results show the product name and available variants — select the specific variant you want to list. For multi-variant products (e.g. a ring with multiple sizes), each variant becomes its own Allegro offer.
 
@@ -91,7 +91,7 @@ Allegro automatically groups the resulting per-variant offers into a single buye
 
 Category mappings connect your PrestaShop product categories to Allegro's category tree. Without a mapping, the offer wizard cannot pre-select a category — you'll need to browse the tree manually for each offer.
 
-![Category Mappings](./images/04-category-mappings-allegro.png)
+![Category Mappings](./images/05-category-mappings-allegro.png)
 
 To open the Category Mappings page:
 
@@ -123,4 +123,4 @@ Repeat for each category you intend to list products in on Allegro.
 
 With offers live, orders will start arriving from the marketplace:
 
-→ **[Orders](./05-orders.md)** — how to view and track ingested orders
+→ **[Orders](./06-orders.md)** — how to view and track ingested orders

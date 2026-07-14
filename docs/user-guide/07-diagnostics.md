@@ -9,7 +9,7 @@ The Diagnostics group in the sidebar contains three surfaces for investigating a
 Open **Jobs & Logs** in the sidebar (under **Diagnostics**).
 
 <!-- screenshot: Sync Jobs list showing job rows with status chip, job type, connection, attempts, and creation date columns -->
-![Sync Jobs list](./images/06-jobs-list.png)
+![Sync Jobs list](./images/07-jobs-list.png)
 
 ### What is a job?
 
@@ -40,7 +40,7 @@ Use the **status filter** to show only dead or running jobs when investigating a
 ### Job detail
 
 <!-- screenshot: job detail page showing status, job ID, connection, attempts, timestamps, idempotency key, and the collapsible payload section -->
-![Job detail — metadata and payload](./images/06-job-details.png)
+![Job detail — metadata and payload](./images/07-job-details.png)
 
 Click any job row to open the detail page. It shows:
 
@@ -68,7 +68,7 @@ OpenLinker receives inbound webhooks from connected platforms (currently PrestaS
 ### Webhook list
 
 <!-- screenshot: webhook deliveries list showing one published test.ping row from prestashop -->
-![Webhook deliveries](./images/06-webhook.png)
+![Webhook deliveries](./images/07-webhook.png)
 
 Each row represents one inbound webhook delivery. Columns include:
 
@@ -97,7 +97,7 @@ Click a webhook row to see the full payload OpenLinker received. This is useful 
 Open **Cursors** in the sidebar (under **Diagnostics**).
 
 <!-- screenshot: Cursors page showing cursor rows with key, value, connection ID, and last-updated timestamp -->
-![Cursors page](./images/06-cursors.png)
+![Cursors page](./images/07-cursors.png)
 
 ### What is a cursor?
 
@@ -132,4 +132,4 @@ If a sync is stalled (the cursor hasn't advanced in an unexpectedly long time, o
 
 For platform-wide configuration and AI settings:
 
-→ **[Settings & Admin](./07-settings-and-admin.md)**
+→ **[Settings & Admin](./08-settings-and-admin.md)**
