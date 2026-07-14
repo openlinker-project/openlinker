@@ -325,6 +325,32 @@ const ALLOW_LIST = new Map([
     'libs/integrations/prestashop/src/infrastructure/provisioners/prestashop-address-provisioner.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],
+  // WooCommerce customer + address provisioning (#1552) — mirrors PrestaShop;
+  // rewire via ICustomersService alongside the PS entries (#722).
+  [
+    'libs/integrations/woocommerce/src/woocommerce-plugin.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/woocommerce-integration.module.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/woocommerce-order-processor.adapter.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-address-provisioner.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/__tests__/woocommerce-address-provisioner.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.adapter.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
   [
     'libs/integrations/prestashop/src/infrastructure/provisioners/__tests__/prestashop-address-provisioner.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),

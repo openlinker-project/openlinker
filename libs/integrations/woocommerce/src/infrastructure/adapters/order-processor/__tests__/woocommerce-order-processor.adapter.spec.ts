@@ -19,6 +19,11 @@ import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-clie
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import type { OrderCreate, OrderItem, OrderStatus } from '@openlinker/core/orders';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import { DestinationAddressMapping } from '@openlinker/core/customers';
+import type { SyncLockPort } from '@openlinker/core/sync';
+import { WooCommerceCustomerProvisioner } from '../../../provisioners/woocommerce-customer-provisioner';
+import { WooCommerceAddressProvisioner } from '../../../provisioners/woocommerce-address-provisioner';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { WooCommerceOrderProcessingException } from '../../../../domain/exceptions/woocommerce-order-processing.exception';
@@ -30,6 +35,16 @@ import { WooCommerceUnauthorizedException } from '../../../../domain/exceptions/
 // ─── Test fixtures ─────────────────────────────────────────────────────────
 
 const CONNECTION_ID = 'conn-wc-001';
+
+// Address reuse tracking hashes the address (getPiiConfig requires a salt).
+const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
+beforeAll(() => {
+  process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
+});
+afterAll(() => {
+  if (originalPiiHashSalt === undefined) delete process.env.OL_PII_HASH_SALT;
+  else process.env.OL_PII_HASH_SALT = originalPiiHashSalt;
+});
 
 const mockConnection: Connection = {
   id: CONNECTION_ID,
@@ -66,11 +81,62 @@ function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
   };
 }
 
+/** In-memory SyncLockPort — single-holder-per-key, enough for the adapter tests. */
+function makeSyncLock(): SyncLockPort {
+  const locks = new Map<string, string>();
+  return {
+    acquire: jest.fn((key: string) => {
+      if (locks.has(key)) return Promise.resolve(null);
+      const token = `tok-${Math.random().toString(36).slice(2)}`;
+      locks.set(key, token);
+      return Promise.resolve(token);
+    }),
+    release: jest.fn((key: string, token: string) => {
+      if (locks.get(key) === token) {
+        locks.delete(key);
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+  };
+}
+
+/**
+ * Stub customer-projection repository. `findDestinationAddressMapping` returns a
+ * reuse HIT by default so the address provisioner short-circuits and adds no HTTP
+ * calls — these createOrder tests focus on customer + order-payload behaviour,
+ * not address reuse (that has its own dedicated provisioner spec).
+ */
+function makeProjectionRepo(): jest.Mocked<CustomerProjectionRepositoryPort> {
+  return {
+    findById: jest.fn(),
+    findByEmailHash: jest.fn(),
+    findMany: jest.fn(),
+    upsert: jest.fn(),
+    findAddressesByCustomerId: jest.fn(),
+    upsertAddress: jest.fn(),
+    findDestinationAddressMapping: jest.fn(() =>
+      Promise.resolve(
+        new DestinationAddressMapping('ol-cust-1', CONNECTION_ID, 'hash', 'billing', '7', new Date(), new Date()),
+      ),
+    ),
+    upsertDestinationAddressMapping: jest.fn((m) => Promise.resolve(m)),
+  } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
+}
+
 function makeAdapter(
   httpClient: jest.Mocked<IWooCommerceHttpClient>,
   identifierMapping: jest.Mocked<IdentifierMappingPort>,
 ): WooCommerceOrderProcessorAdapter {
-  return new WooCommerceOrderProcessorAdapter(httpClient, identifierMapping, mockConnection);
+  const syncLock = makeSyncLock();
+  return new WooCommerceOrderProcessorAdapter(
+    httpClient,
+    identifierMapping,
+    mockConnection,
+    new WooCommerceCustomerProvisioner(syncLock),
+    new WooCommerceAddressProvisioner(syncLock),
+    makeProjectionRepo(),
+  );
 }
 
 function makeOrder(overrides: Partial<OrderCreate> = {}): OrderCreate {
