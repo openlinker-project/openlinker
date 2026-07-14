@@ -29,9 +29,12 @@
  * authentication requires a WooCommerce-specific `InboundWebhookDecoderPort`
  * (the ADR-021 seam, exactly like `ErliInboundWebhookDecoderAdapter`) that
  * verifies the base64 signature and omits the replay-timestamp. That decoder is
- * a scoped follow-up; this adapter provisions the store side so the decoder can
- * verify against the same rotated secret when it lands. Until then the
- * `WooCommerceOrderSourceAdapter` poll remains the reconciliation backstop.
+ * a scoped follow-up (tracked in #1563); this adapter provisions the store side
+ * so the decoder can verify against the same rotated secret when it lands. Until
+ * then the `WooCommerceOrderSourceAdapter` poll remains the reconciliation
+ * backstop, and inbound deliveries fail host signature verification (WooCommerce
+ * may auto-disable the store-side webhook after repeated failures — re-run
+ * install once #1563 ships).
  *
  * TEST PING: WooCommerce has no synchronous, verifiable test-ping round-trip
  * (its own "ping" on webhook creation is delivered asynchronously and cannot be
@@ -50,7 +53,7 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type {
   CredentialsResolverPort,
   IWebhookSecretService,
@@ -124,11 +127,30 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
       this.logger.error(
         `Failed to register WooCommerce webhooks for connection ${connectionId}: ${message}`,
       );
+      // Fail-closed visibility: the secret was already rotated OL-side, but WC may
+      // still hold the old/no secret, so inbound signature verification stays
+      // broken until install is re-run. Best-effort flip the persisted
+      // `webhooksConfigured` flag to false so a prior `true` doesn't go stale and
+      // the connection-actions UI shows webhooks are NOT live. The order-source
+      // poll still backstops order loss.
+      await this.markWebhooksUnconfigured(connectionId, connection.config);
       throw new BadRequestException(
         `WooCommerce webhook registration failed: ${message}. The webhook secret was rotated ` +
           "on OL's side; re-running install is safe (registration is idempotent).",
       );
     }
+
+    // Inbound auth is not yet wired end-to-end: WC signs deliveries with the
+    // base64 `X-WC-Webhook-Signature` scheme the host default decoder cannot
+    // verify, so provisioned deliveries fail verification (and WC may auto-disable
+    // the store-side webhook) until the decoder follow-up (#1563) ships.
+    this.logger.warn(
+      `WooCommerce webhooks registered for connection ${connectionId}, but inbound signature ` +
+        'verification is PENDING the decoder follow-up (#1563): WC signs deliveries with ' +
+        'X-WC-Webhook-Signature, which the host default decoder cannot verify yet, so these ' +
+        'deliveries will fail verification (and WC may auto-disable the webhook). The ' +
+        'order-source poll remains the reconciliation backstop until then.',
+    );
 
     // Record success on the connection (best-effort; re-running install is safe).
     let stateUpdateOk = true;
@@ -161,16 +183,51 @@ export class WooCommerceWebhookProvisioningAdapter implements WebhookProvisionin
   }
 
   /**
-   * List the store's existing webhooks (single page — a store legitimately
-   * carrying >100 webhooks is out of scope; the upsert simply creates a new one
-   * if a match isn't on the first page, which WC tolerates).
+   * List the store's existing webhooks, paging until exhausted. A store can
+   * legitimately carry more than one page of webhooks; if OL's rows aren't on
+   * the first page the upsert would otherwise stack duplicates, so we walk every
+   * page (WC returns fewer than `per_page` items on the last one).
    */
   private async listWebhooks(
     httpClient: IWooCommerceHttpClient,
   ): Promise<WooCommerceWebhookResource[]> {
-    return httpClient.get<WooCommerceWebhookResource[]>(WOOCOMMERCE_WEBHOOKS_PATH, {
-      per_page: WEBHOOK_LIST_PAGE_SIZE,
-    });
+    const all: WooCommerceWebhookResource[] = [];
+    for (let page = 1; ; page += 1) {
+      const batch = await httpClient.get<WooCommerceWebhookResource[]>(WOOCOMMERCE_WEBHOOKS_PATH, {
+        per_page: WEBHOOK_LIST_PAGE_SIZE,
+        page,
+      });
+      if (!Array.isArray(batch) || batch.length === 0) {
+        break;
+      }
+      all.push(...batch);
+      if (batch.length < WEBHOOK_LIST_PAGE_SIZE) {
+        break;
+      }
+    }
+    return all;
+  }
+
+  /**
+   * Best-effort flip of the persisted `webhooksConfigured` flag to false after a
+   * failed registration. Swallows its own errors so it never masks the original
+   * registration failure — the caller still throws the actionable message.
+   */
+  private async markWebhooksUnconfigured(
+    connectionId: string,
+    config: Connection['config'],
+  ): Promise<void> {
+    try {
+      await this.connectionPort.update(connectionId, {
+        config: { ...config, webhooksConfigured: false },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Could not flag connection ${connectionId} as webhooks-unconfigured after a ` +
+          `registration failure: ${message}. Re-running install is idempotent.`,
+      );
+    }
   }
 
   /**

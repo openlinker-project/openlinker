@@ -41,10 +41,12 @@ describe('WooCommerceWebhookEventTranslatorAdapter', () => {
     expect(result?.eventType).toBe('updated');
   });
 
-  it('should map order.deleted to cancelled', () => {
+  it('should default a non-create order event (e.g. order.deleted) to updated', () => {
+    // Only order.created / order.updated are provisioned, so anything that
+    // isn't a create falls back to a safe re-pull (updated).
     const result = translator.translate(event({ objectType: 'order', eventType: 'order.deleted' }));
 
-    expect(result?.eventType).toBe('cancelled');
+    expect(result?.eventType).toBe('updated');
   });
 
   it('should accept the bare action form (created) without the topic prefix', () => {

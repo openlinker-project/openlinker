@@ -50,19 +50,16 @@ export class WooCommerceWebhookEventTranslatorAdapter implements WebhookEventTra
   /**
    * Map the WooCommerce order event type into the order domain's advisory
    * vocabulary. Accepts both the full WC topic (`order.created`) and its bare
-   * action (`created`). `OrderFeedEventType` has no `status_changed`, so any
-   * update is `updated`; a delete/trash maps to `cancelled`; unknown order
-   * events fall back to `updated` (a safe re-pull).
+   * action (`created`). Only `order.created` / `order.updated` are provisioned
+   * (see `WOOCOMMERCE_ORDER_WEBHOOK_TOPICS`); `OrderFeedEventType` has no
+   * `status_changed`, so anything that isn't a create falls back to `updated`
+   * (a safe re-pull — the authoritative order is fetched downstream).
    */
   private orderEventType(eventType: string): string {
     switch (eventType.toLowerCase()) {
       case 'order.created':
       case 'created':
         return 'created';
-      case 'order.deleted':
-      case 'deleted':
-      case 'trash':
-        return 'cancelled';
       case 'order.updated':
       case 'updated':
       default:

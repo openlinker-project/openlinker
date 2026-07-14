@@ -146,6 +146,42 @@ describe('WooCommerceWebhookProvisioningAdapter', () => {
       const created = (mockHttpClient.post.mock.calls[0] as unknown[])[1] as { topic: string };
       expect(created.topic).toBe('order.updated');
     });
+
+    it('pages the existing-webhook listing until exhausted so a match past page 1 is not duplicated', async () => {
+      const deliveryUrl = 'https://api.openlinker.example/webhooks/woocommerce/connection-123';
+      // A full first page (100 unrelated rows) forces a second page fetch; the
+      // OL match sits on page 2, so a single-page listing would have missed it.
+      const fullFirstPage = Array.from({ length: 100 }, (_, i) => ({
+        id: 1000 + i,
+        topic: 'product.updated',
+        delivery_url: `https://other.example/${i}`,
+      }));
+      const secondPage = [{ id: 77, topic: 'order.created', delivery_url: deliveryUrl }];
+      mockHttpClient.get
+        .mockResolvedValueOnce(fullFirstPage)
+        .mockResolvedValueOnce(secondPage);
+
+      await adapter.install('connection-123');
+
+      // Two pages read (full page 1 -> keep paging; short page 2 -> stop).
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.get).toHaveBeenNthCalledWith(
+        1,
+        '/wp-json/wc/v3/webhooks',
+        expect.objectContaining({ page: 1 }),
+      );
+      expect(mockHttpClient.get).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/webhooks',
+        expect.objectContaining({ page: 2 }),
+      );
+      // The page-2 match is updated (not duplicated); only order.updated is POSTed.
+      expect(mockHttpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/webhooks/77',
+        expect.objectContaining({ topic: 'order.created' }),
+      );
+      expect(mockHttpClient.post).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('input validation', () => {
@@ -191,16 +227,22 @@ describe('WooCommerceWebhookProvisioningAdapter', () => {
   });
 
   describe('failure modes', () => {
-    it('throws and does not mark configured when the WC push fails', async () => {
-      mockHttpClient.get.mockRejectedValueOnce(new Error('WC 401'));
+    it('throws and fail-closed resets webhooksConfigured to false when the WC push fails', async () => {
+      mockHttpClient.get.mockRejectedValue(new Error('WC 401'));
 
       await expect(adapter.install('connection-123')).rejects.toThrow(
         /WooCommerce webhook registration failed/,
       );
 
-      // Secret was rotated; connection.update was NOT called (push failed before).
+      // Secret was rotated; the persisted flag is fail-closed reset to false so a
+      // prior `true` doesn't go stale (mirrors the Erli adapter).
       expect(webhookSecretService.rotate).toHaveBeenCalled();
-      expect(connectionPort.update).not.toHaveBeenCalled();
+      expect(connectionPort.update).toHaveBeenCalledWith(
+        'connection-123',
+        expect.objectContaining({
+          config: expect.objectContaining({ webhooksConfigured: false }),
+        }),
+      );
     });
 
     it('returns warning=state-update-failed when connection.update fails after push', async () => {

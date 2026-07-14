@@ -23,14 +23,6 @@ export const WOOCOMMERCE_WEBHOOK_PROVIDER = 'woocommerce';
 export const WOOCOMMERCE_WEBHOOKS_PATH = '/wp-json/wc/v3/webhooks';
 
 /**
- * WooCommerce delivery signature header (base64 HMAC-SHA256 of the raw body,
- * keyed by the webhook's `secret`). Documented here as the authoritative name
- * for the future inbound decoder (see the provisioning adapter's signature
- * note); the host default OL-HMAC decoder does not read it yet.
- */
-export const WOOCOMMERCE_WEBHOOK_SIGNATURE_HEADER = 'x-wc-webhook-signature';
-
-/**
  * Order-relevant WooCommerce webhook topics OL provisions. WooCommerce is used
  * here as an order SOURCE over webhooks (low-latency nudge; the poll reconciles),
  * so only the order lifecycle topics are registered. `order.created` and
