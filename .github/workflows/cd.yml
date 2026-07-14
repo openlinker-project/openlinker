@@ -2,26 +2,62 @@ name: CD
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*'
 
 jobs:
-  # Placeholder for future deployment
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    if: false # Disabled until deployment is configured
+  build-deploy:
+    name: Build and deploy
+    runs-on: self-hosted
+    environment: demo
+    permissions: {}
     steps:
-      - uses: actions/checkout@v4
-      - name: Deployment placeholder
-        run: echo 'Deployment configuration coming soon'
+      - uses: actions/checkout@v6
 
+      - name: Build web
+        run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web
 
+      - name: Export openlinker-web as tar
+        run: docker save -o openlinker-web.tar openlinker-web
 
+      - name: Build worker
+        run: docker build -f Dockerfile --target worker . --tag openlinker-worker
 
+      - name: Export openlinker-worker as tar
+        run: docker save -o openlinker-worker.tar openlinker-worker
 
+      - name: Build api
+        run: docker build -f Dockerfile --target production . --tag openlinker-api
 
+      - name: Export openlinker-api as tar
+        run: docker save -o openlinker-api.tar openlinker-api
 
+      - name: Build migrate
+        run: docker build -f Dockerfile --target base . --tag openlinker-migrate
 
+      - name: Export openlinker-migrate as tar
+        run: docker save -o openlinker-migrate.tar openlinker-migrate
 
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_KEY }}
+          known_hosts: 'just-a-placeholder-so-we-dont-get-errors'
+
+      - name: Adding Known Hosts
+        run: ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy images to server
+        run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./openlinker-{migrate,api,web,worker}.tar ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_IMAGES }}/
+
+      - name: Sync prestashop module
+        run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./apps/prestashop-module/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_MODULE }}/
+
+      - name: Sync prestashop init scripts
+        run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/prestashop/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_INITSCRIPTS }}/
+
+      - name: Sync woocommerce init scripts
+        run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/woocommerce/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_WC_INITSCRIPTS }}/
+
+      - name: Deploy
+        run: ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} "bash ~/deploy.sh"
