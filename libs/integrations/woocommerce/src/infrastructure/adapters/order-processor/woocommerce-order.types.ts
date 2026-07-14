@@ -2,26 +2,21 @@
  * WooCommerce Order Adapter Types
  *
  * Request and response shapes for WooCommerce REST API v3 order and customer
- * operations, plus the OL OrderStatus → WC status mapping constant.
+ * operations.
  *
  * All response fields are declared optional where the WC API may omit them.
  *
+ * The OL `OrderStatus` → WC status map and the WC status vocabulary live in the
+ * dedicated `woocommerce-order-status.types.ts` module (shared across the order
+ * sub-capabilities); they are re-exported here for import-path stability.
+ *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  */
-import type { OrderStatus } from '@openlinker/core/orders';
 
-// ─── Status map ───────────────────────────────────────────────────────────────
-// Exported as a constant so tests can import and verify it without instantiating
-// the adapter (DRY, single source of truth for the WC status mapping).
+// ─── Status map (re-exported from the dedicated status module) ──────────────────
 
-export const WC_ORDER_STATUS_MAP: Record<OrderStatus, string> = {
-  pending:    'pending',
-  processing: 'processing',
-  shipped:    'completed',
-  delivered:  'completed',
-  cancelled:  'cancelled',
-  refunded:   'refunded',
-};
+export { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from './woocommerce-order-status.types';
+export type { WooCommerceOrderStatus } from './woocommerce-order-status.types';
 
 // ─── Order shapes ─────────────────────────────────────────────────────────────
 

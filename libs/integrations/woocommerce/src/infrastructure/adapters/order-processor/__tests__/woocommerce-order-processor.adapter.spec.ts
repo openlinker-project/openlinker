@@ -13,7 +13,8 @@ import {
   isValidEmail,
 } from '../woocommerce-order-processor.adapter';
 import { toPositiveInt } from '../../../utils/woocommerce-utils';
-import { WC_ORDER_STATUS_MAP } from '../woocommerce-order.types';
+import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from '../woocommerce-order.types';
+import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
@@ -134,6 +135,26 @@ describe('WC_ORDER_STATUS_MAP', () => {
 
   it('should map shipped and delivered both to completed', () => {
     expect(WC_ORDER_STATUS_MAP.shipped).toBe(WC_ORDER_STATUS_MAP.delivered);
+  });
+});
+
+describe('WC_ORDER_STATUS_VALUES', () => {
+  it('should expose the WooCommerce core status vocabulary', () => {
+    expect(WC_ORDER_STATUS_VALUES).toEqual([
+      'pending',
+      'processing',
+      'on-hold',
+      'completed',
+      'cancelled',
+      'refunded',
+      'failed',
+    ]);
+  });
+
+  it('should contain every value produced by the neutral → WC map', () => {
+    for (const wcStatus of Object.values(WC_ORDER_STATUS_MAP)) {
+      expect(WC_ORDER_STATUS_VALUES).toContain(wcStatus);
+    }
   });
 });
 
@@ -806,5 +827,114 @@ describe('WooCommerceOrderProcessorAdapter — updateFulfillment', () => {
     ).resolves.toBeUndefined();
     const [, payload] = httpClient.put.mock.calls[0];
     expect(payload).not.toHaveProperty('tracking_number');
+  });
+});
+
+// ─── OrderStatusWriteback (write) ────────────────────────────────────────────
+
+describe('WooCommerceOrderProcessorAdapter — OrderStatusWriteback', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should be detected by the isOrderStatusWriteback guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isOrderStatusWriteback(adapter)).toBe(true);
+  });
+
+  // ── dispatched ──
+
+  it('should PUT status completed for a dispatched event', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.put.mockResolvedValue({ id: 55, status: 'completed' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'dispatched', externalOrderId: '55' });
+
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { status: 'completed' });
+    expect(result).toEqual({ outcome: 'applied' });
+  });
+
+  it('should accept a trackingNumber on a dispatched event without failing', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.put.mockResolvedValue({ id: 55, status: 'completed' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({
+      type: 'dispatched',
+      externalOrderId: '55',
+      trackingNumber: 'TRACK123',
+    });
+
+    expect(result).toEqual({ outcome: 'applied' });
+    const [, payload] = httpClient.put.mock.calls[0];
+    expect(payload).not.toHaveProperty('tracking_number');
+  });
+
+  // ── cancelled ──
+
+  it('should read the order then PUT status cancelled for a cancelled event', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'cancelled' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55');
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { status: 'cancelled' });
+    expect(result).toEqual({ outcome: 'applied' });
+  });
+
+  it.each(['completed', 'refunded'])(
+    'should reject a cancel writeback when WC is already %s (no PUT)',
+    async (currentStatus) => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue({ id: 55, status: currentStatus });
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain(currentStatus);
+      expect(httpClient.put).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should treat a cancel writeback as an idempotent no-op when already cancelled (no PUT)', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'cancelled' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(result).toEqual({ outcome: 'applied' });
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  // ── failure / validation ──
+
+  it.each(['1/refunds', 'abc', '', '-1'])(
+    'should reject (not throw) a non-numeric externalOrderId "%s"',
+    async (id) => {
+      const httpClient = makeHttpClient();
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: id });
+
+      expect(result.outcome).toBe('rejected');
+      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.put).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should return rejected (never throw) when the WC PUT fails', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(500, 'server error'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(result.outcome).toBe('rejected');
+    expect(result.detail).toBeDefined();
   });
 });
