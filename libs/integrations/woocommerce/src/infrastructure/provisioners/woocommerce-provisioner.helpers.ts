@@ -2,9 +2,9 @@
  * WooCommerce Provisioner Helpers
  *
  * Pure helpers shared by the WooCommerce customer + address provisioners:
- * country / currency normalization (WooCommerce's model is flat — there is no
- * separate resolver layer, so these live alongside the provisioners), address
- * hashing, OL-Address → WC-address mapping, and a bounded-wait distributed-lock
+ * country normalization (WooCommerce's model is flat — there is no separate
+ * resolver layer, so this lives alongside the provisioners), address hashing,
+ * OL-Address → WC-address mapping, and a bounded-wait distributed-lock
  * acquisition built on the host `SyncLockPort`.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/provisioners
@@ -14,7 +14,7 @@ import type { SyncLockPort, SyncLockToken } from '@openlinker/core/sync';
 import type { Address } from '@openlinker/core/orders';
 import type { NormalizedAddress } from '@openlinker/shared/config';
 import { hashAddress } from '@openlinker/shared/config';
-import type { WooCommerceCustomerAddress } from './woocommerce-provisioner.types';
+import type { WooCommerceOrderAddress } from '../adapters/order-processor/woocommerce-order.types';
 
 /** Lock TTL in milliseconds — 30 s is ample for the WC customer API round-trips. */
 export const PROVISIONER_LOCK_TTL_MS = 30_000;
@@ -44,13 +44,6 @@ export function normalizeCountryCode(country: string | null | undefined): string
 }
 
 /**
- * Normalize a currency code to an upper-case ISO-4217 value.
- */
-export function normalizeCurrencyCode(currency: string | null | undefined): string {
-  return (currency ?? '').trim().toUpperCase();
-}
-
-/**
  * Compute the address-reuse hash for an OL order address. Mirrors the component
  * set used across the platform (`address1`, `address2`, `city`, `postcode`,
  * `countryIso2`), with the country normalized so a reuse lookup matches the
@@ -72,7 +65,7 @@ export function computeAddressHash(address: Address): string {
  * the mapping table has no row but the WC customer already carries a matching
  * address). Returns null when the WC address lacks the fields needed to hash.
  */
-export function computeWcAddressHash(address: WooCommerceCustomerAddress | undefined): string | null {
+export function computeWcAddressHash(address: WooCommerceOrderAddress | undefined): string | null {
   if (!address || !address.address_1 || !address.city || !address.postcode) {
     return null;
   }
@@ -90,10 +83,17 @@ export function computeWcAddressHash(address: WooCommerceCustomerAddress | undef
  * Map an OL Address to a WooCommerce inline customer address, omitting nullish
  * fields (WC REST rejects `null` on string-typed address properties) and
  * normalizing the country code.
+ *
+ * Shares the `WooCommerceOrderAddress` wire type with the order-processor
+ * adapter's private `mapAddress`, but stays a separate function on purpose: it
+ * normalizes `country` (upper-case ISO2) so the value written to the WC customer
+ * matches the value fed into the reuse hash (`computeAddressHash`). The adapter's
+ * `mapAddress` deliberately passes `country` through verbatim for the order
+ * payload, so the two are not interchangeable.
  */
-export function toWcCustomerAddress(address: Address): WooCommerceCustomerAddress {
-  const mapped: WooCommerceCustomerAddress = {};
-  const assign = (key: keyof WooCommerceCustomerAddress, value: string | null | undefined): void => {
+export function toWcCustomerAddress(address: Address): WooCommerceOrderAddress {
+  const mapped: WooCommerceOrderAddress = {};
+  const assign = (key: keyof WooCommerceOrderAddress, value: string | null | undefined): void => {
     if (value !== null && value !== undefined) mapped[key] = value;
   };
   assign('first_name', address.firstName);

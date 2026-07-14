@@ -27,12 +27,12 @@ import { Injectable, Inject } from '@nestjs/common';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
 import { DestinationAddressMapping } from '@openlinker/core/customers';
-import type { Address } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
 import type {
   WooCommerceCustomerWithAddressesResponse,
   WooCommerceCustomerAddressUpdateRequest,
+  ResolveOrCreateAddressInput,
 } from './woocommerce-provisioner.types';
 import {
   acquireLockWithWait,
@@ -40,17 +40,6 @@ import {
   computeWcAddressHash,
   toWcCustomerAddress,
 } from './woocommerce-provisioner.helpers';
-
-export interface ResolveOrCreateAddressInput {
-  readonly internalCustomerId: string;
-  /** The resolved WC customer id. Guest (`<= 0`) short-circuits with `null`. */
-  readonly wcCustomerId: number;
-  readonly address: Address | undefined;
-  readonly addressType: AddressType;
-  readonly connectionId: string;
-  readonly httpClient: IWooCommerceHttpClient;
-  readonly customerProjectionRepository: CustomerProjectionRepositoryPort;
-}
 
 @Injectable()
 export class WooCommerceAddressProvisioner {
@@ -108,6 +97,17 @@ export class WooCommerceAddressProvisioner {
     // Step 2 — serialize under the distributed lock
     const key = this.lockKey(connectionId, wcCustomerId, addressHash, addressType);
     const token = await acquireLockWithWait(this.syncLock, key);
+    if (!token) {
+      // The lock could not be acquired within the wait budget (e.g. a Redis
+      // outage or heavy contention). Proceeding UNSERIALIZED is safe here —
+      // unlike PrestaShop, which throws — because writing the inline address is
+      // an idempotent `PUT /customers/{id}` (a racing writer sets the same
+      // fields) and the reuse mapping upsert tolerates a concurrent duplicate.
+      // We log the degradation so a defeated lock stays observable.
+      this.logger.warn(
+        `resolveOrCreateAddress: could not acquire provisioning lock for customer ${internalCustomerId} (${addressType}) within budget — proceeding unserialized (idempotent PUT keeps this safe)`,
+      );
+    }
 
     try {
       // Step 3 — re-check the mapping under the lock

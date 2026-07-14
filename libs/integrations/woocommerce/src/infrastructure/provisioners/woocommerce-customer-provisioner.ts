@@ -36,21 +36,10 @@ import type {
   WooCommerceCustomerResponse,
 } from '../adapters/order-processor/woocommerce-order.types';
 import { acquireLockWithWait, lockKeyToken } from './woocommerce-provisioner.helpers';
+import type { ResolveOrCreateCustomerInput } from './woocommerce-provisioner.types';
 
 /** The WooCommerce guest sentinel — orders with `customer_id: 0` are guest orders. */
 const WC_GUEST_CUSTOMER_ID = 0;
-
-export interface ResolveOrCreateCustomerInput {
-  /** Internal OL customer id (undefined for a guest source order). */
-  readonly internalCustomerId: string | undefined;
-  /** Validated buyer email (undefined when unavailable — forces guest). */
-  readonly buyerEmail: string | undefined;
-  readonly firstName: string;
-  readonly lastName: string;
-  readonly connectionId: string;
-  readonly httpClient: IWooCommerceHttpClient;
-  readonly identifierMapping: IdentifierMappingPort;
-}
 
 @Injectable()
 export class WooCommerceCustomerProvisioner {
@@ -116,9 +105,23 @@ export class WooCommerceCustomerProvisioner {
       return WC_GUEST_CUSTOMER_ID;
     }
 
-    // Step 3 — serialize provisioning for this buyer under a distributed lock
-    const key = this.lockKey(connectionId, lockKeyToken(buyerEmail));
+    // Step 3 — serialize provisioning for this buyer under a distributed lock.
+    // Normalize the email (trim + lowercase) before hashing so case/whitespace
+    // variants of the same address serialize against the same lock key.
+    const key = this.lockKey(connectionId, lockKeyToken(buyerEmail.trim().toLowerCase()));
     const token = await acquireLockWithWait(this.syncLock, key);
+    if (!token) {
+      // The lock could not be acquired within the wait budget (e.g. a Redis
+      // outage or heavy contention). Proceeding UNSERIALIZED is safe here —
+      // unlike PrestaShop, which throws — because the WC customer path is
+      // backstopped by WC's email-uniqueness constraint + the duplicate-email
+      // 400 recovery below, so a racing writer converges on one account rather
+      // than creating a duplicate. We log the degradation so a defeated lock
+      // (which is otherwise invisible) stays observable.
+      this.logger.warn(
+        `resolveOrCreateCustomer: could not acquire provisioning lock for customer ${internalCustomerId} within budget — proceeding unserialized (WC email-uniqueness + 400 recovery keep this safe)`,
+      );
+    }
 
     try {
       // Step 4 — re-check the mapping now that we hold (or waited for) the lock

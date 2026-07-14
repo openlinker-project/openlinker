@@ -222,4 +222,36 @@ describe('WooCommerceCustomerProvisioner', () => {
     expect(httpClient.post).toHaveBeenCalledTimes(1);
     expect(port.createMapping).toHaveBeenCalledTimes(1);
   });
+
+  it('should serialize case/whitespace email variants on the same lock key (normalized)', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.post.mockResolvedValue({ id: 88 });
+    const syncLock = makeSyncLock();
+    const provisioner = new WooCommerceCustomerProvisioner(syncLock);
+
+    // Two distinct internal customers so neither takes the mapping fast path;
+    // both provision under a lock keyed off the (normalized) email.
+    await provisioner.resolveOrCreateCustomer(
+      baseInput({
+        internalCustomerId: 'ol-cust-a',
+        buyerEmail: 'Buyer@Example.com',
+        identifierMapping: makeStatefulMapping().port,
+        httpClient,
+      }),
+    );
+    await provisioner.resolveOrCreateCustomer(
+      baseInput({
+        internalCustomerId: 'ol-cust-b',
+        buyerEmail: '  buyer@example.com  ',
+        identifierMapping: makeStatefulMapping().port,
+        httpClient,
+      }),
+    );
+
+    const acquireMock = syncLock.acquire as jest.Mock<Promise<string | null>, [string, number]>;
+    expect(acquireMock).toHaveBeenCalledTimes(2);
+    const [firstKey] = acquireMock.mock.calls[0];
+    const [secondKey] = acquireMock.mock.calls[1];
+    expect(firstKey).toBe(secondKey);
+  });
 });

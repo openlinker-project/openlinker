@@ -344,6 +344,10 @@ const ALLOW_LIST = new Map([
     new Set(['CustomerProjectionRepositoryPort']),
   ],
   [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.types.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
     'libs/integrations/woocommerce/src/infrastructure/provisioners/__tests__/woocommerce-address-provisioner.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],
