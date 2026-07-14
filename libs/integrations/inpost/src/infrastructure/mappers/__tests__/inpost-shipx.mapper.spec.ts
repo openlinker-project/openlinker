@@ -406,5 +406,15 @@ describe('inpost-shipx.mapper', () => {
     it('should reject an empty batch with a preflight rejection', () => {
       expect(() => buildProtocolQuery([])).toThrow(ShippingProviderRejectionException);
     });
+
+    it('should accept a batch of exactly 100 shipments', () => {
+      const ids = Array.from({ length: 100 }, (_, i) => String(i));
+      expect(buildProtocolQuery(ids)).toEqual({ shipment_ids: ids, format: 'Pdf' });
+    });
+
+    it('should reject a batch larger than 100 shipments with a preflight rejection', () => {
+      const ids = Array.from({ length: 101 }, (_, i) => String(i));
+      expect(() => buildProtocolQuery(ids)).toThrow(ShippingProviderRejectionException);
+    });
   });
 });
