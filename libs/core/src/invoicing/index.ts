@@ -14,6 +14,7 @@ export {
   parseTriggerModel,
 } from './domain/types/invoice-trigger.types';
 export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
+export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/ports/invoicing.port';
