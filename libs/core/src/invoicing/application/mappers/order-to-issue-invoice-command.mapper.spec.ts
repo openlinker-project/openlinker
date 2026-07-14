@@ -250,4 +250,61 @@ describe('toIssueInvoiceCommand', () => {
       UnsupportedPriceTreatmentError,
     );
   });
+
+  it('shipping: totals.shipping > 0 -> appends one gross shipping line after the item lines (#1517)', () => {
+    const order = makeOrder({
+      items: [makeItem({ price: 499.99, quantity: 1 })],
+      totals: {
+        subtotal: 499.99,
+        tax: 0,
+        shipping: 10.49,
+        total: 510.48,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(2);
+    // Product lines come first; the shipping line is appended last.
+    expect(cmd.lines[0].unitPriceGross).toBe(499.99);
+    expect(cmd.lines[1]).toEqual({
+      name: 'Shipping',
+      quantity: 1,
+      unitPriceGross: 10.49,
+      taxRate: '',
+    });
+    // Invoice gross (summed by InvoiceService.buildContent over cmd.lines) now
+    // equals the order total.
+    const gross = cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0);
+    expect(gross).toBeCloseTo(order.totals.total, 2);
+  });
+
+  it('shipping: taxRate left empty on the shipping line (provider adapter resolves the regime rate)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    const shippingLine = cmd.lines.find((l) => l.name === 'Shipping');
+    expect(shippingLine).toBeDefined();
+    expect(shippingLine?.taxRate).toBe('');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -5],
+  ])('shipping: totals.shipping %s -> no phantom shipping line (#1517)', (_label, shipping) => {
+    const order = makeOrder({
+      items: [makeItem({ price: 100, quantity: 1 })],
+      totals: { subtotal: 100, tax: 0, shipping, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(1);
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
 });

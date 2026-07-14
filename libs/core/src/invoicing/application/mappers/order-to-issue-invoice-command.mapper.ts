@@ -23,6 +23,9 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 
+/** Carrier-neutral label for the shipping invoice line (#1517). */
+const SHIPPING_LINE_NAME = 'Shipping';
+
 /** Inputs to {@link toIssueInvoiceCommand}. */
 export interface OrderToIssueInvoiceCommandInput {
   order: Order;
@@ -39,7 +42,8 @@ export interface OrderToIssueInvoiceCommandInput {
  * when no address/buyer-name can be derived, `UnsupportedPriceTreatmentError`
  * when the order is net-priced (`taxTreatment === 'exclusive'`), and
  * `InvalidInvoiceLineError` when an item's quantity is not a positive finite
- * number (#1525).
+ * number (#1525). Appends a gross shipping line when `order.totals.shipping > 0`
+ * so the invoice total equals the buyer-paid order total (#1517).
  */
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
@@ -57,6 +61,15 @@ export function toIssueInvoiceCommand(
 
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null);
   const lines = order.items.map((item) => toInvoiceLine(item, order.id));
+
+  // Buyer-paid shipping is part of the invoice total (invoice gross must equal
+  // order total, #1517). Emit it as a normal gross line so the provider adapter
+  // resolves its tax rate the same way it does for product lines; core never
+  // names a tax rate. Skipped when shipping is 0 (no phantom line).
+  const shippingLine = toShippingLine(order.totals.shipping);
+  if (shippingLine) {
+    lines.push(shippingLine);
+  }
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -177,6 +190,25 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
     unitPriceGross: item.price,
+    taxRate: '',
+  };
+}
+
+/**
+ * Compose the shipping {@link InvoiceLine} from the order's gross shipping cost,
+ * or `null` when there is nothing to bill (#1517). A single unit priced at the
+ * gross shipping amount; `taxRate` is left empty (provider adapter resolves the
+ * regime rate, mirroring {@link toInvoiceLine}). Non-positive or non-finite
+ * shipping (0, negative, NaN) yields no line — no phantom shipping line.
+ */
+function toShippingLine(shipping: number): InvoiceLine | null {
+  if (!Number.isFinite(shipping) || shipping <= 0) {
+    return null;
+  }
+  return {
+    name: SHIPPING_LINE_NAME,
+    quantity: 1,
+    unitPriceGross: shipping,
     taxRate: '',
   };
 }
