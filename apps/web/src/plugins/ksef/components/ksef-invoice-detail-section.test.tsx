@@ -196,9 +196,9 @@ describe('KsefInvoiceDetailSection', () => {
       // Return a minimal valid FA(3) XML so KsefFa3View renders (not null).
       const fa3Xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura>
-  <Podmiot1><DaneIdentyfikacyjne><NIP>1111111111</NIP><NazwaSkrocona>Seller Ltd</NazwaSkrocona></DaneIdentyfikacyjne></Podmiot1>
-  <Podmiot2><DaneIdentyfikacyjne><NIP>2222222222</NIP><NazwaSkrocona>Buyer Ltd</NazwaSkrocona></DaneIdentyfikacyjne></Podmiot2>
-  <Fa><P_1>FV/2026/001</P_1><P_2>2026-01-01</P_2><P_15>123.00</P_15></Fa>
+  <Podmiot1><DaneIdentyfikacyjne><NIP>1111111111</NIP><Nazwa>Seller Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot1>
+  <Podmiot2><DaneIdentyfikacyjne><NIP>2222222222</NIP><Nazwa>Buyer Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot2>
+  <Fa><P_1>2026-01-01</P_1><P_2>FV/2026/001</P_2><P_15>123.00</P_15></Fa>
 </Faktura>`;
       const downloadDocument = vi
         .fn()
@@ -221,6 +221,29 @@ describe('KsefInvoiceDetailSection', () => {
       // KsefFa3View renders the parsed invoice — no iframe.
       await waitFor(() => expect(screen.getByText('FV/2026/001')).toBeInTheDocument());
       expect(screen.queryByTitle('FA(3) document preview')).not.toBeInTheDocument();
+    });
+
+    it('falls through to error copy when the fetched XML cannot be parsed', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:fa3-source');
+      URL.revokeObjectURL = vi.fn();
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob(['not xml at all ><>'], { type: 'application/xml' }));
+      const apiClient = createMockApiClient({ invoicing: { downloadDocument } });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'View' }));
+      await waitFor(() =>
+        expect(screen.getByText("Preview failed. Click 'View' to retry.")).toBeInTheDocument(),
+      );
+      expect(screen.queryByText("Click 'View' to load the invoice.")).not.toBeInTheDocument();
     });
 
     it('calls downloadDocument with kind=source when Download XML is clicked', async () => {

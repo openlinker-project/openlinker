@@ -102,6 +102,17 @@ export interface KsefPaymentConfig {
   skonto?: { conditions: string; amount: string };
 }
 
+/**
+ * Connection-level defaults applied to issued-document LINES (#1525) - a
+ * top-level config section (following the `payment` #1311 precedent, NOT on
+ * `KsefSellerConfig`, which mirrors Podmiot1 identity fields only).
+ * `lineUnit` is the free-text unit of measure emitted as `FaWiersz/P_8A` for
+ * any line whose neutral `unit` is absent; empty/cleared = P_8A not emitted.
+ */
+export interface KsefInvoiceDefaultsConfig {
+  lineUnit?: string;
+}
+
 /** Non-secret config persisted on the connection row. */
 export interface KsefConnectionConfig {
   env: KsefEnvironment;
@@ -109,6 +120,8 @@ export interface KsefConnectionConfig {
   seller?: KsefSellerConfig;
   /** Default payment info emitted into `Fa/Platnosc` (#1311). Optional. */
   payment?: KsefPaymentConfig;
+  /** Per-line issuance defaults (#1525). Optional. */
+  invoiceDefaults?: KsefInvoiceDefaultsConfig;
 }
 
 /**
