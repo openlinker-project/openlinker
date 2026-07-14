@@ -26,7 +26,11 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
-import { KSEF_ENVIRONMENT_VALUES, KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
+import {
+  KSEF_ENVIRONMENT_VALUES,
+  KSEF_FORMA_PLATNOSCI_VALUES,
+  KSEF_LINE_UNIT_SUGGESTIONS,
+} from './ksef-setup.schema';
 
 const ENVIRONMENT_LABELS: Record<(typeof KSEF_ENVIRONMENT_VALUES)[number], string> = {
   test: 'Test (sandbox)',
@@ -304,6 +308,28 @@ export function KsefStructuredSection({
           invalid={Boolean(form.formState.errors.paymentSkontoAmount)}
         />
       </FormField>
+      <FormField
+        label="Default line unit"
+        name="invoiceDefaultLineUnit"
+        error={form.formState.errors.invoiceDefaultLineUnit?.message}
+        description="Unit of measure stamped on issued-invoice lines (config.invoiceDefaults.lineUnit). Clear it to omit the unit from documents."
+      >
+        <Input
+          value={form.watch('invoiceDefaultLineUnit') ?? ''}
+          onChange={(event) => syncStructuredToJson('invoiceDefaultLineUnit', event.target.value)}
+          list="ksef-edit-line-unit-suggestions"
+          placeholder="szt."
+          autoComplete="off"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.invoiceDefaultLineUnit)}
+        />
+      </FormField>
+      {/* Outside FormField (it requires a single child); linked via list=. */}
+      <datalist id="ksef-edit-line-unit-suggestions">
+        {KSEF_LINE_UNIT_SUGGESTIONS.map((unit) => (
+          <option key={unit} value={unit} />
+        ))}
+      </datalist>
     </>
   );
 }

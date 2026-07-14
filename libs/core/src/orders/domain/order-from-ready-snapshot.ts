@@ -62,6 +62,13 @@ export function orderFromReadySnapshot(record: OrderRecord): Order {
   if (typeof snapshot.orderNumber === 'string') {
     order.orderNumber = snapshot.orderNumber;
   }
+  // placedAt is optional on Order (unlike createdAt/updatedAt) so there is no
+  // record-level fallback to substitute - a snapshot without it stays without
+  // it (invoicing then omits the sale date rather than guessing, #1525).
+  const placedAt = asOptionalDate(snapshot.placedAt);
+  if (placedAt !== undefined) {
+    order.placedAt = placedAt;
+  }
   if (typeof snapshot.customerId === 'string') {
     order.customerId = snapshot.customerId;
   }
@@ -159,16 +166,21 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+/**
+ * Nullable variant of {@link asDate}: rehydrate an ISO date string (the
+ * persisted snapshot shape) or a `Date` instance to a VALID `Date`, or
+ * `undefined` when the value is absent/unparseable/invalid - the no-fallback
+ * semantics optional fields like `placedAt` need (#1525 review round 2).
+ */
+function asOptionalDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string' && !(value instanceof Date)) {
+    return undefined;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 /** Rehydrate an ISO date string (the persisted snapshot shape) back to a `Date`. */
 function asDate(value: unknown, fallback: Date): Date {
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  }
-  if (value instanceof Date) {
-    return value;
-  }
-  return fallback;
+  return asOptionalDate(value) ?? fallback;
 }
