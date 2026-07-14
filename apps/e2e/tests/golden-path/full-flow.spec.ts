@@ -534,6 +534,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
       },
       // Genuinely fatal: nothing downstream (S5-S9) can run without the purchase.
       severity: 'fatal',
+      // A manual storefront purchase routinely exceeds the default 30-minute
+      // window (a prior run expired mid-checkout) — give the operator 2 hours.
+      timeoutMs: 120 * 60_000,
     });
   });
 
@@ -1239,6 +1242,10 @@ async function createBulkOffers(ctx: {
   // failing fast when any review row needs attention.
   await wizard.advanceToConfirmModal({
     requiresDeliveryPolicy: platform === PlatformType.allegro,
+    // A buyable Erli offer needs the batch-default delivery price list (#1530)
+    // + responsible producer (#1531) picked on the config step — without them
+    // the created product lands "niekupowalny" (no delivery method / producer).
+    requiresErliBuyabilityFields: platform === PlatformType.erli,
     // Stamp the driver variant's REAL barcode into the category's GTIN/EAN
     // parameter — Allegro's validator rejects a placeholder GTIN (#1481).
     gtin: state.primaryVariant!.ean ?? state.primaryVariant!.gtin ?? undefined,

@@ -79,6 +79,33 @@ export class BulkOfferWizard {
     return this.page.getByLabel('Shipping rate package');
   }
 
+  /** The Erli section's delivery-price-list select (#1530, "Delivery price list"). */
+  get erliDeliveryPriceListSelect(): Locator {
+    return this.page.getByLabel('Delivery price list', { exact: true });
+  }
+
+  /** The Erli section's responsible-producer select (#1531, "Producer"). */
+  get erliProducerSelect(): Locator {
+    return this.page.getByLabel('Producer', { exact: true });
+  }
+
+  /**
+   * Pick the first real (non-placeholder) option of a lazily-populated,
+   * controlled platform-config select and verify the value committed into the
+   * form. While its options load from the platform the field renders a
+   * disabled placeholder control under the same label, so the enabled-wait
+   * doubles as the options-loaded wait.
+   */
+  private async selectFirstRealOption(select: Locator, assertion: string): Promise<void> {
+    await select.waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(select).toBeEnabled({ timeout: 30_000 });
+    const value = await select.locator('option:not([value=""])').first().getAttribute('value');
+    expect(value, assertion).toBeTruthy();
+    await select.selectOption(value!);
+    // Confirm the controlled select actually committed the value into the form.
+    await expect(select).toHaveValue(value!);
+  }
+
   /**
    * Complete the required per-platform config the config step gates "Proceed" on.
    * Allegro requires a delivery (shipping-rate) policy; currency auto-defaults to
@@ -86,24 +113,36 @@ export class BulkOfferWizard {
    * asynchronously from the connection's seller policies, so a one-shot
    * count check right after picking the connection races the mount — when the
    * caller says the platform requires it, WAIT for the select to appear, enable,
-   * pick the first real option, and verify the value stuck. No-op otherwise
-   * (Erli's dispatch-time section carries its own defaults).
+   * pick the first real option, and verify the value stuck.
+   *
+   * Erli (`requiresErliBuyabilityFields`): dispatch time carries its own
+   * default, but a BUYABLE offer additionally needs the batch-default delivery
+   * price list (#1530) and responsible producer (#1531) — without them Erli
+   * lists the product "niekupowalny" ("brak metody dostawy" / missing
+   * producer). Both selects fetch their options live from the Erli connection,
+   * so pick the first real option of each (mirrors the Allegro policy pick).
    */
-  async completePlatformConfig(opts: { requiresDeliveryPolicy?: boolean } = {}): Promise<void> {
-    if (opts.requiresDeliveryPolicy) {
-      await this.deliveryPolicySelect.waitFor({ state: 'visible', timeout: 30_000 });
-    } else if ((await this.deliveryPolicySelect.count()) === 0) {
+  async completePlatformConfig(
+    opts: { requiresDeliveryPolicy?: boolean; requiresErliBuyabilityFields?: boolean } = {},
+  ): Promise<void> {
+    if (opts.requiresErliBuyabilityFields) {
+      await this.selectFirstRealOption(
+        this.erliDeliveryPriceListSelect,
+        'Erli connection exposes at least one delivery price list',
+      );
+      await this.selectFirstRealOption(
+        this.erliProducerSelect,
+        'Erli connection exposes at least one responsible producer',
+      );
       return;
     }
-    await expect(this.deliveryPolicySelect).toBeEnabled({ timeout: 30_000 });
-    const value = await this.deliveryPolicySelect
-      .locator('option:not([value=""])')
-      .first()
-      .getAttribute('value');
-    expect(value, 'Allegro connection exposes at least one delivery policy').toBeTruthy();
-    await this.deliveryPolicySelect.selectOption(value!);
-    // Confirm the controlled select actually committed the value into the form.
-    await expect(this.deliveryPolicySelect).toHaveValue(value!);
+    if (!opts.requiresDeliveryPolicy && (await this.deliveryPolicySelect.count()) === 0) {
+      return;
+    }
+    await this.selectFirstRealOption(
+      this.deliveryPolicySelect,
+      'Allegro connection exposes at least one delivery policy',
+    );
   }
 
   /** The config step's forward CTA ("Proceed →", `bulk-config-step.tsx`). */
@@ -149,7 +188,12 @@ export class BulkOfferWizard {
    * the placeholder (only correct when the category has no GTIN param).
    */
   async advanceToConfirmModal(
-    opts: { requiresDeliveryPolicy?: boolean; gtin?: string; categoryPath?: string[] } = {},
+    opts: {
+      requiresDeliveryPolicy?: boolean;
+      requiresErliBuyabilityFields?: boolean;
+      gtin?: string;
+      categoryPath?: string[];
+    } = {},
   ): Promise<void> {
     this.categoryPath = opts.categoryPath;
     await this.completePlatformConfig(opts);
