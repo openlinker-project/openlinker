@@ -4,7 +4,6 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { EntityLabel } from '../../shared/ui/entity-label';
-import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { KpiCard, type KpiCardTone } from '../../shared/ui/kpi-card';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
@@ -20,7 +19,6 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from './product-stock-status';
-import type { Product } from '../../features/products/api/products.types';
 
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
@@ -45,23 +43,6 @@ function deriveAvailableTone(totalAvailable: number, oversoldCount: number): Kpi
   if (oversoldCount > 0) return 'warning';
   if (totalAvailable <= 5) return 'warning';
   return 'success';
-}
-
-function buildFactsItems(product: Product): KeyValueItem[] {
-  return [
-    {
-      id: 'sku',
-      label: 'SKU',
-      value: product.sku ?? <span className="text-muted">—</span>,
-      mono: Boolean(product.sku),
-    },
-    { id: 'createdAt', label: 'Created', value: <TimeDisplay iso={product.createdAt} /> },
-    {
-      id: 'updatedAt',
-      label: 'Catalog updated',
-      value: <TimeDisplay iso={product.updatedAt} />,
-    },
-  ];
 }
 
 export function ProductDetailPage(): ReactElement {
@@ -164,22 +145,27 @@ export function ProductDetailPage(): ReactElement {
                   </StatusBadge>
                 </div>
               </div>
-              <div className="product-detail-hero__meta">
-                {product.sku ? (
-                  <span className="mono-text">{product.sku}</span>
-                ) : (
-                  <span className="text-muted">No SKU</span>
-                )}
-                <span aria-hidden="true" className="product-detail-hero__sep">
-                  ·
-                </span>
-                <span className="text-muted">
-                  Catalog updated <TimeDisplay iso={product.updatedAt} />
-                </span>
-              </div>
               <code className="product-detail-hero__id mono-text" title={product.id}>
                 {product.id}
               </code>
+              <div className="product-detail-hero__facts">
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">SKU</span>
+                  {product.sku ? (
+                    <span className="mono-text">{product.sku}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </span>
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Created</span>
+                  <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
+                </span>
+                <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Catalog updated</span>
+                  <TimeDisplay className="mono-text tabular" iso={product.updatedAt} />
+                </span>
+              </div>
             </div>
           </section>
 
@@ -216,10 +202,6 @@ export function ProductDetailPage(): ReactElement {
               <section className="detail-section">
                 <h3 className="detail-section__title">External IDs</h3>
                 <ExternalIdChips mappings={product.externalIds ?? []} />
-              </section>
-
-              <section className="detail-section">
-                <KeyValueList items={buildFactsItems(product)} />
               </section>
             </div>
           </div>
