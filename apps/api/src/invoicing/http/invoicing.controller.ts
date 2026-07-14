@@ -83,6 +83,7 @@ import {
   isPaymentMarker,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
+  normalizeShippingLineName,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -103,6 +104,10 @@ import {
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
@@ -176,6 +181,8 @@ export class InvoicingController {
     private readonly integrationsService: IIntegrationsService,
     @Inject(PAYMENT_STATUS_REFRESH_SERVICE_TOKEN)
     private readonly paymentStatusRefreshService: IPaymentStatusRefreshService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
   ) {}
 
   @Get('connections/:connectionId/bank-accounts')
@@ -262,6 +269,35 @@ export class InvoicingController {
         throw new BadGatewayException('Invoicing provider is unavailable');
       }
       throw error;
+    }
+  }
+
+  /**
+   * Resolve the connection's optional operator-supplied shipping-line label
+   * (#1562) to thread into `toIssueInvoiceCommand`. Country-agnostic (ADR-026):
+   * core forwards an opaque operator string, never a language it chose, and
+   * never switches on `platformType`. Narrowed to a non-empty string so a
+   * non-string / blank JSONB value defers to the mapper's neutral
+   * `SHIPPING_LINE_NAME` default. Resilient by design: any connection-lookup
+   * failure returns `undefined` (neutral label) rather than breaking issuance -
+   * the adapter resolution downstream is the authoritative connection gate.
+   */
+  private async resolveShippingLineName(connectionId: string): Promise<string | undefined> {
+    try {
+      const connection = await this.connectionPort.get(connectionId);
+      // Shared coercion with the core auto-issue reader so the two narrowings
+      // cannot drift (#1565 review).
+      return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
+    } catch (error) {
+      // Silent fallback is intentional and safe: issuance must never break on a
+      // label lookup (the downstream getCapabilityAdapter is the authoritative
+      // connection gate). Log at debug so an unexpected connection-read failure
+      // is still observable rather than swallowed entirely.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Shipping-line label lookup failed for connection ${connectionId}; using neutral default: ${message}`,
+      );
+      return undefined;
     }
   }
 
@@ -353,19 +389,20 @@ export class InvoicingController {
         ? existing.idempotencyKey
         : undefined);
 
+    // #1562: thread the connection's operator-supplied shipping-line label into
+    // the mapper (ADR-026 neutral - core forwards an opaque string). Blank/absent
+    // defers to the mapper's neutral `SHIPPING_LINE_NAME` default.
+    const shippingLineName = await this.resolveShippingLineName(dto.connectionId);
+
     let command: IssueInvoiceCommand;
     try {
-      // `shippingLineName` is intentionally NOT passed here (nor at the other
-      // issuance call sites): there is no locale source at issue time yet, so the
-      // mapper's neutral default label is used. A localized shipping-line label
-      // would be threaded through here once a locale/provider source exists
-      // (follow-up #1562).
       command = toIssueInvoiceCommand({
         order,
         connectionId: dto.connectionId,
         buyerTaxId: this.toTaxIdentifier(dto.buyerTaxId),
         documentType: dto.documentType,
         idempotencyKey,
+        shippingLineName,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -469,6 +506,8 @@ export class InvoicingController {
         // Reuse the record's OWN key so the service resumes THIS row rather than
         // starting a fresh attempt (R2/R3, exactly-once dedup).
         idempotencyKey: record.idempotencyKey ?? undefined,
+        // #1562: same operator-supplied shipping-line label as the single-issue path.
+        shippingLineName: await this.resolveShippingLineName(record.connectionId),
       });
       await this.invoiceService.issueInvoice(command);
       return { id: invoiceId, outcome: 'retried' };
@@ -591,6 +630,8 @@ export class InvoicingController {
         // snapshot alone (matches a keyless single re-issue).
         buyerTaxId: null,
         idempotencyKey,
+        // #1562: same operator-supplied shipping-line label as the single-issue path.
+        shippingLineName: await this.resolveShippingLineName(connectionId),
       });
       const issued = await this.invoiceService.issueInvoice(command);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
@@ -698,6 +739,11 @@ export class InvoicingController {
               clearanceReference: original.clearanceReference,
               documentNumber: original.providerInvoiceNumber,
               issuedAt: original.issuedAt,
+              // #1562: same operator-supplied shipping-line label as the issuance
+              // path. Best available approximation for this pre-#1297 rebuild
+              // (which already carries line-fidelity caveats); the current
+              // connection label matches what issuance would render today.
+              shippingLineName: await this.resolveShippingLineName(original.connectionId),
             })
           : undefined;
       }
@@ -1105,15 +1151,24 @@ export class InvoicingController {
     clearanceReference: string | null;
     documentNumber: string;
     issuedAt: Date;
+    shippingLineName?: string;
   }): OriginalDocumentSnapshot {
-    const { orderRecord, connectionId, documentType, clearanceReference, documentNumber, issuedAt } =
-      input;
+    const {
+      orderRecord,
+      connectionId,
+      documentType,
+      clearanceReference,
+      documentNumber,
+      issuedAt,
+      shippingLineName,
+    } = input;
     const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
     const issueCmd = toIssueInvoiceCommand({
       order,
       connectionId,
       buyerTaxId: null,
       documentType: documentType.length > 0 ? documentType : undefined,
+      shippingLineName,
     });
     return {
       buyer: issueCmd.buyer,
