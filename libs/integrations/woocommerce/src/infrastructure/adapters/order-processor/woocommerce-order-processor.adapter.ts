@@ -17,17 +17,20 @@
  *   without an extension, so it cannot be read back as a skip-check). Real
  *   idempotency is core-owned: OrderSyncService's per-(order,destination) lock
  *   (#906) + update-or-create mapping check (#909).
- * - Customer provisioning: POST /customers with email when available.
- *   auth failures (401/403) propagate as WooCommerceAuthFailureException — they
- *   are NOT swallowed into guest-order creation (#877).
+ * - Customer provisioning: delegated to WooCommerceCustomerProvisioner
+ *   (resolve-or-create under a distributed lock; #1552). Auth failures (401/403)
+ *   propagate as WooCommerceAuthFailureException — they are NOT swallowed into
+ *   guest-order creation (#877).
  * - buyerEmail: WooCommerce adapter reads buyer email from order.metadata?.buyerEmail,
  *   which OrderSyncService populates from the source order's customerEmail (#948).
  *   When absent (hash-only PII mode, or a source without an email), customer
  *   provisioning degrades to guest (customer_id = 0).
- * - destination_address_mappings: not applicable — WC has no address entities; addresses
- *   are embedded inline in the order payload.
- * - DuplicateIdentifierMappingError: not applicable here — mapping writes are in
- *   OrderSyncService.
+ * - Address reuse: delegated to WooCommerceAddressProvisioner (#1552). WC has no
+ *   standalone address resource — the provisioner writes the customer's inline
+ *   billing/shipping address at most once per (customer, addressHash, type) using
+ *   destination_address_mappings, guarded by the same distributed lock. Best-effort:
+ *   a provisioning failure is logged and never aborts order creation. The order
+ *   payload always carries the inline address regardless.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
@@ -55,17 +58,18 @@ import type {
   FulfillmentStatusSnapshot,
 } from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
-import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
-import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
-import { WooCommerceAuthFailureException } from '../../../domain/exceptions/woocommerce-auth-failure.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { toPositiveInt } from '../../utils/woocommerce-utils';
+import type { WooCommerceCustomerProvisioner } from '../../provisioners/woocommerce-customer-provisioner';
+import type { WooCommerceAddressProvisioner } from '../../provisioners/woocommerce-address-provisioner';
 import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
@@ -73,8 +77,6 @@ import type {
   WooCommerceOrderAddress,
   WooCommerceLineItemRequest,
   WooCommerceShippingLineRequest,
-  WooCommerceCustomerCreateRequest,
-  WooCommerceCustomerResponse,
 } from './woocommerce-order.types';
 import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from './woocommerce-order.types';
 import {
@@ -111,6 +113,9 @@ export class WooCommerceOrderProcessorAdapter
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connection: Connection,
+    private readonly customerProvisioner: WooCommerceCustomerProvisioner,
+    private readonly addressProvisioner: WooCommerceAddressProvisioner,
+    private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
   ) {}
 
   // ─── OrderProcessorManagerPort ────────────────────────────────────────────
@@ -131,8 +136,26 @@ export class WooCommerceOrderProcessorAdapter
       );
     }
 
-    // Step 2 — resolve or provision WC customer
-    const customerId = await this.resolveCustomerId(order, buyerEmail);
+    // Step 2 — resolve or provision WC customer (delegated to the provisioner,
+    // which serializes concurrent provisioning for the same buyer under a lock).
+    const firstName = order.billingAddress?.firstName ?? order.shippingAddress?.firstName ?? '';
+    const lastName = order.billingAddress?.lastName ?? order.shippingAddress?.lastName ?? '';
+    const customerId = await this.customerProvisioner.resolveOrCreateCustomer({
+      internalCustomerId: order.customerId,
+      buyerEmail,
+      firstName,
+      lastName,
+      connectionId: this.connection.id,
+      httpClient: this.httpClient,
+      identifierMapping: this.identifierMapping,
+    });
+
+    // Step 2b — reuse-tracked address provisioning (best-effort; #1552). Records
+    // the WC customer's inline billing/shipping address for reuse without ever
+    // aborting order creation. Skipped for guest orders (customer_id = 0).
+    if (customerId > 0 && order.customerId) {
+      await this.provisionAddresses(order, order.customerId, customerId);
+    }
 
     // Step 3 — resolve line items (throws on any unresolvable or corrupted mapping)
     const lineItems = await this.resolveLineItems(order.items);
@@ -420,128 +443,39 @@ export class WooCommerceOrderProcessorAdapter
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   /**
-   * Resolves or provisions a WC customer account for the given OL internal customer.
-   * Degrades to guest (customer_id = 0) on non-auth, non-critical failure.
-   * Auth failures (401/403) are NOT swallowed — they propagate as
-   * WooCommerceAuthFailureException so the sync runner can flag the connection
-   * for re-authentication (#877 I1).
+   * Best-effort reuse-tracked provisioning of the WC customer's inline billing
+   * and shipping addresses (#1552). Delegates to WooCommerceAddressProvisioner
+   * per address type. Failures are logged and swallowed — address reuse tracking
+   * is auxiliary and must never abort order creation.
    */
-  private async resolveCustomerId(
+  private async provisionAddresses(
     order: OrderCreate,
-    buyerEmail: string | undefined,
-  ): Promise<number> {
-    const { customerId } = order;
-    if (!customerId) return 0;
+    internalCustomerId: string,
+    wcCustomerId: number,
+  ): Promise<void> {
+    const targets: Array<{ address: Address | undefined; type: AddressType }> = [
+      { address: order.billingAddress, type: 'billing' },
+      { address: order.shippingAddress, type: 'shipping' },
+    ];
 
-    // 1. Look up existing WC customer mapping
-    const externalIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Customer,
-      customerId,
-    );
-    const mapping = externalIds.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-    if (mapping) {
-      const n = Number(mapping.externalId);
-      if (!Number.isInteger(n) || n <= 0) {
+    for (const { address, type } of targets) {
+      if (!address) continue;
+      try {
+        await this.addressProvisioner.resolveOrCreateAddress({
+          internalCustomerId,
+          wcCustomerId,
+          address,
+          addressType: type,
+          connectionId: this.connection.id,
+          httpClient: this.httpClient,
+          customerProjectionRepository: this.customerProjectionRepository,
+        });
+      } catch (err) {
         this.logger.warn(
-          `resolveCustomerId: corrupted mapping "${mapping.externalId}" for customer ${customerId} — guest order`,
+          `provisionAddresses: ${type} address reuse tracking failed for customer ${internalCustomerId} — continuing: ${String(err)}`,
         );
-        return 0;
-      }
-      return n;
-    }
-
-    // 2. No existing mapping — provision WC customer if email is available
-    if (!buyerEmail) {
-      this.logger.warn(
-        `resolveCustomerId: no WC mapping and no buyerEmail for customer ${customerId} — guest order`,
-      );
-      return 0;
-    }
-
-    const firstName = order.billingAddress?.firstName ?? order.shippingAddress?.firstName ?? '';
-    const lastName = order.billingAddress?.lastName ?? order.shippingAddress?.lastName ?? '';
-
-    let wcCustomerId: number;
-    try {
-      const created = await this.httpClient.post<WooCommerceCustomerResponse>(
-        '/wp-json/wc/v3/customers',
-        {
-          email: buyerEmail,
-          first_name: firstName,
-          last_name: lastName,
-        } satisfies WooCommerceCustomerCreateRequest,
-      );
-      if (!created.id) {
-        this.logger.warn(
-          `resolveCustomerId: WC customer POST returned no id for ${customerId} — guest order`,
-        );
-        return 0;
-      }
-      wcCustomerId = created.id;
-    } catch (err) {
-      // Auth failures must propagate — invalid credentials require re-authentication.
-      // Swallowing a 401/403 into a guest order masks a broken connection (#877 I1).
-      if (err instanceof WooCommerceUnauthorizedException) {
-        throw new WooCommerceAuthFailureException(
-          `WooCommerce auth failure provisioning customer ${customerId} on connection ${this.connection.id}: ${String(err)}`,
-          this.connection.id,
-        );
-      }
-      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 400) {
-        // WC returns 400 + code 'registration-error-email-exists' for duplicate emails —
-        // look up the existing customer account by email
-        const existing = await this.httpClient.get<WooCommerceCustomerResponse[]>(
-          '/wp-json/wc/v3/customers',
-          { email: buyerEmail },
-        );
-        const match = existing.find((c) => c.email === buyerEmail);
-        if (!match?.id) {
-          this.logger.warn(
-            `resolveCustomerId: duplicate email ${buyerEmail} but no matching WC customer — guest order`,
-          );
-          return 0;
-        }
-        wcCustomerId = match.id;
-      } else {
-        // Non-auth, non-400 failure (network, rate-limit, etc.) — degrade to guest,
-        // do not abort order creation.
-        this.logger.warn(
-          `resolveCustomerId: WC customer API error for ${customerId} — guest order: ${String(err)}`,
-        );
-        return 0;
       }
     }
-
-    // 3. Store Customer mapping with concurrent-duplicate handler
-    try {
-      await this.identifierMapping.createMapping(
-        CORE_ENTITY_TYPE.Customer,
-        String(wcCustomerId),
-        this.connection.id,
-        customerId,
-      );
-    } catch (err) {
-      if (err instanceof DuplicateIdentifierMappingError) {
-        // Concurrent retry stored it first — look up winner and return its id
-        const winners = await this.identifierMapping.getExternalIds(
-          CORE_ENTITY_TYPE.Customer,
-          customerId,
-        );
-        const winner = winners.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-        if (winner) {
-          const n = Number(winner.externalId);
-          return Number.isInteger(n) && n > 0 ? n : 0;
-        }
-        // Transient — fall back to guest (do not fail the order)
-        this.logger.warn(
-          `resolveCustomerId: concurrent duplicate but no winner for ${customerId} — guest order`,
-        );
-        return 0;
-      }
-      throw err;
-    }
-
-    return wcCustomerId;
   }
 
   /**
