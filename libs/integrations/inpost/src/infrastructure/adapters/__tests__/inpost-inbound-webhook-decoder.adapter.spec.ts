@@ -172,6 +172,36 @@ describe('InpostInboundWebhookDecoderAdapter', () => {
       expect(result.action).toBe('ignore');
     });
 
+    it('should prefer the header timestamp over the body event_ts when both are present', () => {
+      // Both a signed header timestamp and a body `event_ts` are present; the
+      // signed header must win (it is the value the host replay-window checks).
+      const result = decoder.extractEnvelope(realStatusWebhook(), {
+        'x-inpost-timestamp': TIMESTAMP,
+      });
+      expect(result.action).toBe('route');
+      if (result.action === 'route') {
+        expect(result.envelope.occurredAt).toBe(TIMESTAMP);
+        expect(result.envelope.externalId).toBe('49');
+      }
+    });
+
+    it('should decode a combined header + body payload', () => {
+      // Header carries the topic + signed timestamp; body carries the ShipX
+      // event + nested shipment_id. Both halves must be honoured together.
+      const result = decoder.extractEnvelope(realStatusWebhook(), {
+        'x-inpost-topic': 'Shipment.Tracking',
+        'x-inpost-timestamp': TIMESTAMP,
+      });
+      expect(result.action).toBe('route');
+      if (result.action === 'route') {
+        expect(result.envelope.externalId).toBe('49');
+        expect(result.envelope.objectType).toBe('shipment');
+        expect(result.envelope.eventType).toBe('tracking');
+        expect(result.envelope.occurredAt).toBe(TIMESTAMP);
+        expect(result.envelope.eventId).toBeTruthy();
+      }
+    });
+
     it('should prefer payload.shipment_id over a present tracking_number', () => {
       const rawBody = Buffer.from(
         JSON.stringify({
