@@ -14,7 +14,8 @@ import {
 } from '../woocommerce-order-processor.adapter';
 import { toPositiveInt } from '../../../utils/woocommerce-utils';
 import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from '../woocommerce-order.types';
-import { isOrderStatusWriteback } from '@openlinker/core/orders';
+import { isOrderStatusWriteback, isDestinationOptionsReader } from '@openlinker/core/orders';
+import { WC_ORDER_STATUS_LABELS } from '../woocommerce-options.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
@@ -936,5 +937,112 @@ describe('WooCommerceOrderProcessorAdapter — OrderStatusWriteback', () => {
 
     expect(result.outcome).toBe('rejected');
     expect(result.detail).toBeDefined();
+  });
+});
+
+// ─── DestinationOptionsReader (#472 / #1551) ────────────────────────────────
+
+describe('WooCommerceOrderProcessorAdapter — DestinationOptionsReader', () => {
+  it('should satisfy the isDestinationOptionsReader guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isDestinationOptionsReader(adapter)).toBe(true);
+  });
+
+  describe('listOrderStatuses', () => {
+    it('should return the full WC status vocabulary as neutral options with labels', async () => {
+      const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+
+      const options = await adapter.listOrderStatuses();
+
+      expect(options.length).toBeGreaterThan(0);
+      expect(options).toContainEqual({ value: 'processing', label: 'Processing' });
+      expect(options).toContainEqual({ value: 'on-hold', label: 'On hold' });
+      // every option carries a non-empty label sourced from the shared label map
+      for (const option of options) {
+        expect(option.label).toBe(
+          WC_ORDER_STATUS_LABELS[option.value as keyof typeof WC_ORDER_STATUS_LABELS],
+        );
+        expect(option.label.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should not hit the network (static vocabulary)', async () => {
+      const httpClient = makeHttpClient();
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      await adapter.listOrderStatuses();
+
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listPaymentMethods', () => {
+    it('should map GET /payment_gateways rows to neutral options', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([
+        { id: 'bacs', title: 'Direct bank transfer', enabled: true },
+        { id: 'cod', title: 'Cash on delivery', enabled: false },
+      ]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listPaymentMethods();
+
+      expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/payment_gateways');
+      expect(options).toEqual([
+        { value: 'bacs', label: 'Direct bank transfer' },
+        { value: 'cod', label: 'Cash on delivery' },
+      ]);
+    });
+
+    it('should fall back to the gateway id when title is missing', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 'paypal' }]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listPaymentMethods();
+
+      expect(options).toEqual([{ value: 'paypal', label: 'paypal' }]);
+    });
+  });
+
+  describe('listCarriers', () => {
+    it('should map GET /shipping_methods rows to neutral options', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([
+        { id: 'flat_rate', title: 'Flat rate' },
+        { id: 'free_shipping', title: 'Free shipping' },
+        { id: 'local_pickup', title: 'Local pickup' },
+      ]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/shipping_methods');
+      expect(options).toEqual([
+        { value: 'flat_rate', label: 'Flat rate' },
+        { value: 'free_shipping', label: 'Free shipping' },
+        { value: 'local_pickup', label: 'Local pickup' },
+      ]);
+    });
+
+    it('should fall back to the method id when title is missing', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 'flat_rate' }]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(options).toEqual([{ value: 'flat_rate', label: 'flat_rate' }]);
+    });
+
+    it('should return an empty list when the store registers no shipping methods', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(options).toEqual([]);
+    });
   });
 });
