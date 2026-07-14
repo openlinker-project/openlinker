@@ -156,6 +156,16 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         item.sourceCategoryIds &&
         item.sourceCategoryIds.length > 0
       ) {
+        // Empty opts (no `sourceConnectionId`/`borrowedTaxonomy`) is safe today:
+        // this loop only runs past the `isEanCategoryMatcher` gate above, and
+        // every current EanCategoryMatcher (Allegro) *owns* its taxonomy, so
+        // `resolveDestinationCategory` resolves entirely via its step-1
+        // `findBySourceCategory` lookup, which consults neither opt. The
+        // transport also has no `sourceConnectionId` to carry. If a future
+        // destination is ever both an EanCategoryMatcher *and* a
+        // borrows-taxonomy destination, this batch preview would need to
+        // thread `sourceConnectionId`/`borrowedTaxonomy` here too, or it would
+        // silently diverge from `OfferBuilderService.resolveCategory`.
         const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {});
         if (mapped) {
           this.logger.debug(
