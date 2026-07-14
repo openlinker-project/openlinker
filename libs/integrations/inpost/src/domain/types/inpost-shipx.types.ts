@@ -58,6 +58,17 @@ export interface ShipXCod {
   currency: string;
 }
 
+/**
+ * ShipX insurance (declared-value) descriptor on a create-shipment request.
+ * `amount` is a JSON number (not the OL decimal string) — the mapper converts.
+ * Present only when the caller declared a value to insure; a shipment without
+ * this object carries InPost's default (non-declared) liability.
+ */
+export interface ShipXInsurance {
+  amount: number;
+  currency: string;
+}
+
 export interface ShipXCreateShipmentRequest {
   sender: ShipXPeer;
   receiver: ShipXPeer;
@@ -67,6 +78,9 @@ export interface ShipXCreateShipmentRequest {
   reference?: string;
   /** Cash-on-delivery to collect. Omitted for prepaid shipments. */
   cod?: ShipXCod;
+  /** Declared value to insure the parcel for. Omitted when the caller
+   * declared none. */
+  insurance?: ShipXInsurance;
   custom_attributes?: {
     sending_method?: string;
     /** Target paczkomat/locker id (e.g. `'BTO02M'`). */

@@ -53,6 +53,7 @@ import {
 } from '../../shipments';
 import {
   COD_CURRENCY_VALUES,
+  INSURED_CURRENCY_VALUES,
   LOCKER_TEMPLATE_VALUES,
   generateLabelSchema,
   type GenerateLabelFormSubmission,
@@ -198,6 +199,9 @@ export function GenerateLabelForm({
       // manual input shown for a COD order with no sourced amount.
       codAmount: '',
       codCurrency: 'PLN',
+      // Declared-value / insurance (#1542) — operator-supplied, blank ⇒ none.
+      insuredAmount: '',
+      insuredCurrency: 'PLN',
     },
     resolver: zodResolver(generateLabelSchema),
   });
@@ -212,6 +216,8 @@ export function GenerateLabelForm({
   const paczkomatRegister = form.register('paczkomatId');
   const codAmountRegister = form.register('codAmount');
   const codCurrencyRegister = form.register('codCurrency');
+  const insuredAmountRegister = form.register('insuredAmount');
+  const insuredCurrencyRegister = form.register('insuredCurrency');
   // Locker size is driven imperatively via a segmented control (#1425). The
   // registration is bound to a hidden input at the control (so RHF holds a real
   // ref and tracks the field); the pressed state is set via `setValue` and read
@@ -273,6 +279,14 @@ export function GenerateLabelForm({
           ? { amount: values.codAmount, currency: values.codCurrency ?? 'PLN' }
           : undefined;
 
+    // Declared-value / insurance (#1542) — operator-supplied, not payment-gated
+    // (unlike COD). Blank amount ⇒ no insurance. The BE mapper re-validates the
+    // amount/currency and rejects a non-PLN insured value.
+    const insuredValue =
+      values.insuredAmount && values.insuredAmount.length > 0
+        ? { amount: values.insuredAmount, currency: values.insuredCurrency ?? 'PLN' }
+        : undefined;
+
     const input: GenerateLabelInput = {
       sourceConnectionId: order.sourceConnectionId,
       ...buildDispatchItem({
@@ -288,6 +302,7 @@ export function GenerateLabelForm({
         },
         paczkomatId: values.paczkomatId,
         cod,
+        insuredValue,
       }),
     };
     try {
@@ -584,6 +599,41 @@ export function GenerateLabelForm({
             )}
           </div>
         ) : null}
+
+        {/* Declared value / insurance (#1542) — operator-supplied, always
+            available (not payment-gated, unlike COD). Blank amount ⇒ no
+            insurance. Insurance-incapable carriers ignore it server-side; InPost
+            ShipX translates it to its `insurance` object. */}
+        <div className="form-field generate-label-form__insured-panel">
+          <div className="generate-label-form__insured-head">
+            <StatusBadge tone="info" withDot>
+              Insurance
+            </StatusBadge>
+          </div>
+          <p className="generate-label-form__insured-note">
+            Declared value to insure the parcel for. Leave blank for the carrier default.
+          </p>
+          <div className="generate-label-form__insured">
+            <Input
+              {...insuredAmountRegister}
+              inputMode="decimal"
+              placeholder="150.00"
+              aria-label="Declared value to insure"
+              invalid={Boolean(form.formState.errors.insuredAmount)}
+            />
+            <Select {...insuredCurrencyRegister} aria-label="Insurance currency">
+              {INSURED_CURRENCY_VALUES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <FieldError
+            id="insured-error"
+            message={form.formState.errors.insuredAmount?.message}
+          />
+        </div>
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">

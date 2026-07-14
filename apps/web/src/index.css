@@ -9088,6 +9088,36 @@ html[data-density='compact'] .status-badge {
   margin-top: var(--space-2);
 }
 
+/* ── Declared-value / insurance panel (#1542) ───────────────────────────────
+ * Operator-supplied insured value. Mirrors the COD manual-input panel visually
+ * (same neutral recap container + StatusBadge pill) but is always shown and not
+ * payment-gated — insurance is a free operator choice, not a payment mode. */
+.generate-label-form__insured-panel {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.generate-label-form__insured-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.generate-label-form__insured-note {
+  margin: var(--space-1) 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.generate-label-form__insured {
+  display: grid;
+  grid-template-columns: 1fr 7rem;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 .generate-label-form__slow-notice {
   font-size: 0.8125rem;
   color: var(--text-secondary);
