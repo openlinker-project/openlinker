@@ -15,6 +15,7 @@
 import type {
   GenerateLabelCommand,
   GenerateLabelResult,
+  ShipmentCod,
   ShipmentStatus,
   ShipmentAddress,
   TrackingSnapshot,
@@ -28,12 +29,20 @@ import { PICKUP_POINT_STATUS, PICKUP_POINT_TYPE } from '@openlinker/core/shippin
 import type { InpostConnectionConfig, InpostSenderContact } from '../../domain/types/inpost-config.types';
 import type {
   ShipXAddress,
+  ShipXCod,
   ShipXCreateShipmentRequest,
   ShipXPeer,
   ShipXPoint,
   ShipXShipment,
 } from '../../domain/types/inpost-shipx.types';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+
+/**
+ * ISO 4217 currencies InPost ShipX accepts for COD. InPost COD is a domestic-PL
+ * service, so `PLN` is the only supported value; a non-PLN COD is rejected at
+ * preflight rather than silently sent.
+ */
+const SHIPX_COD_CURRENCIES: readonly string[] = ['PLN'];
 
 /**
  * Full ShipX status → OpenLinker bucket table (verified against the ShipX
@@ -104,6 +113,16 @@ export function buildCreateShipmentRequest(
   const sender = toSenderPeer(config.senderAddress);
 
   if (cmd.shippingMethod === 'paczkomat') {
+    if (cmd.cod) {
+      // COD to a locker requires a distinct ShipX pass-through/COD service that
+      // the v1 simplified adapter does not model. Fail fast rather than issue a
+      // prepaid label while the operator believes COD was applied (#1541).
+      throw new ShippingProviderRejectionException(
+        'inpost',
+        'preflight.cod-unsupported-method',
+        'InPost paczkomat (locker) shipments do not support COD in this integration; use the kurier method for a cash-on-delivery parcel',
+      );
+    }
     return buildLockerRequest(cmd, sender);
   }
   if (cmd.shippingMethod === 'kurier') {
@@ -267,7 +286,7 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
       'parcel.dimensions and parcel.weightGrams are required for a courier shipment',
     );
   }
-  return {
+  const request: ShipXCreateShipmentRequest = {
     sender,
     receiver: toReceiverPeer(cmd, true),
     parcels: [
@@ -286,6 +305,35 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
     reference: cmd.shipmentId,
     custom_attributes: { sending_method: 'dispatch_order' },
   };
+  if (cmd.cod) {
+    request.cod = toShipXCod(cmd.cod);
+  }
+  return request;
+}
+
+/**
+ * Translate the carrier-neutral COD descriptor to the ShipX `cod` object. OL
+ * carries `amount` as a decimal string (to cross the boundary without float
+ * rounding); ShipX expects a JSON number, so it is parsed here after validation.
+ * A malformed amount or an unsupported currency is a preflight rejection.
+ */
+function toShipXCod(cod: ShipmentCod): ShipXCod {
+  const amount = Number(cod.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.cod-amount-invalid',
+      `COD amount must be a positive number; got '${cod.amount}'`,
+    );
+  }
+  if (!SHIPX_COD_CURRENCIES.includes(cod.currency)) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.cod-currency-unsupported',
+      `InPost COD currency must be one of ${SHIPX_COD_CURRENCIES.join(', ')}; got '${cod.currency}'`,
+    );
+  }
+  return { amount, currency: cod.currency };
 }
 
 function toSenderPeer(sender: InpostSenderContact): ShipXPeer {

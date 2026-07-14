@@ -154,6 +154,70 @@ describe('inpost-shipx.mapper', () => {
         });
       }
     });
+
+    it('should map cod onto the ShipX request (decimal string → number) for a courier shipment (#1541)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...courierCmd, cod: { amount: '39.99', currency: 'PLN' } },
+        config,
+      );
+      expect(request.cod).toEqual({ amount: 39.99, currency: 'PLN' });
+    });
+
+    it('should omit cod from the ShipX request when the command carries none (#1541)', () => {
+      expect(buildCreateShipmentRequest(courierCmd, config).cod).toBeUndefined();
+      expect(buildCreateShipmentRequest(paczkomatCmd, config).cod).toBeUndefined();
+    });
+
+    it('should throw a typed rejection (preflight.cod-unsupported-method) when COD is requested for a paczkomat shipment (#1541)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...paczkomatCmd, cod: { amount: '39.99', currency: 'PLN' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.cod-unsupported-method',
+        });
+      }
+    });
+
+    it('should throw a typed rejection (preflight.cod-amount-invalid) when the COD amount is not a positive number (#1541)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...courierCmd, cod: { amount: 'abc', currency: 'PLN' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.cod-amount-invalid',
+        });
+      }
+    });
+
+    it('should throw a typed rejection (preflight.cod-currency-unsupported) when the COD currency is not PLN (#1541)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...courierCmd, cod: { amount: '39.99', currency: 'EUR' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.cod-currency-unsupported',
+        });
+      }
+    });
   });
 
   describe('mapShipXStatus', () => {
