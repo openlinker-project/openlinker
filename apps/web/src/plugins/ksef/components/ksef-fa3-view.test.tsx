@@ -14,7 +14,7 @@
  * @module plugins/ksef/components
  */
 import { screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
 import { KsefFa3View } from './ksef-fa3-view';
 
@@ -568,6 +568,22 @@ describe('KsefFa3View', () => {
       const { container } = renderWithProviders(<KsefFa3View xmlText={xml} />);
 
       expect(container.querySelector('.ksef-fa3-view')).toBeNull();
+    });
+
+    it('should call onParseError when the XML cannot be parsed', () => {
+      const onParseError = vi.fn();
+      renderWithProviders(
+        <KsefFa3View xmlText="not xml at all ><>" onParseError={onParseError} />,
+      );
+
+      expect(onParseError).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call onParseError when the XML parses successfully', () => {
+      const onParseError = vi.fn();
+      renderWithProviders(<KsefFa3View xmlText={buildXml({})} onParseError={onParseError} />);
+
+      expect(onParseError).not.toHaveBeenCalled();
     });
   });
 });

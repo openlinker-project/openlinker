@@ -23,8 +23,9 @@
  *
  * Skipped by design: Adnotacje (P_16-P_23), WZ, amount-in-words, footer.
  *
- * Returns `null` if the XML cannot be parsed or required fields are missing -
- * the parent (`ksef-invoice-detail-section`) falls through to the placeholder.
+ * Returns `null` if the XML cannot be parsed or required fields are missing,
+ * and calls `onParseError` (if given) so the parent (`ksef-invoice-detail-section`)
+ * can fall through to its placeholder/error copy instead of an empty preview area.
  *
  * FA(3) uses XML namespaces and real documents may prefix elements (`tns:`);
  * element lookup matches by `localName` regardless of the prefix or
@@ -32,7 +33,7 @@
  *
  * @module plugins/ksef/components
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
@@ -47,6 +48,14 @@ interface KsefFa3ViewProps {
    * authority AFTER the document is built - so the parent passes it in.
    */
   ksefNumber?: string | null;
+  /**
+   * Notifies the parent when `xmlText` cannot be parsed (or is missing
+   * required fields), so it can fall through to its placeholder/error copy
+   * instead of leaving an empty preview area. Fired from an effect, not
+   * during render, since the parent can't synchronously know the parse
+   * outcome without duplicating the parsing logic here.
+   */
+  onParseError?: () => void;
 }
 
 /**
@@ -301,22 +310,26 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
       <table className="ksef-fa3-view__table">
         <thead>
           <tr>
-            <th>{t('invoice.ksef.fa3LineNo', '#')}</th>
-            <th className="ksef-fa3-view__col-desc">
+            <th scope="col">{t('invoice.ksef.fa3LineNo', '#')}</th>
+            <th scope="col" className="ksef-fa3-view__col-desc">
               {t('invoice.ksef.fa3LineDesc', 'Description')}
             </th>
             {showNetUnitPrice ? (
-              <th className="ksef-fa3-view__col-num">
+              <th scope="col" className="ksef-fa3-view__col-num">
                 {t('invoice.ksef.fa3LineNetPrice', 'Net unit price')}
               </th>
             ) : null}
-            <th className="ksef-fa3-view__col-num">{t('invoice.ksef.fa3LineQty', 'Qty')}</th>
-            {showUnit ? <th>{t('invoice.ksef.fa3LineUnit', 'Unit')}</th> : null}
-            <th className="ksef-fa3-view__col-num">{t('invoice.ksef.fa3LineVat', 'VAT rate')}</th>
-            <th className="ksef-fa3-view__col-num">
+            <th scope="col" className="ksef-fa3-view__col-num">
+              {t('invoice.ksef.fa3LineQty', 'Qty')}
+            </th>
+            {showUnit ? <th scope="col">{t('invoice.ksef.fa3LineUnit', 'Unit')}</th> : null}
+            <th scope="col" className="ksef-fa3-view__col-num">
+              {t('invoice.ksef.fa3LineVat', 'VAT rate')}
+            </th>
+            <th scope="col" className="ksef-fa3-view__col-num">
               {t('invoice.ksef.fa3LineNetTotal', 'Net total')}
             </th>
-            <th className="ksef-fa3-view__col-num">
+            <th scope="col" className="ksef-fa3-view__col-num">
               {t('invoice.ksef.fa3LineGrossTotal', 'Gross total')}
             </th>
           </tr>
@@ -375,11 +388,18 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
   );
 }
 
-export function KsefFa3View({ xmlText, ksefNumber }: KsefFa3ViewProps): ReactElement | null {
+export function KsefFa3View({
+  xmlText,
+  ksefNumber,
+  onParseError,
+}: KsefFa3ViewProps): ReactElement | null {
   const { t } = useTranslation();
   // The parse is a full DOMParser pass + ~35 subtree scans; the parent
   // re-renders on unrelated state (toasts, query refetches), so memoize.
   const data = useMemo(() => parseFa3Xml(xmlText), [xmlText]);
+  useEffect(() => {
+    if (!data) onParseError?.();
+  }, [data, onParseError]);
   if (!data) return null;
 
   const isCorrection = data.invoiceType === 'KOR';
@@ -518,10 +538,14 @@ export function KsefFa3View({ xmlText, ksefNumber }: KsefFa3ViewProps): ReactEle
             <table className="ksef-fa3-view__table">
               <thead>
                 <tr>
-                  <th>{t('invoice.ksef.fa3VatRate', 'Rate')}</th>
-                  <th className="ksef-fa3-view__col-num">{t('invoice.ksef.fa3VatNet', 'Net')}</th>
-                  <th className="ksef-fa3-view__col-num">{t('invoice.ksef.fa3VatTax', 'Tax')}</th>
-                  <th className="ksef-fa3-view__col-num">
+                  <th scope="col">{t('invoice.ksef.fa3VatRate', 'Rate')}</th>
+                  <th scope="col" className="ksef-fa3-view__col-num">
+                    {t('invoice.ksef.fa3VatNet', 'Net')}
+                  </th>
+                  <th scope="col" className="ksef-fa3-view__col-num">
+                    {t('invoice.ksef.fa3VatTax', 'Tax')}
+                  </th>
+                  <th scope="col" className="ksef-fa3-view__col-num">
                     {t('invoice.ksef.fa3VatGross', 'Gross')}
                   </th>
                 </tr>

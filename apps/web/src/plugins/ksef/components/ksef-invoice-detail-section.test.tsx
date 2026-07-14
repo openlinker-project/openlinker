@@ -223,6 +223,29 @@ describe('KsefInvoiceDetailSection', () => {
       expect(screen.queryByTitle('FA(3) document preview')).not.toBeInTheDocument();
     });
 
+    it('falls through to error copy when the fetched XML cannot be parsed', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:fa3-source');
+      URL.revokeObjectURL = vi.fn();
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob(['not xml at all ><>'], { type: 'application/xml' }));
+      const apiClient = createMockApiClient({ invoicing: { downloadDocument } });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'View' }));
+      await waitFor(() =>
+        expect(screen.getByText("Preview failed. Click 'View' to retry.")).toBeInTheDocument(),
+      );
+      expect(screen.queryByText("Click 'View' to load the invoice.")).not.toBeInTheDocument();
+    });
+
     it('calls downloadDocument with kind=source when Download XML is clicked', async () => {
       URL.createObjectURL = vi.fn(() => 'blob:xml');
       URL.revokeObjectURL = vi.fn();
