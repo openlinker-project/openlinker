@@ -49,6 +49,7 @@ import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { toPositiveInt } from '../../utils/woocommerce-utils';
+import { isSyntheticVariantExternalId } from '../../mappers/woocommerce-variant-id';
 import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
@@ -396,7 +397,7 @@ export class WooCommerceOrderProcessorAdapter
             this.connection.id,
           );
         }
-        if (variantMapping.externalId.startsWith('product:')) {
+        if (isSyntheticVariantExternalId(variantMapping.externalId)) {
           // Synthetic variant of a simple product (`product:{wcId}` — same
           // convention as PrestaShop; the inventory adapter strips this
           // prefix too). Simple products have no WC variation — the line
