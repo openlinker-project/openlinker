@@ -47,6 +47,8 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { InvoicingController } from './invoicing.controller';
@@ -275,6 +277,7 @@ describe('InvoicingController', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let integrations: jest.Mocked<IIntegrationsService>;
   let paymentStatusRefreshService: jest.Mocked<IPaymentStatusRefreshService>;
+  let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
 
   beforeEach(async () => {
     invoiceService = {
@@ -297,6 +300,12 @@ describe('InvoicingController', () => {
       refreshByExternalId: jest.fn().mockResolvedValue({ outcome: 'updated', paymentStatus: 'paid' }),
     } as unknown as jest.Mocked<IPaymentStatusRefreshService>;
 
+    // Default: a connection with no invoicing shipping-line label configured, so
+    // issuance defaults to the mapper's neutral label (#1562).
+    connectionPort = {
+      get: jest.fn().mockResolvedValue({ id: 'conn_1', config: {} } as unknown as Connection),
+    };
+
     const moduleRef = await Test.createTestingModule({
       controllers: [InvoicingController],
       providers: [
@@ -304,6 +313,7 @@ describe('InvoicingController', () => {
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
         { provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN, useValue: paymentStatusRefreshService },
+        { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
       ],
     }).compile();
 
@@ -376,6 +386,61 @@ describe('InvoicingController', () => {
       );
       const cmd = invoiceService.issueInvoice.mock.calls[0][0];
       expect(cmd.idempotencyKey).toBeUndefined();
+    });
+
+    // #1562: the connection's operator-supplied shipping-line label names the
+    // gross shipping line the mapper appends when the order has shipping > 0.
+    const orderWithShipping = (): OrderRecord =>
+      makeOrderRecord({
+        id: 'ol_order_1',
+        status: 'processing',
+        items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' }],
+        totals: { subtotal: 100, tax: 0, shipping: 10, total: 110, currency: 'PLN', taxTreatment: 'inclusive' },
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Poznań',
+          postalCode: '61-001',
+          country: 'PL',
+        },
+        createdAt: '2026-06-20T08:00:00.000Z',
+        updatedAt: '2026-06-21T09:30:00.000Z',
+      });
+
+    const lastLineName = (): string => {
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      return cmd.lines[cmd.lines.length - 1].name;
+    };
+
+    it('threads config.invoicing.shippingLineName into the shipping line', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      connectionPort.get.mockResolvedValue({
+        id: 'conn_1',
+        config: { invoicing: { shippingLineName: 'Koszt wysyłki' } },
+      } as unknown as Connection);
+      await controller.issueInvoice(dto);
+      expect(connectionPort.get).toHaveBeenCalledWith('conn_1');
+      expect(lastLineName()).toBe('Koszt wysyłki');
+    });
+
+    it('falls back to the neutral default shipping label when none is configured', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      await controller.issueInvoice(dto);
+      expect(lastLineName()).toBe('Shipping');
+    });
+
+    it('falls back to the neutral default when the connection lookup fails', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      connectionPort.get.mockRejectedValue(new Error('connection gone'));
+      await controller.issueInvoice(dto);
+      expect(lastLineName()).toBe('Shipping');
     });
 
     it('keyless re-issue over a KEYED failed row reuses that row\'s own idempotencyKey', async () => {

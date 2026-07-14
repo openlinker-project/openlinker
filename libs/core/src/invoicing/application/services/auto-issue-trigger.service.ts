@@ -31,6 +31,7 @@ import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
@@ -133,6 +134,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           triggerModel,
           sourceConnectionId,
           sourceEventId,
+          this.readShippingLineName(connection),
         );
 
         await this.syncJobs.schedule({
@@ -229,17 +231,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     triggerModel: InvoiceTriggerModel,
     sourceConnectionId: string,
     sourceEventId?: string,
+    shippingLineName?: string,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
-    // `shippingLineName` is intentionally NOT passed: there is no locale source
-    // here (a Connection carries no locale; config.invoicing holds only
-    // triggerModel), so the mapper's neutral default is used. A localized label
-    // would be threaded here once a locale/provider source exists (#1562).
+    // #1562: thread the operator's per-connection shipping-line label into the
+    // mapper's gross shipping line. Country-agnostic (ADR-026) - core forwards
+    // an opaque operator string, never a language it chose. The worker replays
+    // `payload.lines` verbatim, so the label MUST be baked here, where the
+    // Connection is in hand; a blank/absent value defers to the mapper's neutral
+    // `SHIPPING_LINE_NAME` default.
     const command = toIssueInvoiceCommand({
       order,
       connectionId: invoicingConnectionId,
       idempotencyKey,
+      shippingLineName,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
@@ -273,5 +279,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     }
 
     return payload;
+  }
+
+  /**
+   * Read the connection's optional operator-supplied shipping-line label
+   * (#1562). Narrowed to a non-empty string: `config.invoicing` is a passthrough
+   * JSONB shape, so a non-string / blank value defers to the mapper's neutral
+   * default rather than being forwarded. No language / `platformType` logic here
+   * (ADR-026) - the value is whatever the operator stored.
+   */
+  private readShippingLineName(connection: Connection): string | undefined {
+    const value = connection.config.invoicing?.shippingLineName;
+    return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
   }
 }

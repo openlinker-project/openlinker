@@ -51,9 +51,18 @@ export interface ConnectionConfig {
    * `AutoIssueTriggerService` and coerced via `parseTriggerModel` (a missing or
    * unrecognized value defaults to `manual`). Typed as `string` here to keep the
    * identifier-mapping context decoupled from the invoicing enum.
+   *
+   * `shippingLineName` (#1562) is the optional, operator-supplied label the
+   * issuance path threads into the neutral order→command mapper's shipping line
+   * (`toIssueInvoiceCommand`). Country-agnostic by construction (ADR-026): core
+   * stores an opaque string, so an operator localizes the buyer-visible label
+   * (e.g. "Koszt wysyłki") without core hardcoding a language or switching on
+   * `platformType`. A missing/blank value falls back to the mapper's neutral
+   * `SHIPPING_LINE_NAME` default.
    */
   invoicing?: {
     triggerModel?: string;
+    shippingLineName?: string;
   };
   [key: string]: unknown;
 }
