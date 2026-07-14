@@ -16,6 +16,7 @@ import type {
   GenerateLabelCommand,
   GenerateLabelResult,
   ShipmentCod,
+  ShipmentInsuredValue,
   ShipmentStatus,
   ShipmentAddress,
   TrackingSnapshot,
@@ -30,6 +31,7 @@ import type { InpostConnectionConfig, InpostSenderContact } from '../../domain/t
 import type {
   ShipXAddress,
   ShipXCod,
+  ShipXInsurance,
   ShipXCreateShipmentRequest,
   ShipXPeer,
   ShipXPoint,
@@ -43,6 +45,14 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
  * preflight rather than silently sent.
  */
 const SHIPX_COD_CURRENCIES: readonly string[] = ['PLN'];
+
+/**
+ * ISO 4217 currencies InPost ShipX accepts for declared-value insurance. Like
+ * COD, InPost insurance is a domestic-PL service, so `PLN` is the only supported
+ * value; a non-PLN insured value is rejected at preflight rather than silently
+ * sent.
+ */
+const SHIPX_INSURANCE_CURRENCIES: readonly string[] = ['PLN'];
 
 /**
  * Full ShipX status → OpenLinker bucket table (verified against the ShipX
@@ -280,7 +290,7 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
       'parcel.template (locker size) is required for a paczkomat shipment',
     );
   }
-  return {
+  const request: ShipXCreateShipmentRequest = {
     sender,
     receiver: toReceiverPeer(cmd, false),
     parcels: { template: cmd.parcel.template },
@@ -292,6 +302,12 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
     // courier pickup-order flow (#1427).
     custom_attributes: { sending_method: 'parcel_locker', target_point: cmd.paczkomatId },
   };
+  // Insurance is supported on locker shipments (unlike COD, which this v1
+  // adapter refuses for lockers — see buildCreateShipmentRequest).
+  if (cmd.insuredValue) {
+    request.insurance = toShipXInsurance(cmd.insuredValue);
+  }
+  return request;
 }
 
 function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipXCreateShipmentRequest {
@@ -332,6 +348,9 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
   if (cmd.cod) {
     request.cod = toShipXCod(cmd.cod);
   }
+  if (cmd.insuredValue) {
+    request.insurance = toShipXInsurance(cmd.insuredValue);
+  }
   return request;
 }
 
@@ -361,6 +380,34 @@ function toShipXCod(cod: ShipmentCod): ShipXCod {
     );
   }
   return { amount, currency: cod.currency };
+}
+
+/**
+ * Translate the carrier-neutral insured-value descriptor to the ShipX
+ * `insurance` object. Mirrors `toShipXCod`: OL carries `amount` as a decimal
+ * string (to cross the boundary without float rounding); ShipX expects a JSON
+ * number, so it is parsed here after validation. A malformed amount or an
+ * unsupported currency is a preflight rejection.
+ */
+function toShipXInsurance(insured: ShipmentInsuredValue): ShipXInsurance {
+  // Deliberate decimal-string -> JSON-number boundary (see toShipXCod). Safe for
+  // 2-decimal PLN values, which round-trip cleanly through IEEE-754.
+  const amount = Number(insured.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.insurance-amount-invalid',
+      `Insured amount must be a positive number; got '${insured.amount}'`,
+    );
+  }
+  if (!SHIPX_INSURANCE_CURRENCIES.includes(insured.currency)) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.insurance-currency-unsupported',
+      `InPost insurance currency must be one of ${SHIPX_INSURANCE_CURRENCIES.join(', ')}; got '${insured.currency}'`,
+    );
+  }
+  return { amount, currency: insured.currency };
 }
 
 function toSenderPeer(sender: InpostSenderContact): ShipXPeer {

@@ -23,6 +23,7 @@ import type { ShippingMethod } from './shipping-method.types';
 import type { ShipmentRecipient } from './shipment-recipient.types';
 import type { ShipmentParcel } from './shipment-parcel.types';
 import type { ShipmentCod } from './shipment-cod.types';
+import type { ShipmentInsuredValue } from './shipment-insured-value.types';
 
 export interface GenerateLabelCommand {
   /** Internal Shipment id (`ol_shipment_*`). */
@@ -59,6 +60,11 @@ export interface GenerateLabelCommand {
    * that don't support COD ignore it; COD-capable adapters (DPD Polska #962)
    * translate it to their provider's wire format. */
   cod?: ShipmentCod;
+  /** Declared value to insure the parcel for. Carrier-neutral and
+   * **caller-supplied** (operator input), not order-sourced — adapters that
+   * don't support insurance ignore it; insurance-capable adapters (InPost ShipX
+   * #1542) translate it to their provider's wire format. */
+  insuredValue?: ShipmentInsuredValue;
 }
 
 export interface GenerateLabelResult {

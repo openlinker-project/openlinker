@@ -110,8 +110,9 @@ export function buildDispatchItem(args: {
   parcel: DispatchParcel;
   paczkomatId?: string;
   cod?: { amount: string; currency: string };
+  insuredValue?: { amount: string; currency: string };
 }): BulkDispatchItem {
-  const { order, snapshot, shippingMethod, parcel, paczkomatId, cod } = args;
+  const { order, snapshot, shippingMethod, parcel, paczkomatId, cod, insuredValue } = args;
   const a = snapshot.shippingAddress;
 
   const address =
@@ -149,6 +150,10 @@ export function buildDispatchItem(args: {
     cod:
       cod && cod.amount.length > 0
         ? { amount: cod.amount.replace(',', '.'), currency: cod.currency }
+        : undefined,
+    insuredValue:
+      insuredValue && insuredValue.amount.length > 0
+        ? { amount: insuredValue.amount.replace(',', '.'), currency: insuredValue.currency }
         : undefined,
   };
 }

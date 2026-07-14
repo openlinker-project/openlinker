@@ -21,6 +21,16 @@ export const COD_CURRENCY_VALUES = ['PLN', 'EUR', 'RON', 'CZK'] as const;
 export type CodCurrency = (typeof COD_CURRENCY_VALUES)[number];
 
 /**
+ * Currencies accepted for declared-value insurance (#1542). InPost ShipX
+ * insurance is a domestic-PL service (`PLN`-only) — the BE mapper rejects any
+ * other value. Kept as its own list (not reusing `COD_CURRENCY_VALUES`) so the
+ * insurance picker only offers what the carrier accepts; widen here if a second
+ * insurance-capable carrier with a broader set ships.
+ */
+export const INSURED_CURRENCY_VALUES = ['PLN'] as const;
+export type InsuredCurrency = (typeof INSURED_CURRENCY_VALUES)[number];
+
+/**
  * InPost locker size templates. A paczkomat shipment is described by a locker
  * size (`parcel.template`), not per-item dimensions — the order carries no
  * reliable dimensions. The BE adapter rejects a paczkomat shipment without it.
@@ -48,6 +58,17 @@ export const generateLabelSchema = z.object({
     ])
     .optional(),
   codCurrency: z.enum(COD_CURRENCY_VALUES).optional(),
+  // Optional declared-value / insurance (operator-supplied, #1542). Empty amount
+  // ⇒ no insurance. Insurance-incapable carriers ignore it server-side; InPost
+  // ShipX translates it to its `insurance` object. Amount accepts a decimal
+  // string (comma or dot) — normalised at submit, mirroring COD.
+  insuredAmount: z
+    .union([
+      z.string().trim().regex(/^\d+([.,]\d{1,2})?$/, 'Enter a valid amount, e.g. 150.00'),
+      z.literal(''),
+    ])
+    .optional(),
+  insuredCurrency: z.enum(INSURED_CURRENCY_VALUES).optional(),
 });
 
 // Two derived types: `Values` is what RHF binds to (Zod's input type — for

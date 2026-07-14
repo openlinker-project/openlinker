@@ -224,6 +224,64 @@ describe('inpost-shipx.mapper', () => {
         });
       }
     });
+
+    it('should map insuredValue onto the ShipX request (decimal string → number) for a courier shipment (#1542)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...courierCmd, insuredValue: { amount: '150.00', currency: 'PLN' } },
+        config,
+      );
+      expect(request.insurance).toEqual({ amount: 150, currency: 'PLN' });
+    });
+
+    it('should map insuredValue onto the ShipX request for a paczkomat shipment (insurance IS supported on lockers, unlike COD) (#1542)', () => {
+      const request = buildCreateShipmentRequest(
+        { ...paczkomatCmd, insuredValue: { amount: '150.00', currency: 'PLN' } },
+        config,
+      );
+      expect(request.insurance).toEqual({ amount: 150, currency: 'PLN' });
+    });
+
+    it('should omit insurance from the ShipX request when the command carries none (#1542)', () => {
+      expect(buildCreateShipmentRequest(courierCmd, config).insurance).toBeUndefined();
+      expect(buildCreateShipmentRequest(paczkomatCmd, config).insurance).toBeUndefined();
+    });
+
+    it.each(['abc', '0', '-5'])(
+      'should throw a typed rejection (preflight.insurance-amount-invalid) when the insured amount is not a positive number: %s (#1542)',
+      (amount) => {
+        const call = (): unknown =>
+          buildCreateShipmentRequest(
+            { ...courierCmd, insuredValue: { amount, currency: 'PLN' } },
+            config,
+          );
+        expect(call).toThrow(ShippingProviderRejectionException);
+        try {
+          call();
+        } catch (error) {
+          expect(error).toMatchObject({
+            providerName: 'inpost',
+            providerCode: 'preflight.insurance-amount-invalid',
+          });
+        }
+      },
+    );
+
+    it('should throw a typed rejection (preflight.insurance-currency-unsupported) when the insurance currency is not PLN (#1542)', () => {
+      const call = (): unknown =>
+        buildCreateShipmentRequest(
+          { ...courierCmd, insuredValue: { amount: '150.00', currency: 'EUR' } },
+          config,
+        );
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.insurance-currency-unsupported',
+        });
+      }
+    });
   });
 
   describe('mapShipXStatus', () => {

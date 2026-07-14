@@ -217,6 +217,9 @@ export class ShipmentController {
       parcel: dto.parcel,
       // COD pass-through (#966) — caller-supplied; COD-incapable adapters ignore it.
       cod: dto.cod,
+      // Insurance pass-through (#1542) — caller-supplied; insurance-incapable
+      // adapters ignore it, insurance-capable ones (InPost ShipX) translate it.
+      insuredValue: dto.insuredValue,
     };
     try {
       const result = await this.dispatch.dispatch(input);
