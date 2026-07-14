@@ -106,6 +106,8 @@ import {
   type CreateOfferCommand,
   type CreateOfferResult,
   type CreateOfferValidationError,
+  type DeliveryPriceList,
+  type DeliveryPriceListReader,
   type OfferCategory,
   type OfferCondition,
   type OfferCreator,
@@ -133,6 +135,7 @@ import type { ErliDispatchTime } from '../../domain/types/erli-connection.types'
 import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
+  ErliDeliveryPriceListItem,
   ErliExternalAttribute,
   ErliExternalCategory,
   ErliProductCreateBody,
@@ -203,6 +206,14 @@ export const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
  */
 export const ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC = 10 * 60;
 
+/**
+ * Delivery-price-list cache TTL (#1530). The wizard reads this on each offer-create
+ * load; a short TTL keeps repeated loads off the Erli API without letting a
+ * newly-added price list stay hidden for long. Mirrors the ~10-min freshness the
+ * seller-policies read uses.
+ */
+export const ERLI_DELIVERY_PRICE_LISTS_CACHE_TTL_SEC = 10 * 60;
+
 export class ErliOfferManagerAdapter
   implements
     OfferManagerPort,
@@ -211,7 +222,8 @@ export class ErliOfferManagerAdapter
     OfferStatusReader,
     OfferStockRestorer,
     TaxonomyBorrower,
-    ResponsibleProducerReader
+    ResponsibleProducerReader,
+    DeliveryPriceListReader
 {
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
@@ -413,6 +425,49 @@ export class ErliOfferManagerAdapter
       } catch (error) {
         this.logger.debug(
           `Responsible-producer cache write failed (ignored) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return items;
+  }
+
+  /**
+   * DeliveryPriceListReader (#1530). Lists the seller's delivery price lists
+   * ("cennik dostawy") from `GET /delivery/priceLists` so the offer-creation
+   * wizard can render a picker; the operator's choice rides back on
+   * `overrides.platformParams.deliveryPriceList` and is stamped onto the create
+   * body so the offer is buyable. Results are cached per connection for a short
+   * TTL to keep repeated wizard loads off the Erli API; a missing/failing cache
+   * simply falls through to a live read (fail-open).
+   */
+  async listDeliveryPriceLists(): Promise<DeliveryPriceList[]> {
+    const cacheKey = `erli:delivery-price-lists:${this.connectionId}`;
+    if (this.cache) {
+      try {
+        const cached = await this.cache.get<DeliveryPriceList[]>(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Delivery-price-list cache read failed (live fetch) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const res = await this.httpClient.get<ErliDeliveryPriceListItem[]>('delivery/priceLists');
+    const items = (res.data ?? [])
+      .filter((item) => typeof item?.name === 'string' && item.name.length > 0)
+      .map((item) => ({ id: String(item.id), name: item.name }));
+    if (this.cache) {
+      try {
+        await this.cache.set(cacheKey, items, ERLI_DELIVERY_PRICE_LISTS_CACHE_TTL_SEC);
+      } catch (error) {
+        this.logger.debug(
+          `Delivery-price-list cache write failed (ignored) [connectionId=${this.connectionId}]: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -636,6 +691,13 @@ export class ErliOfferManagerAdapter
       images,
       dispatchTime: this.resolveDispatchTime(cmd.overrides?.platformParams),
     };
+    // #1530 — operator-selected delivery price list ("cennik dostawy"). Erli
+    // keys it by unique name; absent ⇒ omit (offer stays not-buyable until the
+    // operator picks one, mirroring the dispatchTime opt-in posture).
+    const deliveryPriceList = readDeliveryPriceListParam(cmd.overrides?.platformParams);
+    if (deliveryPriceList !== undefined) {
+      body.deliveryPriceList = deliveryPriceList;
+    }
     if (cmd.overrides?.description != null) {
       body.description = flattenDescription(cmd.overrides.description);
     }
@@ -897,6 +959,25 @@ function readProducerParam(
   }
   const parsed = Number(trimmed);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Read a per-offer `deliveryPriceList` selection off the un-modeled
+ * `overrides.platformParams` (#1530). Returns the trimmed price-list name when a
+ * non-empty string is present, else `undefined` (no selection ⇒ the create body
+ * omits the field). A non-string value is ignored rather than thrown — the
+ * picker only ever emits a string, and an offer with no delivery price list is a
+ * valid (if not-yet-buyable) create.
+ */
+function readDeliveryPriceListParam(
+  platformParams: Record<string, unknown> | undefined,
+): string | undefined {
+  const raw = platformParams?.deliveryPriceList;
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /**

@@ -25,6 +25,7 @@ import type {
   ResolveCategoryResponse,
   SellerPoliciesResponse,
   ResponsibleProducersResponse,
+  DeliveryPriceListsResponse,
   ShopPublishRequest,
   ShopPublishResponse,
   ShopPublishStatusResponse,
@@ -98,6 +99,7 @@ export interface ListingsApi {
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
   getResponsibleProducers: (connectionId: string) => Promise<ResponsibleProducersResponse>;
+  getDeliveryPriceLists: (connectionId: string) => Promise<DeliveryPriceListsResponse>;
   getCategoryParameters: (
     connectionId: string,
     categoryId: string,
@@ -233,6 +235,11 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getResponsibleProducers(connectionId): Promise<ResponsibleProducersResponse> {
       return request<ResponsibleProducersResponse>(
         `/listings/connections/${connectionId}/responsible-producers`,
+      );
+    },
+    getDeliveryPriceLists(connectionId): Promise<DeliveryPriceListsResponse> {
+      return request<DeliveryPriceListsResponse>(
+        `/listings/connections/${connectionId}/delivery-price-lists`,
       );
     },
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {
