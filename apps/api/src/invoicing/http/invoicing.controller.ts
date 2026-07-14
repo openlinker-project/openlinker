@@ -355,6 +355,11 @@ export class InvoicingController {
 
     let command: IssueInvoiceCommand;
     try {
+      // `shippingLineName` is intentionally NOT passed here (nor at the other
+      // issuance call sites): there is no locale source at issue time yet, so the
+      // mapper's neutral default label is used. A localized shipping-line label
+      // would be threaded through here once a locale/provider source exists
+      // (follow-up #1562).
       command = toIssueInvoiceCommand({
         order,
         connectionId: dto.connectionId,

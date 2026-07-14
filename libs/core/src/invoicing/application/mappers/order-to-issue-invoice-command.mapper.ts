@@ -45,6 +45,13 @@ export interface OrderToIssueInvoiceCommandInput {
    * no locale, so a caller that does (or that translates for a target market)
    * can supply a localized name here; when absent the neutral English
    * {@link SHIPPING_LINE_NAME} default is used.
+   *
+   * NOTE: no issuance caller wires this yet (`AutoIssueTriggerService`, the
+   * invoicing controller), so today the neutral default is the only live path
+   * and a PL/KSeF document still renders "Shipping". This is an intentional seam,
+   * not dead code: a localized label needs a locale source that does not exist in
+   * core yet (no per-connection locale setting; the provider is the natural owner
+   * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
    */
   shippingLineName?: string;
 }
