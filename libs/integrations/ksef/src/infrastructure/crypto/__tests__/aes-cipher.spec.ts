@@ -38,12 +38,14 @@ describe('aes-cipher', () => {
     const plaintext = 'secret';
     const ciphertext = encryptAesCbc(plaintext, key, iv);
     const wrongKey = new Uint8Array(randomBytes(KSEF_AES_KEY_BYTES));
+    let result: string | undefined;
     try {
-      const result = decryptAesCbc(ciphertext, wrongKey, iv);
-      expect(result).not.toBe(plaintext);
+      result = decryptAesCbc(ciphertext, wrongKey, iv);
     } catch (err) {
       expect(err).toBeInstanceOf(KsefSessionCryptoException);
+      return;
     }
+    expect(result).not.toBe(plaintext);
   });
 
   it('should throw KsefSessionCryptoException when the ciphertext length is not a multiple of the block size', () => {
