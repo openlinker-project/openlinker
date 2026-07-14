@@ -250,4 +250,98 @@ describe('toIssueInvoiceCommand', () => {
       UnsupportedPriceTreatmentError,
     );
   });
+
+  it('shipping: totals.shipping > 0 -> appends one gross shipping line after the item lines (#1517)', () => {
+    const order = makeOrder({
+      items: [makeItem({ price: 499.99, quantity: 1 })],
+      totals: {
+        subtotal: 499.99,
+        tax: 0,
+        shipping: 10.49,
+        total: 510.48,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(2);
+    // Product lines come first; the shipping line is appended last.
+    expect(cmd.lines[0].unitPriceGross).toBe(499.99);
+    expect(cmd.lines[1]).toEqual({
+      name: 'Shipping',
+      quantity: 1,
+      unitPriceGross: 10.49,
+      taxRate: '',
+    });
+    // Invoice gross (summed by InvoiceService.buildContent over cmd.lines) now
+    // equals the order total.
+    const gross = cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0);
+    expect(gross).toBeCloseTo(order.totals.total, 2);
+  });
+
+  it('shipping: taxRate left empty on the shipping line (provider adapter resolves the regime rate)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    const shippingLine = cmd.lines.find((l) => l.name === 'Shipping');
+    expect(shippingLine).toBeDefined();
+    expect(shippingLine?.taxRate).toBe('');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -5],
+    ['NaN', Number.NaN],
+    ['+Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+  ])('shipping: totals.shipping %s -> no phantom shipping line (#1517)', (_label, shipping) => {
+    const order = makeOrder({
+      items: [makeItem({ price: 100, quantity: 1 })],
+      totals: { subtotal: 100, tax: 0, shipping, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(1);
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
+
+  it('shipping: caller-supplied shippingLineName overrides the neutral default label (#1517)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'conn-1',
+      shippingLineName: 'Koszt wysyłki',
+    });
+
+    const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+    expect(shippingLine?.name).toBe('Koszt wysyłki');
+    // Neutral English default is not used when an override is supplied.
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])(
+    'shipping: %s shippingLineName override falls back to the neutral default label (#1517)',
+    (_label, shippingLineName) => {
+      const order = makeOrder({
+        totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      });
+
+      const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1', shippingLineName });
+
+      const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+      expect(shippingLine?.name).toBe('Shipping');
+    },
+  );
 });

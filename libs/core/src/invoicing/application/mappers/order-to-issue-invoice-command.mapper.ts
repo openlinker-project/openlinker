@@ -23,6 +23,14 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 
+/**
+ * Default carrier-neutral label for the shipping invoice line (#1517). Core is
+ * language-agnostic and has no locale, so this English default is intentionally
+ * untranslated; a caller that has a locale can override it via
+ * {@link OrderToIssueInvoiceCommandInput.shippingLineName}.
+ */
+const SHIPPING_LINE_NAME = 'Shipping';
+
 /** Inputs to {@link toIssueInvoiceCommand}. */
 export interface OrderToIssueInvoiceCommandInput {
   order: Order;
@@ -32,6 +40,20 @@ export interface OrderToIssueInvoiceCommandInput {
   /** Pass-through ONLY; the adapter derives when absent. */
   documentType?: string;
   idempotencyKey?: string;
+  /**
+   * Optional override for the shipping-line label on a fiscal document. Core has
+   * no locale, so a caller that does (or that translates for a target market)
+   * can supply a localized name here; when absent the neutral English
+   * {@link SHIPPING_LINE_NAME} default is used.
+   *
+   * NOTE: no issuance caller wires this yet (`AutoIssueTriggerService`, the
+   * invoicing controller), so today the neutral default is the only live path
+   * and a PL/KSeF document still renders "Shipping". This is an intentional seam,
+   * not dead code: a localized label needs a locale source that does not exist in
+   * core yet (no per-connection locale setting; the provider is the natural owner
+   * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
+   */
+  shippingLineName?: string;
 }
 
 /**
@@ -39,12 +61,14 @@ export interface OrderToIssueInvoiceCommandInput {
  * when no address/buyer-name can be derived, `UnsupportedPriceTreatmentError`
  * when the order is net-priced (`taxTreatment === 'exclusive'`), and
  * `InvalidInvoiceLineError` when an item's quantity is not a positive finite
- * number (#1525).
+ * number (#1525). Appends a gross shipping line when `order.totals.shipping > 0`
+ * so the invoice total equals the buyer-paid order total (#1517).
  */
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey } = input;
+  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName } =
+    input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
   // Fail loud rather than corrupt totals. Absent treatment = documented gross
@@ -57,6 +81,15 @@ export function toIssueInvoiceCommand(
 
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null);
   const lines = order.items.map((item) => toInvoiceLine(item, order.id));
+
+  // Buyer-paid shipping is part of the invoice total (invoice gross must equal
+  // order total, #1517). Emit it as a normal gross line so the provider adapter
+  // resolves its tax rate the same way it does for product lines; core never
+  // names a tax rate. Skipped when shipping is 0 (no phantom line).
+  const shippingLine = toShippingLine(order.totals.shipping, shippingLineName);
+  if (shippingLine) {
+    lines.push(shippingLine);
+  }
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -177,6 +210,27 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
     unitPriceGross: item.price,
+    taxRate: '',
+  };
+}
+
+/**
+ * Compose the shipping {@link InvoiceLine} from the order's gross shipping cost,
+ * or `null` when there is nothing to bill (#1517). A single unit priced at the
+ * gross shipping amount; `taxRate` is left empty (provider adapter resolves the
+ * regime rate, mirroring {@link toInvoiceLine}). Non-positive or non-finite
+ * shipping (0, negative, NaN) yields no line — no phantom shipping line. `name`
+ * defaults to the neutral {@link SHIPPING_LINE_NAME} when the caller supplies no
+ * (locale-specific) override.
+ */
+function toShippingLine(shipping: number, name?: string): InvoiceLine | null {
+  if (!Number.isFinite(shipping) || shipping <= 0) {
+    return null;
+  }
+  return {
+    name: name?.trim() || SHIPPING_LINE_NAME,
+    quantity: 1,
+    unitPriceGross: shipping,
     taxRate: '',
   };
 }

@@ -232,6 +232,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
+    // `shippingLineName` is intentionally NOT passed: there is no locale source
+    // here (a Connection carries no locale; config.invoicing holds only
+    // triggerModel), so the mapper's neutral default is used. A localized label
+    // would be threaded here once a locale/provider source exists (#1562).
     const command = toIssueInvoiceCommand({
       order,
       connectionId: invoicingConnectionId,
