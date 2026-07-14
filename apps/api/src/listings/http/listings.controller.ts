@@ -41,9 +41,11 @@ import {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
+  RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
+  IResponsibleProducerService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
@@ -73,6 +75,7 @@ import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
+import { ResponsibleProducersResponseDto } from './dto/responsible-producers-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
@@ -102,6 +105,8 @@ export class ListingsController {
     private readonly offerCreationEnqueue: IOfferCreationEnqueueService,
     @Inject(SELLER_POLICIES_SERVICE_TOKEN)
     private readonly sellerPolicies: ISellerPoliciesService,
+    @Inject(RESPONSIBLE_PRODUCER_SERVICE_TOKEN)
+    private readonly responsibleProducers: IResponsibleProducerService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
@@ -404,6 +409,34 @@ export class ListingsController {
   }
 
   @Roles('admin', 'operator')
+  @Get('connections/:connectionId/responsible-producers')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured responsible producers (#1531)',
+    description:
+      'Returns the EU GPSR responsible-producer registry ("producent") configured for the connection, fetched live from the marketplace. The offer-creation wizard renders these so the operator can attach one and the created product is not blocked for a missing producer.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Responsible producers wrapped under `responsibleProducers`.',
+    type: ResponsibleProducersResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support responsible-producer listing',
+  })
+  async getResponsibleProducers(
+    @Param('connectionId') connectionId: string
+  ): Promise<ResponsibleProducersResponseDto> {
+    const responsibleProducers =
+      await this.responsibleProducers.listResponsibleProducers(connectionId);
+    return { responsibleProducers };
+  }
+
+  @Roles('admin', 'operator')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -515,13 +548,15 @@ export class ListingsController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
   @ApiOperation({
-    summary: 'Batch-resolve marketplace categories by variant EAN (#795)',
+    summary: 'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
     description:
-      'Resolves up to 200 variant EANs to marketplace categories in one call via the ' +
-      'connection adapter’s EanCategoryMatcher sub-capability (#735). EAN-only — no ' +
-      'mapping fallback. Drives the bulk-listing wizard Resolve step, replacing the ' +
-      'previous one-HTTP-call-per-row loop. Results are keyed by variantId; every input ' +
-      'item gets exactly one entry.',
+      'Resolves up to 200 variants to marketplace categories in one call. EAN catalogue ' +
+      'match (via the connection adapter’s EanCategoryMatcher sub-capability, #735) is the ' +
+      'primary path; when the EAN yields no match and the item supplies sourceCategoryIds, ' +
+      'the batch falls back to the operator’s configured per-source-category mapping (#1522), ' +
+      'returning method="category_mapping". Drives the bulk-listing wizard Resolve step, ' +
+      'replacing the previous one-HTTP-call-per-row loop. Results are keyed by variantId; ' +
+      'every input item gets exactly one entry.',
   })
   @ApiResponse({
     status: 200,
@@ -540,7 +575,13 @@ export class ListingsController {
   ): Promise<ResolveCategoryBatchResponseDto> {
     try {
       const results = await this.categoryResolution.resolveCategoriesBatch(connectionId, {
-        items: dto.items.map((item) => ({ variantId: item.variantId, ean: item.ean ?? null })),
+        items: dto.items.map((item) => ({
+          variantId: item.variantId,
+          ean: item.ean ?? null,
+          ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
+            ? { sourceCategoryIds: item.sourceCategoryIds }
+            : {}),
+        })),
       });
       return { results: Object.fromEntries(results) };
     } catch (error) {

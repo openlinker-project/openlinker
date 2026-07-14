@@ -16,6 +16,7 @@ import { useEffect, useMemo, type ReactElement } from 'react';
 
 import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
+import { ErliProducerField } from './erli-producer-field';
 import {
   isValidDispatch,
   parseErliConnectionDispatchDefault,
@@ -35,6 +36,9 @@ export function ErliBulkConfigSection({
   const current: ErliDispatchTimeParam = isValidDispatch(platformParams.dispatchTime)
     ? (platformParams.dispatchTime as ErliDispatchTimeParam)
     : connectionDefault;
+  // Batch-default producer (#1531). Applies to every row unless a row overrides
+  // it in the per-row edit modal; empty string = no batch default chosen.
+  const producer = typeof platformParams.producer === 'string' ? platformParams.producer : '';
 
   // Seed the form with the connection default + fix currency to PLN. Keyed on
   // the connection so switching marketplaces re-seeds; `form`/`connectionDefault`
@@ -65,10 +69,22 @@ export function ErliBulkConfigSection({
           );
         }}
       />
+      <ErliProducerField
+        connectionId={connection.id}
+        value={producer}
+        onChange={(next) => {
+          form.setValue(
+            'platformParams',
+            { ...form.getValues('platformParams'), producer: next },
+            { shouldDirty: true },
+          );
+        }}
+      />
       <p className="erli-config__note">
         Erli has no seller/delivery policies — dispatch time stands in for Allegro's policy step.
-        Prices are sent in PLN; images are pulled from each product (Erli requires at least one),
-        and the Resolving step flags any product missing one.
+        The producer applies to every product in this batch (override it per product in the Review
+        step). Prices are sent in PLN; images are pulled from each product (Erli requires at least
+        one), and the Resolving step flags any product missing one.
       </p>
     </div>
   );

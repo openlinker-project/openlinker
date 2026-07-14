@@ -13,6 +13,8 @@ export const listingsQueryKeys = {
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>
     ['listings', 'offerCreationStatus', connectionId, offerCreationRecordId] as const,
   sellerPolicies: (connectionId: string) => ['listings', 'sellerPolicies', connectionId] as const,
+  responsibleProducers: (connectionId: string) =>
+    ['listings', 'responsibleProducers', connectionId] as const,
   // The version constant at index 2 cache-busts every browser's in-flight
   // TanStack Query cache when the response shape changes. See #423 + the
   // CATEGORY_PARAMETERS_SCHEMA_VERSION JSDoc in listings.types.ts.

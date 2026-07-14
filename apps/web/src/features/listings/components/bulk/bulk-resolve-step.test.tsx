@@ -204,6 +204,52 @@ describe('BulkResolveStep', () => {
     expect(out.categoryCandidates).toHaveLength(1);
   });
 
+  it('threads source categories and resolves a mapped category (EAN no-match) without blocking the row', async () => {
+    const onComplete = vi.fn<(outcomes: BulkResolveOutcome[]) => void>();
+    // EAN misses Allegro's catalogue, but the operator's PS→Allegro category
+    // mapping resolves the destination category server-side (#1522).
+    const apiClient = mockClient({
+      results: {
+        var_prod_a: {
+          kind: 'matched',
+          allegroCategoryId: 'cat-mapped',
+          productCardId: '',
+          method: 'category_mapping',
+        },
+      },
+      availability: [{ productVariantId: 'var_prod_a', totalAvailable: 5, locationCount: 1 }],
+    });
+
+    renderWithProviders(
+      <BulkResolveStep
+        rows={[makeRow('prod_a', { ean: '5901111111111' }, { categories: ['ps-cat-42'] })]}
+        connectionId="conn_1"
+        pricingPolicy={{ mode: 'use-master' }}
+        stockPolicy={{ mode: 'use-master' }}
+        currency="PLN"
+        onComplete={onComplete}
+      />,
+      { apiClient },
+    );
+
+    await waitFor(() => { expect(onComplete).toHaveBeenCalledTimes(1); });
+
+    // The row's source category is threaded into the batch request.
+    expect(apiClient.listings.resolveCategoriesBatch).toHaveBeenCalledWith('conn_1', {
+      items: [{ variantId: 'var_prod_a', ean: '5901111111111', sourceCategoryIds: ['ps-cat-42'] }],
+    });
+
+    const out = onComplete.mock.calls[0][0][0];
+    // Mapping-resolved rows are NOT blocked and carry no category blocker.
+    expect(out.blockers).not.toContain('no-match');
+    expect(out.blockers).not.toContain('no-ean');
+    expect(out).toMatchObject({
+      resolvedCategoryId: 'cat-mapped',
+      resolvedProductCardId: null,
+      resolutionMethod: 'category_mapping',
+    });
+  });
+
   it('shows a Retry affordance and does not advance when the batch call fails', async () => {
     const onComplete = vi.fn<(outcomes: BulkResolveOutcome[]) => void>();
     const apiClient = mockClient({ categoryRejects: true });
