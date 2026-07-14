@@ -33,6 +33,7 @@ import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import {
   ErliOfferManagerAdapter,
   ERLI_FROZEN_STOCK_CACHE_TTL_SEC,
+  ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC,
 } from '../erli-offer-manager.adapter';
 
 const VALID_ID = `ol_variant_${'a'.repeat(32)}`;
@@ -1213,6 +1214,109 @@ describe('ErliOfferManagerAdapter', () => {
       await adapter.restoreStockOnCancellation([]);
 
       expect(httpClient.patch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fetchResponsibleProducers (#1531 — ResponsibleProducerReader)', () => {
+    it('maps GET /dictionaries/responsibleProducers items to neutral ResponsibleProducerEntry[]', async () => {
+      httpClient.get.mockResolvedValue({
+        status: 200,
+        data: [
+          { id: 1, name: 'ACME Sp. z o.o.' },
+          { id: 42, name: 'Importer Ltd' },
+        ],
+      });
+
+      const result = await adapter.fetchResponsibleProducers();
+
+      expect(httpClient.get).toHaveBeenCalledWith('dictionaries/responsibleProducers');
+      expect(result).toEqual([
+        { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+        { id: '42', name: 'Importer Ltd', kind: 'PRODUCER' },
+      ]);
+    });
+
+    it('drops items without a usable name and tolerates an empty/bodyless response', async () => {
+      httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+      await expect(adapter.fetchResponsibleProducers()).resolves.toEqual([]);
+    });
+
+    it('caches the mapped result per connection when a cache is wired', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+      httpClient.get.mockResolvedValue({ status: 200, data: [{ id: 7, name: 'Producent' }] });
+
+      const result = await cached.fetchResponsibleProducers();
+
+      expect(result).toEqual([{ id: '7', name: 'Producent', kind: 'PRODUCER' }]);
+      expect(cache.set).toHaveBeenCalledWith(
+        'erli:responsible-producers:conn-1',
+        [{ id: '7', name: 'Producent', kind: 'PRODUCER' }],
+        ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC,
+      );
+    });
+
+    it('returns the cached value without hitting the API on a cache hit', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue([{ id: '9', name: 'Cached', kind: 'PRODUCER' }]),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+
+      const result = await cached.fetchResponsibleProducers();
+
+      expect(result).toEqual([{ id: '9', name: 'Cached', kind: 'PRODUCER' }]);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create body — responsible producer (#1531)', () => {
+    it('stamps the operator-selected producer id onto the create body', async () => {
+      await adapter.createOffer(createCmd({ overrides: { platformParams: { producer: '42' } } }));
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBe(42);
+    });
+
+    it('accepts a numeric producer selection', async () => {
+      await adapter.createOffer(createCmd({ overrides: { platformParams: { producer: 7 } } }));
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBe(7);
+    });
+
+    it('omits producerId when no selection is supplied', async () => {
+      await adapter.createOffer(createCmd());
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBeUndefined();
+    });
+
+    it('ignores a blank or non-numeric producer selection', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { producer: '   ' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBeUndefined();
     });
   });
 });

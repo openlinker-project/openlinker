@@ -32,6 +32,8 @@ export type {
   CategoryResolutionResult,
   CategoryResolutionMethod,
   CategoryProvenance,
+  BatchCategoryResolveItem,
+  BatchCategoryResolveInput,
 } from './application/types/category-resolution.types';
 export {
   CategoryResolutionMethodValues,
@@ -130,6 +132,7 @@ export { OfferBuilderValidationException } from './domain/exceptions/offer-build
 export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
+export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,
@@ -199,9 +202,10 @@ export type {
   SmartClassificationReport,
   SmartClassificationCondition,
 } from './domain/types/smart-classification.types';
-export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
+export { EanMatchResultKindValues, EanMatchMethodValues } from './domain/types/ean-category-match.types';
 export type {
   EanMatchResultKind,
+  EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
   BatchCategoryByEanInput,

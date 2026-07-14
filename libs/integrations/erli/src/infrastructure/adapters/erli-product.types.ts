@@ -120,6 +120,18 @@ export interface ErliProductCreateBody {
   ean?: string;
   sku?: string;
   dispatchTime?: ErliDispatchTime;
+  /**
+   * Responsible producer ("producent") the product references (#1531). Erli
+   * keys it by the numeric responsible-producer dictionary id
+   * (`GET /dictionaries/responsibleProducers`); without it the created product
+   * is blocked for a missing producer. Supplied when the neutral command carries
+   * an operator selection (`overrides.platformParams.producer`); omitted
+   * otherwise. Erli's schema documents `producerId` as deprecated in favour of
+   * the `externalResponsibleProducer` `{ externalId, source }` array, but the
+   * numeric id maps 1:1 to a dictionary entry (which the picker reads), so it is
+   * the direct and reliable reference here.
+   */
+  producerId?: number;
   /** Allegro category reuse (#985); omitted when empty. */
   externalCategories?: ErliExternalCategory[];
   /** Allegro parameter reuse (#985); omitted when empty. */
@@ -167,6 +179,18 @@ export type ErliProductPatchBody = Pick<
  * neutral closed `OfferPublicationStatus` union.
  */
 export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
+
+/**
+ * One item from `GET /dictionaries/responsibleProducers` (#1531). Erli returns
+ * the `ResponsibleSchema` shape (`{ id: integer, name: string, ... }`); only the
+ * `id` (referenced by the create body's `producerId`) and `name` (picker label)
+ * are consumed. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`ResponsibleSchema`, "pobierz listę producentów produktu").
+ */
+export interface ErliResponsibleProducerItem {
+  id: number;
+  name: string;
+}
 
 export interface ErliProductResource {
   /**
