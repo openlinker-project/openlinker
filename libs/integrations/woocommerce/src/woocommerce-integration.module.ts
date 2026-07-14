@@ -72,9 +72,19 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import { WooCommerceCustomerProvisioner } from './infrastructure/provisioners/woocommerce-customer-provisioner';
 import { WooCommerceAddressProvisioner } from './infrastructure/provisioners/woocommerce-address-provisioner';
 import { createWooCommercePlugin } from './woocommerce-plugin';
+import { WooCommerceWebhookProvisioningModule } from './woocommerce-webhook-provisioning.module';
 
 @Module({
-  imports: [IntegrationsModule, SyncModule, IdentifierMappingModule, CustomersModule],
+  imports: [
+    IntegrationsModule,
+    SyncModule,
+    IdentifierMappingModule,
+    CustomersModule,
+    // The inbound webhook provisioner (#1548) needs NestJS-injected ConnectionPort
+    // + IWebhookSecretService (not in the HostServices bag), so it self-registers
+    // from this companion module rather than from plugin.register(host).
+    WooCommerceWebhookProvisioningModule,
+  ],
   providers: [WooCommerceCustomerProvisioner, WooCommerceAddressProvisioner],
 })
 export class WooCommerceIntegrationModule implements OnModuleInit {

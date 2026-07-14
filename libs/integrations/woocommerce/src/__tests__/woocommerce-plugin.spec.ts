@@ -24,6 +24,7 @@ interface HostStub {
   credentialsRegistry: { register: jest.Mock };
   authFailureRegistry: { register: jest.Mock };
   schedulerRegistry: { register: jest.Mock };
+  translatorRegistry: { register: jest.Mock };
 }
 
 function makeHostStub(): HostStub {
@@ -32,6 +33,7 @@ function makeHostStub(): HostStub {
   const credentialsRegistry = { register: jest.fn() };
   const authFailureRegistry = { register: jest.fn() };
   const schedulerRegistry = { register: jest.fn() };
+  const translatorRegistry = { register: jest.fn() };
 
   const host = {
     connectionTesterRegistry: testerRegistry,
@@ -42,6 +44,7 @@ function makeHostStub(): HostStub {
     authFailureClassifierRegistry: authFailureRegistry,
     schedulerTaskRegistry: schedulerRegistry,
     webhookProvisioningRegistry: { register: jest.fn() },
+    webhookEventTranslatorRegistry: translatorRegistry,
     oauthCompletionRegistry: { register: jest.fn() },
     adapterRegistry: { register: jest.fn() },
     factoryResolver: { registerFactory: jest.fn() },
@@ -55,7 +58,15 @@ function makeHostStub(): HostStub {
     } as unknown as HostServices['credentialsResolver'],
   } as unknown as HostServices;
 
-  return { host, testerRegistry, configRegistry, credentialsRegistry, authFailureRegistry, schedulerRegistry };
+  return {
+    host,
+    testerRegistry,
+    configRegistry,
+    credentialsRegistry,
+    authFailureRegistry,
+    schedulerRegistry,
+    translatorRegistry,
+  };
 }
 
 const mockConnection: Connection = {
@@ -200,6 +211,17 @@ describe('createWooCommercePlugin → register(host) — #876 additions', () => 
     createWooCommercePlugin().register!(host);
     expect(schedulerRegistry.register).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'woocommerce-orders-poll' }),
+    );
+  });
+});
+
+describe('createWooCommercePlugin → register(host) — #1548 inbound webhooks', () => {
+  it('should register the webhook event translator at the plugin adapterKey', () => {
+    const { host, translatorRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(translatorRegistry.register).toHaveBeenCalledWith(
+      'woocommerce.restapi.v3',
+      expect.objectContaining({ translate: expect.any(Function) }),
     );
   });
 });
