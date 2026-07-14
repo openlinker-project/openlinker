@@ -114,13 +114,15 @@ export function buildCreateShipmentRequest(
 
   if (cmd.shippingMethod === 'paczkomat') {
     if (cmd.cod) {
-      // COD to a locker requires a distinct ShipX pass-through/COD service that
-      // the v1 simplified adapter does not model. Fail fast rather than issue a
-      // prepaid label while the operator believes COD was applied (#1541).
+      // InPost lockers DO support COD via a ShipX COD-capable locker service;
+      // the limitation is that this v1 simplified adapter does not model locker
+      // COD yet (not modelled yet by this adapter; see follow-up #1554). Fail
+      // fast rather than issue a prepaid label while the operator believes COD
+      // was applied (#1541).
       throw new ShippingProviderRejectionException(
         'inpost',
-        'preflight.cod-unsupported-method',
-        'InPost paczkomat (locker) shipments do not support COD in this integration; use the kurier method for a cash-on-delivery parcel',
+        'preflight.cod-locker-unsupported',
+        'COD on InPost lockers (paczkomat) is not yet supported by this integration (see #1554); use the kurier method for a cash-on-delivery parcel',
       );
     }
     return buildLockerRequest(cmd, sender);
@@ -318,6 +320,9 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
  * A malformed amount or an unsupported currency is a preflight rejection.
  */
 function toShipXCod(cod: ShipmentCod): ShipXCod {
+  // Deliberate decimal-string -> JSON-number boundary: ShipX requires a numeric
+  // `amount`, so `Number()` re-introduces a float here. Safe for 2-decimal PLN
+  // COD values, which round-trip cleanly through IEEE-754.
   const amount = Number(cod.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new ShippingProviderRejectionException(

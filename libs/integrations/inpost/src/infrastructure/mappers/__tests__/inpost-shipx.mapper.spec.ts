@@ -168,7 +168,7 @@ describe('inpost-shipx.mapper', () => {
       expect(buildCreateShipmentRequest(paczkomatCmd, config).cod).toBeUndefined();
     });
 
-    it('should throw a typed rejection (preflight.cod-unsupported-method) when COD is requested for a paczkomat shipment (#1541)', () => {
+    it('should throw a typed rejection (preflight.cod-locker-unsupported) when COD is requested for a paczkomat shipment (#1541)', () => {
       const call = (): unknown =>
         buildCreateShipmentRequest(
           { ...paczkomatCmd, cod: { amount: '39.99', currency: 'PLN' } },
@@ -178,29 +178,34 @@ describe('inpost-shipx.mapper', () => {
       try {
         call();
       } catch (error) {
+        // Rejection is a limitation of this v1 adapter (locker COD not modelled
+        // yet, see #1554), not of InPost/ShipX being COD-incapable on lockers.
         expect(error).toMatchObject({
           providerName: 'inpost',
-          providerCode: 'preflight.cod-unsupported-method',
+          providerCode: 'preflight.cod-locker-unsupported',
         });
       }
     });
 
-    it('should throw a typed rejection (preflight.cod-amount-invalid) when the COD amount is not a positive number (#1541)', () => {
-      const call = (): unknown =>
-        buildCreateShipmentRequest(
-          { ...courierCmd, cod: { amount: 'abc', currency: 'PLN' } },
-          config,
-        );
-      expect(call).toThrow(ShippingProviderRejectionException);
-      try {
-        call();
-      } catch (error) {
-        expect(error).toMatchObject({
-          providerName: 'inpost',
-          providerCode: 'preflight.cod-amount-invalid',
-        });
-      }
-    });
+    it.each(['abc', '0', '-5'])(
+      'should throw a typed rejection (preflight.cod-amount-invalid) when the COD amount is not a positive number: %s (#1541)',
+      (amount) => {
+        const call = (): unknown =>
+          buildCreateShipmentRequest(
+            { ...courierCmd, cod: { amount, currency: 'PLN' } },
+            config,
+          );
+        expect(call).toThrow(ShippingProviderRejectionException);
+        try {
+          call();
+        } catch (error) {
+          expect(error).toMatchObject({
+            providerName: 'inpost',
+            providerCode: 'preflight.cod-amount-invalid',
+          });
+        }
+      },
+    );
 
     it('should throw a typed rejection (preflight.cod-currency-unsupported) when the COD currency is not PLN (#1541)', () => {
       const call = (): unknown =>
