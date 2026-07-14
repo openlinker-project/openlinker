@@ -76,9 +76,14 @@ export default defineConfig({
       testMatch: /golden-path\/full-flow\.spec\.ts/,
       retries: 0,
       // The attended flow waits on worker jobs (up to 300 s), manual dashboard
-      // checkpoints and the purchase pause (up to 30 min) — the global 90 s
-      // per-test timeout would kill S0 before the first sync completes.
-      timeout: 40 * 60_000,
+      // checkpoints and the purchase pause — up to 2 hours PER purchase platform
+      // (full-flow.spec.ts PAUSE test), so a dual-purchase run can legitimately
+      // sit for 4+ hours inside one test. No per-test timeout can bound that
+      // without contradicting the checkpoint budgets, so the project runs
+      // unbounded (attended semantics): every wait inside the test is itself
+      // bounded — pollers, job waits, and each manualCheckpoint's timeoutMs —
+      // so a hung run still fails at the responsible checkpoint, not silently.
+      timeout: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

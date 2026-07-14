@@ -346,12 +346,16 @@ export class BulkOfferWizard {
    * so a ready row with its params intact isn't needlessly re-saved; a
    * previously-saved row restores its values from the row's FE stash, so the
    * fill helpers report "nothing empty" and the modal is dismissed untouched.
+   *
+   * Returns whether "Save row" was actually clicked (false = cancelled with
+   * nothing to change), so the top-up pass can restart its reorder-safe walk
+   * only after a save that may have re-rendered the review table.
    */
   private async fillRowEditor(
     row: Locator,
     gtin: string | undefined,
     save: 'always' | 'if-changed',
-  ): Promise<void> {
+  ): Promise<boolean> {
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
     const dialog = this.page.getByRole('dialog');
     await expect(dialog.getByText(/^Edit offer/)).toBeVisible({ timeout: 15_000 });
@@ -370,7 +374,7 @@ export class BulkOfferWizard {
     if (save === 'if-changed' && !changed) {
       await dialog.getByRole('button', { name: 'Cancel' }).click();
       await expect(dialog).toBeHidden({ timeout: 15_000 });
-      return;
+      return false;
     }
 
     await dialog.getByRole('button', { name: 'Save row' }).click();
@@ -385,6 +389,7 @@ export class BulkOfferWizard {
         }`,
       );
     }
+    return true;
   }
 
   /**
@@ -399,15 +404,34 @@ export class BulkOfferWizard {
    * the FE stash, the fill finds nothing empty, and the modal is cancelled.
    */
   private async fillEveryRowRequiredParameters(gtin?: string): Promise<void> {
+    // Reorder-safe: a "Save row" can re-render or reorder the review table, so
+    // iterating `nth(i)` against a pre-captured count could revisit an
+    // already-filled row and SKIP another (its required params then surface
+    // later as a marketplace PARAMETER_REQUIRED rejection with no local
+    // signal). Instead, restart the walk from the top after every actual save:
+    // already-complete rows are cheap no-ops (`if-changed` cancels without
+    // saving), so each restarted pass permanently completes at least one more
+    // row and a full pass with zero saves means every row is topped up.
     await this.waitForReviewSettled();
-    const rows = this.editableRows();
-    const count = await rows.count();
-    for (let i = 0; i < count; i += 1) {
-      await this.fillRowEditor(rows.nth(i), gtin, 'if-changed');
-      // A save recomputes the row's blockers / re-loads the schema; re-settle
-      // before touching the next row so a mid-flight recompute isn't read.
-      await this.waitForReviewSettled();
+    const maxPasses = (await this.editableRows().count()) + 1;
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      const count = await this.editableRows().count();
+      let saved = false;
+      for (let i = 0; i < count; i += 1) {
+        saved = await this.fillRowEditor(this.editableRows().nth(i), gtin, 'if-changed');
+        if (saved) {
+          // The save recomputes blockers / re-loads the schema (and may
+          // reorder); re-settle, then restart the walk from the top.
+          await this.waitForReviewSettled();
+          break;
+        }
+      }
+      if (!saved) return;
     }
+    throw new Error(
+      `Bulk review row top-up did not converge within ${maxPasses} passes — a row keeps ` +
+        'reporting empty required parameters after being saved.',
+    );
   }
 
   /**

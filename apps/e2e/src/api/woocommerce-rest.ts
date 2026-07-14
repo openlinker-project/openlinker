@@ -77,12 +77,15 @@ export class WooCommerceRestClient {
   /**
    * Find a product by exact name via the WooCommerce `search` param, or null.
    * Needed because the OL WooCommerce publisher (MVP) does not set a SKU on the
-   * created product, so name is the only reliable lookup key.
+   * created product, so name is the only reliable lookup key. Exact-match ONLY:
+   * accepting the first fuzzy search hit would let downstream parity run
+   * against the wrong product, so no match returns null and the caller fails
+   * loudly instead.
    */
   async getProductByName(name: string): Promise<WooCommerceProductView | null> {
     const body = await this.get(`/products?search=${encodeURIComponent(name)}&per_page=100`);
     const rows = asArray(body).map((r) => this.toProductView(asRecord(r)));
-    return rows.find((p) => p.name === name) ?? rows[0] ?? null;
+    return rows.find((p) => p.name === name) ?? null;
   }
 
   private toProductView(record: Record<string, unknown>): WooCommerceProductView {

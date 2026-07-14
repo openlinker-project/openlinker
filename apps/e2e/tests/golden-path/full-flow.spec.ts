@@ -36,12 +36,13 @@ import type {
   OrderRecord,
   Product,
   ProductVariant,
+  SubmittedOfferParameter,
 } from '../../src/api/api.types';
 import { PrestashopWebserviceClient } from '../../src/api/prestashop-webservice';
 import { buildFreshProductImages } from '../../src/api/generate-image';
 import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
-import { snapshotOrderIds, waitForOrder } from '../../src/support/orders';
+import { snapshotOrderIds, waitForOrder, type OrderIdSnapshot } from '../../src/support/orders';
 import { manualCheckpoint } from '../../src/support/manual-checkpoint';
 import {
   assertMarketplaceParameterRoundTrip,
@@ -64,8 +65,8 @@ interface FlowState {
   channelBaseline: Map<string, number>;
   /** One ingested order per purchase platform (keyed by platformType). */
   orders: Map<string, OrderRecord>;
-  /** Pre-purchase order-id snapshot per source connection id. */
-  knownOrderIdsByConnection: Map<string, ReadonlySet<string>>;
+  /** Pre-purchase order snapshot (ids + timestamp) per source connection id. */
+  orderSnapshotByConnection: Map<string, OrderIdSnapshot>;
   shipmentIds: Map<string, string>;
   invoiceIds: Map<string, string>;
   /** WooCommerce product id of the published product, captured in S2 for the post-sale re-read. */
@@ -76,7 +77,7 @@ const state: FlowState = {
   variantIds: [],
   channelBaseline: new Map(),
   orders: new Map(),
-  knownOrderIdsByConnection: new Map(),
+  orderSnapshotByConnection: new Map(),
   shipmentIds: new Map(),
   invoiceIds: new Map(),
 };
@@ -128,6 +129,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
         timeoutMs: 60_000,
       },
     ))!;
+    if (pinnedSku) {
+      expect(product.sku, `pinned product SKU (E2E_PRODUCT_SKU=${pinnedSku})`).toBe(pinnedSku);
+    }
     const variants = await world.variantsOf(product.id);
     const primary = variants.find((v) => v.ean ?? v.gtin);
     expect(primary, 'a primary variant with an EAN is required').toBeTruthy();
@@ -276,9 +280,9 @@ test.describe('golden path — full flow (S0-S9)', () => {
     const wc = buildWooClient(world);
     if (wc) {
       // Prefer SKU lookup (the shop publisher now carries the variant SKU, #1485),
-      // falling back to name for products published before that landed. Name-only
-      // matching is fragile for names with punctuation (e.g. "Drill / Driver"),
-      // where the exact-name match misses and the search fallback picks the wrong row.
+      // falling back to exact-name for products published before that landed.
+      // Both lookups are exact-match only — no exact match keeps the poll going
+      // and times out loudly rather than latching an arbitrary search hit.
       const wcSku = state.primaryVariant?.sku ?? undefined;
       const wcProduct = await poll.until(
         async () =>
@@ -359,7 +363,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // Only available when THIS run created the offer (batchId set); on the reuse
     // path there is no fresh creation record, so the submitted-side parity is
     // skipped and the marketplace-side round-trip below carries the load.
-    let submitted: import('../../src/api/api.types').SubmittedOfferParameter[] = [];
+    let submitted: SubmittedOfferParameter[] = [];
     if (batchId) {
       const batch = await api.listings.getBulkBatch(batchId);
       const record =
@@ -524,7 +528,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     // Snapshot BEFORE the first purchase so each source's "new order"
     // detection is clean regardless of when the operator checks out.
     for (const source of sources) {
-      state.knownOrderIdsByConnection.set(source.id, await snapshotOrderIds(api, source.id));
+      state.orderSnapshotByConnection.set(source.id, await snapshotOrderIds(api, source.id));
     }
 
     for (const source of sources) {
@@ -560,6 +564,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
   });
 
   test('S5 — orders ready in OL + channel stock down', async ({ api, world, jobs, poll, env }) => {
+    const testInfo = test.info();
     requireProduct();
     const sources = resolvePurchaseSources(world, env.purchasePlatforms);
     expect(sources.length, 'a marketplace source connection is required').toBeGreaterThan(0);
@@ -569,7 +574,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
       await jobs.trigger({ connectionId: source.id, jobType: 'marketplace.orders.poll' }).catch(() => undefined);
       const order = await waitForOrder(api, {
         sourceConnectionId: source.id,
-        knownOrderIds: state.knownOrderIdsByConnection.get(source.id),
+        snapshot: state.orderSnapshotByConnection.get(source.id),
       });
       state.orders.set(source.platformType, order);
 
@@ -613,14 +618,36 @@ test.describe('golden path — full flow (S0-S9)', () => {
       const channelBefore = state.channelBaseline.get(sourceKey);
       if (channelBefore !== undefined) {
         const mapping = await resolvePrimaryMapping(api, poll, source.id);
-        await poll.until(
+        // Poll for `<=` (not strict equality): on a dual-purchase run, ambient
+        // inventory propagation can fold the OTHER marketplace's sale into this
+        // channel before S9 runs, so `===` could never converge and would burn
+        // the whole 120 s timeout. The exact value is asserted afterwards, so
+        // any unexpected overshoot fails FAST with the observed quantity — only
+        // the documented dual-purchase fold-in is tolerated (and annotated).
+        const target = channelBefore - SOLD_QTY;
+        const floor = channelBefore - SOLD_QTY * sources.length;
+        const settled = await poll.until(
           () => api.listings.getOffer(mapping.id),
-          (o) => o.availableQuantity === channelBefore - SOLD_QTY,
+          (o) => o.availableQuantity <= target,
           {
-            message: `${sourceKey} offer quantity to drop to ${channelBefore - SOLD_QTY}`,
+            message: `${sourceKey} offer quantity to drop to at most ${target}`,
             timeoutMs: 120_000,
           },
         );
+        if (settled.availableQuantity !== target) {
+          expect(
+            settled.availableQuantity,
+            `${sourceKey} offer quantity after the sale (observed ${settled.availableQuantity}; ` +
+              `only the dual-purchase cross-channel fold-in to ${floor} is tolerated before S9)`,
+          ).toBe(floor);
+          testInfo.annotations.push({
+            type: 'channel-stock',
+            description:
+              `${sourceKey} offer already reflects every purchase (${settled.availableQuantity} = ` +
+              `baseline ${channelBefore} - total sold) — ambient propagation folded in the other ` +
+              'marketplace sale before S9',
+          });
+        }
       }
     }
   });
@@ -976,14 +1003,21 @@ test.describe('golden path — full flow (S0-S9)', () => {
         });
         continue;
       }
-      await poll.until(
+      // Poll for `<=` then assert exact: an overshoot below the fully-converged
+      // value is a genuine error and must fail fast with the observed quantity,
+      // not burn the 120 s timeout on a predicate that can never hold.
+      const settled = await poll.until(
         () => api.listings.getOffer(mapping.id),
-        (o) => o.availableQuantity === expectedQty,
+        (o) => o.availableQuantity <= expectedQty,
         {
-          message: `${platform} offer quantity to reach ${expectedQty} after cross-channel propagation`,
+          message: `${platform} offer quantity to reach at most ${expectedQty} after cross-channel propagation`,
           timeoutMs: 120_000,
         },
       );
+      expect(
+        settled.availableQuantity,
+        `${platform} offer quantity after cross-channel propagation`,
+      ).toBe(expectedQty);
     }
 
     // WooCommerce stock re-check after the purchase (#14): the S2 baseline is
@@ -997,17 +1031,19 @@ test.describe('golden path — full flow (S0-S9)', () => {
       // regardless of whether the publisher set a SKU on this stack.
       const wcProduct = await wc.getProduct(state.wcProductId);
       const wcAfter = wcProduct?.stockQuantity ?? null;
-      if (wcAfter === wcBaseline - SOLD_QTY) {
-        expect(wcAfter, 'WooCommerce stock reflects the sale').toBe(wcBaseline - SOLD_QTY);
-      } else {
-        testInfo.annotations.push({
-          type: 'cross-channel',
-          description:
-            `WooCommerce stock after sale: ${wcAfter ?? '(unknown)'} (baseline ${wcBaseline}, ` +
-            `expected ${wcBaseline - SOLD_QTY}) — OL has no WC quantity write-back path ` +
-            '(no OfferManager on woocommerce.restapi.v3); known cross-channel gap',
-        });
-      }
+      // Expected against the run's TOTAL sold (one sale per purchase platform),
+      // not a single SOLD_QTY — a dual-purchase run drops WC stock twice once a
+      // write-back path exists.
+      const wcExpected = wcBaseline - totalSold;
+      testInfo.annotations.push({
+        type: 'cross-channel',
+        description:
+          wcAfter === wcExpected
+            ? `WooCommerce stock reflects the sale: ${wcAfter} (baseline ${wcBaseline} - sold ${totalSold})`
+            : `WooCommerce stock after sale: ${wcAfter ?? '(unknown)'} (baseline ${wcBaseline}, ` +
+              `expected ${wcExpected}) — OL has no WC quantity write-back path ` +
+              '(no OfferManager on woocommerce.restapi.v3); known cross-channel gap',
+      });
     }
   });
 });
@@ -1077,8 +1113,14 @@ async function hasActiveMappedOffer(
     const offer = await api.listings.getOffer(mapping.id);
     return offer.status.toLowerCase() === 'active';
   } catch (error) {
+    // 422 = the adapter ships no OfferReader (Erli) — the mapping itself is the
+    // strongest available signal, so count it as active. 404 = the mapped offer
+    // no longer exists on the marketplace — definitively not active. Anything
+    // else is an unexpected failure: rethrow so a flaky pick fails loudly
+    // instead of being silently classified as "no active offer".
     if (error instanceof ApiError && error.status === 422) return true;
-    return false;
+    if (error instanceof ApiError && error.status === 404) return false;
+    throw error;
   }
 }
 
@@ -1103,8 +1145,12 @@ async function pickDriverProduct(ctx: {
 }): Promise<Product | undefined> {
   const { api, world, pinnedSku, source } = ctx;
   if (pinnedSku) {
+    // Exact-match ONLY: the pin is the deterministic escape hatch, so a fuzzy
+    // search hit must never be silently accepted (the run would mutate and
+    // assert against the wrong product). No match → undefined, so the caller's
+    // poll keeps waiting and times out loudly naming the pinned SKU.
     const page = await api.products.list({ search: pinnedSku, limit: 20 });
-    return page.items.find((p) => p.sku === pinnedSku) ?? page.items[0];
+    return page.items.find((p) => p.sku === pinnedSku);
   }
 
   const products = await world.listProducts(50);

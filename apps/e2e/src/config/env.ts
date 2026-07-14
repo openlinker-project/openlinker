@@ -59,7 +59,9 @@ export interface E2eEnv {
   freshCategoryPsId: string;
   /**
    * Allegro leaf category id the fresh product's PS category maps to (S0
-   * scripts the mapping). Defaults to `89508` (a general Allegro leaf).
+   * scripts the mapping). Defaults to `261481` (Wino bezalkoholowe) - the SAME
+   * leaf the default `freshAllegroCategoryPath` breadcrumb resolves to, so a
+   * default-config fresh-product run keeps Allegro/Erli category parity.
    */
   freshAllegroCategoryId: string;
   /**
@@ -186,7 +188,7 @@ export function resolveEnv(): E2eEnv {
       .filter((s) => s.length > 0),
     freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
     freshCategoryPsId: process.env.E2E_FRESH_CATEGORY_PS?.trim() || '2',
-    freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '89508',
+    freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '261481',
     freshAllegroCategoryPath: (
       process.env.E2E_FRESH_ALLEGRO_CATEGORY_PATH?.trim() ||
       'Supermarket|Produkty spożywcze|Alkohol free|Wino bezalkoholowe'

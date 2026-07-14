@@ -32,7 +32,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import { expect, type TestInfo } from '@playwright/test';
 
 /** How a FAILED manual checkpoint affects the run. */
 export const ManualCheckpointSeverityValues = ['observational', 'soft', 'fatal'] as const;
@@ -41,7 +41,7 @@ export type ManualCheckpointSeverity = (typeof ManualCheckpointSeverityValues)[n
 export interface ManualCheckpointOptions {
   /** Human name of the surface being confirmed, e.g. "Allegro seller panel". */
   dashboard: string;
-  /** Optional URL to open in a side tab for the operator's convenience. */
+  /** Optional URL printed in the checkpoint banner for the operator to open. */
   url?: string;
   /** Bullet list of what the operator must confirm. */
   expect: string[];
@@ -60,11 +60,6 @@ export interface ManualCheckpointOptions {
   timeoutMs?: number;
 }
 
-export interface ManualCheckpointDeps {
-  /** Opens `options.url` in a fresh tab so the operator does not lose the run. */
-  page?: Page;
-}
-
 const DEFAULT_RESUME_DIR = '.e2e';
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const POLL_INTERVAL_MS = 500;
@@ -81,7 +76,6 @@ export interface ManualCheckpointResult {
 export async function manualCheckpoint(
   testInfo: TestInfo,
   options: ManualCheckpointOptions,
-  deps: ManualCheckpointDeps = {},
 ): Promise<ManualCheckpointResult> {
   const resumeDir = resolve(options.resumeDir ?? process.env.E2E_RESUME_DIR ?? DEFAULT_RESUME_DIR);
   const resumeFile = resolve(resumeDir, 'resume');
@@ -93,12 +87,6 @@ export async function manualCheckpoint(
   rmSync(failFile, { force: true });
 
   printBanner(options, resumeFile, failFile);
-
-  if (options.url && deps.page) {
-    const context = deps.page.context();
-    const tab = await context.newPage();
-    await tab.goto(options.url).catch(() => undefined);
-  }
 
   const verdict = await waitForResume(resumeFile, failFile, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
