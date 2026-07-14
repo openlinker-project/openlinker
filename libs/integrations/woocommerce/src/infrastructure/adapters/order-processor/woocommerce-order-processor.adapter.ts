@@ -3,8 +3,10 @@
  *
  * Implements OrderProcessorManagerPort (createOrder), the OrderFulfillmentUpdater
  * sub-capability (updateFulfillment — status updates, cancellations, refund transitions),
- * and the OrderStatusWriteback sub-capability (write — the #1157 / ADR-027 lifecycle
- * relay contract) for WooCommerce REST API v3.
+ * the OrderStatusWriteback sub-capability (write — the #1157 / ADR-027 lifecycle
+ * relay contract), and the DestinationOptionsReader sub-capability (listCarriers /
+ * listOrderStatuses / listPaymentMethods — the #472 / #1551 mapping-UI option
+ * vocabulary) for WooCommerce REST API v3.
  *
  * Key design decisions:
  * - createOrder: the adapter does NOT dedup. It POSTs to WC and returns the
@@ -29,6 +31,7 @@
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderFulfillmentUpdater}
  * @implements {OrderStatusWriteback}
+ * @implements {DestinationOptionsReader}
  */
 import type {
   OrderProcessorManagerPort,
@@ -43,6 +46,8 @@ import type {
   OrderStatusWriteback,
   OrderLifecycleEvent,
   OrderWritebackResult,
+  DestinationOptionsReader,
+  MappingOption,
 } from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
@@ -66,7 +71,12 @@ import type {
   WooCommerceCustomerCreateRequest,
   WooCommerceCustomerResponse,
 } from './woocommerce-order.types';
-import { WC_ORDER_STATUS_MAP } from './woocommerce-order.types';
+import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from './woocommerce-order.types';
+import {
+  WC_ORDER_STATUS_LABELS,
+  type WooCommercePaymentGateway,
+  type WooCommerceShippingMethod,
+} from './woocommerce-options.types';
 
 // ─── Module-level pure helpers ────────────────────────────────────────────────
 // Pure functions with no dependency on adapter state — independently testable.
@@ -82,7 +92,11 @@ export function isValidEmail(value: unknown): value is string {
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
-  implements OrderProcessorManagerPort, OrderFulfillmentUpdater, OrderStatusWriteback
+  implements
+    OrderProcessorManagerPort,
+    OrderFulfillmentUpdater,
+    OrderStatusWriteback,
+    DestinationOptionsReader
 {
   private readonly logger = new Logger(WooCommerceOrderProcessorAdapter.name);
 
@@ -289,6 +303,65 @@ export class WooCommerceOrderProcessorAdapter
       );
       return { outcome: 'rejected', detail };
     }
+  }
+
+  // ─── DestinationOptionsReader (#472 / #1551) ──────────────────────────────
+  //
+  // Live option vocabulary powering the connection-mappings UI dropdowns. Each
+  // method returns the neutral `MappingOption` shape ({ value, label }); `value`
+  // is the stable identifier persisted by mapping config, `label` is the
+  // operator-facing string.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * WooCommerce core has no first-class carrier entity — shipping is modelled as
+   * method *types* (`flat_rate`, `free_shipping`, `local_pickup`, plus any
+   * plugin-provided types) attached to shipping zones, not named carriers.
+   * `GET /shipping_methods` returns those globally-registered method types, which
+   * is the closest live analogue to a carrier list and gives the mapping UI a
+   * non-empty, stable set to map onto (rather than an empty dropdown). `value` is
+   * the WC method id — the same code createOrder emits as `shipping_lines.method_id`.
+   */
+  async listCarriers(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.get<WooCommerceShippingMethod[]>(
+      '/wp-json/wc/v3/shipping_methods',
+    );
+    return rows.map((row) => ({
+      value: String(row.id),
+      label: row.title ?? String(row.id),
+    }));
+  }
+
+  /**
+   * WooCommerce exposes no dedicated order-status catalogue endpoint — the core
+   * status set is fixed by the WC REST API v3 contract. Enumerate the shared
+   * vocabulary (`WC_ORDER_STATUS_VALUES`) decorated with display labels; `value`
+   * is the WC status slug persisted by mapping config.
+   */
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return Promise.resolve(
+      WC_ORDER_STATUS_VALUES.map((slug) => ({
+        value: slug,
+        label: WC_ORDER_STATUS_LABELS[slug],
+      })),
+    );
+  }
+
+  /**
+   * `GET /payment_gateways` lists every payment gateway registered in the store.
+   * `value` is the gateway code (`bacs`, `cod`, `paypal`, …) persisted by mapping
+   * config; `label` is the operator-facing title. All registered gateways are
+   * returned regardless of `enabled` — an operator may legitimately map a source
+   * payment method onto a currently-disabled destination gateway.
+   */
+  async listPaymentMethods(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.get<WooCommercePaymentGateway[]>(
+      '/wp-json/wc/v3/payment_gateways',
+    );
+    return rows.map((row) => ({
+      value: String(row.id),
+      label: row.title ?? String(row.id),
+    }));
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
