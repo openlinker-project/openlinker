@@ -177,7 +177,10 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
     // The controller's own 'published' delivery-recording write and the
     // handler's later 'job_enqueued' write race independently of the enqueue
     // itself (both best-effort, #711) — assert only that a signature-verified
-    // delivery row exists, not its exact terminal status.
+    // delivery row exists, not its exact terminal status. Dedup/replay is not
+    // re-asserted here: it is provider-agnostic and already covered in
+    // `webhook-ingestion.int-spec.ts` ('should prevent duplicate events' +
+    // 'handler crash/retry with job dedup').
     const deliveryRows: Array<{ signatureValid: boolean }> = await harness.getDataSource().query(
       `SELECT "signatureValid" FROM webhook_deliveries WHERE provider = 'infakt' AND "connectionId" = $1`,
       [ksefConnection.id],
@@ -205,14 +208,25 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
       .send(body)
       .expect(401);
 
+    // Proving the *absence* of an effect can't be polled, so wait a fixed bound
+    // for any (erroneous) downstream enqueue to have surfaced before asserting
+    // none did. The rejection happens pre-publish (401 at the controller), so
+    // this is inherently low-risk; 500 ms is a comfortable margin.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
+    // Load-bearing assertions: the 401 status above + zero `webhook_deliveries`
+    // rows (per #711, a failed-validation delivery inserts no row).
     const deliveryRows: Array<{ n: number }> = await harness.getDataSource().query(
       `SELECT count(*)::int AS n FROM webhook_deliveries WHERE provider = 'infakt' AND "connectionId" = $1`,
       [connection.id],
     );
     expect(deliveryRows[0].n).toBe(0);
 
+    // Corroborating only: `afterEach`'s `resetTestHarness()` flushes Redis and
+    // destroys the `webhook-handler` consumer group, so from the second test
+    // onward there is no live consumer - this no-job check would pass even if
+    // the handler were broken. The real proof is the status code + delivery-row
+    // count above, both of which reject before the publish step.
     const redisClient = harness.getRedisClient();
     if (!redisClient) throw new Error('Redis client not available');
     const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
@@ -234,10 +248,16 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
       .send({ verification_code: verificationCode })
       .expect(200);
 
+    // Load-bearing: the 200 status + the echoed `verification_code` body above.
     expect(response.body).toEqual({ verification_code: verificationCode });
 
+    // Fixed bound to let any (erroneous) enqueue surface; the handshake
+    // short-circuits before routing, so this is inherently low-risk.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
+    // Corroborating only: Redis was flushed by the prior `resetTestHarness()`,
+    // so the `webhook-handler` consumer group is gone and no job could be
+    // enqueued regardless. The status + echoed body above are the real proof.
     const redisClient = harness.getRedisClient();
     if (!redisClient) throw new Error('Redis client not available');
     const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
