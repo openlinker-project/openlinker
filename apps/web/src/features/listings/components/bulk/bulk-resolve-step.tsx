@@ -65,6 +65,11 @@ function barcodeOf(row: BulkWizardRow): string | null {
   return raw && raw.trim() !== '' ? raw : null;
 }
 
+/** Non-empty source-platform category ids for the row's product (#1522). */
+function sourceCategoriesOf(row: BulkWizardRow): string[] {
+  return (row.product?.categories ?? []).filter((c) => typeof c === 'string' && c.trim() !== '');
+}
+
 export function BulkResolveStep({
   rows,
   connectionId,
@@ -79,20 +84,30 @@ export function BulkResolveStep({
 
   const variantRows = rows.filter((r) => r.primaryVariant !== null);
   const variantIds = variantRows.map((r) => r.primaryVariant!.id);
-  const barcodeItems = variantRows
-    .map((r) => ({ variantId: r.primaryVariant!.id, ean: barcodeOf(r) }))
-    .filter((i): i is { variantId: string; ean: string } => i.ean !== null);
-  const barcodeVariantIds = barcodeItems.map((i) => i.variantId);
+  // Resolve any row that carries an EAN (primary catalogue-match path) OR a
+  // source category (mapping-fallback path, #1522). A row with neither can't
+  // resolve server-side and is synthesized as no-ean below without a call.
+  const resolveItems = variantRows
+    .map((r) => {
+      const cats = sourceCategoriesOf(r);
+      return {
+        variantId: r.primaryVariant!.id,
+        ean: barcodeOf(r),
+        ...(cats.length > 0 ? { sourceCategoryIds: cats } : {}),
+      };
+    })
+    .filter((i) => i.ean !== null || (i.sourceCategoryIds?.length ?? 0) > 0);
+  const resolveVariantIds = resolveItems.map((i) => i.variantId);
 
   const categoryQuery = useQuery({
-    queryKey: listingsQueryKeys.resolveCategoryBatch(connectionId, barcodeVariantIds),
-    queryFn: () => apiClient.listings.resolveCategoriesBatch(connectionId, { items: barcodeItems }),
-    enabled: barcodeItems.length > 0,
+    queryKey: listingsQueryKeys.resolveCategoryBatch(connectionId, resolveVariantIds),
+    queryFn: () => apiClient.listings.resolveCategoriesBatch(connectionId, { items: resolveItems }),
+    enabled: resolveItems.length > 0,
   });
 
   const availabilityQuery = useInventoryAvailabilityBatchQuery(variantIds);
 
-  const categoryReady = barcodeItems.length === 0 || categoryQuery.isSuccess;
+  const categoryReady = resolveItems.length === 0 || categoryQuery.isSuccess;
   const availabilityReady = variantIds.length === 0 || availabilityQuery.isSuccess;
   const hasError = categoryQuery.isError || availabilityQuery.isError;
   const settled = categoryReady && availabilityReady && !hasError;
@@ -119,10 +134,13 @@ export function BulkResolveStep({
         };
       }
 
+      // Prefer the batch verdict (which now covers both the EAN-match and the
+      // mapping-fallback paths, #1522). Only synthesize when the row was never
+      // sent — a row with neither an EAN nor a source category (no-ean), or a
+      // sent EAN row the batch somehow omitted (defensive no-match).
       const categoryResult: EanMatchResult =
-        barcodeOf(row) !== null
-          ? categoryResults[variant.id] ?? { kind: 'no-match' }
-          : { kind: 'no-ean' };
+        categoryResults[variant.id] ??
+        (barcodeOf(row) !== null ? { kind: 'no-match' } : { kind: 'no-ean' });
       const masterPrice = variant.price;
       const masterCurrency = row.product?.currency ?? null;
       const masterStock = availabilityMap.has(variant.id)
@@ -149,9 +167,18 @@ export function BulkResolveStep({
         blockers,
         resolvedCategoryId:
           categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
+        // Empty on the mapping-fallback path (no catalogue card) — normalize to
+        // null so `selectBulkProductCardId` never threads an empty card (#1522).
         resolvedProductCardId:
-          categoryResult.kind === 'matched' ? categoryResult.productCardId : null,
-        resolutionMethod: categoryResult.kind === 'matched' ? 'auto_detect' : null,
+          categoryResult.kind === 'matched' && categoryResult.productCardId !== ''
+            ? categoryResult.productCardId
+            : null,
+        // Carry the BE-reported method so a mapping-resolved row reads as
+        // `category_mapping` rather than `auto_detect` (#1522).
+        resolutionMethod:
+          categoryResult.kind === 'matched'
+            ? categoryResult.method ?? 'auto_detect'
+            : null,
         masterPrice,
         masterStock,
         masterCurrency,

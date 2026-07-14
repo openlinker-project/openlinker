@@ -548,13 +548,15 @@ export class ListingsController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
   @ApiOperation({
-    summary: 'Batch-resolve marketplace categories by variant EAN (#795)',
+    summary: 'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
     description:
-      'Resolves up to 200 variant EANs to marketplace categories in one call via the ' +
-      'connection adapter’s EanCategoryMatcher sub-capability (#735). EAN-only — no ' +
-      'mapping fallback. Drives the bulk-listing wizard Resolve step, replacing the ' +
-      'previous one-HTTP-call-per-row loop. Results are keyed by variantId; every input ' +
-      'item gets exactly one entry.',
+      'Resolves up to 200 variants to marketplace categories in one call. EAN catalogue ' +
+      'match (via the connection adapter’s EanCategoryMatcher sub-capability, #735) is the ' +
+      'primary path; when the EAN yields no match and the item supplies sourceCategoryIds, ' +
+      'the batch falls back to the operator’s configured per-source-category mapping (#1522), ' +
+      'returning method="category_mapping". Drives the bulk-listing wizard Resolve step, ' +
+      'replacing the previous one-HTTP-call-per-row loop. Results are keyed by variantId; ' +
+      'every input item gets exactly one entry.',
   })
   @ApiResponse({
     status: 200,
@@ -573,7 +575,13 @@ export class ListingsController {
   ): Promise<ResolveCategoryBatchResponseDto> {
     try {
       const results = await this.categoryResolution.resolveCategoriesBatch(connectionId, {
-        items: dto.items.map((item) => ({ variantId: item.variantId, ean: item.ean ?? null })),
+        items: dto.items.map((item) => ({
+          variantId: item.variantId,
+          ean: item.ean ?? null,
+          ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
+            ? { sourceCategoryIds: item.sourceCategoryIds }
+            : {}),
+        })),
       });
       return { results: Object.fromEntries(results) };
     } catch (error) {

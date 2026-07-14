@@ -574,18 +574,26 @@ export interface EanMatchCandidate {
   name?: string;
 }
 
+/**
+ * How a `matched` batch result was resolved (#1522). Absent ⇒ `auto_detect`
+ * (an EAN catalogue match). `category_mapping` marks a result produced by the
+ * configured per-source-category mapping fallback (no catalogue card).
+ */
+export type EanMatchMethod = 'auto_detect' | 'category_mapping';
+
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
+  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };
 
 /**
  * Request body for `POST /listings/connections/:connectionId/categories/resolve-batch`
- * (#795). One result entry per item, keyed by `variantId`.
+ * (#795). One result entry per item, keyed by `variantId`. `sourceCategoryIds`
+ * (#1522) enables the configured-mapping fallback when the EAN yields no match.
  */
 export interface ResolveCategoriesBatchRequest {
-  items: Array<{ variantId: string; ean: string | null }>;
+  items: Array<{ variantId: string; ean: string | null; sourceCategoryIds?: string[] }>;
 }
 
 /** Response from the batch resolve route (#795). Keyed by `variantId`. */

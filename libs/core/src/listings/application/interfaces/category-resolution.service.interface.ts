@@ -8,11 +8,9 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
+import type { EanMatchResult } from '@openlinker/core/listings';
 import type {
-  BatchCategoryByEanInput,
-  EanMatchResult,
-} from '@openlinker/core/listings';
-import type {
+  BatchCategoryResolveInput,
   CategoryResolutionInput,
   CategoryResolutionResult,
 } from '../types/category-resolution.types';
@@ -33,19 +31,29 @@ export interface ICategoryResolutionService {
   resolveCategory(input: CategoryResolutionInput): Promise<CategoryResolutionResult>;
 
   /**
-   * Resolve marketplace categories for N variant EANs in one batch (#795).
+   * Resolve marketplace categories for N variants in one batch (#795), EAN
+   * first with a configured-mapping fallback (#1522).
    *
-   * Thin pass-through to the connection's `EanCategoryMatcher` sub-capability
-   * (#735) — EAN-only, no mapping fallback. Drives the bulk-listing wizard's
-   * Resolve step (#792 PR 3), collapsing the previous one-call-per-row loop
-   * into a single call.
+   * Primary path is the connection's `EanCategoryMatcher` sub-capability (#735).
+   * When the EAN yields no catalogue match (or the variant carries no EAN) and
+   * the item supplies `sourceCategoryIds`, the service consults the operator's
+   * per-source-category mapping — the same mapping `OfferBuilderService` honours
+   * at offer-build time — and returns a `matched` result with
+   * `method: 'category_mapping'` (empty `productCardId`). This keeps the wizard
+   * Resolve preview in agreement with build-time resolution.
    *
-   * Throws `AdapterCapabilityNotSupportedException` when the resolved
-   * `OfferManager` adapter does not implement `EanCategoryMatcher`.
-   * Returned map is keyed by `variantId`; every input item has one entry.
+   * Drives the bulk-listing wizard's Resolve step (#792 PR 3), collapsing the
+   * previous one-call-per-row loop into a single call.
+   *
+   * A destination that cannot batch-match EANs (a `borrows`-taxonomy
+   * destination, e.g. Erli) degrades every item to `no-match` — it resolves the
+   * category server-side at submit instead. Throws
+   * `AdapterCapabilityNotSupportedException` when the resolved connection is not
+   * an `OfferManager` marketplace at all. Returned map is keyed by `variantId`;
+   * every input item has one entry.
    */
   resolveCategoriesBatch(
     connectionId: string,
-    input: BatchCategoryByEanInput,
+    input: BatchCategoryResolveInput,
   ): Promise<Map<string, EanMatchResult>>;
 }

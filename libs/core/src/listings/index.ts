@@ -32,6 +32,8 @@ export type {
   CategoryResolutionResult,
   CategoryResolutionMethod,
   CategoryProvenance,
+  BatchCategoryResolveItem,
+  BatchCategoryResolveInput,
 } from './application/types/category-resolution.types';
 export {
   CategoryResolutionMethodValues,
@@ -200,9 +202,10 @@ export type {
   SmartClassificationReport,
   SmartClassificationCondition,
 } from './domain/types/smart-classification.types';
-export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
+export { EanMatchResultKindValues, EanMatchMethodValues } from './domain/types/ean-category-match.types';
 export type {
   EanMatchResultKind,
+  EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
   BatchCategoryByEanInput,
