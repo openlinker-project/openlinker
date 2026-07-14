@@ -296,6 +296,9 @@ describe('toIssueInvoiceCommand', () => {
   it.each([
     ['zero', 0],
     ['negative', -5],
+    ['NaN', Number.NaN],
+    ['+Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
   ])('shipping: totals.shipping %s -> no phantom shipping line (#1517)', (_label, shipping) => {
     const order = makeOrder({
       items: [makeItem({ price: 100, quantity: 1 })],
@@ -307,4 +310,38 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.lines).toHaveLength(1);
     expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
   });
+
+  it('shipping: caller-supplied shippingLineName overrides the neutral default label (#1517)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'conn-1',
+      shippingLineName: 'Koszt wysyłki',
+    });
+
+    const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+    expect(shippingLine?.name).toBe('Koszt wysyłki');
+    // Neutral English default is not used when an override is supplied.
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])(
+    'shipping: %s shippingLineName override falls back to the neutral default label (#1517)',
+    (_label, shippingLineName) => {
+      const order = makeOrder({
+        totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      });
+
+      const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1', shippingLineName });
+
+      const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+      expect(shippingLine?.name).toBe('Shipping');
+    },
+  );
 });

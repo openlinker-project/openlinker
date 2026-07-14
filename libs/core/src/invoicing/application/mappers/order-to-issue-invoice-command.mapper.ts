@@ -23,7 +23,12 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 
-/** Carrier-neutral label for the shipping invoice line (#1517). */
+/**
+ * Default carrier-neutral label for the shipping invoice line (#1517). Core is
+ * language-agnostic and has no locale, so this English default is intentionally
+ * untranslated; a caller that has a locale can override it via
+ * {@link OrderToIssueInvoiceCommandInput.shippingLineName}.
+ */
 const SHIPPING_LINE_NAME = 'Shipping';
 
 /** Inputs to {@link toIssueInvoiceCommand}. */
@@ -35,6 +40,13 @@ export interface OrderToIssueInvoiceCommandInput {
   /** Pass-through ONLY; the adapter derives when absent. */
   documentType?: string;
   idempotencyKey?: string;
+  /**
+   * Optional override for the shipping-line label on a fiscal document. Core has
+   * no locale, so a caller that does (or that translates for a target market)
+   * can supply a localized name here; when absent the neutral English
+   * {@link SHIPPING_LINE_NAME} default is used.
+   */
+  shippingLineName?: string;
 }
 
 /**
@@ -48,7 +60,8 @@ export interface OrderToIssueInvoiceCommandInput {
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey } = input;
+  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName } =
+    input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
   // Fail loud rather than corrupt totals. Absent treatment = documented gross
@@ -66,7 +79,7 @@ export function toIssueInvoiceCommand(
   // order total, #1517). Emit it as a normal gross line so the provider adapter
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
-  const shippingLine = toShippingLine(order.totals.shipping);
+  const shippingLine = toShippingLine(order.totals.shipping, shippingLineName);
   if (shippingLine) {
     lines.push(shippingLine);
   }
@@ -199,14 +212,16 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
  * or `null` when there is nothing to bill (#1517). A single unit priced at the
  * gross shipping amount; `taxRate` is left empty (provider adapter resolves the
  * regime rate, mirroring {@link toInvoiceLine}). Non-positive or non-finite
- * shipping (0, negative, NaN) yields no line — no phantom shipping line.
+ * shipping (0, negative, NaN) yields no line — no phantom shipping line. `name`
+ * defaults to the neutral {@link SHIPPING_LINE_NAME} when the caller supplies no
+ * (locale-specific) override.
  */
-function toShippingLine(shipping: number): InvoiceLine | null {
+function toShippingLine(shipping: number, name?: string): InvoiceLine | null {
   if (!Number.isFinite(shipping) || shipping <= 0) {
     return null;
   }
   return {
-    name: SHIPPING_LINE_NAME,
+    name: name?.trim() || SHIPPING_LINE_NAME,
     quantity: 1,
     unitPriceGross: shipping,
     taxRate: '',
