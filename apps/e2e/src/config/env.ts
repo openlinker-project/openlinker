@@ -38,6 +38,13 @@ export interface E2eEnv {
    */
   sourcePlatform: string;
   /**
+   * Marketplaces the operator buys on during the attended purchase pause.
+   * Comma-separated (`E2E_PURCHASE_PLATFORMS=allegro,erli`) — each platform
+   * gets its own purchase stop, and S5-S9 track one order per platform.
+   * Defaults to the single `sourcePlatform`.
+   */
+  purchasePlatforms: string[];
+  /**
    * Opt-in: provision a BRAND-NEW PrestaShop product at the start of the run so
    * every downstream segment exercises the create-paths (fresh offers, fresh
    * order) rather than reusing existing state. Requires `OL_PS_WEBSERVICE_KEY`.
@@ -173,6 +180,10 @@ export function resolveEnv(): E2eEnv {
     orderId: orderId && orderId.length > 0 ? orderId : null,
     productSku: optional(process.env.E2E_PRODUCT_SKU),
     sourcePlatform: process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro',
+    purchasePlatforms: (process.env.E2E_PURCHASE_PLATFORMS?.trim() || (process.env.E2E_SOURCE_PLATFORM?.trim() || 'allegro'))
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
     freshProduct: process.env.E2E_FRESH_PRODUCT?.trim() === 'true',
     freshCategoryPsId: process.env.E2E_FRESH_CATEGORY_PS?.trim() || '2',
     freshAllegroCategoryId: process.env.E2E_FRESH_ALLEGRO_CATEGORY_ID?.trim() || '89508',
