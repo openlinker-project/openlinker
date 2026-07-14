@@ -172,6 +172,11 @@ export class BulkListingRetryService implements IBulkListingRetryService {
         generateDescription: aiFlags.generateDescription,
         ...(snapshot.price !== undefined && { price: snapshot.price }),
         ...(snapshot.overrides !== undefined && { overrides: snapshot.overrides }),
+        // #1500 — carry the programmatic condition from the persisted snapshot
+        // so a retry wave rebuilds an identical command. Absent for wizard
+        // submissions (their Stan choice rides on overrides); the builder then
+        // re-applies its 'new' default.
+        ...(snapshot.condition !== undefined && { condition: snapshot.condition }),
         ...(aiFlags.descriptionTone !== undefined && {
           descriptionTone: aiFlags.descriptionTone,
         }),

@@ -249,6 +249,12 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const counts = useNavCounts();
   const isAdmin =
     isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  // Demo mode's "write actions are disabled" claim is only true for a
+  // viewer-role session — RolesGuard lets admin/operator write fine, so
+  // showing the banner to them is actively misleading during a live
+  // walkthrough (#1468).
+  const isViewerOnly =
+    isReady && session.status === 'authenticated' && session.user?.role === 'viewer';
   const groups = useMemo(() => buildNavGroups({ isAdmin, demoMode }), [isAdmin, demoMode]);
   const matches = useMatches();
 
@@ -371,7 +377,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           ) : null}
         </header>
 
-        {demoMode ? (
+        {demoMode && isViewerOnly ? (
           <DemoBanner
             consentPending={Boolean(posthogConfig?.key) && analyticsConsent === null}
             consentAccepted={Boolean(posthogConfig?.key) && analyticsConsent === 'accepted'}

@@ -27,6 +27,7 @@ import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions
 import { WooCommerceNotSupportedException } from '../../../domain/exceptions/woocommerce-not-supported.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { fetchAllPages, toPositiveInt } from '../../utils/woocommerce-utils';
+import { buildSyntheticVariantExternalId } from '../../mappers/woocommerce-variant-id';
 import {
   DEFAULT_UNMANAGED_STOCK_QUANTITY,
   type WooCommerceConnectionConfig,
@@ -192,7 +193,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     wcId: number,
     product: WooCommerceProduct,
   ): Promise<Inventory[]> {
-    const syntheticExternalId = `product:${wcId}`;
+    const syntheticExternalId = buildSyntheticVariantExternalId(wcId);
     const variantId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.ProductVariant,
       syntheticExternalId,
@@ -281,7 +282,7 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     const [variantId, inventoryId] = await Promise.all([
       this.identifierMapping.getOrCreateInternalId(
         CORE_ENTITY_TYPE.ProductVariant,
-        `product:${wcId}`,
+        buildSyntheticVariantExternalId(wcId),
         this.connection.id,
         { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: adjustment.productId },
       ),

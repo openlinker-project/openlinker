@@ -24,6 +24,10 @@ export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService')
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 export const SELLER_POLICIES_SERVICE_TOKEN = Symbol('ISellerPoliciesService');
 export const SELLER_POLICIES_CACHE_TOKEN = Symbol('SellerPoliciesCacheRepositoryPort');
+// Responsible-producer read (#1531)
+export const RESPONSIBLE_PRODUCER_SERVICE_TOKEN = Symbol('IResponsibleProducerService');
+// Delivery price list read (#1530)
+export const DELIVERY_PRICE_LIST_SERVICE_TOKEN = Symbol('IDeliveryPriceListService');
 // Order-cancellation stock-restore (#1146)
 export const OFFER_STOCK_RESTORE_SERVICE_TOKEN = Symbol('IOfferStockRestoreService');
 // Shop publish (#1042, ADR-024)

@@ -10,6 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
+import { PAYMENT_STATUS } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -27,6 +28,7 @@ import type {
   IncomingOrderAddress,
   OrderShipping,
   OrderPickupPoint,
+  OrderPickupPointType,
   OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -285,7 +287,25 @@ export class AllegroOrderSourceAdapter
 
       const checkoutForm = response.data;
 
-      const status = checkoutForm.payment.finishedAt ? 'processing' : 'pending';
+      // #1160 follow-up: a checkout-form cancelled on Allegro's side — either
+      // the transaction itself voided (`status === 'CANCELLED'`) or the
+      // seller manually cancelling via the panel's "Status zamówienia"
+      // dropdown (`fulfillment.status === 'CANCELLED'`, the ANULOWANE option)
+      // — must surface as 'cancelled' here, or a resync that re-hydrates the
+      // full order (as opposed to reacting to a `/order/events` CANCEL-type
+      // feed entry) silently keeps reporting 'processing' forever, breaking
+      // both the PrestaShop OrderStatusWriteback relay and the marketplace
+      // stock-restore hook, which both key off `incoming.status ===
+      // 'cancelled'`. Confirmed live during manual E2E testing of #1322: a
+      // real Allegro sandbox order cancelled via the seller-panel dropdown
+      // stayed 'processing' in OL after a poll re-synced it.
+      const isCancelled =
+        checkoutForm.status === 'CANCELLED' || checkoutForm.fulfillment?.status === 'CANCELLED';
+      const status = isCancelled
+        ? 'cancelled'
+        : checkoutForm.payment.finishedAt
+          ? 'processing'
+          : 'pending';
       // Allegro's checkout-form carries no order-level created timestamp, so
       // `createdAt` is OpenLinker's ingestion time. The buyer-placed time lives
       // on `lineItems[].boughtAt` and is surfaced separately as `placedAt` (#926).
@@ -305,6 +325,20 @@ export class AllegroOrderSourceAdapter
       const shipping = checkoutForm.delivery?.cost
         ? Number.parseFloat(checkoutForm.delivery.cost.amount)
         : Math.max(0, total - subtotal);
+
+      // #1435 — for a cash-on-delivery order the buyer pays the full order total
+      // on delivery, so the collectable amount is `summary.totalToPay` verbatim
+      // (decimal string preserved, no float round-trip). Keyed off the neutral
+      // payment status (reusing `deriveAllegroPaymentStatus`, not a duplicate
+      // COD-type compare); absent for prepaid / awaiting orders.
+      const paymentStatus = deriveAllegroPaymentStatus(checkoutForm.payment);
+      const codToCollect =
+        paymentStatus === PAYMENT_STATUS.Cod
+          ? {
+              amount: checkoutForm.summary.totalToPay.amount,
+              currency: checkoutForm.summary.totalToPay.currency,
+            }
+          : undefined;
 
       return {
         externalOrderId: checkoutFormId,
@@ -340,7 +374,8 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
-        paymentStatus: deriveAllegroPaymentStatus(checkoutForm.payment),
+        paymentStatus,
+        codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,
         createdAt,
@@ -491,7 +526,38 @@ export class AllegroOrderSourceAdapter
     if (!pp?.id) {
       return undefined;
     }
-    return { id: pp.id, name: pp.name, description: pp.description };
+    return {
+      id: pp.id,
+      name: pp.name,
+      description: pp.description,
+      pointType: this.classifyPickupPointType(pp.id, pp.name),
+    };
+  }
+
+  /**
+   * Infer the InPost point kind (#1433) from the id/name only — no network
+   * call in the ingestion hot path. A POP-prefixed id (case-insensitive) or a
+   * "PaczkoPunkt" label ⇒ `pop`. Returns `undefined` when neither a POP signal
+   * nor any other classifiable signal is present: Allegro exposes no locker-vs-
+   * partner-point discriminator here, so absent a POP signal we stay truthful
+   * (`undefined`) rather than confidently guessing `apm`.
+   *
+   * This is the heuristic half of the authoritative InPost classifier; it is
+   * duplicated here as a tiny local rule rather than imported from
+   * `@openlinker/integrations-inpost` to avoid an integration→integration
+   * package dependency. Keep in sync with `classifyInpostPointType` in the
+   * InPost ShipX mapper, whose ShipX `type`-based authoritative path runs where
+   * a `/v1/points` lookup already happens (the pickup-point finder).
+   *
+   * The result is therefore best-effort at ingestion time: a `pop` here is a
+   * heuristic match, and it (or the `undefined`) is superseded by the
+   * authoritative ShipX `type`-based classification once the `/v1/points`
+   * path resolves the point.
+   */
+  private classifyPickupPointType(id: string, name?: string): OrderPickupPointType | undefined {
+    const idIsPop = id.toLowerCase().startsWith('pop-');
+    const nameIsPop = (name ?? '').toLowerCase().includes('paczkopunkt');
+    return idIsPop || nameIsPop ? 'pop' : undefined;
   }
 
   /**

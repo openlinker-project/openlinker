@@ -1,11 +1,12 @@
 /**
  * ErliBulkRowSection
  *
- * Per-product (per-row) Erli section for the bulk Review edit modal (#1096).
- * Lets the operator override the dispatch time for a single product instead of
- * only batch-wide, behind a toggle: OFF (default) ⇒ the row inherits the batch
- * dispatch time (the submit deep-merges shared `platformParams` under per-row);
- * ON ⇒ a custom dispatch time is written to the row's `platformParams`.
+ * Per-product (per-row) Erli section for the bulk Review edit modal (#1096,
+ * #1531). Lets the operator override the dispatch time and the responsible
+ * producer for a single product instead of only batch-wide, each behind a
+ * toggle: OFF (default) ⇒ the row inherits the batch value (the submit
+ * deep-merges shared `platformParams` under per-row); ON ⇒ a custom value is
+ * written to the row's `platformParams`.
  *
  * Controlled — the host (edit modal) owns the row's `platformParams` (seeded
  * from any existing per-row override) and persists `onChange` output into the
@@ -18,6 +19,7 @@ import { useMemo, type ReactElement } from 'react';
 
 import type { BulkOfferRowSectionProps } from '../../../../shared/plugins';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
+import { ErliProducerField } from './erli-producer-field';
 import {
   isValidDispatch,
   parseErliConnectionDispatchDefault,
@@ -39,6 +41,13 @@ export function ErliBulkRowSection({
     ? (platformParams.dispatchTime as ErliDispatchTimeParam)
     : connectionDefault;
 
+  // Producer override (#1531). An absent `producer` key ⇒ this row inherits the
+  // batch-default producer; a present string ⇒ this product overrides it. The
+  // per-row value wins over the batch default at submit (per-row deep-merged
+  // over the shared `platformParams`).
+  const producerOverridden = typeof platformParams.producer === 'string';
+  const producer = producerOverridden ? (platformParams.producer as string) : '';
+
   function toggle(on: boolean): void {
     if (on) {
       onChange({ ...platformParams, dispatchTime: current });
@@ -46,6 +55,18 @@ export function ErliBulkRowSection({
       // Drop the key so the row inherits the batch-wide dispatch at submit.
       const next = { ...platformParams };
       delete next.dispatchTime;
+      onChange(next);
+    }
+  }
+
+  function toggleProducer(on: boolean): void {
+    if (on) {
+      // Start empty; the operator picks a producer for this product only.
+      onChange({ ...platformParams, producer: '' });
+    } else {
+      // Drop the key so the row inherits the batch-default producer at submit.
+      const next = { ...platformParams };
+      delete next.producer;
       onChange(next);
     }
   }
@@ -75,6 +96,40 @@ export function ErliBulkRowSection({
           connectionDefault={connectionDefault}
           onChange={(next) => { onChange({ ...platformParams, dispatchTime: next }); }}
         />
+      ) : null}
+
+      <label
+        className="checkbox-row"
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
+      >
+        <input
+          type="checkbox"
+          checked={producerOverridden}
+          onChange={(e) => { toggleProducer(e.target.checked); }}
+        />
+        <span>
+          <strong>Custom producer for this product</strong>
+          <small style={{ display: 'block', color: 'var(--text-muted)' }}>
+            Off — this product uses the batch default producer.
+          </small>
+        </span>
+      </label>
+
+      {producerOverridden ? (
+        <>
+          <ErliProducerField
+            connectionId={connection.id}
+            value={producer}
+            onChange={(next) => { onChange({ ...platformParams, producer: next }); }}
+          />
+          <button
+            type="button"
+            className="button button--ghost button--sm"
+            onClick={() => { toggleProducer(false); }}
+          >
+            Reset to batch default
+          </button>
+        </>
       ) : null}
     </div>
   );

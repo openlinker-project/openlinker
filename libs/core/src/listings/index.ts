@@ -32,6 +32,8 @@ export type {
   CategoryResolutionResult,
   CategoryResolutionMethod,
   CategoryProvenance,
+  BatchCategoryResolveItem,
+  BatchCategoryResolveInput,
 } from './application/types/category-resolution.types';
 export {
   CategoryResolutionMethodValues,
@@ -130,6 +132,8 @@ export { OfferBuilderValidationException } from './domain/exceptions/offer-build
 export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
+export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
+export type { IDeliveryPriceListService } from './application/interfaces/delivery-price-list.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,
@@ -155,13 +159,14 @@ export type {
 } from './domain/types/offer-quantity-update.types';
 export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
 export type { OfferCategory } from './domain/types/category.types';
-export { CreateOfferResultStatusValues } from './domain/types/offer-create.types';
+export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {
   CreateOfferCommand,
   CreateOfferOverrides,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
+  OfferCondition,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,
@@ -169,6 +174,7 @@ export type {
 } from './domain/types/offer-create.types';
 export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
+export type { DeliveryPriceList } from './domain/types/delivery-price-list.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
 
 // OfferManagerPort sub-capabilities (#337): optional capabilities extracted into
@@ -198,9 +204,10 @@ export type {
   SmartClassificationReport,
   SmartClassificationCondition,
 } from './domain/types/smart-classification.types';
-export { EanMatchResultKindValues } from './domain/types/ean-category-match.types';
+export { EanMatchResultKindValues, EanMatchMethodValues } from './domain/types/ean-category-match.types';
 export type {
   EanMatchResultKind,
+  EanMatchMethod,
   EanMatchResult,
   EanMatchCandidate,
   BatchCategoryByEanInput,
@@ -265,9 +272,13 @@ export type {
   MarketplaceOffer,
   MarketplaceOfferPrice,
   MarketplaceOfferCategory,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
 } from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export type { DeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
+export { isDeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
 export type {
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,

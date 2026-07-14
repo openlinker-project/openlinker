@@ -171,6 +171,20 @@ export interface PaymentStatusResult {
   paymentStatus: PaymentStatus;
 }
 
+/**
+ * Command to push an authoritative "paid" state to the provider for an
+ * already-issued document (#1362) - the OUTBOUND counterpart to
+ * `PaymentStatusReader`. `externalInvoiceId` is always the provider-native id
+ * read from a previously-issued `InvoiceRecord.providerInvoiceId` - never
+ * client-supplied directly. Country/provider-agnostic: no `paid_date`
+ * vocabulary here - the adapter formats `paidDate` in whatever wire shape its
+ * provider expects.
+ */
+export interface MarkInvoicePaidCommand {
+  externalInvoiceId: string;
+  paidDate: Date;
+}
+
 /** Neutral B2B/B2C axis. Drives document-type policy in a future rules layer, not here. */
 export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];
@@ -204,6 +218,14 @@ export interface InvoiceLine {
   quantity: number;
   unitPriceGross: number;
   taxRate: string;
+  /**
+   * Unit of measure for the quantity (free text, e.g. a piece/kg/hour label in
+   * the seller's language). Country-agnostic (#1525): a neutral commercial
+   * concept, not a regime code. Optional - marketplace orders carry no unit,
+   * so the order mapper never sets it; the field is the seam for future
+   * sources that do. Providers without a unit concept ignore it.
+   */
+  unit?: string;
 }
 
 /**
@@ -239,7 +261,7 @@ export interface IssuedLineSnapshot {
   buyer: IssuedSnapshotBuyer;
   /** ISO 4217 currency code, echoed from the issue command. */
   currency: string;
-  /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate). */
+  /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate/unit). */
   lines: InvoiceLine[];
 }
 
@@ -395,6 +417,13 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /**
+   * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
+   * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
+   * OL's ingestion clock (`Order.createdAt`). Absent when the source order does
+   * not carry a placement date; adapters omit the corresponding wire field.
+   */
+  saleDate?: string;
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;

@@ -243,7 +243,7 @@ export class SubiektInvoicingAdapter
    * A non-positive-integer `originalProviderInvoiceId` is a terminal, fiscal-safe
    * rejection (we cannot route the correction) — `SubiektInvoiceRejectedError`.
    */
-  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
     const origId = Number(cmd.originalProviderInvoiceId);
     if (!Number.isInteger(origId) || origId <= 0) {
       throw new SubiektInvoiceRejectedError(
@@ -277,30 +277,34 @@ export class SubiektInvoicingAdapter
       }
 
       const now = new Date();
-      return new InvoiceRecord(
-        // Transient id — the core InvoiceService persists and may overwrite it.
-        randomUUID(),
-        this.connectionId,
-        cmd.orderId,
-        SUBIEKT_PROVIDER_TYPE,
-        documentType,
-        'issued',
-        String(response.providerInvoiceId),
-        response.providerInvoiceNumber,
-        // The korekta response carries no regulatory status; default to the
-        // non-terminal 'submitted' so the #1230 reconcile refreshes it later.
-        'submitted',
-        // clearanceReference — populated by a later RegulatoryStatusReader read.
-        null,
-        idempotencyKey ?? null,
-        // The korekta response carries no pdfUrl.
-        null,
-        now,
-        // errorMessage
-        null,
-        now,
-        now,
-      );
+      return {
+        record: new InvoiceRecord(
+          // Transient id — the core InvoiceService persists and may overwrite it.
+          randomUUID(),
+          this.connectionId,
+          cmd.orderId,
+          SUBIEKT_PROVIDER_TYPE,
+          documentType,
+          'issued',
+          String(response.providerInvoiceId),
+          response.providerInvoiceNumber,
+          // The korekta response carries no regulatory status; default to the
+          // non-terminal 'submitted' so the #1230 reconcile refreshes it later.
+          'submitted',
+          // clearanceReference — populated by a later RegulatoryStatusReader read.
+          null,
+          idempotencyKey ?? null,
+          // The korekta response carries no pdfUrl.
+          null,
+          now,
+          // errorMessage
+          null,
+          now,
+          now,
+        ),
+        // The Subiekt bridge builds and submits the korekta document itself —
+        // no machine-readable document for OL to capture, same as issueInvoice.
+      };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }

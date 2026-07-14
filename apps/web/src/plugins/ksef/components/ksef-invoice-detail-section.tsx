@@ -17,6 +17,7 @@
  *
  * @module plugins/ksef/components
  */
+import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
@@ -59,6 +60,11 @@ export function KsefInvoiceDetailSection({
   const upoPreview = useKsefUpoPreview();
   const fa3 = useKsefFa3();
   const { showToast } = useToast();
+  // Tracks a fetched-but-unparseable FA(3) document so the preview area falls
+  // through to placeholder/error copy instead of rendering nothing (KsefFa3View
+  // returns null on parse failure) - reset on every fresh load attempt.
+  const [viewParseFailed, setViewParseFailed] = useState(false);
+  const handleFa3ParseError = useCallback(() => setViewParseFailed(true), []);
 
   const ksefNumber = resolveKsefNumber(invoice.clearanceReference, invoice.providerInvoiceNumber);
   const hasRegulatoryData = invoice.regulatoryStatus !== 'not-applicable';
@@ -98,6 +104,7 @@ export function KsefInvoiceDetailSection({
   }
 
   async function handleViewFa3(): Promise<void> {
+    setViewParseFailed(false);
     // Use the returned error rather than reading fa3.viewError from the closure —
     // that would be stale (React state hasn't re-rendered yet after the await).
     const err = await fa3.loadView(invoice.id);
@@ -242,10 +249,14 @@ export function KsefInvoiceDetailSection({
               <span className="doc-preview__chip">
                 {t('invoice.ksef.fa3Preview', 'FA(3) preview')}
               </span>
-              {fa3.viewError ? (
+              {fa3.viewError || viewParseFailed ? (
                 <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
               ) : fa3.viewText !== null ? (
-                <KsefFa3View xmlText={fa3.viewText} />
+                <KsefFa3View
+                  xmlText={fa3.viewText}
+                  ksefNumber={ksefNumber}
+                  onParseError={handleFa3ParseError}
+                />
               ) : (
                 <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
               )}

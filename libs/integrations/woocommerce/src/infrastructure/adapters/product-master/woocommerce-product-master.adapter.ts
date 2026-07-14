@@ -36,6 +36,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
+import { buildSyntheticVariantExternalId } from '../../mappers/woocommerce-variant-id';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import type {
@@ -180,7 +181,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
 
     if (product.type !== 'variable' || !product.variations?.length) {
       // Simple product — deterministic synthetic variant (same convention as PrestaShop)
-      const syntheticExternalId = `product:${wcId}`;
+      const syntheticExternalId = buildSyntheticVariantExternalId(wcId);
       const internalVariantId = await this.identifierMapping.getOrCreateInternalId(
         CORE_ENTITY_TYPE.ProductVariant,
         syntheticExternalId,
@@ -209,7 +210,7 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
     // Variable product — delete stale synthetic (safe no-op if absent)
     await this.identifierMapping.deleteMapping(
       CORE_ENTITY_TYPE.ProductVariant,
-      `product:${wcId}`,
+      buildSyntheticVariantExternalId(wcId),
       this.connection.id,
     );
 

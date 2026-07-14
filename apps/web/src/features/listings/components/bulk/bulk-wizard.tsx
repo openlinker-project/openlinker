@@ -151,7 +151,10 @@ export function BulkWizard({
     ? !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;
   const destinationBrowsesCategories =
-    batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false;
+    (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
+    (batchConnection
+      ? (batchPlatform?.bulkCategoryBrowsingEnabled?.(batchConnection) ?? false)
+      : false);
 
   // Reconcile the `needs-product-parameters` blocker whenever a category's
   // schema resolves (it loads after the operator picks the category, so it
@@ -381,6 +384,11 @@ export function BulkWizard({
               paramsResolving={paramsResolving}
               platformBlockerChips={platformBlockerChips}
               canBrowseCategories={destinationBrowsesCategories}
+              batchDeliveryPriceList={
+                typeof config.platformParams.deliveryPriceList === 'string'
+                  ? config.platformParams.deliveryPriceList
+                  : ''
+              }
               onUpdateRow={handleUpdateRow}
               onApproveAll={() => { setConfirmOpen(true); }}
               onBack={() => { setStep('config'); }}

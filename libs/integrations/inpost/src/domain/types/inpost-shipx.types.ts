@@ -47,6 +47,28 @@ export interface ShipXCourierParcel {
   is_non_standard?: boolean;
 }
 
+/**
+ * ShipX cash-on-delivery descriptor on a create-shipment request. `amount` is
+ * a JSON number (not the OL decimal string) — the mapper converts. Present only
+ * for COD-capable services (courier); a green shipment without this object is a
+ * regular prepaid parcel.
+ */
+export interface ShipXCod {
+  amount: number;
+  currency: string;
+}
+
+/**
+ * ShipX insurance (declared-value) descriptor on a create-shipment request.
+ * `amount` is a JSON number (not the OL decimal string) — the mapper converts.
+ * Present only when the caller declared a value to insure; a shipment without
+ * this object carries InPost's default (non-declared) liability.
+ */
+export interface ShipXInsurance {
+  amount: number;
+  currency: string;
+}
+
 export interface ShipXCreateShipmentRequest {
   sender: ShipXPeer;
   receiver: ShipXPeer;
@@ -54,6 +76,11 @@ export interface ShipXCreateShipmentRequest {
   service: ShipXService;
   /** Stamped with the internal `ol_shipment_*` id for traceability. */
   reference?: string;
+  /** Cash-on-delivery to collect. Omitted for prepaid shipments. */
+  cod?: ShipXCod;
+  /** Declared value to insure the parcel for. Omitted when the caller
+   * declared none. */
+  insurance?: ShipXInsurance;
   custom_attributes?: {
     sending_method?: string;
     /** Target paczkomat/locker id (e.g. `'BTO02M'`). */
@@ -83,7 +110,14 @@ export interface ShipXTrackingResponse {
 export interface ShipXPoint {
   /** Locker code (e.g. `'POZ08A'`). */
   name: string;
+  /**
+   * Point-type tokens from `/v1/points` (e.g. `['parcel_locker']` for an
+   * automat, `['parcel_locker','parcel_locker_superpop','pok','pop']` for a
+   * PaczkoPunkt). String form tolerated for defensive parsing.
+   */
   type?: readonly string[] | string;
+  /** Human display name (e.g. `'InPost PaczkoPunkt POP-OLS19'`). */
+  display_name?: string;
   status?: string;
   location?: { latitude: number; longitude: number };
   address?: { line1?: string; line2?: string };

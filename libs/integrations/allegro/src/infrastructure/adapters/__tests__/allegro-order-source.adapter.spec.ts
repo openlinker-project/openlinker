@@ -329,6 +329,8 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
       // #928 — prepaid ONLINE order with finishedAt → paid (dispatch permitted).
       expect(incoming.paymentStatus).toBe('paid');
+      // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
+      expect(incoming.codToCollect).toBeUndefined();
     });
 
     it('should report pending status when the buyer has not yet completed payment', async () => {
@@ -355,6 +357,64 @@ describe('AllegroOrderSourceAdapter', () => {
       // #928 — CASH_ON_DELIVERY → cod regardless of order-lifecycle status
       // (dispatch is permitted for COD; the order ships and is paid on receipt).
       expect(incoming.paymentStatus).toBe('cod');
+      // #1435 — a COD order carries the sourced collect amount (the full
+      // order total the buyer pays on delivery) from summary.totalToPay.
+      expect(incoming.codToCollect).toEqual({ amount: '10.00', currency: 'PLN' });
+    });
+
+    it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {
+      // Even though payment.finishedAt is set (the order WAS paid before the
+      // buyer/seller cancelled it), status must be 'cancelled', not
+      // 'processing' — this is exactly the live bug: a cancelled-but-paid
+      // order silently kept reporting 'processing' forever.
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-3',
+        status: 'CANCELLED',
+        updatedAt: '2024-01-03T00:00:00Z',
+        buyer: { id: 'b3', email: 'b3@example.com', login: 'b3' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE', finishedAt: '2024-01-03T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-3' });
+
+      expect(incoming.status).toBe('cancelled');
+    });
+
+    it('should report cancelled status when the seller cancelled via the panel dropdown (fulfillment.status, #1322 manual E2E)', async () => {
+      // The real live bug the manual test hit: the seller used the "Status
+      // zamówienia" dropdown's ANULOWANE option, which sets
+      // fulfillment.status — NOT the transaction-level `status` field.
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-4',
+        fulfillment: { status: 'CANCELLED' },
+        updatedAt: '2024-01-04T00:00:00Z',
+        buyer: { id: 'b4', email: 'b4@example.com', login: 'b4' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE', finishedAt: '2024-01-04T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-4' });
+
+      expect(incoming.status).toBe('cancelled');
     });
 
     describe('dispatch time / ship-by (#927)', () => {
@@ -803,6 +863,9 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: 'Stacja paliw BP',
+          // No POP signal in id/name — Allegro exposes no apm discriminator,
+          // so the classifier stays truthfully undefined (#1433).
+          pointType: undefined,
         });
         // shippingAddress geography comes from the locker; recipient name+phone
         // remain the buyer's (the parcel is collected by the buyer).
@@ -845,11 +908,51 @@ describe('AllegroOrderSourceAdapter', () => {
           id: 'POZ08A',
           name: 'Paczkomat POZ08A',
           description: undefined,
+          pointType: undefined,
         });
         // Falls back to buyer.address since neither delivery.address nor
         // pickupPoint.address has geography.
         expect(incoming.shippingAddress?.address1).toBe('Profile Street 1');
         expect(incoming.shippingAddress?.city).toBe('BuyerCity');
+      });
+
+      it('should infer pointType pop for a POP- prefixed pickup-point id (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'POP-OLS19', name: 'PaczkoPunkt POP-OLS19' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBe('pop');
+      });
+
+      it('should infer pointType pop from a PaczkoPunkt name without a POP- id (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'OLS19X', name: 'InPost PaczkoPunkt at OLS19X' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBe('pop');
+      });
+
+      it('should leave pointType undefined for a plain locker id with no POP signal (#1433)', async () => {
+        const form = baseForm();
+        form.delivery = {
+          address: {},
+          pickupPoint: { id: 'OLS06A', name: 'InPost Paczkomat OLS06A' },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.pickupPoint?.pointType).toBeUndefined();
       });
     });
 

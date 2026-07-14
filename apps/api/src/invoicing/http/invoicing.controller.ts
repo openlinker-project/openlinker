@@ -54,6 +54,8 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiRespons
 import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -66,6 +68,7 @@ import {
   IInvoiceService,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
+  InvalidInvoiceLineError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
   InvoiceRecordNotFoundException,
@@ -77,6 +80,10 @@ import {
   isBankAccountsReader,
   isBankAccountDefaultSetter,
   isInvoiceEmailSender,
+  isPaymentMarker,
+  PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
+  IPaymentStatusRefreshService,
+  normalizeShippingLineName,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -97,6 +104,10 @@ import {
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
+import {
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
@@ -113,6 +124,7 @@ import type { BulkIssueInvoiceResultDto } from './dto/bulk-issue-invoices-respon
 import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
 import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
+import { MarkInvoicePaidRequestDto } from './dto/mark-invoice-paid-request.dto';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -167,6 +179,10 @@ export class InvoicingController {
     private readonly orders: IOrderRecordService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(PAYMENT_STATUS_REFRESH_SERVICE_TOKEN)
+    private readonly paymentStatusRefreshService: IPaymentStatusRefreshService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
   ) {}
 
   @Get('connections/:connectionId/bank-accounts')
@@ -253,6 +269,35 @@ export class InvoicingController {
         throw new BadGatewayException('Invoicing provider is unavailable');
       }
       throw error;
+    }
+  }
+
+  /**
+   * Resolve the connection's optional operator-supplied shipping-line label
+   * (#1562) to thread into `toIssueInvoiceCommand`. Country-agnostic (ADR-026):
+   * core forwards an opaque operator string, never a language it chose, and
+   * never switches on `platformType`. Narrowed to a non-empty string so a
+   * non-string / blank JSONB value defers to the mapper's neutral
+   * `SHIPPING_LINE_NAME` default. Resilient by design: any connection-lookup
+   * failure returns `undefined` (neutral label) rather than breaking issuance -
+   * the adapter resolution downstream is the authoritative connection gate.
+   */
+  private async resolveShippingLineName(connectionId: string): Promise<string | undefined> {
+    try {
+      const connection = await this.connectionPort.get(connectionId);
+      // Shared coercion with the core auto-issue reader so the two narrowings
+      // cannot drift (#1565 review).
+      return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
+    } catch (error) {
+      // Silent fallback is intentional and safe: issuance must never break on a
+      // label lookup (the downstream getCapabilityAdapter is the authoritative
+      // connection gate). Log at debug so an unexpected connection-read failure
+      // is still observable rather than swallowed entirely.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Shipping-line label lookup failed for connection ${connectionId}; using neutral default: ${message}`,
+      );
+      return undefined;
     }
   }
 
@@ -344,6 +389,11 @@ export class InvoicingController {
         ? existing.idempotencyKey
         : undefined);
 
+    // #1562: thread the connection's operator-supplied shipping-line label into
+    // the mapper (ADR-026 neutral - core forwards an opaque string). Blank/absent
+    // defers to the mapper's neutral `SHIPPING_LINE_NAME` default.
+    const shippingLineName = await this.resolveShippingLineName(dto.connectionId);
+
     let command: IssueInvoiceCommand;
     try {
       command = toIssueInvoiceCommand({
@@ -352,6 +402,7 @@ export class InvoicingController {
         buyerTaxId: this.toTaxIdentifier(dto.buyerTaxId),
         documentType: dto.documentType,
         idempotencyKey,
+        shippingLineName,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -455,6 +506,8 @@ export class InvoicingController {
         // Reuse the record's OWN key so the service resumes THIS row rather than
         // starting a fresh attempt (R2/R3, exactly-once dedup).
         idempotencyKey: record.idempotencyKey ?? undefined,
+        // #1562: same operator-supplied shipping-line label as the single-issue path.
+        shippingLineName: await this.resolveShippingLineName(record.connectionId),
       });
       await this.invoiceService.issueInvoice(command);
       return { id: invoiceId, outcome: 'retried' };
@@ -577,6 +630,8 @@ export class InvoicingController {
         // snapshot alone (matches a keyless single re-issue).
         buyerTaxId: null,
         idempotencyKey,
+        // #1562: same operator-supplied shipping-line label as the single-issue path.
+        shippingLineName: await this.resolveShippingLineName(connectionId),
       });
       const issued = await this.invoiceService.issueInvoice(command);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
@@ -684,6 +739,11 @@ export class InvoicingController {
               clearanceReference: original.clearanceReference,
               documentNumber: original.providerInvoiceNumber,
               issuedAt: original.issuedAt,
+              // #1562: same operator-supplied shipping-line label as the issuance
+              // path. Best available approximation for this pre-#1297 rebuild
+              // (which already carries line-fidelity caveats); the current
+              // connection label matches what issuance would render today.
+              shippingLineName: await this.resolveShippingLineName(original.connectionId),
             })
           : undefined;
       }
@@ -829,6 +889,102 @@ export class InvoicingController {
     } catch (error) {
       throw this.toProviderBadGateway(error, 'sendByEmail', invoiceId);
     }
+  }
+
+  @Roles('admin')
+  @Post('invoices/:invoiceId/mark-paid')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Push an authoritative "paid" state to the provider (#1362)',
+    description:
+      'Marks an already-issued document as paid with the connection\'s Invoicing provider - ' +
+      'the outbound counterpart to the payment-status webhook (#1354). Useful for orders ' +
+      'settled before/outside the invoice itself (e.g. a marketplace order the buyer already ' +
+      'paid the marketplace for), which a provider has no bank statement to auto-match ' +
+      'against. After the provider accepts the mark, OL best-effort re-reads the payment ' +
+      'status to refresh its own projection; the returned `paymentStatus` reflects that ' +
+      'immediate re-read and may not yet show `paid` if the provider\'s own processing ' +
+      'hasn\'t completed - this is not a failure. 501 when the resolved adapter does not ' +
+      'implement PaymentMarker.',
+  })
+  @ApiResponse({ status: 200, description: 'Provider accepted the mark', type: InvoiceRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
+  @ApiResponse({ status: 501, description: 'Adapter does not implement PaymentMarker' })
+  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or the mark failed' })
+  async markInvoicePaid(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Body() dto: MarkInvoicePaidRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<InvoiceRecordResponseDto> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    if (!record.providerInvoiceId) {
+      throw new UnprocessableEntityException(
+        `Invoice ${invoiceId} has no provider invoice id - it may not be fully issued yet`,
+      );
+    }
+
+    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
+    if (!isPaymentMarker(adapter)) {
+      throw new NotImplementedException(
+        `Adapter for invoice ${invoiceId} does not implement PaymentMarker`,
+      );
+    }
+
+    // Proportionate sanity warnings (not hard blocks): the operator may be
+    // asserting a financial fact that contradicts OL's own projection, so
+    // surface it in the log rather than silently marking. Payment is normally
+    // tracked on the original invoice, not on a correction document.
+    if (record.documentType === 'corrected') {
+      this.logger.warn(
+        `Marking a correction document (invoice ${invoiceId}) as paid; payment is normally tracked on the original invoice, not its correction`,
+      );
+    }
+    if (record.paymentStatus === 'paid' || record.paymentStatus === 'partially-paid') {
+      this.logger.warn(
+        `Invoice ${invoiceId} local payment status is already '${record.paymentStatus}' before marking paid; proceeding at operator request`,
+      );
+    }
+
+    this.logger.log(
+      `Marking invoice ${invoiceId} (connection=${record.connectionId}) as paid, requested by user ${user.id}`,
+    );
+
+    const paidDate = dto.paidDate ? new Date(dto.paidDate) : new Date();
+    try {
+      await adapter.markPaid({ externalInvoiceId: record.providerInvoiceId, paidDate });
+    } catch (error) {
+      throw this.toProviderBadGateway(error, 'markPaid', invoiceId);
+    }
+
+    // Best-effort refresh: the provider mark already succeeded above, so a
+    // hiccup here (throw, or a non-throwing 'unchanged' outcome because the
+    // provider's own async processing hasn't completed yet) must never fail
+    // the request - there is no reconciliation sweep for payment status
+    // today, so this immediate re-read is the only automatic attempt to
+    // update OL's local projection.
+    let projectionChanged = false;
+    try {
+      const result = await this.paymentStatusRefreshService.refreshByExternalId(
+        record.connectionId,
+        record.providerInvoiceId,
+      );
+      projectionChanged = result.outcome === 'updated';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Post-markPaid payment status refresh failed for invoice ${invoiceId}: ${message}`);
+    }
+
+    // Only re-read when the refresh actually wrote a new status; on 'unchanged'
+    // / 'not-found' / 'unsupported' / a swallowed failure, `record` is already
+    // current so a second query would be redundant.
+    const refreshed = projectionChanged
+      ? await this.invoiceService.getInvoiceById(invoiceId)
+      : null;
+    return this.toDto(refreshed ?? record);
   }
 
   @Get('orders/:orderId/invoice')
@@ -995,15 +1151,24 @@ export class InvoicingController {
     clearanceReference: string | null;
     documentNumber: string;
     issuedAt: Date;
+    shippingLineName?: string;
   }): OriginalDocumentSnapshot {
-    const { orderRecord, connectionId, documentType, clearanceReference, documentNumber, issuedAt } =
-      input;
+    const {
+      orderRecord,
+      connectionId,
+      documentType,
+      clearanceReference,
+      documentNumber,
+      issuedAt,
+      shippingLineName,
+    } = input;
     const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
     const issueCmd = toIssueInvoiceCommand({
       order,
       connectionId,
       buyerTaxId: null,
       documentType: documentType.length > 0 ? documentType : undefined,
+      shippingLineName,
     });
     return {
       buyer: issueCmd.buyer,
@@ -1033,6 +1198,7 @@ export class InvoicingController {
     }
     if (
       error instanceof InvalidBuyerProfileError ||
+      error instanceof InvalidInvoiceLineError ||
       error instanceof UnsupportedPriceTreatmentError
     ) {
       return new BadRequestException(error.message);

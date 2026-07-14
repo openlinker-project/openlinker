@@ -14,7 +14,7 @@
  * @module libs/core/src/listings/domain/types
  */
 
-import type { CreateOfferOverrides } from '@openlinker/core/listings';
+import type { CreateOfferOverrides, OfferCondition } from '@openlinker/core/listings';
 
 /**
  * Current snapshot schema version. Bump when the shape changes incompatibly;
@@ -47,4 +47,11 @@ export interface OfferCreationRequestSnapshot {
   publishImmediately: boolean;
   price?: OfferCreationRequestPriceSnapshot;
   overrides?: CreateOfferOverrides;
+  /**
+   * Programmatic item condition captured at submit time (#1500), so a
+   * bulk/single retry rebuild carries it back onto the re-enqueued job. Absent
+   * for wizard submissions — the operator's Stan choice rides on `overrides`
+   * instead — in which case the builder re-applies its `'new'` default.
+   */
+  condition?: OfferCondition;
 }

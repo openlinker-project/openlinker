@@ -23,6 +23,15 @@ export interface UserRepositoryPort {
   deleteById(userId: string): Promise<void>;
 
   /**
+   * Active viewer-role accounts created before `olderThan` — the
+   * self-registration shape (#1469's demo-account cleanup). Scoped to
+   * `role: 'viewer'` because `RegistrationService.register` always creates
+   * viewer accounts; an operator-created persistent viewer account is
+   * indistinguishable from a demo one by this query (documented limitation).
+   */
+  findStaleViewerAccounts(olderThan: Date): Promise<User[]>;
+
+  /**
    * Atomically deactivates an admin only when 2+ active admins exist.
    * Returns { updated: true } on success; { updated: false } when the user
    * is the sole active admin (guard fired). The caller decides the meaning.

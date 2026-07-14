@@ -63,15 +63,25 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
 
     let availableQuantity = 0;
     let reservedQuantity = 0;
+    const currentVariantIds: (string | null)[] = [];
     for (const inventory of inventories) {
       const inventoryItem = await this.toDomainInventoryItem(inventory, internalProductId);
       await this.inventoryService.setInventory(inventoryItem);
+      currentVariantIds.push(inventoryItem.productVariantId);
       availableQuantity += inventoryItem.availableQuantity;
       reservedQuantity += inventoryItem.reservedQuantity;
     }
 
+    // Soft-mark any previously-known variant absent from this master response as
+    // stale (#1478). Runs unconditionally — an empty response marks every row for
+    // the product stale (product fully removed at the master).
+    const markedStale = await this.inventoryService.pruneStaleVariants(
+      internalProductId,
+      currentVariantIds
+    );
+
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, available=${availableQuantity}, reserved=${reservedQuantity})`
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${markedStale}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
 
     return {

@@ -7,10 +7,12 @@
  * bearer token by the BE adapter, #981), so the only credential the operator
  * supplies is `apiKey`; `baseUrl` is an optional advanced config override.
  *
- * Structured config *editing* is intentionally not contributed — the only
- * config field is the optional `baseUrl`, set at create time via the guided
- * wizard; the edit form falls back to the generic raw-JSON config block for
- * the rare post-create change.
+ * Structured config editing contributes exactly one field: `callbackBaseUrl`
+ * (#1454 follow-up) — the public OL URL Erli posts webhook events to, needed
+ * before "Configure webhooks" can do anything. Every other config field
+ * (`baseUrl`, `masterCatalogConnectionId`, `allegroCategoryAccessEnabled`) is
+ * either set at create time via the guided wizard or rare enough that the
+ * generic raw-JSON config block remains the right place to edit it.
  *
  * @module plugins/erli
  */
@@ -21,6 +23,7 @@ import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { ErliConnectionActions } from './components/erli-connection-actions';
 import { ErliCredentialsPanel } from './components/erli-credentials-panel';
+import { ErliStructuredSection } from './components/erli-structured-section';
 import { erliSetupRoute } from './erli-setup.route';
 
 // Lazy-loaded so adding marketplaces doesn't bloat the main bundle (#1096).
@@ -57,6 +60,9 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/erli',
       badge: 'API key',
     },
+    getCallbackUrlDefault: () =>
+      typeof window !== 'undefined' ? window.location.origin : undefined,
+    StructuredConfigSection: ErliStructuredSection,
     CredentialsPanel: ErliCredentialsPanel,
     ConnectionActions: ErliConnectionActions,
     // Bulk offer creation (#1096): dispatch time, no policies, PLN-only.
@@ -68,6 +74,17 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
     bulkOfferRowSection: ErliBulkRowSectionLazy,
     // Shared single+bulk blocker: Erli requires ≥1 image (declared once).
     offerValidation: erliOfferValidation,
+    // Bulk Review edit modal: Erli's category browsing is a dynamic
+    // per-connection toggle (`allegroCategoryAccessEnabled`, set via the
+    // credentials panel), not a static adapter capability — the manifest
+    // deliberately never declares `CategoryBrowser` (most Erli connections
+    // don't have Allegro category access configured). Without this, the
+    // bulk edit modal always falls back to the manual Allegro-category-id
+    // input even when the operator *has* configured category access; the
+    // single-offer `ErliCreateOfferWizard` already reads the same config
+    // flag directly.
+    bulkCategoryBrowsingEnabled: (connection) =>
+      connection.config.allegroCategoryAccessEnabled === true,
     // Listing-detail: opt into the generic "Edit offer" drawer (#1215). The BE
     // adapter already implements OfferFieldUpdater; this exposes the FE button.
     supportsListingEdit: true,

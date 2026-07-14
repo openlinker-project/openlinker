@@ -224,6 +224,74 @@ describe('AutoIssueTriggerService', () => {
       expect(buyer.type).toBe('private');
       expect(buyer.taxId).toBeNull();
     });
+
+    it('payload carries saleDate from order.placedAt (P_6 seam, #1525)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', placedAt: new Date('2026-06-19T14:30:00.000Z') }),
+        'src-1',
+      );
+      const payload = syncJobs.schedule.mock.calls[0][0].payload as { saleDate?: string };
+      expect(payload.saleDate).toBe('2026-06-19');
+    });
+
+    it('payload omits saleDate entirely when the order has no placedAt', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect('saleDate' in payload).toBe(false);
+    });
+  });
+
+  describe('shipping-line label wiring (#1562)', () => {
+    // Order with a gross shipping cost so the mapper appends a shipping line.
+    const paidShippingOrder = (): Order =>
+      makeOrder({
+        paymentStatus: 'paid',
+        items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget' }],
+        totals: {
+          subtotal: 100,
+          tax: 0,
+          shipping: 10,
+          total: 110,
+          currency: 'PLN',
+          taxTreatment: 'inclusive',
+        },
+      });
+
+    const shippingLineName = (): string => {
+      const lines = (
+        syncJobs.schedule.mock.calls[0][0].payload as { lines: Array<{ name: string }> }
+      ).lines;
+      return lines[lines.length - 1].name;
+    };
+
+    it("threads config.invoicing.shippingLineName into the payload's shipping line", async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', {
+          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: 'Koszt wysyłki' } },
+        }),
+      ]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(shippingLineName()).toBe('Koszt wysyłki');
+    });
+
+    it('falls back to the neutral default label when no shippingLineName is configured', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(shippingLineName()).toBe('Shipping');
+    });
+
+    it('ignores a blank shippingLineName and uses the neutral default', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', {
+          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: '   ' } },
+        }),
+      ]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(shippingLineName()).toBe('Shipping');
+    });
   });
 
   describe('per-connection isolation + PII-safe catch (F9/D11)', () => {

@@ -11,6 +11,7 @@ import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
+import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -72,6 +73,26 @@ export class OrderRecord {
     const value = this.orderSnapshot.paymentStatus;
     return typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value)
       ? (value as PaymentStatus)
+      : undefined;
+  }
+
+  /**
+   * Typed, fail-safe read of the marketplace-sourced COD collect amount (#1435)
+   * from the snapshot. Pure derivation of an already-loaded field (ADR-011): no
+   * I/O, no mutation. Mirrors the {@link paymentStatus} getter — centralises the
+   * `orderSnapshot.codToCollect` key + narrowing so the shipping dispatch gate
+   * binds to a typed contract, not the JSON layout. Returns `undefined` when the
+   * source didn't supply it (prepaid orders, legacy/non-Allegro COD) or the
+   * stored value isn't a well-formed `{ amount, currency }` pair.
+   */
+  get codToCollect(): CodToCollect | undefined {
+    const value = this.orderSnapshot.codToCollect;
+    if (typeof value !== 'object' || value === null) {
+      return undefined;
+    }
+    const { amount, currency } = value as Record<string, unknown>;
+    return typeof amount === 'string' && typeof currency === 'string'
+      ? { amount, currency }
       : undefined;
   }
 }

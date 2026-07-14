@@ -15,24 +15,44 @@
 import type {
   GenerateLabelCommand,
   GenerateLabelResult,
+  ShipmentCod,
+  ShipmentInsuredValue,
   ShipmentStatus,
   ShipmentAddress,
   TrackingSnapshot,
   PickupPoint,
   PickupPointAddress,
   PickupPointStatus,
+  PickupPointType,
   FindPickupPointsQuery,
 } from '@openlinker/core/shipping';
-import { PICKUP_POINT_STATUS } from '@openlinker/core/shipping';
+import { PICKUP_POINT_STATUS, PICKUP_POINT_TYPE } from '@openlinker/core/shipping';
 import type { InpostConnectionConfig, InpostSenderContact } from '../../domain/types/inpost-config.types';
 import type {
   ShipXAddress,
+  ShipXCod,
+  ShipXInsurance,
   ShipXCreateShipmentRequest,
   ShipXPeer,
   ShipXPoint,
   ShipXShipment,
 } from '../../domain/types/inpost-shipx.types';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
+
+/**
+ * ISO 4217 currencies InPost ShipX accepts for COD. InPost COD is a domestic-PL
+ * service, so `PLN` is the only supported value; a non-PLN COD is rejected at
+ * preflight rather than silently sent.
+ */
+const SHIPX_COD_CURRENCIES: readonly string[] = ['PLN'];
+
+/**
+ * ISO 4217 currencies InPost ShipX accepts for declared-value insurance. Like
+ * COD, InPost insurance is a domestic-PL service, so `PLN` is the only supported
+ * value; a non-PLN insured value is rejected at preflight rather than silently
+ * sent.
+ */
+const SHIPX_INSURANCE_CURRENCIES: readonly string[] = ['PLN'];
 
 /**
  * Full ShipX status → OpenLinker bucket table (verified against the ShipX
@@ -103,6 +123,18 @@ export function buildCreateShipmentRequest(
   const sender = toSenderPeer(config.senderAddress);
 
   if (cmd.shippingMethod === 'paczkomat') {
+    if (cmd.cod) {
+      // InPost lockers DO support COD via a ShipX COD-capable locker service;
+      // the limitation is that this v1 simplified adapter does not model locker
+      // COD yet (not modelled yet by this adapter; see follow-up #1554). Fail
+      // fast rather than issue a prepaid label while the operator believes COD
+      // was applied (#1541).
+      throw new ShippingProviderRejectionException(
+        'inpost',
+        'preflight.cod-locker-unsupported',
+        'COD on InPost lockers (paczkomat) is not yet supported by this integration (see #1554); use the kurier method for a cash-on-delivery parcel',
+      );
+    }
     return buildLockerRequest(cmd, sender);
   }
   if (cmd.shippingMethod === 'kurier') {
@@ -151,14 +183,60 @@ export function toTrackingSnapshot(
 
 /** Map a ShipX point to the neutral `PickupPoint`. */
 export function toPickupPoint(point: ShipXPoint): PickupPoint {
-  return {
+  const type = normalizePointTypeTokens(point.type);
+  const result: PickupPoint = {
     providerId: point.name,
     name: point.name,
     address: toPickupPointAddress(point),
     status: mapPickupPointStatus(point.status),
     lat: point.location?.latitude,
     lon: point.location?.longitude,
+    pointType: classifyInpostPointType({ id: point.name, name: point.display_name, type }),
   };
+  if (type !== undefined) {
+    result.type = type;
+  }
+  return result;
+}
+
+/**
+ * Classify an InPost pickup point as a Paczkomat (`apm`) or a PaczkoPunkt
+ * (`pop`), #1433.
+ *
+ * Authoritative when the ShipX `type` list is present: a list carrying `pop`
+ * or `parcel_locker_superpop` is a PaczkoPunkt, otherwise a Paczkomat (both
+ * carry the shared `parcel_locker` token, so it never discriminates). When
+ * `type` is absent, falls back to a heuristic on the point `id`
+ * (`POP-` prefix, case-insensitive) or display `name` (contains
+ * "PaczkoPunkt"). Pure — no I/O.
+ *
+ * The Allegro order-source adapter (`AllegroOrderSourceAdapter.
+ * classifyPickupPointType`) carries a deliberately-duplicated copy of the
+ * fallback branch only (no ShipX `type` list at ingestion). Keep the two in
+ * sync — a change to this heuristic should prompt an equivalent edit there.
+ */
+export function classifyInpostPointType(input: {
+  id?: string;
+  name?: string;
+  type?: readonly string[];
+}): PickupPointType {
+  if (input.type && input.type.length > 0) {
+    const tokens = input.type.map((t) => t.toLowerCase());
+    return tokens.includes('pop') || tokens.includes('parcel_locker_superpop')
+      ? PICKUP_POINT_TYPE.PartnerPoint
+      : PICKUP_POINT_TYPE.Automat;
+  }
+  const idIsPop = (input.id ?? '').toLowerCase().startsWith('pop-');
+  const nameIsPop = (input.name ?? '').toLowerCase().includes('paczkopunkt');
+  return idIsPop || nameIsPop ? PICKUP_POINT_TYPE.PartnerPoint : PICKUP_POINT_TYPE.Automat;
+}
+
+/** Normalize the ShipX `type` (string | string[]) to a token array. */
+function normalizePointTypeTokens(raw?: readonly string[] | string): readonly string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  return typeof raw === 'string' ? [raw] : raw;
 }
 
 /** Build the `GET /v1/points` query string from the neutral finder query. */
@@ -171,6 +249,39 @@ export function buildPointsQuery(
     name: query.searchText,
     per_page: query.limit,
   };
+}
+
+/**
+ * Build the query for the handover-protocol printout
+ * (`GET /v1/organizations/:org/dispatch_orders/printouts`). ShipX renders one
+ * manifest PDF over the given already-confirmed shipments — it accepts the
+ * `shipment_ids[]` batch whether or not those shipments carry a dispatch order,
+ * so no courier-pickup order has to be created first. `format` has a single
+ * documented value (`Pdf`); ShipX rejects the call itself if any id is not
+ * `confirmed`, so that stays carrier-enforced. The 100-shipment-per-request
+ * cap is preflighted here (mirroring the empty-batch guard) so an oversized
+ * batch fails with a clear domain error instead of a raw carrier rejection.
+ */
+export const MAX_PROTOCOL_SHIPMENTS = 100;
+
+export function buildProtocolQuery(
+  providerShipmentIds: readonly string[],
+): { shipment_ids: readonly string[]; format: 'Pdf' } {
+  if (providerShipmentIds.length === 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.empty-protocol-batch',
+      'At least one shipment id is required to generate a handover protocol',
+    );
+  }
+  if (providerShipmentIds.length > MAX_PROTOCOL_SHIPMENTS) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.protocol-batch-too-large',
+      `A handover protocol accepts at most ${MAX_PROTOCOL_SHIPMENTS} shipments per request, got ${providerShipmentIds.length}`,
+    );
+  }
+  return { shipment_ids: providerShipmentIds, format: 'Pdf' };
 }
 
 // --- internals ---------------------------------------------------------------
@@ -190,7 +301,7 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
       'parcel.template (locker size) is required for a paczkomat shipment',
     );
   }
-  return {
+  const request: ShipXCreateShipmentRequest = {
     sender,
     receiver: toReceiverPeer(cmd, false),
     parcels: { template: cmd.parcel.template },
@@ -202,6 +313,12 @@ function buildLockerRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipX
     // courier pickup-order flow (#1427).
     custom_attributes: { sending_method: 'parcel_locker', target_point: cmd.paczkomatId },
   };
+  // Insurance is supported on locker shipments (unlike COD, which this v1
+  // adapter refuses for lockers — see buildCreateShipmentRequest).
+  if (cmd.insuredValue) {
+    request.insurance = toShipXInsurance(cmd.insuredValue);
+  }
+  return request;
 }
 
 function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): ShipXCreateShipmentRequest {
@@ -220,7 +337,7 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
       'parcel.dimensions and parcel.weightGrams are required for a courier shipment',
     );
   }
-  return {
+  const request: ShipXCreateShipmentRequest = {
     sender,
     receiver: toReceiverPeer(cmd, true),
     parcels: [
@@ -239,6 +356,69 @@ function buildCourierRequest(cmd: GenerateLabelCommand, sender: ShipXPeer): Ship
     reference: cmd.shipmentId,
     custom_attributes: { sending_method: 'dispatch_order' },
   };
+  if (cmd.cod) {
+    request.cod = toShipXCod(cmd.cod);
+  }
+  if (cmd.insuredValue) {
+    request.insurance = toShipXInsurance(cmd.insuredValue);
+  }
+  return request;
+}
+
+/**
+ * Translate the carrier-neutral COD descriptor to the ShipX `cod` object. OL
+ * carries `amount` as a decimal string (to cross the boundary without float
+ * rounding); ShipX expects a JSON number, so it is parsed here after validation.
+ * A malformed amount or an unsupported currency is a preflight rejection.
+ */
+function toShipXCod(cod: ShipmentCod): ShipXCod {
+  // Deliberate decimal-string -> JSON-number boundary: ShipX requires a numeric
+  // `amount`, so `Number()` re-introduces a float here. Safe for 2-decimal PLN
+  // COD values, which round-trip cleanly through IEEE-754.
+  const amount = Number(cod.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.cod-amount-invalid',
+      `COD amount must be a positive number; got '${cod.amount}'`,
+    );
+  }
+  if (!SHIPX_COD_CURRENCIES.includes(cod.currency)) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.cod-currency-unsupported',
+      `InPost COD currency must be one of ${SHIPX_COD_CURRENCIES.join(', ')}; got '${cod.currency}'`,
+    );
+  }
+  return { amount, currency: cod.currency };
+}
+
+/**
+ * Translate the carrier-neutral insured-value descriptor to the ShipX
+ * `insurance` object. Mirrors `toShipXCod`: OL carries `amount` as a decimal
+ * string (to cross the boundary without float rounding); ShipX expects a JSON
+ * number, so it is parsed here after validation. A malformed amount or an
+ * unsupported currency is a preflight rejection.
+ */
+function toShipXInsurance(insured: ShipmentInsuredValue): ShipXInsurance {
+  // Deliberate decimal-string -> JSON-number boundary (see toShipXCod). Safe for
+  // 2-decimal PLN values, which round-trip cleanly through IEEE-754.
+  const amount = Number(insured.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.insurance-amount-invalid',
+      `Insured amount must be a positive number; got '${insured.amount}'`,
+    );
+  }
+  if (!SHIPX_INSURANCE_CURRENCIES.includes(insured.currency)) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.insurance-currency-unsupported',
+      `InPost insurance currency must be one of ${SHIPX_INSURANCE_CURRENCIES.join(', ')}; got '${insured.currency}'`,
+    );
+  }
+  return { amount, currency: insured.currency };
 }
 
 function toSenderPeer(sender: InpostSenderContact): ShipXPeer {

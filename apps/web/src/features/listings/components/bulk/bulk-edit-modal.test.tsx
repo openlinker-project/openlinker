@@ -11,7 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { renderWithProviders } from '../../../../test/test-utils';
+import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
 import type { BulkWizardRow } from './bulk-wizard.types';
 import type { EanMatchCandidate } from '../../api/listings.types';
@@ -53,6 +53,30 @@ const connection: Connection = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
+
+// Erli connection — advertises DeliveryPriceListReader so the modal renders the
+// per-row delivery-price-list override field (#1530).
+const erliConnection: Connection = {
+  ...connection,
+  id: 'conn_erli',
+  name: 'My Erli',
+  platformType: 'erli',
+  enabledCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'DeliveryPriceListReader'],
+};
+
+function erliApiClient() {
+  return createMockApiClient({
+    listings: {
+      getDeliveryPriceLists: vi.fn().mockResolvedValue({
+        deliveryPriceLists: [
+          { id: '1', name: '*' },
+          { id: '2', name: 'Kurier' },
+        ],
+      }),
+    },
+  });
+}
 
 function makeRow(opts: {
   name?: string;
@@ -287,5 +311,81 @@ describe('BulkEditModal', () => {
     expect(screen.queryByText('Category parameters')).not.toBeInTheDocument();
     expect(screen.queryByTestId('category-parameters-step')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+  });
+
+  // #1530 — per-row delivery-price-list override in the bulk edit modal.
+  describe('delivery price list override (#1530)', () => {
+    it('inherits the batch default and saves no per-row override when left unchanged', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeRow()}
+          connection={erliConnection}
+          canBrowseCategories={false}
+          defaults={DEFAULTS}
+          batchDeliveryPriceList="*"
+          onSave={onSave}
+        />,
+        { apiClient: erliApiClient() },
+      );
+
+      // Wait for the live options to load, then assert the field inherits the
+      // batch default value + shows the inherit label.
+      await screen.findByRole('option', { name: 'Kurier' }, { timeout: 4000 });
+      expect(screen.getByLabelText('Delivery price list')).toHaveValue('*');
+      expect(screen.getByText('Batch default')).toBeInTheDocument();
+
+      // Fill the required description so the form passes validation.
+      fireEvent.change(screen.getByLabelText('Description'), {
+        target: { value: 'A fine description' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const override = onSave.mock.calls[0][1] as {
+        overrides?: { platformParams?: Record<string, unknown> };
+      };
+      // No per-row override written → the row inherits the batch default at submit.
+      expect(override.overrides?.platformParams?.deliveryPriceList).toBeUndefined();
+    });
+
+    it('writes the per-row override so it wins over the batch default', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeRow()}
+          connection={erliConnection}
+          canBrowseCategories={false}
+          defaults={DEFAULTS}
+          batchDeliveryPriceList="*"
+          onSave={onSave}
+        />,
+        { apiClient: erliApiClient() },
+      );
+
+      await screen.findByRole('option', { name: 'Kurier' }, { timeout: 4000 });
+      fireEvent.change(screen.getByLabelText('Delivery price list'), {
+        target: { value: 'Kurier' },
+      });
+
+      // Once changed it reads as overridden with a reset affordance.
+      expect(screen.getByRole('button', { name: 'Reset to batch default' })).toBeInTheDocument();
+
+      // Fill the required description so the form passes validation.
+      fireEvent.change(screen.getByLabelText('Description'), {
+        target: { value: 'A fine description' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save row' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const override = onSave.mock.calls[0][1] as {
+        overrides?: { platformParams?: Record<string, unknown> };
+      };
+      expect(override.overrides?.platformParams?.deliveryPriceList).toBe('Kurier');
+    });
   });
 });

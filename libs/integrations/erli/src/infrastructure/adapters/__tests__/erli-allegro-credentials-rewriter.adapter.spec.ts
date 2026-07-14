@@ -93,6 +93,15 @@ describe('ErliAllegroCredentialsRewriterAdapter', () => {
     ).rejects.toThrow(/is not an Allegro connection/);
   });
 
+  it('should reject when the source Allegro connection is not active', async () => {
+    connectionPort.get.mockResolvedValue(buildAllegroConnection({ status: 'disabled' }));
+
+    await expect(
+      adapter.rewrite({ reuseAllegroConnectionId: 'allegro-conn-1' })
+    ).rejects.toThrow(/is not active/);
+    expect(credentialsResolver.get).not.toHaveBeenCalled();
+  });
+
   it('should reject when the source Allegro connection has no client credentials configured', async () => {
     connectionPort.get.mockResolvedValue(buildAllegroConnection());
     credentialsResolver.get.mockResolvedValue({});

@@ -26,7 +26,18 @@ import {
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { ERLI_ALLOWED_BASE_URL_HOSTS, isAllowedErliHost } from '../../domain/policies/erli-base-url.policy';
-import { AllegroCatalogEnvironmentValues } from '../../domain/types/erli-connection.types';
+import {
+  AllegroCatalogEnvironmentValues,
+  ErliEnvironmentValues,
+} from '../../domain/types/erli-connection.types';
+
+/**
+ * UUID v4 shape, mirroring `class-validator`'s `isUUID('4')` predicate so the
+ * Erli check stays consistent with Allegro's `@IsUUID('4')` posture without
+ * pulling class-validator into this dependency-light hand-rolled validator.
+ */
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class ErliConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -53,9 +64,11 @@ export class ErliConnectionConfigShapeValidatorAdapter
       }
     }
 
+    this.validateEnvironment(config.environment, issues);
     this.validateDispatchTime(config.defaultDispatchTime, issues);
     this.validateAllegroEnvironment(config.allegroEnvironment, issues);
     this.validateAllegroCategoryAccessEnabled(config.allegroCategoryAccessEnabled, issues);
+    this.validateMasterCatalogConnectionId(config.masterCatalogConnectionId, issues);
 
     const callbackBaseUrl = config.callbackBaseUrl;
     if (callbackBaseUrl !== undefined) {
@@ -120,6 +133,24 @@ export class ErliConnectionConfigShapeValidatorAdapter
   }
 
   /**
+   * `environment` (#1377), when present, must be exactly `'sandbox'` or
+   * `'production'` — the neutral Shop API environment choice the factory maps to
+   * a base URL. Absent is valid (legacy connections used `baseUrl` directly, and
+   * the factory falls back to the prod default).
+   */
+  private validateEnvironment(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined) {
+      return;
+    }
+    if (typeof value !== 'string' || !(ErliEnvironmentValues as readonly string[]).includes(value)) {
+      issues.push({
+        path: 'environment',
+        message: `must be one of: ${ErliEnvironmentValues.join(', ')}`,
+      });
+    }
+  }
+
+  /**
    * `allegroEnvironment`, when present, must be exactly `'sandbox'` or
    * `'production'` — the two hosts `AllegroCategoryCatalogClient` resolves
    * against. Absent is valid (defaults to `'production'` at read time).
@@ -154,6 +185,32 @@ export class ErliConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'allegroCategoryAccessEnabled',
         message: 'must be a boolean when provided',
+      });
+    }
+  }
+
+  /**
+   * `masterCatalogConnectionId`, when present, must be a valid UUID v4 — the id
+   * of the connection whose catalog offers/publishes source from (#1501).
+   * Shape-only: an absent value is valid so order-ingestion-only connections are
+   * not blocked (presence is a capability-gated follow-up, not enforced here).
+   *
+   * An absent-or-blank value (`undefined`, `null`, or `''`) is treated as "not
+   * configured", not rejected: core reads a blank id as unset (offer-builder /
+   * product-publish-builder coerce '' to null) and, in offer-mapping-sync, as
+   * the explicit opt-out from barcode auto-resolve — so a cleared field must
+   * save rather than 400. The UUID check runs only on a non-empty value. This
+   * mirrors Allegro's / WooCommerce's `@IsOptional() @IsUUID('4')` posture,
+   * which likewise skips null/undefined.
+   */
+  private validateMasterCatalogConnectionId(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+    if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+      issues.push({
+        path: 'masterCatalogConnectionId',
+        message: 'must be a valid UUID',
       });
     }
   }

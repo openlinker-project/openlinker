@@ -10,7 +10,11 @@
  * @module libs/integrations/erli/src/__tests__
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isOfferCreator, type OfferManagerPort } from '@openlinker/core/listings';
+import {
+  isOfferCreator,
+  isResponsibleProducerReader,
+  type OfferManagerPort,
+} from '@openlinker/core/listings';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
@@ -100,7 +104,23 @@ describe('erliAdapterManifest', () => {
     // Each capability is declared in lockstep with its adapter; declaring a
     // capability the factory cannot build would let listCapabilityAdapters
     // request an undeliverable adapter.
-    expect(erliAdapterManifest.supportedCapabilities).toEqual(['OfferManager', 'OrderSource']);
+    expect(erliAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['OfferManager', 'OrderSource'])
+    );
+  });
+
+  it('should advertise the OfferCreator sub-capability so FE offer-creation flows keep showing Erli (#1498)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
+    // Erli has no offer-event journal — the offers-sync trigger stays hidden.
+    expect(erliAdapterManifest.supportedCapabilities).not.toContain('OfferEventReader');
+  });
+
+  it('should advertise the ResponsibleProducerReader sub-capability so the wizard producer picker shows for Erli (#1531)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('ResponsibleProducerReader');
+  });
+
+  it('should advertise the DeliveryPriceListReader sub-capability so the FE gates the delivery-price-list picker (#1530)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('DeliveryPriceListReader');
   });
 
   it('should be the platform-default adapter', () => {
@@ -270,6 +290,16 @@ describe('createErliPlugin', () => {
       expect(isOfferCreator(adapter)).toBe(true);
     });
 
+    it('should resolve OfferManager to a responsible-producer-reader adapter (#1531)', async () => {
+      const adapter = await createErliPlugin().createCapabilityAdapter<OfferManagerPort>(
+        connection,
+        'OfferManager',
+        makeDispatchHost(),
+      );
+
+      expect(isResponsibleProducerReader(adapter)).toBe(true);
+    });
+
     it('should resolve OrderSource to an order-source adapter (#993)', async () => {
       const adapter = await createErliPlugin().createCapabilityAdapter<OrderSourcePort>(
         connection,
@@ -285,6 +315,14 @@ describe('createErliPlugin', () => {
       await expect(
         createErliPlugin().createCapabilityAdapter(connection, 'ProductMaster', makeDispatchHost()),
       ).rejects.toThrow('Erli adapter does not support capability: ProductMaster');
+    });
+
+    it('should advertise OfferCreator but reject dispatching it directly — it is narrow-only via isOfferCreator on the OfferManager adapter (#1498)', async () => {
+      expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
+
+      await expect(
+        createErliPlugin().createCapabilityAdapter(connection, 'OfferCreator', makeDispatchHost()),
+      ).rejects.toThrow('Erli adapter does not support capability: OfferCreator');
     });
   });
 });

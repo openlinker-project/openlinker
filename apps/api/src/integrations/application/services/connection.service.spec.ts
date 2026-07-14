@@ -288,6 +288,51 @@ describe('ConnectionService', () => {
       );
     });
 
+    it('should run the registered rewriter on the create path before persisting credentials (#1405 review)', async () => {
+      connectionPort.create.mockResolvedValue(mockConnection);
+      const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+        rewrite: jest
+          .fn()
+          .mockResolvedValue({ webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' }),
+      };
+      credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+      await service.create({
+        name: 'Wizard Connection',
+        platformType: 'prestashop',
+        config: { baseUrl: 'https://new.com' },
+        credentials: { webserviceApiKey: 'RAW' },
+      });
+
+      expect(stubRewriter.rewrite).toHaveBeenCalledWith({ webserviceApiKey: 'RAW' });
+      expect(credentials.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentialsJson: { webserviceApiKey: 'REWRITTEN', extraField: 'added-by-rewriter' },
+        })
+      );
+    });
+
+    it('should map a ConnectionCredentialsRewriteException from the rewriter to BadRequestException on create (#1405 review)', async () => {
+      const stubRewriter: jest.Mocked<ConnectionCredentialsRewriterPort> = {
+        rewrite: jest
+          .fn()
+          .mockRejectedValue(
+            new ConnectionCredentialsRewriteException('Stub', 'source connection is invalid')
+          ),
+      };
+      credentialsRewriterRegistry.register('prestashop.webservice.v1', stubRewriter);
+
+      await expect(
+        service.create({
+          name: 'Wizard Connection',
+          platformType: 'prestashop',
+          config: { baseUrl: 'https://new.com' },
+          credentials: { webserviceApiKey: 'RAW' },
+        })
+      ).rejects.toThrow(BadRequestException);
+      expect(credentials.create).not.toHaveBeenCalled();
+    });
+
     it('should reject PrestaShop credentials missing webserviceApiKey', async () => {
       await expect(
         service.create({
@@ -355,6 +400,87 @@ describe('ConnectionService', () => {
 
       await expect(service.create(payload)).resolves.toEqual(mockConnection);
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    // #1498 — stock write-back authority guard + default-off.
+    describe('write-back capability defaults and guard (#1498)', () => {
+      const woocommerceManifest = {
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: [
+          'ProductMaster',
+          'InventoryMaster',
+          'OrderProcessorManager',
+          'OrderSource',
+          'ProductPublisher',
+          'CategoryProvisioner',
+          'OfferManager',
+        ],
+      };
+
+      it('should exclude OfferManager from defaulted capabilities when the manifest also declares InventoryMaster', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          woocommerceManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'woocommerce' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).not.toContain('OfferManager');
+        expect(created.enabledCapabilities).toContain('InventoryMaster');
+        expect(created.enabledCapabilities).toContain('ProductPublisher');
+      });
+
+      it('should keep the full defaulted capability set for marketplace manifests without InventoryMaster', async () => {
+        // Synthetic marketplace adapterKey with no registered config-shape
+        // validator, so the test exercises only the capability-defaulting path.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'marketplace.test.v1',
+          platformType: 'test-marketplace',
+          supportedCapabilities: ['OrderSource', 'OfferManager'],
+        } as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'test-marketplace' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).toContain('OfferManager');
+      });
+
+      it('should reject create when InventoryMaster and OfferManager are both explicitly enabled', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          woocommerceManifest as never
+        );
+
+        await expect(
+          service.create({
+            ...payload,
+            platformType: 'woocommerce',
+            enabledCapabilities: ['InventoryMaster', 'OfferManager'] as never,
+          })
+        ).rejects.toThrow(/cannot both be enabled/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should allow create with OfferManager enabled when InventoryMaster is not requested', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          woocommerceManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            platformType: 'woocommerce',
+            enabledCapabilities: ['OfferManager', 'ProductPublisher'] as never,
+          })
+        ).resolves.toEqual(mockConnection);
+      });
     });
 
     // #509 — create-path config validation. Mirrors the update-path hook
@@ -496,6 +622,41 @@ describe('ConnectionService', () => {
       await expect(service.update('connection-123', { name: 'Updated' })).rejects.toThrow(
         NotFoundException
       );
+    });
+
+    // #1498 — write-back authority guard on the update path.
+    describe('write-back capability guard on update (#1498)', () => {
+      it('should reject update when the patch enables InventoryMaster and OfferManager together', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'woocommerce.restapi.v3',
+          platformType: 'woocommerce',
+          supportedCapabilities: ['InventoryMaster', 'OfferManager', 'ProductPublisher'],
+        } as never);
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['InventoryMaster', 'OfferManager'] as never,
+          })
+        ).rejects.toThrow(/cannot both be enabled/);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should allow update enabling OfferManager alone', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        connectionPort.update.mockResolvedValue(mockConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'woocommerce.restapi.v3',
+          platformType: 'woocommerce',
+          supportedCapabilities: ['InventoryMaster', 'OfferManager', 'ProductPublisher'],
+        } as never);
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['OfferManager', 'ProductPublisher'] as never,
+          })
+        ).resolves.toEqual(mockConnection);
+      });
     });
 
     // #437 — service-layer Allegro config validation. Closes the bypass on

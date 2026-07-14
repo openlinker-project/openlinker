@@ -474,7 +474,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
       const { builder, lastInput } = capturingBuilder();
 
-      const record = await adapter(http, builder).issueCorrection(correctionCommand());
+      const { record } = await adapter(http, builder).issueCorrection(correctionCommand());
 
       const paths = http.calls.map((c) => `${c.method} ${c.path}`);
       expect(paths).toEqual([
@@ -489,7 +489,10 @@ describe('KsefInvoicingAdapter', () => {
       // The KOR's own P_2 must land on the correction record too — the
       // correction path is the primary consumer of the #1289 precondition
       // this unblocks, so guard it explicitly, not just via delegation (#1338).
-      expect(record.providerInvoiceNumber).toBe('ol_order_123');
+      // #1364: a correction's P_2 must be DISTINCT from the original document's
+      // P_2 (`orderId`) or KSeF rejects the second submission as a duplicate.
+      expect(record.providerInvoiceNumber).not.toBe('ol_order_123');
+      expect(record.providerInvoiceNumber).toMatch(/^ol_order_123-KOR-/);
 
       const built = lastInput();
       expect(built?.correction).toBeDefined();
@@ -498,6 +501,36 @@ describe('KsefInvoicingAdapter', () => {
       // The delta (newQuantity: 1) was applied onto the original line (qty 2).
       expect(built?.correction?.correctedLines).toHaveLength(1);
       expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
+    });
+
+    it('should derive distinct P_2 numbers for two corrections of the same order (#1364)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const { record: first } = await adapter(http).issueCorrection(
+        correctionCommand({ idempotencyKey: 'retry-key-a' }),
+      );
+      const { record: second } = await adapter(http).issueCorrection(
+        correctionCommand({ idempotencyKey: 'retry-key-b' }),
+      );
+
+      expect(first.providerInvoiceNumber).not.toBe(second.providerInvoiceNumber);
+      expect(first.providerInvoiceNumber).not.toBe('ol_order_123');
+      expect(second.providerInvoiceNumber).not.toBe('ol_order_123');
+    });
+
+    it('should derive the same P_2 for repeated calls with the same idempotencyKey (#1364)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const { record: first } = await adapter(http).issueCorrection(
+        correctionCommand({ idempotencyKey: 'stable-retry-key' }),
+      );
+      const { record: retry } = await adapter(http).issueCorrection(
+        correctionCommand({ idempotencyKey: 'stable-retry-key' }),
+      );
+
+      expect(retry.providerInvoiceNumber).toBe(first.providerInvoiceNumber);
     });
 
     it('should apply newUnitPriceGross deltas while keeping name/taxRate from the original line', async () => {

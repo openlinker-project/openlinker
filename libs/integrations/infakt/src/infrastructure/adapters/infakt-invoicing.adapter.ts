@@ -32,6 +32,8 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   InvoicingPort,
+  MarkInvoicePaidCommand,
+  PaymentMarker,
   PaymentStatus,
   PaymentStatusReader,
   PaymentStatusResult,
@@ -267,6 +269,7 @@ export class InfaktInvoicingAdapter
     InvoicingPort,
     RegulatoryStatusReader,
     PaymentStatusReader,
+    PaymentMarker,
     RegulatoryResubmitter,
     CorrectionIssuer,
     RegulatoryDocumentReader,
@@ -561,7 +564,31 @@ export class InfaktInvoicingAdapter
     return { paymentStatus: toPaymentStatus(invoice) };
   }
 
-  async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+  /**
+   * `PaymentMarker.markPaid` (#1362) - the outbound counterpart to
+   * `getPaymentStatus`: push an authoritative "paid" state to inFakt for an
+   * order settled elsewhere (e.g. a marketplace order - the buyer paid the
+   * marketplace, not the seller's bank account, so inFakt has no bank
+   * statement to auto-match against). Verified live against the sandbox
+   * (2026-07-08): `POST /async/invoices/{uuid}/paid.json` returns 201 with an
+   * async task envelope (`processing_code: 100`, "task accepted" - not
+   * "completed"), and an immediate re-read shows `status: 'paid'` /
+   * `paid_date` set. Re-marking an already-paid invoice is safe (still 201,
+   * no error).
+   *
+   * Async on inFakt's side: the caller is responsible for re-reading via
+   * `getPaymentStatus` afterward if it needs OL's own projection updated -
+   * this method only confirms the provider ACCEPTED the mark, not that its
+   * processing has finished.
+   */
+  async markPaid(cmd: MarkInvoicePaidCommand): Promise<void> {
+    await this.http.post(`async/invoices/${encodeURIComponent(cmd.externalInvoiceId)}/paid.json`, {
+      invoice: { paid_date: cmd.paidDate.toISOString().slice(0, 10) },
+    });
+    this.logger.log(`Infakt invoice ${cmd.externalInvoiceId} marked as paid`);
+  }
+
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
     const { originalProviderInvoiceId, reason, lines, documentType, idempotencyKey, orderId } =
       cmd;
 
@@ -679,28 +706,33 @@ export class InfaktInvoicingAdapter
     const ksefResult = await this.sendToKsef(invoice.uuid, 'corrective_invoices');
 
     const now = new Date();
-    return new InvoiceRecord(
-      randomUUID(),
-      this.connectionId,
-      orderId,
-      INFAKT_PROVIDER_TYPE,
-      documentType ?? 'corrected',
-      'issued',
-      invoice.uuid,
-      invoice.number ?? null,
-      toRegulatoryStatus(ksefResult.status),
-      ksefResult.ksef_number,
-      idempotencyKey ?? null,
-      // Infakt's invoice resource carries no `pdf_url` field (verified live
-      // against the sandbox, #1321) — the real PDF path is
-      // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
-      // below, which hits the dedicated `pdf.json` endpoint.
-      null,
-      now,
-      null,
-      now,
-      now,
-    );
+    return {
+      record: new InvoiceRecord(
+        randomUUID(),
+        this.connectionId,
+        orderId,
+        INFAKT_PROVIDER_TYPE,
+        documentType ?? 'corrected',
+        'issued',
+        invoice.uuid,
+        invoice.number ?? null,
+        toRegulatoryStatus(ksefResult.status),
+        ksefResult.ksef_number,
+        idempotencyKey ?? null,
+        // Infakt's invoice resource carries no `pdf_url` field (verified live
+        // against the sandbox, #1321) — the real PDF path is
+        // `RegulatoryDocumentReader.getRegulatoryDocument(record, 'rendered')`
+        // below, which hits the dedicated `pdf.json` endpoint.
+        null,
+        now,
+        null,
+        now,
+        now,
+      ),
+      // Infakt builds and owns its own FA(3)/KSeF session server-side (see the
+      // module docstring) — there is no machine-readable document for OL to
+      // capture, same as issueInvoice.
+    };
   }
 
   // --- Infakt-specific: trigger KSeF submission ---

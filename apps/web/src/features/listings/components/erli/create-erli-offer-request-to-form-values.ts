@@ -49,6 +49,18 @@ export function createErliOfferRequestToFormValues(
   const dispatch: ErliDispatchTimeParam = isValidDispatch(dispatchRaw)
     ? { period: dispatchRaw.period, unit: dispatchRaw.unit ?? 'day' }
     : fallbackDispatch;
+  // Responsible producer (#1531) rides `overrides.platformParams.producer`.
+  const producerRaw = overrides?.platformParams?.producer;
+  const producer =
+    typeof producerRaw === 'string'
+      ? producerRaw
+      : typeof producerRaw === 'number'
+        ? String(producerRaw)
+        : '';
+  // Delivery price list (#1530) rides `overrides.platformParams.deliveryPriceList`.
+  const deliveryPriceListRaw = overrides?.platformParams?.deliveryPriceList;
+  const deliveryPriceList =
+    typeof deliveryPriceListRaw === 'string' ? deliveryPriceListRaw : '';
 
   return {
     internalVariantId: request.internalVariantId,
@@ -60,6 +72,8 @@ export function createErliOfferRequestToFormValues(
     priceAmount: request.price ? request.price.amount.toFixed(2) : '',
     stock: request.stock,
     description: overrides?.description ?? '',
+    producer,
+    deliveryPriceList,
     publishImmediately: request.publishImmediately,
     dispatchPeriod: dispatch.period,
     dispatchUnit: dispatch.unit,

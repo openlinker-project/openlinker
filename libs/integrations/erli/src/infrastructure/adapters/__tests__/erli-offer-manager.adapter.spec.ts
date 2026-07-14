@@ -33,6 +33,7 @@ import type { IErliHttpClient } from '../../http/erli-http-client.interface';
 import {
   ErliOfferManagerAdapter,
   ERLI_FROZEN_STOCK_CACHE_TTL_SEC,
+  ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC,
 } from '../erli-offer-manager.adapter';
 
 const VALID_ID = `ol_variant_${'a'.repeat(32)}`;
@@ -344,7 +345,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 
@@ -373,7 +374,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
           { source: 'allegro', id: '224017', type: 'string', values: ['Acme'] },
         ]);
       });
@@ -421,7 +422,7 @@ describe('ErliOfferManagerAdapter', () => {
 
         const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
         expect(body.externalAttributes).toEqual([
-          { source: 'allegro', id: '11323', type: 'dictionary', values: ['11323_1'] },
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
         ]);
       });
 
@@ -441,6 +442,112 @@ describe('ErliOfferManagerAdapter', () => {
         } finally {
           debugSpy.mockRestore();
         }
+      });
+    });
+
+    describe('condition default (#1500)', () => {
+      it('maps neutral condition "new" to a source:"allegro" Stan (11323_1) attribute', async () => {
+        await adapter.createOffer(createCmd({ condition: 'new' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_1' }] },
+        ]);
+      });
+
+      it('maps neutral condition "used" to Stan value 11323_2', async () => {
+        await adapter.createOffer(createCmd({ condition: 'used' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+      });
+
+      it('does NOT double-set condition when the operator already supplied a Stan (11323) param', async () => {
+        await adapter.createOffer(
+          createCmd({
+            condition: 'new',
+            parameters: [{ id: '11323', valuesIds: ['11323_2'], section: 'offer' }],
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        // Operator's Stan wins; the default 'new' condition is not appended.
+        expect(body.externalAttributes).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+      });
+
+      it('does not emit a Stan attribute when condition is absent', async () => {
+        // Mirrors the Allegro "absent -> no Stan param" coverage: with no
+        // condition and no operator params, no Stan (11323) attribute is added.
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as { externalAttributes?: unknown };
+        expect(body.externalAttributes).toBeUndefined();
+      });
+
+      it('appends condition before variant-group axes so group index refs stay valid', async () => {
+        const groupId = `ol_product_${'c'.repeat(32)}`;
+        await adapter.createOffer(
+          createCmd({
+            condition: 'new',
+            variantGroup: { groupId, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<{ id: string; index?: number }>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Condition attribute precedes the group axis; the group references the
+        // axis by its absolute index (1), unaffected by the prepended condition.
+        expect(body.externalAttributes?.[0]).toEqual({
+          source: 'allegro',
+          id: '11323',
+          type: 'dictionary',
+          values: [{ id: '11323_1' }],
+        });
+        expect(body.externalAttributes?.[1]).toMatchObject({
+          source: 'shop',
+          name: 'Color',
+          values: ['Red'],
+          index: 1,
+        });
+        expect(body.externalVariantGroup?.attributes).toEqual([1]);
+      });
+
+      it('keeps operator-Stan dedup and variant-group index integrity together', async () => {
+        const groupId = `ol_product_${'d'.repeat(32)}`;
+        await adapter.createOffer(
+          createCmd({
+            // Default condition 'new' plus an operator-supplied Stan param: the
+            // operator wins (no double-set), and the appended group axis still
+            // references its own absolute index after the operator attribute.
+            condition: 'new',
+            parameters: [{ id: '11323', valuesIds: ['11323_2'], section: 'offer' }],
+            variantGroup: { groupId, attributes: [{ name: 'Color', value: 'Red' }] },
+          }),
+        );
+
+        const body = httpClient.post.mock.calls[0][1] as {
+          externalAttributes?: Array<{ id: string; index?: number }>;
+          externalVariantGroup?: { attributes?: number[] };
+        };
+        // Exactly one Stan attribute — the operator's (11323_2), not the default.
+        const stanAttrs = (body.externalAttributes ?? []).filter((a) => a.id === '11323');
+        expect(stanAttrs).toEqual([
+          { source: 'allegro', id: '11323', type: 'dictionary', values: [{ id: '11323_2' }] },
+        ]);
+        // The group axis follows the single param attribute at index 1.
+        expect(body.externalAttributes?.[1]).toMatchObject({
+          source: 'shop',
+          name: 'Color',
+          values: ['Red'],
+          index: 1,
+        });
+        expect(body.externalVariantGroup?.attributes).toEqual([1]);
       });
     });
 
@@ -1107,6 +1214,207 @@ describe('ErliOfferManagerAdapter', () => {
       await adapter.restoreStockOnCancellation([]);
 
       expect(httpClient.patch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fetchResponsibleProducers (#1531 — ResponsibleProducerReader)', () => {
+    it('maps GET /dictionaries/responsibleProducers items to neutral ResponsibleProducerEntry[]', async () => {
+      httpClient.get.mockResolvedValue({
+        status: 200,
+        data: [
+          { id: 1, name: 'ACME Sp. z o.o.' },
+          { id: 42, name: 'Importer Ltd' },
+        ],
+      });
+
+      const result = await adapter.fetchResponsibleProducers();
+
+      expect(httpClient.get).toHaveBeenCalledWith('dictionaries/responsibleProducers');
+      expect(result).toEqual([
+        { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+        { id: '42', name: 'Importer Ltd', kind: 'PRODUCER' },
+      ]);
+    });
+
+    it('drops items without a usable name and tolerates an empty/bodyless response', async () => {
+      httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+      await expect(adapter.fetchResponsibleProducers()).resolves.toEqual([]);
+    });
+
+    it('caches the mapped result per connection when a cache is wired', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+      httpClient.get.mockResolvedValue({ status: 200, data: [{ id: 7, name: 'Producent' }] });
+
+      const result = await cached.fetchResponsibleProducers();
+
+      expect(result).toEqual([{ id: '7', name: 'Producent', kind: 'PRODUCER' }]);
+      expect(cache.set).toHaveBeenCalledWith(
+        'erli:responsible-producers:conn-1',
+        [{ id: '7', name: 'Producent', kind: 'PRODUCER' }],
+        ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC,
+      );
+    });
+
+    it('returns the cached value without hitting the API on a cache hit', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue([{ id: '9', name: 'Cached', kind: 'PRODUCER' }]),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+
+      const result = await cached.fetchResponsibleProducers();
+
+      expect(result).toEqual([{ id: '9', name: 'Cached', kind: 'PRODUCER' }]);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listDeliveryPriceLists (#1530 — DeliveryPriceListReader)', () => {
+    it('maps GET /delivery/priceLists items ({id,name}) to neutral DeliveryPriceList[]', async () => {
+      httpClient.get.mockResolvedValue({
+        status: 200,
+        data: [
+          { id: 1, name: '*' },
+          { id: 42, name: 'Kurier' },
+        ],
+      });
+
+      const result = await adapter.listDeliveryPriceLists();
+
+      expect(httpClient.get).toHaveBeenCalledWith('delivery/priceLists');
+      expect(result).toEqual([
+        { id: '1', name: '*' },
+        { id: '42', name: 'Kurier' },
+      ]);
+    });
+
+    it('drops items without a usable name and tolerates an empty/bodyless response', async () => {
+      httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+      await expect(adapter.listDeliveryPriceLists()).resolves.toEqual([]);
+    });
+
+    it('caches the mapped result per connection when a cache is wired', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+      httpClient.get.mockResolvedValue({ status: 200, data: [{ id: 7, name: 'Standard' }] });
+
+      const result = await cached.listDeliveryPriceLists();
+
+      expect(result).toEqual([{ id: '7', name: 'Standard' }]);
+      expect(cache.set).toHaveBeenCalledWith(
+        'erli:delivery-price-lists:conn-1',
+        [{ id: '7', name: 'Standard' }],
+        expect.any(Number),
+      );
+    });
+
+    it('returns the cached value without hitting the API on a cache hit', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue([{ id: '9', name: 'Cached' }]),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+
+      const result = await cached.listDeliveryPriceLists();
+
+      expect(result).toEqual([{ id: '9', name: 'Cached' }]);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create body — responsible producer (#1531)', () => {
+    it('stamps the operator-selected producer id onto the create body', async () => {
+      await adapter.createOffer(createCmd({ overrides: { platformParams: { producer: '42' } } }));
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBe(42);
+    });
+
+    it('accepts a numeric producer selection', async () => {
+      await adapter.createOffer(createCmd({ overrides: { platformParams: { producer: 7 } } }));
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBe(7);
+    });
+
+    it('omits producerId when no selection is supplied', async () => {
+      await adapter.createOffer(createCmd());
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBeUndefined();
+    });
+
+    it('ignores a blank or non-numeric producer selection', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { producer: '   ' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
+      expect(body.producerId).toBeUndefined();
+    });
+  });
+
+  describe('create body — delivery price list (#1530)', () => {
+    it('stamps the operator-selected deliveryPriceList onto the create body', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { deliveryPriceList: 'Kurier' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBe('Kurier');
+    });
+
+    it('omits deliveryPriceList when no selection is supplied', async () => {
+      await adapter.createOffer(createCmd());
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBeUndefined();
+    });
+
+    it('ignores a blank deliveryPriceList selection', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { deliveryPriceList: '   ' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBeUndefined();
     });
   });
 });

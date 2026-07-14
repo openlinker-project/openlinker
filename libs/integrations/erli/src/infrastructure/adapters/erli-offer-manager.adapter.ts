@@ -106,7 +106,10 @@ import {
   type CreateOfferCommand,
   type CreateOfferResult,
   type CreateOfferValidationError,
+  type DeliveryPriceList,
+  type DeliveryPriceListReader,
   type OfferCategory,
+  type OfferCondition,
   type OfferCreator,
   type OfferDescriptionUpdate,
   type OfferFieldUpdate,
@@ -116,6 +119,8 @@ import {
   type OfferStatusReader,
   type OfferStockRestorer,
   type OfferStockRestoreTarget,
+  type ResponsibleProducerEntry,
+  type ResponsibleProducerReader,
   type TaxonomyBorrower,
   type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
@@ -130,12 +135,14 @@ import type { ErliDispatchTime } from '../../domain/types/erli-connection.types'
 import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
+  ErliDeliveryPriceListItem,
   ErliExternalAttribute,
   ErliExternalCategory,
   ErliProductCreateBody,
   ErliProductImage,
   ErliProductPatchBody,
   ErliProductResource,
+  ErliResponsibleProducerItem,
 } from './erli-product.types';
 
 /**
@@ -168,6 +175,19 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
 const ERLI_FROZEN_STOCK_FIELD = 'stock';
 
 /**
+ * Erli condition ("Stan") parameter id and its dictionary value ids (#1500).
+ * Erli borrows Allegro's taxonomy (ADR-025 §3), so condition rides as the Allegro
+ * "Stan" parameter (`11323`) with the same dictionary value id (`11323_1` = new,
+ * `11323_2` = used), emitted `source:"allegro"`. The adapter owns this neutral →
+ * wire mapping; core carries only the neutral `CreateOfferCommand.condition`.
+ */
+const ERLI_CONDITION_PARAMETER_ID = '11323';
+const ERLI_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
+  new: '11323_1',
+  used: '11323_2',
+};
+
+/**
  * Frozen-stock cache TTL (#1066). Sized for the WORST-case reconciliation cadence
  * (an operator who loosens the reconciliation cron `ERLI_OFFER_STATUS_SYNC_CRON` in
  * erli-scheduler-tasks.ts from hourly to daily) — so it must exceed 24h. The
@@ -178,6 +198,22 @@ const ERLI_FROZEN_STOCK_FIELD = 'stock';
  */
 export const ERLI_FROZEN_STOCK_CACHE_TTL_SEC = 26 * 60 * 60;
 
+/**
+ * Responsible-producer cache TTL (#1531). The wizard reads this on each
+ * offer-create load; a short TTL keeps repeated loads off the Erli API without
+ * letting a newly-added producer stay hidden for long. Mirrors the ~10-min
+ * freshness the seller-policies read uses.
+ */
+export const ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC = 10 * 60;
+
+/**
+ * Delivery-price-list cache TTL (#1530). The wizard reads this on each offer-create
+ * load; a short TTL keeps repeated loads off the Erli API without letting a
+ * newly-added price list stay hidden for long. Mirrors the ~10-min freshness the
+ * seller-policies read uses.
+ */
+export const ERLI_DELIVERY_PRICE_LISTS_CACHE_TTL_SEC = 10 * 60;
+
 export class ErliOfferManagerAdapter
   implements
     OfferManagerPort,
@@ -185,7 +221,9 @@ export class ErliOfferManagerAdapter
     OfferFieldUpdater,
     OfferStatusReader,
     OfferStockRestorer,
-    TaxonomyBorrower
+    TaxonomyBorrower,
+    ResponsibleProducerReader,
+    DeliveryPriceListReader
 {
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
@@ -345,6 +383,97 @@ export class ErliOfferManagerAdapter
     // (handled above → OfferNotFoundOnMarketplaceException) never reaches here.
     await this.writeFrozenStockFlag(externalOfferId, product.frozenFields);
     return mapErliStatusToReadResult(product);
+  }
+
+  /**
+   * ResponsibleProducerReader (#1531). Lists the seller's EU GPSR
+   * responsible-producer registry ("producent") from
+   * `GET /dictionaries/responsibleProducers` so the offer-creation wizard can
+   * render a picker; the operator's choice rides back on
+   * `overrides.platformParams.producer` and is stamped onto the create body so
+   * the created product is not blocked for a missing producer. Erli's dictionary
+   * carries no GPSR classification, so every entry maps to `'PRODUCER'`. Results
+   * are cached per connection for a short TTL to keep repeated wizard loads off
+   * the Erli API; a missing/failing cache simply falls through to a live read
+   * (fail-open).
+   */
+  async fetchResponsibleProducers(): Promise<ResponsibleProducerEntry[]> {
+    const cacheKey = `erli:responsible-producers:${this.connectionId}`;
+    if (this.cache) {
+      try {
+        const cached = await this.cache.get<ResponsibleProducerEntry[]>(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Responsible-producer cache read failed (live fetch) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const res = await this.httpClient.get<ErliResponsibleProducerItem[]>(
+      'dictionaries/responsibleProducers',
+    );
+    const items: ResponsibleProducerEntry[] = (res.data ?? [])
+      .filter((item) => typeof item?.name === 'string' && item.name.length > 0)
+      .map((item) => ({ id: String(item.id), name: item.name, kind: 'PRODUCER' as const }));
+    if (this.cache) {
+      try {
+        await this.cache.set(cacheKey, items, ERLI_RESPONSIBLE_PRODUCERS_CACHE_TTL_SEC);
+      } catch (error) {
+        this.logger.debug(
+          `Responsible-producer cache write failed (ignored) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return items;
+  }
+
+  /**
+   * DeliveryPriceListReader (#1530). Lists the seller's delivery price lists
+   * ("cennik dostawy") from `GET /delivery/priceLists` so the offer-creation
+   * wizard can render a picker; the operator's choice rides back on
+   * `overrides.platformParams.deliveryPriceList` and is stamped onto the create
+   * body so the offer is buyable. Results are cached per connection for a short
+   * TTL to keep repeated wizard loads off the Erli API; a missing/failing cache
+   * simply falls through to a live read (fail-open).
+   */
+  async listDeliveryPriceLists(): Promise<DeliveryPriceList[]> {
+    const cacheKey = `erli:delivery-price-lists:${this.connectionId}`;
+    if (this.cache) {
+      try {
+        const cached = await this.cache.get<DeliveryPriceList[]>(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Delivery-price-list cache read failed (live fetch) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const res = await this.httpClient.get<ErliDeliveryPriceListItem[]>('delivery/priceLists');
+    const items = (res.data ?? [])
+      .filter((item) => typeof item?.name === 'string' && item.name.length > 0)
+      .map((item) => ({ id: String(item.id), name: item.name }));
+    if (this.cache) {
+      try {
+        await this.cache.set(cacheKey, items, ERLI_DELIVERY_PRICE_LISTS_CACHE_TTL_SEC);
+      } catch (error) {
+        this.logger.debug(
+          `Delivery-price-list cache write failed (ignored) [connectionId=${this.connectionId}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return items;
   }
 
   /**
@@ -562,8 +691,23 @@ export class ErliOfferManagerAdapter
       images,
       dispatchTime: this.resolveDispatchTime(cmd.overrides?.platformParams),
     };
+    // #1530 — operator-selected delivery price list ("cennik dostawy"). Erli
+    // keys it by unique name; absent ⇒ omit (offer stays not-buyable until the
+    // operator picks one, mirroring the dispatchTime opt-in posture).
+    const deliveryPriceList = readDeliveryPriceListParam(cmd.overrides?.platformParams);
+    if (deliveryPriceList !== undefined) {
+      body.deliveryPriceList = deliveryPriceList;
+    }
     if (cmd.overrides?.description != null) {
       body.description = flattenDescription(cmd.overrides.description);
+    }
+    // #1531 — operator-selected responsible producer ("producent"). Erli keys it
+    // by the numeric dictionary id (`producerId`); absent ⇒ omit (the product
+    // stays blocked for a missing producer until the operator picks one,
+    // mirroring the dispatchTime/deliveryPriceList opt-in posture).
+    const producerId = readProducerParam(cmd.overrides?.platformParams);
+    if (producerId !== undefined) {
+      body.producerId = producerId;
     }
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
@@ -583,6 +727,17 @@ export class ErliOfferManagerAdapter
       this.logger.debug(
         `Dropped ${droppedParamIds.length} unsupported Erli parameter(s) (range-only/empty, #985 R3) [connectionId=${this.connectionId}]: ${droppedParamIds.join(', ')}`,
       );
+    }
+
+    // #1500 — default marketplace-required condition ("Stan"). Erli borrows
+    // Allegro's taxonomy, so condition rides as a source:"allegro" dictionary
+    // attribute. Appended to the Allegro-param attributes BEFORE the variant-group
+    // index calc below so the group's index refs (which point at the axes that
+    // come after) stay valid. Skipped when the operator already supplied a Stan
+    // parameter in cmd.parameters (operator intent wins, never double-set).
+    const conditionAttribute = buildConditionAttribute(cmd);
+    if (conditionAttribute) {
+      paramAttributes.push(conditionAttribute);
     }
 
     // #986/#1065: explicit multi-variant grouping. A sibling's distinguishing
@@ -780,6 +935,52 @@ function readDispatchTimeParam(
 }
 
 /**
+ * Read a per-offer `producer` selection off the un-modeled
+ * `overrides.platformParams` (#1531). The wizard carries the numeric Erli
+ * responsible-producer dictionary id as a string; this returns it as a positive
+ * integer for `body.producerId`, or `undefined` when absent/blank (no selection
+ * ⇒ the create body omits the field). A non-numeric value is ignored rather than
+ * thrown — the picker only ever emits a dictionary id, and a product with no
+ * producer is a valid (if blocked-until-set) create.
+ */
+function readProducerParam(
+  platformParams: Record<string, unknown> | undefined,
+): number | undefined {
+  const raw = platformParams?.producer;
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw > 0 ? raw : undefined;
+  }
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Read a per-offer `deliveryPriceList` selection off the un-modeled
+ * `overrides.platformParams` (#1530). Returns the trimmed price-list name when a
+ * non-empty string is present, else `undefined` (no selection ⇒ the create body
+ * omits the field). A non-string value is ignored rather than thrown — the
+ * picker only ever emits a string, and an offer with no delivery price list is a
+ * valid (if not-yet-buyable) create.
+ */
+function readDeliveryPriceListParam(
+  platformParams: Record<string, unknown> | undefined,
+): string | undefined {
+  const raw = platformParams?.deliveryPriceList;
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
  * Map Erli's native product status onto the neutral closed `OfferPublicationStatus`
  * union (#989). Erli has no `'rejected'` member in OL's union, so a rejection is
  * surfaced as `'inactive'` carrying the reason in `validationErrors` (no core enum
@@ -853,7 +1054,15 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
       continue;
     }
     if (param.valuesIds !== undefined && param.valuesIds.length > 0) {
-      attributes.push({ source: 'allegro', id: param.id, type: 'dictionary', values: param.valuesIds });
+      // Erli's `dictionary` type requires `values` as `{ id }` objects, not
+      // bare ids — a bare string/id array is rejected wire-side with
+      // `values[N] must be of type object` (confirmed live, #1384 follow-up).
+      attributes.push({
+        source: 'allegro',
+        id: param.id,
+        type: 'dictionary',
+        values: param.valuesIds.map((id) => ({ id })),
+      });
     } else if (param.values !== undefined && param.values.length > 0) {
       attributes.push({ source: 'allegro', id: param.id, type: 'string', values: param.values });
     } else {
@@ -864,6 +1073,30 @@ function buildExternalAttributes(cmd: CreateOfferCommand): {
     }
   }
   return { attributes, droppedParamIds };
+}
+
+/**
+ * Build the Erli condition ("Stan") attribute from the neutral `cmd.condition`
+ * (#1500). Erli borrows Allegro's taxonomy (ADR-025 §3), so condition is emitted
+ * as a `source:"allegro"` dictionary attribute (parameter id `11323`, value id
+ * `11323_1`/`11323_2`). Returns `undefined` when no condition is set OR when the
+ * operator already supplied a Stan parameter in `cmd.parameters` — operator
+ * intent wins and condition is never double-set.
+ */
+function buildConditionAttribute(cmd: CreateOfferCommand): ErliExternalAttribute | undefined {
+  const condition = cmd.condition;
+  if (!condition) {
+    return undefined;
+  }
+  if ((cmd.parameters ?? []).some((p) => p.id === ERLI_CONDITION_PARAMETER_ID)) {
+    return undefined;
+  }
+  return {
+    source: 'allegro',
+    id: ERLI_CONDITION_PARAMETER_ID,
+    type: 'dictionary',
+    values: [{ id: ERLI_CONDITION_VALUE_IDS[condition] }],
+  };
 }
 
 /**

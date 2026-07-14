@@ -325,6 +325,40 @@ const ALLOW_LIST = new Map([
     'libs/integrations/prestashop/src/infrastructure/provisioners/prestashop-address-provisioner.ts',
     new Set(['CustomerProjectionRepositoryPort']),
   ],
+  // WooCommerce customer + address provisioning (#1552) — mirrors PrestaShop;
+  // rewire via ICustomersService alongside the PS entries (#722).
+  [
+    'libs/integrations/woocommerce/src/woocommerce-plugin.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/woocommerce-integration.module.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/woocommerce-order-processor.adapter.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-address-provisioner.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.types.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/provisioners/__tests__/woocommerce-address-provisioner.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.adapter.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
+  [
+    'libs/integrations/woocommerce/src/infrastructure/adapters/order-processor/__tests__/woocommerce-order-processor.fulfillment-status.spec.ts',
+    new Set(['CustomerProjectionRepositoryPort']),
+  ],
   [
     'libs/integrations/prestashop/src/infrastructure/provisioners/__tests__/prestashop-address-provisioner.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
@@ -405,6 +439,14 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/api/src/users/user-management.service.spec.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/demo-account-cleanup.service.ts',
+    new Set(['UserRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/demo-account-cleanup.service.spec.ts',
     new Set(['UserRepositoryPort']),
   ],
 ]);

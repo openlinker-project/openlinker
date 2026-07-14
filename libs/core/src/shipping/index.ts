@@ -35,6 +35,8 @@ export {
   PICKUP_POINT_STATUS,
   PickupPointDayValues,
   PICKUP_POINT_DAY,
+  PickupPointTypeValues,
+  PICKUP_POINT_TYPE,
 } from './domain/types/pickup-point.types';
 export type {
   PickupPoint,
@@ -43,6 +45,7 @@ export type {
   PickupPointDay,
   PickupPointDayHours,
   PickupPointOpeningHours,
+  PickupPointType,
   FindPickupPointsQuery,
 } from './domain/types/pickup-point.types';
 
@@ -60,6 +63,7 @@ export type {
   ShipmentDimensions,
 } from './domain/types/shipment-parcel.types';
 export type { ShipmentCod } from './domain/types/shipment-cod.types';
+export type { ShipmentInsuredValue } from './domain/types/shipment-insured-value.types';
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';

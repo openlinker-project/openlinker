@@ -204,8 +204,14 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
     // pushing real orders off the listing (PR1079-TECH-01).
     const newWave = valid.filter((msg) => fromCursor === null || msg.id > fromCursor);
 
-    // Only the order-event literals become feed items to enqueue.
-    const orderEvents = newWave.filter((msg) => ERLI_ORDER_EVENT_TYPES.has(msg.type));
+    // Only the order-event literals become feed items to enqueue. `orderId` is
+    // guaranteed defined here — `validateInboxMessage` requires `payload.id`
+    // for these two types — the narrowing filter documents that invariant for
+    // the type checker rather than asserting it away.
+    const orderEvents = newWave.filter(
+      (msg): msg is ErliInboxMessage & { orderId: string } =>
+        ERLI_ORDER_EVENT_TYPES.has(msg.type) && msg.orderId !== undefined,
+    );
 
     // Map to neutral feed items, then apply the optional `eventTypes` filter
     // BEFORE dedupe (PR1086 review). Filtering after dedupe can silently drop an
@@ -521,9 +527,18 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
    * Validate + normalise one raw inbox item. The wire item is
    * `{ id, shopId, created, read, type, payload }` (#992); the order id lives in
    * `payload.id` and the timestamp in `created`. Returns the normalised message
-   * when it carries a string `id`, a non-empty `type`, and a `payload.id`;
-   * otherwise drops it with a warn (id only when available) and returns `null`.
-   * Unknown event types are NOT skipped here (they're filtered later).
+   * when it carries a string `id` and a non-empty `type`; otherwise drops it
+   * with a warn (id only when available) and returns `null`.
+   *
+   * `payload.id` is required ONLY for the two order-event types
+   * (`orderCreated`/`orderStatusChanged`) — those need an order id to become a
+   * feed item. Non-order types (`productsNeedSync` and any future/unknown
+   * type) pass through with `orderId: undefined`: the real wire never carries
+   * a `payload.id` for `productsNeedSync`, and requiring one dropped the
+   * message from `valid` entirely, which stalled `nextCursor` on it forever —
+   * every poll re-fetched and re-warned on the same stuck message (confirmed
+   * live during #1322 manual E2E; see the "no starvation" cursor-advance logic
+   * in `listOrderFeed`, which depends on non-order messages surviving here).
    */
   private validateInboxMessage(candidate: unknown): ErliInboxMessage | null {
     if (typeof candidate !== 'object' || candidate === null) {
@@ -551,7 +566,7 @@ export class ErliOrderSourceAdapter implements OrderSourcePort, OrderStatusWrite
         ? (c.payload as Record<string, unknown>)
         : undefined;
     const orderId = payload && typeof payload.id === 'string' ? payload.id : undefined;
-    if (!orderId) {
+    if (!orderId && ERLI_ORDER_EVENT_TYPES.has(c.type)) {
       this.logger.warn(
         `Skipping malformed Erli inbox message ${id}: missing payload.id (connection: ${this.connectionId})`,
       );

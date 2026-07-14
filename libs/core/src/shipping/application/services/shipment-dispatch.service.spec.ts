@@ -26,14 +26,23 @@ import { OrderNotDispatchablePaymentStatusException } from '../../domain/excepti
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { Logger } from '@openlinker/shared/logging';
 
-/** Build an OrderRecord whose snapshot carries the given payment status (or none). */
-function makeOrderRecord(paymentStatus?: PaymentStatus): OrderRecord {
+/**
+ * Build an OrderRecord whose snapshot carries the given payment status (or none)
+ * and, optionally, a marketplace-sourced COD collect amount (#1435).
+ */
+function makeOrderRecord(
+  paymentStatus?: PaymentStatus,
+  codToCollect?: { amount: string; currency: string },
+): OrderRecord {
+  const snapshot: Record<string, unknown> = {};
+  if (paymentStatus !== undefined) snapshot.paymentStatus = paymentStatus;
+  if (codToCollect !== undefined) snapshot.codToCollect = codToCollect;
   return new OrderRecord(
     'ol_order_1',
     'ol_customer_1',
     SOURCE,
     null,
-    paymentStatus === undefined ? {} : { paymentStatus },
+    snapshot,
     [],
     'ready',
     new Date(),
@@ -315,7 +324,8 @@ describe('ShipmentDispatchService', () => {
       expect(result).toEqual({ kind: 'dispatched', shipment: generated });
     });
 
-    it('should forward caller-supplied COD verbatim to generateLabel (#962)', async () => {
+    /** Shared happy-path routing + repo mocks for the COD gate tests (#1435). */
+    function primeCodDispatch(): void {
       routing.resolve.mockResolvedValue(
         resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
       );
@@ -327,6 +337,59 @@ describe('ShipmentDispatchService', () => {
         labelPdfRef: 'dpd-1',
       });
       repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+    }
+
+    it('should apply the order-sourced COD amount for a cod order, ignoring the caller amount (#1435)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord('cod', { amount: '510.94', currency: 'PLN' }),
+      );
+
+      await service.dispatch(makeInput({ cod: { amount: '1.00', currency: 'PLN' } }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '510.94', currency: 'PLN' } }),
+      );
+    });
+
+    it('should fall back to the caller COD amount for a cod order with no sourced amount (#1435)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('cod'));
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should strip caller-supplied COD for an explicitly prepaid (paid) order (#1435)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('paid'));
+
+      await service.dispatch(makeInput({ cod: { amount: '39.99', currency: 'PLN' } }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: undefined }),
+      );
+    });
+
+    // Regression guard (#1435): non-marketplace sources (PrestaShop / WooCommerce)
+    // don't report payment status, so an operator-typed COD (DPD, #966) must pass
+    // through when the status is unknown — the gate is a `paid`-only block-list,
+    // NOT an allow-list.
+    it('should keep caller-supplied COD when there is no order record (#1435)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(null);
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should keep caller-supplied COD when the order reports no payment status (DPD/PrestaShop) (#1435)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord(undefined));
 
       const cod = { amount: '39.99', currency: 'PLN' };
       await service.dispatch(makeInput({ cod }));
@@ -335,21 +398,40 @@ describe('ShipmentDispatchService', () => {
     });
 
     it('should forward cod as undefined when the caller omits it', async () => {
-      routing.resolve.mockResolvedValue(
-        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
-      );
-      repository.findActiveByOrderId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+      primeCodDispatch();
       adapter.generateLabel.mockResolvedValue({
         providerShipmentId: 'shipx-1',
         trackingNumber: null,
         labelPdfRef: 'shipx:label:shipx-1',
       });
-      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('cod'));
 
       await service.dispatch(makeInput());
 
       expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod: undefined }));
+    });
+
+    it('should forward the caller-supplied insured value to the adapter unchanged (#1542)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('paid'));
+
+      const insuredValue = { amount: '150.00', currency: 'PLN' };
+      await service.dispatch(makeInput({ insuredValue }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue }),
+      );
+    });
+
+    it('should forward insuredValue as undefined when the caller omits it (#1542)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord('paid'));
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ insuredValue: undefined }),
+      );
     });
 
     it('should dispatch source_brokered through the identical path (no rework for #833)', async () => {

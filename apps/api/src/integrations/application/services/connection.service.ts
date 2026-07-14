@@ -82,6 +82,31 @@ export class ConnectionService implements IConnectionService {
   ) {}
 
   /**
+   * Advisory authority guard (#1498): a connection must not have both
+   * `InventoryMaster` and `OfferManager` enabled — the inventory master is
+   * the source of truth for stock, so it must never also be a stock
+   * write-back target (the write would echo the master back at itself,
+   * last-write-wins). This connection-management check is advisory; the
+   * authoritative runtime guard is `IntegrationsService.getCapabilityAdapter`
+   * throwing `CapabilityNotEnabledException` at execution time. A capability
+   * flip between a job's enqueue and its run (the fan-out's own eligibility
+   * check runs at enqueue time, not execution time) therefore fails that job
+   * cleanly instead of writing back to the master.
+   */
+  private assertNoWriteBackAuthorityConflict(enabledCapabilities: string[]): void {
+    if (
+      enabledCapabilities.includes('InventoryMaster') &&
+      enabledCapabilities.includes('OfferManager')
+    ) {
+      throw new BadRequestException(
+        'InventoryMaster and OfferManager cannot both be enabled on the same connection: ' +
+          'the inventory master is the stock source of truth and must not be a stock ' +
+          'write-back target. Disable InventoryMaster before enabling OfferManager (or vice versa).'
+      );
+    }
+  }
+
+  /**
    * Run the plugin's config / credentials shape validators if registered.
    * The registries are keyed by adapterKey; the domain exception payload
    * is re-thrown as `BadRequestException` so the HTTP layer surfaces a
@@ -220,7 +245,18 @@ export class ConnectionService implements IConnectionService {
         adapterKey: rest.adapterKey,
       });
 
-      const enabledCapabilities = rest.enabledCapabilities ?? [...metadata.supportedCapabilities];
+      // Stock write-back defaults OFF for inventory-master-capable shops
+      // (#1498): when the caller omits enabledCapabilities, exclude
+      // OfferManager from the manifest-derived default whenever the manifest
+      // also declares InventoryMaster. An inventory master must opt in to
+      // being a write-back target (and doing so requires disabling
+      // InventoryMaster first — see the mutual-exclusion guard below), which
+      // preserves the "publish-only unless the operator asks" posture.
+      // Marketplace manifests (no InventoryMaster) keep the full default set.
+      const defaultCapabilities = metadata.supportedCapabilities.includes('InventoryMaster')
+        ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
+        : [...metadata.supportedCapabilities];
+      const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
 
       const invalid = enabledCapabilities.filter(
         (c) => !metadata.supportedCapabilities.includes(c)
@@ -230,6 +266,7 @@ export class ConnectionService implements IConnectionService {
           `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
         );
       }
+      this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
 
       // #509 / #587 — validate the platform-specific config shape on create
       // (was platformType-keyed static record; now adapterKey-keyed registry
@@ -248,12 +285,13 @@ export class ConnectionService implements IConnectionService {
       let resolvedCredentialsRef = credentialsRef;
       let createdCredentialRef: string | null = null;
       if (credentials) {
-        await this.validateCredentialsShape(metadata.adapterKey, credentials);
+        const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
+        await this.validateCredentialsShape(metadata.adapterKey, resolvedCredentials);
         const ref = randomUUID();
         await this.credentials.create({
           ref,
           platformType: rest.platformType,
-          credentialsJson: credentials,
+          credentialsJson: resolvedCredentials,
         });
         createdCredentialRef = ref;
         resolvedCredentialsRef = `db:${ref}`;
@@ -403,6 +441,7 @@ export class ConnectionService implements IConnectionService {
             `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
           );
         }
+        this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
       }
 
       // #437 / #587 — close the DTO bypass on `Connection.config`. The

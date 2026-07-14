@@ -32,6 +32,9 @@ import {
 import {
   type IOrderRecordService,
   type PaymentStatus,
+  type CodToCollect,
+  type OrderRecord,
+  PAYMENT_STATUS,
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
@@ -118,9 +121,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
 
       case FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier:
       case FULFILLMENT_PROCESSOR_KIND.SourceBrokered: {
+        // COD authorization gate (#1435): the FE is not authorization
+        // (frontend-architecture § App Boundary), so COD is decided server-side
+        // from the order's payment status — mirroring the #938 payment gate
+        // above. Resolved only on the label-generating path, so an OMP-fulfilled
+        // order never computes (and discards) a COD or logs a spurious strip.
+        const cod = this.resolveEffectiveCod(order, input.cod, input.orderId);
         const shipment = await this.dispatchViaShippingProvider(
           input,
           resolution.processorConnectionId,
+          cod,
         );
         return { kind: 'dispatched', shipment };
       }
@@ -151,9 +161,62 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     return input.sourceDeliveryMethodId ?? undefined;
   }
 
+  /**
+   * Resolve the COD to actually apply at the carrier (#1435). COD is authorized
+   * by the order's payment status, never blindly by the dispatch caller (FE
+   * input is not authorization) — but the gate is a block-list on the one status
+   * that must never carry COD, not an allow-list, so sources that don't report
+   * payment (PrestaShop / WooCommerce / DPD / legacy) keep their operator-typed
+   * COD:
+   * - `paymentStatus === 'paid'` → strip COD, even if the caller passed one
+   *   (prevents double-charging a prepaid order via a crafted API call).
+   * - `paymentStatus === 'cod'` → prefer the marketplace-sourced `codToCollect`;
+   *   fall back to the caller-supplied amount when the source didn't provide one
+   *   (legacy / non-Allegro COD).
+   * - otherwise (`undefined` / unrecognised, or no order record) → pass the
+   *   caller amount through unchanged. Non-marketplace sources don't express
+   *   payment status, so operator-supplied COD (#966) stays authoritative here.
+   *   (`awaiting` / `refunded` never reach this point — the #938 gate blocks
+   *   dispatch entirely for them.)
+   */
+  private resolveEffectiveCod(
+    order: OrderRecord | null,
+    inputCod: CodToCollect | undefined,
+    orderId: string,
+  ): CodToCollect | undefined {
+    const paymentStatus = order?.paymentStatus;
+    if (paymentStatus === PAYMENT_STATUS.Paid) {
+      if (inputCod !== undefined) {
+        this.logger.warn(
+          `Stripping COD from dispatch of order ${orderId}: ` +
+            `order is prepaid (payment status 'paid')`,
+        );
+      }
+      return undefined;
+    }
+    if (paymentStatus === PAYMENT_STATUS.Cod) {
+      const resolved = order?.codToCollect ?? inputCod;
+      if (resolved === undefined) {
+        // Likely operator mistake: a COD order is being dispatched with no
+        // amount from either the marketplace source or the caller, so it would
+        // ship COD with nothing to collect. Surface it; the value is unchanged.
+        this.logger.warn(
+          `COD order ${orderId} resolved to no COD amount ` +
+            `(no marketplace-sourced amount and no caller-supplied amount): ` +
+            `it will ship without a collectable amount`,
+        );
+      }
+      return resolved;
+    }
+    // Unknown / unreported payment (non-marketplace sources) — preserve the
+    // caller-supplied COD (the pre-#1435 behavior for PrestaShop / DPD).
+    return inputCod;
+  }
+
   private async dispatchViaShippingProvider(
     input: ShipmentDispatchInput,
     processorConnectionId: string | null,
+    cod: CodToCollect | undefined,
   ): Promise<Shipment> {
     if (!processorConnectionId) {
       // A label-generating rule always carries a processor connection (it can't
@@ -255,9 +318,14 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         deliveryMethodId: this.resolveProviderDeliveryMethodId(input),
         recipient: input.recipient,
         parcel: input.parcel,
-        // Caller-supplied COD (#962) — pass through verbatim; COD-incapable
-        // adapters ignore it, COD-capable ones translate it to their wire shape.
-        cod: input.cod,
+        // Declared-value / insurance (#1542) — caller-supplied pass-through,
+        // not order-sourced (unlike COD below). Insurance-incapable adapters
+        // ignore it; insurance-capable ones (InPost ShipX) translate it.
+        insuredValue: input.insuredValue,
+        // Payment-status-authorized COD (#1435): stripped for non-COD orders,
+        // sourced from the order when available, caller amount only as fallback.
+        // COD-incapable adapters ignore it; COD-capable ones translate it.
+        cod,
       });
 
       const generated = await this.shipments.update(shipment.id, {

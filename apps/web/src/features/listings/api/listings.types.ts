@@ -362,6 +362,39 @@ export interface SellerPoliciesResponse {
   impliedWarranties: SellerPolicy[];
 }
 
+/** ----- Responsible producers (#1531) -------------------------------------
+ *
+ * A seller-configured EU GPSR responsible-producer ("producent") returned by
+ * `GET /listings/connections/:connectionId/responsible-producers`, fetched live
+ * from the marketplace. The offer-creation wizard renders these so the operator
+ * can attach one and the created product is not blocked for a missing producer.
+ */
+export interface ResponsibleProducer {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+export interface ResponsibleProducersResponse {
+  responsibleProducers: ResponsibleProducer[];
+}
+
+/** ----- Delivery price lists (#1530) --------------------------------------
+ *
+ * A seller-configured delivery price list ("cennik dostawy") returned by
+ * `GET /listings/connections/:connectionId/delivery-price-lists`, fetched live
+ * from the marketplace. The offer-creation wizard renders these so the operator
+ * can attach one and the created offer is buyable.
+ */
+export interface DeliveryPriceList {
+  id: string;
+  name: string;
+}
+
+export interface DeliveryPriceListsResponse {
+  deliveryPriceLists: DeliveryPriceList[];
+}
+
 /** ----- Category parameters (#410) ----------------------------------------
  *
  * Marketplace-neutral shape for category parameters returned by
@@ -557,18 +590,26 @@ export interface EanMatchCandidate {
   name?: string;
 }
 
+/**
+ * How a `matched` batch result was resolved (#1522). Absent ⇒ `auto_detect`
+ * (an EAN catalogue match). `category_mapping` marks a result produced by the
+ * configured per-source-category mapping fallback (no catalogue card).
+ */
+export type EanMatchMethod = 'auto_detect' | 'category_mapping';
+
 export type EanMatchResult =
-  | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
+  | { kind: 'matched'; allegroCategoryId: string; productCardId: string; method?: EanMatchMethod }
   | { kind: 'multi-match'; candidates: EanMatchCandidate[] }
   | { kind: 'no-ean' }
   | { kind: 'no-match' };
 
 /**
  * Request body for `POST /listings/connections/:connectionId/categories/resolve-batch`
- * (#795). One result entry per item, keyed by `variantId`.
+ * (#795). One result entry per item, keyed by `variantId`. `sourceCategoryIds`
+ * (#1522) enables the configured-mapping fallback when the EAN yields no match.
  */
 export interface ResolveCategoriesBatchRequest {
-  items: Array<{ variantId: string; ean: string | null }>;
+  items: Array<{ variantId: string; ean: string | null; sourceCategoryIds?: string[] }>;
 }
 
 /** Response from the batch resolve route (#795). Keyed by `variantId`. */

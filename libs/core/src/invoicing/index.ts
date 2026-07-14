@@ -14,6 +14,7 @@ export {
   parseTriggerModel,
 } from './domain/types/invoice-trigger.types';
 export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
+export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/ports/invoicing.port';
@@ -21,6 +22,8 @@ export * from './domain/ports/invoicing.port';
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
 export * from './domain/ports/capabilities/payment-status-reader.capability';
+// Re-exports both `PaymentMarker` and `isPaymentMarker` (#1362).
+export * from './domain/ports/capabilities/payment-marker.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
@@ -34,6 +37,7 @@ export * from './domain/exceptions/duplicate-invoice-record.exception';
 export * from './domain/exceptions/source-document-immutable.error';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
+export { InvalidInvoiceLineError } from './application/mappers/errors/invalid-invoice-line.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
 export * from './domain/exceptions/unsupported-regulatory-document-kind.error';
 export {

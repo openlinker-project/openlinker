@@ -56,7 +56,22 @@ export const erliAdapterManifest: AdapterMetadata = {
   platformType: 'erli',
   // Each capability is added by the PR that ships its adapter, in lockstep with
   // a dispatch-table entry below: #984 → 'OfferManager', #993 → 'OrderSource'.
-  supportedCapabilities: ['OfferManager', 'OrderSource'],
+  // 'OfferCreator' (#1498) is an OfferManager sub-capability the adapter
+  // already implements — advertised (no dispatch entry; callers narrow with
+  // `isOfferCreator`) so FE offer-creation flows, gated on `OfferCreator`,
+  // keep showing Erli after WooCommerce's quantity-only OfferManager landed.
+  // 'ResponsibleProducerReader' (#1531) and 'DeliveryPriceListReader' (#1530) are
+  // likewise advertised-without-dispatch OfferManager sub-capabilities — the FE
+  // gates the producer / delivery-price-list pickers on them; callers narrow the
+  // dispatched OfferManager adapter with `isResponsibleProducerReader` /
+  // `isDeliveryPriceListReader`, never `getCapabilityAdapter('...')`.
+  supportedCapabilities: [
+    'OfferManager',
+    'OrderSource',
+    'OfferCreator',
+    'ResponsibleProducerReader',
+    'DeliveryPriceListReader',
+  ],
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,

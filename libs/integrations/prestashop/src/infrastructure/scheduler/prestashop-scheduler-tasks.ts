@@ -67,6 +67,7 @@ export function buildPrestashopSchedulerTasks(
     tasks.push({
       taskId: 'prestashop-orders-poll',
       platformType: 'prestashop',
+      requiredCapability: 'OrderSource',
       jobType: 'marketplace.orders.poll',
       cronExpression,
       enabledEnvVar: 'OL_PRESTASHOP_POLL_SCHEDULER_ENABLED',

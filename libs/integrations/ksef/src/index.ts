@@ -1,14 +1,17 @@
 /**
  * @openlinker/integrations-ksef — Public Barrel
  *
- * KSeF Public API v2 invoicing/clearance adapter plugin (#1144 / C2 skeleton).
- * The runtime entry the host composes is `KsefIntegrationModule`; this barrel
- * also exports the static `ksefAdapterManifest` (#575 pattern) and the plugin
- * factory. C2 ships the plugin skeleton + manifest + connection config/
- * credentials shape validators + the stub `Invoicing` capability adapter. The
- * HTTP client (C3), issuance mechanics (C4), and `RegulatoryTransmitter`
- * clearance sub-capability land in the follow-up KSeF issues; see ADR-026 for
- * the country-agnostic invoicing decisions they build on.
+ * KSeF Public API v2 invoicing/clearance adapter plugin (#1144). The runtime
+ * entry the host composes is `KsefIntegrationModule`; this barrel also
+ * exports the static `ksefAdapterManifest` (#575 pattern) and the plugin
+ * factory. Shipped: the HTTP client, connection config/credentials shape
+ * validators, connection tester, the `Invoicing` capability adapter (FA(3)
+ * `VAT`/`KOR` issuance via the async submit → poll → UPO flow), and the
+ * `RegulatoryTransmitter` clearance sub-capability. See
+ * `libs/integrations/ksef/docs/setup-guide.md` for the full flow, current
+ * limitations, and compliance caveats, and ADR-026 for the country-agnostic
+ * invoicing decisions this package builds on. `qualified-seal` auth (X.509
+ * signing) remains a documented deferred stub — see `KsefAuthXmlBuilder`.
  *
  * @module libs/integrations/ksef/src
  */

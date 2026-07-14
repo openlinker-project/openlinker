@@ -22,7 +22,7 @@ const allegroConnection = {
   name: 'My Allegro',
   status: 'active',
   platformType: 'allegro',
-  supportedCapabilities: ['OfferManager'],
+  supportedCapabilities: ['OfferManager', 'OfferCreator'],
 } as const;
 
 const sampleProducts: PaginatedProducts = {
@@ -342,7 +342,7 @@ describe('ProductsListPage', () => {
       name: 'My Erli',
       status: 'active',
       platformType: 'erli',
-      supportedCapabilities: ['OfferManager'],
+      supportedCapabilities: ['OfferManager', 'OfferCreator'],
     };
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },

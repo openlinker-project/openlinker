@@ -137,6 +137,9 @@ export function createMockApiClient(
       test: vi.fn().mockResolvedValue({ success: true, status: 200, message: 'OK', latencyMs: 42 }),
       update: vi.fn().mockResolvedValue(sampleConnection),
       updateCredentials: vi.fn().mockResolvedValue(undefined),
+      rotateWebhookSecret: vi
+        .fn()
+        .mockResolvedValue({ secret: 'whsec_test', revealedOnce: true, warning: 'Store it now.' }),
       ...overrides.connections,
     } as ApiClient['connections'],
     content: {
@@ -318,6 +321,13 @@ export function createMockApiClient(
         warranties: [],
         impliedWarranties: [],
       }),
+      // #1531 — default to "no producers" so the Erli wizard's producer picker
+      // renders its empty state in tests that don't override.
+      getResponsibleProducers: vi.fn().mockResolvedValue({ responsibleProducers: [] }),
+      // #1530 — default to "no delivery price lists" so the Erli wizard's
+      // delivery-price-list picker renders its empty state in tests that
+      // don't override.
+      getDeliveryPriceLists: vi.fn().mockResolvedValue({ deliveryPriceLists: [] }),
       // #410 — default to "no parameters" so the wizard's category step
       // renders the friendly empty state in tests that don't override.
       getCategoryParameters: vi.fn().mockResolvedValue({ parameters: [] }),

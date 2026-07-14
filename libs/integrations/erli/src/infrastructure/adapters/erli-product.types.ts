@@ -55,19 +55,35 @@ export interface ErliExternalCategory {
 }
 
 /**
+ * A single `dictionary`-type attribute value — Erli's Shop API rejects a bare
+ * string/id here (`externalAttributes[N].values[M] must be of type object`,
+ * confirmed live against the sandbox, #1384 follow-up); `name` is optional
+ * (`additionalProperties: false`, only `id` is required per
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`).
+ */
+export interface ErliDictionaryAttributeValue {
+  id: string | number;
+  name?: string;
+}
+
+/**
  * Attribute entry in `externalAttributes`. `source:"allegro"` reuses an
  * OL-resolved Allegro parameter id (#985); `source:"shop"` carries a shop-native
  * attribute — used to express a variant's distinguishing axes for grouping
  * (#986), since Erli's `externalVariantGroup.attributes` references entries here
  * by `index` (verified against the Shop API). `index` defaults to the array
  * position; set explicitly when a grouping ref must point at a specific entry.
+ *
+ * `values`' element shape is keyed by `type` per the verified sandbox schema:
+ * `string` → plain strings, `dictionary` → `{ id, name? }` objects. `number`/
+ * `range` types exist in the schema but this adapter never emits them today.
  */
 export interface ErliExternalAttribute {
   source: 'allegro' | 'shop';
   id: string;
   name?: string;
   type: ErliExternalAttributeType;
-  values: string[];
+  values: string[] | ErliDictionaryAttributeValue[];
   index?: number;
   unit?: string;
 }
@@ -104,6 +120,26 @@ export interface ErliProductCreateBody {
   ean?: string;
   sku?: string;
   dispatchTime?: ErliDispatchTime;
+  /**
+   * Responsible producer ("producent") the product references (#1531). Erli
+   * keys it by the numeric responsible-producer dictionary id
+   * (`GET /dictionaries/responsibleProducers`); without it the created product
+   * is blocked for a missing producer. Supplied when the neutral command carries
+   * an operator selection (`overrides.platformParams.producer`); omitted
+   * otherwise. Erli's schema documents `producerId` as deprecated in favour of
+   * the `externalResponsibleProducer` `{ externalId, source }` array, but the
+   * numeric id maps 1:1 to a dictionary entry (which the picker reads), so it is
+   * the direct and reliable reference here.
+   */
+  producerId?: number;
+  /**
+   * Delivery price list ("cennik dostawy") the offer references (#1530). Erli
+   * keys a price list by its unique `name` string (the default list is named
+   * `"*"`); without it the created offer lands not-buyable ("brak metody
+   * dostawy"). Supplied when the neutral command carries an operator selection
+   * (`overrides.platformParams.deliveryPriceList`); omitted otherwise.
+   */
+  deliveryPriceList?: string;
   /** Allegro category reuse (#985); omitted when empty. */
   externalCategories?: ErliExternalCategory[];
   /** Allegro parameter reuse (#985); omitted when empty. */
@@ -151,6 +187,30 @@ export type ErliProductPatchBody = Pick<
  * neutral closed `OfferPublicationStatus` union.
  */
 export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
+
+/**
+ * One item from `GET /dictionaries/responsibleProducers` (#1531). Erli returns
+ * the `ResponsibleSchema` shape (`{ id: integer, name: string, ... }`); only the
+ * `id` (referenced by the create body's `producerId`) and `name` (picker label)
+ * are consumed. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`ResponsibleSchema`, "pobierz listę producentów produktu").
+ */
+export interface ErliResponsibleProducerItem {
+  id: number;
+  name: string;
+}
+
+/**
+ * One item from `GET /delivery/priceLists` (#1530). Erli returns
+ * `{ id: integer, name: string }`; `name` is the unique delivery-method name
+ * (the default list is `"*"`) that the create body's `deliveryPriceList` field
+ * references. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`PriceListListItem`).
+ */
+export interface ErliDeliveryPriceListItem {
+  id: number;
+  name: string;
+}
 
 export interface ErliProductResource {
   /**

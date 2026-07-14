@@ -106,6 +106,22 @@ export class InventoryService implements IInventoryService {
     );
   }
 
+  async pruneStaleVariants(
+    productId: string,
+    currentVariantIds: readonly (string | null)[]
+  ): Promise<number> {
+    const marked = await this.inventoryRepository.markStaleExceptVariants(
+      productId,
+      currentVariantIds
+    );
+    if (marked > 0) {
+      this.logger.debug(
+        `inventory_prune_marked_stale product=${productId} rows=${marked} kept=${currentVariantIds.length}`
+      );
+    }
+    return marked;
+  }
+
   private buildPropagationDedupeKey(item: InventoryItem, writeEventToken: string): string {
     return [
       'inventory:propagate',

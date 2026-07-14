@@ -1,9 +1,14 @@
 /**
  * WooCommerce Order Processor Adapter
  *
- * Implements OrderProcessorManagerPort (createOrder) and the OrderFulfillmentUpdater
- * sub-capability (updateFulfillment — status updates, cancellations, refund transitions)
- * for WooCommerce REST API v3.
+ * Implements OrderProcessorManagerPort (createOrder), the OrderFulfillmentUpdater
+ * sub-capability (updateFulfillment — status updates, cancellations, refund transitions),
+ * the OrderStatusWriteback sub-capability (write — the #1157 / ADR-027 lifecycle
+ * relay contract), the DestinationOptionsReader sub-capability (listCarriers /
+ * listOrderStatuses / listPaymentMethods — the #472 / #1551 mapping-UI option
+ * vocabulary), and the FulfillmentStatusReader sub-capability (getFulfillmentStatus
+ * — the #834 / #1550 read-back of the shop's fulfillment view) for WooCommerce REST
+ * API v3.
  *
  * Key design decisions:
  * - createOrder: the adapter does NOT dedup. It POSTs to WC and returns the
@@ -12,21 +17,27 @@
  *   without an extension, so it cannot be read back as a skip-check). Real
  *   idempotency is core-owned: OrderSyncService's per-(order,destination) lock
  *   (#906) + update-or-create mapping check (#909).
- * - Customer provisioning: POST /customers with email when available.
- *   auth failures (401/403) propagate as WooCommerceAuthFailureException — they
- *   are NOT swallowed into guest-order creation (#877).
+ * - Customer provisioning: delegated to WooCommerceCustomerProvisioner
+ *   (resolve-or-create under a distributed lock; #1552). Auth failures (401/403)
+ *   propagate as WooCommerceAuthFailureException — they are NOT swallowed into
+ *   guest-order creation (#877).
  * - buyerEmail: WooCommerce adapter reads buyer email from order.metadata?.buyerEmail,
  *   which OrderSyncService populates from the source order's customerEmail (#948).
  *   When absent (hash-only PII mode, or a source without an email), customer
  *   provisioning degrades to guest (customer_id = 0).
- * - destination_address_mappings: not applicable — WC has no address entities; addresses
- *   are embedded inline in the order payload.
- * - DuplicateIdentifierMappingError: not applicable here — mapping writes are in
- *   OrderSyncService.
+ * - Address reuse: delegated to WooCommerceAddressProvisioner (#1552). WC has no
+ *   standalone address resource — the provisioner writes the customer's inline
+ *   billing/shipping address at most once per (customer, addressHash, type) using
+ *   destination_address_mappings, guarded by the same distributed lock. Best-effort:
+ *   a provisioning failure is logged and never aborts order creation. The order
+ *   payload always carries the inline address regardless.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderFulfillmentUpdater}
+ * @implements {OrderStatusWriteback}
+ * @implements {DestinationOptionsReader}
+ * @implements {FulfillmentStatusReader}
  */
 import type {
   OrderProcessorManagerPort,
@@ -36,19 +47,30 @@ import type {
   Address,
   OrderStatus,
 } from '@openlinker/core/orders';
-import type { OrderFulfillmentUpdater } from '@openlinker/core/orders';
+import type {
+  OrderFulfillmentUpdater,
+  OrderStatusWriteback,
+  OrderLifecycleEvent,
+  OrderWritebackResult,
+  DestinationOptionsReader,
+  MappingOption,
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
+} from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
-import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
-import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
-import { WooCommerceAuthFailureException } from '../../../domain/exceptions/woocommerce-auth-failure.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { toPositiveInt } from '../../utils/woocommerce-utils';
+import type { WooCommerceCustomerProvisioner } from '../../provisioners/woocommerce-customer-provisioner';
+import type { WooCommerceAddressProvisioner } from '../../provisioners/woocommerce-address-provisioner';
+import { isSyntheticVariantExternalId } from '../../mappers/woocommerce-variant-id';
 import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
@@ -56,10 +78,14 @@ import type {
   WooCommerceOrderAddress,
   WooCommerceLineItemRequest,
   WooCommerceShippingLineRequest,
-  WooCommerceCustomerCreateRequest,
-  WooCommerceCustomerResponse,
 } from './woocommerce-order.types';
-import { WC_ORDER_STATUS_MAP } from './woocommerce-order.types';
+import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from './woocommerce-order.types';
+import {
+  WC_ORDER_STATUS_LABELS,
+  type WooCommercePaymentGateway,
+  type WooCommerceShippingMethod,
+} from './woocommerce-options.types';
+import { mapToFulfillmentStatusSnapshot } from './woocommerce-fulfillment-status.mapper';
 
 // ─── Module-level pure helpers ────────────────────────────────────────────────
 // Pure functions with no dependency on adapter state — independently testable.
@@ -75,7 +101,12 @@ export function isValidEmail(value: unknown): value is string {
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
-  implements OrderProcessorManagerPort, OrderFulfillmentUpdater
+  implements
+    OrderProcessorManagerPort,
+    OrderFulfillmentUpdater,
+    OrderStatusWriteback,
+    DestinationOptionsReader,
+    FulfillmentStatusReader
 {
   private readonly logger = new Logger(WooCommerceOrderProcessorAdapter.name);
 
@@ -83,6 +114,9 @@ export class WooCommerceOrderProcessorAdapter
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connection: Connection,
+    private readonly customerProvisioner: WooCommerceCustomerProvisioner,
+    private readonly addressProvisioner: WooCommerceAddressProvisioner,
+    private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
   ) {}
 
   // ─── OrderProcessorManagerPort ────────────────────────────────────────────
@@ -103,8 +137,26 @@ export class WooCommerceOrderProcessorAdapter
       );
     }
 
-    // Step 2 — resolve or provision WC customer
-    const customerId = await this.resolveCustomerId(order, buyerEmail);
+    // Step 2 — resolve or provision WC customer (delegated to the provisioner,
+    // which serializes concurrent provisioning for the same buyer under a lock).
+    const firstName = order.billingAddress?.firstName ?? order.shippingAddress?.firstName ?? '';
+    const lastName = order.billingAddress?.lastName ?? order.shippingAddress?.lastName ?? '';
+    const customerId = await this.customerProvisioner.resolveOrCreateCustomer({
+      internalCustomerId: order.customerId,
+      buyerEmail,
+      firstName,
+      lastName,
+      connectionId: this.connection.id,
+      httpClient: this.httpClient,
+      identifierMapping: this.identifierMapping,
+    });
+
+    // Step 2b — reuse-tracked address provisioning (best-effort; #1552). Records
+    // the WC customer's inline billing/shipping address for reuse without ever
+    // aborting order creation. Skipped for guest orders (customer_id = 0).
+    if (customerId > 0 && order.customerId) {
+      await this.provisionAddresses(order, order.customerId, customerId);
+    }
 
     // Step 3 — resolve line items (throws on any unresolvable or corrupted mapping)
     const lineItems = await this.resolveLineItems(order.items);
@@ -210,131 +262,221 @@ export class WooCommerceOrderProcessorAdapter
     }
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
+  // ─── OrderStatusWriteback ─────────────────────────────────────────────────
 
   /**
-   * Resolves or provisions a WC customer account for the given OL internal customer.
-   * Degrades to guest (customer_id = 0) on non-auth, non-critical failure.
-   * Auth failures (401/403) are NOT swallowed — they propagate as
-   * WooCommerceAuthFailureException so the sync runner can flag the connection
-   * for re-authentication (#877 I1).
+   * `OrderStatusWriteback` (#1157 / ADR-027): the single event-as-data writeback
+   * the lifecycle relay dispatches through. Maps each neutral lifecycle event
+   * onto WooCommerce's order status and PUTs it via `PUT /orders/{id}`.
+   *
+   * Never throws — the outcome is reported via `OrderWritebackResult`:
+   * - `dispatched` → set WC status `completed` (delegates to `updateFulfillment`,
+   *   the same neutral-`shipped` → WC-`completed` mapping). `applied`.
+   * - `cancelled`  → refuse (`rejected`) if WC has already reached a terminal
+   *   fulfilled state (`completed` / `refunded`) — the shop is authoritative for
+   *   its own live state, so we surface the conflict rather than force a
+   *   regressive transition. Idempotent when already `cancelled`. Otherwise PUT
+   *   `cancelled`. `applied`.
    */
-  private async resolveCustomerId(
-    order: OrderCreate,
-    buyerEmail: string | undefined,
-  ): Promise<number> {
-    const { customerId } = order;
-    if (!customerId) return 0;
-
-    // 1. Look up existing WC customer mapping
-    const externalIds = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Customer,
-      customerId,
-    );
-    const mapping = externalIds.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-    if (mapping) {
-      const n = Number(mapping.externalId);
-      if (!Number.isInteger(n) || n <= 0) {
-        this.logger.warn(
-          `resolveCustomerId: corrupted mapping "${mapping.externalId}" for customer ${customerId} — guest order`,
-        );
-        return 0;
-      }
-      return n;
-    }
-
-    // 2. No existing mapping — provision WC customer if email is available
-    if (!buyerEmail) {
-      this.logger.warn(
-        `resolveCustomerId: no WC mapping and no buyerEmail for customer ${customerId} — guest order`,
-      );
-      return 0;
-    }
-
-    const firstName = order.billingAddress?.firstName ?? order.shippingAddress?.firstName ?? '';
-    const lastName = order.billingAddress?.lastName ?? order.shippingAddress?.lastName ?? '';
-
-    let wcCustomerId: number;
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
-      const created = await this.httpClient.post<WooCommerceCustomerResponse>(
-        '/wp-json/wc/v3/customers',
-        {
-          email: buyerEmail,
-          first_name: firstName,
-          last_name: lastName,
-        } satisfies WooCommerceCustomerCreateRequest,
-      );
-      if (!created.id) {
-        this.logger.warn(
-          `resolveCustomerId: WC customer POST returned no id for ${customerId} — guest order`,
-        );
-        return 0;
+      if (!/^\d+$/.test(event.externalOrderId)) {
+        return {
+          outcome: 'rejected',
+          detail: `Invalid externalOrderId "${event.externalOrderId}" — expected a WC integer ID`,
+        };
       }
-      wcCustomerId = created.id;
+
+      if (event.type === 'dispatched') {
+        await this.updateFulfillment({
+          externalOrderId: event.externalOrderId,
+          status: 'shipped',
+          trackingNumber: event.trackingNumber,
+        });
+        return { outcome: 'applied' };
+      }
+
+      // event.type === 'cancelled' — one read to honour the shop's authoritative
+      // live state before forcing a regressive transition.
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(
+        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+      );
+      const currentStatus = order.status;
+
+      if (currentStatus === 'completed' || currentStatus === 'refunded') {
+        this.logger.warn(
+          `WooCommerce order ${event.externalOrderId} already in terminal state ` +
+            `'${currentStatus}' — refusing cancel writeback (connection: ${this.connection.id})`,
+        );
+        return { outcome: 'rejected', detail: `order already ${currentStatus}` };
+      }
+
+      if (currentStatus === 'cancelled') {
+        this.logger.debug(
+          `WooCommerce order ${event.externalOrderId} already cancelled — cancel writeback is a no-op ` +
+            `(connection: ${this.connection.id})`,
+        );
+        return { outcome: 'applied' };
+      }
+
+      const wcStatus = WC_ORDER_STATUS_MAP.cancelled;
+      await this.httpClient.put<WooCommerceOrderUpdateRequest>(
+        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+        { status: wcStatus } satisfies WooCommerceOrderUpdateRequest,
+      );
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `OrderStatusWriteback '${event.type}' failed for WooCommerce order ` +
+          `${event.externalOrderId}: ${detail} (connection: ${this.connection.id})`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return { outcome: 'rejected', detail };
+    }
+  }
+
+  // ─── DestinationOptionsReader (#472 / #1551) ──────────────────────────────
+  //
+  // Live option vocabulary powering the connection-mappings UI dropdowns. Each
+  // method returns the neutral `MappingOption` shape ({ value, label }); `value`
+  // is the stable identifier persisted by mapping config, `label` is the
+  // operator-facing string.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * WooCommerce core has no first-class carrier entity — shipping is modelled as
+   * method *types* (`flat_rate`, `free_shipping`, `local_pickup`, plus any
+   * plugin-provided types) attached to shipping zones, not named carriers.
+   * `GET /shipping_methods` returns those globally-registered method types, which
+   * is the closest live analogue to a carrier list and gives the mapping UI a
+   * non-empty, stable set to map onto (rather than an empty dropdown). `value` is
+   * the WC method id — the same code createOrder emits as `shipping_lines.method_id`.
+   */
+  async listCarriers(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.get<WooCommerceShippingMethod[]>(
+      '/wp-json/wc/v3/shipping_methods',
+    );
+    return rows.map((row) => ({
+      value: String(row.id),
+      label: row.title ?? String(row.id),
+    }));
+  }
+
+  /**
+   * WooCommerce exposes no dedicated order-status catalogue endpoint — the core
+   * status set is fixed by the WC REST API v3 contract. Enumerate the shared
+   * vocabulary (`WC_ORDER_STATUS_VALUES`) decorated with display labels; `value`
+   * is the WC status slug persisted by mapping config.
+   */
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return Promise.resolve(
+      WC_ORDER_STATUS_VALUES.map((slug) => ({
+        value: slug,
+        label: WC_ORDER_STATUS_LABELS[slug],
+      })),
+    );
+  }
+
+  /**
+   * `GET /payment_gateways` lists every payment gateway registered in the store.
+   * `value` is the gateway code (`bacs`, `cod`, `paypal`, …) persisted by mapping
+   * config; `label` is the operator-facing title. All registered gateways are
+   * returned regardless of `enabled` — an operator may legitimately map a source
+   * payment method onto a currently-disabled destination gateway.
+   */
+  async listPaymentMethods(): Promise<MappingOption[]> {
+    const rows = await this.httpClient.get<WooCommercePaymentGateway[]>(
+      '/wp-json/wc/v3/payment_gateways',
+    );
+    return rows.map((row) => ({
+      value: String(row.id),
+      label: row.title ?? String(row.id),
+    }));
+  }
+
+  // ─── FulfillmentStatusReader ──────────────────────────────────────────────
+
+  /**
+   * `FulfillmentStatusReader` (#834 / #1550): read the shop's view of an
+   * order's fulfillment progress. GETs `/orders/{id}`, reads the WC `status`,
+   * and maps it to the neutral `FulfillmentStatusSnapshot` via
+   * {@link mapToFulfillmentStatusSnapshot}.
+   *
+   * `status` is `null` when the shop has not yet fulfilled the order
+   * (`pending` / `processing` / `on-hold` / `failed`) — the branch-1 sync
+   * service treats that as "no shipment to project, skip this pass".
+   * `trackingNumber` is always `null` (WC core carries no order-level tracking
+   * field). `externalOrderId` is the WC-native numeric order id.
+   */
+  async getFulfillmentStatus(input: {
+    externalOrderId: string;
+  }): Promise<FulfillmentStatusSnapshot> {
+    this.logger.debug(
+      `getFulfillmentStatus: externalOrderId=${input.externalOrderId} (connection: ${this.connection.id})`,
+    );
+
+    // Path-traversal defence — externalOrderId must be a bare positive integer string.
+    if (!/^\d+$/.test(input.externalOrderId)) {
+      throw new WooCommerceInvalidArgumentException(
+        `Invalid externalOrderId "${input.externalOrderId}" — expected a WC integer ID`,
+      );
+    }
+
+    try {
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(
+        `/wp-json/wc/v3/orders/${input.externalOrderId}`,
+      );
+      return mapToFulfillmentStatusSnapshot(order);
     } catch (err) {
-      // Auth failures must propagate — invalid credentials require re-authentication.
-      // Swallowing a 401/403 into a guest order masks a broken connection (#877 I1).
-      if (err instanceof WooCommerceUnauthorizedException) {
-        throw new WooCommerceAuthFailureException(
-          `WooCommerce auth failure provisioning customer ${customerId} on connection ${this.connection.id}: ${String(err)}`,
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce order ${input.externalOrderId} not found`,
+          CORE_ENTITY_TYPE.Order,
+          input.externalOrderId,
           this.connection.id,
         );
       }
-      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 400) {
-        // WC returns 400 + code 'registration-error-email-exists' for duplicate emails —
-        // look up the existing customer account by email
-        const existing = await this.httpClient.get<WooCommerceCustomerResponse[]>(
-          '/wp-json/wc/v3/customers',
-          { email: buyerEmail },
-        );
-        const match = existing.find((c) => c.email === buyerEmail);
-        if (!match?.id) {
-          this.logger.warn(
-            `resolveCustomerId: duplicate email ${buyerEmail} but no matching WC customer — guest order`,
-          );
-          return 0;
-        }
-        wcCustomerId = match.id;
-      } else {
-        // Non-auth, non-400 failure (network, rate-limit, etc.) — degrade to guest,
-        // do not abort order creation.
-        this.logger.warn(
-          `resolveCustomerId: WC customer API error for ${customerId} — guest order: ${String(err)}`,
-        );
-        return 0;
-      }
-    }
-
-    // 3. Store Customer mapping with concurrent-duplicate handler
-    try {
-      await this.identifierMapping.createMapping(
-        CORE_ENTITY_TYPE.Customer,
-        String(wcCustomerId),
-        this.connection.id,
-        customerId,
-      );
-    } catch (err) {
-      if (err instanceof DuplicateIdentifierMappingError) {
-        // Concurrent retry stored it first — look up winner and return its id
-        const winners = await this.identifierMapping.getExternalIds(
-          CORE_ENTITY_TYPE.Customer,
-          customerId,
-        );
-        const winner = winners.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
-        if (winner) {
-          const n = Number(winner.externalId);
-          return Number.isInteger(n) && n > 0 ? n : 0;
-        }
-        // Transient — fall back to guest (do not fail the order)
-        this.logger.warn(
-          `resolveCustomerId: concurrent duplicate but no winner for ${customerId} — guest order`,
-        );
-        return 0;
-      }
       throw err;
     }
+  }
 
-    return wcCustomerId;
+  // ─── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Best-effort reuse-tracked provisioning of the WC customer's inline billing
+   * and shipping addresses (#1552). Delegates to WooCommerceAddressProvisioner
+   * per address type. Failures are logged and swallowed — address reuse tracking
+   * is auxiliary and must never abort order creation.
+   */
+  private async provisionAddresses(
+    order: OrderCreate,
+    internalCustomerId: string,
+    wcCustomerId: number,
+  ): Promise<void> {
+    const targets: Array<{ address: Address | undefined; type: AddressType }> = [
+      { address: order.billingAddress, type: 'billing' },
+      { address: order.shippingAddress, type: 'shipping' },
+    ];
+
+    for (const { address, type } of targets) {
+      if (!address) continue;
+      try {
+        await this.addressProvisioner.resolveOrCreateAddress({
+          internalCustomerId,
+          wcCustomerId,
+          address,
+          addressType: type,
+          connectionId: this.connection.id,
+          httpClient: this.httpClient,
+          customerProjectionRepository: this.customerProjectionRepository,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `provisionAddresses: ${type} address reuse tracking failed for customer ${internalCustomerId} — continuing: ${String(err)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -396,7 +538,7 @@ export class WooCommerceOrderProcessorAdapter
             this.connection.id,
           );
         }
-        if (variantMapping.externalId.startsWith('product:')) {
+        if (isSyntheticVariantExternalId(variantMapping.externalId)) {
           // Synthetic variant of a simple product (`product:{wcId}` — same
           // convention as PrestaShop; the inventory adapter strips this
           // prefix too). Simple products have no WC variation — the line

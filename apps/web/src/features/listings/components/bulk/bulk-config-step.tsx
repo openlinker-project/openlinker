@@ -47,7 +47,9 @@ const DEFAULT_CURRENCY = 'PLN';
 
 function selectOfferManagerConnections(all: readonly Connection[]): Connection[] {
   return all
-    .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferManager'))
+    // OfferCreator (not coarse OfferManager, #1498): a quantity-only
+    // OfferManager (WooCommerce stock write-back) cannot create offers.
+    .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 }

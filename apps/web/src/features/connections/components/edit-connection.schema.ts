@@ -160,6 +160,23 @@ export const editConnectionSchema = z
         z.literal(''),
       ])
       .optional(),
+    // Erli-only structured field surfacing `config.callbackBaseUrl` — the
+    // key `ErliWebhookProvisioningAdapter` reads (distinct from PrestaShop's
+    // `openlinkerCallbackBaseUrl`; the two integrations chose different wire
+    // key names before this field existed on the FE, so both are kept
+    // verbatim rather than unified). FE pre-fills from `window.location.origin`
+    // via `getCallbackUrlDefault`, same convenience as PrestaShop's field.
+    callbackBaseUrl: z
+      .union([
+        z
+          .url('Callback URL must be a valid URL')
+          .refine(
+            (value) => value.startsWith('http://') || value.startsWith('https://'),
+            'Callback URL must use http:// or https://',
+          ),
+        z.literal(''),
+      ])
+      .optional(),
     masterCatalogConnectionId: z
       .union([z.string().uuid('Product catalog must be a valid connection ID'), z.literal('')])
       .optional(),
@@ -312,6 +329,8 @@ export type StructuredConfigPatch = {
   shopId?: string;
   storefrontBaseUrl?: string;
   openlinkerCallbackBaseUrl?: string;
+  /** Erli webhook callback URL — `config.callbackBaseUrl` (#1454 follow-up). */
+  callbackBaseUrl?: string;
   masterCatalogConnectionId?: string;
   /**
    * PrestaShop fallback carrier id (#517). Empty string clears the key;
@@ -461,6 +480,13 @@ export function mergeStructuredIntoConfig(
       delete next.openlinkerCallbackBaseUrl;
     } else {
       next.openlinkerCallbackBaseUrl = structured.openlinkerCallbackBaseUrl;
+    }
+  }
+  if (structured.callbackBaseUrl !== undefined) {
+    if (structured.callbackBaseUrl.length === 0) {
+      delete next.callbackBaseUrl;
+    } else {
+      next.callbackBaseUrl = structured.callbackBaseUrl;
     }
   }
   // Unlike baseUrl/shopId, masterCatalogConnectionId uses `""` as an explicit

@@ -10,6 +10,7 @@
 import type { Address, Order, OrderItem } from '@openlinker/core/orders';
 
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
+import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import { toIssueInvoiceCommand } from './order-to-issue-invoice-command.mapper';
 
@@ -89,6 +90,44 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.lines[0]).toEqual({ name: 'Named', quantity: 2, unitPriceGross: 10, taxRate: '' });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
+  });
+
+  it('should fill saleDate from placedAt (ISO YYYY-MM-DD) when the order carries one', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({ placedAt: new Date('2026-06-20T14:30:00.000Z') }),
+      connectionId: 'conn-1',
+    });
+
+    expect(cmd.saleDate).toBe('2026-06-20');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -2],
+    ['NaN', Number.NaN],
+  ])('should throw InvalidInvoiceLineError for a %s item quantity (#1525 review)', (_label, quantity) => {
+    const order = makeOrder({ items: [makeItem({ quantity })] });
+    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+      InvalidInvoiceLineError,
+    );
+  });
+
+  it('InvalidInvoiceLineError is PII-clean: cites only the order id', () => {
+    const order = makeOrder({ items: [makeItem({ quantity: 0, name: 'SECRET_ITEM' })] });
+    try {
+      toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+      fail('expected InvalidInvoiceLineError');
+    } catch (error) {
+      expect((error as Error).message).toContain('order-1');
+      expect((error as Error).message).not.toContain('SECRET_ITEM');
+    }
+  });
+
+  it('should leave saleDate undefined when placedAt is absent (never substitute createdAt)', () => {
+    const cmd = toIssueInvoiceCommand({ order: makeOrder(), connectionId: 'conn-1' });
+
+    // createdAt is set on the fixture; it must NOT leak into saleDate.
+    expect(cmd.saleDate).toBeUndefined();
   });
 
   it('documentType pass-through: undefined stays undefined; supplied value verbatim; NO derivation', () => {
@@ -211,4 +250,98 @@ describe('toIssueInvoiceCommand', () => {
       UnsupportedPriceTreatmentError,
     );
   });
+
+  it('shipping: totals.shipping > 0 -> appends one gross shipping line after the item lines (#1517)', () => {
+    const order = makeOrder({
+      items: [makeItem({ price: 499.99, quantity: 1 })],
+      totals: {
+        subtotal: 499.99,
+        tax: 0,
+        shipping: 10.49,
+        total: 510.48,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(2);
+    // Product lines come first; the shipping line is appended last.
+    expect(cmd.lines[0].unitPriceGross).toBe(499.99);
+    expect(cmd.lines[1]).toEqual({
+      name: 'Shipping',
+      quantity: 1,
+      unitPriceGross: 10.49,
+      taxRate: '',
+    });
+    // Invoice gross (summed by InvoiceService.buildContent over cmd.lines) now
+    // equals the order total.
+    const gross = cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0);
+    expect(gross).toBeCloseTo(order.totals.total, 2);
+  });
+
+  it('shipping: taxRate left empty on the shipping line (provider adapter resolves the regime rate)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    const shippingLine = cmd.lines.find((l) => l.name === 'Shipping');
+    expect(shippingLine).toBeDefined();
+    expect(shippingLine?.taxRate).toBe('');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -5],
+    ['NaN', Number.NaN],
+    ['+Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+  ])('shipping: totals.shipping %s -> no phantom shipping line (#1517)', (_label, shipping) => {
+    const order = makeOrder({
+      items: [makeItem({ price: 100, quantity: 1 })],
+      totals: { subtotal: 100, tax: 0, shipping, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines).toHaveLength(1);
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
+
+  it('shipping: caller-supplied shippingLineName overrides the neutral default label (#1517)', () => {
+    const order = makeOrder({
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'conn-1',
+      shippingLineName: 'Koszt wysyłki',
+    });
+
+    const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+    expect(shippingLine?.name).toBe('Koszt wysyłki');
+    // Neutral English default is not used when an override is supplied.
+    expect(cmd.lines.some((l) => l.name === 'Shipping')).toBe(false);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])(
+    'shipping: %s shippingLineName override falls back to the neutral default label (#1517)',
+    (_label, shippingLineName) => {
+      const order = makeOrder({
+        totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      });
+
+      const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1', shippingLineName });
+
+      const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
+      expect(shippingLine?.name).toBe('Shipping');
+    },
+  );
 });

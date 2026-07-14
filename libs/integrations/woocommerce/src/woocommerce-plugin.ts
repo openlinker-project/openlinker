@@ -16,6 +16,9 @@
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { WooCommerceCustomerProvisioner } from './infrastructure/provisioners/woocommerce-customer-provisioner';
+import type { WooCommerceAddressProvisioner } from './infrastructure/provisioners/woocommerce-address-provisioner';
 import { WooCommerceConnectionTesterAdapter } from './infrastructure/adapters/woocommerce-connection-tester.adapter';
 import { WooCommerceConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-config-shape-validator.adapter';
 import { WooCommerceConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/woocommerce-connection-credentials-shape-validator.adapter';
@@ -29,7 +32,9 @@ import type { WooCommerceConnectionConfig } from './domain/types/woocommerce-con
 import { WooCommerceInventoryMasterAdapter } from './infrastructure/adapters/inventory-master/woocommerce-inventory-master.adapter';
 import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocommerce-order-source.adapter';
 import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/product-publisher/woocommerce-product-publisher.adapter';
+import { WooCommerceOfferManagerAdapter } from './infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
+import { WooCommerceWebhookEventTranslatorAdapter } from './infrastructure/adapters/woocommerce-webhook-event-translator.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
 /**
@@ -51,6 +56,14 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'ProductPublisher',
     'CategoryProvisioner',
+    // Inventory write-back to published products (#1498). Quantity-only —
+    // WooCommerce is a destination shop, not a marketplace: no OfferCreator /
+    // OfferLister sub-capabilities, so offer-creation flows (gated on
+    // OfferCreator) never surface WC. Defaults OFF on new connections when
+    // InventoryMaster is also in the manifest set (ConnectionService excludes
+    // it), and is mutually exclusive with InventoryMaster per connection —
+    // the inventory master must never be a write-back target.
+    'OfferManager',
   ],
   displayName: 'WooCommerce REST API v3',
   version: '1.0.0',
@@ -60,7 +73,25 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
 /** Short brand label for domain-exception prefixes (manifest.displayName is too long). */
 const WOOCOMMERCE_BRAND = 'WooCommerce';
 
-export function createWooCommercePlugin(): AdapterPlugin {
+/**
+ * Plugin-specific cross-package deps for the WooCommerce descriptor (#1552).
+ * The customer + address provisioners and the customer-projection repository
+ * are NOT part of the curated `HostServices` bag (they need `SyncLockPort` and
+ * `CustomerProjectionRepositoryPort`), so they're injected via the companion
+ * NestJS module (`WooCommerceIntegrationModule`) and passed through here — the
+ * same pattern PrestaShop uses for its provisioners.
+ *
+ * Optional so the static / unit-test path (`createWooCommercePlugin()`) keeps
+ * working; the OrderProcessorManager capability throws a descriptive error when
+ * they're absent.
+ */
+export interface CreateWooCommercePluginDeps {
+  readonly customerProvisioner: WooCommerceCustomerProvisioner;
+  readonly addressProvisioner: WooCommerceAddressProvisioner;
+  readonly customerProjectionRepository: CustomerProjectionRepositoryPort;
+}
+
+export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): AdapterPlugin {
   return {
     manifest: woocommerceAdapterManifest,
 
@@ -80,6 +111,15 @@ export function createWooCommercePlugin(): AdapterPlugin {
       host.authFailureClassifierRegistry.register(
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      // Inbound webhook-event translator (ADR-015 / #1548) — decodes WC order
+      // webhook events into neutral CanonicalInboundEvents. The webhook
+      // PROVISIONER is registered by `WooCommerceWebhookProvisioningModule`
+      // (it needs NestJS-injected ConnectionPort + IWebhookSecretService, which
+      // are not in the HostServices bag).
+      host.webhookEventTranslatorRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceWebhookEventTranslatorAdapter(),
       );
       for (const task of buildWooCommerceSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
@@ -128,12 +168,23 @@ export function createWooCommercePlugin(): AdapterPlugin {
                   host.identifierMapping,
                   connection,
                 ),
-              OrderProcessorManager: () =>
-                new WooCommerceOrderProcessorAdapter(
+              OrderProcessorManager: () => {
+                if (!deps) {
+                  throw new Error(
+                    `${WOOCOMMERCE_BRAND} OrderProcessorManager requires customer + address ` +
+                      `provisioners — resolve this capability through WooCommerceIntegrationModule, ` +
+                      `not a bare createWooCommercePlugin().`,
+                  );
+                }
+                return new WooCommerceOrderProcessorAdapter(
                   httpClient,
                   host.identifierMapping,
                   connection,
-                ),
+                  deps.customerProvisioner,
+                  deps.addressProvisioner,
+                  deps.customerProjectionRepository,
+                );
+              },
               OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),
               // ProductPublisher + CategoryProvisioner are the same instance —
               // CategoryProvisioner is a sub-capability of ShopProductManagerPort,
@@ -142,6 +193,7 @@ export function createWooCommercePlugin(): AdapterPlugin {
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
               CategoryProvisioner: () =>
                 new WooCommerceProductPublisherAdapter(httpClient, connection),
+              OfferManager: () => new WooCommerceOfferManagerAdapter(httpClient, connection),
             },
             WOOCOMMERCE_BRAND,
           ),

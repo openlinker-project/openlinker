@@ -37,6 +37,16 @@ export const erliCreateOfferSchema = z
       .int('Stock must be an integer')
       .min(0, 'Stock must be 0 or greater'),
     description: z.string().optional(),
+    // Responsible-producer id (#1531). Optional at the form level so the wizard
+    // never deadlocks when the Erli account has none; when set it rides to the
+    // adapter on `overrides.platformParams.producer` and clears the created
+    // product's missing-producer block.
+    producer: z.string().optional(),
+    // Delivery price list ("cennik dostawy") name (#1530). Optional at the form
+    // level so the wizard never deadlocks when the Erli account has none; when
+    // set it rides to the adapter on `overrides.platformParams.deliveryPriceList`
+    // and makes the created offer buyable.
+    deliveryPriceList: z.string().optional(),
     publishImmediately: z.boolean(),
     parameters: z.record(z.string(), z.unknown()).default({}),
   })

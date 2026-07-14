@@ -40,13 +40,17 @@ import type {
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
   CreateOfferCommand,
+  OfferCondition,
   OfferParameter,
   CreateOfferResult,
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCategory,
   CategoryParameter,
+  CategoryParameterSection,
   MarketplaceOffer,
+  MarketplaceOfferParameter,
+  MarketplaceOfferProductSetItem,
   SellerPolicies,
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,
@@ -105,6 +109,19 @@ import { AllegroQuantityCommand } from '../../index';
 
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
+
+/**
+ * Allegro "Stan" (condition) parameter id and its dictionary value ids (#1500).
+ * "Stan" is an offer-section parameter; the adapter owns this neutral → wire
+ * mapping so core carries only the neutral `CreateOfferCommand.condition`. Value
+ * ids are Allegro's stable global dictionary entries (`11323_1` = Nowy / new,
+ * `11323_2` = Używany / used).
+ */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+const ALLEGRO_CONDITION_VALUE_IDS: Record<OfferCondition, string> = {
+  new: '11323_1',
+  used: '11323_2',
+};
 
 /** Default cache TTL (24h) for `/sale/categories/{id}/parameters` responses. */
 const DEFAULT_CAT_PARAMS_TTL_SEC = 24 * 60 * 60;
@@ -686,7 +703,67 @@ export class AllegroOfferManagerAdapter
       category: offer.category ? { id: offer.category.id } : undefined,
       marketplaceUrl: this.buildMarketplaceUrl(offer.id),
       endsAt: offer.publication?.endingAt,
+      parameters: this.mapOfferParameters(offer),
+      productSet: this.mapOfferProductSet(offer),
     };
+  }
+
+  /**
+   * Collect the offer's filled parameter values into the neutral shape
+   * (#1482). Offer-section values come from `offer.parameters`; product-
+   * section values (Brand, Model, manufacturer code, ...) come from each
+   * `productSet[].product.parameters` - both already present on the
+   * `GET /sale/product-offers/{offerId}` response, so no extra API call.
+   * Returns undefined when the response carries no parameter data at all,
+   * keeping the previous DTO shape for sparse offers.
+   */
+  private mapOfferParameters(offer: AllegroProductOffer): MarketplaceOfferParameter[] | undefined {
+    const mapped: MarketplaceOfferParameter[] = [];
+    for (const parameter of offer.parameters ?? []) {
+      mapped.push(this.toMarketplaceOfferParameter(parameter, 'offer'));
+    }
+    for (const entry of offer.productSet ?? []) {
+      for (const parameter of entry.product?.parameters ?? []) {
+        mapped.push(this.toMarketplaceOfferParameter(parameter, 'product'));
+      }
+    }
+    return mapped.length > 0 ? mapped : undefined;
+  }
+
+  private toMarketplaceOfferParameter(
+    parameter: AllegroOfferParameter,
+    section: CategoryParameterSection
+  ): MarketplaceOfferParameter {
+    return {
+      id: parameter.id,
+      name: parameter.name,
+      values: parameter.values ?? [],
+      valuesIds: parameter.valuesIds,
+      rangeValue: parameter.rangeValue
+        ? { from: parameter.rangeValue.from, to: parameter.rangeValue.to }
+        : undefined,
+      section,
+    };
+  }
+
+  /**
+   * Map `productSet[]` into the neutral catalog-linkage shape (#1482).
+   * `product.id` is only present on smart-linked entries (inline products
+   * carry no card id); `quantity.value` is Allegro's per-item unit count.
+   * Returns undefined when the offer has no product set so adapters without
+   * catalog linkage keep the previous shape.
+   */
+  private mapOfferProductSet(
+    offer: AllegroProductOffer
+  ): MarketplaceOfferProductSetItem[] | undefined {
+    const entries = offer.productSet ?? [];
+    if (entries.length === 0) {
+      return undefined;
+    }
+    return entries.map((entry) => ({
+      productId: entry.product?.id,
+      quantity: entry.quantity?.value,
+    }));
   }
 
   /**
@@ -838,7 +915,7 @@ export class AllegroOfferManagerAdapter
    * failure.
    */
   async resolveCategoriesForBatchByEan(
-    input: BatchCategoryByEanInput,
+    input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
     return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
   }
@@ -1481,7 +1558,7 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult);
+    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
 
     return body;
   }
@@ -1503,11 +1580,43 @@ export class AllegroOfferManagerAdapter
     }));
   }
 
+  /**
+   * Build the Allegro "Stan" (condition) offer-section parameter from the neutral
+   * `cmd.condition` (#1500). Returns `undefined` when no condition is set OR when
+   * the operator already supplied a Stan parameter (id 11323) among the
+   * offer-section params — operator intent wins and condition is never
+   * double-set. `valuesIds` carries the dictionary entry id ("Stan" is a
+   * dictionary parameter).
+   *
+   * The operator-wins check inspects only the offer-section params
+   * (`existingOfferParameters`) by design: "Stan" is inherently an
+   * offer-section parameter on Allegro (fixture `describesProduct:false`; the
+   * wizard/mapper always treat it as offer-section), so a product-section Stan
+   * cannot legitimately arise. If that assumption ever breaks, extend the
+   * dedup to scan the product-section params too.
+   */
+  private buildConditionParameter(
+    condition: OfferCondition | undefined,
+    existingOfferParameters: readonly AllegroOfferParameter[]
+  ): AllegroOfferParameter | undefined {
+    if (!condition) {
+      return undefined;
+    }
+    if (existingOfferParameters.some((p) => p.id === ALLEGRO_CONDITION_PARAMETER_ID)) {
+      return undefined;
+    }
+    return {
+      id: ALLEGRO_CONDITION_PARAMETER_ID,
+      valuesIds: [ALLEGRO_CONDITION_VALUE_IDS[condition]],
+    };
+  }
+
   private applyPlatformParams(
     body: AllegroProductOfferCreateRequest,
     platformParams: Record<string, unknown>,
     parameters: readonly OfferParameter[] | undefined,
-    cardLinkResult: ResolveProductCardResult
+    cardLinkResult: ResolveProductCardResult,
+    condition: OfferCondition | undefined
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -1551,6 +1660,13 @@ export class AllegroOfferManagerAdapter
     const offerParameters = this.toAllegroParameters(
       (parameters ?? []).filter((p) => p.section === 'offer')
     );
+    // #1500 — default marketplace-required condition ("Stan"). Skip when the
+    // operator already supplied a Stan parameter (offer-section id 11323) so
+    // operator intent wins and condition is never double-set.
+    const conditionParameter = this.buildConditionParameter(condition, offerParameters);
+    if (conditionParameter) {
+      offerParameters.push(conditionParameter);
+    }
     if (offerParameters.length > 0) {
       body.parameters = offerParameters;
     }

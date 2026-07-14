@@ -24,6 +24,8 @@ import type {
   ResolveCategoryRequest,
   ResolveCategoryResponse,
   SellerPoliciesResponse,
+  ResponsibleProducersResponse,
+  DeliveryPriceListsResponse,
   ShopPublishRequest,
   ShopPublishResponse,
   ShopPublishStatusResponse,
@@ -96,6 +98,8 @@ export interface ListingsApi {
   /** Read a bulk shop-publish batch + its per-record summary. Used for polling. */
   getBulkShopPublishBatch: (batchId: string) => Promise<BulkShopPublishBatchResponse>;
   getSellerPolicies: (connectionId: string) => Promise<SellerPoliciesResponse>;
+  getResponsibleProducers: (connectionId: string) => Promise<ResponsibleProducersResponse>;
+  getDeliveryPriceLists: (connectionId: string) => Promise<DeliveryPriceListsResponse>;
   getCategoryParameters: (
     connectionId: string,
     categoryId: string,
@@ -226,6 +230,16 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
     getSellerPolicies(connectionId): Promise<SellerPoliciesResponse> {
       return request<SellerPoliciesResponse>(
         `/listings/connections/${connectionId}/seller-policies`,
+      );
+    },
+    getResponsibleProducers(connectionId): Promise<ResponsibleProducersResponse> {
+      return request<ResponsibleProducersResponse>(
+        `/listings/connections/${connectionId}/responsible-producers`,
+      );
+    },
+    getDeliveryPriceLists(connectionId): Promise<DeliveryPriceListsResponse> {
+      return request<DeliveryPriceListsResponse>(
+        `/listings/connections/${connectionId}/delivery-price-lists`,
       );
     },
     getCategoryParameters(connectionId, categoryId): Promise<CategoryParametersListResponse> {

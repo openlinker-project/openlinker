@@ -43,6 +43,15 @@ describe('ErliCredentialsPanel', () => {
     expect(screen.getByText('Rotate API key')).toBeInTheDocument();
   });
 
+  it('shows the Allegro category-browsing checkbox without opening "Rotate API key"', () => {
+    renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />);
+    expect(
+      screen.getByRole('checkbox', { name: /browse allegro categories/i })
+    ).toBeInTheDocument();
+    // The API key input itself must stay closed until explicitly opened.
+    expect(screen.queryByPlaceholderText('New API key')).not.toBeInTheDocument();
+  });
+
   it('falls back to the env-var disabled input when credentialsBacked=false', () => {
     const envBacked = { ...erliConnection, credentialsBacked: false };
     renderWithProviders(<ErliCredentialsPanel connection={envBacked} />);
@@ -166,7 +175,11 @@ describe('ErliCredentialsPanel', () => {
     });
     await waitFor(() => {
       expect(update).toHaveBeenCalledWith(erliConnection.id, {
-        config: { ...erliConnection.config, allegroCategoryAccessEnabled: true },
+        config: {
+          ...erliConnection.config,
+          allegroCategoryAccessEnabled: true,
+          allegroEnvironment: 'production',
+        },
       });
     });
     // Ordering: credentials write resolves strictly before the config patch fires.
@@ -336,11 +349,52 @@ describe('ErliCredentialsPanel', () => {
       });
       await waitFor(() => {
         expect(update).toHaveBeenCalledWith(erliConnection.id, {
-          config: { ...erliConnection.config, allegroCategoryAccessEnabled: true },
+          config: {
+            ...erliConnection.config,
+            allegroCategoryAccessEnabled: true,
+            allegroEnvironment: 'production',
+          },
         });
       });
       // The raw Allegro secret is never present anywhere in this flow's payloads.
       expect(updateCredentials.mock.calls[0][1]).not.toHaveProperty('allegroClientSecret');
+    });
+
+    it('infers allegroEnvironment from the reused connection instead of always defaulting to production', async () => {
+      const sandboxAllegroConnection: Connection = {
+        ...allegroConnection,
+        id: 'conn_allegro_sandbox',
+        name: 'Sandbox Allegro Store',
+        config: { ...allegroConnection.config, environment: 'sandbox' },
+      };
+      const list = vi.fn().mockResolvedValue([sandboxAllegroConnection]);
+      const updateCredentials = vi.fn().mockResolvedValue(undefined);
+      const update = vi.fn().mockResolvedValue(erliConnectionWithAllegroAccess);
+      const apiClient = createMockApiClient({
+        connections: { list, updateCredentials, update },
+      });
+      renderWithProviders(<ErliCredentialsPanel connection={erliConnection} />, { apiClient });
+
+      fireEvent.click(screen.getByText('Rotate API key'));
+      fireEvent.click(screen.getByRole('checkbox', { name: /browse allegro categories/i }));
+      await screen.findByRole('combobox', { name: /allegro connection to reuse/i });
+      fireEvent.change(screen.getByRole('combobox', { name: /allegro connection to reuse/i }), {
+        target: { value: sandboxAllegroConnection.id },
+      });
+      expect(await screen.findByText(/will use that connection's environment/i)).toHaveTextContent(
+        'sandbox'
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save credentials' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith(erliConnection.id, {
+          config: {
+            ...erliConnection.config,
+            allegroCategoryAccessEnabled: true,
+            allegroEnvironment: 'sandbox',
+          },
+        });
+      });
     });
 
     it('switches to manual fields when "Enter Allegro app credentials manually" is chosen, unaffected by available connections', async () => {
