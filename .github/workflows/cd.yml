@@ -2,7 +2,6 @@ name: CD
 
 on:
   push:
-    # branches: [main]
     tags:
       - 'v*'
 
@@ -11,7 +10,7 @@ jobs:
     name: Build and deploy
     runs-on: self-hosted
     environment: demo
-    if: ${{ github.event.base_ref == 'refs/heads/main' }} # run only on main branch
+    permissions: {}
     steps:
       - uses: actions/checkout@v6
 
@@ -44,14 +43,12 @@ jobs:
         with:
           key: ${{ secrets.SSH_KEY }}
           known_hosts: 'just-a-placeholder-so-we-dont-get-errors'
-          # name: id_rsa # optional
 
       - name: Adding Known Hosts
         run: ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Copy images to server
         run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./openlinker-{migrate,api,web,worker}.tar ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_IMAGES }}/
-
 
       - name: Sync prestashop module
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./apps/prestashop-module/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_MODULE }}/
@@ -61,9 +58,6 @@ jobs:
 
       - name: Sync woocommerce init scripts
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/woocommerce/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_WC_INITSCRIPTS }}/
-
-      # - name: Copy variables on server
-      #   run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" .env-docker ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_ENV }}/.env
 
       - name: Deploy
         run: ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} "bash ~/deploy.sh"
