@@ -168,19 +168,28 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     return headers[name] ?? headers[name.toLowerCase()] ?? null;
   }
 
+  /**
+   * Walk a key path over the parsed body, returning the leaf value or
+   * `undefined` if any segment is missing or non-traversable. Shared traversal
+   * backing the `firstString` / `firstIdentifier` accessors.
+   */
+  private resolvePath(record: Record<string, unknown>, path: readonly string[]): unknown {
+    let cursor: unknown = record;
+    for (const key of path) {
+      if (typeof cursor !== 'object' || cursor === null) {
+        return undefined;
+      }
+      cursor = (cursor as Record<string, unknown>)[key];
+    }
+    return cursor;
+  }
+
   private firstString(
     record: Record<string, unknown>,
     paths: readonly string[][],
   ): string | null {
     for (const path of paths) {
-      let cursor: unknown = record;
-      for (const key of path) {
-        if (typeof cursor !== 'object' || cursor === null) {
-          cursor = undefined;
-          break;
-        }
-        cursor = (cursor as Record<string, unknown>)[key];
-      }
+      const cursor = this.resolvePath(record, path);
       if (typeof cursor === 'string' && cursor.length > 0) {
         return cursor;
       }
@@ -197,14 +206,7 @@ export class InpostInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     paths: readonly string[][],
   ): string | null {
     for (const path of paths) {
-      let cursor: unknown = record;
-      for (const key of path) {
-        if (typeof cursor !== 'object' || cursor === null) {
-          cursor = undefined;
-          break;
-        }
-        cursor = (cursor as Record<string, unknown>)[key];
-      }
+      const cursor = this.resolvePath(record, path);
       if (typeof cursor === 'string' && cursor.length > 0) {
         return cursor;
       }
