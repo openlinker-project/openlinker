@@ -54,6 +54,12 @@ export interface InvoicingIssuePayloadV1 {
   idempotencyKey: string;
   /** Neutral document type; pass-through, adapter derives when absent. */
   documentType?: string;
+  /**
+   * Sale date (ISO `YYYY-MM-DD`, #1525) from the order's placement timestamp;
+   * absent when the order carries none. Optional additive field - no
+   * `schemaVersion` bump (a v1 consumer that ignores it stays correct).
+   */
+  saleDate?: string;
   /** ISO-4217 currency. */
   currency: string;
   /** Plain invoice lines (numbers, no class). */

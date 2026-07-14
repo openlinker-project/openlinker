@@ -60,6 +60,13 @@ export interface Fa3MappingContext {
    */
   defaultTaxRate: string;
   /**
+   * Connection-resolved fallback unit of measure (`P_8A`, #1525) applied to any
+   * line whose neutral `unit` is absent/empty. `undefined` when the connection
+   * has none configured - such lines omit `P_8A` entirely. Precedence:
+   * `InvoiceLine.unit` -> this default -> omit.
+   */
+  defaultLineUnit?: string;
+  /**
    * Resolved connection-level payment defaults (#1311) — `undefined` when the
    * connection has none configured, in which case the builder omits
    * `Platnosc` entirely.
@@ -89,9 +96,12 @@ export function mapToFa3BuilderInput(
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
     generatedAt: context.generatedAt,
-    lines: cmd.lines.map((line) => mapLine(line, context.defaultTaxRate)),
+    // P_6 is emitted whenever the neutral command knows the sale date - even
+    // when it equals P_1 (#1525); absence means the source order carried none.
+    ...(cmd.saleDate !== undefined ? { saleDate: cmd.saleDate } : {}),
+    lines: cmd.lines.map((line) => mapLine(line, context)),
     ...(cmd.correction !== undefined
-      ? { correction: mapCorrection(cmd.correction, context.defaultTaxRate) }
+      ? { correction: mapCorrection(cmd.correction, context) }
       : {}),
     ...(context.payment !== undefined ? { payment: context.payment } : {}),
   };
@@ -116,12 +126,17 @@ function normalizeAddressCountry(address: BuyerAddress): BuyerAddress {
   return { ...address, countryIso2: resolveKodKraju(address.countryIso2) };
 }
 
-function mapLine(line: InvoiceLine, defaultTaxRate: string): Fa3Line {
+function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
+  // P_8A precedence (#1525): the line's own unit wins, else the connection's
+  // configured default, else the element is omitted (empty/whitespace counts
+  // as absent so a hollow value never reaches the wire).
+  const unit = line.unit?.trim() || context.defaultLineUnit?.trim() || undefined;
   return {
     name: line.name,
     quantity: line.quantity,
     unitPriceGross: line.unitPriceGross,
-    p12: resolveP12(line.taxRate || defaultTaxRate),
+    p12: resolveP12(line.taxRate || context.defaultTaxRate),
+    ...(unit !== undefined ? { unit } : {}),
   };
 }
 
@@ -135,7 +150,7 @@ function mapLine(line: InvoiceLine, defaultTaxRate: string): Fa3Line {
  */
 function mapCorrection(
   correction: CorrectionReference,
-  defaultTaxRate: string,
+  context: Fa3MappingContext,
 ): Fa3CorrectionContext {
   return {
     typKorekty: '2',
@@ -143,6 +158,6 @@ function mapCorrection(
     originalIssueDate: correction.originalIssueDate,
     originalInvoiceNumber: correction.originalDocumentNumber,
     originalKsefNumber: correction.originalClearanceReference,
-    correctedLines: correction.correctedLines.map((line) => mapLine(line, defaultTaxRate)),
+    correctedLines: correction.correctedLines.map((line) => mapLine(line, context)),
   };
 }

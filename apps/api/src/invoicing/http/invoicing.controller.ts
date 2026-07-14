@@ -68,6 +68,7 @@ import {
   IInvoiceService,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
+  InvalidInvoiceLineError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
   InvoiceRecordNotFoundException,
@@ -1137,6 +1138,7 @@ export class InvoicingController {
     }
     if (
       error instanceof InvalidBuyerProfileError ||
+      error instanceof InvalidInvoiceLineError ||
       error instanceof UnsupportedPriceTreatmentError
     ) {
       return new BadRequestException(error.message);

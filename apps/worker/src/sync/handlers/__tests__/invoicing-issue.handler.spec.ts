@@ -98,6 +98,17 @@ describe('InvoicingIssueHandler', () => {
       await handler.execute(makeJob(makePayload({ idempotencyKey: 'invoice:c:o' })));
       expect(invoiceService.issueInvoice.mock.calls[0][0].idempotencyKey).toBe('invoice:c:o');
     });
+
+    it('command saleDate is restored from payload.saleDate (#1525)', async () => {
+      await handler.execute(makeJob(makePayload({ saleDate: '2026-06-19' })));
+      expect(invoiceService.issueInvoice.mock.calls[0][0].saleDate).toBe('2026-06-19');
+    });
+
+    it('command omits saleDate when the payload carries none', async () => {
+      await handler.execute(makeJob(makePayload()));
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect('saleDate' in cmd).toBe(false);
+    });
   });
 
   describe('deep payload validation ⇒ business_failure (F5)', () => {
@@ -122,6 +133,8 @@ describe('InvoicingIssueHandler', () => {
         buyer: { ...makePayload().buyer, taxId: { scheme: 'pl-nip', value: '' } },
       })],
       ['missing connectionId', makePayload({ connectionId: '' })],
+      ['present but empty saleDate', makePayload({ saleDate: '' })],
+      ['present but non-string saleDate', makePayload({ saleDate: 5 as unknown as string })],
     ];
 
     it.each(cases)('%s ⇒ business_failure (no issueInvoice call)', async (_label, payload) => {
