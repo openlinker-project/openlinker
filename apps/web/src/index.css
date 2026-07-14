@@ -10750,64 +10750,116 @@ html[data-density='compact'] .status-badge {
   border: none;
 }
 
-/* ── KsefFa3View parsed invoice display (#1228) ─────────────────────
- * Structured human-readable visualization of an FA(3) XML document.
- * Fills the `.doc-preview` container that replaces the former iframe.
+/* -- KSeF FA(3) document preview (#1526) -------------------------------
+ * Document-styled, theme-aware visualization of an FA(3) XML invoice
+ * mirroring the official KSeF/MF layout. Fills the `.doc-preview`
+ * container; tokens only, so it follows light/dark themes.
  */
 .ksef-fa3-view {
   width: 100%;
-  padding: var(--space-4, 1rem);
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--space-5);
   text-align: left;
-  color: var(--text-default);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: var(--space-4);
 }
-.ksef-fa3-view__lines {
-  margin-top: var(--space-3, 0.75rem);
+.ksef-fa3-view__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: var(--space-3);
 }
-.ksef-fa3-view__lines-title,
-.ksef-fa3-view__vat-title {
+.ksef-fa3-view__doc-number {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.ksef-fa3-view__doc-type {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin-top: var(--space-1);
+}
+.ksef-fa3-view__ksef-number { text-align: right; }
+.ksef-fa3-view__field-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+.ksef-fa3-view__section-title {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-caps, 0.05em);
+  letter-spacing: var(--tracking-caps);
   color: var(--text-muted);
-  margin-bottom: var(--space-2, 0.5rem);
-  margin-top: var(--space-3, 0.75rem);
+  margin-bottom: var(--space-2);
 }
-.ksef-fa3-view__vat { margin-top: var(--space-2, 0.5rem); }
-.ksef-fa3-view__total { border-top: 2px solid var(--border-default); margin-top: var(--space-2, 0.5rem); }
-.ksef-fa3-view__total-value { font-weight: 600; font-size: 1rem; }
-
-/* ── Invoice line-items table (#1228) ────────────────────────────────
- * Compact scrollable table used inside `.ksef-fa3-view__lines`.
- */
-.ksef-fa3-view__lines-table-wrap { overflow-x: auto; }
-.ksef-fa3-view__lineitems {
+.ksef-fa3-view__parties {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.ksef-fa3-view__party {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: 0.8125rem;
+}
+.ksef-fa3-view__party-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.ksef-fa3-view__party-name {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.ksef-fa3-view__party-line { color: var(--text-secondary); }
+.ksef-fa3-view__details {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+}
+.ksef-fa3-view__correction {
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-info);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ksef-fa3-view__table-wrap { overflow-x: auto; }
+.ksef-fa3-view__table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.75rem;
 }
-.ksef-fa3-view__lineitems th,
-.ksef-fa3-view__lineitems td {
-  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+.ksef-fa3-view__table th,
+.ksef-fa3-view__table td {
+  padding: var(--space-1) var(--space-2);
   text-align: left;
-  border-bottom: 1px solid var(--border-subtle, var(--border-default));
+  border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
-.ksef-fa3-view__lineitems th {
+.ksef-fa3-view__table th {
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg-surface-muted);
 }
-.ksef-fa3-view__lineitems tbody tr:last-child td { border-bottom: none; }
-
-/* ── KOR "before correction" lines (#1364 follow-up) ──────────────────
- * A correction document's pre-correction rows are collapsed by default —
- * kept out of the main lines/totals table, but reachable for audit.
- */
-.ksef-fa3-view__before-correction { margin-top: var(--space-3, 0.75rem); }
+.ksef-fa3-view__table .ksef-fa3-view__col-num { text-align: right; }
+.ksef-fa3-view__table .ksef-fa3-view__col-desc { white-space: normal; }
 .ksef-fa3-view__before-correction summary {
   cursor: pointer;
   list-style: none;
@@ -10817,6 +10869,24 @@ html[data-density='compact'] .status-badge {
   outline: none;
   box-shadow: var(--shadow-focus);
   border-radius: var(--radius-sm);
+}
+.ksef-fa3-view__total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-3);
+  border-top: 2px solid var(--border-strong);
+  padding-top: var(--space-2);
+}
+.ksef-fa3-view__total-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.ksef-fa3-view__payment {
+  font-size: 0.8125rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 /* ── Inline Disclosure (#1303) ───────────────────────────────────────
