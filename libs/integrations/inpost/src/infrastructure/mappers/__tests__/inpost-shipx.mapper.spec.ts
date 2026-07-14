@@ -14,6 +14,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import {
   buildCreateShipmentRequest,
   buildPointsQuery,
+  buildProtocolQuery,
   classifyInpostPointType,
   mapShipXStatus,
   toGenerateLabelResult,
@@ -333,6 +334,19 @@ describe('inpost-shipx.mapper', () => {
       expect(
         buildPointsQuery({ city: 'Warszawa', postalCode: '00-001', searchText: 'POZ', limit: 10 }),
       ).toEqual({ city: 'Warszawa', post_code: '00-001', name: 'POZ', per_page: 10 });
+    });
+  });
+
+  describe('buildProtocolQuery', () => {
+    it('should carry the shipment_ids batch and format=Pdf', () => {
+      expect(buildProtocolQuery(['11', '22', '33'])).toEqual({
+        shipment_ids: ['11', '22', '33'],
+        format: 'Pdf',
+      });
+    });
+
+    it('should reject an empty batch with a preflight rejection', () => {
+      expect(() => buildProtocolQuery([])).toThrow(ShippingProviderRejectionException);
     });
   });
 });
