@@ -132,6 +132,14 @@ export interface ErliProductCreateBody {
    * the direct and reliable reference here.
    */
   producerId?: number;
+  /**
+   * Delivery price list ("cennik dostawy") the offer references (#1530). Erli
+   * keys a price list by its unique `name` string (the default list is named
+   * `"*"`); without it the created offer lands not-buyable ("brak metody
+   * dostawy"). Supplied when the neutral command carries an operator selection
+   * (`overrides.platformParams.deliveryPriceList`); omitted otherwise.
+   */
+  deliveryPriceList?: string;
   /** Allegro category reuse (#985); omitted when empty. */
   externalCategories?: ErliExternalCategory[];
   /** Allegro parameter reuse (#985); omitted when empty. */
@@ -188,6 +196,18 @@ export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
  * (`ResponsibleSchema`, "pobierz listę producentów produktu").
  */
 export interface ErliResponsibleProducerItem {
+  id: number;
+  name: string;
+}
+
+/**
+ * One item from `GET /delivery/priceLists` (#1530). Erli returns
+ * `{ id: integer, name: string }`; `name` is the unique delivery-method name
+ * (the default list is `"*"`) that the create body's `deliveryPriceList` field
+ * references. Verified against `docs/architecture/adrs/erli-sandbox-swagger.json`
+ * (`PriceListListItem`).
+ */
+export interface ErliDeliveryPriceListItem {
   id: number;
   name: string;
 }
