@@ -257,9 +257,13 @@ export function buildPointsQuery(
  * manifest PDF over the given already-confirmed shipments — it accepts the
  * `shipment_ids[]` batch whether or not those shipments carry a dispatch order,
  * so no courier-pickup order has to be created first. `format` has a single
- * documented value (`Pdf`); ShipX caps a request at 100 shipments and rejects
- * the call itself if any id is not `confirmed`, so those stay carrier-enforced.
+ * documented value (`Pdf`); ShipX rejects the call itself if any id is not
+ * `confirmed`, so that stays carrier-enforced. The 100-shipment-per-request
+ * cap is preflighted here (mirroring the empty-batch guard) so an oversized
+ * batch fails with a clear domain error instead of a raw carrier rejection.
  */
+export const MAX_PROTOCOL_SHIPMENTS = 100;
+
 export function buildProtocolQuery(
   providerShipmentIds: readonly string[],
 ): { shipment_ids: readonly string[]; format: 'Pdf' } {
@@ -268,6 +272,13 @@ export function buildProtocolQuery(
       'inpost',
       'preflight.empty-protocol-batch',
       'At least one shipment id is required to generate a handover protocol',
+    );
+  }
+  if (providerShipmentIds.length > MAX_PROTOCOL_SHIPMENTS) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.protocol-batch-too-large',
+      `A handover protocol accepts at most ${MAX_PROTOCOL_SHIPMENTS} shipments per request, got ${providerShipmentIds.length}`,
     );
   }
   return { shipment_ids: providerShipmentIds, format: 'Pdf' };

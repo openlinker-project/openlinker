@@ -637,6 +637,8 @@ describe('ShipmentController', () => {
       ['application/zpl', 'zpl'],
       ['application/x-zpl', 'zpl'],
       ['application/epl', 'epl'],
+      ['application/zip', 'zip'],
+      ['application/zip; charset=binary', 'zip'],
       ['', 'bin'],
       ['application/octet-stream', 'bin'],
     ])('maps %s → %s', (ct, ext) => {
