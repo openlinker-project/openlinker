@@ -51,6 +51,40 @@ describe('ErliDeliveryPriceListField', () => {
     expect(await screen.findByText(/No delivery price lists found on this Erli account/i)).toBeInTheDocument();
   });
 
+  it('refetches when Refresh is clicked in the empty state', async () => {
+    const getDeliveryPriceLists = vi.fn().mockResolvedValue({ deliveryPriceLists: [] });
+    const apiClient = createMockApiClient({ listings: { getDeliveryPriceLists } });
+
+    renderWithProviders(
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      { apiClient },
+    );
+
+    await screen.findByText(/No delivery price lists found on this Erli account/i);
+    expect(getDeliveryPriceLists).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await vi.waitFor(() => expect(getDeliveryPriceLists).toHaveBeenCalledTimes(2));
+  });
+
+  it('retries when Retry is clicked in the error state', async () => {
+    const getDeliveryPriceLists = vi.fn().mockRejectedValue(new Error('Network error'));
+    const apiClient = createMockApiClient({ listings: { getDeliveryPriceLists } });
+
+    renderWithProviders(
+      <ErliDeliveryPriceListField connectionId="conn_erli_1" value="" onChange={vi.fn()} />,
+      { apiClient },
+    );
+
+    await screen.findByText('Unable to load delivery price lists');
+    expect(getDeliveryPriceLists).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await vi.waitFor(() => expect(getDeliveryPriceLists).toHaveBeenCalledTimes(2));
+  });
+
   it('calls onChange with the selected price-list name', async () => {
     const onChange = vi.fn();
     const apiClient = createMockApiClient({

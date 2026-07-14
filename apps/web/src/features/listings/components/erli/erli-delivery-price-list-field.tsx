@@ -16,6 +16,7 @@
 import type { ReactElement } from 'react';
 
 import { Alert } from '../../../../shared/ui/alert';
+import { Button } from '../../../../shared/ui/button';
 import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
@@ -48,14 +49,40 @@ export function ErliDeliveryPriceListField({
     control = <Input disabled value="Loading delivery price lists…" readOnly />;
   } else if (query.error) {
     control = (
-      <Alert tone="error" title="Unable to load delivery price lists">
+      <Alert
+        tone="error"
+        title="Unable to load delivery price lists"
+        action={
+          <Button
+            type="button"
+            tone="ghost"
+            className="button--sm"
+            onClick={() => void query.refetch()}
+          >
+            Retry
+          </Button>
+        }
+      >
         {query.error instanceof Error ? query.error.message : 'Please try again.'}
       </Alert>
     );
   } else if (priceLists.length === 0) {
     control = (
-      <Alert tone="info" title="No delivery price lists found">
-        No delivery price lists found on this Erli account - add one in Erli, then reload.
+      <Alert
+        tone="info"
+        title="No delivery price lists found"
+        action={
+          <Button
+            type="button"
+            tone="ghost"
+            className="button--sm"
+            onClick={() => void query.refetch()}
+          >
+            Refresh
+          </Button>
+        }
+      >
+        No delivery price lists found on this Erli account - add one in Erli, then refresh.
       </Alert>
     );
   } else {

@@ -57,14 +57,40 @@ export function ErliDeliveryPriceListOverrideField({
     control = <Input disabled value="Loading delivery price lists…" readOnly />;
   } else if (query.error) {
     control = (
-      <Alert tone="error" title="Unable to load delivery price lists">
+      <Alert
+        tone="error"
+        title="Unable to load delivery price lists"
+        action={
+          <Button
+            type="button"
+            tone="ghost"
+            className="button--sm"
+            onClick={() => void query.refetch()}
+          >
+            Retry
+          </Button>
+        }
+      >
         {query.error instanceof Error ? query.error.message : 'Please try again.'}
       </Alert>
     );
   } else if (priceLists.length === 0) {
     control = (
-      <Alert tone="info" title="No delivery price lists found">
-        No delivery price lists found on this Erli account - add one in Erli, then reload.
+      <Alert
+        tone="info"
+        title="No delivery price lists found"
+        action={
+          <Button
+            type="button"
+            tone="ghost"
+            className="button--sm"
+            onClick={() => void query.refetch()}
+          >
+            Refresh
+          </Button>
+        }
+      >
+        No delivery price lists found on this Erli account - add one in Erli, then refresh.
       </Alert>
     );
   } else {
@@ -100,23 +126,16 @@ export function ErliDeliveryPriceListOverrideField({
       >
         {control}
       </FormField>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          marginTop: 'var(--space-1)',
-        }}
-      >
+      <div className="bulk-edit__delivery-price-list-status">
         {isOverridden ? (
           <>
-            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Overridden</span>
+            <span className="bulk-edit__delivery-price-list-status-label">Overridden</span>
             <Button tone="ghost" type="button" onClick={() => onChange(undefined)}>
               Reset to batch default
             </Button>
           </>
         ) : (
-          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Batch default</span>
+          <span className="bulk-edit__delivery-price-list-status-label">Batch default</span>
         )}
       </div>
     </div>

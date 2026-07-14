@@ -8402,6 +8402,19 @@ html[data-density='compact'] .status-badge {
   text-decoration: underline;
 }
 
+/* ── Bulk edit modal — delivery-price-list override status row (#1530) ── */
+.bulk-edit__delivery-price-list-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.bulk-edit__delivery-price-list-status-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* ── Bulk wizard master-pull policies + candidate chips (#792) ──────── */
 .bulk-config__policy {
   display: flex;
