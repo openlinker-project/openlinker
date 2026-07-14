@@ -6,6 +6,13 @@
  *   - `smoke`        — read-only substrate proof (health + login + connections).
  *   - `golden-path`  — the S1-S4 operator-setup flow; serial (`workers: 1`) so
  *                      the mutating steps don't interleave.
+ *   - `full-flow`    — the attended S0-S9 full golden path across all 6 systems;
+ *                      serial, `retries: 0` (a re-run would double-mutate), driven
+ *                      headed in a coordinated operator session.
+ *   - `access-control` — demo mode, registration, RBAC, and UI-reflection checks.
+ *                      Self-configuring (asserts correct-for-mode, skips otherwise);
+ *                      independent of the golden-path projects. `retries: 1`
+ *                      (idempotent: each run provisions a fresh unique viewer).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -56,8 +63,39 @@ export default defineConfig({
     {
       // Mutating project — never retried (a retry would double-mutate).
       name: 'golden-path',
-      testMatch: /golden-path\/.*\.spec\.ts/,
+      testMatch: /golden-path\/operator-setup\.spec\.ts/,
       retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Attended S0-S9 run. `retries: 0` — the flow mutates external systems, so
+      // a silent retry would double-buy / double-issue. Run headed via
+      // `--project=full-flow --headed`.
+      name: 'full-flow',
+      testMatch: /golden-path\/full-flow\.spec\.ts/,
+      retries: 0,
+      // The attended flow waits on worker jobs (up to 300 s), manual dashboard
+      // checkpoints and the purchase pause — up to 2 hours PER purchase platform
+      // (full-flow.spec.ts PAUSE test), so a dual-purchase run can legitimately
+      // sit for 4+ hours inside one test. No per-test timeout can bound that
+      // without contradicting the checkpoint budgets, so the project runs
+      // unbounded (attended semantics): every wait inside the test is itself
+      // bounded — pollers, job waits, and each manualCheckpoint's timeoutMs —
+      // so a hung run still fails at the responsible checkpoint, not silently.
+      timeout: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Access-control coverage — independent of golden-path/full-flow. Depends
+      // only on `setup` for the admin storageState the UI-reflection spec's
+      // admin-session assertions consume; the viewer/guest browser cases build
+      // their own fresh contexts. `retries: 1` is safe — every run provisions a
+      // fresh, uniquely-named viewer (no double-mutation of shared state).
+      name: 'access-control',
+      testMatch: /access-control\/.*\.spec\.ts/,
+      retries: 1,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

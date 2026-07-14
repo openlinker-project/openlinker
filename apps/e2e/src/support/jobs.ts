@@ -26,6 +26,7 @@ export const JobType = {
   marketplaceOffersSync: 'marketplace.offers.sync',
   marketplaceOrdersPoll: 'marketplace.orders.poll',
   inventoryPropagateToMarketplaces: 'inventory.propagateToMarketplaces',
+  invoicingIssue: 'invoicing.issue',
   invoicingRegulatoryStatusReconcile: 'invoicing.regulatoryStatus.reconcile',
 } as const;
 
@@ -50,7 +51,6 @@ export interface TriggerAndWaitOptions extends WaitForJobOptions {
 export class SyncJobs {
   constructor(private readonly api: ApiClient) {}
 
-  /** Enqueue a sync job and return its id. */
   /** Mint the per-call unique dedup key the enqueue + wait pair share. */
   private mintKey(input: EnqueueSyncJobInput): string {
     return `e2e:${input.jobType}:${input.connectionId}:${randomUUID()}`;
@@ -164,8 +164,34 @@ export class SyncJobs {
     return this.trigger({ connectionId, jobType: JobType.marketplaceOrdersPoll });
   }
 
-  /** Propagate OL master inventory out to a marketplace's offers. */
-  propagateInventory(connectionId: string): Promise<string> {
-    return this.trigger({ connectionId, jobType: JobType.inventoryPropagateToMarketplaces });
+  /**
+   * Propagate OL master inventory out to every mapped marketplace offer of a
+   * product/variant. The handler requires `productId` (+ optional `variantId`)
+   * and fans out one quantity-update job per offer mapping across connections;
+   * `connectionId` is only the enqueue anchor (any valid connection id).
+   */
+  propagateInventory(
+    connectionId: string,
+    target: { productId: string; variantId?: string },
+  ): Promise<string> {
+    return this.trigger({
+      connectionId,
+      jobType: JobType.inventoryPropagateToMarketplaces,
+      payload: {
+        productId: target.productId,
+        variantId: target.variantId ?? null,
+        inventoryUpdatedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  /** Refresh OL master inventory from a shop's stock. */
+  syncAllInventory(connectionId: string): Promise<string> {
+    return this.trigger({ connectionId, jobType: JobType.masterInventorySyncAll });
+  }
+
+  /** Reconcile a provider's regulatory (e.g. KSeF) clearance status into OL. */
+  reconcileRegulatoryStatus(connectionId: string): Promise<string> {
+    return this.trigger({ connectionId, jobType: JobType.invoicingRegulatoryStatusReconcile });
   }
 }

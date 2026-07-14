@@ -13,6 +13,64 @@ export interface LoginResponse {
   access_token: string;
 }
 
+// ── Access control (demo mode, registration, RBAC) ──────────────────────────
+
+/** GET /system/config (public) — server-driven runtime flags read at startup. */
+export interface SystemConfig {
+  /** True when OL_DEMO_MODE=true is set in the API's environment. */
+  demoMode: boolean;
+  /** Demo-only third-party integration config (present only in demo mode). */
+  demoIntegrations?: Record<string, unknown>;
+}
+
+/**
+ * GET /auth/me — the authenticated user's role + derived permissions. The
+ * endpoint lives under `/auth/me` (not `/me`); the client prepends `/v1`.
+ */
+export interface MeResponse {
+  id: string;
+  username: string;
+  email: string | null;
+  role: string;
+  /** Permissions derived from the role (`{resource}:{action}`), e.g. `orders:read`. */
+  permissions: string[];
+}
+
+/** POST /auth/register (public) request body. */
+export interface RegisterInput {
+  username: string;
+  email: string;
+  password: string;
+}
+
+/** A single row of GET /users (admin only). */
+export interface UserSummary {
+  id: string;
+  username: string;
+  email: string | null;
+  role: string;
+  status: string;
+  createdAt?: string;
+}
+
+/** GET /users (admin only) response — note the `users` key, not `items`. */
+export interface UserListResponse {
+  users: UserSummary[];
+  total: number;
+}
+
+/** POST /users/:id/approve request body — the role to assign on approval. */
+export interface ApproveUserInput {
+  role: string;
+}
+
+/** Optional server-side filter/pagination for GET /users. */
+export interface ListUsersQuery {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface ServiceHealth {
   status: 'ok' | 'warning' | 'error';
   message?: string;
@@ -100,6 +158,70 @@ export interface OfferCreationSummary {
   externalOfferId?: string | null;
 }
 
+/**
+ * A submitted section-tagged category parameter, as persisted on the
+ * offer-creation request snapshot (`overrides.parameters`, #1071).
+ */
+export interface SubmittedOfferParameter {
+  id: string;
+  values?: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
+export interface OfferCreationRequestOverrides {
+  title?: string;
+  description?: string | null;
+  categoryId?: string;
+  productCardId?: string;
+  imageUrls?: string[] | null;
+  /** Submitted neutral category parameters (#1071). */
+  parameters?: SubmittedOfferParameter[];
+  /** Un-modeled platform knobs only (policy ids, etc.) — NOT category params. */
+  platformParams?: Record<string, unknown>;
+}
+
+/** Persisted snapshot of the create-offer request payload (schemaVersion 1). */
+export interface OfferCreationRequestPayload {
+  schemaVersion: number;
+  internalVariantId: string;
+  stock: number;
+  publishImmediately: boolean;
+  price?: { amount: number; currency: string };
+  overrides?: OfferCreationRequestOverrides;
+}
+
+/** GET /listings/connections/:connectionId/offers/creation/:recordId */
+export interface OfferCreationStatus {
+  id: string;
+  connectionId: string;
+  internalVariantId: string;
+  status: string;
+  externalOfferId: string | null;
+  request?: OfferCreationRequestPayload | null;
+}
+
+export interface BulkBatchRecordSummary {
+  id: string;
+  internalVariantId: string;
+  status: string;
+  externalOfferId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /listings/bulk-create/:batchId */
+export interface BulkBatchSummary {
+  id: string;
+  connectionId: string;
+  status: string;
+  totalCount: number;
+  succeededCount: number;
+  failedCount: number;
+  records: BulkBatchRecordSummary[];
+}
+
 export interface OfferMapping {
   id: string;
   entityType: string;
@@ -135,6 +257,12 @@ export interface OrderRecord {
   updatedAt: string;
 }
 
+/** POST /invoices — server assembles lines/buyer from the order. */
+export interface IssueInvoiceInput {
+  connectionId: string;
+  orderId: string;
+}
+
 export interface InvoiceRecord {
   id: string;
   connectionId: string;
@@ -154,6 +282,169 @@ export interface InvoiceRecord {
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MarketplaceOfferPrice {
+  amount: string;
+  currency: string;
+}
+
+export interface MarketplaceOfferCategory {
+  id: string;
+  name?: string;
+}
+
+/**
+ * A filled, section-tagged parameter on the live marketplace offer (#1482 —
+ * present only when the running API exposes the extended MarketplaceOffer
+ * read model; older stacks omit the field entirely).
+ */
+export interface MarketplaceOfferParameter {
+  id: string;
+  name?: string;
+  values?: string[];
+  valuesIds?: string[];
+  rangeValue?: { from: string; to: string };
+  section: CategoryParameterSection;
+}
+
+/** Product-set linkage for catalog-grouped offers (#1482). */
+export interface MarketplaceOfferProductSetItem {
+  productId?: string;
+  quantity?: number;
+}
+
+/** Adapter-fetched live offer (GET /listings/:id/offer). */
+export interface MarketplaceOffer {
+  externalId: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  price: MarketplaceOfferPrice;
+  availableQuantity: number;
+  status: string;
+  category?: MarketplaceOfferCategory;
+  marketplaceUrl?: string;
+  endsAt?: string;
+  parameters?: MarketplaceOfferParameter[];
+  productSet?: MarketplaceOfferProductSetItem[];
+}
+
+export type CategoryParameterSection = 'offer' | 'product';
+
+/** A single category parameter definition (GET .../categories/:id/parameters). */
+export interface CategoryParameter {
+  id: string;
+  name: string;
+  type: string;
+  required: boolean;
+  unit?: string;
+  section: CategoryParameterSection;
+}
+
+export interface CategoryParametersResponse {
+  parameters: CategoryParameter[];
+}
+
+export interface InvoiceTaxId {
+  scheme: string;
+  value: string;
+}
+
+export interface InvoiceParty {
+  name: string;
+  taxId: InvoiceTaxId | null;
+  address?: Record<string, unknown>;
+}
+
+export interface InvoiceContentLine {
+  name: string;
+  quantity: number;
+  unitNet: string;
+  taxRate: string;
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+export interface InvoiceTaxBreakdown {
+  rate: string;
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+export interface InvoiceContentTotals {
+  net: string;
+  tax: string;
+  gross: string;
+}
+
+/** Amount/tax surface of an issued document (GET /invoices/:id/content). */
+export interface IssuedDocumentContent {
+  seller: InvoiceParty | null;
+  buyer: InvoiceParty;
+  lines: InvoiceContentLine[];
+  taxBreakdown: InvoiceTaxBreakdown[];
+  totals: InvoiceContentTotals;
+  currency: string;
+  issueDate: string | null;
+  saleDate: string | null;
+  payment?: { method: string; paidAt: string | null } | null;
+}
+
+export type ShipmentStatus =
+  | 'draft'
+  | 'generated'
+  | 'dispatched'
+  | 'in-transit'
+  | 'delivered'
+  | 'failed'
+  | 'cancelled';
+
+export interface Shipment {
+  id: string;
+  orderId: string;
+  connectionId: string;
+  shippingMethod: string;
+  status: ShipmentStatus;
+  providerShipmentId: string | null;
+  paczkomatId: string | null;
+  sourceDeliveryMethodId: string | null;
+  trackingNumber: string | null;
+  carrier: string | null;
+  labelPdfRef: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  failedAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateLabelInput {
+  sourceConnectionId: string;
+  sourceDeliveryMethodId?: string;
+  orderId: string;
+  deliveryIntent?: 'pickup_point' | 'address';
+  paczkomatId?: string;
+  recipient?: Record<string, unknown>;
+  parcel?: Record<string, unknown>;
+  cod?: { amount: string; currency: string };
+}
+
+export interface DispatchResult {
+  kind: 'dispatched' | 'omp_fulfilled';
+  shipment?: Shipment;
+}
+
+/** A raw (binary) response — used for label PDF / UPO retrieval. */
+export interface RawResponse {
+  status: number;
+  ok: boolean;
+  contentType: string | null;
+  byteLength: number;
 }
 
 export type SyncJobStatus = 'queued' | 'running' | 'succeeded' | 'dead';
@@ -212,6 +503,17 @@ export interface RoutingRuleInput {
   sourceDeliveryMethodId: string;
   processorKind: string;
   processorConnectionId: string;
+}
+
+/**
+ * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body —
+ * the destination (Allegro) category a source (PrestaShop) category maps to.
+ * Mirrors the FE `upsertCategoryMapping` payload.
+ */
+export interface CategoryMappingInput {
+  allegroCategoryId: string;
+  allegroCategoryName: string;
+  allegroCategoryPath?: string;
 }
 
 export interface ConnectionFilters {

@@ -81,11 +81,19 @@ pnpm --filter @openlinker/e2e type-check
 | `setup` | Logs in via the `/login` UI once, writes `.auth/admin.json`. | No |
 | `smoke` | Health + node login + world + connections page render. | **No — safe on a shared stack** |
 | `golden-path` | Operator setup S1-S4 (product sync, WooCommerce publish, Allegro + Erli bulk offers). | **Yes** |
+| `full-flow` | Attended S0-S9 full golden path across all 6 systems, field/amount parity. | **Yes — heavily** |
 
-> ⚠️ **The `golden-path` project mutates the stack** (publishes products, creates
-> offers). Run it only against a stack you control, in a coordinated session —
-> never unattended against a shared demo stack in active manual use. The `smoke`
-> project is read-only and safe to run anytime.
+> ⚠️ **The `golden-path` and `full-flow` projects mutate the stack** (publish
+> products, create offers, generate labels, issue invoices). Run them only against
+> a stack you control, in a coordinated session — never unattended against a
+> shared demo stack in active manual use. The `full-flow` project additionally
+> drives a **manual buyer purchase** and external-dashboard checkpoints, so it is
+> **attended** (`retries: 0`, run headed). The `smoke` project is read-only and
+> safe to run anytime.
+
+The full S0-S9 flow — segments, automated-vs-manual split, expected-value
+sources, how to run headed, and how to extend — is documented in
+[`docs/manual-testing/e2e-golden-path.md`](../../docs/manual-testing/e2e-golden-path.md).
 
 ---
 
@@ -167,7 +175,9 @@ cross-checked) with a bounded timeout and a clear message.
 ## Scope
 
 Delivered here: framework foundation + smoke + operator-setup segments **S1-S4**
-(no manual purchase needed). The post-purchase half (**S5-S9**: order ingest,
-InPost label, KSeF invoice, reconciliation) is a **follow-up issue** built on
-this substrate — its page objects (`orders`, `order-detail`, `shipment-panel`,
-`invoice-panel`) already ship here.
+(no manual purchase needed), **plus the full attended golden path S0-S9** across
+all six systems with field- and amount-level parity
+(`tests/golden-path/full-flow.spec.ts`, project `full-flow`). The full flow
+covers the post-purchase half (order ingest, InPost label, KSeF invoice,
+reconciliation) and drives a manual buyer purchase + external-dashboard
+checkpoints. See [`docs/manual-testing/e2e-golden-path.md`](../../docs/manual-testing/e2e-golden-path.md).

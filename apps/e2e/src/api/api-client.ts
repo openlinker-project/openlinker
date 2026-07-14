@@ -15,29 +15,47 @@
  */
 import { ApiError } from './api-error';
 import type {
+  ApproveUserInput,
+  BulkBatchSummary,
+  CategoryMappingInput,
+  CategoryParameter,
+  CategoryParametersResponse,
   Connection,
   ConnectionFilters,
+  DispatchResult,
   EnqueueSyncJobInput,
   EnqueueSyncJobResponse,
+  GenerateLabelInput,
   InternalHealthResponse,
   InventoryAvailability,
   InventoryAvailabilityResponse,
   InvoiceRecord,
+  IssueInvoiceInput,
+  IssuedDocumentContent,
   ListInvoicesQuery,
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
+  ListUsersQuery,
   LoginResponse,
+  MarketplaceOffer,
+  MeResponse,
+  OfferCreationStatus,
   OfferMapping,
   OrderRecord,
   Paginated,
   Product,
   ProductVariant,
+  RawResponse,
+  RegisterInput,
   RoutingRule,
   RoutingRuleInput,
+  Shipment,
   SyncJob,
   SyncJobListQuery,
   SyncJobListResponse,
+  SystemConfig,
+  UserListResponse,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -73,6 +91,10 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export class ApiClient {
   private accessToken: string | null = null;
 
+  private credentials: { username: string; password: string } | null = null;
+
+  private reloginPromise: Promise<void> | null = null;
+
   private readonly baseUrl: string;
 
   private readonly requestTimeoutMs: number;
@@ -95,11 +117,31 @@ export class ApiClient {
       skipAuth: true,
     });
     this.accessToken = result.access_token;
+    this.credentials = { username, password };
+  }
+
+  /**
+   * Re-acquire the bearer token after a 401 (single-flight: concurrent 401s
+   * share one login call). OL access tokens expire after ~15 minutes, which is
+   * shorter than the attended run's purchase pause — without this, every
+   * post-pause call would 401 and pollers would mask it as a timeout.
+   */
+  private relogin(): Promise<void> {
+    if (!this.credentials) {
+      return Promise.reject(new Error('Cannot re-login: no credentials captured (call login first)'));
+    }
+    this.reloginPromise ??= this.login(this.credentials.username, this.credentials.password).finally(
+      () => {
+        this.reloginPromise = null;
+      },
+    );
+    return this.reloginPromise;
   }
 
   private async request<T>(
     path: string,
     init: RequestInit & { skipAuth?: boolean } = {},
+    isRetryAfterRelogin = false,
   ): Promise<T> {
     const { skipAuth, ...requestInit } = init;
     const method = requestInit.method ?? 'GET';
@@ -129,6 +171,12 @@ export class ApiClient {
     const body: unknown = raw.length > 0 ? this.tryParseJson(raw) : undefined;
 
     if (!response.ok) {
+      // Expired access token: re-login once with the captured credentials and
+      // retry the request. Never loops — a 401 on the retried request throws.
+      if (response.status === 401 && !skipAuth && !isRetryAfterRelogin && this.credentials) {
+        await this.relogin();
+        return this.request<T>(path, init, true);
+      }
       throw new ApiError(response.status, method, path, body);
     }
 
@@ -143,11 +191,95 @@ export class ApiClient {
     }
   }
 
+  /**
+   * Fetch a binary endpoint (label PDF, UPO/XML) and report metadata only. The
+   * body is drained but not returned — the E2E assertions care that bytes exist
+   * and the content-type is right, not the document contents.
+   */
+  private async requestRaw(path: string, isRetryAfterRelogin = false): Promise<RawResponse> {
+    const headers = new Headers();
+    if (this.accessToken !== null) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${withApiVersion(path)}`, {
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.status === 401 && !isRetryAfterRelogin && this.credentials) {
+      await response.arrayBuffer();
+      await this.relogin();
+      return this.requestRaw(path, true);
+    }
+    const buffer = await response.arrayBuffer();
+    return {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      byteLength: buffer.byteLength,
+    };
+  }
+
+  /**
+   * The authenticated user's role + derived permissions (GET /auth/me).
+   * Throws `ApiError` with status 401 when the client is not authenticated.
+   */
+  me(): Promise<MeResponse> {
+    return this.request<MeResponse>('/auth/me');
+  }
+
   // ── Health ──────────────────────────────────────────────────────────────
   health = {
     liveness: (): Promise<InternalHealthResponse> =>
       this.request<InternalHealthResponse>('/health'),
     devStack: (): Promise<unknown> => this.request<unknown>('/health/dev-stack'),
+  };
+
+  // ── System (public) ───────────────────────────────────────────────────────
+  system = {
+    /** Public runtime flags (demoMode, …). No auth header sent. */
+    config: (): Promise<SystemConfig> =>
+      this.request<SystemConfig>('/system/config', { skipAuth: true }),
+  };
+
+  // ── Auth (registration) ───────────────────────────────────────────────────
+  auth = {
+    /**
+     * Self-service registration (public). Resolves on 201; throws `ApiError`
+     * on 403 (disabled), 409 (duplicate), or 429 (demo per-IP rate limit).
+     */
+    register: (input: RegisterInput): Promise<void> =>
+      this.request<void>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        skipAuth: true,
+      }),
+  };
+
+  // ── Users (admin only) ────────────────────────────────────────────────────
+  users = {
+    list: (query?: ListUsersQuery): Promise<UserListResponse> =>
+      this.request<UserListResponse>(
+        `/users${buildQuery({ status: query?.status, page: query?.page, pageSize: query?.pageSize })}`,
+      ),
+    /** Approve a pending registration with a role. Returns 204 (no body). */
+    approve: (userId: string, roleBody: ApproveUserInput): Promise<void> =>
+      this.request<void>(`/users/${userId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify(roleBody),
+      }),
+  };
+
+  // ── AI provider settings (admin only) ─────────────────────────────────────
+  aiProviderSettings = {
+    /** Admin-only read; the E2E specs assert only on the resolved/failed status. */
+    get: (): Promise<unknown> => this.request<unknown>('/ai-provider-settings'),
   };
 
   // ── Connections ─────────────────────────────────────────────────────────
@@ -195,6 +327,28 @@ export class ApiClient {
       ),
     getById: (id: string): Promise<OfferMapping> =>
       this.request<OfferMapping>(`/listings/${id}`),
+    /** Adapter-fetched live offer (category id + price + qty + status). */
+    getOffer: (id: string): Promise<MarketplaceOffer> =>
+      this.request<MarketplaceOffer>(`/listings/${id}/offer`),
+    /** Category parameter directory (offer- + product-section) for a connection. */
+    categoryParameters: (connectionId: string, categoryId: string): Promise<CategoryParameter[]> =>
+      this.request<CategoryParametersResponse>(
+        `/listings/connections/${connectionId}/categories/${categoryId}/parameters`,
+      ).then((response) => response.parameters),
+    /** Bulk offer-creation batch progress: per-variant creation records. */
+    getBulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
+      this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
+    /**
+     * Offer-creation record detail, incl. the persisted request snapshot
+     * (`request.overrides.parameters` = submitted category-parameter values).
+     */
+    getOfferCreationRecord: (
+      connectionId: string,
+      offerCreationRecordId: string,
+    ): Promise<OfferCreationStatus> =>
+      this.request<OfferCreationStatus>(
+        `/listings/connections/${connectionId}/offers/creation/${offerCreationRecordId}`,
+      ),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────
@@ -230,6 +384,43 @@ export class ApiClient {
       this.request<InvoiceRecord>(
         `/orders/${orderId}/invoice${buildQuery({ connectionId })}`,
       ),
+    /**
+     * Issue a fiscal document for an order (POST /invoices). The server
+     * assembles lines/buyer from the order — the correct seam for the E2E flow
+     * (the `invoicing.issue` job requires a fully pre-assembled payload).
+     */
+    issue: (input: IssueInvoiceInput): Promise<InvoiceRecord> =>
+      this.request<InvoiceRecord>('/invoices', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Amount/tax surface of an issued document (per-line net/VAT/gross, totals, buyer tax id). */
+    getContent: (invoiceId: string): Promise<IssuedDocumentContent> =>
+      this.request<IssuedDocumentContent>(`/invoices/${invoiceId}/content`),
+    /** UPO / clearance confirmation document — bytes-only check. */
+    getUpo: (invoiceId: string): Promise<RawResponse> =>
+      this.requestRaw(`/invoices/${invoiceId}/upo`),
+    /** Source FA(3) XML document — bytes-only check. */
+    getSourceDocument: (invoiceId: string): Promise<RawResponse> =>
+      this.requestRaw(`/invoices/${invoiceId}/document${buildQuery({ kind: 'source' })}`),
+  };
+
+  // ── Shipments ───────────────────────────────────────────────────────────
+  shipments = {
+    active: (orderId: string): Promise<Shipment | null> =>
+      this.request<Shipment | null>(`/shipments/active${buildQuery({ orderId })}`),
+    getById: (id: string): Promise<Shipment> => this.request<Shipment>(`/shipments/${id}`),
+    /** Retrieve the generated label bytes (PDF/ZPL/PNG). */
+    getLabel: (id: string): Promise<RawResponse> => this.requestRaw(`/shipments/${id}/label`),
+    /** Generate a carrier label for an order (mutating — attended run only). */
+    generateLabel: (input: GenerateLabelInput): Promise<DispatchResult> =>
+      this.request<DispatchResult>('/shipments/generate-label', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Mark a shipment dispatched (mutating — attended run only). */
+    notifyDispatched: (id: string): Promise<Shipment> =>
+      this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
   };
 
   // ── Sync jobs ───────────────────────────────────────────────────────────
@@ -249,6 +440,24 @@ export class ApiClient {
       const qs = params.toString();
       return this.request<SyncJobListResponse>(`/sync/jobs${qs ? `?${qs}` : ''}`);
     },
+  };
+
+  // ── Mappings ────────────────────────────────────────────────────────────
+  mappings = {
+    /**
+     * Upsert a source→destination category mapping (the operator's PS→Allegro
+     * category-mapping step). `connectionId` is the DESTINATION (Allegro)
+     * connection; `sourceCategoryId` is the source (PrestaShop) category id.
+     */
+    upsertCategoryMapping: (
+      connectionId: string,
+      sourceCategoryId: string,
+      body: CategoryMappingInput,
+    ): Promise<unknown> =>
+      this.request<unknown>(
+        `/connections/${connectionId}/mappings/categories/${sourceCategoryId}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      ),
   };
 
   // ── Routing rules ───────────────────────────────────────────────────────
