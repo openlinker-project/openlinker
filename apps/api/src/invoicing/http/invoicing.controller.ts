@@ -83,6 +83,7 @@ import {
   isPaymentMarker,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
+  normalizeShippingLineName,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -284,9 +285,18 @@ export class InvoicingController {
   private async resolveShippingLineName(connectionId: string): Promise<string | undefined> {
     try {
       const connection = await this.connectionPort.get(connectionId);
-      const value = connection.config.invoicing?.shippingLineName;
-      return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-    } catch {
+      // Shared coercion with the core auto-issue reader so the two narrowings
+      // cannot drift (#1565 review).
+      return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
+    } catch (error) {
+      // Silent fallback is intentional and safe: issuance must never break on a
+      // label lookup (the downstream getCapabilityAdapter is the authoritative
+      // connection gate). Log at debug so an unexpected connection-read failure
+      // is still observable rather than swallowed entirely.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Shipping-line label lookup failed for connection ${connectionId}; using neutral default: ${message}`,
+      );
       return undefined;
     }
   }

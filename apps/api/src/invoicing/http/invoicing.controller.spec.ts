@@ -434,13 +434,21 @@ describe('InvoicingController', () => {
       expect(lastLineName()).toBe('Shipping');
     });
 
-    it('falls back to the neutral default when the connection lookup fails', async () => {
+    it('falls back to the neutral default when the connection lookup fails, and logs it at debug', async () => {
+      const debugSpy = jest
+        .spyOn(Logger.prototype, 'debug')
+        .mockImplementation(() => undefined);
       orders.getOrderRecord.mockResolvedValue(orderWithShipping());
       invoiceService.getInvoice.mockResolvedValue(null);
       invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
       connectionPort.get.mockRejectedValue(new Error('connection gone'));
       await controller.issueInvoice(dto);
       expect(lastLineName()).toBe('Shipping');
+      // A swallowed lookup failure must still be observable (#1565 review).
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Shipping-line label lookup failed for connection conn_1'),
+      );
+      debugSpy.mockRestore();
     });
 
     it('keyless re-issue over a KEYED failed row reuses that row\'s own idempotencyKey', async () => {

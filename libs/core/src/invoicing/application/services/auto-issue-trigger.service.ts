@@ -46,6 +46,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
+import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
 import type { InvoicingIssuePayloadV1 } from '@openlinker/core/sync';
@@ -283,13 +284,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
   /**
    * Read the connection's optional operator-supplied shipping-line label
-   * (#1562). Narrowed to a non-empty string: `config.invoicing` is a passthrough
-   * JSONB shape, so a non-string / blank value defers to the mapper's neutral
-   * default rather than being forwarded. No language / `platformType` logic here
-   * (ADR-026) - the value is whatever the operator stored.
+   * (#1562), narrowed via the shared {@link normalizeShippingLineName} coercion
+   * so this reader and the HTTP controller's cannot drift.
    */
   private readShippingLineName(connection: Connection): string | undefined {
-    const value = connection.config.invoicing?.shippingLineName;
-    return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+    return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
   }
 }
