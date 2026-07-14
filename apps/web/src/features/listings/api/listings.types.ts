@@ -362,6 +362,23 @@ export interface SellerPoliciesResponse {
   impliedWarranties: SellerPolicy[];
 }
 
+/** ----- Responsible producers (#1531) -------------------------------------
+ *
+ * A seller-configured EU GPSR responsible-producer ("producent") returned by
+ * `GET /listings/connections/:connectionId/responsible-producers`, fetched live
+ * from the marketplace. The offer-creation wizard renders these so the operator
+ * can attach one and the created product is not blocked for a missing producer.
+ */
+export interface ResponsibleProducer {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+export interface ResponsibleProducersResponse {
+  responsibleProducers: ResponsibleProducer[];
+}
+
 /** ----- Category parameters (#410) ----------------------------------------
  *
  * Marketplace-neutral shape for category parameters returned by

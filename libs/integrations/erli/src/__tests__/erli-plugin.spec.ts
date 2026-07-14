@@ -10,7 +10,11 @@
  * @module libs/integrations/erli/src/__tests__
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isOfferCreator, type OfferManagerPort } from '@openlinker/core/listings';
+import {
+  isOfferCreator,
+  isResponsibleProducerReader,
+  type OfferManagerPort,
+} from '@openlinker/core/listings';
 import type { OrderSourcePort } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
@@ -109,6 +113,10 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.supportedCapabilities).toContain('OfferCreator');
     // Erli has no offer-event journal — the offers-sync trigger stays hidden.
     expect(erliAdapterManifest.supportedCapabilities).not.toContain('OfferEventReader');
+  });
+
+  it('should advertise the ResponsibleProducerReader sub-capability so the wizard producer picker shows for Erli (#1531)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('ResponsibleProducerReader');
   });
 
   it('should be the platform-default adapter', () => {
@@ -276,6 +284,16 @@ describe('createErliPlugin', () => {
       );
 
       expect(isOfferCreator(adapter)).toBe(true);
+    });
+
+    it('should resolve OfferManager to a responsible-producer-reader adapter (#1531)', async () => {
+      const adapter = await createErliPlugin().createCapabilityAdapter<OfferManagerPort>(
+        connection,
+        'OfferManager',
+        makeDispatchHost(),
+      );
+
+      expect(isResponsibleProducerReader(adapter)).toBe(true);
     });
 
     it('should resolve OrderSource to an order-source adapter (#993)', async () => {

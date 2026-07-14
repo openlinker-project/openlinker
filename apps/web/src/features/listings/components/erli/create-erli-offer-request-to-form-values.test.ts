@@ -46,6 +46,29 @@ describe('createErliOfferRequestToFormValues', () => {
     });
   });
 
+  it('restores the responsible producer from platformParams.producer (#1531)', () => {
+    const values = createErliOfferRequestToFormValues(
+      snapshot({
+        overrides: {
+          title: 'With producer',
+          platformParams: { dispatchTime: { period: 5, unit: 'hour' }, producer: '42' },
+        },
+      }),
+      FALLBACK,
+    );
+
+    expect(values.producer).toBe('42');
+  });
+
+  it('defaults producer to an empty string when the snapshot has none (#1531)', () => {
+    const values = createErliOfferRequestToFormValues(
+      snapshot({ overrides: { title: 'No producer' } }),
+      FALLBACK,
+    );
+
+    expect(values.producer).toBe('');
+  });
+
   it('falls back to the connection default dispatch when the snapshot has none', () => {
     const values = createErliOfferRequestToFormValues(
       snapshot({ overrides: { title: 'No dispatch' } }),

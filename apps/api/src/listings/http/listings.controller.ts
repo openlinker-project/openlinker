@@ -41,9 +41,11 @@ import {
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_MAPPING_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
+  RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
+  IResponsibleProducerService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
@@ -73,6 +75,7 @@ import { CreateOfferDto } from './dto/create-offer.dto';
 import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
+import { ResponsibleProducersResponseDto } from './dto/responsible-producers-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
@@ -102,6 +105,8 @@ export class ListingsController {
     private readonly offerCreationEnqueue: IOfferCreationEnqueueService,
     @Inject(SELLER_POLICIES_SERVICE_TOKEN)
     private readonly sellerPolicies: ISellerPoliciesService,
+    @Inject(RESPONSIBLE_PRODUCER_SERVICE_TOKEN)
+    private readonly responsibleProducers: IResponsibleProducerService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
@@ -401,6 +406,34 @@ export class ListingsController {
     @Param('connectionId') connectionId: string
   ): Promise<SellerPoliciesResponseDto> {
     return this.sellerPolicies.getSellerPolicies(connectionId);
+  }
+
+  @Roles('admin', 'operator')
+  @Get('connections/:connectionId/responsible-producers')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured responsible producers (#1531)',
+    description:
+      'Returns the EU GPSR responsible-producer registry ("producent") configured for the connection, fetched live from the marketplace. The offer-creation wizard renders these so the operator can attach one and the created product is not blocked for a missing producer.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Responsible producers wrapped under `responsibleProducers`.',
+    type: ResponsibleProducersResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support responsible-producer listing',
+  })
+  async getResponsibleProducers(
+    @Param('connectionId') connectionId: string
+  ): Promise<ResponsibleProducersResponseDto> {
+    const responsibleProducers =
+      await this.responsibleProducers.listResponsibleProducers(connectionId);
+    return { responsibleProducers };
   }
 
   @Roles('admin', 'operator')
