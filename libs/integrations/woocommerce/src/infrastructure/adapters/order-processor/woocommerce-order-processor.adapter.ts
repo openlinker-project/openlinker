@@ -4,9 +4,11 @@
  * Implements OrderProcessorManagerPort (createOrder), the OrderFulfillmentUpdater
  * sub-capability (updateFulfillment — status updates, cancellations, refund transitions),
  * the OrderStatusWriteback sub-capability (write — the #1157 / ADR-027 lifecycle
- * relay contract), and the DestinationOptionsReader sub-capability (listCarriers /
+ * relay contract), the DestinationOptionsReader sub-capability (listCarriers /
  * listOrderStatuses / listPaymentMethods — the #472 / #1551 mapping-UI option
- * vocabulary) for WooCommerce REST API v3.
+ * vocabulary), and the FulfillmentStatusReader sub-capability (getFulfillmentStatus
+ * — the #834 / #1550 read-back of the shop's fulfillment view) for WooCommerce REST
+ * API v3.
  *
  * Key design decisions:
  * - createOrder: the adapter does NOT dedup. It POSTs to WC and returns the
@@ -32,6 +34,7 @@
  * @implements {OrderFulfillmentUpdater}
  * @implements {OrderStatusWriteback}
  * @implements {DestinationOptionsReader}
+ * @implements {FulfillmentStatusReader}
  */
 import type {
   OrderProcessorManagerPort,
@@ -48,6 +51,8 @@ import type {
   OrderWritebackResult,
   DestinationOptionsReader,
   MappingOption,
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
 } from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
@@ -77,6 +82,7 @@ import {
   type WooCommercePaymentGateway,
   type WooCommerceShippingMethod,
 } from './woocommerce-options.types';
+import { mapToFulfillmentStatusSnapshot } from './woocommerce-fulfillment-status.mapper';
 
 // ─── Module-level pure helpers ────────────────────────────────────────────────
 // Pure functions with no dependency on adapter state — independently testable.
@@ -96,7 +102,8 @@ export class WooCommerceOrderProcessorAdapter
     OrderProcessorManagerPort,
     OrderFulfillmentUpdater,
     OrderStatusWriteback,
-    DestinationOptionsReader
+    DestinationOptionsReader,
+    FulfillmentStatusReader
 {
   private readonly logger = new Logger(WooCommerceOrderProcessorAdapter.name);
 
@@ -362,6 +369,52 @@ export class WooCommerceOrderProcessorAdapter
       value: String(row.id),
       label: row.title ?? String(row.id),
     }));
+  }
+
+  // ─── FulfillmentStatusReader ──────────────────────────────────────────────
+
+  /**
+   * `FulfillmentStatusReader` (#834 / #1550): read the shop's view of an
+   * order's fulfillment progress. GETs `/orders/{id}`, reads the WC `status`,
+   * and maps it to the neutral `FulfillmentStatusSnapshot` via
+   * {@link mapToFulfillmentStatusSnapshot}.
+   *
+   * `status` is `null` when the shop has not yet fulfilled the order
+   * (`pending` / `processing` / `on-hold` / `failed`) — the branch-1 sync
+   * service treats that as "no shipment to project, skip this pass".
+   * `trackingNumber` is always `null` (WC core carries no order-level tracking
+   * field). `externalOrderId` is the WC-native numeric order id.
+   */
+  async getFulfillmentStatus(input: {
+    externalOrderId: string;
+  }): Promise<FulfillmentStatusSnapshot> {
+    this.logger.debug(
+      `getFulfillmentStatus: externalOrderId=${input.externalOrderId} (connection: ${this.connection.id})`,
+    );
+
+    // Path-traversal defence — externalOrderId must be a bare positive integer string.
+    if (!/^\d+$/.test(input.externalOrderId)) {
+      throw new WooCommerceInvalidArgumentException(
+        `Invalid externalOrderId "${input.externalOrderId}" — expected a WC integer ID`,
+      );
+    }
+
+    try {
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(
+        `/wp-json/wc/v3/orders/${input.externalOrderId}`,
+      );
+      return mapToFulfillmentStatusSnapshot(order);
+    } catch (err) {
+      if (err instanceof WooCommerceHttpResponseException && err.statusCode === 404) {
+        throw new WooCommerceResourceNotFoundException(
+          `WooCommerce order ${input.externalOrderId} not found`,
+          CORE_ENTITY_TYPE.Order,
+          input.externalOrderId,
+          this.connection.id,
+        );
+      }
+      throw err;
+    }
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

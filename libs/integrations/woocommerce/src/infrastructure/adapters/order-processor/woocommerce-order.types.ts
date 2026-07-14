@@ -75,6 +75,10 @@ export interface WooCommerceOrderResponse {
   id?: number;
   number?: string;
   status?: string;
+  /** GMT timestamp WC stamps when an order transitions to `completed`. */
+  date_completed_gmt?: string;
+  /** GMT timestamp of the order's last modification — `deliveredAt` fallback. */
+  date_modified_gmt?: string;
 }
 
 // ─── Customer shapes ──────────────────────────────────────────────────────────
