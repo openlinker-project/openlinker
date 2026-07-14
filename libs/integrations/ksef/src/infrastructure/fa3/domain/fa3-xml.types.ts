@@ -81,6 +81,12 @@ export interface Fa3Line {
   quantity: number;
   unitPriceGross: number;
   p12: Fa3P12Value;
+  /**
+   * Unit of measure (`P_8A`, `TZnakowy` free text, #1525). Resolved by the
+   * builder-input mapper with precedence: neutral `InvoiceLine.unit` -> the
+   * connection's `invoiceDefaults.lineUnit` -> absent (element omitted).
+   */
+  unit?: string;
 }
 
 /**
@@ -188,6 +194,62 @@ export const FA3_RACHUNEK_BANKOWY_CHILD_ORDER = [
 ] as const;
 
 /**
+ * XSD-mandated child order of the `Fa` sequence (FA(3) v1-0E, XSD line ~2439),
+ * restricted to the elements the builder can emit (#1525 review). Notably `P_6`
+ * (the optional sale-date choice) sits between `P_2` and the `P_13_x`/`P_14_x`
+ * band aggregates - a position regression fails the local validator instead of
+ * KSeF clearance. Same flat first-occurrence caveat as the other order lists:
+ * none of these names may also occur nested inside another listed element's
+ * subtree (true for the builder's output - FaWiersz children are `P_7`/`P_8A`/
+ * `P_8B`/`P_9A`/`P_11`/`P_12`, disjoint from this list).
+ */
+export const FA3_FA_CHILD_ORDER = [
+  'KodWaluty',
+  'P_1',
+  'P_2',
+  'P_6',
+  'P_13_1',
+  'P_14_1',
+  'P_13_2',
+  'P_14_2',
+  'P_13_3',
+  'P_14_3',
+  'P_13_6_1',
+  'P_13_6_2',
+  'P_13_6_3',
+  'P_13_7',
+  'P_13_8',
+  'P_13_9',
+  'P_13_10',
+  'P_15',
+  'Adnotacje',
+  'RodzajFaktury',
+  'PrzyczynaKorekty',
+  'TypKorekty',
+  'DaneFaKorygowanej',
+  'FaWiersz',
+  'Platnosc',
+] as const;
+
+/**
+ * XSD-mandated child order of the `FaWiersz` sequence (FA(3) v1-0E, XSD line
+ * ~3080), restricted to the elements the builder can emit (#1525). Notably
+ * `P_8A` (unit of measure) comes immediately before `P_8B` (quantity), and
+ * `P_9A` (net unit price) immediately after `P_8B`; the `StanPrzed` KOR flag
+ * closes the sequence. Absent optional elements are simply skipped.
+ */
+export const FA3_FA_WIERSZ_CHILD_ORDER = [
+  'NrWierszaFa',
+  'P_7',
+  'P_8A',
+  'P_8B',
+  'P_9A',
+  'P_11',
+  'P_12',
+  'StanPrzed',
+] as const;
+
+/**
  * Fully-mapped builder input. The adapter produces this from a neutral
  * `IssueInvoiceCommand` (applying the tax-rate, buyer-id and currency mappers)
  * so the pure builder never re-runs country-specific mapping — it only lays out
@@ -206,6 +268,13 @@ export interface Fa3BuilderInput {
   issueDate: string;
   /** Invoice number (`P_2`) — the human-facing sequential document number. */
   invoiceNumber: string;
+  /**
+   * Date of supply / sale (`P_6`), ISO-8601 calendar date `YYYY-MM-DD` (#1525).
+   * Emitted whenever known - including when equal to `P_1` - at the
+   * XSD-mandated position (the optional choice after `P_2`/`WZ`, XSD line
+   * ~2471). Absent when the neutral command carries no sale date.
+   */
+  saleDate?: string;
   /**
    * Document-generation timestamp (`DataWytworzeniaFa`), ISO-8601 UTC instant
    * ending in `Z`. Part of the input so the builder stays pure — no `Date.now()`.
