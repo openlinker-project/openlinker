@@ -28,12 +28,16 @@ interface DocumentTypeSelectProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** Forwarded to the underlying `<Select>` so the panel can control layout
+   *  (e.g. flex-grow the picker to fill the action row). */
+  className?: string;
 }
 
 export function DocumentTypeSelect({
   value,
   onChange,
   disabled = false,
+  className,
 }: DocumentTypeSelectProps): ReactElement {
   const { t } = useTranslation();
   return (
@@ -41,6 +45,7 @@ export function DocumentTypeSelect({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
+      className={className}
       aria-label={t('invoice.documentType.label', 'Document type')}
     >
       {OPTIONS.map((option) => (

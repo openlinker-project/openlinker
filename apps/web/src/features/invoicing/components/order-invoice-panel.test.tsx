@@ -153,6 +153,18 @@ describe('OrderInvoicePanel — display states', () => {
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
   });
 
+  it('not-issued ⇒ document-type picker fills the row beside a signal-orange primary Issue action (#1622)', async () => {
+    const { container } = renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) } }),
+    });
+    // The picker + primary action share one row (mockup section 02 layout).
+    const issue = await screen.findByRole('button', { name: /issue invoice/i });
+    expect(issue).toHaveClass('button--primary');
+    const picker = screen.getByRole('combobox', { name: /document type/i });
+    expect(picker).toHaveClass('order-invoice-panel__doc-type');
+    expect(container.querySelector('.order-invoice-panel__actions--issue')).not.toBeNull();
+  });
+
   it('issued ⇒ number + safe PDF link + document type, no action button', async () => {
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) } }),
