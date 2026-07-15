@@ -578,7 +578,14 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
   if (correction !== undefined) {
     // The KOR correction metadata follows RodzajFaktury in schema order, before
     // the FaWiersz rows.
-    node.PrzyczynaKorekty = correction.reason;
+    // #1582: `PrzyczynaKorekty` is `minOccurs=0` but `minLength=1` when present -
+    // emitting an empty/whitespace element is an XSD content-constraint violation
+    // KSeF rejects at clearance. OMIT the element when the reason is blank
+    // (belt-and-suspenders; the DTO boundary already requires a non-empty reason).
+    const trimmedReason = correction.reason.trim();
+    if (trimmedReason.length > 0) {
+      node.PrzyczynaKorekty = trimmedReason;
+    }
     node.TypKorekty = correction.typKorekty;
     node.DaneFaKorygowanej = correctedInvoiceNode(correction);
   }

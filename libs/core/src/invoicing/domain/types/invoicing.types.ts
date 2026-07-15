@@ -121,6 +121,15 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing diagnostic the authority returned for the clearance
+   * verdict (#1582) - typically the provider's `description`/`details` on a
+   * `rejected` read, so an operator can see WHY the authority refused the
+   * document rather than only that it was rejected. Country/provider-agnostic
+   * (ADR-026): a free-text blob the adapter fills from its regime's rejection
+   * fields, never interpreted in core. Absent on non-rejection reads.
+   */
+  clearanceDetail?: string | null;
 }
 
 /**
@@ -565,6 +574,17 @@ export interface IssueCorrectionCommand {
   idempotencyKey?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
+  /**
+   * OPTIONAL buyer-identity override (#1582). When present, the adapter uses THIS
+   * buyer for the correcting document instead of the buyer captured on
+   * {@link OriginalDocumentSnapshot} - the fix path for a "wrong buyer identity
+   * (e.g. NIP) on the original" correction (a document already cleared by the
+   * authority cannot be deleted, only corrected). Mirrors how `originalDocument`
+   * is a caller-assembled reconstruction; reuses the neutral {@link BuyerProfile}
+   * shape (ADR-026 - no regime/provider vocabulary). Absent ⇒ the original
+   * snapshot's buyer is used unchanged.
+   */
+  buyerOverride?: BuyerProfile;
 }
 
 /**
@@ -718,6 +738,14 @@ export interface InvoiceOutcomePatch {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing clearance diagnostic (#1582). Set from a
+   * `RegulatoryClearanceResult.clearanceDetail` (typically the authority's
+   * rejection description/details) so the projection can surface WHY a document
+   * was rejected. Country/provider-agnostic (ADR-026); omitted when a patch does
+   * not carry a fresh diagnostic so an unrelated outcome patch never resets it.
+   */
+  clearanceDetail?: string | null;
   /**
    * Neutral payment lifecycle (#1354). Set by the payment-status refresh
    * service from an authoritative `PaymentStatusReader` read; omitted otherwise

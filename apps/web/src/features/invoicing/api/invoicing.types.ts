@@ -89,6 +89,11 @@ export interface InvoiceRecord {
   providerInvoiceNumber: string | null;
   regulatoryStatus: RegulatoryStatus;
   clearanceReference: string | null;
+  /** Operator-facing clearance diagnostic (e.g. the authority rejection reason);
+   *  non-null typically only on a `rejected` document (#1582). Optional so
+   *  pre-existing fixtures/records without it stay assignable; the API always
+   *  returns the key (string|null). */
+  clearanceDetail?: string | null;
   pdfUrl: string | null;
   failureMode: FailureMode | null;
   failureCode: FailureCode | null;
@@ -230,10 +235,30 @@ export interface CorrectionLineInput {
   newUnitPriceGross?: number;
 }
 
-/** `POST /invoices/:invoiceId/correct` request body (#1241). Mirrors
- *  `IssueCorrectionCommand` minus the server-resolved fields. */
+/** Optional buyer-identity override on a correction (#1582) - the fix path for a
+ *  wrong buyer NIP/identity on the original. Neutral shape; absent ⇒ the original
+ *  document's buyer is reused. */
+export interface CorrectionBuyerOverrideInput {
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+  type: 'company' | 'private';
+  isPublicSectorEntity?: boolean;
+  isVatGroupMember?: boolean;
+}
+
+/** `POST /invoices/:invoiceId/correct` request body (#1241, #1582). Mirrors
+ *  `IssueCorrectionCommand` minus the server-resolved fields. `reason` is
+ *  REQUIRED and non-empty (art. 106j ust. 2 pkt 5 / FA(3) XSD minLength=1). */
 export interface IssueCorrectionInput {
-  reason?: string;
+  reason: string;
   lines: CorrectionLineInput[];
   idempotencyKey?: string;
+  buyerOverride?: CorrectionBuyerOverrideInput;
 }

@@ -115,6 +115,13 @@ const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 /** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
 const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
 
+/**
+ * Upper bound on the neutral `clearanceDetail` diagnostic (#1582) persisted to
+ * the projection and shown to operators. Bounds an unexpectedly verbose
+ * authority payload from bloating the row / detail page.
+ */
+const MAX_CLEARANCE_DETAIL_LENGTH = 500;
+
 export class KsefInvoicingAdapter
   implements
     InvoicingPort,
@@ -434,10 +441,14 @@ export class KsefInvoicingAdapter
     // #1364: `issueInvoice` below stamps a distinct P_2 whenever `correction` is
     // present (see `buildCorrectionDocumentNumber`), so delegating with the same
     // `orderId` here no longer collides with the original document's P_2.
+    // #1582: a buyer-identity correction (e.g. a wrong NIP on the original) sends
+    // the OVERRIDE buyer on the KOR instead of the original snapshot's buyer.
+    // Neutral - the adapter just prefers the override when present (ADR-026).
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument.buyer;
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
-      buyer: cmd.originalDocument.buyer,
+      buyer: correctionBuyer,
       currency: cmd.originalDocument.currency,
       // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
       // `CorrectionReference`'s contract, the command's top-level `lines` carry
@@ -577,7 +588,14 @@ export class KsefInvoicingAdapter
 
     if (regulatoryStatus !== 'accepted') {
       // Non-terminal (submitted) or terminal-failure (rejected): no KSeF number yet.
-      return { regulatoryStatus, clearanceReference: null };
+      // On a REJECTED read, capture the authority's operator-facing diagnostic
+      // (#1582) so the detail page can explain WHY the document was refused -
+      // opaque to core (ADR-026); no KSeF vocabulary crosses the neutral shape.
+      const clearanceDetail =
+        regulatoryStatus === 'rejected'
+          ? this.formatClearanceDetail(response.data.status)
+          : null;
+      return { regulatoryStatus, clearanceReference: null, clearanceDetail };
     }
 
     return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
@@ -634,6 +652,32 @@ export class KsefInvoicingAdapter
    * for traceability. C8 (UPO download) resolves the UPO document from the
    * `clearanceReference` (KSeF number) the record already carries.
    */
+  /**
+   * Compose the neutral operator-facing rejection diagnostic (#1582) from KSeF's
+   * status block (`description` + optional `details[]`). Bounded and PII-free by
+   * construction on the KSeF side; the code is prefixed so the operator always
+   * has a stable anchor even when the authority omits free text. Returns a plain
+   * opaque string - core never parses it (ADR-026).
+   */
+  private formatClearanceDetail(status: InvoiceStatusResponse['status']): string {
+    const parts: string[] = [];
+    if (typeof status.description === 'string' && status.description.trim().length > 0) {
+      parts.push(status.description.trim());
+    }
+    if (Array.isArray(status.details)) {
+      for (const detail of status.details) {
+        if (typeof detail === 'string' && detail.trim().length > 0) {
+          parts.push(detail.trim());
+        }
+      }
+    }
+    const suffix = parts.length > 0 ? `: ${parts.join('; ')}` : '';
+    const detail = `KSeF status ${status.code}${suffix}`;
+    return detail.length <= MAX_CLEARANCE_DETAIL_LENGTH
+      ? detail
+      : `${detail.slice(0, MAX_CLEARANCE_DETAIL_LENGTH - 3)}...`;
+  }
+
   private async buildClearedStatus(
     data: InvoiceStatusResponse,
     sessionRef: string,

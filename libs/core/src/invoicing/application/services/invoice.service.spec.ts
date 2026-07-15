@@ -950,5 +950,93 @@ describe('InvoiceService', () => {
         expect.objectContaining({ documentContent: null }),
       );
     });
+
+    // #1582: single-flight CAS lease for corrections.
+    describe('CAS lease (#1582)', () => {
+      it('claims an atomic lease unconditionally, even when NO idempotencyKey is supplied', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        // The lease is claimed on the freshly-created pending row regardless of key.
+        expect(repo.claimForIssue).toHaveBeenCalledWith('corr-rec', expect.any(Date));
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('backs off WITHOUT calling the provider when the lease claim is contended', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        // A concurrent attempt already holds the slot: claim returns null.
+        repo.claimForIssue.mockResolvedValueOnce(null);
+        const contended = makeRecord({ id: 'corr-rec', status: 'issuing' });
+        repo.findById.mockResolvedValue(contended);
+
+        const result = await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+        expect(result).toBe(contended);
+      });
+
+      it('resumes an already-issued same-key record without a second provider call', async () => {
+        const issued = makeRecord({ id: 'corr-existing', status: 'issued', documentType: 'corrected' });
+        repo.findByIdempotencyKey.mockResolvedValue(issued);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+        expect(result).toBe(issued);
+      });
+    });
+
+    it('snapshots the buyerOverride buyer (not the original) when supplied (#1582)', async () => {
+      const override = new BuyerProfile(
+        'Corrected Buyer',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: override }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ buyer: override }),
+        }),
+      );
+    });
+  });
+
+  describe('applyRegulatoryClearance (#1582)', () => {
+    it('persists the clearanceDetail from the clearance result', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+    });
+
+    it('clears a stale clearanceDetail when the result carries none (e.g. a resend)', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+        clearanceDetail: null,
+      });
+    });
   });
 });

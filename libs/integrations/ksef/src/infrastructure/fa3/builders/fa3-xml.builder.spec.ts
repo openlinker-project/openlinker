@@ -284,6 +284,30 @@ describe('buildFa3Xml', () => {
       expect(xml).toContain('<PrzyczynaKorekty>Customer returned 1 unit</PrzyczynaKorekty>');
     });
 
+    it('should OMIT PrzyczynaKorekty entirely when the reason is empty (#1582)', () => {
+      // minOccurs=0 + minLength=1: an empty element is invalid, so the builder
+      // omits it rather than emitting `<PrzyczynaKorekty></PrzyczynaKorekty>`.
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '';
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
+      expect(xml).not.toContain('<PrzyczynaKorekty/>');
+    });
+
+    it('should OMIT PrzyczynaKorekty when the reason is only whitespace (#1582)', () => {
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '   ';
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
+    });
+
+    it('should trim the reason it emits (#1582)', () => {
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '  wrong NIP  ';
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<PrzyczynaKorekty>wrong NIP</PrzyczynaKorekty>');
+    });
+
     it('should emit the NrKSeF flag + NrKSeFFaKorygowanej pair when the original was a KSeF invoice', () => {
       // XSD (lines ~2910-2928): the KSeF branch of the DaneFaKorygowanej choice is
       // a SEQUENCE — NrKSeF (etd:TWybor1, a FLAG = 1) FOLLOWED BY

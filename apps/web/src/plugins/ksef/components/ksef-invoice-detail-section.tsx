@@ -163,6 +163,24 @@ export function KsefInvoiceDetailSection({
           </div>
         ) : null}
 
+        {/* Rejection detail (#1582): when the authority rejected the document,
+            surface its operator-facing diagnostic so the operator can see WHY. */}
+        {invoice.regulatoryStatus === 'rejected' && invoice.clearanceDetail ? (
+          <div className="slot-row">
+            <div>
+              <div className="slot-row__label">
+                {t('invoice.ksef.rejectionDetail', 'Rejection detail')}
+              </div>
+              <div className="slot-row__hint">
+                {t('invoice.ksef.rejectionDetailHint', 'Reported by the authority (KSeF)')}
+              </div>
+            </div>
+            <span className="text-danger" role="status">
+              {invoice.clearanceDetail}
+            </span>
+          </div>
+        ) : null}
+
         <div className="slot-row">
           <div>
             <div className="slot-row__label">{t('invoice.ksef.number', 'KSeF number')}</div>

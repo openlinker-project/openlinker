@@ -167,6 +167,10 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     const lineInputs = await screen.findAllByLabelText(/Line number/i);
     fireEvent.change(lineInputs[0], { target: { value: '2' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'partial return' },
+    });
+
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {

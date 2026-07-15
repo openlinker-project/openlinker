@@ -229,6 +229,15 @@ export class RegulatoryStatusReconciliationService
       patch.clearanceReference = read.clearanceReference;
     }
 
+    // (8f #1582) clearanceDetail is the operator-facing rejection diagnostic.
+    // Refresh it when a rejected read carries a new one. Key OMITTED otherwise
+    // so an unrelated read never rewrites it. (A record only ever CARRIES a
+    // detail once rejected, which is terminal and never re-polled here, so
+    // clearing is owned by `applyRegulatoryClearance` on the resend path.)
+    if (read.clearanceDetail != null && read.clearanceDetail !== record.clearanceDetail) {
+      patch.clearanceDetail = read.clearanceDetail;
+    }
+
     return patch;
   }
 
