@@ -30,6 +30,7 @@ import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { IRegistrationService } from './registration.service.interface';
@@ -82,6 +83,7 @@ describe('AuthController', () => {
     const mockEmailConfirmationService: jest.Mocked<IEmailConfirmationService> = {
       sendConfirmation: jest.fn(),
       confirmEmail: jest.fn(),
+      resendConfirmation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -374,6 +376,20 @@ describe('AuthController', () => {
         new UserNotPendingConfirmationException('some-user-id'),
       );
       await expect(controller.confirmEmail(dto)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('POST /auth/resend-confirmation', () => {
+    it('always returns 200 and delegates to the service', async () => {
+      emailConfirmationService.resendConfirmation.mockResolvedValue();
+      const dto: ResendConfirmationDto = Object.assign(new ResendConfirmationDto(), {
+        email: 'demo@test.com',
+      });
+
+      const result = await controller.resendConfirmation(dto);
+
+      expect(result).toEqual({ ok: true });
+      expect(emailConfirmationService.resendConfirmation).toHaveBeenCalledWith('demo@test.com');
     });
   });
 

@@ -23,6 +23,7 @@ const makeUser = (username: string, status: UserStatus = 'pending'): User =>
 const makeEmailConfirmationService = (): jest.Mocked<IEmailConfirmationService> => ({
   sendConfirmation: jest.fn(),
   confirmEmail: jest.fn(),
+  resendConfirmation: jest.fn(),
 });
 
 const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
@@ -93,7 +94,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(makeUser('foo'));
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter(), makeEmailConfirmationService());
 
     await expect(service.register('user2', 'FOO@EXAMPLE.COM', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException

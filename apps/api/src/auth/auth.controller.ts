@@ -56,6 +56,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { OkResponseDto } from './dto/ok-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
@@ -187,6 +188,23 @@ export class AuthController {
       }
       throw error;
     }
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('resend-confirmation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Resend the email confirmation link for a pending account. Always returns 200 to prevent user enumeration.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Request accepted (regardless of account existence or status)',
+    type: OkResponseDto,
+  })
+  async resendConfirmation(@Body() dto: ResendConfirmationDto): Promise<OkResponseDto> {
+    await this.emailConfirmationService.resendConfirmation(dto.email);
     return { ok: true };
   }
 
