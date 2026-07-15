@@ -14,6 +14,7 @@ import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
 import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
+import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -76,7 +77,9 @@ export function RegisterForm({ demoMode = false }: RegisterFormProps): ReactElem
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {register.error ? (
         <Alert tone="error" title="Registration failed">
-          {register.error.message}
+          {register.error instanceof ApiError && register.error.isConflict()
+            ? 'This email is already registered.'
+            : register.error.message}
         </Alert>
       ) : null}
 

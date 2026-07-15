@@ -33,7 +33,9 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const entity = await this.ormRepository.findOne({ where: { email } });
+    const entity = await this.ormRepository.findOne({
+      where: { email: email.trim().toLowerCase() },
+    });
     return entity ? this.toDomain(entity) : null;
   }
 
@@ -91,9 +93,10 @@ export class UserRepository implements UserRepositoryPort {
   async save(
     user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'>
   ): Promise<User> {
+    const normalizedEmail = this.normalizeEmail(user.email);
     const entity = this.ormRepository.create({
       username: user.username,
-      email: user.email,
+      email: normalizedEmail,
       passwordHash: user.passwordHash,
       role: user.role,
       status: user.status,
@@ -106,7 +109,7 @@ export class UserRepository implements UserRepositoryPort {
         const pgErr = error as QueryFailedError & { code?: string; detail?: string };
         if (pgErr.code === '23505') {
           const detail = pgErr.detail ?? '';
-          const identifier = detail.includes('(email)') ? (user.email ?? 'email') : user.username;
+          const identifier = detail.includes('(email)') ? (normalizedEmail ?? 'email') : user.username;
           throw new UserAlreadyExistsException(identifier);
         }
       }
@@ -144,6 +147,14 @@ export class UserRepository implements UserRepositoryPort {
       [userId],
     ) as [unknown, number];
     return { deleted: result[1] > 0 };
+  }
+
+  /**
+   * Trims and lowercases an email so `foo@example.com` and `Foo@Example.com`
+   * collide against the same `UQ_users_email` constraint row (#1625).
+   */
+  private normalizeEmail(email: string | null): string | null {
+    return email ? email.trim().toLowerCase() : null;
   }
 
   private toDomain(entity: UserOrmEntity): User {

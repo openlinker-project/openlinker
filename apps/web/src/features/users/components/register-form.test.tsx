@@ -2,6 +2,7 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { RegisterForm } from './register-form';
 
 describe('RegisterForm', () => {
@@ -70,6 +71,25 @@ describe('RegisterForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /request access/i }));
 
     expect(await screen.findByText('Username already taken')).toBeInTheDocument();
+  });
+
+  it('should show a dedicated message when registration fails with a 409 (#1625)', async () => {
+    const mockApi = createMockApiClient({
+      auth: {
+        register: vi
+          .fn()
+          .mockRejectedValue(new ApiError('Email already registered', 409, null)),
+      },
+    });
+    renderWithProviders(<RegisterForm />, { apiClient: mockApi });
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/email/i), 'alice@test.com');
+    await userEvent.type(screen.getByLabelText('Password'), 'password123');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: /request access/i }));
+
+    expect(await screen.findByText('This email is already registered.')).toBeInTheDocument();
   });
 
   describe('demo mode', () => {
