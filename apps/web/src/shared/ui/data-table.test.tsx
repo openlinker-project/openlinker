@@ -433,6 +433,37 @@ describe('DataTable', () => {
     expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
+  it('disables virtualization and warns when expandable and virtualize are both set (#1634)', async () => {
+    const user = userEvent.setup();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+          virtualize
+          expandable={{
+            renderDetail: (row) => <p>Detail for {row.name}</p>,
+          }}
+        />,
+      );
+
+      // Virtualization is a no-op while expandable is set — every row renders.
+      expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+      expect(container.querySelectorAll('tbody tr').length).toBe(ROWS.length);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[DataTable]'));
+
+      // The expand toggle still works correctly (renders detail content), it's
+      // just not virtualized.
+      const toggle = screen.getAllByRole('button', { name: /Expand row details/ })[0];
+      await user.click(toggle);
+      expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('does not wrap the table in a scroll container when virtualize is false', () => {
     const { container } = renderWithRouter(
       <DataTable<TestRow>

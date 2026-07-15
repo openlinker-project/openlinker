@@ -65,6 +65,17 @@ export interface DataTableCardView<Row> {
  * in an accordion panel beneath the row instead of navigating. Interactive
  * elements inside the row (links, buttons, checkboxes) still short-circuit the
  * toggle. Expandable takes precedence over `rowHref` for the row-level click.
+ *
+ * **Not supported together with `virtualize`.** The virtualizer forces every
+ * row to a fixed `estimateRowHeight`, which a variable-height detail panel
+ * would break. Rather than silently rendering a toggle that does nothing,
+ * `DataTable` disables virtualization (falls back to rendering every row) for
+ * as long as `expandable` is set, and logs a dev-only console warning so a
+ * future caller who reaches for both on the same table notices immediately
+ * instead of shipping a table whose expand affordance quietly does nothing.
+ * If a future table genuinely needs both at once, teach the virtualizer to
+ * measure dynamic row heights (e.g. `virtualizer.measureElement`) rather than
+ * re-enabling this combination as-is.
  */
 export interface DataTableExpandable<Row> {
   renderDetail: (row: Row) => ReactNode;
@@ -177,9 +188,20 @@ export function DataTable<Row>({
     ...(manualSorting ? {} : { getSortedRowModel: getSortedRowModel() }),
   });
 
+  if (import.meta.env.DEV && expandable && virtualize) {
+    // eslint-disable-next-line no-console -- dev-only guard, see DataTableExpandable JSDoc
+    console.warn(
+      '[DataTable] `expandable` and `virtualize` were both provided; `virtualize` is ' +
+        'ignored while `expandable` is set (a variable-height detail row cannot live ' +
+        'inside a fixed-height virtualized row). See the DataTableExpandable JSDoc in ' +
+        'data-table.tsx.',
+    );
+  }
+
   const tableRows = table.getRowModel().rows;
   const isEmpty = tableRows.length === 0;
-  const virtualizeActive = virtualize && !renderCards && !isEmpty;
+  // `expandable` wins over `virtualize` — see the DataTableExpandable JSDoc.
+  const virtualizeActive = virtualize && !renderCards && !isEmpty && !expandable;
   const containerClasses = [
     'data-table__container',
     cardView ? 'data-table__container--with-cards' : '',
@@ -402,8 +424,9 @@ export function DataTable<Row>({
     }
     for (const virtualItem of virtualItems) {
       const tanstackRow = tableRows[virtualItem.index];
-      // Detail panels break fixed-height virtual rows, so they're omitted here;
-      // expandable + virtualize is not a supported combination.
+      // This path only runs when `expandable` is absent (virtualizeActive is
+      // forced false while `expandable` is set — see the DataTableExpandable
+      // JSDoc), so `withDetail=false` here is defensive, not load-bearing.
       rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }, false));
     }
     if (paddingBottom > 0) {
