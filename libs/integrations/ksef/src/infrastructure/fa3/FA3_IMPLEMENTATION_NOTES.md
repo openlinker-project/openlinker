@@ -175,6 +175,46 @@ blank for a new invoice — not a connection default). See
 [#1311](https://github.com/openlinker-project/openlinker/issues/1311) for the
 full field-scope audit and design mockup.
 
+## Verification code (QR / kod weryfikacyjny - #1579)
+
+Since 1 Feb 2026 any structured invoice handed to a buyer **outside** KSeF
+(PDF / email / on-screen copy) must carry a QR verification code so the
+recipient can confirm the document against the authority. This is OpenLinker's
+dominant scenario - e-commerce orders issued to consumers, no-NIP buyers,
+VAT-exempt or foreign buyers - so it is not optional.
+
+**What OL emits: KOD I (online verification code).** KOD I is purely
+deterministic from **public** data and needs no signing key or certificate. It
+encodes the URL:
+
+```
+https://{host}/invoice/{NIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawXmlBytes))}
+```
+
+- `host` - `ksef.mf.gov.pl` on `prod`; `qr-test.ksef.mf.gov.pl` on every
+  non-prod tier (`test` / `demo`). Threaded from the connection's `config.env`.
+- `NIP` - seller NIP (digits only).
+- `DD-MM-RRRR` - the invoice issue date (FA(3) `P_1`, stored ISO `YYYY-MM-DD`,
+  reformatted day-month-year).
+- hash - SHA-256 over the **exact raw, unencrypted FA(3) XML bytes as
+  submitted** (the persisted `sourceDocument` snapshot - NOT re-serialized /
+  pretty-printed), **Base64URL**-encoded (URL-safe alphabet, padding stripped -
+  not standard Base64).
+
+**Where:** generated entirely in the frontend from the already-loaded source XML
+(`apps/web/src/plugins/ksef/lib/ksef-verification.ts` + `shared/ui/qr-code.tsx`,
+rendered by `ksef-fa3-view.tsx`). No backend/adapter change is required because
+the byte-exact submitted document is the persisted `sourceDocument`
+(`KsefInvoicingAdapter.toSourceDocument` base64-encodes the same `xml` string it
+submits), served verbatim via `GET /invoices/:id/document?kind=source`. Encoding
+that text back to UTF-8 bytes round-trips the submitted bytes exactly, so the
+hash matches what KSeF computed. The KSeF number is shown as the QR caption.
+
+**KOD II (offline certificate-signed code) is explicitly OUT OF SCOPE.** KOD II
+is only required for documents issued in KSeF *offline* mode and is signed with
+the seller's KSeF certificate private key. OpenLinker always issues online
+(submit -> clear -> UPO), so KOD II never applies.
+
 ## Known limitations / deferred work
 
 - ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —

@@ -30,6 +30,7 @@
     "@tanstack/react-virtual": "^3.13.24",
     "cmdk": "^1.1.1",
     "posthog-js": "^1.398.3",
+    "qrcode-generator": "^1.5.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-hook-form": "^7.71.2",
