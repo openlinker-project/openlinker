@@ -5,9 +5,11 @@
  * here — never deep paths into api/ / hooks/ / components/. See
  * docs/frontend-architecture.md § Feature Public Surface.
  *
- * Existing list/detail hooks (`useInventoryQuery`, `useInventoryItemQuery`)
- * are intentionally not re-exported because they have no cross-feature
- * consumer today; they can be added in a one-line edit when a need arises.
+ * `useInventoryQuery` is intentionally not re-exported here — its only
+ * cross-feature consumer (`pages/products/product-detail-page.tsx`) deep-imports
+ * it directly, the same page-level pattern the removed Inventory detail page
+ * used for `useListingsQuery`. Add it to the barrel in a one-line edit if a
+ * second consumer needs it.
  *
  * @module apps/web/src/features/inventory
  */

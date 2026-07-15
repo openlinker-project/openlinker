@@ -5,9 +5,9 @@
  * an aggregate available-quantity value, and mapping it to the StatusBadge
  * and KpiCard tones used on the product-detail hero and KPI strip.
  *
- * Page-local logic (not shared across features) — colocated copy of
- * `pages/inventory/inventory-stock-status.ts`'s pattern, since that module
- * is scoped to the inventory page and not exported for cross-page reuse.
+ * Page-local logic (not shared across features) — originally colocated as a
+ * copy of the same pattern the standalone Inventory detail page used before
+ * that page was removed (its stock/listings data is now merged into this one).
  *
  * @module pages/products
  */
