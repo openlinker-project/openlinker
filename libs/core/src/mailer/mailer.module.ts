@@ -19,7 +19,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { IntegrationsModule as CoreIntegrationsModule } from '../integrations/integrations.module';
+import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { MAILER_SETTINGS_REPOSITORY_TOKEN, MAILER_SETTINGS_SERVICE_TOKEN } from './mailer.tokens';
 import { MailerSettingsService } from './application/services/mailer-settings.service';
 import { MailerSettingsOrmEntity } from './infrastructure/persistence/entities/mailer-settings.orm-entity';

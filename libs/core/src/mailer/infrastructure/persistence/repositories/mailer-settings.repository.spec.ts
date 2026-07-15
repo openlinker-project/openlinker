@@ -94,10 +94,60 @@ describe('MailerSettingsRepository', () => {
           smtpSecure: false,
           fromAddress: null,
           updatedBy: 'admin',
+          updatedAt: expect.any(Date),
         },
         { conflictPaths: ['id'] }
       );
       expect(result.transport).toBe('console');
+    });
+
+    it('refreshes updated_at on every successive call, not just the initial insert', async () => {
+      ormRepo.upsert.mockResolvedValue({} as never);
+
+      const firstUpdatedAt = new Date('2026-05-01T00:00:00Z');
+      ormRepo.findOneOrFail.mockResolvedValueOnce(ormRow({ updatedAt: firstUpdatedAt }));
+      const first = await subject.upsertSettings(
+        {
+          transport: 'smtp',
+          smtpHost: 'smtp.example.com',
+          smtpPort: 587,
+          smtpSecure: false,
+          fromAddress: 'noreply@example.com',
+        },
+        'admin'
+      );
+
+      const secondUpdatedAt = new Date('2026-05-02T00:00:00Z');
+      ormRepo.findOneOrFail.mockResolvedValueOnce(ormRow({ updatedAt: secondUpdatedAt }));
+      const second = await subject.upsertSettings(
+        {
+          transport: 'smtp',
+          smtpHost: 'smtp.example.com',
+          smtpPort: 587,
+          smtpSecure: false,
+          fromAddress: 'noreply@example.com',
+        },
+        'admin'
+      );
+
+      expect(second.updatedAt.getTime()).not.toBe(first.updatedAt.getTime());
+      expect(ormRepo.upsert).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ updatedAt: expect.any(Date) }),
+        { conflictPaths: ['id'] }
+      );
+      expect(ormRepo.upsert).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ updatedAt: expect.any(Date) }),
+        { conflictPaths: ['id'] }
+      );
+      const firstCallUpdatedAt = (
+        ormRepo.upsert.mock.calls[0][0] as MailerSettingsOrmEntity
+      ).updatedAt;
+      const secondCallUpdatedAt = (
+        ormRepo.upsert.mock.calls[1][0] as MailerSettingsOrmEntity
+      ).updatedAt;
+      expect(secondCallUpdatedAt.getTime()).toBeGreaterThanOrEqual(firstCallUpdatedAt.getTime());
     });
   });
 });

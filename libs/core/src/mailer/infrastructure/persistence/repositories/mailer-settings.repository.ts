@@ -54,6 +54,12 @@ export class MailerSettingsRepository implements MailerSettingsRepositoryPort {
         smtpSecure: input.smtpSecure,
         fromAddress: input.fromAddress,
         updatedBy,
+        // TypeORM's upsert() only includes explicitly-passed columns in the
+        // ON CONFLICT DO UPDATE SET clause — @UpdateDateColumn()'s auto-touch
+        // behavior applies only to .save(), so updatedAt must be set here
+        // explicitly or every update after the initial insert would leave it
+        // frozen at its creation value.
+        updatedAt: new Date(),
       },
       { conflictPaths: ['id'] }
     );
