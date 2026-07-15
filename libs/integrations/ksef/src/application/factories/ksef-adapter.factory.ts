@@ -29,6 +29,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
+import { getSharedKsefRateLimiter } from '../../infrastructure/http/ksef-rate-limiter';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
@@ -69,6 +70,11 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       env,
       authMaterial,
       cache: this.cache,
+      // #1594: proactive per-hour pacing keyed on the seller NIP (KSeF buckets by
+      // NIP), shared process-wide so sibling connections on the same NIP throttle
+      // against one bucket rather than each other.
+      rateLimiter: getSharedKsefRateLimiter(),
+      rateLimitBucketKey: seller.nip,
     });
 
     // C5 issuance dependencies: the session-crypto service (shares the same

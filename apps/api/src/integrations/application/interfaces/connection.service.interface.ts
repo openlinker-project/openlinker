@@ -51,6 +51,16 @@ export interface IConnectionService {
   update(connectionId: string, patch: ConnectionUpdate): Promise<Connection>;
 
   /**
+   * Advisory (#1594): return non-blocking warnings about a connection sharing a
+   * provider-side rate-limit bucket with another active connection (same adapter
+   * + same seller tax id). Empty when there is no collision. Never throws.
+   *
+   * @param connection - The just-created/updated connection to check
+   * @returns Zero or more operator-facing warning strings
+   */
+  findSharedRateLimitBucketWarnings(connection: Connection): Promise<string[]>;
+
+  /**
    * Rotate the credentials stored for a connection. Writes to the credential
    * row referenced by `credentialsRef`; the connection row is not modified.
    *

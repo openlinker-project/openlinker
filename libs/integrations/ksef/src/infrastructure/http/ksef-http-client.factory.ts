@@ -22,6 +22,7 @@ import type { CachePort } from '@openlinker/shared/cache';
 import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { KsefAuthenticationToken } from './ksef-http-client.types';
 import { KsefHttpClient, type KsefTokenLifecycle } from './ksef-http-client';
+import type { KsefRateLimiter } from './ksef-rate-limiter';
 import { resolveKsefBaseUrl } from './ksef-hosts';
 import { MfPublicKeyCacheService } from '../crypto/mf-public-key-cache.service';
 import { KsefTokenEncryptor } from './auth/ksef-token-encryptor.service';
@@ -37,6 +38,19 @@ export interface CreateKsefHttpClientInput {
   /** Resolved ksef-token material. Qualified-seal wiring is deferred to C4. */
   authMaterial: KsefTokenAuthMaterial;
   cache?: CachePort;
+  /**
+   * Proactive per-hour rate-limit pacer (#1594) shared across connections. When
+   * present, the client throttles the three online-session write endpoints
+   * against KSeF's documented ceilings. Omitted by callers (e.g. the connection
+   * tester) that never issue documents.
+   */
+  rateLimiter?: KsefRateLimiter;
+  /**
+   * Rate-limit bucket key — the seller NIP (KSeF buckets by NIP), so sibling
+   * connections on the same NIP share one bucket. Falls back to `connectionId`
+   * inside the client when absent.
+   */
+  rateLimitBucketKey?: string;
 }
 
 export interface KsefHttpClientBundle {
@@ -70,7 +84,10 @@ export function createKsefHttpClient(input: CreateKsefHttpClientInput): KsefHttp
   };
 
   // 1. Client first (its unauthenticated endpoints bootstrap the services).
-  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle);
+  const httpClient = new KsefHttpClient(input.connectionId, baseUrl, lifecycle, undefined, {
+    rateLimiter: input.rateLimiter,
+    bucketKey: input.rateLimitBucketKey,
+  });
 
   // 2. Services share the one client instance.
   const publicKeyCache = new MfPublicKeyCacheService(input.connectionId, httpClient, input.cache);

@@ -1237,4 +1237,67 @@ describe('ConnectionService', () => {
       await expect(service.disable('connection-123')).rejects.toThrow(NotFoundException);
     });
   });
+  describe('findSharedRateLimitBucketWarnings (#1594)', () => {
+    function ksefConnection(
+      id: string,
+      name: string,
+      nip: string | undefined,
+      adapterKey = 'ksef.publicapi.v2',
+      status: 'active' | 'disabled' = 'active'
+    ): Connection {
+      return new Connection(
+        id,
+        'ksef',
+        name,
+        status,
+        nip ? { env: 'test', seller: { nip } } : { env: 'test' },
+        'cred_x',
+        new Date(),
+        new Date(),
+        adapterKey,
+        ['Invoicing']
+      );
+    }
+
+    it('returns no warning when the connection carries no seller tax id', async () => {
+      const conn = ksefConnection('c1', 'A', undefined);
+      const warnings = await service.findSharedRateLimitBucketWarnings(conn);
+      expect(warnings).toEqual([]);
+      expect(connectionPort.list).not.toHaveBeenCalled();
+    });
+
+    it('warns when another active connection shares adapter + seller tax id', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      const sibling = ksefConnection('c2', 'Channel B', '1234567890');
+      connectionPort.list.mockResolvedValue([subject, sibling]);
+
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+
+      expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('Channel B');
+      expect(warnings[0]).toContain('1234567890');
+    });
+
+    it('does not warn about itself', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockResolvedValue([subject]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('does not warn when the shared NIP is on a different adapter', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890', 'ksef.publicapi.v2');
+      const other = ksefConnection('c2', 'Infakt B', '1234567890', 'infakt.accounting.v1');
+      connectionPort.list.mockResolvedValue([subject, other]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('is advisory: a list failure yields no warning rather than throwing', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockRejectedValue(new Error('db down'));
+      await expect(service.findSharedRateLimitBucketWarnings(subject)).resolves.toEqual([]);
+    });
+  });
 });

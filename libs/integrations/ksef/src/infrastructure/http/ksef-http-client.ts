@@ -47,6 +47,8 @@ import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
+import type { KsefRateLimiter } from './ksef-rate-limiter';
+import type { KsefRateLimitCategory } from './ksef-rate-limiter.types';
 
 /** Refresh proactively within this window of the access-token expiry. */
 const TOKEN_REFRESH_WINDOW_MS = 60_000;
@@ -95,14 +97,30 @@ export class KsefHttpClient implements IKsefHttpClient {
   private token: KsefAuthenticationToken | null = null;
   private refreshInFlight: Promise<void> | null = null;
 
+  /**
+   * Proactive per-hour pacer (#1594) for the three rate-limited online-session
+   * write endpoints, shared across every client instance keyed to the same
+   * bucket. `null` disables pacing (the pre-#1594 behaviour) so unit specs and
+   * callers that don't wire one keep working.
+   */
+  private readonly rateLimiter: KsefRateLimiter | null;
+  /**
+   * The pacing bucket key — the seller NIP when supplied (KSeF buckets by NIP),
+   * else the connection id as a safe per-connection fallback.
+   */
+  private readonly rateLimitBucketKey: string;
+
   constructor(
     private readonly connectionId: string,
     baseUrl: string,
     private readonly lifecycle: KsefTokenLifecycle,
     retryConfig?: Partial<KsefRetryConfig>,
+    pacing?: { rateLimiter?: KsefRateLimiter; bucketKey?: string },
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
+    this.rateLimiter = pacing?.rateLimiter ?? null;
+    this.rateLimitBucketKey = pacing?.bucketKey ?? connectionId;
   }
 
   async get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>> {
@@ -164,6 +182,13 @@ export class KsefHttpClient implements IKsefHttpClient {
     idempotent: boolean,
     expectBinary = false,
   ): Promise<KsefHttpResponse<T>> {
+    // Proactive pacing (#1594): block until a per-hour token is free BEFORE the
+    // first attempt, so a bulk run self-throttles under KSeF's documented
+    // ceilings rather than firing all requests and relying on reactive 429s.
+    // Acquired once per logical request (not per retry attempt); reactive 429
+    // backoff below remains the backstop for anything the pacer under-estimates.
+    await this.acquireRateLimitPermit(method, path);
+
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
 
@@ -211,6 +236,40 @@ export class KsefHttpClient implements IKsefHttpClient {
       }
     }
     throw lastError ?? new Error('KSeF request failed after retries');
+  }
+
+  /**
+   * Acquire a proactive rate-limit token for a rate-limited write endpoint.
+   * No-op when no limiter is wired or the call is not one of the three paced
+   * POSTs (reads, auth, and everything else pass through unthrottled).
+   */
+  private async acquireRateLimitPermit(method: 'GET' | 'POST', path: string): Promise<void> {
+    if (!this.rateLimiter || method !== 'POST') {
+      return;
+    }
+    const category = this.classifyRateLimitCategory(path);
+    if (!category) {
+      return;
+    }
+    await this.rateLimiter.acquire(this.rateLimitBucketKey, category);
+  }
+
+  /**
+   * Map a KSeF path to its rate-limit category, or `null` when the endpoint is
+   * not one of the three documented per-hour-capped online-session writes.
+   */
+  private classifyRateLimitCategory(path: string): KsefRateLimitCategory | null {
+    const normalized = path.replace(/^\//, '').split('?')[0]?.replace(/\/$/, '') ?? '';
+    if (normalized === 'sessions/online') {
+      return 'session-open';
+    }
+    if (/^sessions\/online\/[^/]+\/invoices$/.test(normalized)) {
+      return 'invoice-submit';
+    }
+    if (/^sessions\/online\/[^/]+\/close$/.test(normalized)) {
+      return 'session-close';
+    }
+    return null;
   }
 
   private async executeRequest<T>(
