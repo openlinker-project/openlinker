@@ -34,6 +34,7 @@ import {
   type Fa3BankAccount,
   type Fa3BuilderInput,
   type Fa3CorrectionContext,
+  type Fa3ExchangeRate,
   type Fa3Line,
   type Fa3PaymentInput,
   type RawFa3Xml,
@@ -118,6 +119,17 @@ function money(value: number): string {
 }
 
 /**
+ * Render an exchange rate (`KursWaluty`, type `TIlosci` — decimal, ≤6 fraction
+ * digits). NBP table-A rates are published to 4 decimal places, so 4dp is the
+ * exact source precision and stays comfortably inside `TIlosci`'s 6-digit
+ * fraction limit. The `TIlosci` pattern rejects `-0`; a resolved NBP rate is
+ * always positive so no `-0` normalisation is needed here (unlike `money`).
+ */
+function rate(value: number): string {
+  return value.toFixed(4);
+}
+
+/**
  * Per-line net (`P_11` = "wartość sprzedaży NETTO"). For a positive-rate band
  * the gross line is divided out (`net = gross / (1 + rate)`); zero-rate / exempt
  * / reverse-charge bands carry net = gross (no embedded VAT). This is the single
@@ -188,7 +200,12 @@ function buyerIdentificationNode(buyer: BuyerIdentity): XmlNodeObject {
  * "before" rows carry `StanPrzed=1` (the FA(3) before/after correction model);
  * a plain invoice and the KOR "after" rows omit it.
  */
-function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObject {
+function lineNode(
+  line: Fa3Line,
+  ordinal: number,
+  stanPrzed = false,
+  exchangeRate?: Fa3ExchangeRate,
+): XmlNodeObject {
   const node: XmlNodeObject = {
     NrWierszaFa: ordinal,
     P_7: line.name,
@@ -214,6 +231,13 @@ function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObj
     P_11: money(lineNet(line)),
     P_12: line.p12,
   };
+  // KursWaluty (per-line dział-VI conversion rate, art. 106e ust. 11) sits after
+  // P_12 and before StanPrzed (XSD FaWiersz sequence). Emitted only for a
+  // foreign-currency invoice; the same single invoice-level rate is stamped on
+  // every line (#1581).
+  if (exchangeRate !== undefined) {
+    node.KursWaluty = rate(exchangeRate.rate);
+  }
   if (stanPrzed) {
     node.StanPrzed = 1;
   }
@@ -259,7 +283,10 @@ function aggregateBands(lines: Fa3Line[]): BandAggregate {
  * by *either* side of a correction (so a band reduced to zero by the correction
  * still surfaces its zero/negative difference).
  */
-function formatTotals(agg: BandAggregate): { bands: XmlNodeObject; grandTotal: string } {
+function formatTotals(
+  agg: BandAggregate,
+  exchangeRate?: Fa3ExchangeRate,
+): { bands: XmlNodeObject; grandTotal: string } {
   const bands: XmlNodeObject = {};
   for (const p12 of BAND_EMIT_ORDER) {
     const net = agg.netByBand.get(p12);
@@ -269,7 +296,16 @@ function formatTotals(agg: BandAggregate): { bands: XmlNodeObject; grandTotal: s
     const target = VAT_BANDS[p12];
     bands[target.net] = money(net);
     if (target.vat !== undefined) {
-      bands[target.vat] = money(agg.vatByBand.get(p12) ?? 0);
+      const vat = agg.vatByBand.get(p12) ?? 0;
+      bands[target.vat] = money(vat);
+      // P_14_xW: the same band's VAT expressed in PLN (art. 106e ust. 11), only
+      // for a foreign-currency invoice. Emitted immediately after its P_14_x so
+      // the XSD band sequence (P_13_x, P_14_x, P_14_xW) holds. On a correction
+      // `vat` is already the after−before difference, so the converted amount is
+      // the converted difference (#1581).
+      if (exchangeRate !== undefined) {
+        bands[`${target.vat}W`] = money(vat * exchangeRate.rate);
+      }
     }
   }
   return { bands, grandTotal: money(agg.grandTotal) };
@@ -367,9 +403,9 @@ function correctedInvoiceNode(correction: Fa3CorrectionContext): XmlNodeObject {
  * continuously across both blocks.
  */
 function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionContext): XmlNode {
-  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true));
+  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true, input.exchangeRate));
   const after = correction.correctedLines.map((line, idx) =>
-    lineNode(line, input.lines.length + idx + 1),
+    lineNode(line, input.lines.length + idx + 1, false, input.exchangeRate),
   );
   return [...before, ...after];
 }
@@ -503,12 +539,13 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
             aggregateBands(correction.correctedLines),
             aggregateBands(input.lines),
           ),
+          input.exchangeRate,
         )
-      : formatTotals(aggregateBands(input.lines));
+      : formatTotals(aggregateBands(input.lines), input.exchangeRate);
   const wiersze: XmlNode =
     correction !== undefined
       ? correctionLineNodes(input, correction)
-      : input.lines.map((line, idx) => lineNode(line, idx + 1));
+      : input.lines.map((line, idx) => lineNode(line, idx + 1, false, input.exchangeRate));
 
   const node: XmlNodeObject = {
     KodWaluty: input.currency,

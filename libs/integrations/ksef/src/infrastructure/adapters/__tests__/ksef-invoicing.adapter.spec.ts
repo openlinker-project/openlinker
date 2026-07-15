@@ -35,6 +35,7 @@ import type {
   RawFa3Xml,
   SellerProfile,
 } from '../../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../../fx/nbp-exchange-rate.types';
 
 const SELLER: SellerProfile = {
   nip: '1234567890',
@@ -838,6 +839,80 @@ describe('KsefInvoicingAdapter', () => {
       await expect(
         adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'source'),
       ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+  });
+
+  describe('foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581)', () => {
+    function fakeResolver(): NbpExchangeRateResolverPort & { resolveRate: jest.Mock } {
+      return {
+        resolveRate: jest
+          .fn()
+          .mockResolvedValue({ rate: 4.5, rateDate: '2026-06-22', table: '119/A/NBP/2026' }),
+      };
+    }
+
+    function adapterWithFx(
+      http: FakeKsefHttpClient,
+      builder: IFa3XmlBuilder,
+      resolver: NbpExchangeRateResolverPort,
+    ): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, DEFAULT_TAX_RATE, {
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+        exchangeRateResolver: resolver,
+      });
+    }
+
+    it('should resolve the NBP rate and thread it onto the builder input for a non-PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'EUR' }));
+
+      // Tax point for a plain invoice with no saleDate = the issue date (now).
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-06-23');
+      expect(lastInput()?.exchangeRate).toEqual({
+        rate: 4.5,
+        rateDate: '2026-06-22',
+        table: '119/A/NBP/2026',
+      });
+    });
+
+    it('should key the correction rate to the ORIGINAL issue date (immutable historical rate)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(
+        command({
+          currency: 'EUR',
+          documentType: 'corrected',
+          correction: {
+            originalClearanceReference: null,
+            originalDocumentNumber: 'FV/2026/05/0042',
+            originalIssueDate: '2026-05-01',
+            reason: 'Return',
+            correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+          },
+        }),
+      );
+
+      // Not the KOR's own issue date (2026-06-23) — the original document's.
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-05-01');
+    });
+
+    it('should NOT resolve a rate for a PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'PLN' }));
+
+      expect(resolver.resolveRate).not.toHaveBeenCalled();
+      expect(lastInput()?.exchangeRate).toBeUndefined();
     });
   });
 });

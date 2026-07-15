@@ -25,6 +25,7 @@ import type {
 import type {
   Fa3BuilderInput,
   Fa3CorrectionContext,
+  Fa3ExchangeRate,
   Fa3Line,
   Fa3PaymentInput,
   SellerProfile,
@@ -73,6 +74,13 @@ export interface Fa3MappingContext {
    * `Platnosc` entirely.
    */
   payment?: Fa3PaymentInput;
+  /**
+   * Resolved foreign-currency exchange rate (#1581) — supplied by the adapter
+   * ONLY when the command currency is not PLN (the adapter resolves the NBP
+   * table-A average for the last business day preceding the tax point). Absent
+   * for PLN invoices; forwarded verbatim so the mapper stays pure.
+   */
+  exchangeRate?: Fa3ExchangeRate;
 }
 
 /**
@@ -118,6 +126,7 @@ export function mapToFa3BuilderInput(
       ? { correction: mapCorrection(cmd.correction, context) }
       : {}),
     ...(context.payment !== undefined ? { payment: context.payment } : {}),
+    ...(context.exchangeRate !== undefined ? { exchangeRate: context.exchangeRate } : {}),
   };
 }
 

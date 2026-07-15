@@ -273,8 +273,32 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
   vendored authoritative XSD's required-structure rule set (not a full native
   XSD engine — a deliberate constrained-CI decision). Run the MF example-pack /
   test-environment validation as the authoritative gate before production.
-- **Art. 108g payment-title note.** Carrying the KSeF number on the payment
-  title (Art. 108g) is tracked as future work and is not emitted today.
+- **Foreign-currency PLN/VAT conversion (resolved, #1581).** For a non-PLN
+  invoice (art. 106e ust. 11 ustawy o VAT) OpenLinker now additionally emits the
+  VAT amount expressed in PLN per tax band (`P_14_1W`/`P_14_2W`/`P_14_3W`) and the
+  exchange rate (`KursWaluty`) on each line. The rate source is the **National
+  Bank of Poland (NBP) table A average** (`api.nbp.pl`, a public JSON endpoint —
+  no new dependency), resolved for the **last business day preceding the tax
+  point**. *Resolution timing:* the rate is resolved fresh at issue time keyed to
+  the tax point (`saleDate` ?? issue date); a **correction** re-resolves keyed to
+  the **original** document's issue date, so — because NBP historical rates are
+  immutable — it reuses the exact rate the original was issued at (snapshot-
+  equivalent "as-issued" consistency without persisting the rate in country-
+  agnostic core, ADR-026). *Public-holiday caveat (documented MVP):* NBP returns
+  HTTP 404 on any non-publication day, so the client simply walks back one day at
+  a time (up to ~10 days) until it gets a rate — the same mechanism transparently
+  skips weekends **and** Polish public holidays; there is no separate holiday
+  calendar. If no rate can be resolved (NBP unreachable, or an out-of-range date),
+  issuance **fails** rather than emitting a conversion-less document (compliance
+  over availability). PLN invoices are unaffected (no conversion elements emitted).
+- **Art. 108g payment-title (number surfacing, #1581).** Art. 108g (transitional
+  from 2026) requires a bank transfer paying a KSeF invoice to carry the invoice's
+  35-character KSeF number in the payment title. Because KSeF assigns that number
+  only after clearance, OpenLinker surfaces it in a clearly-labeled, **copyable**
+  form on the invoice detail page (with an Art. 108g hint) so the operator/buyer
+  can paste it into the transfer. OpenLinker does **not** initiate bank transfers,
+  so automated payment-title injection is intentionally out of scope for the
+  invoicing adapter.
 - **MF certificate chain-of-trust (operator action for `prod`).** OpenLinker
   verifies each MF public-key certificate against a pinned MF root CA before using
   it to wrap a session secret. The authoritative Ministerstwo Finansow root CA is

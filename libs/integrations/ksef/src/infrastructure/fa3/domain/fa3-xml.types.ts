@@ -208,7 +208,9 @@ export const FA3_RACHUNEK_BANKOWY_CHILD_ORDER = [
  * restricted to the elements the builder can emit (#1525 review). Notably `P_6`
  * (the optional sale-date choice) sits between `P_2` and the `P_13_x`/`P_14_x`
  * band aggregates - a position regression fails the local validator instead of
- * KSeF clearance. Same flat first-occurrence caveat as the other order lists:
+ * KSeF clearance. Each foreign-currency PLN-converted VAT element (`P_14_xW`,
+ * art. 106e ust. 11, #1581) sits immediately after its own `P_14_x` inside the
+ * same band sequence. Same flat first-occurrence caveat as the other order lists:
  * none of these names may also occur nested inside another listed element's
  * subtree (true for the builder's output - FaWiersz children are `P_7`/`P_8A`/
  * `P_8B`/`P_9A`/`P_11`/`P_12`, disjoint from this list).
@@ -220,10 +222,13 @@ export const FA3_FA_CHILD_ORDER = [
   'P_6',
   'P_13_1',
   'P_14_1',
+  'P_14_1W',
   'P_13_2',
   'P_14_2',
+  'P_14_2W',
   'P_13_3',
   'P_14_3',
+  'P_14_3W',
   'P_13_6_1',
   'P_13_6_2',
   'P_13_6_3',
@@ -245,8 +250,9 @@ export const FA3_FA_CHILD_ORDER = [
  * XSD-mandated child order of the `FaWiersz` sequence (FA(3) v1-0E, XSD line
  * ~3080), restricted to the elements the builder can emit (#1525). Notably
  * `P_8A` (unit of measure) comes immediately before `P_8B` (quantity), and
- * `P_9A` (net unit price) immediately after `P_8B`; the `StanPrzed` KOR flag
- * closes the sequence. Absent optional elements are simply skipped.
+ * `P_9A` (net unit price) immediately after `P_8B`; the per-line foreign-currency rate `KursWaluty`
+ * (art. 106e ust. 11 / dział VI, #1581) sits after `P_12`, and the `StanPrzed`
+ * KOR flag closes the sequence. Absent optional elements are simply skipped.
  */
 export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'NrWierszaFa',
@@ -256,8 +262,24 @@ export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'P_9A',
   'P_11',
   'P_12',
+  'KursWaluty',
   'StanPrzed',
 ] as const;
+
+/**
+ * Resolved foreign-currency exchange rate for the art. 106e ust. 11 PLN/VAT
+ * conversion (#1581). Present on {@link Fa3BuilderInput} ONLY when the invoice
+ * currency is not PLN; the adapter resolves it (NBP table-A average for the last
+ * business day preceding the tax point) and threads it through the mapper. The
+ * builder then emits `KursWaluty` on each `FaWiersz` line and the PLN-converted
+ * VAT amounts `P_14_xW` in the tax-summary band section. `rate` is PLN per 1 unit
+ * of the invoice currency; `rateDate`/`table` are carried for audit only.
+ */
+export interface Fa3ExchangeRate {
+  rate: number;
+  rateDate: string;
+  table: string;
+}
 
 /**
  * Fully-mapped builder input. The adapter produces this from a neutral
@@ -332,6 +354,13 @@ export interface Fa3BuilderInput {
    * in that case, so existing connections keep byte-identical output.
    */
   payment?: Fa3PaymentInput;
+  /**
+   * Resolved foreign-currency exchange rate (#1581). Present ONLY for a non-PLN
+   * invoice; when set the builder emits `KursWaluty` per line and the
+   * PLN-converted VAT `P_14_xW` band amounts. Absent for PLN invoices, which
+   * keep byte-identical output.
+   */
+  exchangeRate?: Fa3ExchangeRate;
 }
 
 /**
