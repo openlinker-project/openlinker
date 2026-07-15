@@ -10261,6 +10261,33 @@ html[data-density='compact'] .status-badge {
   flex: 1;
 }
 
+/* ─ Not-issued action row (#1622) ─
+   The document-type picker fills the row and the signal-orange primary
+   "Issue invoice" action anchors to the right, matching the panel mockup
+   (demo epic #1606, section 02). `flex-wrap` lets the button drop under a
+   full-width picker on narrow (mobile) panels rather than crushing either. */
+.order-invoice-panel__actions--issue {
+  flex-wrap: wrap;
+}
+
+.order-invoice-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.order-invoice-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .order-invoice-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .order-invoice-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+
 /* ─ Skeletons (shared shimmer for panel + detail page) ─ */
 .order-invoice-panel__skeleton,
 .invoice-detail__skeleton {

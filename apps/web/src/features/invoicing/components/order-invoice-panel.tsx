@@ -479,13 +479,14 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
         </>
       ) : null}
 
-      {/* ── Not issued: Issue button + DocumentTypeSelect ── */}
+      {/* ── Not issued: DocumentTypeSelect (fills the row) + primary Issue ── */}
       {!requiresConnectionPick && !invoiceQuery.isError && !invoiceQuery.isLoading && displayStatus === 'not-issued' ? (
-        <div className="order-invoice-panel__actions">
+        <div className="order-invoice-panel__actions order-invoice-panel__actions--issue">
           <DocumentTypeSelect
             value={documentType}
             onChange={setDocumentType}
             disabled={issueMutation.isPending}
+            className="order-invoice-panel__doc-type"
           />
           <Button tone="primary" onClick={handleIssue} disabled={issueMutation.isPending}>
             {t('invoice.action.issue', 'Issue invoice')}
