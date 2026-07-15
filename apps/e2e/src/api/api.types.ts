@@ -491,6 +491,65 @@ export interface EnqueueSyncJobResponse {
   isExisting?: boolean;
 }
 
+/**
+ * Response of `POST /connections/:id/webhooks/secret/rotate` — the plaintext
+ * webhook secret, revealed exactly once. The E2E webhook spec captures it to
+ * sign an inbound request the way the external platform would.
+ */
+export interface RotateWebhookSecretResponse {
+  secret: string;
+  revealedOnce: boolean;
+  warning: string;
+}
+
+/**
+ * Result of firing a raw inbound webhook at `/webhooks/:provider/:connectionId`
+ * (version-neutral ingress — no `/v1` prefix). Status + parsed body only.
+ */
+export interface InboundWebhookResult {
+  status: number;
+  ok: boolean;
+  body: unknown;
+}
+
+/** Filters for `GET /webhook-deliveries`. */
+export interface ListWebhookDeliveriesQuery {
+  provider?: string;
+  connectionId?: string;
+  eventType?: string;
+  status?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * A row from `GET /webhook-deliveries` (summary view — no payload). The webhook
+ * spec asserts on `signatureValid`, `status`, and the `downstream*` fields that
+ * capture the enqueue outcome.
+ */
+export interface WebhookDeliverySummary {
+  id: string;
+  eventId: string;
+  provider: string;
+  connectionId: string;
+  eventType: string | null;
+  objectType: string | null;
+  externalId: string | null;
+  receivedAt: string;
+  signatureValid: boolean | null;
+  dedupResult: string | null;
+  status: string;
+  rejectionReason: string | null;
+  publishedMessageId: string | null;
+  downstreamJobId: string | null;
+  downstreamJobType: string | null;
+  dlqReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RoutingRule {
   id: string;
   sourceConnectionId: string;
