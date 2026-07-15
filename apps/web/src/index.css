@@ -3262,6 +3262,12 @@ textarea,
   border-bottom: none;
 }
 
+/* Keeps a disabled write button wrapped by ReadOnlyLock (#1615) aligned with
+   the un-wrapped variant inside flex action rows and form action bars. */
+.read-only-lock {
+  display: inline-flex;
+}
+
 /* ── InPost webhook runbook (#1473) ── */
 .action-list__item-actions {
   display: flex;

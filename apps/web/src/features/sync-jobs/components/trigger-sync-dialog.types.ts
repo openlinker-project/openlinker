@@ -44,4 +44,9 @@ export interface TriggerSyncDialogProps {
   connection: Connection;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Demo read-only viewer (#1615): the dialog opens with editable inputs, but
+   * the final "Trigger" submit renders disabled with a read-only tooltip.
+   */
+  submitDisabled?: boolean;
 }

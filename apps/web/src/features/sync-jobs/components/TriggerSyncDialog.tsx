@@ -23,6 +23,8 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
@@ -165,6 +167,7 @@ export function TriggerSyncDialog({
   connection,
   open,
   onOpenChange,
+  submitDisabled = false,
 }: TriggerSyncDialogProps): ReactElement {
   const triggerableJobs = useMemo(
     () =>
@@ -323,13 +326,17 @@ export function TriggerSyncDialog({
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
             Cancel
           </Button>
-          <Button
-            tone="primary"
-            onClick={() => void handleSubmit()}
-            disabled={enqueueSyncJob.isPending || intentKey === null || !hasTriggers}
-          >
-            {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
-          </Button>
+          <ReadOnlyLock active={submitDisabled} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button
+              tone="primary"
+              onClick={() => void handleSubmit()}
+              disabled={
+                enqueueSyncJob.isPending || intentKey === null || !hasTriggers || submitDisabled
+              }
+            >
+              {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
+            </Button>
+          </ReadOnlyLock>
         </DialogFooter>
       </DialogContent>
     </Dialog>

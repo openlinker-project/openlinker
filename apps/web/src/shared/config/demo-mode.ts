@@ -33,3 +33,12 @@ export const BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE =
  */
 export const NAV_DEMO_RESTRICTED_MESSAGE =
   'Requires an administrator role.';
+
+/**
+ * Tooltip on a write action a demo read-only viewer sees rendered-but-disabled.
+ * The action stays visible so the demo advertises the capability exists; the
+ * final write submit is locked because the deployment is read-only in demo
+ * mode. Only shown to demo viewers — genuinely unauthorized non-demo sessions
+ * keep the existing hide-when-missing behaviour (see `useWriteAccess`).
+ */
+export const DEMO_READ_ONLY_ACTION_MESSAGE = 'Read-only in demo mode.';
