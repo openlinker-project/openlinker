@@ -3,8 +3,21 @@ import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Connection } from '../../features/connections/api/connections.types';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../test/test-utils';
 import { ConnectionDetailPage } from './connection-detail-page';
+
+const viewerSessionAdapter = createAuthenticatedSessionAdapter({
+  id: 'demo-viewer',
+  username: 'demo-viewer',
+  email: 'viewer@example.com',
+  role: 'viewer',
+  permissions: ['connections:read'],
+});
 
 const PRESTASHOP_UUID_1 = '11111111-1111-4111-8111-111111111111';
 const PRESTASHOP_UUID_2 = '22222222-2222-4222-8222-222222222222';
@@ -125,6 +138,39 @@ describe('ConnectionDetailPage', () => {
       'true',
     );
     expect(screen.getByText('Connection config')).toBeInTheDocument();
+  });
+
+  it('lets a demo/read-only viewer session open the Config tab and see it render read-only (#1616)', async () => {
+    // Nav access to /connections/:id carries no requiresRole gate (see
+    // nav-registry.ts), so a viewer-role session reaches this page the same
+    // way an admin does. The backend's deny-by-default RBAC projection
+    // (connection-response.dto.ts) sends `config: {}` to any non-admin
+    // caller, so the panel renders its empty-state copy rather than
+    // populated config - never partially-redacted secrets.
+    const user = userEvent.setup();
+    const viewerVisibleConnection: Connection = { ...sampleConnection, config: {} };
+    const apiClient = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(viewerVisibleConnection) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+      </Routes>,
+      { apiClient, route: `/connections/${sampleConnection.id}`, sessionAdapter: viewerSessionAdapter },
+    );
+
+    await screen.findByRole('heading', { name: 'Overview' });
+    const configTab = screen.getByRole('tab', { name: 'Config' });
+    expect(configTab).not.toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(configTab);
+    expect(configTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Connection config')).toBeInTheDocument();
+    expect(screen.getByText('No configuration values set.')).toBeInTheDocument();
+    // Read-only: no editable inputs or save affordance anywhere in the tab.
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+    expect(document.querySelector('input')).toBeNull();
   });
 
   it('honors ?tab=config in the URL on first render', async () => {
