@@ -11426,6 +11426,21 @@ html[data-density='compact'] .status-badge {
   letter-spacing: var(--tracking-wide);
 }
 
+.id-chip--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.id-chip--link:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface-hover);
+  color: var(--accent-primary);
+}
+
+.id-chip--link:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
 .detail-section__title-row {
   display: flex;
   align-items: baseline;

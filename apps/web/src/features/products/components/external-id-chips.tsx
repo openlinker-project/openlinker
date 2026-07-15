@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import type { ExternalIdMapping } from '../api/products.types';
 
 interface ExternalIdChipsProps {
@@ -13,10 +14,15 @@ export function ExternalIdChips({ mappings }: ExternalIdChipsProps): ReactElemen
   return (
     <div className="id-chip-row">
       {mappings.map((mapping) => (
-        <span key={`${mapping.platformType}-${mapping.connectionId}-${mapping.externalId}`} className="id-chip">
+        <Link
+          key={`${mapping.platformType}-${mapping.connectionId}-${mapping.externalId}`}
+          className="id-chip id-chip--link"
+          to={`/connections/${mapping.connectionId}`}
+          title={`Open connection for ${mapping.platformType} ${mapping.externalId}`}
+        >
           <span className="id-chip__platform">{mapping.platformType}</span>
           <span>{mapping.externalId}</span>
-        </span>
+        </Link>
       ))}
     </div>
   );

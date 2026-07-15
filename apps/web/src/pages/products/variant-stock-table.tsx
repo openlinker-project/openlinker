@@ -170,7 +170,11 @@ function ListingsSubtable({ listings }: { listings: OfferMapping[] }): ReactElem
             <td>
               <ConnectionEntityLabel connectionId={listing.connectionId} showId={false} />
             </td>
-            <td className="mono-text">{listing.externalId}</td>
+            <td className="mono-text">
+              <a className="listings-subtable__link" href={`/listings/${listing.id}`}>
+                {listing.externalId}
+              </a>
+            </td>
             <td className="mono-text tabular">
               <TimeDisplay iso={listing.updatedAt} />
             </td>
