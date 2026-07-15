@@ -32,6 +32,7 @@ import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client
 import { getSharedKsefRateLimiter } from '../../infrastructure/http/ksef-rate-limiter';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import { NbpExchangeRateClient } from '../../infrastructure/fx/nbp-exchange-rate.client';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
@@ -81,6 +82,10 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     // MF public-key cache as the transport) + the FA(3) build/validate pipeline.
     const sessionCrypto = new KsefSessionCryptoService(publicKeyCache);
     const fa3Builder = new Fa3WithValidationBuilder();
+    // NBP exchange-rate resolver (#1581) — used only when a command's currency is
+    // not PLN (art. 106e ust. 11 PLN/VAT conversion). Native-fetch client, no new
+    // npm dependency; a single shared instance is safe (stateless).
+    const exchangeRateResolver = new NbpExchangeRateClient();
 
     return {
       invoicing: new KsefInvoicingAdapter(
@@ -90,7 +95,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
-        { payment, defaultLineUnit },
+        { payment, defaultLineUnit, exchangeRateResolver },
       ),
     };
   }

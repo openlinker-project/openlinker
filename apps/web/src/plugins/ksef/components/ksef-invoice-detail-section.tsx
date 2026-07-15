@@ -29,6 +29,7 @@ import {
 } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import {
   Dialog,
   DialogClose,
@@ -168,9 +169,21 @@ export function KsefInvoiceDetailSection({
             <div className="slot-row__hint">
               {t('invoice.ksef.numberHint', 'Authority-assigned on clearance')}
             </div>
+            {/* Art. 108g (transitional from 2026): a bank transfer paying a KSeF
+                invoice must carry this 35-character KSeF number in the payment
+                title. We surface it copyable so the operator/buyer can paste it
+                into the transfer — OpenLinker does not initiate the transfer. */}
+            {ksefNumber ? (
+              <div className="slot-row__hint">
+                {t(
+                  'invoice.ksef.art108gHint',
+                  'Art. 108g: include this KSeF number in the bank-transfer title when paying this invoice.',
+                )}
+              </div>
+            ) : null}
           </div>
           {ksefNumber ? (
-            <span className="mono-text text-sm">{ksefNumber}</span>
+            <CopyableId id={ksefNumber} label={ksefNumber} />
           ) : (
             <span className="text-muted">
               {t('invoice.ksef.numberPending', 'Pending')}

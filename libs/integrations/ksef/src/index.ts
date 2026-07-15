@@ -58,6 +58,7 @@ export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-cry
 // Online-session business-failure (zero-valid processed session) — surfaced to
 // the host classifier / core InvoiceService as a terminal failure (#1149 / C5).
 export { KsefSessionException } from './domain/exceptions/ksef-session.exception';
+export { KsefExchangeRateException } from './domain/exceptions/ksef-exchange-rate.exception';
 // Unsupported requested document type — a terminal input error (#1149 / C5).
 export { KsefUnsupportedDocumentTypeException } from './domain/exceptions/ksef-unsupported-document-type.exception';
 // documentType <-> correction command-shape mismatch — a terminal input error (#1151 / C7).

@@ -11,6 +11,7 @@
  * @see {@link KsefInvoicingAdapter}
  */
 import type { Fa3PaymentInput } from '../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../fx/nbp-exchange-rate.types';
 
 export interface KsefInvoicingAdapterOptions {
   /**
@@ -27,4 +28,12 @@ export interface KsefInvoicingAdapterOptions {
   defaultLineUnit?: string;
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   now?: () => Date;
+  /**
+   * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
+   * conversion of foreign-currency invoices. Injected so specs can fake it;
+   * the factory always wires the concrete {@link NbpExchangeRateClient}. When
+   * absent (bare unit specs), foreign-currency conversion is skipped with a
+   * warning and PLN invoices are unaffected either way.
+   */
+  exchangeRateResolver?: NbpExchangeRateResolverPort;
 }

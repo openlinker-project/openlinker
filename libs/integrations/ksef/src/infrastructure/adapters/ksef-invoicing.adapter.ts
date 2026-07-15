@@ -82,7 +82,8 @@ import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
 import type { IFa3XmlBuilder } from '../fa3/builders/fa3-xml-builder.port';
-import type { Fa3PaymentInput, SellerProfile } from '../fa3/domain/fa3-xml.types';
+import type { Fa3ExchangeRate, Fa3PaymentInput, SellerProfile } from '../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../fx/nbp-exchange-rate.types';
 import {
   FA3_FORM_CODE,
   FA3_SCHEMA_VERSION,
@@ -138,6 +139,13 @@ export class KsefInvoicingAdapter
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
+  /**
+   * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
+   * conversion of foreign-currency invoices. `undefined` in bare unit specs;
+   * the factory always wires the concrete client.
+   */
+  private readonly exchangeRateResolver: NbpExchangeRateResolverPort | undefined;
+
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IKsefHttpClient,
@@ -159,6 +167,7 @@ export class KsefInvoicingAdapter
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
     this.now = options.now ?? ((): Date => new Date());
+    this.exchangeRateResolver = options.exchangeRateResolver;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -198,6 +207,12 @@ export class KsefInvoicingAdapter
     );
     this.warnOnEmptyTaxRateFallback(cmd);
 
+    // Foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581): resolve the
+    // NBP average rate for the last business day preceding the tax point. Resolved
+    // BEFORE any session opens so a resolution failure fails the record (compliance
+    // over availability) rather than emitting a conversion-less document.
+    const exchangeRate = await this.resolveExchangeRate(cmd, issuedAt);
+
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
     const xml = this.fa3Builder.build(
@@ -209,6 +224,7 @@ export class KsefInvoicingAdapter
         defaultTaxRate: this.defaultTaxRate,
         defaultLineUnit: this.defaultLineUnit,
         payment: this.payment,
+        ...(exchangeRate !== undefined ? { exchangeRate } : {}),
       }),
     );
 
@@ -280,6 +296,48 @@ export class KsefInvoicingAdapter
     // Persist the FA(3) source XML as a neutral opaque blob so the core service can
     // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
     return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+  }
+
+  /**
+   * Resolve the foreign-currency exchange rate for the art. 106e ust. 11 PLN/VAT
+   * conversion (#1581). Returns `undefined` for a PLN invoice (no conversion
+   * needed) or when no resolver is wired (bare unit specs).
+   *
+   * RATE TIMING (snapshot-vs-fresh decision): the rate is resolved FRESH at issue
+   * time, keyed to the document's tax point. For a plain invoice the tax point is
+   * `saleDate ?? issueDate`; for a CORRECTION it is deliberately the ORIGINAL
+   * document's issue date, NOT the KOR's own (later) issue date. Because NBP
+   * publishes immutable historical rates, re-resolving a correction against the
+   * original tax point returns the exact same rate the original was issued at —
+   * giving snapshot-equivalent "as issued" consistency (#1297 philosophy) WITHOUT
+   * persisting the rate on the country-agnostic core snapshot (ADR-026 keeps all
+   * NBP/PLN vocabulary inside this package).
+   */
+  private async resolveExchangeRate(
+    cmd: IssueInvoiceCommand,
+    issuedAt: Date,
+  ): Promise<Fa3ExchangeRate | undefined> {
+    const currency = cmd.currency.trim().toUpperCase();
+    if (currency === 'PLN') {
+      return undefined;
+    }
+    if (!this.exchangeRateResolver) {
+      this.logger.warn(
+        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) is in ${currency} ` +
+          'but no NBP exchange-rate resolver is wired — skipping the art. 106e ust. 11 PLN/VAT ' +
+          'conversion (KursWaluty / P_14_xW will be absent).',
+      );
+      return undefined;
+    }
+    const taxPoint = cmd.correction
+      ? cmd.correction.originalIssueDate
+      : cmd.saleDate ?? this.toIsoDate(issuedAt);
+    const resolved = await this.exchangeRateResolver.resolveRate(currency, taxPoint);
+    this.logger.log(
+      `Resolved NBP rate ${resolved.rate} for ${currency} (table ${resolved.table}, ` +
+        `${resolved.rateDate}; tax point ${taxPoint}) for connection ${this.connectionId}`,
+    );
+    return { rate: resolved.rate, rateDate: resolved.rateDate, table: resolved.table };
   }
 
   /**

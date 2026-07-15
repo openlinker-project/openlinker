@@ -722,4 +722,75 @@ describe('buildFa3Xml', () => {
       expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
     });
   });
+
+  describe('foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581)', () => {
+    function eurMultiBandInput(): Fa3BuilderInput {
+      return {
+        ...b2bInput(),
+        currency: 'EUR',
+        saleDate: '2026-06-20',
+        lines: [
+          { name: 'Standard widget', quantity: 1, unitPriceGross: 123.0, p12: '23' },
+          { name: 'Reduced book', quantity: 2, unitPriceGross: 54.0, p12: '8' },
+          { name: 'Super-reduced food', quantity: 1, unitPriceGross: 21.0, p12: '5' },
+        ],
+        exchangeRate: { rate: 4.321, rateDate: '2026-06-19', table: '117/A/NBP/2026' },
+      };
+    }
+
+    it('should emit KursWaluty (4dp) on every FaWiersz line for a non-PLN invoice', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      // 3 lines → 3 KursWaluty elements, each the resolved NBP rate at 4dp.
+      expect(xml.match(/<KursWaluty>4\.3210<\/KursWaluty>/g)?.length).toBe(3);
+    });
+
+    it('should emit the per-band PLN-converted VAT amounts (P_14_xW)', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      // 23%: VAT 23.00 EUR × 4.3210 = 99.383 → 99.38 PLN
+      expect(xml).toContain('<P_14_1>23.00</P_14_1><P_14_1W>99.38</P_14_1W>');
+      // 8%: VAT 8.00 EUR × 4.3210 = 34.568 → 34.57 PLN
+      expect(xml).toContain('<P_14_2>8.00</P_14_2><P_14_2W>34.57</P_14_2W>');
+      // 5%: VAT 1.00 EUR × 4.3210 = 4.321 → 4.32 PLN
+      expect(xml).toContain('<P_14_3>1.00</P_14_3><P_14_3W>4.32</P_14_3W>');
+    });
+
+    it('should place each P_14_xW immediately after its P_14_x (XSD band order)', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      expect(xml).toMatch(
+        /<P_13_1>[^<]*<\/P_13_1><P_14_1>[^<]*<\/P_14_1><P_14_1W>[^<]*<\/P_14_1W>/,
+      );
+    });
+
+    it('should pass the structural FA(3) validator for a multi-band non-PLN invoice', () => {
+      expect(() => validateFa3Xml(buildFa3Xml(eurMultiBandInput()))).not.toThrow();
+    });
+
+    it('should emit KursWaluty + P_14_xW on a foreign-currency correction (converted difference)', () => {
+      const input = eurMultiBandInput();
+      input.correction = {
+        typKorekty: '2',
+        reason: 'Return',
+        originalIssueDate: '2026-06-20',
+        originalInvoiceNumber: 'FV/2026/06/0001',
+        originalKsefNumber: null,
+        // After: the 23% line quantity drops to 0 (full return of that line).
+        correctedLines: [
+          { name: 'Standard widget', quantity: 0, unitPriceGross: 123.0, p12: '23' },
+          { name: 'Reduced book', quantity: 2, unitPriceGross: 54.0, p12: '8' },
+          { name: 'Super-reduced food', quantity: 1, unitPriceGross: 21.0, p12: '5' },
+        ],
+      };
+      const xml = buildFa3Xml(input);
+      // 23% band VAT difference: 0 − 23.00 = −23.00 EUR × 4.3210 = −99.38 PLN.
+      expect(xml).toContain('<P_14_1>-23.00</P_14_1><P_14_1W>-99.38</P_14_1W>');
+      expect(xml).toContain('<KursWaluty>4.3210</KursWaluty>');
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+
+    it('should NOT emit KursWaluty or P_14_xW for a PLN invoice', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).not.toContain('<KursWaluty>');
+      expect(xml).not.toContain('P_14_1W');
+    });
+  });
 });
