@@ -11298,8 +11298,9 @@ html[data-density='compact'] .status-badge {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.14);
-  border: 1px solid rgb(255 255 255 / 0.3);
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
   color: #fff;
   display: flex;
   align-items: center;
@@ -11309,7 +11310,8 @@ html[data-density='compact'] .status-badge {
 }
 
 .lightbox__nav:hover {
-  background: rgb(255 255 255 / 0.24);
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
 }
 
 .lightbox__nav--prev {
@@ -11327,8 +11329,9 @@ html[data-density='compact'] .status-badge {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.12);
-  border: 1px solid rgb(255 255 255 / 0.3);
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
   color: #fff;
   display: flex;
   align-items: center;
@@ -11338,7 +11341,8 @@ html[data-density='compact'] .status-badge {
 }
 
 .lightbox__close:hover {
-  background: rgb(255 255 255 / 0.22);
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
 }
 
 .lightbox__caption {
