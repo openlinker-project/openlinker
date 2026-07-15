@@ -158,6 +158,11 @@
       "types": "./dist/invoicing/orm-entities.d.ts",
       "require": "./dist/invoicing/orm-entities.js",
       "default": "./dist/invoicing/orm-entities.js"
+    },
+    "./mailer": {
+      "types": "./dist/mailer/index.d.ts",
+      "require": "./dist/mailer/index.js",
+      "default": "./dist/mailer/index.js"
     }
   },
   "files": [
