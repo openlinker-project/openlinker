@@ -7,7 +7,19 @@ import {
   sampleConnection,
 } from '../../../test/test-utils';
 import type { Connection } from '../api/connections.types';
+import type * as SystemModule from '../../system';
 import { EditConnectionForm } from './EditConnectionForm';
+
+// Drive demo mode directly rather than through the async system-config query.
+// The query->demoMode plumbing is covered by use-demo-mode's own tests; these
+// tests only assert the write-access gating, so resolving demoMode
+// synchronously removes a flaky race where the config query hadn't settled
+// before the disabled-state assertion ran under CI's parallel execution.
+let mockDemoMode = false;
+vi.mock('../../system', async (importOriginal): Promise<typeof SystemModule> => {
+  const actual = await importOriginal<typeof SystemModule>();
+  return { ...actual, useDemoMode: () => mockDemoMode };
+});
 
 const PRESTASHOP_UUID_1 = '11111111-1111-4111-8111-111111111111';
 const PRESTASHOP_UUID_2 = '22222222-2222-4222-8222-222222222222';
@@ -61,7 +73,10 @@ function apiClientWithCandidates(
 }
 
 describe('EditConnectionForm', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    mockDemoMode = false;
+  });
 
   it('renders pre-filled form fields from the connection', () => {
     renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
@@ -662,11 +677,8 @@ describe('EditConnectionForm', () => {
     });
 
     it('opens with editable inputs but disables the final submit', async () => {
-      const apiClient = createMockApiClient({
-        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
-      });
+      mockDemoMode = true;
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
-        apiClient,
         sessionAdapter: viewerAdapter,
       });
 
@@ -675,24 +687,25 @@ describe('EditConnectionForm', () => {
       fireEvent.change(nameInput, { target: { value: 'Should not persist' } });
       expect(nameInput).toHaveValue('Should not persist');
 
-      // `findByRole` only waits for the button to exist — it renders enabled
-      // on first paint (useDemoMode() returns false until the config query
-      // resolves) and only becomes disabled once that async resolution lands.
-      // Assert via waitFor with an extended timeout: under CI's parallel test
-      // execution the config-query resolution can exceed the 1000ms default,
-      // so match the 5000ms precedent from bulk-config-step.test.tsx.
       const submit = await screen.findByRole('button', { name: 'Save changes' });
-      await waitFor(() => expect(submit).toBeDisabled(), { timeout: 5000 });
+      expect(submit).toBeDisabled();
     });
 
     it('keeps the submit enabled for an admin session even in demo mode', async () => {
-      const apiClient = createMockApiClient({
-        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      mockDemoMode = true;
+      // Default authenticated adapter holds connections:write, so canWrite wins
+      // over demo read-only — the affordance stays enabled for a real admin.
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+        sessionAdapter: createAuthenticatedSessionAdapter(),
       });
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
-      const submit = await screen.findByRole('button', { name: 'Save changes' });
-      expect(submit).not.toBeDisabled();
+      // The submit starts disabled (session pending -> canWrite false -> demo
+      // read-only) and flips to enabled once the async session hydrates and
+      // canWrite becomes true. Wait for that transition rather than asserting
+      // synchronously against the pending-session frame.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Save changes' })).not.toBeDisabled(),
+      );
     });
   });
 });
