@@ -45,6 +45,10 @@ import type {
 import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  DEMO_MODE_SERVICE_TOKEN,
+  type IDemoModeService,
+} from '../../auth/demo-mode.service.interface';
 
 @ApiBearerAuth()
 @ApiTags('connections')
@@ -59,7 +63,9 @@ export class ConnectionController {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
-    private readonly webhookSecretService: IWebhookSecretService
+    private readonly webhookSecretService: IWebhookSecretService,
+    @Inject(DEMO_MODE_SERVICE_TOKEN)
+    private readonly demoModeService: IDemoModeService
   ) {}
 
   private async toResponse(
@@ -83,7 +89,12 @@ export class ConnectionController {
       );
       supported = [];
     }
-    return ConnectionResponseDto.fromDomain(connection, supported, user?.role);
+    return ConnectionResponseDto.fromDomain(
+      connection,
+      supported,
+      user?.role,
+      this.demoModeService.isDemoModeEnabled()
+    );
   }
 
   @Roles('admin')

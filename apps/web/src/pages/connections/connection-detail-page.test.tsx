@@ -11,6 +11,14 @@ import {
 } from '../../test/test-utils';
 import { ConnectionDetailPage } from './connection-detail-page';
 
+const viewerSessionAdapter = createAuthenticatedSessionAdapter({
+  id: 'demo-viewer',
+  username: 'demo-viewer',
+  email: 'viewer@example.com',
+  role: 'viewer',
+  permissions: ['connections:read'],
+});
+
 const PRESTASHOP_UUID_1 = '11111111-1111-4111-8111-111111111111';
 const PRESTASHOP_UUID_2 = '22222222-2222-4222-8222-222222222222';
 const ALLEGRO_UUID = '33333333-3333-4333-8333-333333333333';
@@ -130,6 +138,47 @@ describe('ConnectionDetailPage', () => {
       'true',
     );
     expect(screen.getByText('Connection config')).toBeInTheDocument();
+  });
+
+  it('lets a demo/read-only viewer session open the Config tab and see real config in demo mode (#1616)', async () => {
+    // Nav access to /connections/:id carries no requiresRole gate (see
+    // nav-registry.ts), so a viewer-role session reaches this page the same
+    // way an admin does. In demo mode, the backend's demo-mode-aware RBAC
+    // projection (connection-response.dto.ts) relaxes config visibility for
+    // the read-only 'viewer' role specifically, so the FE receives the real
+    // config and the panel renders it (read-only, no inputs/save) rather
+    // than the empty-state copy. Outside demo mode a production 'operator'
+    // still gets a blanked config from the backend - that protection (#1124)
+    // is a backend-only concern and is covered by connection-response.dto.spec.ts.
+    const user = userEvent.setup();
+    const viewerVisibleConnection: Connection = {
+      ...sampleConnection,
+      config: { baseUrl: 'https://demo-shop.example.com', shopId: 'shop-42' },
+    };
+    const apiClient = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(viewerVisibleConnection) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+      </Routes>,
+      { apiClient, route: `/connections/${sampleConnection.id}`, sessionAdapter: viewerSessionAdapter },
+    );
+
+    await screen.findByRole('heading', { name: 'Overview' });
+    const configTab = screen.getByRole('tab', { name: 'Config' });
+    expect(configTab).not.toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(configTab);
+    expect(configTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Connection config')).toBeInTheDocument();
+    expect(screen.queryByText('No configuration values set.')).toBeNull();
+    expect(screen.getByText(/demo-shop\.example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/shop-42/)).toBeInTheDocument();
+    // Read-only: no editable inputs or save affordance anywhere in the tab.
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+    expect(document.querySelector('input')).toBeNull();
   });
 
   it('honors ?tab=config in the URL on first render', async () => {
