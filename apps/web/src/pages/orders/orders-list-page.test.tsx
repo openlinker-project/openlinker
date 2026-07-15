@@ -634,6 +634,61 @@ describe('OrdersListPage', () => {
     expect(container.querySelector('.data-table__detail-row')).toBeNull();
   });
 
+  describe('demo read-only viewer (#1667)', () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['orders:read'],
+    });
+
+    it('renders the per-row Retry visible but disabled with a read-only tooltip for a demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+      await screen.findByText('ALG-FAIL');
+      const retryButton = await screen.findByRole('button', { name: 'Retry' });
+      expect(retryButton).toBeDisabled();
+    });
+
+    it('renders the mobile card Retry visible but disabled for a demo viewer', async () => {
+      const viewport = mockMobileViewport();
+      try {
+        const mockApi = createMockApiClient({
+          orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+          connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+          system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+        await screen.findAllByText('ALG-FAIL');
+        const retryButton = await screen.findByRole('button', { name: 'Retry' });
+        expect(retryButton).toBeDisabled();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+
+      await screen.findByText('ALG-FAIL');
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
   it('should preview the first item name plus a "+N more" suffix for multi-item orders (#1646)', async () => {
     const multiItemOrder: OrderRecord = {
       ...syncedOrder,
