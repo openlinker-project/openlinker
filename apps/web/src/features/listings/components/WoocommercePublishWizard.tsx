@@ -43,6 +43,10 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
 import { useInventoryAvailabilityBatchQuery } from '../../inventory';
@@ -192,6 +196,13 @@ export function WoocommercePublishWizard({
   const bulkMutation = useBulkShopPublishMutation();
   const { showToast } = useToast();
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+
+  // A demo viewer can walk the whole wizard (selection, Configure, Review
+  // all stay editable); only the final publish submit is gated (#1663),
+  // mirroring the visible-but-disabled pattern from ConnectionActionsPanel
+  // (#1615).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
 
   const [reviewing, setReviewing] = useState(false);
 
@@ -648,9 +659,11 @@ export function WoocommercePublishWizard({
             </Button>
           </div>
           <div className="wizard-actions__group">
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Publishing…' : 'Confirm & publish'}
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button type="submit" disabled={isPending || write.demoReadOnly}>
+                {isPending ? 'Publishing…' : 'Confirm & publish'}
+              </Button>
+            </ReadOnlyLock>
           </div>
         </div>
       </form>
@@ -852,18 +865,22 @@ export function WoocommercePublishWizard({
               Review
             </Button>
           ) : null}
-          <Button
-            type="submit"
-            disabled={
-              isPending || (mode === 'bulk' ? itemsFieldArray.fields.length === 0 : !singleId)
-            }
-          >
-            {isPending
-              ? 'Publishing…'
-              : mode === 'bulk'
-                ? `Publish ${itemsFieldArray.fields.length} products`
-                : 'Publish'}
-          </Button>
+          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button
+              type="submit"
+              disabled={
+                isPending ||
+                write.demoReadOnly ||
+                (mode === 'bulk' ? itemsFieldArray.fields.length === 0 : !singleId)
+              }
+            >
+              {isPending
+                ? 'Publishing…'
+                : mode === 'bulk'
+                  ? `Publish ${itemsFieldArray.fields.length} products`
+                  : 'Publish'}
+            </Button>
+          </ReadOnlyLock>
         </div>
       </div>
     </form>

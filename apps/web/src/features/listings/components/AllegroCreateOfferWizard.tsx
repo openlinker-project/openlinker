@@ -44,6 +44,10 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
 import { SuggestionDialog } from '../../content';
@@ -237,6 +241,12 @@ export function AllegroCreateOfferWizard({
   // Fresh idempotency key per mount. Re-mount = launcher close+reopen =
   // a new key naturally (#307 acceptance preserved).
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+
+  // A demo viewer can walk the whole wizard (all steps stay editable); only
+  // the final "Create offer" submit is gated (#1663), mirroring the
+  // visible-but-disabled pattern from ConnectionActionsPanel (#1615).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
 
   const form = useForm<CreateOfferFieldsValues, undefined, CreateOfferFieldsSubmission>({
     // Connection id is fixed by the launcher's pick. Variant defaults to
@@ -1314,9 +1324,15 @@ export function AllegroCreateOfferWizard({
               Next
             </Button>
           ) : (
-            <Button type="submit" form="create-offer-form" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Submitting…' : 'Create offer'}
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                type="submit"
+                form="create-offer-form"
+                disabled={mutation.isPending || write.demoReadOnly}
+              >
+                {mutation.isPending ? 'Submitting…' : 'Create offer'}
+              </Button>
+            </ReadOnlyLock>
           )}
         </div>
       </div>
