@@ -36,4 +36,14 @@ export interface KsefInvoicingAdapterOptions {
    * warning and PLN invoices are unaffected either way.
    */
   exchangeRateResolver?: NbpExchangeRateResolverPort;
+  /**
+   * Interim cross-border escape hatch (#1586). When `true`, issuance skips the
+   * `assertCrossBorderHandled` guard and issues even when the buyer country
+   * differs from the seller country (the operator asserts they have handled tax
+   * banding out of band). Defaults to `false` - cross-border sales are refused
+   * with `KsefCrossBorderUnsupportedException` rather than emitting a
+   * silently-wrong domestic-rate document. Resolved by the factory from
+   * `KsefConnectionConfig.allowCrossBorder`.
+   */
+  allowCrossBorder?: boolean;
 }

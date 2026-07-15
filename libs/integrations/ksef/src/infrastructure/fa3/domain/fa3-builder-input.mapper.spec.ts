@@ -14,6 +14,8 @@ import {
   UnsupportedCountryCodeException,
 } from '../../../domain/exceptions/fa3-builder.exception';
 import { mapToFa3BuilderInput, type Fa3MappingContext } from './fa3-builder-input.mapper';
+import { buildFa3Xml } from '../builders/fa3-xml.builder';
+import { validateFa3Xml } from '../validators/fa3-xsd.validator';
 import type { SellerProfile } from './fa3-xml.types';
 
 const SELLER: SellerProfile = {
@@ -180,5 +182,72 @@ describe('mapToFa3BuilderInput - line unit P_8A precedence (#1525)', () => {
     };
     const result = mapToFa3BuilderInput(cmd, { ...CONTEXT, defaultLineUnit: 'szt.' });
     expect(result.correction?.correctedLines[0].unit).toBe('szt.');
+  });
+});
+
+describe('mapToFa3BuilderInput - per-line GTU / Procedura (#1586)', () => {
+  it('should forward gtuCode and procedureCode onto the mapped line', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [
+      { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+    ];
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect(result.lines[0].gtuCode).toBe('GTU_01');
+    expect(result.lines[0].procedureCode).toBe('SW');
+  });
+
+  it('should omit both when the neutral line carries neither', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT);
+    expect('gtuCode' in result.lines[0]).toBe(false);
+    expect('procedureCode' in result.lines[0]).toBe(false);
+  });
+
+  it('should treat empty/whitespace codes as absent (no connection default)', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [
+      { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', gtuCode: '  ', procedureCode: '' },
+    ];
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect('gtuCode' in result.lines[0]).toBe(false);
+    expect('procedureCode' in result.lines[0]).toBe(false);
+  });
+
+  it('should forward the codes onto correction lines too', () => {
+    const cmd = baseCommand('23');
+    cmd.correction = {
+      originalClearanceReference: null,
+      originalDocumentNumber: 'FA/2026/06/0001',
+      originalIssueDate: '2026-06-01',
+      reason: 'Return',
+      correctedLines: [
+        { name: 'Widget', quantity: 1, unitPriceGross: 90, taxRate: '23', gtuCode: 'GTU_07' },
+      ],
+    };
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect(result.correction?.correctedLines[0].gtuCode).toBe('GTU_07');
+  });
+});
+
+describe('mixed-rate order -> correctly-split FA(3) band breakdown (#1586 acceptance)', () => {
+  it('should flow distinct per-line neutral rates through to the P_13/P_14 band split', () => {
+    const cmd = baseCommand('23');
+    // Two lines at different genuine per-line rates (23% + 8%) - the exact
+    // mixed-rate case that a single flat connection default would mis-tax.
+    cmd.lines = [
+      { name: 'Standard-rate good', quantity: 1, unitPriceGross: 123, taxRate: '23' },
+      { name: 'Reduced-rate good', quantity: 1, unitPriceGross: 108, taxRate: '8' },
+    ];
+    const mapped = mapToFa3BuilderInput(cmd, CONTEXT);
+    // Mapping seam: each line resolves to its OWN P_12, not the connection default.
+    expect(mapped.lines.map((l) => l.p12)).toEqual(['23', '8']);
+
+    const xml = buildFa3Xml(mapped);
+    // 23% line: net 100.00 -> P_13_1, VAT 23.00 -> P_14_1.
+    expect(xml).toContain('<P_13_1>100.00</P_13_1>');
+    expect(xml).toContain('<P_14_1>23.00</P_14_1>');
+    // 8% line: net 100.00 -> P_13_2, VAT 8.00 -> P_14_2.
+    expect(xml).toContain('<P_13_2>100.00</P_13_2>');
+    expect(xml).toContain('<P_14_2>8.00</P_14_2>');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
   });
 });

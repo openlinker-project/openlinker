@@ -231,6 +231,16 @@ function lineNode(
     P_11: money(lineNet(line)),
     P_12: line.p12,
   };
+  // GTU / Procedura (per-line goods & procedure markers, #1586) sit after P_12
+  // and before KursWaluty in the FaWiersz sequence (XSD lines ~3189/~3194).
+  // Already precedence-resolved by the mapper (absent = omitted); forwarded as
+  // opaque tokens - an out-of-enum value is caught by KSeF at clearance.
+  if (line.gtuCode !== undefined) {
+    node.GTU = line.gtuCode;
+  }
+  if (line.procedureCode !== undefined) {
+    node.Procedura = line.procedureCode;
+  }
   // KursWaluty (per-line dział-VI conversion rate, art. 106e ust. 11) sits after
   // P_12 and before StanPrzed (XSD FaWiersz sequence). Emitted only for a
   // foreign-currency invoice; the same single invoice-level rate is stamped on

@@ -189,12 +189,19 @@ function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
   // configured default, else the element is omitted (empty/whitespace counts
   // as absent so a hollow value never reaches the wire).
   const unit = line.unit?.trim() || context.defaultLineUnit?.trim() || undefined;
+  // Per-line GTU/Procedura markers (#1586) — opaque neutral codes forwarded
+  // verbatim; empty/whitespace counts as absent so a hollow value never reaches
+  // the wire (mirrors the P_8A precedence above). No connection-level default.
+  const gtuCode = line.gtuCode?.trim() || undefined;
+  const procedureCode = line.procedureCode?.trim() || undefined;
   return {
     name: line.name,
     quantity: line.quantity,
     unitPriceGross: line.unitPriceGross,
     p12: resolveP12(line.taxRate || context.defaultTaxRate),
     ...(unit !== undefined ? { unit } : {}),
+    ...(gtuCode !== undefined ? { gtuCode } : {}),
+    ...(procedureCode !== undefined ? { procedureCode } : {}),
   };
 }
 

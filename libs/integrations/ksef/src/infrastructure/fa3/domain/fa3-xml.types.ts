@@ -97,6 +97,21 @@ export interface Fa3Line {
    * connection's `invoiceDefaults.lineUnit` -> absent (element omitted).
    */
   unit?: string;
+  /**
+   * FA(3) `GTU` goods/services marker (`TGTU` enum: `GTU_01`..`GTU_13`, XSD line
+   * ~1997), sits after `P_12`(+variants) and before `Procedura` in the FaWiersz
+   * sequence (#1586). Opaque here - the builder-input mapper forwards the neutral
+   * `InvoiceLine.gtuCode` verbatim; an out-of-enum value is rejected by KSeF at
+   * clearance (the local validator only pins element order). Omitted when absent.
+   */
+  gtuCode?: string;
+  /**
+   * FA(3) `Procedura` transaction-procedure marker (`TOznaczenieProcedury` enum,
+   * XSD line ~3194), sits after `GTU` and before `KursWaluty` in the FaWiersz
+   * sequence (#1586). Opaque - forwarded verbatim from `InvoiceLine.procedureCode`.
+   * Omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**
@@ -250,8 +265,10 @@ export const FA3_FA_CHILD_ORDER = [
  * XSD-mandated child order of the `FaWiersz` sequence (FA(3) v1-0E, XSD line
  * ~3080), restricted to the elements the builder can emit (#1525). Notably
  * `P_8A` (unit of measure) comes immediately before `P_8B` (quantity), and
- * `P_9A` (net unit price) immediately after `P_8B`; the per-line foreign-currency rate `KursWaluty`
- * (art. 106e ust. 11 / dział VI, #1581) sits after `P_12`, and the `StanPrzed`
+ * `P_9A` (net unit price) immediately after `P_8B`; the optional per-line `GTU`
+ * (goods/services marker) and `Procedura` (procedure marker) sit after `P_12`
+ * (#1586), then the per-line foreign-currency rate `KursWaluty`
+ * (art. 106e ust. 11 / dział VI, #1581), and the `StanPrzed`
  * KOR flag closes the sequence. Absent optional elements are simply skipped.
  */
 export const FA3_FA_WIERSZ_CHILD_ORDER = [
@@ -262,6 +279,8 @@ export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'P_9A',
   'P_11',
   'P_12',
+  'GTU',
+  'Procedura',
   'KursWaluty',
   'StanPrzed',
 ] as const;

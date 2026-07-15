@@ -65,6 +65,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const payment = this.resolvePayment(connection);
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
+    const allowCrossBorder = this.resolveAllowCrossBorder(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -95,7 +96,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
-        { payment, defaultLineUnit, exchangeRateResolver },
+        { payment, defaultLineUnit, exchangeRateResolver, allowCrossBorder },
       ),
     };
   }
@@ -177,6 +178,17 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     return typeof lineUnit === 'string' && lineUnit.trim().length > 0
       ? lineUnit.trim()
       : undefined;
+  }
+
+  /**
+   * Resolve the interim cross-border escape hatch (#1586) from
+   * `config.allowCrossBorder`. Defaults to `false` (refuse cross-border sales)
+   * for any connection that has not explicitly opted in - only a literal `true`
+   * enables issuance of a sale to a country other than the seller's own.
+   */
+  private resolveAllowCrossBorder(connection: Connection): boolean {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    return config?.allowCrossBorder === true;
   }
 
   /**

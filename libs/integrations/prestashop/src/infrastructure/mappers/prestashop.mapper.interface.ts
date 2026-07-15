@@ -116,6 +116,15 @@ export interface PrestashopOrderRow {
   product_quantity?: string | number;
   product_price?: string | number;
   product_reference?: string;
+  /**
+   * Per-line unit price INCLUDING tax (`ps_order_detail.unit_price_tax_incl`).
+   * Paired with `unit_price_tax_excl` to derive the genuine per-line VAT rate
+   * for `IncomingOrderItem.taxRate` (#1586 Phase 2) - PrestaShop exposes no
+   * direct per-row rate percentage on the `order_details` resource.
+   */
+  unit_price_tax_incl?: string | number;
+  /** Per-line unit price EXCLUDING tax (`ps_order_detail.unit_price_tax_excl`). */
+  unit_price_tax_excl?: string | number;
   [key: string]: unknown;
 }
 

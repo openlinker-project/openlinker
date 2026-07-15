@@ -312,6 +312,10 @@ export class OrderIngestionService implements IOrderIngestionService {
           sku: item.sku,
           name: item.name,
           imageUrl: item.imageUrl,
+          // Genuine per-line tax rate when the source adapter reported one
+          // (#1586 Phase 2); absent leaves the invoicing pipeline's
+          // connection-default fallback in place. Opaque neutral code (ADR-026).
+          taxRate: item.taxRate,
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason });
