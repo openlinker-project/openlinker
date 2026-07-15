@@ -56,4 +56,31 @@ describe('SettingsPage', () => {
     expect(headingNames).toContain('Organization');
     expect(headingNames).toContain('Preferences');
   });
+
+  it('shows the Mailer tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Mailer' })).toBeInTheDocument();
+    expect(screen.getByText('Mailer', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  it('never renders the Mailer tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+      }),
+    });
+
+    // Wait for the authenticated Account tile to confirm session resolution,
+    // then assert the Mailer tile is fully absent — not disabled, not present.
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Mailer' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+  });
 });

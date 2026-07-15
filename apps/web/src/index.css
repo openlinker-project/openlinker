@@ -5905,6 +5905,20 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/*
+ * ── Mailer Settings (#1644) ─────────────────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; this covers the
+ * SMTP-secure checkbox label, same shape as `.create-offer-checkbox`.
+ */
+.mailer-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
 .create-offer-variant-picker {
   display: grid;
   gap: 0.5rem;

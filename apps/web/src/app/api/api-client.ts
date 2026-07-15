@@ -36,6 +36,10 @@ import { createHealthApi, type HealthApi } from '../../features/health/api/healt
 import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
 import { createInvoicingApi, type InvoicingApi } from '../../features/invoicing/api/invoicing.api';
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
+import {
+  createMailerSettingsApi,
+  type MailerSettingsApi,
+} from '../../features/mailer-settings/api/mailer-settings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
@@ -102,6 +106,7 @@ export interface CoreApiClient {
   inventory: InventoryApi;
   invoicing: InvoicingApi;
   listings: ListingsApi;
+  mailerSettings: MailerSettingsApi;
   orders: OrdersApi;
   products: ProductsApi;
   promptTemplates: PromptTemplatesApi;
@@ -253,6 +258,7 @@ export function createApiClient({
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request),
+    mailerSettings: createMailerSettingsApi(request),
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),
     products: createProductsApi(request),

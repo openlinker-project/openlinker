@@ -353,6 +353,22 @@ export function createMockApiClient(
       }),
       ...overrides.listings,
     } as ApiClient['listings'],
+    mailerSettings: {
+      get: vi.fn().mockResolvedValue({
+        transport: 'console',
+        smtpHost: null,
+        smtpPort: null,
+        smtpSecure: false,
+        fromAddress: null,
+        smtpPasswordConfigured: false,
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.mailerSettings,
+    } as ApiClient['mailerSettings'],
     products: {
       list: vi.fn().mockResolvedValue({
         items: [],
