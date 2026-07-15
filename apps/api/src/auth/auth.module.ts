@@ -13,7 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -72,6 +72,9 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AuthService],
+  // MAILER_TOKEN is exported so sibling modules (#1624 email confirmation,
+  // #1626 forgot-password delivery) can inject MailerPort without duplicating
+  // the provider registration.
+  exports: [AuthService, MAILER_TOKEN],
 })
 export class AuthModule {}
