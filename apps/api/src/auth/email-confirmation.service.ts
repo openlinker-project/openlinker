@@ -15,8 +15,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
+import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared/cache';
 import {
   EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
+  EmailConfirmationRateLimitedException,
   InvalidEmailConfirmationTokenException,
   MAILER_TOKEN,
   USER_REPOSITORY_TOKEN,
@@ -32,6 +34,7 @@ import {
   IUserManagementService,
   USER_MANAGEMENT_SERVICE_TOKEN,
 } from '../users/user-management.service.interface';
+import { DEMO_MODE_SERVICE_TOKEN, type IDemoModeService } from './demo-mode.service.interface';
 import { renderConfirmationEmailHtml } from './templates/confirmation-email.template';
 
 const DEFAULT_TTL_MINUTES = 24 * 60;
@@ -55,6 +58,10 @@ export class EmailConfirmationService implements IEmailConfirmationService {
     private readonly userManagementService: IUserManagementService,
     @Inject(USER_REPOSITORY_TOKEN)
     private readonly userRepository: UserRepositoryPort,
+    @Inject(DEMO_MODE_SERVICE_TOKEN)
+    private readonly demoModeService: IDemoModeService,
+    @Inject(CACHE_PORT_TOKEN)
+    private readonly cache: CachePort,
     private readonly configService: ConfigService
   ) {
     this.ttlMinutes = Number(
@@ -167,7 +174,12 @@ export class EmailConfirmationService implements IEmailConfirmationService {
     }
   }
 
-  async resendConfirmation(email: string): Promise<void> {
+  async resendConfirmation(email: string, clientIp?: string): Promise<void> {
+    const demoMode = this.demoModeService.isDemoModeEnabled();
+    if (demoMode && clientIp) {
+      await this.enforceRateLimit(clientIp);
+    }
+
     const user = await this.userRepository.findByEmail(email);
     if (!user || user.status !== 'pending_confirmation') {
       // No-op for an unknown email or an account not awaiting confirmation
@@ -189,5 +201,29 @@ export class EmailConfirmationService implements IEmailConfirmationService {
 
   private hashToken(rawToken: string): string {
     return createHash('sha256').update(rawToken).digest('hex');
+  }
+
+  /**
+   * Fixed-window counter keyed by client IP — same shape as
+   * `RegistrationService.enforceRateLimit` (#1469), applied here to close
+   * the review finding that `POST /auth/resend-confirmation` had no abuse
+   * deterrence (an unauthenticated caller could otherwise email-bomb any
+   * pending-confirmation address). Best-effort, not atomic — acceptable for
+   * demo-mode abuse deterrence, not a hard security boundary.
+   */
+  private async enforceRateLimit(clientIp: string): Promise<void> {
+    const limit = Number(
+      this.configService.get<string>('OL_DEMO_RESEND_CONFIRMATION_RATE_LIMIT', '5')
+    );
+    const windowSeconds = Number(
+      this.configService.get<string>('OL_DEMO_RESEND_CONFIRMATION_RATE_WINDOW_SECONDS', '3600')
+    );
+    const key = `demo:resend-confirmation:${clientIp}`;
+    const count = (await this.cache.get<number>(key)) ?? 0;
+    if (count >= limit) {
+      this.logger.warn(`Resend-confirmation rate limit exceeded for IP ${clientIp}`);
+      throw new EmailConfirmationRateLimitedException();
+    }
+    await this.cache.set(key, count + 1, windowSeconds);
   }
 }

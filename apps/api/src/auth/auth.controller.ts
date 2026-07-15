@@ -34,6 +34,7 @@ import { Request, Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import type { User } from '@openlinker/core/users';
 import {
+  EmailConfirmationRateLimitedException,
   EmailNotConfirmedException,
   InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
@@ -41,7 +42,6 @@ import {
   RegistrationRateLimitedException,
   RefreshTokenReuseDetectedException,
   UserAlreadyExistsException,
-  UserNotPendingConfirmationException,
   WeakPasswordException,
 } from '@openlinker/core/users';
 import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
@@ -174,15 +174,15 @@ export class AuthController {
     try {
       await this.emailConfirmationService.confirmEmail(dto.token);
     } catch (error) {
-      if (
-        error instanceof InvalidEmailConfirmationTokenException ||
-        error instanceof UserNotPendingConfirmationException
-      ) {
-        // Never surface `error.message` from these domain exceptions on this
-        // public, unauthenticated endpoint — some (e.g.
-        // UserNotPendingConfirmationException) carry an internal user id.
-        // Log the specific reason server-side and return one generic,
-        // non-identifying message regardless of which exception fired.
+      // EmailConfirmationService.confirmEmail already catches
+      // UserNotPendingConfirmationException / UserNotFoundException
+      // internally and remaps them to InvalidEmailConfirmationTokenException
+      // before they ever reach this controller (see its own catch block),
+      // so this only ever needs to handle the one exception type.
+      if (error instanceof InvalidEmailConfirmationTokenException) {
+        // Never surface `error.message` on this public, unauthenticated
+        // endpoint. Log the specific reason server-side and return one
+        // generic, non-identifying message.
         this.logger.warn(`Email confirmation failed: ${(error as Error).message}`);
         throw new BadRequestException('This confirmation link is invalid or has expired.');
       }
@@ -203,8 +203,19 @@ export class AuthController {
     description: 'Request accepted (regardless of account existence or status)',
     type: OkResponseDto,
   })
-  async resendConfirmation(@Body() dto: ResendConfirmationDto): Promise<OkResponseDto> {
-    await this.emailConfirmationService.resendConfirmation(dto.email);
+  @ApiResponse({ status: 429, description: 'Too many resend requests from this IP' })
+  async resendConfirmation(
+    @Body() dto: ResendConfirmationDto,
+    @Req() req: Request,
+  ): Promise<OkResponseDto> {
+    try {
+      await this.emailConfirmationService.resendConfirmation(dto.email, req.ip);
+    } catch (error) {
+      if (error instanceof EmailConfirmationRateLimitedException) {
+        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      throw error;
+    }
     return { ok: true };
   }
 

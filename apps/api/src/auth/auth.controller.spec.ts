@@ -18,12 +18,12 @@ import type { IAuthService } from './auth.service.interface';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import {
+  EmailConfirmationRateLimitedException,
   EmailNotConfirmedException,
   InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
   RefreshTokenReuseDetectedException,
   User,
-  UserNotPendingConfirmationException,
 } from '@openlinker/core/users';
 import type { IPasswordResetService } from './password-reset.service.interface';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
@@ -357,8 +357,15 @@ describe('AuthController', () => {
     });
 
     it('returns a generic message and never leaks the internal user id (finding 1)', async () => {
+      // EmailConfirmationService.confirmEmail already remaps
+      // UserNotPendingConfirmationException to
+      // InvalidEmailConfirmationTokenException internally before it ever
+      // reaches the controller — asserted directly in
+      // email-confirmation.service.spec.ts. This test exercises the
+      // controller's own generic-message mapping on the exception it
+      // actually receives.
       emailConfirmationService.confirmEmail.mockRejectedValue(
-        new UserNotPendingConfirmationException('ol_user_super-secret-internal-uuid'),
+        new InvalidEmailConfirmationTokenException(),
       );
 
       await expect(controller.confirmEmail(dto)).rejects.toMatchObject({
@@ -370,26 +377,37 @@ describe('AuthController', () => {
         message: expect.stringContaining('ol_user_super-secret-internal-uuid'),
       });
     });
-
-    it('converts UserNotPendingConfirmationException to the same generic 400', async () => {
-      emailConfirmationService.confirmEmail.mockRejectedValue(
-        new UserNotPendingConfirmationException('some-user-id'),
-      );
-      await expect(controller.confirmEmail(dto)).rejects.toThrow(BadRequestException);
-    });
   });
 
   describe('POST /auth/resend-confirmation', () => {
+    const makeIpReq = (ip = '203.0.113.7'): Request => ({ ip }) as unknown as Request;
+
     it('always returns 200 and delegates to the service', async () => {
       emailConfirmationService.resendConfirmation.mockResolvedValue();
       const dto: ResendConfirmationDto = Object.assign(new ResendConfirmationDto(), {
         email: 'demo@test.com',
       });
 
-      const result = await controller.resendConfirmation(dto);
+      const result = await controller.resendConfirmation(dto, makeIpReq());
 
       expect(result).toEqual({ ok: true });
-      expect(emailConfirmationService.resendConfirmation).toHaveBeenCalledWith('demo@test.com');
+      expect(emailConfirmationService.resendConfirmation).toHaveBeenCalledWith(
+        'demo@test.com',
+        '203.0.113.7',
+      );
+    });
+
+    it('converts EmailConfirmationRateLimitedException to 429 (review finding 2)', async () => {
+      emailConfirmationService.resendConfirmation.mockRejectedValue(
+        new EmailConfirmationRateLimitedException(),
+      );
+      const dto: ResendConfirmationDto = Object.assign(new ResendConfirmationDto(), {
+        email: 'demo@test.com',
+      });
+
+      await expect(controller.resendConfirmation(dto, makeIpReq())).rejects.toMatchObject({
+        status: 429,
+      });
     });
   });
 

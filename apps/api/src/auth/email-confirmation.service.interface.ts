@@ -31,8 +31,13 @@ export interface IEmailConfirmationService {
    * email or an account that isn't `pending_confirmation` — the caller
    * always returns a generic 200, mirroring `PasswordResetService.requestReset`'s
    * enumeration-safe posture.
+   *
+   * When demo mode is enabled and `clientIp` is provided, enforces the same
+   * IP-keyed fixed-window rate limit shape as `RegistrationService.register`
+   * (#1655 review finding) — throws `EmailConfirmationRateLimitedException`
+   * when the requesting IP exceeds the configured limit.
    */
-  resendConfirmation(email: string): Promise<void>;
+  resendConfirmation(email: string, clientIp?: string): Promise<void>;
 }
 
 export const EMAIL_CONFIRMATION_SERVICE_TOKEN = Symbol('IEmailConfirmationService');

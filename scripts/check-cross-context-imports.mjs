@@ -172,15 +172,20 @@ const ALLOW_LIST = new Map([
   ['apps/api/src/auth/refresh-token.service.ts', new Set(['RefreshTokenRepositoryPort'])],
   ['apps/api/src/auth/refresh-token.service.spec.ts', new Set(['RefreshTokenRepositoryPort'])],
 
-  // apps → users.EmailConfirmationTokenRepositoryPort — rewire via IUsersService
-  // (#1624, mirrors the pre-existing PasswordResetTokenRepositoryPort entry above)
+  // apps → users.EmailConfirmationTokenRepositoryPort + UserRepositoryPort — rewire via IUsersService
+  // (#1624, mirrors the pre-existing PasswordResetTokenRepositoryPort entry above;
+  // #1649 added the direct UserRepositoryPort lookup used to unstick pending accounts)
   [
     'apps/api/src/auth/email-confirmation.service.ts',
-    new Set(['EmailConfirmationTokenRepositoryPort']),
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
   ],
   [
     'apps/api/src/auth/email-confirmation.service.spec.ts',
-    new Set(['EmailConfirmationTokenRepositoryPort']),
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/email-confirmation.int-spec.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort', 'UserRepositoryPort']),
   ],
 
   // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
