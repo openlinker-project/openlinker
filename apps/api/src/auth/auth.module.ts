@@ -13,7 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -23,7 +23,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
-import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
+import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
+import { MAILER_PROVIDER } from './adapters/mailer.provider';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { RegistrationService } from './registration.service';
@@ -58,8 +59,9 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
     JwtStrategy,
     PasswordResetService,
     { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
-    ConsolePasswordResetNotifierAdapter,
-    { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
+    MAILER_PROVIDER,
+    MailerPasswordResetNotifierAdapter,
+    { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: MailerPasswordResetNotifierAdapter },
     RefreshTokenService,
     { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
     RegistrationService,
@@ -70,6 +72,9 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AuthService],
+  // MAILER_TOKEN is exported so sibling modules (#1624 email confirmation,
+  // #1626 forgot-password delivery) can inject MailerPort without duplicating
+  // the provider registration.
+  exports: [AuthService, MAILER_TOKEN],
 })
 export class AuthModule {}
