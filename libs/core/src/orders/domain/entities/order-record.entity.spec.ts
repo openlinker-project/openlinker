@@ -44,6 +44,28 @@ describe('OrderRecord.paymentStatus', () => {
   });
 });
 
+describe('OrderRecord.status (#1596)', () => {
+  it.each(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])(
+    'returns the recognised order status %s from the snapshot',
+    (status) => {
+      expect(makeRecord({ status }).status).toBe(status);
+    },
+  );
+
+  it('returns undefined when the snapshot has no status key', () => {
+    expect(makeRecord({}).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is an unrecognised string', () => {
+    expect(makeRecord({ status: 'archived' }).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is a non-string value', () => {
+    expect(makeRecord({ status: 42 }).status).toBeUndefined();
+    expect(makeRecord({ status: null }).status).toBeUndefined();
+  });
+});
+
 describe('OrderRecord.codToCollect (#1435)', () => {
   it('returns the sourced amount when the snapshot carries a well-formed pair', () => {
     expect(makeRecord({ codToCollect: { amount: '510.94', currency: 'PLN' } }).codToCollect).toEqual({

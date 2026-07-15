@@ -6,7 +6,10 @@
  * issuance command into the job payload, so this handler:
  *  1. Casts + DEEP-validates the payload (F5).
  *  2. Reconstructs `new BuyerProfile(...)` from the PLAIN payload buyer (#12).
- *  3. Calls `invoiceService.issueInvoice(command)` with the command idempotency
+ *  3. Re-checks the order's LIVE status via `IOrderRecordService` (#1596) —
+ *     the payload was snapshotted at trigger time and can be stale by the time
+ *     this job runs; a cancelled/refunded order must never clear an invoice.
+ *  4. Calls `invoiceService.issueInvoice(command)` with the command idempotency
  *     key equal to `payload.idempotencyKey` (the SAME string as the job row, F4).
  *
  * PII DISCIPLINE (F-validate-PII / D11): the payload carries real buyer PII.
@@ -37,6 +40,7 @@ import {
   BuyerTypeValues,
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -54,6 +58,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   constructor(
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -69,19 +75,38 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // #1596: re-check the order's LIVE status immediately before issuing. This
+      // read sits INSIDE the retryable try so a transient repository failure is
+      // wrapped as a retryable SyncJobExecutionError (fail-closed — never issue
+      // on an unresolved read), consistent with the file's two documented
+      // failure paths rather than propagating raw. Mirrors the #938
+      // shipping-dispatch live re-check (ShipmentDispatchService): an
+      // absent/unknown live status (record null, or an unrecognised status)
+      // falls through to normal issuance — graceful degradation for sources that
+      // don't report status — this gate only BLOCKS on a positively-confirmed
+      // cancelled/refunded status (a terminal business_failure, not a retry).
+      const record = await this.orderRecords.getOrderRecord(payload.orderId);
+      if (record?.status === 'cancelled' || record?.status === 'refunded') {
+        this.logger.warn(
+          `invoicing.issue skipped: order status is '${record.status}' orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.
       // The service's `issued`-only exactly-once gate makes duplicate events /
       // retries a no-op against the same key.
       await this.invoiceService.issueInvoice(command);
       return { outcome: 'ok' };
     } catch (error) {
-      // ANY issueInvoice failure (transport/bridge-unreachable AND any provider
-      // error that escapes the SVC) is wrapped as retryable here — the deep
-      // pre-validation above has already rejected statically-malformed payloads
-      // as business_failure, and the SVC's `issued`-only exactly-once gate makes
-      // every retry a no-op against the same key, so re-crossing the provider
-      // boundary cannot double-issue. PII discipline: the message carries ONLY
-      // error.name + orderId + connectionId — never payload/buyer.
+      // ANY issueInvoice / live-status-read failure (transport/bridge-unreachable
+      // AND any provider error that escapes the SVC) is wrapped as retryable
+      // here — the deep pre-validation above has already rejected
+      // statically-malformed payloads as business_failure, and the SVC's
+      // `issued`-only exactly-once gate makes every retry a no-op against the
+      // same key, so re-crossing the provider boundary cannot double-issue. PII
+      // discipline: the message carries ONLY error.name + orderId + connectionId
+      // — never payload/buyer.
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       throw new SyncJobExecutionError(
         `invoicing.issue failed: error=${errorName} orderId=${payload.orderId} connectionId=${payload.connectionId}`,

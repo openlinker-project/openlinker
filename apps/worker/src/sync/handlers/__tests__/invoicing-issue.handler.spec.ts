@@ -9,6 +9,7 @@ import { InvoicingIssueHandler, MAX_INVOICE_LINES } from '../invoicing-issue.han
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
+import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type {
   InvoicingIssuePayloadV1,
   SyncJob as SyncJobEntity,
@@ -58,8 +59,14 @@ function makeJob(payload: unknown): SyncJobEntity {
   } as SyncJobEntity;
 }
 
+function makeOrderRecord(status: string | undefined): OrderRecord | null {
+  if (status === undefined) return null;
+  return { status } as unknown as OrderRecord;
+}
+
 describe('InvoicingIssueHandler', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
   let handler: InvoicingIssueHandler;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
@@ -73,7 +80,18 @@ describe('InvoicingIssueHandler', () => {
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
     };
-    handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
+    orderRecordService = {
+      persistOrder: jest.fn(),
+      updateSyncStatus: jest.fn(),
+      persistIncomingSnapshot: jest.fn(),
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(),
+      updateFulfillmentState: jest.fn(),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    handler = new InvoicingIssueHandler(
+      invoiceService as unknown as IInvoiceService,
+      orderRecordService,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -172,6 +190,42 @@ describe('InvoicingIssueHandler', () => {
         expect(msg).not.toContain(BUYER_SENTINEL);
         expect(msg).not.toContain('ul. Testowa');
       }
+    });
+  });
+
+  describe('live order-status gate (#1596)', () => {
+    it('skips issuance when the live order status is cancelled', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('cancelled'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain("status is 'cancelled'");
+    });
+
+    it('skips issuance when the live order status is refunded', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('refunded'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('proceeds with issuance when the live order status is still eligible (e.g. processing)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('processing'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('proceeds with issuance when the order record is absent (graceful degradation)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-checks the order by payload.orderId', async () => {
+      await handler.execute(makeJob(makePayload({ orderId: 'order-42' })));
+      expect(orderRecordService.getOrderRecord).toHaveBeenCalledWith('order-42');
     });
   });
 
