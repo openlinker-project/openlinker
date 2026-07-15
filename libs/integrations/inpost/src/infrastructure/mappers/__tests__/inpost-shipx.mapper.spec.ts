@@ -156,6 +156,36 @@ describe('inpost-shipx.mapper', () => {
       }
     });
 
+    it('should throw a typed rejection (preflight.missing-parcel) when the command omits parcel (#1518)', () => {
+      const { parcel: _parcel, ...noParcel } = paczkomatCmd;
+      const call = (): unknown =>
+        buildCreateShipmentRequest(noParcel as unknown as GenerateLabelCommand, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-parcel',
+        });
+      }
+    });
+
+    it('should throw a typed rejection (preflight.missing-recipient) when the command omits recipient (#1518)', () => {
+      const { recipient: _recipient, ...noRecipient } = paczkomatCmd;
+      const call = (): unknown =>
+        buildCreateShipmentRequest(noRecipient as unknown as GenerateLabelCommand, config);
+      expect(call).toThrow(ShippingProviderRejectionException);
+      try {
+        call();
+      } catch (error) {
+        expect(error).toMatchObject({
+          providerName: 'inpost',
+          providerCode: 'preflight.missing-recipient',
+        });
+      }
+    });
+
     it('should map cod onto the ShipX request (decimal string → number) for a courier shipment (#1541)', () => {
       const request = buildCreateShipmentRequest(
         { ...courierCmd, cod: { amount: '39.99', currency: 'PLN' } },
