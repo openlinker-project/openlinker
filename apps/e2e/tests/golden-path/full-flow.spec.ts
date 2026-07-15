@@ -44,6 +44,7 @@ import { WooCommerceRestClient } from '../../src/api/woocommerce-rest';
 import { captureStock, assertStockDelta, waitForStockDelta, type StockSnapshot } from '../../src/support/stock';
 import { snapshotOrderIds, waitForOrder, type OrderIdSnapshot } from '../../src/support/orders';
 import { manualCheckpoint } from '../../src/support/manual-checkpoint';
+import { waitForTrackingBackfill } from '../../src/support/shipments';
 import {
   assertMarketplaceParameterRoundTrip,
   assertMoneyEqual,
@@ -652,7 +653,7 @@ test.describe('golden path — full flow (S0-S9)', () => {
     }
   });
 
-  test('S6 — InPost labels: routing, tracking, PDF, dispatched (per order)', async ({ api, world, env, poll }) => {
+  test('S6 — InPost labels: routing, tracking, PDF, dispatched (per order)', async ({ api, world, env, poll, jobs }) => {
     const testInfo = test.info();
     requireOrder();
     const inpost = world.connectionFor(PlatformType.inpost);
@@ -706,14 +707,6 @@ test.describe('golden path — full flow (S0-S9)', () => {
       expect(shipment, `a shipment was created for the ${platform} order`).toBeTruthy();
       state.shipmentIds.set(platform, shipment!.id);
 
-      // The ShipX sandbox often assigns the tracking number asynchronously —
-      // annotate instead of failing when it is still null right after create (#1521).
-      if (!shipment!.trackingNumber) {
-        testInfo.annotations.push({
-          type: 'tracking',
-          description: `${platform}: tracking number not yet assigned right after label create (ShipX sandbox timing, #1521)`,
-        });
-      }
       // ShipX renders the label document asynchronously — a fetch immediately
       // after create can fail even though the shipment is already `generated`,
       // so poll briefly instead of asserting the first response.
@@ -727,14 +720,43 @@ test.describe('golden path — full flow (S0-S9)', () => {
       const dispatched = await api.shipments.getById(shipment!.id);
       expect(['dispatched', 'in-transit', 'delivered']).toContain(dispatched.status);
 
+      // Tracking-number backfill (#1521). The ShipX sandbox mints the tracking
+      // number only once the shipment is confirmed and the carrier-generic
+      // `marketplace.shipment.statusSync` poll (#838) has run — it is NOT present
+      // right after label creation. Drive that poll and wait, with a bounded
+      // budget, for OL to backfill `Shipment.trackingNumber` (the #1426 path).
+      // A non-null result is ASSERTED; only a genuine sandbox timing timeout
+      // falls back to an annotation so an attended run is not failed by a
+      // sandbox-side delay (see docs/manual-testing/e2e-golden-path.md).
+      const backfill = await waitForTrackingBackfill(
+        api,
+        jobs,
+        { shipmentId: shipment!.id, inpostConnectionId: inpost!.id },
+        { timeoutMs: 120_000, intervalMs: 5_000 },
+      );
+      if (backfill.timedOut) {
+        testInfo.annotations.push({
+          type: 'tracking',
+          description:
+            `${platform}: tracking number not backfilled within timeout — the ShipX ` +
+            `sandbox mints it only after the shipment is confirmed and ` +
+            `marketplace.shipment.statusSync runs (#1521)`,
+        });
+      } else {
+        expect(
+          backfill.trackingNumber,
+          `${platform}: OL backfilled the InPost tracking number after statusSync`,
+        ).toBeTruthy();
+      }
+
       // Writeback to the marketplace is best-effort in code (annotated) and
       // asserted by the operator at the checkpoint below.
       testInfo.annotations.push({
         type: 'writeback',
-        description: `${platform}: tracking ${dispatched.trackingNumber} — marketplace writeback verified via checkpoint`,
+        description: `${platform}: tracking ${backfill.trackingNumber ?? '(pending)'} — marketplace writeback verified via checkpoint`,
       });
       shipmentSummaries.push(
-        `${platform}: shipment ${shipment!.id}, tracking ${dispatched.trackingNumber ?? '(pending)'}, status ${dispatched.status}`,
+        `${platform}: shipment ${shipment!.id}, tracking ${backfill.trackingNumber ?? '(pending)'}, status ${dispatched.status}`,
       );
     }
 
