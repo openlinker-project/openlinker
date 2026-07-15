@@ -3,7 +3,10 @@
  *
  * HTTP REST API endpoints for connection-scoped mapping configuration.
  * Supports CRUD for status, carrier, and payment mapping types.
- * All endpoints require admin role and JWT authentication.
+ * Write endpoints (PUT/DELETE) require admin role (class-level default);
+ * the 5 read (GET) endpoints are relaxed to admin/operator/viewer via a
+ * per-method override (#1652) so demo viewers can inspect mapping
+ * configuration without a 403.
  *
  * @module apps/api/src/mappings/http
  */
@@ -46,6 +49,7 @@ export class MappingsController {
   // ── Status mappings ──────────────────────────────────────────────────────
 
   @Get('status')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get status mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [StatusMappingResponseDto] })
@@ -75,6 +79,7 @@ export class MappingsController {
   // ── Carrier mappings ─────────────────────────────────────────────────────
 
   @Get('carriers')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get carrier mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [CarrierMappingResponseDto] })
@@ -104,6 +109,7 @@ export class MappingsController {
   // ── Order-state mappings (outbound OL→destination, #862) ──────────────────
 
   @Get('order-states')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get OL→destination order-state mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [OrderStateMappingResponseDto] })
@@ -136,6 +142,7 @@ export class MappingsController {
   // ── Payment mappings ─────────────────────────────────────────────────────
 
   @Get('payments')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get payment mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [PaymentMappingResponseDto] })
@@ -165,6 +172,7 @@ export class MappingsController {
   // ── Category mappings ───────────────────────────────────────────────────
 
   @Get('categories')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get category mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [CategoryMappingResponseDto] })
