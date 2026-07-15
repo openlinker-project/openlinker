@@ -159,7 +159,9 @@ describe('OrderDetailPage', () => {
       const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
       renderDetail(api);
       expect(await screen.findByText('POP-WAW-04412')).toBeInTheDocument();
-      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+      // Appears twice: the "Method" field, and the "Carrier" field falling back
+      // to the same method name (#1617, no shipment exists for this order).
+      expect(screen.getAllByText('InPost Paczkomat').length).toBeGreaterThanOrEqual(1);
     });
 
     it('summarises item and unit counts in the header', async () => {
@@ -194,6 +196,79 @@ describe('OrderDetailPage', () => {
       // Header + summary both show "Received" (the OL ingestion clock); no "Placed" anywhere.
       expect((await screen.findAllByText(/Received/)).length).toBeGreaterThan(0);
       expect(screen.queryByText(/Placed/)).toBeNull();
+    });
+  });
+
+  describe('carrier field (#1617)', () => {
+    const orderWithMethod: OrderRecord = {
+      ...sampleOrder,
+      orderSnapshot: {
+        shipping: { methodId: 'm1', methodName: 'InPost Paczkomat' },
+      },
+    };
+
+    it('prefers the shipment record carrier over the snapshot method name when a shipment exists', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithMethod) },
+        shipments: {
+          list: vi.fn().mockResolvedValue({
+            items: [
+              {
+                id: 'ol_shipment_1',
+                orderId: orderWithMethod.internalOrderId,
+                customerId: null,
+                connectionId: sampleConnection.id,
+                shippingMethod: 'paczkomat',
+                status: 'dispatched',
+                providerShipmentId: 'prov-1',
+                paczkomatId: 'POZ08A',
+                trackingNumber: 'TRACK-1',
+                carrier: 'inpost',
+                labelPdfRef: null,
+                dispatchedAt: '2026-05-01T10:00:00.000Z',
+                deliveredAt: null,
+                cancelledAt: null,
+                failedAt: null,
+                errorMessage: null,
+                createdAt: '2026-05-01T09:00:00.000Z',
+                updatedAt: '2026-05-01T10:00:00.000Z',
+              },
+            ],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+        },
+      });
+
+      renderDetail(api);
+
+      expect(await screen.findByText('Carrier')).toBeInTheDocument();
+      expect(screen.getByText('InPost')).toBeInTheDocument();
+    });
+
+    it('falls back to the snapshot delivery method name when no shipment exists', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(orderWithMethod) },
+      });
+
+      renderDetail(api);
+
+      expect(await screen.findByText('Carrier')).toBeInTheDocument();
+      // Appears twice: the "Method" field and the "Carrier" field's fallback
+      // to the same value (no shipment record exists for this order).
+      expect(screen.getAllByText('InPost Paczkomat').length).toBe(2);
+    });
+
+    it('renders "-" for carrier when neither a shipment nor a delivery method is present', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      });
+
+      renderDetail(api);
+
+      expect(await screen.findByText('Carrier')).toBeInTheDocument();
+      expect(screen.getByText('-')).toBeInTheDocument();
     });
   });
 
