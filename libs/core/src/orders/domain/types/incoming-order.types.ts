@@ -137,6 +137,17 @@ export interface IncomingOrderItem {
   sku?: string;
 
   /**
+   * Genuine per-line VAT/tax rate as a neutral opaque string code (#1586 Phase
+   * 2, ADR-035) - the same country-agnostic vocabulary as `OrderItem.taxRate`
+   * and `InvoiceLine.taxRate` (e.g. `'23'`, `'8'`, `'5'`, `'0'`). Optional and
+   * source-uniform: absent means the source adapter did not report a per-line
+   * rate, and the invoicing pipeline falls back to the connection-level default.
+   * `OrderIngestionService` forwards it verbatim onto the unified `OrderItem`;
+   * core never interprets the code (ADR-026).
+   */
+  taxRate?: string;
+
+  /**
    * Source-reported display label (e.g. Allegro `lineItem.offer.name`).
    * Optional because not every adapter has it — PrestaShop's order-source
    * doesn't expose a free per-line product name and would need catalog

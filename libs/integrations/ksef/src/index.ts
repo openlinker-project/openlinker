@@ -63,6 +63,10 @@ export { KsefExchangeRateException } from './domain/exceptions/ksef-exchange-rat
 export { KsefUnsupportedDocumentTypeException } from './domain/exceptions/ksef-unsupported-document-type.exception';
 // documentType <-> correction command-shape mismatch — a terminal input error (#1151 / C7).
 export { KsefInvalidCorrectionException } from './domain/exceptions/ksef-invalid-correction.exception';
+// Interim cross-border refusal (#1586) — a terminal input/config error: the sale
+// crosses a border the pipeline cannot yet band correctly, unless the connection
+// opted in via `allowCrossBorder`.
+export { KsefCrossBorderUnsupportedException } from './domain/exceptions/ksef-cross-border-unsupported.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic

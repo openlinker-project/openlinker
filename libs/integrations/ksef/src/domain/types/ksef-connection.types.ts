@@ -122,6 +122,16 @@ export interface KsefConnectionConfig {
   payment?: KsefPaymentConfig;
   /** Per-line issuance defaults (#1525). Optional. */
   invoiceDefaults?: KsefInvoiceDefaultsConfig;
+  /**
+   * Interim cross-border escape hatch (#1586). When a command's buyer country
+   * differs from the seller's own country, issuance refuses by default (the
+   * pipeline cannot yet select the correct WDT/export/`np`/OSS tax band and
+   * would otherwise emit a silently-wrong domestic-rate document). Setting this
+   * to `true` suppresses that refusal - the operator asserts they have handled
+   * the tax banding out of band. Optional; absent/`false` = refuse cross-border.
+   * Removed once a real per-order band-selection function lands.
+   */
+  allowCrossBorder?: boolean;
 }
 
 /**

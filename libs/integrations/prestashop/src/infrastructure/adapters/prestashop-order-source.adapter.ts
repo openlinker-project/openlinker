@@ -203,12 +203,20 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
           : row?.product_id
             ? 'product'
             : 'sku';
+      // Genuine per-line VAT rate (#1586 Phase 2): PrestaShop's `order_details`
+      // resource exposes no direct rate percentage, but it does carry the per-row
+      // tax-inclusive/exclusive unit prices, from which the effective whole-percent
+      // rate is derived and mapped to the neutral code vocabulary. Absent/unmatched
+      // leaves `taxRate` undefined so the invoicing pipeline keeps its
+      // connection-default fallback.
+      const taxRate = PrestashopOrderSourceAdapter.deriveNeutralTaxRate(row);
       return {
         id: item.id,
         productRef: { type: refType, externalId },
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        ...(taxRate !== undefined ? { taxRate } : {}),
       };
     });
 
@@ -247,6 +255,39 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * (e.g. POZ08A, WAW124, KRK05). Case-insensitive match; result is uppercased.
    */
   private static readonly PACZKOMAT_CODE_RE = /^[A-Z]{3}\d{2,4}[A-Z]?$/i;
+
+  /**
+   * Neutral per-line VAT-rate codes PrestaShop lines can resolve to (#1586
+   * Phase 2) - the whole-percent PL rates, mapped as the opaque neutral string
+   * codes the invoicing pipeline forwards (ADR-026; no country logic in core).
+   * A derived rate outside this set is treated as "unknown" and dropped so a
+   * mis-derived value never silently overrides the connection default.
+   */
+  private static readonly NEUTRAL_TAX_RATE_CODES = new Set(['23', '8', '5', '0']);
+
+  /**
+   * Derive a genuine per-line VAT rate from a PrestaShop `order_details` row's
+   * tax-inclusive/exclusive unit prices and map it to the neutral code
+   * vocabulary. Returns `undefined` when the row lacks usable prices, the net
+   * price is non-positive, or the derived whole-percent rate is not a known PL
+   * rate - in every such case the caller omits `taxRate` and the invoicing
+   * pipeline falls back to the connection-level default.
+   */
+  private static deriveNeutralTaxRate(row: PrestashopOrderRow | undefined): string | undefined {
+    if (!row) {
+      return undefined;
+    }
+    const incl = Number(row.unit_price_tax_incl);
+    const excl = Number(row.unit_price_tax_excl);
+    if (!Number.isFinite(incl) || !Number.isFinite(excl) || excl <= 0) {
+      return undefined;
+    }
+    // Round to the nearest whole percent - PS stores prices at 6dp, so a 23%
+    // line can surface as e.g. 22.9998%; the rate vocabulary is whole-percent.
+    const ratePercent = Math.round(((incl - excl) / excl) * 100);
+    const code = String(ratePercent);
+    return PrestashopOrderSourceAdapter.NEUTRAL_TAX_RATE_CODES.has(code) ? code : undefined;
+  }
 
   /**
    * Returns pickupPoint when the connection declares official_inpost module and

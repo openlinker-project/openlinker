@@ -226,6 +226,24 @@ export interface InvoiceLine {
    * sources that do. Providers without a unit concept ignore it.
    */
   unit?: string;
+  /**
+   * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
+   * seam carrying an operator-asserted classification the provider maps onto its
+   * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
+   * enumeration for flagged goods categories - fuel, alcohol, tobacco, certain
+   * electronics, scrap, etc.). Country-agnostic: core never interprets the code,
+   * it forwards it verbatim (ADR-026). Optional - absent means "no line-level
+   * classification", the common case; a provider with no such concept ignores it.
+   */
+  gtuCode?: string;
+  /**
+   * Opaque per-line transaction-procedure marker (#1586 Phase 2). Neutral seam
+   * carrying an operator-asserted procedure code the provider maps onto its
+   * regime's line-level procedure marker (a PL adapter maps it onto the FA(3)
+   * `Procedura` enumeration). Country-agnostic: forwarded verbatim, never
+   * interpreted in core (ADR-026). Optional and omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**

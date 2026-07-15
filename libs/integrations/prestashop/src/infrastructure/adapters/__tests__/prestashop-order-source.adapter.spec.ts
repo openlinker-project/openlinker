@@ -288,6 +288,85 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
 
+    it('should derive a genuine per-line taxRate from tax-incl/excl unit prices (#1586)', async () => {
+      const prestashopOrder: PrestashopOrder = {
+        id: '43',
+        reference: 'ORDER-043',
+        id_customer: '7',
+        current_state: '2',
+        total_paid: '231.00',
+        total_paid_tax_incl: '231.00',
+        total_paid_tax_excl: '200.00',
+        total_shipping: '0',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+      const orderRows: PrestashopOrderRow[] = [
+        {
+          id: '100',
+          product_id: '5',
+          product_attribute_id: '0',
+          product_quantity: '1',
+          product_price: '100.00',
+          product_reference: 'SKU-5',
+          unit_price_tax_incl: '123.00',
+          unit_price_tax_excl: '100.00',
+        },
+        {
+          id: '101',
+          product_id: '6',
+          product_attribute_id: '0',
+          product_quantity: '1',
+          product_price: '100.00',
+          product_reference: 'SKU-6',
+          unit_price_tax_incl: '108.00',
+          unit_price_tax_excl: '100.00',
+        },
+      ];
+
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orderRows);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '43' });
+
+      // Mixed-rate order: 23% and 8% derived per line from incl/excl.
+      expect(incoming.items[0].taxRate).toBe('23');
+      expect(incoming.items[1].taxRate).toBe('8');
+    });
+
+    it('should omit taxRate when the row lacks tax-incl/excl prices (#1586)', async () => {
+      const prestashopOrder: PrestashopOrder = {
+        id: '44',
+        reference: 'ORDER-044',
+        id_customer: '7',
+        current_state: '2',
+        total_paid: '99.99',
+        total_paid_tax_incl: '99.99',
+        total_paid_tax_excl: '99.99',
+        total_shipping: '0',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+      const orderRows: PrestashopOrderRow[] = [
+        {
+          id: '100',
+          product_id: '5',
+          product_attribute_id: '0',
+          product_quantity: '1',
+          product_price: '99.99',
+          product_reference: 'SKU-5',
+        },
+      ];
+
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orderRows);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '44' });
+
+      expect(incoming.items[0].taxRate).toBeUndefined();
+      expect('taxRate' in incoming.items[0]).toBe(false);
+    });
+
     it('should translate a 404 from the webservice client into PrestashopResourceNotFoundException', async () => {
       mockHttpClient.getResource = jest
         .fn()

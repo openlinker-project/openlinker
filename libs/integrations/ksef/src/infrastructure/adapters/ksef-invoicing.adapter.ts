@@ -90,6 +90,7 @@ import {
   FA3_SYSTEM_CODE,
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
+import { assertCrossBorderHandled } from '../fa3/domain/fa3-cross-border-guard';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
@@ -140,6 +141,12 @@ export class KsefInvoicingAdapter
   private readonly now: () => Date;
 
   /**
+   * Interim cross-border escape hatch (#1586). `true` skips the
+   * `assertCrossBorderHandled` guard; defaults to `false` (refuse cross-border).
+   */
+  private readonly allowCrossBorder: boolean;
+
+  /**
    * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
    * conversion of foreign-currency invoices. `undefined` in bare unit specs;
    * the factory always wires the concrete client.
@@ -168,6 +175,7 @@ export class KsefInvoicingAdapter
     this.defaultLineUnit = options.defaultLineUnit;
     this.now = options.now ?? ((): Date => new Date());
     this.exchangeRateResolver = options.exchangeRateResolver;
+    this.allowCrossBorder = options.allowCrossBorder ?? false;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -181,6 +189,18 @@ export class KsefInvoicingAdapter
     // correction, or a correction without the corrected type) would silently emit
     // the wrong document. Assert the two agree, terminally, before any build/send.
     this.assertCorrectionConsistency(cmd);
+    // Interim cross-border guard (#1586): refuse a sale to a country other than
+    // the seller's own before any build/send, unless the connection opted in.
+    // The pipeline cannot yet select the correct WDT/export/`np`/OSS tax band
+    // from the buyer country, so issuing would emit a silently-wrong
+    // domestic-rate document. A terminal fault - the service marks the record
+    // failed (no retry). See FA3_IMPLEMENTATION_NOTES.md for the deferred
+    // per-order band-selection follow-up.
+    assertCrossBorderHandled(
+      this.seller.address.countryIso2,
+      cmd.buyer.address.countryIso2,
+      this.allowCrossBorder,
+    );
 
     const issuedAt = this.now();
     // The FA(3) P_2 document number. Single source for BOTH the XML builder's

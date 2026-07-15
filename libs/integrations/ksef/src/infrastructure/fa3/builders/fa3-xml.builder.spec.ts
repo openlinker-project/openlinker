@@ -793,4 +793,50 @@ describe('buildFa3Xml', () => {
       expect(xml).not.toContain('P_14_1W');
     });
   });
+  describe('per-line GTU / Procedura markers (#1586)', () => {
+    it('should emit GTU and Procedura on a line when present', () => {
+      const input = b2bInput();
+      input.lines = [
+        { name: 'Flagged goods', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+      ];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<GTU>GTU_01</GTU>');
+      expect(xml).toContain('<Procedura>SW</Procedura>');
+    });
+
+    it('should omit GTU and Procedura when absent', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).not.toContain('<GTU>');
+      expect(xml).not.toContain('<Procedura>');
+    });
+
+    it('should position GTU/Procedura after P_12 and before KursWaluty (XSD order)', () => {
+      const input = b2bInput();
+      input.currency = 'EUR';
+      input.exchangeRate = { rate: 4.321, rateDate: '2026-06-20', table: 'A/120/2026' };
+      input.lines = [
+        { name: 'Flagged goods', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+      ];
+      const xml = buildFa3Xml(input);
+      const p12 = xml.indexOf('<P_12>');
+      const gtu = xml.indexOf('<GTU>');
+      const proc = xml.indexOf('<Procedura>');
+      const kurs = xml.indexOf('<KursWaluty>');
+      expect(p12).toBeLessThan(gtu);
+      expect(gtu).toBeLessThan(proc);
+      expect(proc).toBeLessThan(kurs);
+      // Structural validator agrees the FaWiersz child order is XSD-legal.
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+
+    it('should keep a validatable document with only GTU set', () => {
+      const input = b2bInput();
+      input.lines = [{ name: 'Widget', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_07' }];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<GTU>GTU_07</GTU>');
+      expect(xml).not.toContain('<Procedura>');
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+  });
+
 });

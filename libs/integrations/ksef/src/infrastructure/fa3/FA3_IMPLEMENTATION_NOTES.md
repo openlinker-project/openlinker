@@ -75,10 +75,18 @@ Unknown codes throw `UnmappedTaxRateException` (no silent default).
 > `taxRate` *before* calling `resolveP12` — `resolveP12` itself is unchanged
 > and still throws on a genuinely unmapped non-empty code. This is a flat
 > per-connection default, not a real per-line VAT rate: an order mixing
-> goods at different rates (23%/8%/0%) will mis-tax every line at the
-> connection default until `OrderItem` carries a real per-item tax rate
-> end-to-end — a larger, separate follow-up spanning every order-source
-> adapter, intentionally out of scope for #1290.
+> goods at different rates (23%/8%/0%) mis-taxes every line at the connection
+> default *only when the source adapter did not report per-line rates*.
+>
+> **UPDATE (#1586 Phase 2):** `OrderItem` / `InvoiceLine` now carry an optional
+> neutral per-line `taxRate` (ADR-035), and an order-source adapter that reports
+> a genuine per-line rate populates it end-to-end. **PrestaShop** does so today —
+> `PrestashopOrderSourceAdapter` derives the whole-percent rate from each
+> `order_details` row's tax-inclusive/exclusive unit prices and maps it to the
+> neutral vocabulary. A populated mixed-rate order now produces a correctly-split
+> FA(3) band breakdown. ⏸ Deferred (documented follow-ups): **WooCommerce**
+> (line_items expose only a `taxes`/`tax_class` delta, not a clean per-line rate —
+> left on the flat-default fallback), plus Allegro/Erli.
 
 > **OPEN:** the canonical neutral tax-rate code set (UNCL 5305 vs OpenLinker
 > custom) is being settled upstream; the keys above are provisional and must be
@@ -228,7 +236,12 @@ the seller's KSeF certificate private key. OpenLinker always issues online
   (`1` = effects in the period of the original, `3` = on terms set by separate
   regulations) are not yet caller-selectable; the neutral `CorrectionReference`
   carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
-- ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
+- ✅ Per-line GTU / Procedura codes (#1586 Phase 2): the neutral `InvoiceLine`
+  now carries optional opaque `gtuCode` / `procedureCode`, threaded through
+  `Fa3Line` and emitted as `FaWiersz/GTU` (`TGTU` enum) + `FaWiersz/Procedura`
+  (`TOznaczenieProcedury`), positioned after `P_12` and before `KursWaluty`
+  per the XSD, omitted when absent. ⏸ Deferred: a category→GTU
+  operator-configurable mapping UI (codes must be supplied on the command today).
 - ⏸ `Podmiot2` `JST` / `GV` flags are hard-coded to `2` ("no") in `buyerNode`.
   Both elements are required by the XSD, and `2` is correct for the common
   buyer — but a buyer that actually *is* a local-government (JST) subsidiary
@@ -247,5 +260,12 @@ the seller's KSeF certificate private key. OpenLinker always issues online
   bounded (ciphertext travels only over TLS to MF; the FA(3) header prefix is
   public structure) and cannot be fixed client-side without breaking
   server-side decryption (the observed status-430 rejection of per-document IVs).
+- ⏸ Cross-border tax-band SELECTION (#1586): an interim guard
+  (`fa3-cross-border-guard.ts`) now REFUSES a sale whose buyer country differs
+  from the seller's own country (throwing `KsefCrossBorderUnsupportedException`
+  before build/send) unless the connection sets `allowCrossBorder`. The full
+  per-order band-selection function (choose WDT / export / `np I`/`np II` / OSS
+  from the buyer country + EU membership) is the deferred follow-up that
+  promotes this guard into real banding.
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
