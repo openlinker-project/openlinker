@@ -11043,6 +11043,13 @@ html[data-density='compact'] .status-badge {
   color: var(--status-info-fg);
   font-size: 12px;
   flex-shrink: 0;
+  /* Stick directly below the sticky topbar (height: 52px) so the demo-mode
+     reminder stays visible while shell content scrolls. z-index sits above
+     scrolled .shell-content but below the topbar (z-index: 10) so the two
+     header blocks never overlap. */
+  position: sticky;
+  top: 52px;
+  z-index: 9;
 }
 
 .demo-banner__icon {
