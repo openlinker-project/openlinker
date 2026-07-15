@@ -172,6 +172,17 @@ const ALLOW_LIST = new Map([
   ['apps/api/src/auth/refresh-token.service.ts', new Set(['RefreshTokenRepositoryPort'])],
   ['apps/api/src/auth/refresh-token.service.spec.ts', new Set(['RefreshTokenRepositoryPort'])],
 
+  // apps → users.EmailConfirmationTokenRepositoryPort — rewire via IUsersService
+  // (#1624, mirrors the pre-existing PasswordResetTokenRepositoryPort entry above)
+  [
+    'apps/api/src/auth/email-confirmation.service.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort']),
+  ],
+  [
+    'apps/api/src/auth/email-confirmation.service.spec.ts',
+    new Set(['EmailConfirmationTokenRepositoryPort']),
+  ],
+
   // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
   ['apps/api/src/integrations/http/connection.controller.ts', new Set(['SyncJobRepositoryPort'])],
   [

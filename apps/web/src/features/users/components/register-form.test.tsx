@@ -77,7 +77,7 @@ describe('RegisterForm', () => {
       renderWithProviders(<RegisterForm demoMode />);
 
       expect(screen.getByText(/OpenLinker Demo/i)).toBeInTheDocument();
-      expect(screen.getByText(/active immediately/i)).toBeInTheDocument();
+      expect(screen.getByText(/confirm and activate your account/i)).toBeInTheDocument();
     });
 
     it('should show the demo callout when demoMode is true', () => {
@@ -111,7 +111,7 @@ describe('RegisterForm', () => {
       await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
       await userEvent.click(screen.getByRole('button', { name: /start exploring/i }));
 
-      expect(await screen.findByText(/demo account is ready/i)).toBeInTheDocument();
+      expect(await screen.findByText(/check your email to confirm your account/i)).toBeInTheDocument();
     });
   });
 });

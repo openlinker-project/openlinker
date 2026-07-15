@@ -22,6 +22,10 @@ export interface ResetPasswordRequest {
   newPassword: string;
 }
 
+export interface ConfirmEmailRequest {
+  token: string;
+}
+
 export interface OkResponse {
   ok: true;
 }

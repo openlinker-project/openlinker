@@ -31,12 +31,16 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import type { User } from '@openlinker/core/users';
 import {
+  EmailNotConfirmedException,
+  InvalidEmailConfirmationTokenException,
   InvalidPasswordResetTokenException,
   RegistrationDisabledException,
   RegistrationRateLimitedException,
   RefreshTokenReuseDetectedException,
   UserAlreadyExistsException,
+  UserNotPendingConfirmationException,
   WeakPasswordException,
 } from '@openlinker/core/users';
 import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
@@ -50,6 +54,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { OkResponseDto } from './dto/ok-response.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ConfirmEmailDto } from './dto/confirm-email.dto';
 import { AuthenticatedUser } from './auth.types';
 import {
   IPasswordResetService,
@@ -57,6 +62,10 @@ import {
 } from './password-reset.service.interface';
 import { IRegistrationService } from './registration.service.interface';
 import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
+import {
+  EMAIL_CONFIRMATION_SERVICE_TOKEN,
+  IEmailConfirmationService,
+} from './email-confirmation.service.interface';
 import { IRefreshTokenService } from './refresh-token.service.interface';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import type { RotatedRefreshToken } from './refresh-token.types';
@@ -84,6 +93,8 @@ export class AuthController {
     private readonly refreshTokenService: IRefreshTokenService,
     @Inject(REGISTRATION_SERVICE_TOKEN)
     private readonly registrationService: IRegistrationService,
+    @Inject(EMAIL_CONFIRMATION_SERVICE_TOKEN)
+    private readonly emailConfirmationService: IEmailConfirmationService,
   ) {}
 
   @Public()
@@ -95,11 +106,20 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login successful', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (missing or invalid fields)' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 403, description: 'Account is awaiting email confirmation' })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    const user = await this.authService.validateUser(dto.username, dto.password);
+    let user: User | null;
+    try {
+      user = await this.authService.validateUser(dto.username, dto.password);
+    } catch (error) {
+      if (error instanceof EmailNotConfirmedException) {
+        throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -132,6 +152,29 @@ export class AuthController {
       }
       if (error instanceof RegistrationRateLimitedException) {
         throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
+      throw error;
+    }
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('confirm-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Consume a single-use email confirmation token and activate the account.',
+  })
+  @ApiResponse({ status: 200, description: 'Account confirmed and activated', type: OkResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid, expired, or already-used token' })
+  async confirmEmail(@Body() dto: ConfirmEmailDto): Promise<OkResponseDto> {
+    try {
+      await this.emailConfirmationService.confirmEmail(dto.token);
+    } catch (error) {
+      if (
+        error instanceof InvalidEmailConfirmationTokenException ||
+        error instanceof UserNotPendingConfirmationException
+      ) {
+        throw new BadRequestException(error.message);
       }
       throw error;
     }

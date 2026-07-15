@@ -7,16 +7,23 @@ import type { ConfigService } from '@nestjs/config';
 import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import { RegistrationService } from './registration.service';
 import type { IDemoModeService } from './demo-mode.service.interface';
+import type { IEmailConfirmationService } from './email-confirmation.service.interface';
 import {
   RegistrationDisabledException,
   RegistrationRateLimitedException,
   UserAlreadyExistsException,
   User,
   type UserRepositoryPort,
+  type UserStatus,
 } from '@openlinker/core/users';
 
-const makeUser = (username: string): User =>
-  new User('id', username, `${username}@test.com`, 'hash', 'viewer', 'pending', new Date(), new Date());
+const makeUser = (username: string, status: UserStatus = 'pending'): User =>
+  new User('id', username, `${username}@test.com`, 'hash', 'viewer', status, new Date(), new Date());
+
+const makeEmailConfirmationService = (): jest.Mocked<IEmailConfirmationService> => ({
+  sendConfirmation: jest.fn(),
+  confirmEmail: jest.fn(),
+});
 
 const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
   ({
@@ -47,7 +54,7 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
 describe('RegistrationService', () => {
   it('should throw RegistrationDisabledException when registration is disabled', async () => {
     const repo = makeRepo();
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'false' }), makeDemoService(false), new InMemoryCacheAdapter());
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'false' }), makeDemoService(false), new InMemoryCacheAdapter(), makeEmailConfirmationService());
 
     await expect(service.register('alice', 'alice@test.com', 'pass123')).rejects.toThrow(
       RegistrationDisabledException
@@ -59,7 +66,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(makeUser('alice'));
     repo.findByEmail.mockResolvedValue(null);
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter(), makeEmailConfirmationService());
 
     await expect(service.register('alice', 'newemail@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -71,7 +78,7 @@ describe('RegistrationService', () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(makeUser('bob'));
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter(), makeEmailConfirmationService());
 
     await expect(service.register('alice', 'bob@test.com', 'pass123')).rejects.toThrow(
       UserAlreadyExistsException
@@ -84,7 +91,7 @@ describe('RegistrationService', () => {
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(null);
     repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter(), makeEmailConfirmationService());
 
     await service.register('alice', 'alice@test.com', 'pass123');
 
@@ -97,19 +104,47 @@ describe('RegistrationService', () => {
     expect(saved.passwordHash).not.toBe('pass123');
   });
 
-  it('should save user in active status when demo mode is on', async () => {
+  it('should save user in pending_confirmation status and send a confirmation email when demo mode is on (#1624)', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
     repo.findByEmail.mockResolvedValue(null);
-    repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
-    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(true), new InMemoryCacheAdapter());
+    const savedUser = makeUser('demo_user', 'pending_confirmation');
+    repo.save.mockResolvedValue(savedUser);
+    const emailConfirmationService = makeEmailConfirmationService();
+    const service = new RegistrationService(
+      repo,
+      makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+      makeDemoService(true),
+      new InMemoryCacheAdapter(),
+      emailConfirmationService,
+    );
 
     await service.register('demo_user', 'demo@test.com', 'pass123');
 
     expect(repo.save).toHaveBeenCalledTimes(1);
     const saved = repo.save.mock.calls[0][0];
-    expect(saved.status).toBe('active');
+    expect(saved.status).toBe('pending_confirmation');
     expect(saved.role).toBe('viewer');
+    expect(emailConfirmationService.sendConfirmation).toHaveBeenCalledWith(savedUser);
+  });
+
+  it('should not send a confirmation email when demo mode is off', async () => {
+    const repo = makeRepo();
+    repo.findByUsername.mockResolvedValue(null);
+    repo.findByEmail.mockResolvedValue(null);
+    repo.save.mockImplementation((u) => Promise.resolve(makeUser(u.username)));
+    const emailConfirmationService = makeEmailConfirmationService();
+    const service = new RegistrationService(
+      repo,
+      makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+      makeDemoService(false),
+      new InMemoryCacheAdapter(),
+      emailConfirmationService,
+    );
+
+    await service.register('alice', 'alice@test.com', 'pass123');
+
+    expect(emailConfirmationService.sendConfirmation).not.toHaveBeenCalled();
   });
 
   describe('rate limiting (#1469)', () => {
@@ -124,6 +159,7 @@ describe('RegistrationService', () => {
         makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '2' }),
         makeDemoService(true),
         cache,
+        makeEmailConfirmationService(),
       );
 
       await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
@@ -146,6 +182,7 @@ describe('RegistrationService', () => {
         makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
         makeDemoService(true),
         cache,
+        makeEmailConfirmationService(),
       );
 
       await service.register('user1', 'user1@test.com', 'pass123', '1.1.1.1');
@@ -165,6 +202,7 @@ describe('RegistrationService', () => {
         makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
         makeDemoService(false),
         cache,
+        makeEmailConfirmationService(),
       );
 
       await service.register('user1', 'user1@test.com', 'pass123', '1.2.3.4');
@@ -184,6 +222,7 @@ describe('RegistrationService', () => {
         makeConfig({ OL_REGISTRATION_ENABLED: 'true', OL_DEMO_REGISTRATION_RATE_LIMIT: '1' }),
         makeDemoService(true),
         cache,
+        makeEmailConfirmationService(),
       );
 
       await service.register('user1', 'user1@test.com', 'pass123');

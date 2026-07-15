@@ -21,6 +21,14 @@ export interface IUserManagementService {
   deactivateUser(userId: string, actorId: string): Promise<void>;
   reactivateUser(userId: string): Promise<void>;
   deleteUser(userId: string, actorId: string): Promise<void>;
+
+  /**
+   * Transitions a user from `pending_confirmation` to `active` after a valid
+   * single-use email confirmation token was consumed (#1624). Throws
+   * UserNotPendingConfirmationException if the account isn't awaiting
+   * confirmation (e.g. already confirmed).
+   */
+  confirmEmail(userId: string): Promise<void>;
 }
 
 export const USER_MANAGEMENT_SERVICE_TOKEN = Symbol('IUserManagementService');

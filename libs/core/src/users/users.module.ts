@@ -15,10 +15,13 @@ import { PasswordResetTokenOrmEntity } from './infrastructure/persistence/entiti
 import { PasswordResetTokenRepository } from './infrastructure/persistence/repositories/password-reset-token.repository';
 import { RefreshTokenOrmEntity } from './infrastructure/persistence/entities/refresh-token.orm-entity';
 import { RefreshTokenRepository } from './infrastructure/persistence/repositories/refresh-token.repository';
+import { EmailConfirmationTokenOrmEntity } from './infrastructure/persistence/entities/email-confirmation-token.orm-entity';
+import { EmailConfirmationTokenRepository } from './infrastructure/persistence/repositories/email-confirmation-token.repository';
 import {
   USER_REPOSITORY_TOKEN,
   PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
   REFRESH_TOKEN_REPOSITORY_TOKEN,
+  EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
 } from './users.tokens';
 
 @Module({
@@ -27,6 +30,7 @@ import {
       UserOrmEntity,
       PasswordResetTokenOrmEntity,
       RefreshTokenOrmEntity,
+      EmailConfirmationTokenOrmEntity,
     ]),
   ],
   providers: [
@@ -36,11 +40,17 @@ import {
     { provide: PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN, useExisting: PasswordResetTokenRepository },
     RefreshTokenRepository,
     { provide: REFRESH_TOKEN_REPOSITORY_TOKEN, useExisting: RefreshTokenRepository },
+    EmailConfirmationTokenRepository,
+    {
+      provide: EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
+      useExisting: EmailConfirmationTokenRepository,
+    },
   ],
   exports: [
     USER_REPOSITORY_TOKEN,
     PASSWORD_RESET_TOKEN_REPOSITORY_TOKEN,
     REFRESH_TOKEN_REPOSITORY_TOKEN,
+    EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
   ],
 })
 export class UsersModule {}
