@@ -126,6 +126,12 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
     return this.toAssignmentDomain(saved);
   }
 
+  async deleteAssignmentByConnectionId(connectionId: string): Promise<void> {
+    // Delete only the assignment pointer; the referenced series are never
+    // cascade-deleted (#1575 detachable-pointer guarantee). No-op when absent.
+    await this.assignmentRepo.delete({ connectionId });
+  }
+
   async allocateNumber(input: {
     seriesId: string;
     recordId: string;

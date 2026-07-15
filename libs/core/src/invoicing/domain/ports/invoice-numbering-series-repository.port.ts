@@ -57,6 +57,13 @@ export interface InvoiceNumberingSeriesRepositoryPort {
   }): Promise<SeriesAssignmentData>;
 
   /**
+   * Detach a connection's assignment (C2 "detach" flow, #1576). Removes only the
+   * detachable pointer — the referenced series survive (never cascade-deleted).
+   * A no-op when the connection has no assignment.
+   */
+  deleteAssignmentByConnectionId(connectionId: string): Promise<void>;
+
+  /**
    * Atomically allocate the next number from `seriesId` for `recordId` and
    * persist the rendered number onto the invoice record, ALL IN ONE TRANSACTION
    * (#1575). The series advance is a single guarded `UPDATE ... RETURNING` that
