@@ -12,6 +12,7 @@ export { RefreshToken } from './domain/entities/refresh-token.entity';
 export type { UserRepositoryPort } from './domain/ports/user-repository.port';
 export type { PasswordResetTokenRepositoryPort } from './domain/ports/password-reset-token-repository.port';
 export type { PasswordResetNotifierPort } from './domain/ports/password-reset-notifier.port';
+export type { MailerPort, EmailMessage } from './domain/ports/mailer.port';
 export type { RefreshTokenRepositoryPort } from './domain/ports/refresh-token-repository.port';
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
 export { UserAlreadyExistsException } from './domain/exceptions/user-already-exists.exception';

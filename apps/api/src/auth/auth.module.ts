@@ -23,7 +23,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
-import { ConsolePasswordResetNotifierAdapter } from './adapters/console-password-reset-notifier.adapter';
+import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
+import { MAILER_PROVIDER } from './adapters/mailer.provider';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { RegistrationService } from './registration.service';
@@ -58,8 +59,9 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
     JwtStrategy,
     PasswordResetService,
     { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
-    ConsolePasswordResetNotifierAdapter,
-    { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: ConsolePasswordResetNotifierAdapter },
+    MAILER_PROVIDER,
+    MailerPasswordResetNotifierAdapter,
+    { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: MailerPasswordResetNotifierAdapter },
     RefreshTokenService,
     { provide: REFRESH_TOKEN_SERVICE_TOKEN, useExisting: RefreshTokenService },
     RegistrationService,
