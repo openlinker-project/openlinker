@@ -2663,8 +2663,8 @@ textarea,
 
 .data-table__card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border-default);
@@ -2726,6 +2726,127 @@ textarea,
   color: var(--text-muted);
   border: 1px dashed var(--border-default);
   border-radius: 10px;
+}
+
+/* ── Expandable rows (#1620) ─────────────────────────────────────────── */
+
+.data-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-2) !important;
+  padding-right: 0 !important;
+  text-align: center;
+}
+
+.data-table__expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__expand-toggle:hover {
+  color: var(--text-primary);
+  background: color-mix(in oklab, var(--bg-shell) 70%, transparent);
+}
+
+.data-table__expand-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.data-table__expand-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.data-table__row--expandable {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__row--expandable:hover {
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+
+.data-table__row--expanded {
+  background: color-mix(in oklab, var(--bg-shell) 45%, transparent);
+}
+
+.data-table__detail-row > .data-table__detail-cell {
+  padding: 0;
+  background: var(--bg-shell);
+  border-top: 0;
+}
+
+.data-table__detail {
+  padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
+}
+
+/* Detail field grid — shared by the desktop accordion and the mobile card. */
+.orders-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+
+.orders-detail__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.orders-detail__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.orders-detail__value {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.orders-detail__address,
+.orders-detail__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ── Mobile card select + detail (#1620) ─────────────────────────────── */
+
+.data-table__card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.data-table__card-select {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.data-table__card-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* DataTableSkeleton — shimmer placeholder that mirrors .data-table shape. */

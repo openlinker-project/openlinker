@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  Fragment,
   useCallback,
   useMemo,
   useRef,
@@ -44,6 +45,31 @@ export interface DataTableCardView<Row> {
   meta?: (row: Row) => ReactNode;
   subtitle?: (row: Row) => ReactNode;
   title: (row: Row) => ReactNode;
+  /**
+   * Leading selection slot (e.g. a checkbox), rendered outside the card's
+   * navigation Link so toggling it never navigates. Keeps multi-select usable
+   * in the mobile card layout (#1620).
+   */
+  select?: (row: Row) => ReactNode;
+  /**
+   * Full field set for the card body — the mobile counterpart of the desktop
+   * expandable detail panel. Rendered below the meta row so a card shows every
+   * field without an expand step (#1620).
+   */
+  detail?: (row: Row) => ReactNode;
+}
+
+/**
+ * Per-row expandable detail (#1620). When provided, the desktop table renders a
+ * leading toggle column; clicking a row (or its toggle) reveals `renderDetail`
+ * in an accordion panel beneath the row instead of navigating. Interactive
+ * elements inside the row (links, buttons, checkboxes) still short-circuit the
+ * toggle. Expandable takes precedence over `rowHref` for the row-level click.
+ */
+export interface DataTableExpandable<Row> {
+  renderDetail: (row: Row) => ReactNode;
+  /** aria-label for the per-row toggle button. */
+  toggleLabel?: (row: Row, expanded: boolean) => string;
 }
 
 interface DataTableProps<Row> {
@@ -54,6 +80,8 @@ interface DataTableProps<Row> {
   /** Fixed scroll-container height when virtualize is enabled. Default 560. */
   containerHeight?: number;
   emptyState?: ReactNode;
+  /** Per-row expandable detail panel (desktop accordion). See {@link DataTableExpandable}. */
+  expandable?: DataTableExpandable<Row>;
   /** Per-row height estimate used by the virtualizer. Default 36. */
   estimateRowHeight?: number;
   /**
@@ -98,6 +126,7 @@ export function DataTable<Row>({
   columns,
   containerHeight = 560,
   emptyState,
+  expandable,
   estimateRowHeight = 36,
   manualSorting = false,
   onSortChange,
@@ -121,6 +150,20 @@ export function DataTable<Row>({
   const effectiveOnSortChange = onSortChange ?? setInternalSort;
   const isMobile = useMediaQuery('(max-width: 767.98px)');
   const renderCards = Boolean(cardView) && isMobile;
+
+  // Expansion state (#1620) — keyed by `rowKey`, so it survives re-sorts and
+  // page-data churn as long as the same row stays present.
+  const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(new Set());
+  const toggleExpanded = useCallback((key: Key): void => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  // Leading toggle column widens the desktop body/header/padding colSpans.
+  const columnCount = columns.length + (expandable ? 1 : 0);
 
   const table = useReactTable<Row>({
     data: rows,
@@ -162,6 +205,15 @@ export function DataTable<Row>({
     [navigate],
   );
 
+  const makeRowExpandHandler = useCallback(
+    (key: Key) =>
+      (event: MouseEvent<HTMLTableRowElement>): void => {
+        if (shouldIgnoreRowClick(event)) return;
+        toggleExpanded(key);
+      },
+    [toggleExpanded],
+  );
+
   const virtualizer = useVirtualizer({
     count: virtualizeActive ? tableRows.length : 0,
     getScrollElement: () => scrollRef.current,
@@ -169,16 +221,54 @@ export function DataTable<Row>({
     overscan: 8,
   });
 
-  const renderBodyRow = (tanstackRow: TanStackRow<Row>, style?: CSSProperties): ReactElement => {
+  const renderBodyRow = (
+    tanstackRow: TanStackRow<Row>,
+    style?: CSSProperties,
+    withDetail = true,
+  ): ReactElement => {
     const row = tanstackRow.original;
+    const key = rowKey(row);
     const href = rowHref?.(row);
-    return (
-      <tr
-        key={rowKey(row)}
-        className={href ? 'data-table__row data-table__row--linked' : 'data-table__row'}
-        onClick={href ? makeRowClickHandler(href) : undefined}
-        style={style}
-      >
+    // Expandable takes precedence over rowHref for the row-level click.
+    const expanded = expandable ? expandedKeys.has(key) : false;
+    // Auto-link the first cell only in pure-navigation mode (no expand toggle).
+    const linkifyFirstCell = Boolean(href) && !expandable;
+    const rowClasses = [
+      'data-table__row',
+      expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
+      expanded ? 'data-table__row--expanded' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const onClick = expandable
+      ? makeRowExpandHandler(key)
+      : href
+        ? makeRowClickHandler(href)
+        : undefined;
+
+    const bodyRow = (
+      <tr key={key} className={rowClasses} onClick={onClick} style={style}>
+        {expandable ? (
+          <td className="data-table__expand-cell">
+            <button
+              type="button"
+              className="data-table__expand-toggle"
+              aria-expanded={expanded}
+              aria-label={
+                expandable.toggleLabel?.(row, expanded) ??
+                (expanded ? 'Collapse row details' : 'Expand row details')
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleExpanded(key);
+              }}
+            >
+              <span className="data-table__expand-icon" aria-hidden="true">
+                {expanded ? '▾' : '▸'}
+              </span>
+            </button>
+          </td>
+        ) : null}
         {columns.map((column, index) => {
           const cellClasses = [
             column.align ? `data-table__cell--${column.align}` : '',
@@ -188,7 +278,7 @@ export function DataTable<Row>({
             .join(' ');
 
           const content =
-            href && index === 0 ? (
+            linkifyFirstCell && href && index === 0 ? (
               <Link to={href} className="data-table__row-link">
                 {column.cell(row)}
               </Link>
@@ -204,6 +294,21 @@ export function DataTable<Row>({
         })}
       </tr>
     );
+
+    if (!expandable || !withDetail) return bodyRow;
+
+    return (
+      <Fragment key={key}>
+        {bodyRow}
+        {expanded ? (
+          <tr className="data-table__detail-row">
+            <td className="data-table__detail-cell" colSpan={columnCount}>
+              <div className="data-table__detail">{expandable.renderDetail(row)}</div>
+            </td>
+          </tr>
+        ) : null}
+      </Fragment>
+    );
   };
 
   const renderTable = (): ReactElement => (
@@ -212,6 +317,11 @@ export function DataTable<Row>({
       <thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <tr key={headerGroup.id}>
+            {expandable ? (
+              <th scope="col" className="data-table__expand-cell">
+                <span className="sr-only">Expand row</span>
+              </th>
+            ) : null}
             {headerGroup.headers.map((header) => {
               const column = columnById.get(header.column.id);
               const canSort = column?.sortable ?? false;
@@ -262,7 +372,7 @@ export function DataTable<Row>({
       <tbody>
         {isEmpty ? (
           <tr className="data-table__empty-row">
-            <td className="data-table__empty-cell" colSpan={columns.length}>
+            <td className="data-table__empty-cell" colSpan={columnCount}>
               {emptyNode}
             </td>
           </tr>
@@ -286,18 +396,20 @@ export function DataTable<Row>({
     if (paddingTop > 0) {
       rows.push(
         <tr key="__padding_top" aria-hidden="true" style={{ height: paddingTop }}>
-          <td colSpan={columns.length} />
+          <td colSpan={columnCount} />
         </tr>,
       );
     }
     for (const virtualItem of virtualItems) {
       const tanstackRow = tableRows[virtualItem.index];
-      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }));
+      // Detail panels break fixed-height virtual rows, so they're omitted here;
+      // expandable + virtualize is not a supported combination.
+      rows.push(renderBodyRow(tanstackRow, { height: virtualItem.size }, false));
     }
     if (paddingBottom > 0) {
       rows.push(
         <tr key="__padding_bottom" aria-hidden="true" style={{ height: paddingBottom }}>
-          <td colSpan={columns.length} />
+          <td colSpan={columnCount} />
         </tr>,
       );
     }
@@ -362,15 +474,23 @@ export function DataTable<Row>({
                   }
                   onClick={href ? makeRowClickHandler(href) : undefined}
                 >
-                  {href ? (
-                    <Link to={href} className="data-table__card-main data-table__card-main--link">
-                      {mainContent}
-                    </Link>
-                  ) : (
-                    <div className="data-table__card-main">{mainContent}</div>
-                  )}
-                  {cardView.meta ? (
-                    <div className="data-table__card-meta">{cardView.meta(row)}</div>
+                  <div className="data-table__card-head">
+                    {cardView.select ? (
+                      <div className="data-table__card-select">{cardView.select(row)}</div>
+                    ) : null}
+                    {href ? (
+                      <Link to={href} className="data-table__card-main data-table__card-main--link">
+                        {mainContent}
+                      </Link>
+                    ) : (
+                      <div className="data-table__card-main">{mainContent}</div>
+                    )}
+                    {cardView.meta ? (
+                      <div className="data-table__card-meta">{cardView.meta(row)}</div>
+                    ) : null}
+                  </div>
+                  {cardView.detail ? (
+                    <div className="data-table__card-detail">{cardView.detail(row)}</div>
                   ) : null}
                 </li>
               );
