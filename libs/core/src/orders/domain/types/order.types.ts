@@ -243,6 +243,20 @@ export interface OrderItem {
    * future enrichment — no current adapter sets this on ingestion.
    */
   imageUrl?: string;
+
+  /**
+   * Genuine per-line VAT/tax rate as a neutral string code (#1586, ADR-035),
+   * reusing the same country-agnostic vocabulary as `InvoiceLine.taxRate` (the
+   * KSeF `FA3_TAX_RATE_MAP` keys — e.g. `'23'`, `'8'`, `'5'`, `'0'`, `'zw'`,
+   * `'np'`). Optional and source-uniform: absent means "the source did not
+   * report a per-line rate", and the invoicing pipeline falls back to the
+   * connection-level default (today's behaviour). No order-source adapter
+   * populates this in Phase 1 — the field opens the seam so a mixed-rate order
+   * can carry correct per-line rates once an adapter fills it (Phase 2). The
+   * value is an opaque neutral code; no country/scheme logic lives in core
+   * (ADR-026).
+   */
+  taxRate?: string;
 }
 
 /**

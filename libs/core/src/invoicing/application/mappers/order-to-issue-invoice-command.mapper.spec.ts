@@ -92,6 +92,22 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.lines[2].name).toBe('PID-5');
   });
 
+  it('per-line taxRate: forwards OrderItem.taxRate when present, else falls back to empty (#1586 Phase 1)', () => {
+    const order = makeOrder({
+      items: [
+        makeItem({ id: 'a', name: 'Std', taxRate: '23' }),
+        makeItem({ id: 'b', name: 'Reduced', taxRate: '8' }),
+        makeItem({ id: 'c', name: 'Unset' }), // no taxRate -> empty (default path)
+      ],
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines[0].taxRate).toBe('23');
+    expect(cmd.lines[1].taxRate).toBe('8');
+    expect(cmd.lines[2].taxRate).toBe('');
+  });
+
   it('should fill saleDate from placedAt (ISO YYYY-MM-DD) when the order carries one', () => {
     const cmd = toIssueInvoiceCommand({
       order: makeOrder({ placedAt: new Date('2026-06-20T14:30:00.000Z') }),
