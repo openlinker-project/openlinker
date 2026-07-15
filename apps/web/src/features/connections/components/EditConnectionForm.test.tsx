@@ -678,9 +678,11 @@ describe('EditConnectionForm', () => {
       // `findByRole` only waits for the button to exist — it renders enabled
       // on first paint (useDemoMode() returns false until the config query
       // resolves) and only becomes disabled once that async resolution lands.
-      // Assert via waitFor so the disabled check doesn't race the resolution.
+      // Assert via waitFor with an extended timeout: under CI's parallel test
+      // execution the config-query resolution can exceed the 1000ms default,
+      // so match the 5000ms precedent from bulk-config-step.test.tsx.
       const submit = await screen.findByRole('button', { name: 'Save changes' });
-      await waitFor(() => expect(submit).toBeDisabled());
+      await waitFor(() => expect(submit).toBeDisabled(), { timeout: 5000 });
     });
 
     it('keeps the submit enabled for an admin session even in demo mode', async () => {
