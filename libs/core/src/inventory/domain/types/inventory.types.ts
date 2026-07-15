@@ -88,6 +88,18 @@ export interface VariantAvailability {
   locationCount: number;
 }
 
+/**
+ * Result of a stale-marking prune (#1478 / #1599). `markedCount` is the total
+ * rows newly flagged (may exceed `variantIds.length` — multiple location rows
+ * per variant); `variantIds` is the distinct set of non-null variant ids
+ * flagged, used to emit the master-deletion event. Product-level rows
+ * (`productVariantId = NULL`) contribute to `markedCount` but not `variantIds`.
+ */
+export interface PruneStaleVariantsResult {
+  markedCount: number;
+  variantIds: string[];
+}
+
 
 
 

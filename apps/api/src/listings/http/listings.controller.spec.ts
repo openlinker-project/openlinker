@@ -136,6 +136,7 @@ describe('ListingsController', () => {
       upsert: jest.fn(),
       upsertMany: jest.fn(),
       findMany: jest.fn(),
+      markStaleExceptVariants: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),

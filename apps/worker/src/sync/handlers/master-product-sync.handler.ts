@@ -50,7 +50,20 @@ export class MasterProductSyncHandler implements SyncJobHandler {
     );
 
     try {
-      await this.masterProductSync.syncFromMasterByExternalId(job.connectionId, payload.externalId);
+      const result = await this.masterProductSync.syncFromMasterByExternalId(
+        job.connectionId,
+        payload.externalId
+      );
+
+      // A product deleted at the master is a terminal business outcome, not a
+      // transient failure — return business_failure so the runner does NOT retry
+      // a permanent condition (#1599, ADR-007). The variants were marked stale.
+      if (result.masterDeleted) {
+        this.logger.warn(
+          `Master product sync: product deleted at master (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)})`
+        );
+        return { outcome: 'business_failure' };
+      }
 
       return { outcome: 'ok' };
     } catch (error) {

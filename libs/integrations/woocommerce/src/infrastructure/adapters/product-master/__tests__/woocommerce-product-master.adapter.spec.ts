@@ -12,6 +12,7 @@ import type { IWooCommerceProductMapper } from '../../../mappers/woocommerce-pro
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { WooCommerceDuplicateSkuException } from '../../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
 import type { WooCommerceProduct, WooCommerceProductVariation } from '../woocommerce-product.types';
@@ -135,18 +136,18 @@ describe('WooCommerceProductMasterAdapter', () => {
       expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/42');
     });
 
-    it('should throw WooCommerceResourceNotFoundException when no mapping exists', async () => {
+    it('should throw MasterProductNotFoundError when no mapping exists (#1599)', async () => {
       const httpClient = makeHttpClient();
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.getExternalIds.mockResolvedValue([]);
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       await expect(adapter.getProduct('prod-missing')).rejects.toBeInstanceOf(
-        WooCommerceResourceNotFoundException,
+        MasterProductNotFoundError,
       );
       expect(httpClient.get).not.toHaveBeenCalled();
     });
 
-    it('should convert WooCommerceHttpResponseException(404) to WooCommerceResourceNotFoundException', async () => {
+    it('should translate a WooCommerceHttpResponseException(404) to MasterProductNotFoundError (#1599)', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockRejectedValue(
         new WooCommerceHttpResponseException(404, 'Not found'),
@@ -157,7 +158,7 @@ describe('WooCommerceProductMasterAdapter', () => {
       ]);
       const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
       await expect(adapter.getProduct('prod-deleted')).rejects.toBeInstanceOf(
-        WooCommerceResourceNotFoundException,
+        MasterProductNotFoundError,
       );
     });
   });

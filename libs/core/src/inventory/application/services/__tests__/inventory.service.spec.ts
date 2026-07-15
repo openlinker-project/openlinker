@@ -179,16 +179,19 @@ describe('InventoryService', () => {
     );
   });
 
-  it('delegates pruneStaleVariants to the repository and returns the marked count', async () => {
-    (inventoryRepository.markStaleExceptVariants as jest.Mock).mockResolvedValue(3);
+  it('delegates pruneStaleVariants to the repository and returns the prune result', async () => {
+    (inventoryRepository.markStaleExceptVariants as jest.Mock).mockResolvedValue({
+      markedCount: 3,
+      variantIds: ['ol_variant_b'],
+    });
 
-    const marked = await service.pruneStaleVariants('product-id', ['ol_variant_a', null]);
+    const result = await service.pruneStaleVariants('product-id', ['ol_variant_a', null]);
 
     expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith('product-id', [
       'ol_variant_a',
       null,
     ]);
-    expect(marked).toBe(3);
+    expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_b'] });
   });
 
   it('uses persisted updatedAt as write event token', async () => {

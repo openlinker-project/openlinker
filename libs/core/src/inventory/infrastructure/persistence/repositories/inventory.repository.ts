@@ -25,6 +25,7 @@ import type {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  PruneStaleVariantsResult,
 } from '../../../domain/types/inventory.types';
 
 @Injectable()
@@ -133,7 +134,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
   async markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly (string | null)[]
-  ): Promise<number> {
+  ): Promise<PruneStaleVariantsResult> {
     const nonNullKeep = keepVariantIds.filter((v): v is string => v !== null);
     const keepNull = keepVariantIds.includes(null);
 
@@ -161,9 +162,17 @@ export class InventoryRepository implements InventoryRepositoryPort {
           }
         })
       )
+      .returning(['productVariantId'])
       .execute();
 
-    return result.affected ?? 0;
+    // RETURNING yields one raw row per flagged inventory row; distinct non-null
+    // variant ids feed the master-deletion event payload (#1599). Product-level
+    // rows carry a NULL variant id and are counted but not surfaced as ids.
+    const raw = result.raw as { productVariantId: string | null }[];
+    const variantIds = [
+      ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
+    ];
+    return { markedCount: result.affected ?? raw.length, variantIds };
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {
