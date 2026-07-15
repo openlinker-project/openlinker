@@ -34,6 +34,7 @@ apps/e2e/
     auth.setup.ts         # global-setup auth project → writes .auth/admin.json
     smoke/                # health + login + connections list (proves the substrate)
     golden-path/          # operator-setup.spec (S1-S4)
+    webhooks/             # real signed inbound-webhook receiver path (#1512)
   .auth/                  # storageState (gitignored)
 ```
 
@@ -68,6 +69,7 @@ so the suite is never swept into the root `pnpm -r test` unit gate.
 pnpm --filter @openlinker/e2e test:e2e                       # full suite
 pnpm --filter @openlinker/e2e test:e2e -- --project=smoke    # smoke only (read-only)
 pnpm --filter @openlinker/e2e test:e2e -- --project=golden-path
+pnpm --filter @openlinker/e2e test:e2e -- --project=webhooks # signed inbound-webhook receiver path (#1512)
 pnpm --filter @openlinker/e2e test:e2e:ui                    # Playwright UI mode
 pnpm --filter @openlinker/e2e test:e2e:headed                # headed browser
 pnpm --filter @openlinker/e2e test:e2e:report                # open last HTML report
@@ -181,3 +183,10 @@ all six systems with field- and amount-level parity
 covers the post-purchase half (order ingest, InPost label, KSeF invoice,
 reconciliation) and drives a manual buyer purchase + external-dashboard
 checkpoints. See [`docs/manual-testing/e2e-golden-path.md`](../../docs/manual-testing/e2e-golden-path.md).
+
+Also delivered: the `webhooks` project (`tests/webhooks/inbound-webhook.spec.ts`,
+#1512) — fires a real OL-HMAC-signed inbound webhook at
+`POST /webhooks/:provider/:connectionId` and asserts verify -> record -> enqueue
+-> dedup. The truly external platform-delivery round-trip stays a documented
+manual check: see
+[`docs/manual-testing/inbound-webhook-round-trip.md`](../../docs/manual-testing/inbound-webhook-round-trip.md).

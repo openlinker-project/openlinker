@@ -13,6 +13,11 @@
  *                      Self-configuring (asserts correct-for-mode, skips otherwise);
  *                      independent of the golden-path projects. `retries: 1`
  *                      (idempotent: each run provisions a fresh unique viewer).
+ *   - `webhooks`     — fires a real signed inbound webhook at the receiver
+ *                      (`POST /webhooks/:provider/:connectionId`) and asserts
+ *                      verify -> record -> enqueue -> dedup. Self-configuring
+ *                      (skips when no PrestaShop connection is present).
+ *                      `retries: 0` (rotates the secret + enqueues a job).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -84,6 +89,18 @@ export default defineConfig({
       // bounded — pollers, job waits, and each manualCheckpoint's timeoutMs —
       // so a hung run still fails at the responsible checkpoint, not silently.
       timeout: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Real signed inbound-webhook receiver path (#1512) — independent of the
+      // golden-path/full-flow projects. Depends only on `setup` for the admin
+      // storageState (the spec rotates the connection's webhook secret and fires
+      // a signed delivery via the node API client). `retries: 0` — a retry would
+      // rotate the secret again and enqueue a second downstream job.
+      name: 'webhooks',
+      testMatch: /webhooks\/.*\.spec\.ts/,
+      retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

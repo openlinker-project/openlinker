@@ -26,6 +26,8 @@ import type {
   EnqueueSyncJobInput,
   EnqueueSyncJobResponse,
   GenerateLabelInput,
+  InboundWebhookResult,
+  ListWebhookDeliveriesQuery,
   InternalHealthResponse,
   InventoryAvailability,
   InventoryAvailabilityResponse,
@@ -48,6 +50,7 @@ import type {
   ProductVariant,
   RawResponse,
   RegisterInput,
+  RotateWebhookSecretResponse,
   RoutingRule,
   RoutingRuleInput,
   Shipment,
@@ -56,6 +59,7 @@ import type {
   SyncJobListResponse,
   SystemConfig,
   UserListResponse,
+  WebhookDeliverySummary,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -248,6 +252,59 @@ export class ApiClient {
       this.request<SystemConfig>('/system/config', { skipAuth: true }),
   };
 
+  // ── Webhooks ──────────────────────────────────────────────────────────────
+  webhooks = {
+    /**
+     * Fire a raw inbound webhook at the version-NEUTRAL ingress
+     * `/webhooks/:provider/:connectionId` (no `/v1` prefix, no auth header) —
+     * exactly the URL an external platform posts to. The raw body string and
+     * signature headers are supplied by the caller (see `support/webhooks.ts`),
+     * so the request is byte-identical to a real platform delivery. Never throws
+     * on non-2xx — returns the status so the spec can assert 202 / 401 itself.
+     */
+    sendInbound: async (
+      provider: string,
+      connectionId: string,
+      rawBody: string,
+      headers: Record<string, string>,
+    ): Promise<InboundWebhookResult> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}/webhooks/${provider}/${connectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: rawBody,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const raw = await response.text();
+      return {
+        status: response.status,
+        ok: response.ok,
+        body: raw.length > 0 ? this.tryParseJson(raw) : undefined,
+      };
+    },
+
+    /** List recorded webhook deliveries (admin). Summary rows, no payload. */
+    listDeliveries: (query?: ListWebhookDeliveriesQuery): Promise<Paginated<WebhookDeliverySummary>> =>
+      this.request<Paginated<WebhookDeliverySummary>>(
+        `/webhook-deliveries${buildQuery({
+          provider: query?.provider,
+          connectionId: query?.connectionId,
+          eventType: query?.eventType,
+          status: query?.status,
+          since: query?.since,
+          until: query?.until,
+          limit: query?.limit,
+          offset: query?.offset,
+        })}`,
+      ),
+  };
+
   // ── Auth (registration) ───────────────────────────────────────────────────
   auth = {
     /**
@@ -290,6 +347,16 @@ export class ApiClient {
       ),
     getById: (connectionId: string): Promise<Connection> =>
       this.request<Connection>(`/connections/${connectionId}`),
+    /**
+     * Rotate the connection's webhook secret (admin). Returns the new plaintext
+     * secret ONCE — the E2E webhook spec uses it to compute the OL-HMAC
+     * signature an external platform would send.
+     */
+    rotateWebhookSecret: (connectionId: string): Promise<RotateWebhookSecretResponse> =>
+      this.request<RotateWebhookSecretResponse>(
+        `/connections/${connectionId}/webhooks/secret/rotate`,
+        { method: 'POST' },
+      ),
   };
 
   // ── Products ────────────────────────────────────────────────────────────
