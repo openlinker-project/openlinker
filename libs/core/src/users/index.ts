@@ -26,6 +26,7 @@ export { CannotSelfModifyException } from './domain/exceptions/cannot-self-modif
 export { LastAdminException } from './domain/exceptions/last-admin.exception';
 export { RegistrationDisabledException } from './domain/exceptions/registration-disabled.exception';
 export { RegistrationRateLimitedException } from './domain/exceptions/registration-rate-limited.exception';
+export { EmailConfirmationRateLimitedException } from './domain/exceptions/email-confirmation-rate-limited.exception';
 export { InvalidPasswordResetTokenException } from './domain/exceptions/invalid-password-reset-token.exception';
 export { InvalidEmailConfirmationTokenException } from './domain/exceptions/invalid-email-confirmation-token.exception';
 export { EmailNotConfirmedException } from './domain/exceptions/email-not-confirmed.exception';

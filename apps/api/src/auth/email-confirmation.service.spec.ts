@@ -5,6 +5,7 @@
  */
 import type { ConfigService } from '@nestjs/config';
 import {
+  EmailConfirmationRateLimitedException,
   EmailConfirmationToken,
   InvalidEmailConfirmationTokenException,
   User,
@@ -14,8 +15,10 @@ import {
   type MailerPort,
   type UserRepositoryPort,
 } from '@openlinker/core/users';
+import type { CachePort } from '@openlinker/shared/cache';
 import { EmailConfirmationService } from './email-confirmation.service';
 import type { IUserManagementService } from '../users/user-management.service.interface';
+import type { IDemoModeService } from './demo-mode.service.interface';
 
 const makeUser = (
   email: string | null = 'demo@test.com',
@@ -46,6 +49,16 @@ const makeUserManagementService = (): jest.Mocked<IUserManagementService> => ({
   reactivateUser: jest.fn(),
   deleteUser: jest.fn(),
   confirmEmail: jest.fn(),
+});
+
+const makeDemoModeService = (enabled = false): jest.Mocked<IDemoModeService> => ({
+  isDemoModeEnabled: jest.fn(() => enabled),
+});
+
+const makeCache = (): jest.Mocked<CachePort> => ({
+  get: jest.fn(),
+  set: jest.fn(),
+  delete: jest.fn(),
 });
 
 const makeUserRepo = (): jest.Mocked<UserRepositoryPort> => ({
@@ -79,6 +92,8 @@ describe('EmailConfirmationService', () => {
         mailer,
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({ WEB_URL: 'https://app.example.com' }),
       );
 
@@ -105,6 +120,8 @@ describe('EmailConfirmationService', () => {
         mailer,
         makeUserManagementService(),
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -126,6 +143,8 @@ describe('EmailConfirmationService', () => {
         mailer,
         makeUserManagementService(),
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -141,6 +160,8 @@ describe('EmailConfirmationService', () => {
         mailer,
         makeUserManagementService(),
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -160,6 +181,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -178,6 +201,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -194,6 +219,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         makeUserManagementService(),
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -214,6 +241,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -234,6 +263,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -254,6 +285,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
       const warnSpy = jest.spyOn(
@@ -283,6 +316,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         userManagementService,
         makeUserRepo(),
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -312,6 +347,8 @@ describe('EmailConfirmationService', () => {
         mailer,
         makeUserManagementService(),
         userRepo,
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({ WEB_URL: 'https://app.example.com' }),
       );
 
@@ -331,6 +368,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         makeUserManagementService(),
         userRepo,
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -349,6 +388,8 @@ describe('EmailConfirmationService', () => {
         makeMailer(),
         makeUserManagementService(),
         userRepo,
+        makeDemoModeService(),
+        makeCache(),
         makeConfig({}),
       );
 
@@ -356,6 +397,97 @@ describe('EmailConfirmationService', () => {
 
       expect(tokenRepo.invalidateActiveForUser).not.toHaveBeenCalled();
       expect(tokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('does not rate-limit when demo mode is disabled (review finding 2)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      const cache = makeCache();
+      userRepo.findByEmail.mockResolvedValue(makeUser());
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeDemoModeService(false),
+        cache,
+        makeConfig({}),
+      );
+
+      await service.resendConfirmation('demo@test.com', '1.2.3.4');
+
+      expect(cache.get).not.toHaveBeenCalled();
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('does not rate-limit when no clientIp is provided, even in demo mode', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      const cache = makeCache();
+      userRepo.findByEmail.mockResolvedValue(makeUser());
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeDemoModeService(true),
+        cache,
+        makeConfig({}),
+      );
+
+      await service.resendConfirmation('demo@test.com');
+
+      expect(cache.get).not.toHaveBeenCalled();
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('increments the per-IP counter under the configured limit and proceeds (review finding 2)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      const cache = makeCache();
+      cache.get.mockResolvedValue(2);
+      userRepo.findByEmail.mockResolvedValue(makeUser());
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeDemoModeService(true),
+        cache,
+        makeConfig({
+          OL_DEMO_RESEND_CONFIRMATION_RATE_LIMIT: '5',
+          OL_DEMO_RESEND_CONFIRMATION_RATE_WINDOW_SECONDS: '3600',
+        }),
+      );
+
+      await service.resendConfirmation('demo@test.com', '1.2.3.4');
+
+      expect(cache.get).toHaveBeenCalledWith('demo:resend-confirmation:1.2.3.4');
+      expect(cache.set).toHaveBeenCalledWith('demo:resend-confirmation:1.2.3.4', 3, 3600);
+      expect(tokenRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws EmailConfirmationRateLimitedException once the per-IP limit is reached (review finding 2)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      const cache = makeCache();
+      cache.get.mockResolvedValue(5);
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeDemoModeService(true),
+        cache,
+        makeConfig({ OL_DEMO_RESEND_CONFIRMATION_RATE_LIMIT: '5' }),
+      );
+
+      await expect(
+        service.resendConfirmation('demo@test.com', '1.2.3.4'),
+      ).rejects.toThrow(EmailConfirmationRateLimitedException);
+
+      expect(cache.set).not.toHaveBeenCalled();
+      expect(userRepo.findByEmail).not.toHaveBeenCalled();
     });
   });
 });
