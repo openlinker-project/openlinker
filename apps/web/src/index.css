@@ -8268,13 +8268,22 @@ html[data-density='compact'] .status-badge {
   color: var(--text-disabled);
 }
 
-.bulk-dispatch__num {
+/* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
+ * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
+ * rule combines an element-type selector with an attribute selector (0,1,1),
+ * which beats a bare class selector (0,1,0) regardless of source order; adding
+ * the `input` element-type selector here brings this rule to the same
+ * specificity tier so it wins on source order instead - otherwise these
+ * compact dimension/weight fields silently stretch to share the row's flex
+ * space instead of staying at their intended width (#1658). */
+input.bulk-dispatch__num {
   width: 52px;
+  flex-shrink: 0;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.bulk-dispatch__num--wide {
+input.bulk-dispatch__num--wide {
   width: 68px;
 }
 
@@ -8306,7 +8315,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto auto auto;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -8319,7 +8328,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row--ineligible {
   background: var(--bg-canvas);
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
 }
 
 .bulk-dispatch__row-id {
@@ -8347,6 +8356,13 @@ html[data-density='compact'] .status-badge {
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Without `nowrap`, `overflow-wrap: anywhere` (inherited from `.mono`)
+   * breaks this unbroken internal order id one character per line once its
+   * squeezed grid column runs low on width - inflating the row (and, once
+   * clipped by `.bulk-dispatch__rows`' max-height, the whole dialog) to
+   * hundreds of pixels of apparent empty space (#1658). `nowrap` lets the
+   * already-declared ellipsis truncate it on one line instead. */
+  white-space: nowrap;
 }
 
 .bulk-dispatch__buyer {
