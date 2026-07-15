@@ -504,6 +504,38 @@ describe('KsefInvoicingAdapter', () => {
       expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
     });
 
+    it('should use the buyerOverride buyer for the KOR when supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const override = new BuyerProfile(
+        'Corrected Buyer Sp. z o.o.',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      await adapter(http, builder).issueCorrection(correctionCommand({ buyerOverride: override }));
+
+      const built = lastInput();
+      // The KOR carries the OVERRIDE buyer, not the original snapshot's buyer.
+      expect(built?.buyerName).toBe('Corrected Buyer Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '5252248481' });
+    });
+
+    it('should fall back to the original snapshot buyer when no buyerOverride is supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(correctionCommand());
+
+      const built = lastInput();
+      expect(built?.buyerName).toBe('Klient Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '9876543210' });
+    });
+
     it('should derive distinct P_2 numbers for two corrections of the same order (#1364)', async () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
@@ -629,6 +661,42 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(result.regulatoryStatus).toBe('submitted');
       expect(result.clearanceReference).toBeNull();
+    });
+
+    it('should capture the authority rejection detail as clearanceDetail (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: {
+          status: {
+            code: 440,
+            description: 'Weryfikacja negatywna',
+            details: ['NIP nabywcy niepoprawny'],
+          },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('rejected');
+      expect(result.clearanceDetail).toContain('440');
+      expect(result.clearanceDetail).toContain('Weryfikacja negatywna');
+      expect(result.clearanceDetail).toContain('NIP nabywcy niepoprawny');
+    });
+
+    it('should not set clearanceDetail on a non-rejection (submitted) read (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: { status: { code: 150, description: 'W trakcie przetwarzania' } },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.clearanceDetail ?? null).toBeNull();
     });
 
     it('should return rejected (terminal) on a known business-rejection code (440)', async () => {

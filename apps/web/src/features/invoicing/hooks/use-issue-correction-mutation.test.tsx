@@ -50,13 +50,14 @@ describe('useIssueCorrectionMutation', () => {
 
     capturedMutation!.mutate({
       invoiceId: 'ol_invoice_1',
-      input: { lines: [{ originalLineNumber: 1, newQuantity: 0 }] },
+      input: { reason: 'partial return', lines: [{ originalLineNumber: 1, newQuantity: 0 }] },
     });
 
     await waitFor(() => expect(capturedMutation!.isSuccess).toBe(true));
 
     expect(capturedMutation!.data).toEqual(correctionRecord);
     expect(issueCorrection).toHaveBeenCalledWith('ol_invoice_1', {
+      reason: 'partial return',
       lines: [{ originalLineNumber: 1, newQuantity: 0 }],
     });
   });
@@ -77,7 +78,7 @@ describe('useIssueCorrectionMutation', () => {
 
     capturedMutation!.mutate({
       invoiceId: 'ol_invoice_1',
-      input: { lines: [] },
+      input: { reason: 'partial return', lines: [] },
     });
 
     await waitFor(() => expect(capturedMutation!.isError).toBe(true));

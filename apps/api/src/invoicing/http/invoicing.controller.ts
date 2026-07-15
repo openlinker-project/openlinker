@@ -777,6 +777,25 @@ export class InvoicingController {
         })),
         idempotencyKey: dto.idempotencyKey,
         originalDocument,
+        // #1582: optional buyer-identity override (e.g. a wrong NIP on the
+        // original). Re-wrapped into the neutral BuyerProfile the adapter uses
+        // for the KOR; absent ⇒ the original snapshot's buyer is reused.
+        buyerOverride: dto.buyerOverride
+          ? new BuyerProfile(
+              dto.buyerOverride.name,
+              dto.buyerOverride.taxId ?? null,
+              {
+                line1: dto.buyerOverride.address.line1,
+                line2: dto.buyerOverride.address.line2 ?? null,
+                city: dto.buyerOverride.address.city,
+                postalCode: dto.buyerOverride.address.postalCode,
+                countryIso2: dto.buyerOverride.address.countryIso2,
+              },
+              dto.buyerOverride.type,
+              dto.buyerOverride.isPublicSectorEntity,
+              dto.buyerOverride.isVatGroupMember,
+            )
+          : undefined,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -1264,6 +1283,7 @@ export class InvoicingController {
       providerInvoiceNumber: record.providerInvoiceNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
+      clearanceDetail: record.clearanceDetail,
       // W1 failure semantics (errorMessage stays omitted — PII).
       failureMode: record.failureMode,
       failureCode: record.failureCode,

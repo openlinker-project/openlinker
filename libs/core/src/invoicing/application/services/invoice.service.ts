@@ -488,18 +488,106 @@ export class InvoiceService implements IInvoiceService {
   }
 
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
-    // Persist intent before the provider call: `pending` row so a crash leaves
-    // a durable trace. Corrections do not share the idempotency-gate / CAS-lease
-    // of issueInvoice — each correction is a distinct new fiscal document with
-    // its own record; the caller supplies an idempotencyKey for dedup if needed.
-    const pending = await this.repo.create({
-      connectionId: cmd.connectionId,
-      orderId: cmd.orderId,
-      providerType: '',
-      documentType: cmd.documentType ?? 'corrected',
-      status: 'pending',
-      idempotencyKey: cmd.idempotencyKey ?? null,
-    });
+    // Mirrors `issueInvoice`'s single-flight structure (#1582): a supplied
+    // idempotencyKey dedups via the read-gate + create-race resume, and the CAS
+    // lease (`claimForIssue` in `correctWithAdapter`) is claimed UNCONDITIONALLY
+    // - even keyless - so a resumed/contended record can never cross the provider
+    // boundary twice. Each correction is still a DISTINCT new fiscal document
+    // with its own record; keyless calls are never cross-deduplicated (R1), same
+    // as `issueInvoice`.
+    const key = cmd.idempotencyKey;
+    if (key !== undefined) {
+      const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+      if (existing) {
+        return this.resumeExistingCorrection(cmd, existing);
+      }
+    }
+
+    let pending: InvoiceRecord;
+    try {
+      pending = await this.repo.create({
+        connectionId: cmd.connectionId,
+        orderId: cmd.orderId,
+        providerType: '',
+        documentType: cmd.documentType ?? 'corrected',
+        status: 'pending',
+        idempotencyKey: key ?? null,
+      });
+    } catch (error) {
+      // Create-race: a concurrent same-key call won the dedup guard between our
+      // read-gate and create. Re-read by key and resume the winner under the same
+      // lease gate. Guarded by `key !== undefined` - it cannot fire keyless.
+      if (key !== undefined && error instanceof DuplicateInvoiceRecordException) {
+        const winner = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+        if (winner) {
+          return this.resumeExistingCorrection(cmd, winner);
+        }
+      }
+      throw error;
+    }
+
+    return this.correctWithAdapter(cmd, pending.id);
+  }
+
+  /**
+   * Decide how to resume an EXISTING same-key correction record, enforcing the
+   * fiscal-safety invariant before any retry re-crosses the provider boundary
+   * (#1582) - the correction-path twin of {@link resumeExisting}:
+   *   - `issued`          -> return verbatim (idempotent replay).
+   *   - live lease        -> return as-is; another attempt holds the slot.
+   *   - in-doubt `failed`  -> return as-is for manual reconciliation.
+   *   - re-attemptable     -> claim the slot atomically and, only on a WIN,
+   *                           re-cross the boundary.
+   */
+  private async resumeExistingCorrection(
+    cmd: IssueCorrectionCommand,
+    existing: InvoiceRecord,
+  ): Promise<InvoiceRecord> {
+    if (existing.status === 'issued') {
+      return existing;
+    }
+    const now = new Date();
+    if (existing.isLeaseLive(now)) {
+      this.logger.warn(
+        `Correction record ${existing.id} is claimed by a live in-flight attempt; not re-attempting`,
+      );
+      return existing;
+    }
+    if (existing.status === 'failed' && !existing.isReattemptableFailure) {
+      this.logger.warn(
+        `Correction record ${existing.id} failed in-doubt (failureMode=${existing.failureMode ?? 'unknown'}); ` +
+          `not auto-re-attempting - surfaced for manual reconciliation`,
+      );
+      return existing;
+    }
+    return this.correctWithAdapter(cmd, existing.id);
+  }
+
+  /**
+   * Atomically CLAIM the in-flight slot (UNCONDITIONALLY - #1582), resolve the
+   * `CorrectionIssuer` adapter, cross the boundary, and patch the outcome. The
+   * CAS claim is the single-flight guard: a contended retry that fails to claim
+   * backs off WITHOUT calling the provider. Mirrors {@link issueWithAdapter}.
+   */
+  private async correctWithAdapter(
+    cmd: IssueCorrectionCommand,
+    recordId: string,
+  ): Promise<InvoiceRecord> {
+    // (1) Atomic claim. A null return means a live attempt already holds the slot
+    // (or the row went terminal): back off WITHOUT crossing the boundary.
+    const leaseExpiresAt = new Date(Date.now() + ISSUING_LEASE_MS);
+    const claimed = await this.repo.claimForIssue(recordId, leaseExpiresAt);
+    if (claimed === null) {
+      this.logger.warn(
+        `Could not claim correction record ${recordId} for issuance ` +
+          `(held by a live attempt or already terminal); not re-attempting`,
+      );
+      const current = await this.repo.findById(recordId);
+      if (current) {
+        return current;
+      }
+      throw new InvoiceRecordNotFoundException(recordId);
+    }
 
     const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
       cmd.connectionId,
@@ -509,7 +597,7 @@ export class InvoiceService implements IInvoiceService {
     if (!isCorrectionIssuer(adapter)) {
       // Adapter resolved but doesn't implement CorrectionIssuer: update the row
       // to failed (in-doubt) and throw so the caller can surface the 422.
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: 'Provider does not support correction issuance.',
         failureMode: 'rejected',
@@ -529,9 +617,9 @@ export class InvoiceService implements IInvoiceService {
       const failureCode = this.classifyFailureCode(error, failureMode);
       const failureReason = this.deriveFailureReason(failureCode);
       this.logger.warn(
-        `Correction issuance failed for record ${pending.id} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
+        `Correction issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: sanitized,
         failureMode,
@@ -544,35 +632,41 @@ export class InvoiceService implements IInvoiceService {
 
     const { record: issued, seller, sourceDocument } = issueResult;
 
+    // #1582: the buyer captured on the correction's own snapshot is the OVERRIDE
+    // buyer when one was supplied (a buyer-identity correction), else the original
+    // document's buyer - so a correction-of-correction diffs against the buyer as
+    // actually corrected.
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument?.buyer;
+
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
     // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
     // the "before" state) with the per-line deltas applied. Only when the caller
-    // supplied `originalDocument` (order still resolvable); absent → persist null
+    // supplied `originalDocument` (order still resolvable); absent -> persist null
     // and the next correction falls back to order-derived reconstruction.
     const correctedLines = cmd.originalDocument
       ? applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines)
       : null;
     const issuedLineSnapshot: IssuedLineSnapshot | null =
-      cmd.originalDocument && correctedLines
+      cmd.originalDocument && correctedLines && correctionBuyer
         ? {
-            buyer: cmd.originalDocument.buyer,
+            buyer: correctionBuyer,
             currency: cmd.originalDocument.currency,
             lines: correctedLines,
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source
-    // document were previously never persisted at all — every corrected
+    // document were previously never persisted at all - every corrected
     // invoice's "View"/"Preview" 409'd with "no source document available"
     // even when the adapter (KSeF) had built and submitted a real FA(3) XML.
     // Mirrors `issueInvoice`'s persistence exactly, built from the corrected
     // ("after") lines rather than the original ones.
     const documentContent =
-      correctedLines && cmd.originalDocument
+      correctedLines && cmd.originalDocument && correctionBuyer
         ? this.buildContent(
             {
               lines: correctedLines,
-              buyer: cmd.originalDocument.buyer,
+              buyer: correctionBuyer,
               currency: cmd.originalDocument.currency,
             },
             issued,
@@ -580,7 +674,7 @@ export class InvoiceService implements IInvoiceService {
           )
         : null;
 
-    return this.repo.updateOutcome(pending.id, {
+    return this.repo.updateOutcome(recordId, {
       status: 'issued',
       providerType: issued.providerType,
       documentType: issued.documentType,
@@ -637,6 +731,9 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.updateOutcome(invoiceId, {
       regulatoryStatus: result.regulatoryStatus,
       clearanceReference: result.clearanceReference ?? null,
+      // #1582: persist the authority's operator-facing rejection diagnostic (or
+      // clear a stale one when a resend moves the document off `rejected`).
+      clearanceDetail: result.clearanceDetail ?? null,
     });
   }
 

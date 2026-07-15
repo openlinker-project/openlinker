@@ -51,4 +51,104 @@ describe('IssueCorrectionRequestDto', () => {
     const nested = errors.flatMap((e) => e.children ?? []);
     expect(JSON.stringify([errors, nested])).toContain('hasCorrectionDelta');
   });
+
+  describe('reason (#1582)', () => {
+    it('should reject a correction with an empty reason', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: '',
+        lines: [{ originalLineNumber: 1, newQuantity: 2 }],
+      });
+
+      const errors = await validate(dto);
+
+      const reasonError = errors.find((e) => e.property === 'reason');
+      expect(reasonError?.constraints).toHaveProperty('isNotEmpty');
+    });
+
+    it('should reject a correction whose reason is only whitespace (trimmed)', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: '   ',
+        lines: [{ originalLineNumber: 1, newQuantity: 2 }],
+      });
+
+      const errors = await validate(dto);
+
+      const reasonError = errors.find((e) => e.property === 'reason');
+      expect(reasonError?.constraints).toHaveProperty('isNotEmpty');
+    });
+
+    it('should reject a correction with a missing reason', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        lines: [{ originalLineNumber: 1, newQuantity: 2 }],
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === 'reason')).toBe(true);
+    });
+
+    it('should trim the reason before it reaches the command', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: '  wrong NIP  ',
+        lines: [{ originalLineNumber: 1, newQuantity: 2 }],
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
+      expect(dto.reason).toBe('wrong NIP');
+    });
+  });
+
+  describe('buyerOverride (#1582)', () => {
+    const validBuyer = {
+      name: 'Acme Sp. z o.o.',
+      taxId: { scheme: 'pl-nip', value: '5252248481' },
+      address: {
+        line1: 'ul. Testowa 1',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '00-001',
+        countryIso2: 'PL',
+      },
+      type: 'company',
+    };
+
+    it('should accept a well-formed buyer override', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: validBuyer,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject a buyer override with an invalid buyer type', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: { ...validBuyer, type: 'not-a-type' },
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === 'buyerOverride')).toBe(true);
+    });
+
+    it('should reject a buyer override missing the address', async () => {
+      const noAddress = { name: validBuyer.name, taxId: validBuyer.taxId, type: validBuyer.type };
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: noAddress,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === 'buyerOverride')).toBe(true);
+    });
+  });
 });

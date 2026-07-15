@@ -108,6 +108,14 @@ export class InvoiceRecord {
      * it never asserts "unpaid" for a document OL has simply not polled.
      */
     public readonly paymentStatus: PaymentStatus = 'unknown',
+    /**
+     * Opaque operator-facing clearance diagnostic (#1582) - the authority's
+     * rejection description/details captured by the `RegulatoryStatusReader`
+     * read, so the detail page can explain WHY a document was rejected. Neutral
+     * (ADR-026): a free-text blob, never interpreted in core. `null` until a
+     * read surfaces one (typically only on `rejected`).
+     */
+    public readonly clearanceDetail: string | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

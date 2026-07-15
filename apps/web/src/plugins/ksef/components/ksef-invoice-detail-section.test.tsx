@@ -61,6 +61,27 @@ describe('KsefInvoiceDetailSection', () => {
     expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
   });
 
+  it('surfaces the rejection detail when a document was rejected (#1582)', () => {
+    renderWithProviders(
+      <KsefInvoiceDetailSection
+        invoice={makeInvoice({
+          regulatoryStatus: 'rejected',
+          clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+        })}
+        connection={sampleConnection}
+      />,
+    );
+    expect(screen.getByText('Rejection detail')).toBeInTheDocument();
+    expect(screen.getByText('KSeF status 440: buyer NIP invalid')).toBeInTheDocument();
+  });
+
+  it('does not render a rejection detail row when the document is not rejected (#1582)', () => {
+    renderWithProviders(
+      <KsefInvoiceDetailSection invoice={makeInvoice()} connection={sampleConnection} />,
+    );
+    expect(screen.queryByText('Rejection detail')).not.toBeInTheDocument();
+  });
+
   it('surfaces the KSeF number as a copyable value with the Art. 108g payment-title hint', () => {
     renderWithProviders(
       <KsefInvoiceDetailSection invoice={makeInvoice()} connection={sampleConnection} />,
