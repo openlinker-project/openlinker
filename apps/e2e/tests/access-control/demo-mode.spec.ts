@@ -19,6 +19,7 @@
  */
 import { test, expect } from '../../src/fixtures/test';
 import { provisionViewer, seedBrowserSession } from '../../src/support/access-control';
+import { gotoWhenAppMounted } from '../../src/support/navigation';
 
 test.describe('access-control: demo mode', () => {
   test('GET /system/config exposes a boolean demoMode flag', async ({ api }) => {
@@ -35,12 +36,16 @@ test.describe('access-control: demo mode', () => {
     const context = await browser.newContext({ baseURL: env.webUrl });
     try {
       const page = await context.newPage();
-      await page.goto('/login');
-      await expect(
-        page.getByRole('heading', { name: 'Sign in to your account' }),
-      ).toBeVisible();
+      // First navigation of this context against a possibly-cold web container:
+      // wait for the SPA to be interactive before asserting (issue #1513).
+      await gotoWhenAppMounted(page, '/login');
+      await expect(page.getByRole('heading', { name: 'Sign in to your account' })).toBeVisible();
 
-      const registerLink = page.getByRole('link', { name: /create a free demo account/i });
+      // Resilient to copy tweaks (the trailing arrow, casing, whitespace) by
+      // OR-ing the accessible name against the stable /register anchor.
+      const registerLink = page
+        .getByRole('link', { name: /create a free demo account/i })
+        .or(page.locator('a[href="/register"].guest-form__demo-register'));
       if (config.demoMode) {
         await expect(registerLink).toBeVisible();
         await expect(registerLink).toHaveAttribute('href', '/register');
@@ -52,7 +57,11 @@ test.describe('access-control: demo mode', () => {
     }
   });
 
-  test('viewer sees the demo banner when demo mode is on', async ({ api, env, browser }, testInfo) => {
+  test('viewer sees the demo banner when demo mode is on', async ({
+    api,
+    env,
+    browser,
+  }, testInfo) => {
     const config = await api.system.config();
     test.skip(!config.demoMode, 'demo mode is off — the demo banner is not rendered');
 
@@ -67,7 +76,8 @@ test.describe('access-control: demo mode', () => {
     try {
       await seedBrowserSession(context, env, viewer!.creds);
       const page = await context.newPage();
-      await page.goto('/');
+      // First navigation of this context against a possibly-cold web container.
+      await gotoWhenAppMounted(page, '/');
       const banner = page.getByRole('note', { name: 'Demo mode notice' });
       await expect(banner).toBeVisible();
       await expect(banner).toContainText(/write actions are\s+disabled/i);
