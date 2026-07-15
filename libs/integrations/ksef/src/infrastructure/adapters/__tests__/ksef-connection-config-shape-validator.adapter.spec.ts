@@ -69,7 +69,7 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
 
     it('should resolve when seller.defaultTaxRate is absent', async () => {
       await expect(
-        validator.validate({ env: 'test', seller: { nip: '1234567890' } }),
+        validator.validate({ env: 'test', seller: { nip: '1189981779' } }),
       ).resolves.toBeUndefined();
     });
 
@@ -372,4 +372,35 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       }
     });
   });
+  describe('seller.nip (#1595)', () => {
+    // 1189981779 has a correct mod-11 check digit; 1189981770 mutates it.
+    it('should resolve when seller.nip is a checksum-valid NIP', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: '1189981779' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when seller.nip is absent', async () => {
+      await expect(validator.validate({ env: 'test', seller: {} })).resolves.toBeUndefined();
+    });
+
+    it('should reject a valid-format seller.nip with a bad checksum', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '1189981770' } })).rejects.toMatchObject({
+        errors: [{ path: 'seller.nip', message: 'has an invalid checksum' }],
+      });
+    });
+
+    it('should reject an invalid-format seller.nip', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '12345' } })).rejects.toMatchObject({
+        errors: [{ path: 'seller.nip', message: 'must be a 10-digit Polish NIP' }],
+      });
+    });
+
+    it('should reject a non-string seller.nip', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: 1189981779 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+  });
+
 });

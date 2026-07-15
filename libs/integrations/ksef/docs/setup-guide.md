@@ -223,6 +223,7 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
 | Batch (wsadowa) submission pipeline | OpenLinker issues via the online (interactive) session flow (`/sessions/online`); the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
 | Inbound invoice retrieval | OpenLinker is a transmitter, not a KSeF inbox reader; pulling received invoices is out of scope. |
 | FA_PEF / PEF documents | Only the FA(3) VAT/KOR schema is planned. |
+| VAT-payer / "biała lista" (MF whitelist) verification | **Deliberately deferred (#1595).** A well-formed, checksum-valid NIP is not necessarily an active VAT-registered entity, but whitelist verification is a seller due-diligence/AML concern, not a KSeF-issuance blocker (issuance succeeds regardless of the buyer's VAT-payer status). If pursued later it belongs as an optional pre-issuance advisory around MF's `wl-api.mf.gov.pl`, not a hard block on the core issuance path. NIP **checksum** (mod-11) validation, by contrast, ships now at the FE + API boundaries. |
 | Auto-generated API reference | See the official OpenAPI at `https://api-test.ksef.mf.gov.pl/docs/v2`. |
 
 ---
