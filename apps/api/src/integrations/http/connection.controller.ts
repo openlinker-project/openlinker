@@ -179,7 +179,7 @@ export class ConnectionController {
     return this.toResponse(connection, user);
   }
 
-  @Roles('admin')
+  @Roles('admin', 'operator', 'viewer')
   @Get(':id/diagnostics')
   @ApiOperation({ summary: 'Get connection diagnostics and activity summary' })
   @ApiResponse({
