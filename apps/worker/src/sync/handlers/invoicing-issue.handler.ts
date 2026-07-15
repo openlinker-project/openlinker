@@ -5,8 +5,11 @@
  * The policy service (`AutoIssueTriggerService`) has already composed the
  * issuance command into the job payload, so this handler:
  *  1. Casts + DEEP-validates the payload (F5).
- *  2. Reconstructs `new BuyerProfile(...)` from the PLAIN payload buyer (#12).
- *  3. Calls `invoiceService.issueInvoice(command)` with the command idempotency
+ *  2. Re-checks the order's LIVE status via `IOrderRecordService` (#1596) —
+ *     the payload was snapshotted at trigger time and can be stale by the time
+ *     this job runs; a cancelled/refunded order must never clear an invoice.
+ *  3. Reconstructs `new BuyerProfile(...)` from the PLAIN payload buyer (#12).
+ *  4. Calls `invoiceService.issueInvoice(command)` with the command idempotency
  *     key equal to `payload.idempotencyKey` (the SAME string as the job row, F4).
  *
  * PII DISCIPLINE (F-validate-PII / D11): the payload carries real buyer PII.
@@ -37,6 +40,7 @@ import {
   BuyerTypeValues,
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -54,6 +58,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   constructor(
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -63,6 +69,23 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // + ids (no payload/buyer/lines).
     const payload = this.validatePayload(job);
     if (payload === null) {
+      return { outcome: 'business_failure' };
+    }
+
+    // #1596: the payload was snapshotted at trigger time (order-ingestion.service.ts),
+    // which can be arbitrarily stale by the time this job actually runs (retry
+    // backoff, queue backlog, worker restart). Re-check the order's LIVE status
+    // immediately before issuing — a cancelled/refunded order must never clear a
+    // fiscal invoice. Mirrors the #938 shipping-dispatch live re-check
+    // (ShipmentDispatchService): an absent/unknown live status (record null, or
+    // an unrecognised status) falls through to normal issuance — graceful
+    // degradation for sources that don't report status — this gate only BLOCKS
+    // on a positively-confirmed cancelled/refunded status.
+    const record = await this.orderRecords.getOrderRecord(payload.orderId);
+    if (record?.status === 'cancelled' || record?.status === 'refunded') {
+      this.logger.warn(
+        `invoicing.issue skipped: order status is '${record.status}' orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+      );
       return { outcome: 'business_failure' };
     }
 
