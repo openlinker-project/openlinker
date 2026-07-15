@@ -49,6 +49,15 @@ describe('resolveIssueErrorMessage', () => {
     expect(resolveIssueErrorMessage(error, t)).toBe(msg);
   });
 
+  it('403 ⇒ permission-specific fixed copy (#1613), no error.message echo', () => {
+    const error = new ApiError('Forbidden resource', 403, { message: 'Forbidden resource' });
+    const result = resolveIssueErrorMessage(error, t);
+    expect(result).toBe(
+      "Can't issue invoices in demo mode - demo accounts are read-only; issuing an invoice needs an operator account.",
+    );
+    expect(result).not.toContain('Forbidden resource');
+  });
+
   it('409 ⇒ already-issued fixed copy', () => {
     const error = new ApiError('Invoice already issued for order: o1', 409, {});
     expect(resolveIssueErrorMessage(error, t)).toBe('This order already has an issued invoice.');

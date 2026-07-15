@@ -510,6 +510,7 @@ const DEFAULT_TEST_USER: SessionUser = {
     'inventory:read', 'inventory:write',
     'listings:read', 'listings:write',
     'ai:suggest',
+    'invoices:read', 'invoices:write',
   ],
 };
 

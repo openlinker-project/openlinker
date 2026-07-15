@@ -15,7 +15,13 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient, sampleConnection, findToastDescription } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  sampleConnection,
+  findToastDescription,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../../orders';
@@ -26,6 +32,27 @@ afterEach(cleanup);
 
 const ORDER_ID = 'ord_1';
 const CONN_ID = 'conn_inv';
+
+/** Authenticated admin session — holds `invoices:write` (#1613). */
+const adminSession = { sessionAdapter: createAuthenticatedSessionAdapter() };
+
+/** Authenticated viewer session — read-only, no `invoices:write` (#1613). */
+const viewerSession = {
+  sessionAdapter: createAuthenticatedSessionAdapter({
+    id: 'u2',
+    username: 'viewer',
+    email: null,
+    role: 'viewer',
+    permissions: ['orders:read', 'invoices:read'],
+  }),
+};
+
+function demoApiClient(overrides: Parameters<typeof createMockApiClient>[0] = {}): ReturnType<typeof createMockApiClient> {
+  return createMockApiClient({
+    system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    ...overrides,
+  });
+}
 
 const order: OrderRecord = {
   internalOrderId: ORDER_ID,
@@ -110,6 +137,7 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
   it('renders when an active connection has Invoicing enabled', async () => {
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) } }),
+      ...adminSession,
     });
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeInTheDocument();
   });
@@ -136,6 +164,7 @@ describe('OrderInvoicePanel — capability/toggle gate', () => {
     const getForOrder = vi.fn().mockRejectedValue(notFound());
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([b, a]) }, invoicing: { getForOrder } }),
+      ...adminSession,
     });
     const picker = await screen.findByRole('combobox', { name: /invoicing connection/i });
     await user.selectOptions(picker, 'conn_zzz');
@@ -148,6 +177,7 @@ describe('OrderInvoicePanel — display states', () => {
   it('not-issued (404) ⇒ "Not issued" badge + enabled Issue button', async () => {
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) } }),
+      ...adminSession,
     });
     expect(await screen.findByText('Not issued')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
@@ -156,6 +186,7 @@ describe('OrderInvoicePanel — display states', () => {
   it('not-issued ⇒ document-type picker fills the row beside a signal-orange primary Issue action (#1622)', async () => {
     const { container } = renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) } }),
+      ...adminSession,
     });
     // The picker + primary action share one row (mockup section 02 layout).
     const issue = await screen.findByRole('button', { name: /issue invoice/i });
@@ -192,6 +223,7 @@ describe('OrderInvoicePanel — display states', () => {
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
         invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice({ status: 'failed', failureMode: 'rejected', failureCode: 'provider-rejected' })) },
       }),
+      ...adminSession,
     });
     // Both the failure copy and the retry hint contain "rejected"
     const msgs = await screen.findAllByText(/rejected/i);
@@ -237,6 +269,7 @@ describe('OrderInvoicePanel — issue flow', () => {
     const issue = vi.fn().mockResolvedValue(makeInvoice());
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()), issue } }),
+      ...adminSession,
     });
     await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
     await waitFor(() => expect(issue).toHaveBeenCalledTimes(1));
@@ -250,6 +283,7 @@ describe('OrderInvoicePanel — issue flow', () => {
     const issue = vi.fn().mockResolvedValue(makeInvoice({ documentType: 'receipt' }));
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()), issue } }),
+      ...adminSession,
     });
     await screen.findByRole('button', { name: /issue invoice/i });
     await user.selectOptions(screen.getByRole('combobox', { name: /document type/i }), 'receipt');
@@ -266,6 +300,7 @@ describe('OrderInvoicePanel — issue flow', () => {
       .mockRejectedValue(new ApiError(leaky, 400, { error: 'CapabilityNotEnabledException', message: leaky }));
     renderWithProviders(<OrderInvoicePanel order={order} />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) }, invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()), issue } }),
+      ...adminSession,
     });
     await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
     expect(await findToastDescription(/Invoicing is not enabled for this connection/i)).toBeInTheDocument();
@@ -292,5 +327,56 @@ describe('OrderInvoicePanel — regulatory badge (data gate)', () => {
     });
     await screen.findByRole('link', { name: /invoice pdf/i });
     expect(screen.queryByText(/KSeF:/i)).toBeNull();
+  });
+});
+
+describe('OrderInvoicePanel — write-access gating (#1613, mirrors #1615)', () => {
+  it('demo read-only viewer sees the Issue button visible-but-disabled', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: demoApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...viewerSession,
+    });
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
+  });
+
+  it('demo read-only viewer sees the Retry button visible-but-disabled', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: demoApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({ status: 'failed', failureMode: 'rejected', failureCode: 'provider-rejected' }),
+          ),
+        },
+      }),
+      ...viewerSession,
+    });
+    expect(await screen.findByRole('button', { name: /retry/i })).toBeDisabled();
+  });
+
+  it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...viewerSession,
+    });
+    await screen.findByText('Not issued');
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).not.toBeInTheDocument();
+  });
+
+  it('operator/admin session issuing is unaffected — Issue button renders enabled outside demo mode', async () => {
+    renderWithProviders(<OrderInvoicePanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeEnabled();
   });
 });
