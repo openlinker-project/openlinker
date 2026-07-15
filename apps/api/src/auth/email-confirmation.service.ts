@@ -19,6 +19,7 @@ import {
   EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
   InvalidEmailConfirmationTokenException,
   MAILER_TOKEN,
+  UserNotFoundException,
   UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
@@ -125,11 +126,18 @@ export class EmailConfirmationService implements IEmailConfirmationService {
     try {
       await this.userManagementService.confirmEmail(userId);
     } catch (error) {
-      if (error instanceof UserNotPendingConfirmationException) {
-        // Token was valid and consumed, but the user was no longer in
-        // `pending_confirmation` status (e.g. already activated through
-        // another path). Surface the same generic invalid-token error the
-        // public endpoint already returns for any other invalid-token case.
+      if (
+        error instanceof UserNotPendingConfirmationException ||
+        error instanceof UserNotFoundException
+      ) {
+        // Token was valid and consumed, but the user was either no longer
+        // in `pending_confirmation` status (e.g. already activated through
+        // another path) or no longer exists (e.g. removed by the demo
+        // account cleanup job in the window between consumeToken and this
+        // call). Both exceptions carry the internal user id in their
+        // message — always remap to the same generic invalid-token error
+        // the public endpoint already returns for every other invalid-token
+        // case, regardless of which exception fired.
         throw new InvalidEmailConfirmationTokenException();
       }
       throw error;

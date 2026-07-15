@@ -8,6 +8,7 @@ import {
   EmailConfirmationToken,
   InvalidEmailConfirmationTokenException,
   User,
+  UserNotFoundException,
   UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
@@ -177,6 +178,25 @@ describe('EmailConfirmationService', () => {
       const userManagementService = makeUserManagementService();
       userManagementService.confirmEmail.mockRejectedValue(
         new UserNotPendingConfirmationException('user-1'),
+      );
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        userManagementService,
+        makeConfig({}),
+      );
+
+      await expect(service.confirmEmail('raw-token')).rejects.toThrow(
+        InvalidEmailConfirmationTokenException,
+      );
+    });
+
+    it('remaps UserNotFoundException to InvalidEmailConfirmationTokenException instead of leaking the internal user id', async () => {
+      const tokenRepo = makeTokenRepo();
+      tokenRepo.consumeToken.mockResolvedValue('user-1');
+      const userManagementService = makeUserManagementService();
+      userManagementService.confirmEmail.mockRejectedValue(
+        new UserNotFoundException('user-1'),
       );
       const service = new EmailConfirmationService(
         tokenRepo,
