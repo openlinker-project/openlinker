@@ -290,4 +290,78 @@ describe('ListingsListPage', () => {
 
     expect(await screen.findByRole('button', { name: /publish to shop/i })).toBeInTheDocument();
   });
+
+  describe('demo read-only viewer (#1663)', () => {
+    const viewerSession = {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: null,
+        role: 'viewer',
+        permissions: ['listings:read'],
+      }),
+    };
+
+    function demoApiClient(): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              id: 'conn_woo_1',
+              name: 'Main WooCommerce store',
+              platformType: 'woocommerce',
+              status: 'active',
+              config: {},
+              credentialsBacked: true,
+              adapterKey: 'woocommerce.restapi.v3',
+              enabledCapabilities: ['ProductPublisher'],
+              supportedCapabilities: ['ProductPublisher'],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ]),
+        },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+    }
+
+    it('shows both Create offer and Publish to shop enabled instead of hiding them', async () => {
+      renderWithProviders(<ListingsListPage />, { apiClient: demoApiClient(), ...viewerSession });
+
+      const createOffer = await screen.findByRole('button', { name: /create offer/i });
+      expect(createOffer).not.toBeDisabled();
+      const publishToShop = screen.getByRole('button', { name: /publish to shop/i });
+      expect(publishToShop).not.toBeDisabled();
+    });
+
+    it('keeps the existing hide-when-missing behaviour for an unauthorized non-demo viewer', async () => {
+      const mockApi = createMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              id: 'conn_woo_1',
+              name: 'Main WooCommerce store',
+              platformType: 'woocommerce',
+              status: 'active',
+              config: {},
+              credentialsBacked: true,
+              adapterKey: 'woocommerce.restapi.v3',
+              enabledCapabilities: ['ProductPublisher'],
+              supportedCapabilities: ['ProductPublisher'],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ]),
+        },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi, ...viewerSession });
+
+      await screen.findByText('allegro-offer-999');
+      expect(screen.queryByRole('button', { name: /create offer/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /publish to shop/i })).not.toBeInTheDocument();
+    });
+  });
 });
