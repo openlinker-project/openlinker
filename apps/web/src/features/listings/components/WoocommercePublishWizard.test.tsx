@@ -304,7 +304,10 @@ describe('WoocommercePublishWizard', () => {
       expect(stockInput).not.toBeDisabled();
 
       const submitButton = screen.getByRole('button', { name: /^publish$/i });
-      expect(submitButton).toBeDisabled();
+      // `demoMode` resolves from the async `useDemoMode()` config query, which
+      // may settle after the stock input renders — wait for the disabled state
+      // rather than asserting it synchronously (flaked in CI, #1519/#1518).
+      await waitFor(() => expect(submitButton).toBeDisabled());
       fireEvent.click(submitButton);
       expect(shopPublish).not.toHaveBeenCalled();
     });
@@ -330,7 +333,7 @@ describe('WoocommercePublishWizard', () => {
       fireEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
       const confirmButton = await screen.findByRole('button', { name: /confirm & publish/i });
-      expect(confirmButton).toBeDisabled();
+      await waitFor(() => expect(confirmButton).toBeDisabled());
       fireEvent.click(confirmButton);
       expect(shopPublish).not.toHaveBeenCalled();
     });
