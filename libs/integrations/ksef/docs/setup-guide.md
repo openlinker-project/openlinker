@@ -212,6 +212,39 @@ path, with its `buyerTaxId: null` and line-fidelity caveats).
 
 ---
 
+## Verification code (QR / kod weryfikacyjny)
+
+Since **1 Feb 2026**, any structured invoice handed to a buyer **outside** the
+KSeF system - a PDF, an email attachment, or an on-screen copy - must carry a QR
+**verification code** (*kod weryfikacyjny*) when the buyer has no KSeF access.
+This explicitly includes B2C consumers, buyers with no NIP, VAT-exempt buyers,
+and foreign buyers - i.e. OpenLinker's dominant e-commerce scenario.
+
+**OpenLinker emits KOD I (the online verification code).** Because OL always
+issues invoices online (submit -> clear -> UPO), KOD I is all that is required.
+KOD I is purely deterministic from **public** data and needs **no signing key or
+certificate**. The FA(3) invoice preview renders it as a QR encoding:
+
+```
+https://{host}/invoice/{sellerNIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawInvoiceXml))}
+```
+
+- `host` - `ksef.mf.gov.pl` for `prod` connections, `qr-test.ksef.mf.gov.pl`
+  for `test` / `demo` connections (taken from the connection's environment).
+- `DD-MM-RRRR` - the invoice issue date.
+- the hash - SHA-256 of the **exact submitted FA(3) XML bytes** (the persisted
+  source document), Base64URL-encoded.
+
+The KSeF number is shown as a caption beneath the QR. The code is generated
+client-side in the invoice preview (`ksef-fa3-view`), so no additional
+configuration is needed - it appears automatically once an invoice is cleared.
+
+> **KOD II (the offline, certificate-signed verification code) is out of scope.**
+> KOD II is only required for invoices issued in KSeF *offline* mode, which
+> OpenLinker never uses. It is deliberately not implemented.
+
+---
+
 ## Limitations
 
 OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)

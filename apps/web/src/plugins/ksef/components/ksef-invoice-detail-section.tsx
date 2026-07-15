@@ -54,6 +54,7 @@ function resolveKsefNumber(
 
 export function KsefInvoiceDetailSection({
   invoice,
+  connection,
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
   const upoDownload = useKsefUpoDownload();
@@ -67,6 +68,12 @@ export function KsefInvoiceDetailSection({
   const handleFa3ParseError = useCallback(() => setViewParseFailed(true), []);
 
   const ksefNumber = resolveKsefNumber(invoice.clearanceReference, invoice.providerInvoiceNumber);
+  // KSeF target environment for this connection ('test' | 'demo' | 'prod'),
+  // used to pick the verification-code (QR) host (prod vs test portal). The FE
+  // Connection config is untyped, so narrow defensively; absence falls back to
+  // the test verification host in the lib, never prod.
+  const ksefEnvironment =
+    typeof connection.config.env === 'string' ? connection.config.env : undefined;
   const hasRegulatoryData = invoice.regulatoryStatus !== 'not-applicable';
 
   if (!hasRegulatoryData && !ksefNumber) {
@@ -255,6 +262,7 @@ export function KsefInvoiceDetailSection({
                 <KsefFa3View
                   xmlText={fa3.viewText}
                   ksefNumber={ksefNumber}
+                  environment={ksefEnvironment}
                   onParseError={handleFa3ParseError}
                 />
               ) : (
