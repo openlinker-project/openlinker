@@ -157,7 +157,8 @@ describe('inpost-shipx.mapper', () => {
     });
 
     it('should throw a typed rejection (preflight.missing-parcel) when the command omits parcel (#1518)', () => {
-      const { parcel: _parcel, ...noParcel } = paczkomatCmd;
+      const noParcel: Partial<GenerateLabelCommand> = { ...paczkomatCmd };
+      delete noParcel.parcel;
       const call = (): unknown =>
         buildCreateShipmentRequest(noParcel as unknown as GenerateLabelCommand, config);
       expect(call).toThrow(ShippingProviderRejectionException);
@@ -172,7 +173,8 @@ describe('inpost-shipx.mapper', () => {
     });
 
     it('should throw a typed rejection (preflight.missing-recipient) when the command omits recipient (#1518)', () => {
-      const { recipient: _recipient, ...noRecipient } = paczkomatCmd;
+      const noRecipient: Partial<GenerateLabelCommand> = { ...paczkomatCmd };
+      delete noRecipient.recipient;
       const call = (): unknown =>
         buildCreateShipmentRequest(noRecipient as unknown as GenerateLabelCommand, config);
       expect(call).toThrow(ShippingProviderRejectionException);
