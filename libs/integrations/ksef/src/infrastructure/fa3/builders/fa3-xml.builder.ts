@@ -28,6 +28,7 @@ import {
   FA3_RODZAJ_KOREKTA,
   FA3_SCHEMA_VERSION,
   FA3_SYSTEM_CODE,
+  FA3_DEFAULT_EXEMPTION_BASIS,
   FA3_WYBOR_NIE,
   FA3_WYBOR_TAK,
   type Fa3BankAccount,
@@ -374,22 +375,55 @@ function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionCo
 }
 
 /**
- * The required `Adnotacje` block (XSD line ~2641) emitted with the "nothing
- * special" defaults for a plain domestic sale: every `etd:TWybor1_2` flag set to
- * "no" (`2`), and each choice group taking its negative branch (`P_19N`, `P_22N`,
- * `P_PMarzyN`, all `etd:TWybor1` = `1`). The schema-mandated child order is
+ * The required `Adnotacje` block (XSD line ~2641), emitted per the invoice's
+ * actual classification (#1580) rather than unconditionally on its negative
+ * branch. The schema-mandated child order (preserved by the object key order) is
  * P_16, P_17, P_18, P_18A, Zwolnienie, NoweSrodkiTransportu, P_23, PMarzy.
+ *
+ * Two sources feed it:
+ *  - **Line-derived** (can never contradict the per-line treatment): `P_18`
+ *    ("odwrotne obciążenie") is `1` when any line carries the reverse-charge
+ *    `p12` band (`oo`); the `Zwolnienie` group takes its yes-branch (`P_19` = `1`
+ *    plus a `P_19C` grounds text) when any line is exempt (`zw`) OR an explicit
+ *    `exemptionLegalBasis` was supplied.
+ *  - **Operator-declared** (neutral `IssueInvoiceCommand.annotations`, absent ⇒
+ *    negative): `P_16` cash-basis, `P_17` self-billing, `P_18A` split-payment,
+ *    `P_23` triangulation, and the `PMarzy` group (yes-branch = `P_PMarzy` = `1`
+ *    with `P_PMarzy_3_1`, the used-goods sub-kind — the secondhand e-commerce
+ *    default; per-kind selection is a follow-up).
+ *
+ * The `Zwolnienie`/`PMarzy` yes-branches are XSD `choice`s whose "applies" arm
+ * is a SEQUENCE requiring a nested child: `Zwolnienie` needs exactly one of
+ * `P_19A`/`P_19B`/`P_19C` after `P_19` (we emit `P_19C`, the open catch-all
+ * grounds), and `PMarzy` needs exactly one of `P_PMarzy_2`/`_3_1`/`_3_2`/`_3_3`
+ * after `P_PMarzy`. `NoweSrodkiTransportu` stays on its negative branch
+ * (`P_22N`) — new-means-of-transport supply is out of scope.
+ *
+ * @param lines the effective lines to derive line-level annotations from — a
+ *   plain invoice's own lines, or a KOR's post-correction ("after") lines.
  */
-function adnotacjeNode(): XmlNodeObject {
+function adnotacjeNode(input: Fa3BuilderInput, lines: Fa3Line[]): XmlNodeObject {
+  const anyReverseCharge = lines.some((line) => line.p12 === 'oo');
+  const exemptionApplies =
+    lines.some((line) => line.p12 === 'zw') || input.exemptionLegalBasis !== undefined;
+
+  const zwolnienie: XmlNodeObject = exemptionApplies
+    ? { P_19: FA3_WYBOR_TAK, P_19C: input.exemptionLegalBasis ?? FA3_DEFAULT_EXEMPTION_BASIS }
+    : { P_19N: FA3_WYBOR_TAK };
+
+  const pMarzy: XmlNodeObject = input.marginScheme
+    ? { P_PMarzy: FA3_WYBOR_TAK, P_PMarzy_3_1: FA3_WYBOR_TAK }
+    : { P_PMarzyN: FA3_WYBOR_TAK };
+
   return {
-    P_16: FA3_WYBOR_NIE,
-    P_17: FA3_WYBOR_NIE,
-    P_18: FA3_WYBOR_NIE,
-    P_18A: FA3_WYBOR_NIE,
-    Zwolnienie: { P_19N: FA3_WYBOR_TAK },
+    P_16: input.cashAccounting ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_17: input.selfBilling ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_18: anyReverseCharge ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_18A: input.splitPayment ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    Zwolnienie: zwolnienie,
     NoweSrodkiTransportu: { P_22N: FA3_WYBOR_TAK },
-    P_23: FA3_WYBOR_NIE,
-    PMarzy: { P_PMarzyN: FA3_WYBOR_TAK },
+    P_23: input.triangulation ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    PMarzy: pMarzy,
   };
 }
 
@@ -486,7 +520,12 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     ...(input.saleDate !== undefined ? { P_6: input.saleDate } : {}),
     ...bands,
     P_15: grandTotal,
-    Adnotacje: adnotacjeNode(),
+    // Header annotations derive from the EFFECTIVE lines: a KOR's post-
+    // correction ("after") lines, else the plain invoice's own lines (#1580).
+    Adnotacje: adnotacjeNode(
+      input,
+      correction !== undefined ? correction.correctedLines : input.lines,
+    ),
     RodzajFaktury: correction !== undefined ? FA3_RODZAJ_KOREKTA : FA3_RODZAJ_FAKTURY_VAT,
   };
   if (correction !== undefined) {

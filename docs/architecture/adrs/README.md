@@ -124,5 +124,6 @@ One pointer per section, identical format every time.
 | [ADR-033](./033-openlinker-as-mcp-server.md) | Expose OpenLinker as an MCP server | Proposed | 2026-07-11 |
 | [ADR-034](./034-mcp-authorization-user-issued-pats.md) | MCP authorization — user-issued Personal Access Tokens (Resource Server); OAuth AS deferred | Proposed | 2026-07-12 |
 | [ADR-035](./035-per-line-tax-rate-on-order-item.md) | Per-line tax rate as an opaque neutral code on `OrderItem` (supersedes #1290 accepted-risk) | Accepted | 2026-07-15 |
+| [ADR-037](./037-neutral-fiscal-annotation-flags.md) | Neutral fiscal-annotation flags on the invoicing command (cash-basis/self-billing/split-payment/margin/exemption/triangulation) - provider maps to FA(3) Adnotacje | Accepted | 2026-07-15 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
