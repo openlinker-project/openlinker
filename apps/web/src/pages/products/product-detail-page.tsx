@@ -15,6 +15,7 @@ import { ExternalIdChips } from '../../features/products/components/external-id-
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import { VariantStockTable } from './variant-stock-table';
 import {
+  DEFAULT_LOW_STOCK_THRESHOLD,
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
@@ -41,7 +42,7 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
 function deriveAvailableTone(totalAvailable: number, oversoldCount: number): KpiCardTone {
   if (totalAvailable <= 0) return 'error';
   if (oversoldCount > 0) return 'warning';
-  if (totalAvailable <= 5) return 'warning';
+  if (totalAvailable <= DEFAULT_LOW_STOCK_THRESHOLD) return 'warning';
   return 'success';
 }
 

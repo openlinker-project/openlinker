@@ -11256,15 +11256,32 @@ html[data-density='compact'] .status-badge {
   outline-offset: 1px;
 }
 
-.lightbox-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Lightbox now renders through shared/ui/dialog.tsx's Dialog/DialogContent
+   (Radix) — these two modifiers strip the default `.dialog__content` card
+   chrome (background/border/shadow/radius) back to a transparent frame for
+   the `.lightbox` markup below, but deliberately keep `.dialog__content`'s
+   own `position:fixed; top:50%; left:50%; transform:translate(-50%,-50%)`
+   centering (content-sized, not viewport-spanning) — Overlay and Content
+   are portal SIBLINGS, not parent/child, so Content can't be centered via
+   the Overlay. A viewport-spanning Content (the original #1537-review fix
+   attempt) made every click "inside" Content, which silently broke
+   click-outside-to-close; this stays a small, content-sized box instead. */
+.lightbox-dialog-overlay {
   z-index: 300;
+}
+
+.lightbox-dialog-content {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  width: min(880px, 92vw);
+  max-width: none;
+  max-height: none;
   padding: var(--space-6);
+  overflow: visible;
+  z-index: 300;
+  outline: none;
 }
 
 .lightbox {

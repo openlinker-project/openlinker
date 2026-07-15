@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
@@ -6,6 +7,7 @@ import type { ProductVariant } from '../../features/products/api/products.types'
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge } from '../../shared/ui/status-badge';
+import { deriveStockStatus } from './product-stock-status';
 
 interface VariantStockTableProps {
   variants: ProductVariant[];
@@ -49,8 +51,9 @@ export function VariantStockTable({
 }
 
 function stockCellClass(availableQuantity: number): string {
-  if (availableQuantity < 0) return 'tabular stock-cell--error';
-  if (availableQuantity <= 5) return 'tabular stock-cell--warning';
+  const status = deriveStockStatus(availableQuantity);
+  if (status === 'out-of-stock') return 'tabular stock-cell--error';
+  if (status === 'low-stock') return 'tabular stock-cell--warning';
   return 'tabular';
 }
 
@@ -163,17 +166,17 @@ function ListingsSubtable({ listings }: { listings: OfferMapping[] }): ReactElem
         {listings.map((listing) => (
           <tr key={listing.id}>
             <td>
-              <a className="listings-subtable__link" href={`/listings/${listing.id}`}>
+              <Link className="listings-subtable__link" to={`/listings/${listing.id}`}>
                 {listing.platformType}
-              </a>
+              </Link>
             </td>
             <td>
               <ConnectionEntityLabel connectionId={listing.connectionId} showId={false} />
             </td>
             <td className="mono-text">
-              <a className="listings-subtable__link" href={`/listings/${listing.id}`}>
+              <Link className="listings-subtable__link" to={`/listings/${listing.id}`}>
                 {listing.externalId}
-              </a>
+              </Link>
             </td>
             <td className="mono-text tabular">
               <TimeDisplay iso={listing.updatedAt} />
