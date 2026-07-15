@@ -1,8 +1,12 @@
 /**
  * Registration Service
  *
- * Implements self-service user registration. Creates users in `pending` status
- * so they cannot log in until an admin approves them and assigns a role.
+ * Implements self-service user registration. Normal-mode registrations are
+ * created in `pending` status so they cannot log in until an admin approves
+ * them and assigns a role. Demo-mode registrations (#1624) are created in
+ * `pending_confirmation` status and sent a single-use email confirmation
+ * link — the account activates itself once the user confirms, without any
+ * admin step.
  *
  * Controlled by OL_REGISTRATION_ENABLED env flag (default false). When
  * disabled, all registration attempts are rejected with a 403.
@@ -24,6 +28,10 @@ import {
 } from '@openlinker/core/users';
 import type { IRegistrationService } from './registration.service.interface';
 import { DEMO_MODE_SERVICE_TOKEN, type IDemoModeService } from './demo-mode.service.interface';
+import {
+  EMAIL_CONFIRMATION_SERVICE_TOKEN,
+  type IEmailConfirmationService,
+} from './email-confirmation.service.interface';
 
 const BCRYPT_COST = 10;
 
@@ -39,6 +47,8 @@ export class RegistrationService implements IRegistrationService {
     private readonly demoModeService: IDemoModeService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache: CachePort,
+    @Inject(EMAIL_CONFIRMATION_SERVICE_TOKEN)
+    private readonly emailConfirmationService: IEmailConfirmationService,
   ) {}
 
   async register(
@@ -70,18 +80,20 @@ export class RegistrationService implements IRegistrationService {
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
-    await this.userRepository.save({
+    const savedUser = await this.userRepository.save({
       username,
       email,
       passwordHash,
       role: 'viewer',
-      // Demo mode: activate immediately so the user can log in right away.
+      // Demo mode: awaits email confirmation (#1624) — self-service, no admin
+      // step, but login is blocked until the user proves the address is theirs.
       // Normal mode: pending admin approval per the #1125 approval flow.
-      status: demoMode ? 'active' : 'pending',
+      status: demoMode ? 'pending_confirmation' : 'pending',
     });
 
     if (demoMode) {
-      this.logger.log(`Demo account registered and auto-activated: ${username}`);
+      await this.emailConfirmationService.sendConfirmation(savedUser);
+      this.logger.log(`Demo account registered; confirmation email sent: ${username}`);
     } else {
       this.logger.log(`New user registered and pending approval: ${username}`);
     }

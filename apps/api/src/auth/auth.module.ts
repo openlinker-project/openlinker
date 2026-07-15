@@ -32,10 +32,14 @@ import { REGISTRATION_SERVICE_TOKEN } from './registration.service.interface';
 import { DemoModeService } from './demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from './demo-mode.service.interface';
 import { DemoAccountCleanupService } from './demo-account-cleanup.service';
+import { EmailConfirmationService } from './email-confirmation.service';
+import { EMAIL_CONFIRMATION_SERVICE_TOKEN } from './email-confirmation.service.interface';
+import { UsersApiModule } from '../users/users.module';
 
 @Module({
   imports: [
     UsersModule,
+    UsersApiModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -69,15 +73,18 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
     DemoModeService,
     { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
     DemoAccountCleanupService,
+    EmailConfirmationService,
+    { provide: EMAIL_CONFIRMATION_SERVICE_TOKEN, useExisting: EmailConfirmationService },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  // MAILER_TOKEN is exported so sibling modules (#1624 email confirmation,
-  // #1626 forgot-password delivery) can inject MailerPort without duplicating
-  // the provider registration. JwtModule is re-exported so modules that
-  // import AuthModule (e.g. AppModule for AppController, #1619) can inject
-  // JwtService to verify a bearer token without enforcing auth on a
-  // @Public() route.
+  // MAILER_TOKEN is exported so sibling modules (#1626 forgot-password
+  // delivery) can inject MailerPort without duplicating the provider
+  // registration. EmailConfirmationService (#1624) is this module's own
+  // consumer of MAILER_TOKEN, wired above. JwtModule is re-exported so
+  // modules that import AuthModule (e.g. AppModule for AppController,
+  // #1619) can inject JwtService to verify a bearer token without
+  // enforcing auth on a @Public() route.
   exports: [AuthService, MAILER_TOKEN, JwtModule],
 })
 export class AuthModule {}

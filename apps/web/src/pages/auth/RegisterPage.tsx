@@ -3,7 +3,8 @@
  *
  * Guest page at /register. Wraps RegisterForm inside the guest-page layout
  * (same shell used by the login/forgot-password pages). In demo mode,
- * accounts are auto-approved and the copy reflects the instant-access flow.
+ * accounts require no admin approval but must confirm their email before
+ * they can sign in (#1624).
  *
  * @module pages/auth
  */
@@ -22,7 +23,7 @@ export function RegisterPage(): ReactElement {
       </h1>
       <p className="guest-page__description">
         {demoMode
-          ? 'Your account is activated instantly — no approval needed.'
+          ? "No approval needed — we'll email you a confirmation link to activate your account."
           : 'Submit your details. An admin will review and approve your account.'}
       </p>
       <RegisterForm demoMode={demoMode} />

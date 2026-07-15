@@ -12,10 +12,13 @@
  * Valid user status values.
  *
  * - `pending`: Self-registered, awaiting admin approval; cannot log in.
- * - `active`: Approved and able to log in.
+ * - `pending_confirmation`: Self-registered (demo signup), awaiting the user
+ *   to confirm ownership of their email address via the single-use
+ *   confirmation link (#1624); cannot log in until confirmed.
+ * - `active`: Approved (or self-confirmed) and able to log in.
  * - `deactivated`: Previously active; login access revoked by an admin.
  */
-export const UserStatusValues = ['pending', 'active', 'deactivated'] as const;
+export const UserStatusValues = ['pending', 'pending_confirmation', 'active', 'deactivated'] as const;
 
 /**
  * Union type derived from UserStatusValues.
