@@ -1966,6 +1966,11 @@ textarea,
 
 .panel__header {
   justify-content: space-between;
+  /* Breathing room below the eyebrow + section-title block so panel titles
+     don't sit flush against their content. Single shared rule so every panel
+     header (dashboard sections, connection config, etc.) stays consistent;
+     eyebrow -> title stays tight (both margin: 0), the gap is title -> content. */
+  margin-bottom: var(--space-3);
 }
 
 .activity-list__item,
