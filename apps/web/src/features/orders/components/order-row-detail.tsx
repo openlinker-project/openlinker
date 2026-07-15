@@ -71,6 +71,13 @@ export function OrderRowDetail({
 }: OrderRowDetailProps): ReactElement {
   const parsed = parseOrderSnapshot(order.orderSnapshot);
   const itemNames = parsed.items.map((i) => i.name).filter((n): n is string => Boolean(n));
+  // Carrier precedence (#1617): the list doesn't load per-order shipment data
+  // (that's a per-order fetch, too expensive for a paged table), so it can't
+  // read the shipment's actual `carrier` the way `OrderDetailPage` does —
+  // `shipping.methodName` (the source's stated delivery-method preference) is
+  // the best signal available at the row level, falling back to the pickup
+  // point's name for pickup-point orders that carry no separate method name.
+  // "-" (via `EMPTY` below) when neither is present.
   const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
   const destPlatform = order.syncStatus[0]
     ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)

@@ -14,6 +14,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 import { useConnectionsQuery } from '../../connections';
 import {
   getCarrierDisplayName,
+  pickActiveShipment,
   ShipmentStatusBadge,
   useOrderShipmentsQuery,
   type Shipment,
@@ -266,18 +267,4 @@ function buildShipmentFieldItems(
   });
 
   return items;
-}
-
-/**
- * Pick the "active" shipment to show in the panel. In v1 there's at most one
- * non-terminal shipment per order (BE invariant). Prefer the most-recent
- * non-terminal row; fall back to the most-recent terminal one so operators
- * can still see the history of a delivered / cancelled / failed order.
- */
-function pickActiveShipment(items: readonly Shipment[] | null): Shipment | null {
-  if (!items || items.length === 0) return null;
-  const nonTerminal = items.find(
-    (s) => s.status !== 'delivered' && s.status !== 'failed' && s.status !== 'cancelled',
-  );
-  return nonTerminal ?? items[0];
 }
