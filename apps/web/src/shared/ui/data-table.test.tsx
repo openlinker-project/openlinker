@@ -433,6 +433,37 @@ describe('DataTable', () => {
     expect(screen.getByText('No rows')).toBeInTheDocument();
   });
 
+  it('disables virtualization and warns when expandable and virtualize are both set (#1634)', async () => {
+    const user = userEvent.setup();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { container } = renderWithRouter(
+        <DataTable<TestRow>
+          columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+          rowKey={(row): string => row.id}
+          rows={ROWS}
+          virtualize
+          expandable={{
+            renderDetail: (row) => <p>Detail for {row.name}</p>,
+          }}
+        />,
+      );
+
+      // Virtualization is a no-op while expandable is set — every row renders.
+      expect(container.querySelector('.data-table__virtual-scroller')).toBeNull();
+      expect(container.querySelectorAll('tbody tr').length).toBe(ROWS.length);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[DataTable]'));
+
+      // The expand toggle still works correctly (renders detail content), it's
+      // just not virtualized.
+      const toggle = screen.getAllByRole('button', { name: /Expand row details/ })[0];
+      await user.click(toggle);
+      expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('does not wrap the table in a scroll container when virtualize is false', () => {
     const { container } = renderWithRouter(
       <DataTable<TestRow>
@@ -459,6 +490,77 @@ describe('DataTable', () => {
     expect(dataTableContainer).toHaveAttribute('tabindex', '0');
     expect(dataTableContainer).toHaveAttribute('role', 'region');
     expect(dataTableContainer).toHaveAttribute('aria-label', 'Invoices (scrollable)');
+  });
+
+  it('expands and collapses a row detail panel when the row is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+
+    const firstRow = screen.getAllByRole('row').filter((row) => row.querySelector('td'))[0];
+    await user.click(firstRow);
+
+    expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+    expect(firstRow).toHaveClass('data-table__row--expanded');
+
+    await user.click(firstRow);
+    expect(screen.queryByText('Detail for Bravo')).toBeNull();
+  });
+
+  it('toggles the row detail via the toggle button without double-toggling from row bubbling (#1620)', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    const toggle = screen.getAllByRole('button', { name: /Expand row details/ })[0];
+    await user.click(toggle);
+    expect(screen.getByText('Detail for Bravo')).toBeInTheDocument();
+  });
+
+  it('does not expand the row when a checkbox inside the row is clicked (#1620)', async () => {
+    const onToggle = vi.fn();
+    const user = userEvent.setup();
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[
+          {
+            id: 'select',
+            header: 'Select',
+            cell: () => <input type="checkbox" aria-label="select-row" onChange={onToggle} />,
+          },
+          { id: 'name', header: 'Name', cell: (row): string => row.name },
+        ]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        expandable={{
+          renderDetail: (row) => <p>Detail for {row.name}</p>,
+        }}
+      />,
+    );
+
+    const checkbox = screen.getAllByRole('checkbox', { name: 'select-row' })[0];
+    await user.click(checkbox);
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Detail for/)).toBeNull();
   });
 
   it('does not mark the container as a scrollable region when rendering mobile cards', () => {

@@ -95,6 +95,24 @@ const emptySummary: OrderHealthSummary = {
   awaitingDispatch: 0,
 };
 
+/** Forces the mobile (cardView) breakpoint for the DataTable (#1620). */
+function mockMobileViewport(): { restore: () => void } {
+  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+  return { restore: () => spy.mockRestore() };
+}
+
 describe('OrdersListPage', () => {
   afterEach(cleanup);
 
@@ -233,7 +251,7 @@ describe('OrdersListPage', () => {
     expect(within(row).getByText('Awaiting dispatch')).toBeInTheDocument();
   });
 
-  it('should render customer and item-count columns parsed from the snapshot (#929)', async () => {
+  it('should render customer columns parsed from the snapshot (#929)', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
@@ -245,7 +263,73 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
     expect(within(row).getByText('Anna Kowalska')).toBeInTheDocument();
     expect(within(row).getByText('Warszawa')).toBeInTheDocument();
-    expect(within(row).getByText('1 item')).toBeInTheDocument();
+  });
+
+  it('should expand the row detail with the item count when the row is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    await user.click(row);
+
+    const detailRow = container.querySelector('.data-table__detail-row') as HTMLElement;
+    expect(detailRow).not.toBeNull();
+    expect(within(detailRow).getByText('1 item')).toBeInTheDocument();
+    expect(row).toHaveAttribute('class', expect.stringContaining('data-table__row--expanded'));
+
+    await user.click(row);
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+  });
+
+  it('should not expand the row when the select checkbox is clicked (#1620)', async () => {
+    const user = userEvent.setup();
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const checkbox = screen.getByRole('checkbox', { name: 'Select ol_order_synced' });
+    await user.click(checkbox);
+
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+    expect(checkbox).toBeChecked();
+  });
+
+  it('should expose a working select checkbox and full field detail in the mobile card view (#1620)', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const user = userEvent.setup();
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findAllByText('ALG-882414');
+      expect(container.querySelector('table')).toBeNull();
+
+      const card = container.querySelector('.data-table__card') as HTMLElement;
+      expect(card).not.toBeNull();
+      expect(within(card).getByText('1 item')).toBeInTheDocument();
+
+      const checkbox = within(card).getByRole('checkbox', { name: 'Select ol_order_synced' });
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+    } finally {
+      viewport.restore();
+    }
   });
 
   it('should render a channel-pill resolved from the connection platformType', async () => {
