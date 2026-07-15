@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import type { Connection } from '../api/connections.types';
 import { EditConnectionForm } from './EditConnectionForm';
 
@@ -644,6 +649,44 @@ describe('EditConnectionForm', () => {
         environment: 'sandbox',
         masterCatalogConnectionId: '',
       });
+    });
+  });
+
+  describe('demo read-only viewer (#1615)', () => {
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['connections:read'],
+    });
+
+    it('opens with editable inputs but disables the final submit', async () => {
+      const apiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+        apiClient,
+        sessionAdapter: viewerAdapter,
+      });
+
+      const nameInput = await screen.findByDisplayValue(sampleConnection.name);
+      expect(nameInput).not.toBeDisabled();
+      fireEvent.change(nameInput, { target: { value: 'Should not persist' } });
+      expect(nameInput).toHaveValue('Should not persist');
+
+      const submit = await screen.findByRole('button', { name: 'Save changes' });
+      expect(submit).toBeDisabled();
+    });
+
+    it('keeps the submit enabled for an admin session even in demo mode', async () => {
+      const apiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+
+      const submit = await screen.findByRole('button', { name: 'Save changes' });
+      expect(submit).not.toBeDisabled();
     });
   });
 });

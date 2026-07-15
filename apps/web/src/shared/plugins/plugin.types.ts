@@ -522,8 +522,12 @@ export interface PlatformContribution {
    * Connection-detail: contribute extra platform-specific actions to the
    * actions panel. Rendered as a sub-tree below the generic actions; the
    * component owns its mutation hooks and toast feedback.
+   *
+   * `readOnly` is set when the panel is shown to a demo read-only viewer
+   * (#1615): the action stays visible but its write buttons render disabled
+   * with a read-only tooltip.
    */
-  ConnectionActions?: ComponentType<{ connection: Connection }>;
+  ConnectionActions?: ComponentType<{ connection: Connection; readOnly?: boolean }>;
   /** Listing-detail: gate the "Edit offer" button on `ListingDetailPage`. */
   supportsListingEdit?: boolean;
   /**
