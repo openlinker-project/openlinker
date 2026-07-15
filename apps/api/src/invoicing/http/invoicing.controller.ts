@@ -403,6 +403,9 @@ export class InvoicingController {
         documentType: dto.documentType,
         idempotencyKey,
         shippingLineName,
+        // #1580: operator-supplied buyer classification → provider JST/GV.
+        buyerIsPublicSectorEntity: dto.buyerIsPublicSectorEntity,
+        buyerIsVatGroupMember: dto.buyerIsVatGroupMember,
       });
     } catch (error) {
       throw this.toHttpException(error);

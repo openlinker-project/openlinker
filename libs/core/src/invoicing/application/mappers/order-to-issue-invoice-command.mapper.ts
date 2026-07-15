@@ -54,6 +54,14 @@ export interface OrderToIssueInvoiceCommandInput {
    * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
    */
   shippingLineName?: string;
+  /**
+   * Optional operator-supplied buyer fiscal classification (#1580), forwarded
+   * onto the {@link BuyerProfile}. Neutral flags a provider maps to its regime
+   * (KSeF → FA(3) `JST`/`GV`). Absent on the auto-issue path (no order source
+   * carries them) ⇒ the provider emits its "does not apply" default.
+   */
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsVatGroupMember?: boolean;
 }
 
 /**
@@ -67,8 +75,16 @@ export interface OrderToIssueInvoiceCommandInput {
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName } =
-    input;
+  const {
+    order,
+    connectionId,
+    buyerTaxId,
+    documentType,
+    idempotencyKey,
+    shippingLineName,
+    buyerIsPublicSectorEntity,
+    buyerIsVatGroupMember,
+  } = input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
   // Fail loud rather than corrupt totals. Absent treatment = documented gross
@@ -79,7 +95,10 @@ export function toIssueInvoiceCommand(
     );
   }
 
-  const buyer = buildBuyerProfile(order, buyerTaxId ?? null);
+  const buyer = buildBuyerProfile(order, buyerTaxId ?? null, {
+    isPublicSectorEntity: buyerIsPublicSectorEntity,
+    isVatGroupMember: buyerIsVatGroupMember,
+  });
   const lines = order.items.map((item) => toInvoiceLine(item, order.id));
 
   // Buyer-paid shipping is part of the invoice total (invoice gross must equal
@@ -124,7 +143,11 @@ export function toIssueInvoiceCommand(
  * the tax id's value. Throws {@link InvalidBuyerProfileError} (PII-clean,
  * cites only `order.id`) when no address or no name can be derived.
  */
-function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): BuyerProfile {
+function buildBuyerProfile(
+  order: Order,
+  buyerTaxId: TaxIdentifier | null,
+  classification: { isPublicSectorEntity?: boolean; isVatGroupMember?: boolean } = {},
+): BuyerProfile {
   const source = order.billingAddress ?? order.shippingAddress;
   if (!source) {
     throw new InvalidBuyerProfileError(
@@ -136,7 +159,14 @@ function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): Buye
   const name = deriveBuyerName(order, source);
   const address = toBuyerAddress(source);
 
-  return new BuyerProfile(name, buyerTaxId, address, type);
+  return new BuyerProfile(
+    name,
+    buyerTaxId,
+    address,
+    type,
+    classification.isPublicSectorEntity,
+    classification.isVatGroupMember,
+  );
 }
 
 /**

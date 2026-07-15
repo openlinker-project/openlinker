@@ -241,6 +241,9 @@ export interface IssuedSnapshotBuyer {
   taxId: TaxIdentifier | null;
   address: BuyerAddress;
   type: BuyerType;
+  /** Operator-supplied fiscal classification as issued (#1580); see {@link BuyerProfile}. */
+  isPublicSectorEntity?: boolean;
+  isVatGroupMember?: boolean;
 }
 
 /**

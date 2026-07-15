@@ -92,6 +92,15 @@ export function mapToFa3BuilderInput(
     buyer: resolveBuyerIdentity(cmd.buyer.taxId),
     buyerName: cmd.buyer.name,
     buyerAddress: normalizeAddressCountry(cmd.buyer.address),
+    // Operator-supplied buyer classification → FA(3) JST/GV (#1580). Forwarded
+    // only when set; absent leaves the flags undefined so the builder emits the
+    // "does not apply" (2) default.
+    ...(cmd.buyer.isPublicSectorEntity !== undefined
+      ? { buyerIsPublicSectorEntity: cmd.buyer.isPublicSectorEntity }
+      : {}),
+    ...(cmd.buyer.isVatGroupMember !== undefined
+      ? { buyerIsVatGroupMember: cmd.buyer.isVatGroupMember }
+      : {}),
     currency: resolveKodWaluty(cmd.currency),
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
