@@ -67,6 +67,15 @@ under permissions, then submit.
 
 ![Generate-token form — description filled, "wystawianie faktur" checked](./assets/p7-ksef-portal-generate-token-form.png)
 
+> 🔒 **Least privilege - important.** Check **only** "wystawianie faktur". KSeF
+> tokens are permission-scoped at generation time, and KSeF exposes no API for
+> OpenLinker to inspect a token's granted scope, so this is enforced by how you
+> generate the token, not by OL. A token with broader grants (read, introspection,
+> administration) works identically but needlessly widens blast radius if leaked.
+> If a token is missing the issuance permission, OL surfaces a distinct
+> permission-denied error (not a generic auth failure) so you can tell the two
+> apart.
+
 Click **Odśwież** (refresh) once the request finishes processing. The token value
 is shown **only this once**.
 

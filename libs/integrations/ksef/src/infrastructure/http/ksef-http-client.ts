@@ -15,7 +15,9 @@
  *    `RefreshOnUnauthorizedOutcome` distinguishes credential rejection
  *    (→ `KsefAuthenticationException`, non-retryable) from network failure
  *    (→ `KsefNetworkException`, retryable). `403` is an authorization decision
- *    — never refreshed — and fails fast as a non-retryable `KsefApiException`.
+ *    — never refreshed — and fails fast as a non-retryable
+ *    `KsefPermissionDeniedException` (a `KsefApiException` subclass carrying a
+ *    least-privilege / missing-permission hint, #1589).
  *  - Unauthenticated calls (the auth challenge/ksef-token bootstrap and the
  *    public-key-certificate fetch) pass `options.skipAuth` so the client skips
  *    the lazy handshake + bearer injection. Auth calls that carry their own
@@ -42,6 +44,7 @@ import type {
   RefreshOnUnauthorizedOutcome,
 } from './ksef-http-client.types';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 
@@ -422,9 +425,24 @@ export class KsefHttpClient implements IKsefHttpClient {
       throw new KsefApiException(`KSeF rate limit exceeded: ${url}`, 429, body, url, retryAfterMs);
     }
 
-    // 403 (authorization denied) + other 4xx + 5xx: KsefApiException carries
-    // diagnostics-only body. 403 is non-retryable (the retry loop fails fast on
-    // any sub-500 status that isn't 429).
+    if (statusCode === 403) {
+      // Authorization denied: the token authenticated (not a 401) but lacks the
+      // permission this action needs - most often a ksef-token generated without
+      // the "wystawianie faktur" (invoice-issuance) grant. Surface it DISTINCTLY
+      // from other 4xx so the operator gets a least-privilege hint. Non-retryable
+      // (a KsefApiException subclass, so the retry loop still fails fast).
+      this.logger.error(`[${traceId}] KSeF authorization denied (403) ${url}`);
+      throw new KsefPermissionDeniedException(
+        `KSeF authorization denied (403) for ${url} - the token may lack the required ` +
+          `permission (e.g. "wystawianie faktur" / invoice issuance)`,
+        body,
+        url,
+      );
+    }
+
+    // Other 4xx + 5xx: KsefApiException carries diagnostics-only body. All are
+    // non-retryable here (the retry loop fails fast on any sub-500 status that
+    // isn't 429; 5xx is raised as network-retryable elsewhere).
     this.logger.error(`[${traceId}] KSeF API error (${statusCode}) ${url}`);
     throw new KsefApiException(`KSeF API error (${statusCode}): ${url}`, statusCode, body, url);
   }

@@ -47,6 +47,9 @@ export {
 // non-retryable). An AuthFailureClassifier (reauth on 401, ADR-008) is a future
 // hook and is not registered yet.
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
+// A KSeF 403 - authenticated token lacks the required permission (least-privilege
+// signal). A KsefApiException subclass, so retry classification is unchanged (#1589).
+export { KsefPermissionDeniedException } from './domain/exceptions/ksef-permission-denied.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
 // Transport + session-crypto exceptions (#1147 / C3).

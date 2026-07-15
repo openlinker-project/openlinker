@@ -241,6 +241,25 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
   test-environment validation as the authoritative gate before production.
 - **Art. 108g payment-title note.** Carrying the KSeF number on the payment
   title (Art. 108g) is tracked as future work and is not emitted today.
+- **MF certificate chain-of-trust (operator action for `prod`).** OpenLinker
+  verifies each MF public-key certificate against a pinned MF root CA before using
+  it to wrap a session secret. The authoritative Ministerstwo Finansow root CA is
+  **not bundled** - set `OL_KSEF_MF_ROOT_CA_PATH` to a PEM file containing the MF
+  root CA (and any intermediates) obtained from the MF/KSeF PKI publication. Until
+  it is configured, chain-of-trust is **skipped** (a loud boot warning is logged)
+  and trust relies on TLS transport security only. Configure this before `prod`.
+- **Certificate revocation (documented limitation).** Live OCSP/CRL revocation
+  checking is not performed today - the check is a tested seam with a no-network
+  default. Combined with the enforced short validity window and TLS transport, this
+  is an accepted MVP posture; a follow-up will add a networked OCSP/CRL checker.
+- **Token least-privilege (operator responsibility).** KSeF exposes **no
+  token-scope introspection endpoint**, so OpenLinker cannot machine-verify a
+  token's granted permissions at connection-test time. Generate the ksef-token with
+  **only** the "wystawianie faktur" (invoice-issuance) permission (see the
+  tutorial). If a token lacks that permission, issuance fails with a **distinct**
+  permission-denied error (`KsefPermissionDeniedException`, KSeF 403) surfaced
+  separately from other auth failures - both at connection-test time and during
+  issuance - rather than a generic authentication error.
 
 ---
 
