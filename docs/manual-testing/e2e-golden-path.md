@@ -67,7 +67,7 @@ All money is compared in **minor units, currency-aware** (`toMinorUnits`), so
 | **S4** | Erli offers (borrowed taxonomy) | offers created; mapping-level assertions (external id + primary-variant link; no `OfferReader` on the Erli adapter); **manual** Erli panel |
 | **PAUSE** | Operator buys the named offer | prints exact product / SKU / EAN / qty=1 to buy; instructs **InPost Paczkomat delivery** + a locker that exists in the InPost sandbox (`E2E_PACZKOMAT_ID` override for S6); waits for resume |
 | **S5** | Order ready in OL + channel stock down | new `ready` order appears; line price×qty; tax-treatment-aware total identity (inclusive: subtotal+shipping; exclusive: subtotal+tax+shipping); source offer qty == baseline − 1 |
-| **S6** | InPost label | routing rule ensured (`ol_managed_carrier`); label GENERATED with `pickup_point` intent (optional `E2E_PACZKOMAT_ID` locker override); tracking present; label PDF retrievable; DISPATCHED; status/tracking writeback confirmed at the checkpoint |
+| **S6** | InPost label | routing rule ensured (`ol_managed_carrier`); label GENERATED with `pickup_point` intent (optional `E2E_PACZKOMAT_ID` locker override); label PDF retrievable; DISPATCHED; **tracking-number backfill polled** — drives `marketplace.shipment.statusSync` and waits (bounded 120s) for `Shipment.trackingNumber` to be minted, then asserts it (see sandbox note below); status/tracking writeback confirmed at the checkpoint |
 | **S7** | Order in PrestaShop + master stock down | destination sync `synced` with external order id; explicit `master.inventory.syncAll` trigger, then OL master availability == baseline − 1; PS order total (fails loudly if absent) + shipping + sold-line qty/unit-price parity |
 | **S8** | KSeF issue → reconcile | issued via `POST /invoices` → reconcile (`schemaVersion: 1`) → `accepted` + KSeF number; expected line grosses derived from the ORDER snapshot (gross containment) + per-line net+VAT=gross consistency + totals + currency; UPO + source XML retrievable; **manual** KSeF env |
 | **S9** | Final reconciliation | OL stock delta holds; order `ready` + synced; explicit `inventory.propagateToMarketplaces` trigger, then every OL-readable channel's offer qty == baseline − 1 (unreadable channels annotated); WC stock re-checked via REST (stale value annotated — OL has no WC quantity write-back today) |
@@ -193,6 +193,14 @@ run leaves a durable trail.
   targeted OL-read extension (case-by-case).
 - **Attended run, not unattended CI.** The buyer purchase and external dashboards
   are human-in-the-loop.
+- **InPost/ShipX tracking number is minted asynchronously.** In the ShipX sandbox
+  `tracking_number` is `null` until the shipment reaches `confirmed` and the
+  carrier-generic `marketplace.shipment.statusSync` poll (#838) has run to
+  backfill it (the #1426 path). A null immediately after label creation /
+  dispatch is expected sandbox timing, NOT an OL defect. S6 drives that poll
+  explicitly and waits (bounded 120s) for the backfill before asserting the
+  tracking number; on a genuine sandbox delay past the budget it annotates
+  rather than fails (#1521).
 - **Role/text selectors (no `data-testid`)** — some UI fragility until testids
   are added.
 

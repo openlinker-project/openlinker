@@ -28,7 +28,15 @@ export const JobType = {
   inventoryPropagateToMarketplaces: 'inventory.propagateToMarketplaces',
   invoicingIssue: 'invoicing.issue',
   invoicingRegulatoryStatusReconcile: 'invoicing.regulatoryStatus.reconcile',
+  marketplaceShipmentStatusSync: 'marketplace.shipment.statusSync',
 } as const;
+
+/**
+ * Rolling scan-offset cursor key the InPost shipment status-sync task uses
+ * (mirror of `inpost-scheduler-tasks.ts`). Reused here so an explicit E2E
+ * trigger drives the same paged poll as the scheduled cron.
+ */
+const INPOST_SHIPMENT_STATUS_CURSOR_KEY = 'inpost.shipmentStatus.scanOffset';
 
 export type JobTypeValue = (typeof JobType)[keyof typeof JobType];
 
@@ -193,5 +201,33 @@ export class SyncJobs {
   /** Reconcile a provider's regulatory (e.g. KSeF) clearance status into OL. */
   reconcileRegulatoryStatus(connectionId: string): Promise<string> {
     return this.trigger({ connectionId, jobType: JobType.invoicingRegulatoryStatusReconcile });
+  }
+
+  /**
+   * Drive the carrier-generic shipment status poll (#838) that re-reads each
+   * non-terminal shipment from the carrier and backfills its tracking number
+   * onto the OL `Shipment` row. The ShipX sandbox mints the tracking number only
+   * once the shipment is confirmed, so the golden path triggers this explicitly
+   * rather than waiting on the 30-min `inpost-shipment-status-sync` cron.
+   *
+   * `expectSuccess` defaults to false: the poll is best-effort backfill and a
+   * business failure on one page should not abort the caller's tracking wait.
+   */
+  syncShipmentStatus(
+    connectionId: string,
+    options: TriggerAndWaitOptions = {},
+  ): Promise<SyncJob> {
+    return this.triggerAndWait(
+      {
+        connectionId,
+        jobType: JobType.marketplaceShipmentStatusSync,
+        payload: {
+          schemaVersion: 1,
+          limit: 50,
+          cursorKey: INPOST_SHIPMENT_STATUS_CURSOR_KEY,
+        },
+      },
+      { expectSuccess: false, ...options },
+    );
   }
 }
