@@ -12,11 +12,15 @@
  *      verbatim (controller correlationId string, PII-clean).
  *   3. Other HTTP 400 (buyer-profile / price-treatment) → surface
  *      `error.message` (PII-clean mapper text, operator-actionable).
- *   4. Defensive 409 → already-issued fixed string.
- *   5. Fallback → generic fixed string.
+ *   4. Insufficient permissions (HTTP 403) → a FIXED, permission-specific
+ *      string (#1613). The FE gates the Issue/Retry affordances behind
+ *      `invoices:write` (`useWriteAccess`), so this is normally a defensive
+ *      fallback for a stale session — never echo `error.message`.
+ *   5. Defensive 409 → already-issued fixed string.
+ *   6. Fallback → generic fixed string.
  *
  * Security invariant: only branches 2 and 3 surface `error.message`; the
- * capability branch and fallback emit FIXED strings.
+ * capability branch, the 403 branch, and the fallback emit FIXED strings.
  *
  * @module apps/web/src/features/invoicing/lib
  */
@@ -57,6 +61,12 @@ export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
     // the BE sent. Keep this in lockstep with the controller's 400 vocabulary.
     if (error.status === 422 || error.status === 400) {
       return error.message;
+    }
+    if (error.status === 403) {
+      return t(
+        'invoice.error.forbidden',
+        "Can't issue invoices in demo mode - demo accounts are read-only; issuing an invoice needs an operator account.",
+      );
     }
     if (error.status === 409) {
       return t('invoice.error.alreadyIssued', 'This order already has an issued invoice.');
