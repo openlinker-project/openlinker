@@ -1245,11 +1245,14 @@ describe('AllegroCreateOfferWizard', () => {
           onCancel={vi.fn()}
           onSubmitted={vi.fn()}
         />,
-        { apiClient: mockApi },
+        // Authenticated (admin) session — the trigger is gated via
+        // `useWriteAccess('ai:suggest', …)` (#1668) and renders nothing for
+        // the default anonymous/noop session.
+        { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() },
       );
 
       await advanceToStep2();
-      expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /suggest with ai/i })).toBeInTheDocument();
     });
 
     // Note: this test does not assert the `shouldDirty: true` flag that the
