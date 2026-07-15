@@ -37,7 +37,7 @@
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../../../features/connections';
-import { normalizeNip } from '../lib/ksef-nip';
+import { normalizeNip, isValidNipChecksum } from '../lib/ksef-nip';
 import { buildKsefSellerConfig } from '../lib/ksef-seller-config';
 export type { KsefSellerProfileInput } from '../lib/ksef-seller-config';
 
@@ -87,7 +87,14 @@ export const ksefSetupSchema = z
           .string()
           .trim()
           .transform(normalizeNip)
-          .pipe(z.string().regex(NIP_DIGITS, 'Seller NIP must be 10 digits')),
+          .pipe(
+            z
+              .string()
+              .regex(NIP_DIGITS, 'Seller NIP must be 10 digits')
+              // mod-11 check digit (#1595) - catches a mistyped-but-well-formed
+              // NIP client-side before it round-trips to KSeF's own rejection.
+              .refine(isValidNipChecksum, 'Seller NIP has an invalid checksum'),
+          ),
         z.literal(''),
       ])
       .optional(),

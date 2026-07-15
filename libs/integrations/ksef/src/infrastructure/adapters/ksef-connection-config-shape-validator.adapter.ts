@@ -19,9 +19,11 @@
  * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
  * set (a partial skonto is otherwise silently dropped at issuance by the
  * factory's `resolvePayment`, so rejecting it at save time gives the operator
- * a clear error instead). The seller's tax identifier itself (`nip`/`name`/`address`) is intentionally
- * NOT validated here yet — a future pass tightens KSeF connection-shape
- * validation across all seller fields. Registered against
+ * a clear error instead). The seller's `nip`, when present, is checksum-validated
+ * (mod-11, #1595) so a mistyped-but-well-formed NIP is caught at connection-save
+ * time instead of surfacing as a generic KSeF submission-time rejection; the
+ * remaining seller fields (`name`/`address`) are still not validated here - a
+ * future pass tightens KSeF connection-shape validation across them. Registered against
  * `ConnectionConfigShapeValidatorRegistryService` at `ksef.publicapi.v2`;
  * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
@@ -39,6 +41,7 @@ import {
 } from '@openlinker/core/integrations';
 import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
 import { FA3_TAX_RATE_MAP } from '../fa3/domain/fa3-tax-rate.mapper';
+import { isValidNipChecksum } from './nip-checksum';
 
 export class KsefConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -72,6 +75,23 @@ export class KsefConnectionConfigShapeValidatorAdapter
             path: 'seller.defaultTaxRate',
             message: `must be one of: ${Object.keys(FA3_TAX_RATE_MAP).join(', ')}`,
           });
+        }
+      }
+
+      // Seller NIP: 10-digit mod-11-valid Polish NIP when present (#1595). The
+      // FE submits digits-only, but a direct API write may include separators,
+      // so normalise before the length/checksum gate.
+      const nip = (seller as Record<string, unknown>).nip;
+      if (nip !== undefined) {
+        if (typeof nip !== 'string' || nip.trim().length === 0) {
+          issues.push({ path: 'seller.nip', message: 'must be a non-empty string' });
+        } else {
+          const normalized = nip.replace(/[\s-]/g, '');
+          if (!/^\d{10}$/.test(normalized)) {
+            issues.push({ path: 'seller.nip', message: 'must be a 10-digit Polish NIP' });
+          } else if (!isValidNipChecksum(normalized)) {
+            issues.push({ path: 'seller.nip', message: 'has an invalid checksum' });
+          }
         }
       }
     }
