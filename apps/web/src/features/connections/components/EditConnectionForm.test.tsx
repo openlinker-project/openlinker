@@ -675,8 +675,12 @@ describe('EditConnectionForm', () => {
       fireEvent.change(nameInput, { target: { value: 'Should not persist' } });
       expect(nameInput).toHaveValue('Should not persist');
 
+      // `findByRole` only waits for the button to exist — it renders enabled
+      // on first paint (useDemoMode() returns false until the config query
+      // resolves) and only becomes disabled once that async resolution lands.
+      // Assert via waitFor so the disabled check doesn't race the resolution.
       const submit = await screen.findByRole('button', { name: 'Save changes' });
-      expect(submit).toBeDisabled();
+      await waitFor(() => expect(submit).toBeDisabled());
     });
 
     it('keeps the submit enabled for an admin session even in demo mode', async () => {

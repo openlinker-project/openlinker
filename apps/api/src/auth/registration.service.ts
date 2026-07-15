@@ -107,6 +107,9 @@ export class RegistrationService implements IRegistrationService {
    * a hard security boundary.
    */
   private async enforceRateLimit(clientIp: string): Promise<void> {
+    // Only reached when demoMode is true (see the guard in `register` above),
+    // so this default only ever applies to a public demo deployment, never a
+    // production instance with registration enabled.
     const limit = Number(
       this.configService.get<string>('OL_DEMO_REGISTRATION_RATE_LIMIT', '100'),
     );

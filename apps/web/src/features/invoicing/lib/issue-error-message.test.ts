@@ -53,7 +53,7 @@ describe('resolveIssueErrorMessage', () => {
     const error = new ApiError('Forbidden resource', 403, { message: 'Forbidden resource' });
     const result = resolveIssueErrorMessage(error, t);
     expect(result).toBe(
-      "Can't issue invoices in demo mode - demo accounts are read-only; issuing an invoice needs an operator account.",
+      "You don't have permission to issue invoices - this action requires an administrator account.",
     );
     expect(result).not.toContain('Forbidden resource');
   });

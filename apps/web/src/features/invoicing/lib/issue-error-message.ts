@@ -65,7 +65,7 @@ export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
     if (error.status === 403) {
       return t(
         'invoice.error.forbidden',
-        "Can't issue invoices in demo mode - demo accounts are read-only; issuing an invoice needs an operator account.",
+        "You don't have permission to issue invoices - this action requires an administrator account.",
       );
     }
     if (error.status === 409) {
