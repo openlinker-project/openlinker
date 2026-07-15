@@ -234,6 +234,21 @@ function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | n
 }
 
 /**
+ * Compact items preview for the collapsed row (#1646). Live feedback: the
+ * order's contents were only visible after expanding the accordion — this
+ * gives an at-a-glance signal in the Order cell without duplicating the full
+ * per-line quantities/prices, which stay in `OrderRowDetail`. First item name
+ * plus a "+N more" suffix when the order has more than one line; `null` when
+ * the snapshot carries no named items (parse failure or genuinely empty).
+ */
+function itemsPreview(parsed: ReturnType<typeof parseOrderSnapshot>): string | null {
+  const names = parsed.items.map((i) => i.name).filter((n): n is string => Boolean(n));
+  if (names.length === 0) return null;
+  const [first, ...rest] = names;
+  return rest.length > 0 ? `${first} +${rest.length} more` : first;
+}
+
+/**
  * Cockpit "data freshness" line — freshest `updatedAt` across visible rows,
  * rendered as a locale-aware HH:MM. Same locale-resolution path as
  * `formatCurrency` so the i18n seam stays single-source-of-truth.
@@ -476,12 +491,20 @@ export function OrdersListPage(): ReactElement {
         header: 'Order',
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const preview = itemsPreview(parsed);
           return (
-            <EntityLabel
-              id={order.internalOrderId}
-              name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-              to={order.internalOrderId}
-            />
+            <span className="orders-cell-stack">
+              <EntityLabel
+                id={order.internalOrderId}
+                name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
+                to={order.internalOrderId}
+              />
+              {preview ? (
+                <span className="text-muted orders-cell-sub orders-items-preview" title={preview}>
+                  {preview}
+                </span>
+              ) : null}
+            </span>
           );
         },
       },

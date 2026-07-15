@@ -1874,6 +1874,20 @@ textarea,
   gap: 0.75rem;
 }
 
+/* `.page-section` gets no `grid-template-columns` above, so its single
+   implicit column uses the default `auto` track-sizing function — which
+   sizes to the MAX-CONTENT of the widest descendant across every row, not
+   the container's own width (#1646). A wide-enough child (e.g. the orders
+   page's 5-segment health-summary row) can blow that column out past the
+   page's actual width; downstream `.shell-content`'s `overflow-x: hidden`
+   then clips the excess invisibly instead of showing a scrollbar, so the
+   card silently loses its right edge at narrow viewports. `minmax(0, 1fr)`
+   makes the column a real stretchy track capped at the container's width,
+   which every `.page-section` consumer needs regardless of what it renders. */
+.page-section {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .page-header {
   gap: 0.45rem;
 }
@@ -7490,12 +7504,22 @@ a.kpi-card:focus-visible {
 .orders-segment {
   display: block;
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: none;
   background: none;
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-lg);
+  /* Undo the global `button { white-space: nowrap }` (#1646) — it inherits
+     into `.metric-card__label`, forcing labels like "Awaiting mapping" onto
+     one unbreakable line. At narrow widths the bare `1fr` grid-column
+     fallback (≤480px) has no `minmax(0, …)` floor, so the track grows to fit
+     that unbroken label and the whole segment card silently overflows past
+     the viewport — clipped invisibly by `.shell-content`'s `overflow-x:
+     hidden` rather than producing a scrollbar. Restoring wrap here lets the
+     label break across lines instead. */
+  white-space: normal;
 }
 .orders-segment > .metric-card { height: 100%; }
 .orders-segment:focus-visible {
@@ -7514,6 +7538,15 @@ a.kpi-card:focus-visible {
   font-size: 0.6875rem;
   color: var(--status-error-strong);
   max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Items preview under the Order cell (#1646) — a glance at contents before
+   expanding the row; truncates long/multi-item snapshots on one line. */
+.orders-items-preview {
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
