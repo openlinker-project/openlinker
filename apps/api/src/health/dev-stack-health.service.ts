@@ -20,6 +20,7 @@ import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker';
 import type { IDevStackHealthService } from './dev-stack-health.service.interface';
 import { IConnectionInfraHealthService } from './connection-infra-health.service.interface';
 import { CONNECTION_INFRA_HEALTH_SERVICE_TOKEN } from './health.tokens';
+import { withTimeout } from './with-timeout.util';
 import type {
   InternalHealthReadiness,
   DevStackHealthResponse,
@@ -122,7 +123,11 @@ export class DevStackHealthService implements IDevStackHealthService {
 
   private async checkPostgres(): Promise<ServiceHealth> {
     try {
-      await this.withTimeout(this.dataSource.query('SELECT 1'), 'PostgreSQL health check timeout');
+      await withTimeout(
+        this.dataSource.query('SELECT 1'),
+        'PostgreSQL health check timeout',
+        this.CHECK_TIMEOUT_MS
+      );
       return { status: 'ok' as ServiceStatus };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -134,32 +139,18 @@ export class DevStackHealthService implements IDevStackHealthService {
     }
   }
 
-  private async withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
-    let timeoutId: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(message)), this.CHECK_TIMEOUT_MS);
-    });
-    try {
-      return await Promise.race([promise, timeoutPromise]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
-  }
-
   private async checkRedis(): Promise<ServiceHealth> {
     try {
       const streamKey = this.HEALTHCHECK_STREAM;
       const timestamp = Date.now().toString();
 
-      await this.withTimeout(this.redisClient.ping(), 'Redis ping timeout');
+      await withTimeout(this.redisClient.ping(), 'Redis ping timeout', this.CHECK_TIMEOUT_MS);
 
       // Exercise Redis Streams with a non-blocking write. XADD succeeds iff
       // the server supports Streams and accepts writes; no read-back needed,
       // which avoids false positives on cold boot when consumer groups or
       // stream entries are not yet initialized.
-      await this.withTimeout(
+      await withTimeout(
         this.redisClient.xAdd(
           streamKey,
           '*',
@@ -172,7 +163,8 @@ export class DevStackHealthService implements IDevStackHealthService {
             },
           }
         ),
-        'Redis xAdd timeout'
+        'Redis xAdd timeout',
+        this.CHECK_TIMEOUT_MS
       );
 
       return { status: 'ok' as ServiceStatus };
@@ -233,9 +225,10 @@ export class DevStackHealthService implements IDevStackHealthService {
 
   private async checkWorker(): Promise<ServiceHealth> {
     try {
-      const heartbeat = await this.withTimeout(
+      const heartbeat = await withTimeout(
         this.redisClient.get(WORKER_HEARTBEAT_REDIS_KEY),
-        'Worker heartbeat check timeout'
+        'Worker heartbeat check timeout',
+        this.CHECK_TIMEOUT_MS
       );
 
       if (!heartbeat) {

@@ -40,10 +40,18 @@ export type InternalHealthReadiness = Omit<InternalHealthResponse, 'version' | '
  * `InventoryMaster`) rather than being a marketplace listing channel. Today
  * this surfaces WooCommerce; it generalizes to any future adapter with the
  * same capability shape without further changes here.
+ *
+ * `name` (the operator-chosen connection label) and `message` (adapter
+ * diagnostic text, which can describe *why* auth failed) are optional
+ * because the `@Public()` `GET /health/dev-stack` endpoint only includes
+ * them for authenticated callers — an anonymous request gets the generic
+ * `connectionId` / `platformType` / `status` shape (#1619 review: this is
+ * real user/diagnostic detail, unlike the fixed-name postgres/redis/worker
+ * rows, which never needed gating).
  */
 export interface ConnectionHealthEntry {
   connectionId: string;
-  name: string;
+  name?: string;
   platformType: string;
   status: ServiceStatus;
   message?: string;

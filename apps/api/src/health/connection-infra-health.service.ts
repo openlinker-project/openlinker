@@ -10,6 +10,14 @@
  * adapters (Allegro, Erli, …) never qualify and are left to the existing
  * "Connection health" panel.
  *
+ * Discovery goes through `IIntegrationsService.listCapabilityAdapters` (the
+ * same seam `OrderSyncService` and every other core consumer uses) rather
+ * than hand-rolling a `metadata.supportedCapabilities` check, so a
+ * connection with the capability disabled via `enabledCapabilities` (e.g. a
+ * WooCommerce connection with `InventoryMaster` turned off in favor of
+ * `OfferManager` — see the mutual-exclusion note in
+ * docs/architecture-overview.md) is correctly excluded here too.
+ *
  * @module apps/api/src/health
  * @implements {IConnectionInfraHealthService}
  */
@@ -22,8 +30,10 @@ import { IConnectionService } from '../integrations/application/interfaces/conne
 import { CONNECTION_SERVICE_TOKEN } from '../integrations/application/interfaces/connection.service.interface';
 import type { IConnectionInfraHealthService } from './connection-infra-health.service.interface';
 import type { ConnectionHealthEntry, ServiceStatus } from './dev-stack-health.types';
+import { HealthCheckTimeoutError, withTimeout } from './with-timeout.util';
 
 const INFRA_CAPABILITIES = ['ProductMaster', 'InventoryMaster'];
+const CHECK_TIMEOUT_MS = 5000;
 
 @Injectable()
 export class ConnectionInfraHealthService implements IConnectionInfraHealthService {
@@ -37,41 +47,46 @@ export class ConnectionInfraHealthService implements IConnectionInfraHealthServi
   ) {}
 
   async checkInfraConnections(): Promise<ConnectionHealthEntry[]> {
-    const connections = await this.connectionService.list({ status: 'active' });
-    if (connections.length === 0) {
+    const infraConnections = await this.discoverInfraBearingConnections();
+    if (infraConnections.length === 0) {
       return [];
     }
 
-    const infraConnections = await this.filterInfraBearing(connections);
     return Promise.all(infraConnections.map((connection) => this.checkConnection(connection)));
   }
 
-  private async filterInfraBearing(connections: Connection[]): Promise<Connection[]> {
-    const flags = await Promise.all(
-      connections.map(async (connection) => {
-        try {
-          const metadata = await this.integrationsService.resolveAdapterMetadata({
-            platformType: connection.platformType,
-            adapterKey: connection.adapterKey,
-          });
-          return metadata.supportedCapabilities.some((capability) =>
-            INFRA_CAPABILITIES.includes(capability)
-          );
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          this.logger.warn(
-            `Could not resolve adapter metadata for connection ${connection.id}: ${errorMessage}`
-          );
-          return false;
-        }
-      })
-    );
-    return connections.filter((_, index) => flags[index]);
+  /**
+   * Discover active connections that both (a) have an adapter advertising an
+   * infra-bearing capability and (b) have that capability enabled on the
+   * connection itself. `listCapabilityAdapters` already intersects
+   * `metadata.supportedCapabilities` with `connection.enabledCapabilities`
+   * per capability (#1619 review) — called once per infra capability since
+   * the port only takes a single capability, then deduped by connection id
+   * (a connection may qualify via both `ProductMaster` and `InventoryMaster`).
+   */
+  private async discoverInfraBearingConnections(): Promise<Connection[]> {
+    const byConnectionId = new Map<string, Connection>();
+
+    for (const capability of INFRA_CAPABILITIES) {
+      const entries = await this.integrationsService.listCapabilityAdapters<unknown>({
+        capability,
+        lazy: true,
+      });
+      for (const entry of entries) {
+        byConnectionId.set(entry.connectionId, entry.connection);
+      }
+    }
+
+    return Array.from(byConnectionId.values());
   }
 
   private async checkConnection(connection: Connection): Promise<ConnectionHealthEntry> {
     try {
-      const result = await this.connectionService.testConnection(connection.id);
+      const result = await withTimeout(
+        this.connectionService.testConnection(connection.id),
+        `Infra connection health check timed out after ${CHECK_TIMEOUT_MS}ms`,
+        CHECK_TIMEOUT_MS
+      );
       const status: ServiceStatus = result.success ? 'ok' : 'error';
       return {
         connectionId: connection.id,
@@ -82,6 +97,18 @@ export class ConnectionInfraHealthService implements IConnectionInfraHealthServi
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof HealthCheckTimeoutError) {
+        this.logger.warn(
+          `Infra connection health check timed out for ${connection.id}: ${errorMessage}`
+        );
+        return {
+          connectionId: connection.id,
+          name: connection.name,
+          platformType: connection.platformType,
+          status: 'error',
+          message: errorMessage,
+        };
+      }
       this.logger.warn(
         `Infra connection health check failed for ${connection.id}: ${errorMessage}`
       );

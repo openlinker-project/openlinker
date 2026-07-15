@@ -126,7 +126,7 @@ function buildInfraNodeLabels(
     const platformLabel =
       platformDisplayNames.get(connection.platformType) ??
       fallbackPlatformLabel(connection.platformType);
-    labels.push(`${platformLabel} (${connection.name})`);
+    labels.push(connection.name ? `${platformLabel} (${connection.name})` : platformLabel);
   }
   return labels;
 }
@@ -647,7 +647,12 @@ export function DashboardPage(): ReactElement {
               {infraConnections.map((connection) => (
                 <ServiceHealthRow
                   key={connection.connectionId}
-                  name={`${platformDisplayNames.get(connection.platformType) ?? fallbackPlatformLabel(connection.platformType)} — ${connection.name}`}
+                  name={
+                    connection.name
+                      ? `${platformDisplayNames.get(connection.platformType) ?? fallbackPlatformLabel(connection.platformType)} — ${connection.name}`
+                      : (platformDisplayNames.get(connection.platformType) ??
+                        fallbackPlatformLabel(connection.platformType))
+                  }
                   health={{ status: connection.status, message: connection.message }}
                 />
               ))}

@@ -3,8 +3,12 @@
  *
  * Covers #1619: the dashboard Infrastructure panel must list every
  * infra-bearing connection (ProductMaster/InventoryMaster capability),
- * skipping marketplace-only connections and connections with no registered
- * tester.
+ * skipping marketplace-only connections and connections with the
+ * capability disabled via `enabledCapabilities`. Discovery goes through
+ * `listCapabilityAdapters` (same seam as every other core consumer) rather
+ * than a hand-rolled `metadata.supportedCapabilities` check, so these tests
+ * mock that method directly instead of `resolveAdapterMetadata` +
+ * `connectionService.list`.
  *
  * @module apps/api/src/health
  */
@@ -22,7 +26,7 @@ function buildConnection(overrides: Partial<Connection> = {}): Connection {
     config: {},
     credentialsBacked: true,
     adapterKey: 'woocommerce.restapi.v3',
-    enabledCapabilities: [],
+    enabledCapabilities: ['ProductMaster', 'InventoryMaster'],
     supportedCapabilities: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -30,18 +34,48 @@ function buildConnection(overrides: Partial<Connection> = {}): Connection {
   } as Connection;
 }
 
+type CapabilityAdapterEntry = {
+  connectionId: string;
+  connection: Connection;
+  adapter: unknown;
+  metadata: unknown;
+};
+
+/** Builds the `listCapabilityAdapters` mock implementation for a fixed connection→capabilities map. */
+function mockCapabilityAdapters(
+  integrationsService: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>,
+  connectionsByCapability: Record<string, Connection[]>
+): void {
+  integrationsService.listCapabilityAdapters.mockImplementation(
+    <T>(filters: { capability: string }) => {
+      const connections = connectionsByCapability[filters.capability] ?? [];
+      return Promise.resolve(
+        connections.map(
+          (connection): CapabilityAdapterEntry => ({
+            connectionId: connection.id,
+            connection,
+            adapter: {} as T,
+            metadata: {},
+          })
+        )
+      ) as unknown as ReturnType<IIntegrationsService['listCapabilityAdapters']>;
+    }
+  );
+}
+
 describe('ConnectionInfraHealthService', () => {
   let service: ConnectionInfraHealthService;
   let connectionService: jest.Mocked<Pick<IConnectionService, 'list' | 'testConnection'>>;
-  let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'resolveAdapterMetadata'>>;
+  let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     connectionService = {
       list: jest.fn(),
       testConnection: jest.fn(),
     };
     integrationsService = {
-      resolveAdapterMetadata: jest.fn(),
+      listCapabilityAdapters: jest.fn(),
     };
 
     service = new ConnectionInfraHealthService(
@@ -50,24 +84,29 @@ describe('ConnectionInfraHealthService', () => {
     );
   });
 
-  it('should return an empty array when there are no active connections', async () => {
-    connectionService.list.mockResolvedValue([]);
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('should return an empty array when no connection has an infra capability', async () => {
+    mockCapabilityAdapters(integrationsService, {});
 
     const result = await service.checkInfraConnections();
 
     expect(result).toEqual([]);
-    expect(integrationsService.resolveAdapterMetadata).not.toHaveBeenCalled();
+    expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'ProductMaster', lazy: true })
+    );
+    expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'InventoryMaster', lazy: true })
+    );
   });
 
   it('should include an infra-bearing connection (ProductMaster/InventoryMaster) and probe it', async () => {
     const connection = buildConnection();
-    connectionService.list.mockResolvedValue([connection]);
-    integrationsService.resolveAdapterMetadata.mockResolvedValue({
-      adapterKey: 'woocommerce.restapi.v3',
-      platformType: 'woocommerce',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
-      displayName: 'WooCommerce REST API v3',
-      version: '1.0.0',
+    mockCapabilityAdapters(integrationsService, {
+      ProductMaster: [connection],
+      InventoryMaster: [connection],
     });
     connectionService.testConnection.mockResolvedValue({
       success: true,
@@ -86,19 +125,26 @@ describe('ConnectionInfraHealthService', () => {
         message: undefined,
       },
     ]);
+    // Deduped: appears in both capability lists but probed exactly once.
+    expect(connectionService.testConnection).toHaveBeenCalledTimes(1);
     expect(connectionService.testConnection).toHaveBeenCalledWith('conn-1');
   });
 
+  it('should exclude a connection whose adapter supports the capability but has it disabled via enabledCapabilities', async () => {
+    // listCapabilityAdapters itself intersects supportedCapabilities with
+    // enabledCapabilities, so a connection with InventoryMaster disabled
+    // (e.g. WooCommerce's OfferManager/InventoryMaster mutual exclusion)
+    // never appears in the entries this service receives.
+    mockCapabilityAdapters(integrationsService, {});
+
+    const result = await service.checkInfraConnections();
+
+    expect(result).toEqual([]);
+    expect(connectionService.testConnection).not.toHaveBeenCalled();
+  });
+
   it('should exclude a marketplace-only connection (no ProductMaster/InventoryMaster)', async () => {
-    const connection = buildConnection({ id: 'conn-2', platformType: 'allegro' });
-    connectionService.list.mockResolvedValue([connection]);
-    integrationsService.resolveAdapterMetadata.mockResolvedValue({
-      adapterKey: 'allegro.publicapi.v1',
-      platformType: 'allegro',
-      supportedCapabilities: ['OrderSource', 'OfferManager'],
-      displayName: 'Allegro Public API v1',
-      version: '1.0.0',
-    });
+    mockCapabilityAdapters(integrationsService, {});
 
     const result = await service.checkInfraConnections();
 
@@ -108,14 +154,7 @@ describe('ConnectionInfraHealthService', () => {
 
   it('should report an error entry when the connection probe fails', async () => {
     const connection = buildConnection();
-    connectionService.list.mockResolvedValue([connection]);
-    integrationsService.resolveAdapterMetadata.mockResolvedValue({
-      adapterKey: 'woocommerce.restapi.v3',
-      platformType: 'woocommerce',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
-      displayName: 'WooCommerce REST API v3',
-      version: '1.0.0',
-    });
+    mockCapabilityAdapters(integrationsService, { ProductMaster: [connection] });
     connectionService.testConnection.mockResolvedValue({
       success: false,
       latencyMs: 12,
@@ -137,14 +176,7 @@ describe('ConnectionInfraHealthService', () => {
 
   it('should report a warning entry when the probe itself throws (e.g. unsupported adapter)', async () => {
     const connection = buildConnection();
-    connectionService.list.mockResolvedValue([connection]);
-    integrationsService.resolveAdapterMetadata.mockResolvedValue({
-      adapterKey: 'woocommerce.restapi.v3',
-      platformType: 'woocommerce',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
-      displayName: 'WooCommerce REST API v3',
-      version: '1.0.0',
-    });
+    mockCapabilityAdapters(integrationsService, { ProductMaster: [connection] });
     connectionService.testConnection.mockRejectedValue(
       new Error('Connection testing is not supported for adapter woocommerce.restapi.v3')
     );
@@ -162,14 +194,23 @@ describe('ConnectionInfraHealthService', () => {
     ]);
   });
 
-  it('should skip a connection whose adapter metadata cannot be resolved', async () => {
+  it('should report an error entry with a timed-out message when the probe hangs past the timeout budget', async () => {
     const connection = buildConnection();
-    connectionService.list.mockResolvedValue([connection]);
-    integrationsService.resolveAdapterMetadata.mockRejectedValue(new Error('adapter not found'));
+    mockCapabilityAdapters(integrationsService, { ProductMaster: [connection] });
+    connectionService.testConnection.mockImplementation(() => new Promise(() => undefined));
 
-    const result = await service.checkInfraConnections();
+    const resultPromise = service.checkInfraConnections();
+    await jest.advanceTimersByTimeAsync(5000);
+    const result = await resultPromise;
 
-    expect(result).toEqual([]);
-    expect(connectionService.testConnection).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      {
+        connectionId: 'conn-1',
+        name: 'My WooCommerce Shop',
+        platformType: 'woocommerce',
+        status: 'error',
+        message: expect.stringContaining('timed out'),
+      },
+    ]);
   });
 });
