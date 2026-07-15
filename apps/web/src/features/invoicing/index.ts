@@ -45,6 +45,45 @@ export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
 export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
+
+// Invoice numbering (#1577, binds C2 #1576). The API factory rides the KSeF
+// plugin's `apiNamespaces` build slot; the hooks/types/lib are feature-owned.
+export { createNumberingApi, type NumberingApi } from './api/numbering.api';
+export { numberingQueryKeys } from './api/numbering.query-keys';
+export {
+  ResetPolicyValues,
+  NumberingPatternVariableValues,
+} from './api/numbering.types';
+export type {
+  ResetPolicy,
+  NumberingPatternVariable,
+  NumberingSeries,
+  UnassignedNumberingSeries,
+  NumberingAssignment,
+  CreateNumberingSeriesInput,
+  UpdateNumberingSeriesInput,
+  SetNumberingAssignmentInput,
+} from './api/numbering.types';
+export { useNumberingAssignmentQuery } from './hooks/use-numbering-assignment-query';
+export { useNumberingSeriesQuery } from './hooks/use-numbering-series-query';
+export { useUnassignedNumberingSeriesQuery } from './hooks/use-unassigned-numbering-series-query';
+export { useCreateNumberingSeriesMutation } from './hooks/use-create-numbering-series-mutation';
+export {
+  useUpdateNumberingSeriesMutation,
+  type UpdateNumberingSeriesVariables,
+} from './hooks/use-update-numbering-series-mutation';
+export {
+  useSetNumberingAssignmentMutation,
+  type SetNumberingAssignmentVariables,
+} from './hooks/use-set-numbering-assignment-mutation';
+export { renderInvoiceNumber, validateNumberingPattern } from './lib/numbering-pattern';
+export {
+  buildNumberingPreview,
+  type NumberingPreview,
+  type PreviewToken,
+  type PreviewTokenKind,
+  type BuildNumberingPreviewInput,
+} from './lib/numbering-preview';
 export {
   InvoiceStatusValues,
   RegulatoryStatusValues,

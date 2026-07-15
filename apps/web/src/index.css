@@ -11978,3 +11978,325 @@ input.bulk-dispatch__num--wide {
   flex-shrink: 0;
   line-height: 1.3;
 }
+
+/* ── Invoice numbering (#1577) ────────────────────────────────────────── */
+
+.numbering-status-warning {
+  color: var(--status-warning-fg);
+  font-weight: 500;
+}
+
+/* Resting / configured view */
+.numbering-configured {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.numbering-configured__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.numbering-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.numbering-card--muted {
+  background: var(--bg-surface-muted);
+  border-style: dashed;
+}
+
+.numbering-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.numbering-card__pattern {
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.numbering-card__label {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.numbering-card__number {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.numbering-card__meta {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.numbering-card__actions {
+  margin-top: var(--space-2);
+}
+
+/* Empty view + unassigned list */
+.numbering-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.numbering-empty__cta {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.numbering-empty__unassigned {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.numbering-unassigned-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.numbering-unassigned-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.numbering-unassigned-list__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.numbering-unassigned-list__pattern {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Editor: two-column form + sticky preview */
+.numbering-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.numbering-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.numbering-editor__chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.numbering-editor__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-editor__correction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.numbering-editor__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.numbering-editor__toggle-help {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.numbering-editor__correction-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.numbering-editor__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.numbering-editor__server-issues,
+.numbering-preview__errors {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.numbering-editor__preview {
+  position: sticky;
+  top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The signature: live preview panel (the one bold surface) */
+.numbering-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-lg);
+}
+
+.numbering-preview__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-text);
+}
+
+.numbering-preview__caption-top {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.numbering-preview__number {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  word-break: break-all;
+}
+
+.numbering-preview__number--empty {
+  color: var(--text-muted);
+}
+
+.numbering-preview__token--seq {
+  color: var(--accent-text);
+}
+
+.numbering-preview__token--date {
+  color: var(--text-secondary);
+}
+
+.numbering-preview__token--literal {
+  color: var(--text-primary);
+}
+
+.numbering-preview__caption {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.numbering-preview__then {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.numbering-preview__then-label {
+  margin: 0;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.numbering-preview__then-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.numbering-preview__legend {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-top: 1px solid var(--accent-primary-border);
+  padding-top: var(--space-3);
+}
+
+.numbering-preview__legend-row {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.numbering-preview__legend-row dt {
+  min-width: 4rem;
+  color: var(--text-primary);
+}
+
+.numbering-preview__legend-row dd {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .numbering-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .numbering-editor__preview {
+    position: static;
+  }
+}
