@@ -24,10 +24,11 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Textarea } from '../../../shared/ui/textarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ApiError } from '../../../shared/api/api-error';
-import { AI_SUGGEST_REQUIRES_ADMIN_MESSAGE } from '../../../shared/config/demo-mode';
-import { usePermission } from '../../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { useDemoMode } from '../../system';
 import { useSuggestContentMutation } from '../hooks/use-content-mutations';
 import type { PromptTemplateChannel } from '../api/content.types';
 
@@ -69,9 +70,10 @@ export function SuggestionDialog({
   disabled = false,
   onApply,
   scopeWarning,
-}: SuggestionDialogProps): ReactElement {
+}: SuggestionDialogProps): ReactElement | null {
   const mutation = useSuggestContentMutation();
-  const canSuggest = usePermission('ai:suggest');
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('ai:suggest', demoMode);
   const [open, setOpen] = useState(false);
   const [tone, setTone] = useState('');
   const [extra, setExtra] = useState('');
@@ -120,25 +122,24 @@ export function SuggestionDialog({
 
   const channelLabel = channel === null ? 'master' : channel;
 
-  // Gated on the `ai:suggest` permission (admin-only), not demo mode — the
-  // interactive suggest endpoint is `@Roles('admin')`-gated in every
-  // environment, so a non-admin session would otherwise see an enabled
-  // trigger that 403s on click, in both demo and production alike.
-  // Render a locked trigger with an explanatory tooltip instead of mounting
-  // the dialog, so it cannot open. The span wrap is required because a
-  // natively-disabled <button> emits no pointer events for the Radix tooltip.
-  if (!canSuggest) {
+  // `ai:suggest` is admin-only in every environment — invoking the endpoint
+  // triggers a real LLM completion, so it's treated as a direct-write-adjacent
+  // action (like Test-connection/Disable-connection, #1615), not an
+  // open-a-form action (#1668). A demo viewer sees the trigger rendered but
+  // disabled with a read-only tooltip, so the demo advertises the capability
+  // exists; a genuinely unauthorized non-demo session doesn't see the
+  // affordance at all (`write.visible` false).
+  if (!write.visible) {
+    return null;
+  }
+
+  if (write.demoReadOnly) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="content-suggestion__locked" tabIndex={0}>
-            <Button type="button" tone="ghost" disabled>
-              🔒 Suggest with AI
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{AI_SUGGEST_REQUIRES_ADMIN_MESSAGE}</TooltipContent>
-      </Tooltip>
+      <ReadOnlyLock active message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <Button type="button" tone="ghost" disabled>
+          ✨ Suggest with AI
+        </Button>
+      </ReadOnlyLock>
     );
   }
 

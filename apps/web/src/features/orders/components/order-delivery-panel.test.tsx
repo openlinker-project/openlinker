@@ -4,9 +4,11 @@ import { renderWithProviders } from '../../../test/test-utils';
 import { OrderDeliveryPanel } from './order-delivery-panel';
 
 describe('OrderDeliveryPanel', () => {
-  it('should render nothing when there is no delivery data', () => {
+  it('should always render the panel with a Carrier field, "-" when there is no delivery data (#1617)', () => {
     renderWithProviders(<OrderDeliveryPanel />);
-    expect(screen.queryByRole('region', { name: 'Delivery' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
+    expect(screen.getByText('Carrier')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
   });
 
   it('should render the address, method and pickup code when they are present', () => {
@@ -41,5 +43,34 @@ describe('OrderDeliveryPanel', () => {
       />,
     );
     expect(screen.getByText(/Paczkomat\s+OLS06A/)).toBeInTheDocument();
+  });
+
+  describe('carrier field (#1617)', () => {
+    it('should render the resolved carrier when the caller supplies one', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel
+          shipping={{ methodId: 'm1', methodName: 'InPost Paczkomat' }}
+          carrier="InPost"
+        />,
+      );
+      expect(screen.getByText('Carrier')).toBeInTheDocument();
+      expect(screen.getByText('InPost')).toBeInTheDocument();
+    });
+
+    it('should render "-" for carrier when the caller resolved nothing, even with other delivery data present', () => {
+      renderWithProviders(
+        <OrderDeliveryPanel shipping={{ methodId: 'm1', methodName: 'InPost Paczkomat' }} carrier={null} />,
+      );
+      expect(screen.getByText('Carrier')).toBeInTheDocument();
+      expect(screen.getByText('-')).toBeInTheDocument();
+      // Method still renders independently — carrier and method aren't the same field.
+      expect(screen.getByText('InPost Paczkomat')).toBeInTheDocument();
+    });
+
+    it('should render the panel for the carrier alone when no other delivery data is present', () => {
+      renderWithProviders(<OrderDeliveryPanel carrier="InPost" />);
+      expect(screen.getByRole('region', { name: 'Delivery' })).toBeInTheDocument();
+      expect(screen.getByText('InPost')).toBeInTheDocument();
+    });
   });
 });

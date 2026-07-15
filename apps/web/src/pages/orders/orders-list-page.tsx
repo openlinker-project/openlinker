@@ -47,11 +47,15 @@ import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
-import { usePermission } from '../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
+import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
   OrderRecord,
@@ -233,6 +237,21 @@ function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | n
 }
 
 /**
+ * Compact items preview for the collapsed row (#1646). Live feedback: the
+ * order's contents were only visible after expanding the accordion — this
+ * gives an at-a-glance signal in the Order cell without duplicating the full
+ * per-line quantities/prices, which stay in `OrderRowDetail`. First item name
+ * plus a "+N more" suffix when the order has more than one line; `null` when
+ * the snapshot carries no named items (parse failure or genuinely empty).
+ */
+function itemsPreview(parsed: ReturnType<typeof parseOrderSnapshot>): string | null {
+  const names = parsed.items.map((i) => i.name).filter((n): n is string => Boolean(n));
+  if (names.length === 0) return null;
+  const [first, ...rest] = names;
+  return rest.length > 0 ? `${first} +${rest.length} more` : first;
+}
+
+/**
  * Cockpit "data freshness" line — freshest `updatedAt` across visible rows,
  * rendered as a locale-aware HH:MM. Same locale-resolution path as
  * `formatCurrency` so the i18n seam stays single-source-of-truth.
@@ -323,7 +342,11 @@ export function OrdersListPage(): ReactElement {
   const slaSummary = slaSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
-  const canRetryOrder = usePermission('orders:write');
+  const demoMode = useDemoMode();
+  // Per-row "Retry" fires the retry mutation immediately (a direct-write
+  // action, no intermediate form) - visible-but-disabled with a read-only
+  // tooltip for a demo viewer, per the #1615 precedent.
+  const retryWrite = useWriteAccess('orders:write', demoMode);
 
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
@@ -422,6 +445,37 @@ export function OrdersListPage(): ReactElement {
     setSelectedIds(new Set());
   }
 
+  /**
+   * Per-row selection checkbox (#1109) — shared verbatim by the desktop select
+   * column and the mobile card select slot (#1620) so multi-select behaves
+   * identically in both layouts (already-shipped rows disabled; per-source cap
+   * enforced on add).
+   */
+  function renderSelectCheckbox(order: OrderRecord): ReactElement {
+    if (!isSelectable(order)) {
+      return (
+        <CheckboxCell
+          state="none"
+          disabled
+          onToggle={() => {}}
+          ariaLabel={`${order.internalOrderId} is already shipped`}
+          tooltip="Already shipped"
+        />
+      );
+    }
+    const checked = selectedIds.has(order.internalOrderId);
+    const disabled = !checked && atCapSources.has(order.sourceConnectionId);
+    return (
+      <CheckboxCell
+        state={checked ? 'all' : 'none'}
+        disabled={disabled}
+        onToggle={() => { toggleSelectRow(order); }}
+        ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
+        tooltip={disabled ? `Max ${BULK_DISPATCH_MAX_ITEMS} per source` : undefined}
+      />
+    );
+  }
+
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
     () => [
       {
@@ -436,30 +490,7 @@ export function OrdersListPage(): ReactElement {
             }
           />
         ),
-        cell: (order) => {
-          if (!isSelectable(order)) {
-            return (
-              <CheckboxCell
-                state="none"
-                disabled
-                onToggle={() => {}}
-                ariaLabel={`${order.internalOrderId} is already shipped`}
-                tooltip="Already shipped"
-              />
-            );
-          }
-          const checked = selectedIds.has(order.internalOrderId);
-          const disabled = !checked && atCapSources.has(order.sourceConnectionId);
-          return (
-            <CheckboxCell
-              state={checked ? 'all' : 'none'}
-              disabled={disabled}
-              onToggle={() => { toggleSelectRow(order); }}
-              ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
-              tooltip={disabled ? `Max ${BULK_DISPATCH_MAX_ITEMS} per source` : undefined}
-            />
-          );
-        },
+        cell: (order) => renderSelectCheckbox(order),
         align: 'left',
       },
       {
@@ -467,11 +498,20 @@ export function OrdersListPage(): ReactElement {
         header: 'Order',
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const preview = itemsPreview(parsed);
           return (
-            <EntityLabel
-              id={order.internalOrderId}
-              name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-            />
+            <span className="orders-cell-stack">
+              <EntityLabel
+                id={order.internalOrderId}
+                name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
+                to={order.internalOrderId}
+              />
+              {preview ? (
+                <span className="text-muted orders-cell-sub orders-items-preview" title={preview}>
+                  {preview}
+                </span>
+              ) : null}
+            </span>
           );
         },
       },
@@ -491,27 +531,6 @@ export function OrdersListPage(): ReactElement {
             </span>
           );
         },
-        hideBelow: 768,
-      },
-      {
-        id: 'items',
-        header: 'Items',
-        sortable: true,
-        cell: (order) => {
-          const parsed = parseOrderSnapshot(order.orderSnapshot);
-          const count = parsed.items.length;
-          if (count === 0) return <span className="text-muted">—</span>;
-          const first = parsed.items[0]?.name;
-          return (
-            <span className="orders-cell-stack">
-              <span>
-                {count} {count === 1 ? 'item' : 'items'}
-              </span>
-              {first ? <span className="text-muted orders-cell-sub">{first}</span> : null}
-            </span>
-          );
-        },
-        hideBelow: 1024,
       },
       {
         id: 'channel',
@@ -532,7 +551,6 @@ export function OrdersListPage(): ReactElement {
             </span>
           );
         },
-        hideBelow: 768,
       },
       {
         id: 'status',
@@ -565,6 +583,7 @@ export function OrdersListPage(): ReactElement {
           // BE-owned SLA bucket drives the badge (#1108) — single source of truth
           // the filter agrees with; the live countdown stays client-side. Falls
           // back to the client-derived urgency for older payloads without slaState.
+          // The exact ship-by date moved to the expandable detail panel (#1620).
           const sla = slaBadge(order.slaState);
           const tone = sla ? sla.tone : SHIP_BY_TONE[view.level];
           const label = sla ? sla.label : view.remaining;
@@ -573,14 +592,12 @@ export function OrdersListPage(): ReactElement {
               <StatusBadge tone={tone} withDot compact>
                 {label}
               </StatusBadge>
-              <span className="text-muted orders-cell-sub mono tabular">
-                {sla ? `${view.remaining} · ` : ''}
-                <TimeDisplay iso={due} format="date" />
-              </span>
+              {sla ? (
+                <span className="text-muted orders-cell-sub mono tabular">{view.remaining}</span>
+              ) : null}
             </span>
           );
         },
-        hideBelow: 768,
       },
       {
         id: 'fulfillment',
@@ -594,19 +611,6 @@ export function OrdersListPage(): ReactElement {
             </StatusBadge>
           );
         },
-        hideBelow: 1024,
-      },
-      {
-        id: 'createdAt',
-        header: 'Created',
-        sortable: true,
-        cell: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
-      },
-      {
-        id: 'payment',
-        header: 'Payment',
-        cell: () => <span className="orders-ghost" title="Payment status — arrives with #928">soon</span>,
-        hideBelow: 1024,
       },
       {
         id: 'total',
@@ -629,19 +633,21 @@ export function OrdersListPage(): ReactElement {
         align: 'right',
         cell: (order) => {
           const failed = order.syncStatus.find((s) => s.status === 'failed');
-          if (order.recordStatus === 'awaiting_mapping' || !failed || !canRetryOrder) return null;
+          if (order.recordStatus === 'awaiting_mapping' || !failed || !retryWrite.visible) return null;
           const isRetrying =
             retryMutation.isPending &&
             retryMutation.variables?.internalOrderId === order.internalOrderId;
           return (
-            <Button
-              tone="ghost"
-              className="button--sm"
-              disabled={isRetrying}
-              onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
-            >
-              {isRetrying ? 'Retrying…' : 'Retry'}
-            </Button>
+            <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="ghost"
+                className="button--sm"
+                disabled={isRetrying || retryWrite.demoReadOnly}
+                onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+              >
+                {isRetrying ? 'Retrying…' : 'Retry'}
+              </Button>
+            </ReadOnlyLock>
           );
         },
       },
@@ -655,6 +661,8 @@ export function OrdersListPage(): ReactElement {
       platformByConnection,
       retryMutation.isPending,
       retryMutation.variables,
+      retryWrite.visible,
+      retryWrite.demoReadOnly,
       // Selection state — the select column re-renders as checkboxes toggle (#1109).
       selectedIds,
       atCapSources,
@@ -950,7 +958,20 @@ export function OrdersListPage(): ReactElement {
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
-            rowHref={(order) => order.internalOrderId}
+            expandable={{
+              // Non-essential fields (order ref, items, exact ship-by, carrier,
+              // created, payment, addresses) live in the accordion (#1620); the
+              // row keeps the scannable essentials + status badges.
+              renderDetail: (order) => (
+                <OrderRowDetail
+                  order={order}
+                  channelLabel={channelLabel}
+                  platformByConnection={platformByConnection}
+                />
+              ),
+              toggleLabel: (order, expanded) =>
+                `${expanded ? 'Collapse' : 'Expand'} details for order ${order.internalOrderId}`,
+            }}
             manualSorting
             sort={sortingState}
             onSortChange={(updater) => {
@@ -975,16 +996,28 @@ export function OrdersListPage(): ReactElement {
               });
             }}
             cardView={{
+              // Per-row select stays usable in the mobile card layout (#1109/#1620).
+              select: (order) => renderSelectCheckbox(order),
               title: (order) => {
                 const parsed = parseOrderSnapshot(order.orderSnapshot);
                 return (
                   <EntityLabel
                     id={order.internalOrderId}
                     name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
+                    to={order.internalOrderId}
                   />
                 );
               },
               subtitle: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
+              // Full field set below the badges — the mobile counterpart of the
+              // desktop accordion; a collapsed card still shows every field (#1620).
+              detail: (order) => (
+                <OrderRowDetail
+                  order={order}
+                  channelLabel={channelLabel}
+                  platformByConnection={platformByConnection}
+                />
+              ),
               meta: (order) => {
                 const h = deriveOrderHealth(order);
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
@@ -1020,15 +1053,20 @@ export function OrdersListPage(): ReactElement {
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}
-                    {failed && order.recordStatus !== 'awaiting_mapping' && canRetryOrder ? (
-                      <Button
-                        tone="ghost"
-                        className="button--sm"
-                        disabled={isRetrying}
-                        onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+                    {failed && order.recordStatus !== 'awaiting_mapping' && retryWrite.visible ? (
+                      <ReadOnlyLock
+                        active={retryWrite.demoReadOnly}
+                        message={DEMO_READ_ONLY_ACTION_MESSAGE}
                       >
-                        {isRetrying ? 'Retrying…' : 'Retry'}
-                      </Button>
+                        <Button
+                          tone="ghost"
+                          className="button--sm"
+                          disabled={isRetrying || retryWrite.demoReadOnly}
+                          onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+                        >
+                          {isRetrying ? 'Retrying…' : 'Retry'}
+                        </Button>
+                      </ReadOnlyLock>
                     ) : null}
                   </span>
                 );

@@ -1,10 +1,12 @@
 import type { ReactElement } from 'react';
 import { env } from '../../shared/config/env';
 import { useSession } from '../../shared/auth/use-session';
+import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
+  const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
 
   return (
     <PageLayout
@@ -15,6 +17,7 @@ export function SettingsPage(): ReactElement {
         <div className="toolbar__group">
           <span className="toolbar-chip">Environment</span>
           <span className="toolbar-chip">Account</span>
+          {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -78,6 +81,9 @@ export function SettingsPage(): ReactElement {
             </dl>
           )}
         </article>
+
+        {/* ── Mailer (admin-only) ──────────────────────────────────── */}
+        {isAdmin ? <MailerSettingsTile /> : null}
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">

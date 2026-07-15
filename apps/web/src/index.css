@@ -1874,6 +1874,20 @@ textarea,
   gap: 0.75rem;
 }
 
+/* `.page-section` gets no `grid-template-columns` above, so its single
+   implicit column uses the default `auto` track-sizing function — which
+   sizes to the MAX-CONTENT of the widest descendant across every row, not
+   the container's own width (#1646). A wide-enough child (e.g. the orders
+   page's 5-segment health-summary row) can blow that column out past the
+   page's actual width; downstream `.shell-content`'s `overflow-x: hidden`
+   then clips the excess invisibly instead of showing a scrollbar, so the
+   card silently loses its right edge at narrow viewports. `minmax(0, 1fr)`
+   makes the column a real stretchy track capped at the container's width,
+   which every `.page-section` consumer needs regardless of what it renders. */
+.page-section {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .page-header {
   gap: 0.45rem;
 }
@@ -1966,6 +1980,11 @@ textarea,
 
 .panel__header {
   justify-content: space-between;
+  /* Breathing room below the eyebrow + section-title block so panel titles
+     don't sit flush against their content. Single shared rule so every panel
+     header (dashboard sections, connection config, etc.) stays consistent;
+     eyebrow -> title stays tight (both margin: 0), the gap is title -> content. */
+  margin-bottom: var(--space-3);
 }
 
 .activity-list__item,
@@ -2663,8 +2682,8 @@ textarea,
 
 .data-table__card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--border-default);
@@ -2685,7 +2704,8 @@ textarea,
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  flex: 1;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .data-table__card-main--link {
@@ -2714,10 +2734,13 @@ textarea,
 .data-table__card-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 12px;
   color: var(--text-secondary);
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .data-table__cards-empty {
@@ -2726,6 +2749,135 @@ textarea,
   color: var(--text-muted);
   border: 1px dashed var(--border-default);
   border-radius: 10px;
+}
+
+/* ── Expandable rows (#1620) ─────────────────────────────────────────── */
+
+.data-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-2) !important;
+  padding-right: 0 !important;
+  text-align: center;
+}
+
+.data-table__expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__expand-toggle:hover {
+  color: var(--text-primary);
+  background: color-mix(in oklab, var(--bg-shell) 70%, transparent);
+}
+
+.data-table__expand-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.data-table__expand-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.data-table__row--expandable {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.data-table__row--expandable:hover {
+  background: color-mix(in oklab, var(--bg-shell) 60%, transparent);
+}
+
+.data-table__row--expanded {
+  background: color-mix(in oklab, var(--bg-shell) 45%, transparent);
+}
+
+.data-table__detail-row > .data-table__detail-cell {
+  padding: 0;
+  background: var(--bg-shell);
+  border-top: 0;
+}
+
+.data-table__detail {
+  padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
+}
+
+/* Detail field grid — shared by the desktop accordion and the mobile card. */
+.orders-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+
+.orders-detail__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.orders-detail__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.orders-detail__value {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.orders-detail__address,
+.orders-detail__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ── Mobile card select + detail (#1620) ─────────────────────────────── */
+
+/* Grid (not flex row) so the badge/meta row (#1662) drops onto its own line
+   under the id/title, indented to column 2 - the same column the title
+   starts in, whether or not a select checkbox occupies column 1. A plain
+   flex row here forces select + title + badges to share one non-wrapping
+   line, which overlaps at narrow (~375px) mobile widths. */
+.data-table__card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 6px;
+  width: 100%;
+}
+
+.data-table__card-select {
+  grid-column: 1;
+  grid-row: 1;
+  padding-top: 2px;
+}
+
+.data-table__card-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* DataTableSkeleton — shimmer placeholder that mirrors .data-table shape. */
@@ -3231,6 +3383,81 @@ textarea,
   text-decoration: underline;
 }
 
+/*
+ * Confirm-email states (#1650) — pending / success / error outcomes of
+ * consuming a single-use email-confirmation token. A small tone-colored
+ * "seal" glyph gives each outcome an at-a-glance signal above the text;
+ * success stays unboxed (light touch — good news needs no container),
+ * error stays boxed in `.alert` (dynamic, server-supplied message gets the
+ * stronger, accessible treatment). `.confirm-email__actions` is a plain
+ * vertical stack, deliberately generic, so a future "Resend confirmation
+ * email" action can slot in below the existing two without a redesign.
+ */
+.confirm-email {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.confirm-email--pending {
+  padding: var(--space-4) 0;
+}
+
+.confirm-email__seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.confirm-email__seal--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-fg);
+}
+
+.confirm-email__seal--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  color: var(--status-error-fg);
+}
+
+.confirm-email__heading {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.confirm-email__message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.confirm-email .alert {
+  width: 100%;
+  text-align: left;
+}
+
+.confirm-email__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.confirm-email__actions .button {
+  width: 100%;
+}
+
 /* Badge group (inline badge list) */
 .badge-group {
   display: flex;
@@ -3255,6 +3482,12 @@ textarea,
 
 .action-list__item:last-child {
   border-bottom: none;
+}
+
+/* Keeps a disabled write button wrapped by ReadOnlyLock (#1615) aligned with
+   the un-wrapped variant inside flex action rows and form action bars. */
+.read-only-lock {
+  display: inline-flex;
 }
 
 /* ── InPost webhook runbook (#1473) ── */
@@ -5684,6 +5917,20 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/*
+ * ── Mailer Settings (#1644) ─────────────────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; this covers the
+ * SMTP-secure checkbox label, same shape as `.create-offer-checkbox`.
+ */
+.mailer-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
 .create-offer-variant-picker {
   display: grid;
   gap: 0.5rem;
@@ -7358,12 +7605,22 @@ a.kpi-card:focus-visible {
 .orders-segment {
   display: block;
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: none;
   background: none;
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-lg);
+  /* Undo the global `button { white-space: nowrap }` (#1646) — it inherits
+     into `.metric-card__label`, forcing labels like "Awaiting mapping" onto
+     one unbreakable line. At narrow widths the bare `1fr` grid-column
+     fallback (≤480px) has no `minmax(0, …)` floor, so the track grows to fit
+     that unbroken label and the whole segment card silently overflows past
+     the viewport — clipped invisibly by `.shell-content`'s `overflow-x:
+     hidden` rather than producing a scrollbar. Restoring wrap here lets the
+     label break across lines instead. */
+  white-space: normal;
 }
 .orders-segment > .metric-card { height: 100%; }
 .orders-segment:focus-visible {
@@ -7382,6 +7639,15 @@ a.kpi-card:focus-visible {
   font-size: 0.6875rem;
   color: var(--status-error-strong);
   max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Items preview under the Order cell (#1646) — a glance at contents before
+   expanding the row; truncates long/multi-item snapshots on one line. */
+.orders-items-preview {
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7407,6 +7673,18 @@ a.kpi-card:focus-visible {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
+}
+/* The `flex-wrap: wrap` above lives on `.orders-toolbar` itself, but its
+   only DOM child is `.toolbar__group` (a nested flex row holding the
+   actual source/date/SLA/fulfillment controls) — a single flex item never
+   wraps. `.toolbar__group` (shared with connections/products/etc.) stays
+   `nowrap` by default because those simpler toolbars fit in one row; the
+   5-control orders bar needs it to wrap so the controls can drop onto
+   their own line(s) instead of shrinking past their native min-content
+   width and overflowing the viewport on mobile (#1669).
+*/
+.orders-toolbar .toolbar__group {
+  flex-wrap: wrap;
 }
 /* Inline date field: small mono-caps label sitting left of the native input. */
 .orders-toolbar__field {
@@ -8028,13 +8306,22 @@ html[data-density='compact'] .status-badge {
   color: var(--text-disabled);
 }
 
-.bulk-dispatch__num {
+/* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
+ * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
+ * rule combines an element-type selector with an attribute selector (0,1,1),
+ * which beats a bare class selector (0,1,0) regardless of source order; adding
+ * the `input` element-type selector here brings this rule to the same
+ * specificity tier so it wins on source order instead - otherwise these
+ * compact dimension/weight fields silently stretch to share the row's flex
+ * space instead of staying at their intended width (#1658). */
+input.bulk-dispatch__num {
   width: 52px;
+  flex-shrink: 0;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.bulk-dispatch__num--wide {
+input.bulk-dispatch__num--wide {
   width: 68px;
 }
 
@@ -8066,7 +8353,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto auto auto;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -8079,7 +8366,7 @@ html[data-density='compact'] .status-badge {
 
 .bulk-dispatch__row--ineligible {
   background: var(--bg-canvas);
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
 }
 
 .bulk-dispatch__row-id {
@@ -8107,6 +8394,13 @@ html[data-density='compact'] .status-badge {
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Without `nowrap`, `overflow-wrap: anywhere` (inherited from `.mono`)
+   * breaks this unbroken internal order id one character per line once its
+   * squeezed grid column runs low on width - inflating the row (and, once
+   * clipped by `.bulk-dispatch__rows`' max-height, the whole dialog) to
+   * hundreds of pixels of apparent empty space (#1658). `nowrap` lets the
+   * already-declared ellipsis truncate it on one line instead. */
+  white-space: nowrap;
 }
 
 .bulk-dispatch__buyer {
@@ -10261,6 +10555,33 @@ html[data-density='compact'] .status-badge {
   flex: 1;
 }
 
+/* ─ Not-issued action row (#1622) ─
+   The document-type picker fills the row and the signal-orange primary
+   "Issue invoice" action anchors to the right, matching the panel mockup
+   (demo epic #1606, section 02). `flex-wrap` lets the button drop under a
+   full-width picker on narrow (mobile) panels rather than crushing either. */
+.order-invoice-panel__actions--issue {
+  flex-wrap: wrap;
+}
+
+.order-invoice-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.order-invoice-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .order-invoice-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .order-invoice-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+
 /* ─ Skeletons (shared shimmer for panel + detail page) ─ */
 .order-invoice-panel__skeleton,
 .invoice-detail__skeleton {
@@ -11016,6 +11337,13 @@ html[data-density='compact'] .status-badge {
   color: var(--status-info-fg);
   font-size: 12px;
   flex-shrink: 0;
+  /* Stick directly below the sticky topbar (height: 52px) so the demo-mode
+     reminder stays visible while shell content scrolls. z-index sits above
+     scrolled .shell-content but below the topbar (z-index: 10) so the two
+     header blocks never overlap. */
+  position: sticky;
+  top: 52px;
+  z-index: 9;
 }
 
 .demo-banner__icon {

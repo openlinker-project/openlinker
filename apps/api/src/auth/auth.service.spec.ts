@@ -13,7 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import type { UserRepositoryPort } from '@openlinker/core/users';
-import { USER_REPOSITORY_TOKEN, User } from '@openlinker/core/users';
+import { EmailNotConfirmedException, USER_REPOSITORY_TOKEN, User } from '@openlinker/core/users';
 
 const makeUser = (overrides: Partial<User> = {}): User =>
   new User(
@@ -83,6 +83,32 @@ describe('AuthService', () => {
       const result = await service.validateUser('admin', plainPassword);
 
       expect(result).toBe(user);
+    });
+
+    it('should return null when the account is pending admin approval', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({
+        status: 'pending',
+        passwordHash: await bcrypt.hash(plainPassword, 10),
+      });
+      userRepository.findByUsername.mockResolvedValue(user);
+
+      const result = await service.validateUser('admin', plainPassword);
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw EmailNotConfirmedException when the account is pending email confirmation (#1624)', async () => {
+      const plainPassword = 'secret123';
+      const user = makeUser({
+        status: 'pending_confirmation',
+        passwordHash: await bcrypt.hash(plainPassword, 10),
+      });
+      userRepository.findByUsername.mockResolvedValue(user);
+
+      await expect(service.validateUser('admin', plainPassword)).rejects.toThrow(
+        EmailNotConfirmedException
+      );
     });
   });
 

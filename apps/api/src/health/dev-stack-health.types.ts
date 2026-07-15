@@ -32,6 +32,31 @@ export interface InternalHealthResponse {
  */
 export type InternalHealthReadiness = Omit<InternalHealthResponse, 'version' | 'api'>;
 
+/**
+ * Health entry for a single infrastructure-bearing connection (#1619).
+ *
+ * A connection is infrastructure-bearing when its adapter's capabilities
+ * indicate it backs a real shop/warehouse system (`ProductMaster` and/or
+ * `InventoryMaster`) rather than being a marketplace listing channel. Today
+ * this surfaces WooCommerce; it generalizes to any future adapter with the
+ * same capability shape without further changes here.
+ *
+ * `name` (the operator-chosen connection label) and `message` (adapter
+ * diagnostic text, which can describe *why* auth failed) are optional
+ * because the `@Public()` `GET /health/dev-stack` endpoint only includes
+ * them for authenticated callers — an anonymous request gets the generic
+ * `connectionId` / `platformType` / `status` shape (#1619 review: this is
+ * real user/diagnostic detail, unlike the fixed-name postgres/redis/worker
+ * rows, which never needed gating).
+ */
+export interface ConnectionHealthEntry {
+  connectionId: string;
+  name?: string;
+  platformType: string;
+  status: ServiceStatus;
+  message?: string;
+}
+
 export interface DevStackHealthResponse {
   status: 'ok' | 'degraded' | 'error';
   services: {
@@ -40,6 +65,11 @@ export interface DevStackHealthResponse {
     prestashop: ServiceHealth;
     worker: ServiceHealth;
   };
+  /**
+   * Infra-bearing connections (e.g. a connected WooCommerce shop) discovered
+   * at request time and probed via their `ConnectionTesterPort` adapter.
+   * Empty when no such connections are configured.
+   */
+  connections: ConnectionHealthEntry[];
   timestamp: string;
 }
-

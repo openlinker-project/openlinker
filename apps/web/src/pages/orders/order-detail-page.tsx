@@ -27,7 +27,7 @@ import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/us
 import type { OrderSyncStatusValue } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { useConnectionsQuery } from '../../features/connections';
-import { useOrderShipmentsQuery } from '../../features/shipments';
+import { useOrderShipmentsQuery, pickActiveShipment, getCarrierDisplayName } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -126,6 +126,15 @@ export function OrderDetailPage(): ReactElement {
   );
   const shipmentStatuses = shipmentsQuery.data?.items.map((s) => s.status) ?? null;
   const fulfillment = deriveFulfillment(shipmentStatuses, hasShippingCapability);
+  // Carrier precedence (#1617): the shipment record's `carrier` is the actual
+  // carrier of record on a booked shipment — prefer it over the snapshot's
+  // `shipping.methodName`, which is only the source's stated delivery-method
+  // preference and may not match what was actually booked. Falls back to the
+  // method name when no shipment exists yet (or its carrier hasn't resolved),
+  // and to `null` (rendered "-") when neither is available.
+  const activeShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
+  const carrier =
+    getCarrierDisplayName(activeShipment?.carrier ?? null) ?? snapshot.shipping?.methodName ?? null;
   const sourcePlatformType =
     connections.find((c) => c.id === order.sourceConnectionId)?.platformType ?? null;
 
@@ -279,6 +288,7 @@ export function OrderDetailPage(): ReactElement {
             shipping={snapshot.shipping}
             pickupPoint={snapshot.pickupPoint}
             sourcePlatformType={sourcePlatformType}
+            carrier={carrier}
           />
           <OrderShipmentPanel order={order} />
           <OrderInvoicePanel order={order} />

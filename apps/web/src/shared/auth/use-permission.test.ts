@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { usePermission } from './use-permission';
+import { usePermission, useWriteAccess } from './use-permission';
 import { SessionProvider } from './session-provider';
 import type { SessionAdapter } from './session-adapter';
 import type { Session } from './session.types';
@@ -110,5 +110,34 @@ describe('usePermission', () => {
       wrapper: makeWrapper(adminSession),
     });
     await waitFor(() => expect(result.current).toBe(false));
+  });
+});
+
+describe('useWriteAccess', () => {
+  it('grants full write access when the session holds the permission, regardless of demo mode', async () => {
+    const { result } = renderHook(() => useWriteAccess('connections:write', true), {
+      wrapper: makeWrapper(adminSession),
+    });
+    await waitFor(() =>
+      expect(result.current).toEqual({ canWrite: true, demoReadOnly: false, visible: true }),
+    );
+  });
+
+  it('marks a viewer without the permission as demo-read-only when demo mode is on (#1615)', async () => {
+    const { result } = renderHook(() => useWriteAccess('connections:write', true), {
+      wrapper: makeWrapper(viewerSession),
+    });
+    await waitFor(() =>
+      expect(result.current).toEqual({ canWrite: false, demoReadOnly: true, visible: true }),
+    );
+  });
+
+  it('hides the affordance for a viewer without the permission outside demo mode (unchanged)', async () => {
+    const { result } = renderHook(() => useWriteAccess('connections:write', false), {
+      wrapper: makeWrapper(viewerSession),
+    });
+    await waitFor(() =>
+      expect(result.current).toEqual({ canWrite: false, demoReadOnly: false, visible: false }),
+    );
   });
 });

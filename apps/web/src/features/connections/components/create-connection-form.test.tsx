@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import { CreateConnectionForm } from './create-connection-form';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   findToastDescription,
   findToastTitle,
@@ -120,5 +121,50 @@ describe('CreateConnectionForm', () => {
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
     expect(screen.getByText('API create failed')).toBeInTheDocument();
+  });
+
+  describe('demo read-only viewer (#1667)', () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['connections:read'],
+    });
+
+    function demoApiClient(): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+    }
+
+    it('opens with editable inputs but disables the final submit', async () => {
+      const view = renderWithProviders(<CreateConnectionForm />, {
+        apiClient: demoApiClient(),
+        sessionAdapter: viewerSession,
+      });
+
+      const nameInput = await within(view.container).findByLabelText('Connection name');
+      expect(nameInput).not.toBeDisabled();
+      fireEvent.change(nameInput, { target: { value: 'Should not persist' } });
+      expect(nameInput).toHaveValue('Should not persist');
+
+      const submit = within(view.container).getByRole('button', { name: 'Create connection' });
+      await waitFor(() => {
+        expect(submit).toBeDisabled();
+      });
+    });
+
+    it('keeps the submit enabled for an admin session even in demo mode', async () => {
+      const view = renderWithProviders(<CreateConnectionForm />, {
+        apiClient: demoApiClient(),
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      const submit = await within(view.container).findByRole('button', { name: 'Create connection' });
+      await waitFor(() => {
+        expect(submit).not.toBeDisabled();
+      });
+    });
   });
 });

@@ -47,6 +47,7 @@ import { WebhookDeliveryController } from '../webhooks/http/webhook-delivery.con
 import { AiProviderSettingsController } from '../ai/http/ai-provider-settings.controller';
 import { PromptTemplatesController } from '../ai/http/prompt-templates.controller';
 import { ContentController } from '../content/http/content.controller';
+import { MailerSettingsController } from '../mailer/http/mailer-settings.controller';
 
 const METHOD_METADATA = 'method';
 
@@ -78,6 +79,7 @@ const CONTROLLERS = [
   AiProviderSettingsController,
   PromptTemplatesController,
   ContentController,
+  MailerSettingsController,
 ];
 
 describe('Write-guard coverage invariant (#1124 / #1126 / #1357)', () => {
@@ -92,22 +94,16 @@ describe('Write-guard coverage invariant (#1124 / #1126 / #1357)', () => {
 
         const fn = proto[methodName] as object;
 
-        const httpMethod = Reflect.getMetadata(
-          METHOD_METADATA,
-          fn,
-        ) as RequestMethod | undefined;
+        const httpMethod = Reflect.getMetadata(METHOD_METADATA, fn) as RequestMethod | undefined;
 
         if (httpMethod === undefined) continue;
         if (!WRITE_METHODS.has(httpMethod)) continue;
 
-        const roles = Reflect.getMetadata(
-          ROLES_KEY,
-          fn,
-        ) as unknown[] | undefined;
+        const roles = Reflect.getMetadata(ROLES_KEY, fn) as unknown[] | undefined;
 
         if (!roles || roles.length === 0) {
           unguarded.push(
-            `${Controller.name}.${methodName} (HTTP method ${RequestMethod[httpMethod]}) is missing @Roles`,
+            `${Controller.name}.${methodName} (HTTP method ${RequestMethod[httpMethod]}) is missing @Roles`
           );
         }
       }

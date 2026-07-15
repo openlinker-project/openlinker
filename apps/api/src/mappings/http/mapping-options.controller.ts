@@ -25,6 +25,11 @@
  * they're already live-data and the cache is the right architecture for
  * tree-structured taxonomies; only the URL changed.
  *
+ * Every route here is a read-only `@Get`, so the class-level `@Roles` is
+ * relaxed to admin/operator/viewer (#1652) — a demo viewer can browse the
+ * bulk-offer-wizard category tree and other mapping-option dropdowns without
+ * a 403.
+ *
  * @module apps/api/src/mappings/http
  */
 
@@ -80,7 +85,7 @@ const PLATFORM_PRESTASHOP = 'prestashop';
 
 type ResolvedSide = 'source' | 'destination';
 
-@Roles('admin')
+@Roles('admin', 'operator', 'viewer')
 @ApiBearerAuth()
 @ApiTags('mappings')
 @Controller('connections/:connectionId/mappings/options')

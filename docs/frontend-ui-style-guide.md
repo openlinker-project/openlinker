@@ -506,7 +506,7 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 ### Tables
 
-- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500.
+- `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. Pairs with `@tanstack/react-virtual` when row count ≥ 500. `hideBelow` (per-column, breakpoint-gated hiding) and `expandable` (a per-row accordion detail panel, opened via a leading toggle, `#1620`) are two independent, composable strategies for keeping a wide table usable at narrower widths — `hideBelow` drops non-essential columns outright below a breakpoint, `expandable` keeps every column queryable but moves non-essential fields into a click-to-open detail row instead of hiding them. A table can use either, both, or neither; the orders list (`#1620`) uses `expandable` with no `hideBelow` columns, relying on the table's own horizontal scroll at tablet width for anything that doesn't fit. `expandable` is not currently supported together with `virtualize` on the same table — see the `DataTableExpandable` JSDoc in `data-table.tsx`.
 
 ### Status & data surfaces
 
@@ -637,7 +637,7 @@ Parity matrix — what changes across sizes:
 |---|---|---|---|
 | Nav | drawer · hamburger trigger in topbar | drawer *or* persistent rail | persistent 240 px sidebar |
 | Topbar | logo + hamburger + search icon + user | full minus workspace crumb | full |
-| Tables | **card view** (one card per row, key columns stacked) | table with column hiding | full table |
+| Tables | **card view** (one card per row, key columns stacked) | full table, scrolled horizontally within its container as needed | full table |
 | Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
 | KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
 | `MetricCard` | full width | 2-col grid | 4-col grid |

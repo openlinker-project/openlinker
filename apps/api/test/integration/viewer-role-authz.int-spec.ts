@@ -60,6 +60,20 @@ describe('Viewer Role Authorization', () => {
         .expect(200);
     });
 
+    it('GET /connections/:id/diagnostics (#1645 - read stays viewer-accessible)', async () => {
+      const { http, adminToken, viewerToken } = await seeds();
+      const dto = createPrestashopConnectionDto();
+      const { body: conn } = await http
+        .post('/v1/connections')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(dto)
+        .expect(201);
+      await http
+        .get(`/v1/connections/${conn.id as string}/diagnostics`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+    });
+
     it('GET /orders', async () => {
       const { http, viewerToken } = await seeds();
       await http
@@ -152,6 +166,84 @@ describe('Viewer Role Authorization', () => {
     });
   });
 
+  // ─── #1608: bulk-create wizard read-lookups — viewer NOT blocked ───────────
+  //
+  // A demo-mode viewer must be able to walk the bulk-create offer wizard to
+  // step 4 (Confirm): every read-only lookup it drives must pass the guard.
+  // The connection id is fake so the handler itself 404s/409s/422s past the
+  // guard — the assertion is only that RolesGuard does not fire (not 403).
+
+  describe('#1608 — wizard read-lookups, viewer gets past the guard (not 403)', () => {
+    const FAKE_CONNECTION_ID = '00000000-0000-4000-8000-000000000001';
+
+    it('GET /listings/connections/:connectionId/seller-policies', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/listings/connections/${FAKE_CONNECTION_ID}/seller-policies`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
+
+    it('GET /listings/connections/:connectionId/responsible-producers', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/listings/connections/${FAKE_CONNECTION_ID}/responsible-producers`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
+
+    it('GET /listings/connections/:connectionId/delivery-price-lists', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/listings/connections/${FAKE_CONNECTION_ID}/delivery-price-lists`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
+
+    it('GET /listings/connections/:connectionId/categories/:categoryId/parameters', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/listings/connections/${FAKE_CONNECTION_ID}/categories/123/parameters`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
+
+    it('POST /listings/connections/:connectionId/categories/resolve', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .post(`/v1/listings/connections/${FAKE_CONNECTION_ID}/categories/resolve`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({});
+      expect(res.status).not.toBe(403);
+    });
+
+    it('POST /listings/connections/:connectionId/categories/resolve-batch', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .post(`/v1/listings/connections/${FAKE_CONNECTION_ID}/categories/resolve-batch`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ items: [] });
+      expect(res.status).not.toBe(403);
+    });
+
+    it('POST /listings/connections/:connectionId/products/find-by-barcode', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .post(`/v1/listings/connections/${FAKE_CONNECTION_ID}/products/find-by-barcode`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ barcode: '5901234123457' });
+      expect(res.status).not.toBe(403);
+    });
+
+    it('GET /listings/connections/:connectionId/products/:productId', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/listings/connections/${FAKE_CONNECTION_ID}/products/p1`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
   // ─── writes: viewer gets 403 ────────────────────────────────────────────────
   //
   // RolesGuard fires before the handler body, so these 403s arrive even with
@@ -211,26 +303,41 @@ describe('Viewer Role Authorization', () => {
         .expect(403);
     });
 
+    it('POST /listings/connections/:connectionId/offers/:offerId/fields (#1608 — write stays admin/operator)', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post(
+          '/v1/listings/connections/00000000-0000-4000-8000-000000000001/offers/00000000-0000-4000-8000-000000000002/fields'
+        )
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ price: '10.00' })
+        .expect(403);
+    });
+
+    it('POST /listings/connections/:connectionId/sync/auto-match-variants (#1608 — write stays admin/operator)', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/listings/connections/00000000-0000-4000-8000-000000000001/sync/auto-match-variants')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({})
+        .expect(403);
+    });
+
+    it('POST /listings/bulk-create (#1608 — bulk submit stays admin/operator)', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/listings/bulk-create')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({})
+        .expect(403);
+    });
+
     it('POST /sync/jobs/retry-grouped', async () => {
       const { http, viewerToken } = await seeds();
       await http
         .post('/v1/sync/jobs/retry-grouped')
         .set('Authorization', `Bearer ${viewerToken}`)
         .send({ connectionId: '00000000-0000-4000-8000-000000000001', jobType: 'marketplace.orders.poll' })
-        .expect(403);
-    });
-
-    it('GET /connections/:id/diagnostics', async () => {
-      const { http, adminToken, viewerToken } = await seeds();
-      const dto = createPrestashopConnectionDto();
-      const { body: conn } = await http
-        .post('/v1/connections')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(dto)
-        .expect(201);
-      await http
-        .get(`/v1/connections/${conn.id as string}/diagnostics`)
-        .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);
     });
 

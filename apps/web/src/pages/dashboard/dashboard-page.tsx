@@ -14,13 +14,22 @@ import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stac
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useFailedJobGroupsQuery } from '../../features/sync-jobs/hooks/use-failed-job-groups-query';
 import { useRetryGroupedSyncJobsMutation } from '../../features/sync-jobs/hooks/use-retry-grouped-sync-jobs-mutation';
+import { usePlatforms } from '../../shared/plugins';
 import type {
+  DevStackHealth,
   ServiceHealth,
   ServiceStatus,
   OverallStatus,
 } from '../../features/health/api/health.types';
-import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
-import type { JobStatus, SyncJob, SyncJobGroup } from '../../features/sync-jobs/api/sync-jobs.types';
+import type {
+  Connection,
+  ConnectionStatus,
+} from '../../features/connections/api/connections.types';
+import type {
+  JobStatus,
+  SyncJob,
+  SyncJobGroup,
+} from '../../features/sync-jobs/api/sync-jobs.types';
 import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './intervals';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -47,7 +56,7 @@ function toRowStatusTone(status: ConnectionStatus | JobStatus): DashboardTone {
 
 function mapHealthTone(
   status: ServiceStatus | OverallStatus | undefined,
-  hasError: boolean,
+  hasError: boolean
 ): DashboardTone {
   if (hasError || status === 'error') return 'error';
   if (status === 'warning' || status === 'degraded') return 'warning';
@@ -69,7 +78,7 @@ function formatJobType(jobType: string): string {
 function renderHealthValue(
   status: OverallStatus | undefined,
   isLoading: boolean,
-  hasError: boolean,
+  hasError: boolean
 ): string {
   if (isLoading) return '—';
   if (hasError) return 'Unreachable';
@@ -84,6 +93,42 @@ function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealt
       {health.message ? <span className="muted-text">{health.message}</span> : null}
     </li>
   );
+}
+
+/**
+ * Capitalizes a bare platform-type key (e.g. `woocommerce` → `Woocommerce`)
+ * for when no plugin-contributed display name is registered. This is only a
+ * fallback — the dashboard prefers `usePlatforms()` display names.
+ */
+function fallbackPlatformLabel(platformType: string): string {
+  return platformType.length > 0
+    ? platformType[0].toUpperCase() + platformType.slice(1)
+    : platformType;
+}
+
+/**
+ * Builds the ordered list of infrastructure node labels backing both the
+ * Infrastructure panel and the KPI-strip summary (#1619). Core services are
+ * always listed first, followed by one entry per infra-bearing connection
+ * (e.g. a connected WooCommerce shop) — so the summary always reflects the
+ * real node set instead of a fixed string.
+ */
+function buildInfraNodeLabels(
+  data: DevStackHealth | undefined,
+  platformDisplayNames: Map<string, string>
+): string[] {
+  if (!data) return [];
+  const labels = ['Postgres', 'Redis', 'PrestaShop'];
+  if (data.services.worker) {
+    labels.push('Worker');
+  }
+  for (const connection of data.connections ?? []) {
+    const platformLabel =
+      platformDisplayNames.get(connection.platformType) ??
+      fallbackPlatformLabel(connection.platformType);
+    labels.push(connection.name ? `${platformLabel} (${connection.name})` : platformLabel);
+  }
+  return labels;
 }
 
 interface ConnectionFailureSignal {
@@ -103,7 +148,7 @@ interface RolledUpConnection {
  * per-connection total is `sum(group.count) where group.connectionId = C`.
  */
 function summarizeFailuresByConnection(
-  groups: SyncJobGroup[],
+  groups: SyncJobGroup[]
 ): Map<string, ConnectionFailureSignal> {
   const byConnection = new Map<string, ConnectionFailureSignal>();
   for (const group of groups) {
@@ -122,7 +167,7 @@ function summarizeFailuresByConnection(
 
 function rollUpConnectionHealth(
   connections: Connection[],
-  failureSignals: Map<string, ConnectionFailureSignal>,
+  failureSignals: Map<string, ConnectionFailureSignal>
 ): RolledUpConnection[] {
   return connections.map((connection) => {
     const deadJobCount = failureSignals.get(connection.id)?.deadJobCount ?? 0;
@@ -141,8 +186,7 @@ function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactEl
   if (rows.length === 0) {
     return (
       <p className="muted-text">
-        No connections configured.{' '}
-        <Link to="/connections/new">Add the first connection.</Link>
+        No connections configured. <Link to="/connections/new">Add the first connection.</Link>
       </p>
     );
   }
@@ -169,13 +213,23 @@ function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactEl
 }
 
 export function DashboardPage(): ReactElement {
-  const connectionsQuery = useConnectionsQuery(undefined, { refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
+  const connectionsQuery = useConnectionsQuery(undefined, {
+    refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS,
+  });
   const healthQuery = useDevStackHealthQuery({ refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
-  const recentJobsQuery = useSyncJobsQuery(undefined, { limit: 5 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
-  const queuedJobsQuery = useSyncJobsQuery({ status: 'queued' }, { limit: 1 }, { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS });
+  const recentJobsQuery = useSyncJobsQuery(
+    undefined,
+    { limit: 5 },
+    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
+  );
+  const queuedJobsQuery = useSyncJobsQuery(
+    { status: 'queued' },
+    { limit: 1 },
+    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
+  );
   const deadGroupsQuery = useFailedJobGroupsQuery(
     { status: 'dead' },
-    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS },
+    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
   );
   const retryGrouped = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
@@ -187,16 +241,32 @@ export function DashboardPage(): ReactElement {
   const connections = connectionsQuery.data ?? [];
   const failedGroups = useMemo<SyncJobGroup[]>(
     () => deadGroupsQuery.data?.groups ?? [],
-    [deadGroupsQuery.data],
+    [deadGroupsQuery.data]
   );
-  const failureSignals = useMemo(
-    () => summarizeFailuresByConnection(failedGroups),
-    [failedGroups],
-  );
+  const failureSignals = useMemo(() => summarizeFailuresByConnection(failedGroups), [failedGroups]);
   const rolledUpConnections = useMemo(
     () => rollUpConnectionHealth(connections, failureSignals),
-    [connections, failureSignals],
+    [connections, failureSignals]
   );
+
+  const platforms = usePlatforms();
+  const platformDisplayNames = useMemo(
+    () =>
+      new Map<string, string>(
+        platforms.map((platform): [string, string] => [platform.platformType, platform.displayName])
+      ),
+    [platforms]
+  );
+  const infraConnections = healthQuery.data?.connections ?? [];
+  const infraNodeLabels = useMemo(
+    () => buildInfraNodeLabels(healthQuery.data, platformDisplayNames),
+    [healthQuery.data, platformDisplayNames]
+  );
+  const systemHealthDescription = healthQuery.isLoading
+    ? 'Checking dependencies…'
+    : infraNodeLabels.length > 0
+      ? infraNodeLabels.join(' · ')
+      : 'No infrastructure nodes detected';
 
   const activeCount = connections.filter((c) => c.status === 'active').length;
   const errorCount = connections.filter((c) => c.status === 'error').length;
@@ -275,7 +345,7 @@ export function DashboardPage(): ReactElement {
         setPendingGroupKey((current) => (current === key ? null : current));
       }
     },
-    [retryGrouped, showToast],
+    [retryGrouped, showToast]
   );
 
   const failedGroupColumns: DataTableColumn<SyncJobGroup>[] = useMemo(
@@ -356,7 +426,7 @@ export function DashboardPage(): ReactElement {
         },
       },
     ],
-    [connectionNameById, handleRetryGroup, pendingGroupKey],
+    [connectionNameById, handleRetryGroup, pendingGroupKey]
   );
 
   const recentJobColumns: DataTableColumn<SyncJob>[] = useMemo(
@@ -386,12 +456,10 @@ export function DashboardPage(): ReactElement {
         id: 'updatedAt',
         header: 'Updated',
         align: 'right',
-        cell: (job) => (
-          <TimeDisplay iso={job.updatedAt} format="relative" className="muted-text" />
-        ),
+        cell: (job) => <TimeDisplay iso={job.updatedAt} format="relative" className="muted-text" />,
       },
     ],
-    [],
+    []
   );
 
   return (
@@ -419,10 +487,10 @@ export function DashboardPage(): ReactElement {
           value={renderHealthValue(
             healthQuery.data?.status,
             healthQuery.isLoading,
-            Boolean(healthQuery.error),
+            Boolean(healthQuery.error)
           )}
           tone={mapHealthTone(healthQuery.data?.status, Boolean(healthQuery.error))}
-          description="Postgres · Redis · PrestaShop · Worker"
+          description={systemHealthDescription}
         />
 
         {deadTotal > 0 ? (
@@ -491,13 +559,11 @@ export function DashboardPage(): ReactElement {
             rows={failedGroups}
             rowKey={(group) => groupKey(group)}
             cardView={{
-              title: (group) => (
-                <span className="mono-text">{formatJobType(group.jobType)}</span>
-              ),
+              title: (group) => <span className="mono-text">{formatJobType(group.jobType)}</span>,
               subtitle: (group) => (
                 <span>
-                  {connectionNameById.get(group.connectionId) ?? group.connectionId} ·{' '}
-                  {group.count} failure{group.count === 1 ? '' : 's'}
+                  {connectionNameById.get(group.connectionId) ?? group.connectionId} · {group.count}{' '}
+                  failure{group.count === 1 ? '' : 's'}
                 </span>
               ),
               meta: (group) => (
@@ -506,9 +572,7 @@ export function DashboardPage(): ReactElement {
                 </StatusBadge>
               ),
             }}
-            emptyState={
-              <p className="muted-text">No failed jobs. All clear.</p>
-            }
+            emptyState={<p className="muted-text">No failed jobs. All clear.</p>}
           />
         )}
       </article>
@@ -527,7 +591,11 @@ export function DashboardPage(): ReactElement {
           </div>
 
           {connectionsQuery.isLoading && (
-            <LoadingState title="Loading connections" message="Fetching connection status…" liveRegion="off" />
+            <LoadingState
+              title="Loading connections"
+              message="Fetching connection status…"
+              liveRegion="off"
+            />
           )}
           {connectionsQuery.error && (
             <ErrorState
@@ -555,7 +623,11 @@ export function DashboardPage(): ReactElement {
           </div>
 
           {healthQuery.isLoading && (
-            <LoadingState title="Checking system health" message="Pinging dependencies…" liveRegion="off" />
+            <LoadingState
+              title="Checking system health"
+              message="Pinging dependencies…"
+              liveRegion="off"
+            />
           )}
           {healthQuery.error && (
             <ErrorState
@@ -572,6 +644,18 @@ export function DashboardPage(): ReactElement {
               {healthQuery.data.services.worker && (
                 <ServiceHealthRow name="Worker" health={healthQuery.data.services.worker} />
               )}
+              {infraConnections.map((connection) => (
+                <ServiceHealthRow
+                  key={connection.connectionId}
+                  name={
+                    connection.name
+                      ? `${platformDisplayNames.get(connection.platformType) ?? fallbackPlatformLabel(connection.platformType)} — ${connection.name}`
+                      : (platformDisplayNames.get(connection.platformType) ??
+                        fallbackPlatformLabel(connection.platformType))
+                  }
+                  health={{ status: connection.status, message: connection.message }}
+                />
+              ))}
             </ul>
           )}
         </article>
@@ -590,7 +674,11 @@ export function DashboardPage(): ReactElement {
         </div>
 
         {recentJobsQuery.isLoading && (
-          <LoadingState title="Loading sync jobs" message="Fetching recent activity…" liveRegion="off" />
+          <LoadingState
+            title="Loading sync jobs"
+            message="Fetching recent activity…"
+            liveRegion="off"
+          />
         )}
         {recentJobsQuery.error && (
           <ErrorState
