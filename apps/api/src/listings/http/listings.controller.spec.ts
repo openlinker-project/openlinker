@@ -3,9 +3,12 @@
  *
  * @module apps/api/src/listings/http
  */
+import 'reflect-metadata';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
 import type {
   CatalogProduct,
@@ -1048,6 +1051,42 @@ describe('ListingsController', () => {
 
         await expect(controller.getCatalogProduct('conn-1', 'p1')).rejects.toThrow('upstream-503');
       });
+    });
+  });
+
+  // ─── @Roles metadata (#1608) ────────────────────────────────────────────────
+  //
+  // Demo-mode `viewer` accounts must reach step 4 (Confirm) of the bulk-create
+  // offer wizard: all read-only lookups it drives must include 'viewer' in
+  // their @Roles set, while every write/submit endpoint stays admin+operator
+  // only. Reads decorator metadata directly (no HTTP layer / DB needed) so
+  // this stays in the fast unit-test tier; the end-to-end guard behaviour is
+  // covered by viewer-role-authz.int-spec.ts.
+  describe('@Roles metadata (#1608 — viewer wizard-read access)', () => {
+    const READ_LOOKUP_METHODS = [
+      'getSellerPolicies',
+      'getResponsibleProducers',
+      'getDeliveryPriceLists',
+      'getCategoryParameters',
+      'resolveCategory',
+      'resolveCategoriesBatch',
+      'findProductsByBarcode',
+      'getCatalogProduct',
+    ] as const;
+
+    const WRITE_METHODS = ['updateOfferFields', 'autoMatchVariants', 'createOffer'] as const;
+
+    function rolesOf(methodName: string): string[] | undefined {
+      const proto = ListingsController.prototype as unknown as Record<string, unknown>;
+      return Reflect.getMetadata(ROLES_KEY, proto[methodName] as object) as string[] | undefined;
+    }
+
+    it.each(READ_LOOKUP_METHODS)('%s includes admin, operator, and viewer', (methodName) => {
+      expect(rolesOf(methodName)).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it.each(WRITE_METHODS)('%s stays restricted to admin and operator (no viewer)', (methodName) => {
+      expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
     });
   });
 });

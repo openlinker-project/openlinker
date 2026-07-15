@@ -394,7 +394,7 @@ export class ListingsController {
     return this.toOfferCreationStatusDto(record);
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/seller-policies')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -413,7 +413,7 @@ export class ListingsController {
     return this.sellerPolicies.getSellerPolicies(connectionId);
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/responsible-producers')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -441,7 +441,7 @@ export class ListingsController {
     return { responsibleProducers };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/delivery-price-lists')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -468,7 +468,7 @@ export class ListingsController {
     return { deliveryPriceLists };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/categories/:categoryId/parameters')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -524,7 +524,7 @@ export class ListingsController {
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -575,7 +575,7 @@ export class ListingsController {
     };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/categories/resolve-batch')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -639,7 +639,7 @@ export class ListingsController {
   // appears (e.g. a future bulk-prefill worker), promote to a service.
   // -----------------------------------------------------------------
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Post('connections/:connectionId/products/find-by-barcode')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
@@ -692,7 +692,7 @@ export class ListingsController {
     return { kind: 'no_match' };
   }
 
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/products/:productId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
