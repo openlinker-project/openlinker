@@ -63,7 +63,7 @@ function groupsResponse(groups: SyncJobGroup[]): SyncJobGroupsResponse {
 
 function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
   const labels = Array.from(
-    container.querySelectorAll<HTMLElement>('.kpi-card__label-text'),
+    container.querySelectorAll<HTMLElement>('.kpi-card__label-text')
   ).filter((el) => el.textContent === label);
   if (labels.length !== 1) {
     throw new Error(`Expected one .kpi-card__label-text "${label}", found ${labels.length}`);
@@ -86,10 +86,17 @@ describe('DashboardPage', () => {
   it('shows real connection count from API', async () => {
     const apiClient = createMockApiClient({
       connections: {
-        list: vi.fn().mockResolvedValue([
-          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
-          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
-        ]),
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            makeConnection({
+              id: 'c1',
+              name: 'Store A',
+              status: 'active',
+              platformType: 'prestashop',
+            }),
+            makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
+          ]),
       },
     });
     renderWithProviders(<DashboardPage />, { apiClient });
@@ -105,6 +112,105 @@ describe('DashboardPage', () => {
     expect(await within(container).findByText('PostgreSQL')).toBeInTheDocument();
     expect(within(container).getByText('Redis')).toBeInTheDocument();
     expect(within(container).getByText('PrestaShop')).toBeInTheDocument();
+  });
+
+  it('lists an infra-bearing connection (e.g. WooCommerce) in the Infrastructure panel (#1619)', async () => {
+    const apiClient = createMockApiClient({
+      health: {
+        getDevStackHealth: vi.fn().mockResolvedValue({
+          status: 'ok',
+          services: {
+            postgres: { status: 'ok' },
+            redis: { status: 'ok' },
+            prestashop: { status: 'ok' },
+            worker: { status: 'ok' },
+          },
+          connections: [
+            {
+              connectionId: 'conn-woo-1',
+              name: 'My WooCommerce Shop',
+              platformType: 'woocommerce',
+              status: 'ok',
+            },
+          ],
+          timestamp: '2026-04-06T00:00:00.000Z',
+        }),
+      },
+    });
+    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+
+    expect(
+      await within(container).findByText('WooCommerce — My WooCommerce Shop')
+    ).toBeInTheDocument();
+    // Fixed core services still render alongside the connection row.
+    expect(within(container).getByText('PostgreSQL')).toBeInTheDocument();
+    expect(within(container).getByText('Redis')).toBeInTheDocument();
+    expect(within(container).getByText('PrestaShop')).toBeInTheDocument();
+    expect(within(container).getByText('Worker')).toBeInTheDocument();
+  });
+
+  it('surfaces an unhealthy infra-bearing connection with its message', async () => {
+    const apiClient = createMockApiClient({
+      health: {
+        getDevStackHealth: vi.fn().mockResolvedValue({
+          status: 'degraded',
+          services: {
+            postgres: { status: 'ok' },
+            redis: { status: 'ok' },
+            prestashop: { status: 'ok' },
+            worker: { status: 'ok' },
+          },
+          connections: [
+            {
+              connectionId: 'conn-woo-1',
+              name: 'My WooCommerce Shop',
+              platformType: 'woocommerce',
+              status: 'error',
+              message: 'Unauthorized (401)',
+            },
+          ],
+          timestamp: '2026-04-06T00:00:00.000Z',
+        }),
+      },
+    });
+    renderWithProviders(<DashboardPage />, { apiClient });
+
+    expect(await screen.findByText('Unauthorized (401)')).toBeInTheDocument();
+  });
+
+  it('reflects the real node set (not a fixed string) in the System health KPI description', async () => {
+    const apiClient = createMockApiClient({
+      health: {
+        getDevStackHealth: vi.fn().mockResolvedValue({
+          status: 'ok',
+          services: {
+            postgres: { status: 'ok' },
+            redis: { status: 'ok' },
+            prestashop: { status: 'ok' },
+            worker: { status: 'ok' },
+          },
+          connections: [
+            {
+              connectionId: 'conn-woo-1',
+              name: 'My WooCommerce Shop',
+              platformType: 'woocommerce',
+              status: 'ok',
+            },
+          ],
+          timestamp: '2026-04-06T00:00:00.000Z',
+        }),
+      },
+    });
+    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+
+    await waitFor(() => {
+      const card = findCardByLabel(container, 'System health');
+      expect(
+        within(card).getByText(
+          'Postgres · Redis · PrestaShop · Worker · WooCommerce (My WooCommerce Shop)'
+        )
+      ).toBeInTheDocument();
+    });
   });
 
   it('shows error message when a service is degraded', async () => {
@@ -144,7 +250,9 @@ describe('DashboardPage', () => {
     });
     renderWithProviders(<DashboardPage />, { apiClient });
 
-    expect(await screen.findByRole('heading', { name: 'Health check failed' }, { timeout: 10000 })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Health check failed' }, { timeout: 10000 })
+    ).toBeInTheDocument();
   }, 15000);
 
   it('shows recent sync jobs in a table', async () => {
@@ -171,11 +279,9 @@ describe('DashboardPage', () => {
   it('shows failed jobs count in metric card', async () => {
     const apiClient = createMockApiClient({
       syncJobs: {
-        listGrouped: vi.fn().mockResolvedValue(
-          groupsResponse([
-            makeGroup({ count: 1, lastError: 'Timeout' }),
-          ]),
-        ),
+        listGrouped: vi
+          .fn()
+          .mockResolvedValue(groupsResponse([makeGroup({ count: 1, lastError: 'Timeout' })])),
       },
     });
     renderWithProviders(<DashboardPage />, { apiClient });
@@ -186,9 +292,9 @@ describe('DashboardPage', () => {
   it('tints the Failed jobs card red and links to /jobs-logs?status=dead when there are failures', async () => {
     const apiClient = createMockApiClient({
       syncJobs: {
-        listGrouped: vi.fn().mockResolvedValue(
-          groupsResponse([makeGroup({ count: 3, lastError: 'Timeout' })]),
-        ),
+        listGrouped: vi
+          .fn()
+          .mockResolvedValue(groupsResponse([makeGroup({ count: 3, lastError: 'Timeout' })])),
       },
     });
 
@@ -216,10 +322,17 @@ describe('DashboardPage', () => {
   it('tints the Integration health card warning when a connection is in error', async () => {
     const apiClient = createMockApiClient({
       connections: {
-        list: vi.fn().mockResolvedValue([
-          makeConnection({ id: 'c1', name: 'Store A', status: 'active', platformType: 'prestashop' }),
-          makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
-        ]),
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            makeConnection({
+              id: 'c1',
+              name: 'Store A',
+              status: 'active',
+              platformType: 'prestashop',
+            }),
+            makeConnection({ id: 'c2', name: 'Store B', status: 'error', platformType: 'allegro' }),
+          ]),
       },
     });
 
@@ -242,7 +355,7 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />, { apiClient });
 
     expect(
-      await screen.findByRole('heading', { name: 'Unable to load sync jobs' }, { timeout: 5000 }),
+      await screen.findByRole('heading', { name: 'Unable to load sync jobs' }, { timeout: 5000 })
     ).toBeInTheDocument();
   });
 
@@ -280,14 +393,14 @@ describe('DashboardPage', () => {
                 count: 3,
                 lastError: 'FK violation',
               }),
-            ]),
+            ])
           ),
         },
       });
       renderWithProviders(<DashboardPage />, { apiClient });
 
       expect(
-        await screen.findByRole('heading', { name: /What’s broken right now/ }),
+        await screen.findByRole('heading', { name: /What’s broken right now/ })
       ).toBeInTheDocument();
       expect(await screen.findByText('master › inventory › syncByExternalId')).toBeInTheDocument();
       expect(screen.getByText('1 unique signature · 3 total failures')).toBeInTheDocument();
@@ -308,15 +421,13 @@ describe('DashboardPage', () => {
                 jobType: 'marketplace.orders.poll' as JobType,
                 count: 1,
               }),
-            ]),
+            ])
           ),
         },
       });
       renderWithProviders(<DashboardPage />, { apiClient });
 
-      expect(
-        await screen.findByText('2 unique signatures · 3 total failures'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('2 unique signatures · 3 total failures')).toBeInTheDocument();
     });
 
     it('calls retryGrouped with the group selector when Retry is clicked', async () => {
@@ -334,7 +445,7 @@ describe('DashboardPage', () => {
                 jobType: 'some.failing.job' as JobType,
                 count: 1,
               }),
-            ]),
+            ])
           ),
           retryGrouped,
         },
@@ -370,7 +481,7 @@ describe('DashboardPage', () => {
                 jobType: 'bulk.failing.job' as JobType,
                 count: 3,
               }),
-            ]),
+            ])
           ),
           retryGrouped,
         },
@@ -400,7 +511,7 @@ describe('DashboardPage', () => {
                 jobType: 'partial.retry.job' as JobType,
                 count: 3,
               }),
-            ]),
+            ])
           ),
           retryGrouped,
         },
@@ -432,7 +543,7 @@ describe('DashboardPage', () => {
                 jobType: 'racy.job' as JobType,
                 count: 3,
               }),
-            ]),
+            ])
           ),
           retryGrouped,
         },
@@ -471,7 +582,7 @@ describe('DashboardPage', () => {
                 jobType: 'some.job' as JobType,
                 count: 2,
               }),
-            ]),
+            ])
           ),
         },
       });
@@ -490,7 +601,7 @@ describe('DashboardPage', () => {
       const failingJobsLink = screen.getByRole('link', { name: /2 failing jobs/ });
       expect(failingJobsLink).toHaveAttribute(
         'href',
-        '/jobs-logs?status=dead&connectionId=conn_failing',
+        '/jobs-logs?status=dead&connectionId=conn_failing'
       );
     });
   });

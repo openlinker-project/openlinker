@@ -74,7 +74,10 @@ import { DemoAccountCleanupService } from './demo-account-cleanup.service';
   ],
   // MAILER_TOKEN is exported so sibling modules (#1624 email confirmation,
   // #1626 forgot-password delivery) can inject MailerPort without duplicating
-  // the provider registration.
-  exports: [AuthService, MAILER_TOKEN],
+  // the provider registration. JwtModule is re-exported so modules that
+  // import AuthModule (e.g. AppModule for AppController, #1619) can inject
+  // JwtService to verify a bearer token without enforcing auth on a
+  // @Public() route.
+  exports: [AuthService, MAILER_TOKEN, JwtModule],
 })
 export class AuthModule {}
