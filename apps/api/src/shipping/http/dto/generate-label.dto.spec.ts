@@ -65,12 +65,14 @@ describe('GenerateLabelDto — insuredValue validation (#1542)', () => {
 
 describe('GenerateLabelDto — required parcel / recipient (#1518)', () => {
   it('should reject a payload that omits parcel', async () => {
-    const { parcel: _parcel, ...noParcel } = basePayload();
+    const noParcel = basePayload();
+    delete noParcel.parcel;
     expect(await errorsFor(noParcel)).toContain('isDefined');
   });
 
   it('should reject a payload that omits recipient', async () => {
-    const { recipient: _recipient, ...noRecipient } = basePayload();
+    const noRecipient = basePayload();
+    delete noRecipient.recipient;
     expect(await errorsFor(noRecipient)).toContain('isDefined');
   });
 
