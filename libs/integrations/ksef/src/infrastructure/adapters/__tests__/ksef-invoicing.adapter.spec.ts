@@ -8,6 +8,7 @@
  */
 import {
   isCorrectionIssuer,
+  isDocumentNumberConsumer,
   isRegulatoryDocumentReader,
   isRegulatoryTransmitter,
   UnsupportedRegulatoryDocumentKindError,
@@ -25,6 +26,7 @@ import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.ex
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KsefInvalidCorrectionException } from '../../../domain/exceptions/ksef-invalid-correction.exception';
+import { KsefMissingDocumentNumberException } from '../../../domain/exceptions/ksef-missing-document-number.exception';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -69,6 +71,9 @@ function command(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceComm
     buyer: buyer(),
     currency: 'PLN',
     lines: [{ name: 'Widget', quantity: 2, unitPriceGross: 123.0, taxRate: '23' }],
+    // KSeF is a DocumentNumberConsumer (#1575): the core InvoiceService allocates
+    // the FA(3) P_2 and passes it as documentNumber. The adapter consumes it.
+    documentNumber: 'FV/2026/06/0001',
     ...overrides,
   };
 }
@@ -172,6 +177,9 @@ function correctionCommand(overrides: Partial<IssueCorrectionCommand> = {}): Iss
     reason: 'Customer returned 1 unit',
     lines: [{ originalLineNumber: 1, newQuantity: 1 }],
     originalDocument: originalDocument(),
+    // The correction's own P_2, allocated upstream from the correction series
+    // (#1575) — distinct from the original document's number by construction.
+    documentNumber: 'FK/2026/06/0001',
     ...overrides,
   };
 }
@@ -216,9 +224,9 @@ describe('KsefInvoicingAdapter', () => {
       });
 
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
-      // The FA(3) P_2 document number must land on the record - the correction
-      // precondition (#1289) requires it; null here broke every KSeF KOR (#1338).
-      expect(record.providerInvoiceNumber).toBe('ol_order_123');
+      // The FA(3) P_2 is the core-allocated documentNumber (#1575), landed on the
+      // record as providerInvoiceNumber (single source, #1338).
+      expect(record.providerInvoiceNumber).toBe('FV/2026/06/0001');
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.clearanceReference).toBeNull();
       expect(record.status).toBe('issued');
@@ -462,11 +470,36 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(lastInput()?.correction?.originalKsefNumber).toBeNull();
     });
+
+    it('should throw terminally when no documentNumber was allocated (#1575)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await expect(
+        adapter(http).issueInvoice(command({ documentNumber: undefined })),
+      ).rejects.toBeInstanceOf(KsefMissingDocumentNumberException);
+      // Fails before any session/XML work — the provider is never contacted.
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should consume the core-allocated documentNumber as the FA(3) P_2 (#1575)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueInvoice(command({ documentNumber: 'FV/2026/07/0123' }));
+
+      expect(lastInput()?.invoiceNumber).toBe('FV/2026/07/0123');
+    });
   });
 
   describe('issueCorrection (#1288)', () => {
     it('should be exposed as CorrectionIssuer', () => {
       expect(isCorrectionIssuer(adapter(new FakeKsefHttpClient()))).toBe(true);
+    });
+
+    it('should be exposed as DocumentNumberConsumer (#1575)', () => {
+      expect(isDocumentNumberConsumer(adapter(new FakeKsefHttpClient()))).toBe(true);
     });
 
     it('should delegate into the issueInvoice KOR path and submit a corrected document', async () => {
@@ -486,13 +519,11 @@ describe('KsefInvoicingAdapter', () => {
       expect(record.documentType).toBe('corrected');
       expect(record.regulatoryStatus).toBe('submitted');
       expect(record.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
-      // The KOR's own P_2 must land on the correction record too — the
-      // correction path is the primary consumer of the #1289 precondition
-      // this unblocks, so guard it explicitly, not just via delegation (#1338).
-      // #1364: a correction's P_2 must be DISTINCT from the original document's
-      // P_2 (`orderId`) or KSeF rejects the second submission as a duplicate.
-      expect(record.providerInvoiceNumber).not.toBe('ol_order_123');
-      expect(record.providerInvoiceNumber).toMatch(/^ol_order_123-KOR-/);
+      // The KOR's own P_2 is the core-allocated correction-series documentNumber
+      // (#1575), landed on the correction record (single source, #1338). It is
+      // distinct from the original by construction (a separate series), so no
+      // per-correction suffix hack is needed.
+      expect(record.providerInvoiceNumber).toBe('FK/2026/06/0001');
 
       const built = lastInput();
       expect(built?.correction).toBeDefined();
@@ -503,34 +534,18 @@ describe('KsefInvoicingAdapter', () => {
       expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
     });
 
-    it('should derive distinct P_2 numbers for two corrections of the same order (#1364)', async () => {
+    it('should use the core-allocated correction-series documentNumber as the KOR P_2 (#1575)', async () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
 
-      const { record: first } = await adapter(http).issueCorrection(
-        correctionCommand({ idempotencyKey: 'retry-key-a' }),
-      );
-      const { record: second } = await adapter(http).issueCorrection(
-        correctionCommand({ idempotencyKey: 'retry-key-b' }),
+      const { record } = await adapter(http).issueCorrection(
+        correctionCommand({ documentNumber: 'FK/2026/06/0099' }),
       );
 
-      expect(first.providerInvoiceNumber).not.toBe(second.providerInvoiceNumber);
-      expect(first.providerInvoiceNumber).not.toBe('ol_order_123');
-      expect(second.providerInvoiceNumber).not.toBe('ol_order_123');
-    });
-
-    it('should derive the same P_2 for repeated calls with the same idempotencyKey (#1364)', async () => {
-      const http = new FakeKsefHttpClient();
-      seedHappyPath(http);
-
-      const { record: first } = await adapter(http).issueCorrection(
-        correctionCommand({ idempotencyKey: 'stable-retry-key' }),
-      );
-      const { record: retry } = await adapter(http).issueCorrection(
-        correctionCommand({ idempotencyKey: 'stable-retry-key' }),
-      );
-
-      expect(retry.providerInvoiceNumber).toBe(first.providerInvoiceNumber);
+      // The correction's P_2 is drawn from its own series upstream — never the
+      // original document's number, and never a locally-derived suffix.
+      expect(record.providerInvoiceNumber).toBe('FK/2026/06/0099');
+      expect(record.providerInvoiceNumber).not.toBe('ol_order_123');
     });
 
     it('should apply newUnitPriceGross deltas while keeping name/taxRate from the original line', async () => {

@@ -108,6 +108,17 @@ export class InvoiceRecord {
      * it never asserts "unpaid" for a document OL has simply not polled.
      */
     public readonly paymentStatus: PaymentStatus = 'unknown',
+    /**
+     * The numbering series the {@link documentNumber} was allocated from (#1575);
+     * `null` for a provider that numbers documents itself.
+     */
+    public readonly numberingSeriesId: string | null = null,
+    /**
+     * The OpenLinker-allocated legal document number (#1575); `null` for a
+     * non-`DocumentNumberConsumer` provider (its own number lives on
+     * `providerInvoiceNumber`). Immutable once assigned.
+     */
+    public readonly documentNumber: string | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

@@ -360,6 +360,8 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.sourceDocument,
       entity.issuedLineSnapshot,
       entity.paymentStatus,
+      entity.numberingSeriesId,
+      entity.documentNumber,
     );
   }
 }

@@ -27,12 +27,18 @@ import {
 
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
-import { INVOICE_RECORD_REPOSITORY_TOKEN } from '../../invoicing.tokens';
+import { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/invoice-numbering-series-repository.port';
+import {
+  INVOICE_RECORD_REPOSITORY_TOKEN,
+  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
+} from '../../invoicing.tokens';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
+import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
+import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import type {
   CorrectionLine,
@@ -200,6 +206,8 @@ export class InvoiceService implements IInvoiceService {
     private readonly repo: InvoiceRecordRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN)
+    private readonly numberingRepo: InvoiceNumberingSeriesRepositoryPort,
   ) {}
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
@@ -340,6 +348,26 @@ export class InvoiceService implements IInvoiceService {
       INVOICING_CAPABILITY,
     );
 
+    // (3b) Numbering allocation (#1575). ONLY when the adapter passes
+    // `isDocumentNumberConsumer` (KSeF today): allocate + persist the rendered
+    // number onto this record in ONE transaction BEFORE crossing the provider
+    // boundary; a retry of an already-numbered record reuses its persisted
+    // number. Happens after the CAS claim so exactly one attempt allocates.
+    // Non-consumer adapters (inFakt/Subiekt) get NO allocation and keep their
+    // provider-assigned number. Any numbering failure is a terminal
+    // (re-attemptable) `rejected` — the provider is never contacted.
+    try {
+      const documentNumber = await this.allocateDocumentNumber(adapter, claimed, cmd, {
+        correction: cmd.correction !== undefined,
+      });
+      if (documentNumber !== undefined) {
+        cmd = { ...cmd, documentNumber };
+      }
+    } catch (error) {
+      await this.failRecordBeforeProvider(recordId, error);
+      throw error;
+    }
+
     let issueResult: Awaited<ReturnType<InvoicingPort['issueInvoice']>>;
     try {
       issueResult = await adapter.issueInvoice(cmd);
@@ -412,6 +440,73 @@ export class InvoiceService implements IInvoiceService {
       issuedLineSnapshot,
     };
     return this.repo.updateOutcome(recordId, patch);
+  }
+
+  /**
+   * Allocate an OpenLinker document number for a record when the resolved adapter
+   * is a `DocumentNumberConsumer` (#1575). Returns the number to stamp on the
+   * command, or `undefined` when the adapter numbers documents itself (no
+   * allocation — it keeps its provider-assigned number).
+   *
+   * Idempotent per record: a record that already carries a `documentNumber` (a
+   * retry of a previously-numbered attempt) reuses it — no new sequence is burned.
+   * Otherwise it resolves the connection's series (main, or the correction series
+   * for a correction — falling back to the main series when none is configured),
+   * throwing {@link MissingNumberingSeriesException} when the connection has no
+   * assignment, and delegates to the repository's atomic allocate+persist.
+   */
+  private async allocateDocumentNumber(
+    adapter: InvoicingPort,
+    record: InvoiceRecord,
+    cmd: { connectionId: string },
+    opts: { correction: boolean },
+  ): Promise<string | undefined> {
+    if (!isDocumentNumberConsumer(adapter)) {
+      return undefined;
+    }
+    if (record.documentNumber !== null) {
+      // Retry of an already-numbered record — reuse the persisted number.
+      return record.documentNumber;
+    }
+    const assignment = await this.numberingRepo.findAssignmentByConnectionId(cmd.connectionId);
+    if (!assignment) {
+      throw new MissingNumberingSeriesException(cmd.connectionId);
+    }
+    const seriesId = opts.correction
+      ? assignment.correctionSeriesId ?? assignment.mainSeriesId
+      : assignment.mainSeriesId;
+    const allocation = await this.numberingRepo.allocateNumber({
+      seriesId,
+      recordId: record.id,
+      connectionId: cmd.connectionId,
+      // The number is allocated AT ISSUE TIME; the date variables + period reset
+      // resolve from this instant (the record has no separate issue-date input).
+      issueDate: new Date(),
+    });
+    return allocation.documentNumber;
+  }
+
+  /**
+   * Mark a record `failed` for a numbering/config error caught BEFORE the
+   * provider boundary (#1575). Terminal `rejected` — the provider was never
+   * contacted, so it is safe to re-attempt once the operator fixes the series.
+   * The lease is released; the original domain error is rethrown by the caller.
+   */
+  private async failRecordBeforeProvider(recordId: string, error: unknown): Promise<void> {
+    const sanitized = this.sanitizeError(error);
+    const failureReason =
+      sanitized.length <= MAX_FAILURE_REASON_LENGTH
+        ? sanitized
+        : sanitized.slice(0, MAX_FAILURE_REASON_LENGTH);
+    this.logger.warn(`Numbering allocation failed for record ${recordId}: ${sanitized}`);
+    await this.repo.updateOutcome(recordId, {
+      status: 'failed',
+      errorMessage: sanitized,
+      failureMode: 'rejected',
+      failureCode: 'provider-rejected',
+      failureReason,
+      leaseExpiresAt: null,
+    });
   }
 
   /**
@@ -518,6 +613,22 @@ export class InvoiceService implements IInvoiceService {
         leaseExpiresAt: null,
       });
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
+    }
+
+    // Numbering allocation for the CORRECTION document (#1575) — a correction
+    // draws a FRESH number from the connection's correction series (never reuses
+    // the original's). Only for `DocumentNumberConsumer` adapters; a self-
+    // numbering provider keeps its own number.
+    try {
+      const documentNumber = await this.allocateDocumentNumber(adapter, pending, cmd, {
+        correction: true,
+      });
+      if (documentNumber !== undefined) {
+        cmd = { ...cmd, documentNumber };
+      }
+    } catch (error) {
+      await this.failRecordBeforeProvider(pending.id, error);
+      throw error;
     }
 
     let issueResult: IssueInvoiceResult;

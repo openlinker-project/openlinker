@@ -19,12 +19,16 @@ import { SyncModule } from '@openlinker/core/sync';
 
 import { InvoiceService } from './application/services/invoice.service';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
+import { InvoiceNumberingSeriesOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-series.orm-entity';
+import { InvoiceNumberingAssignmentOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-assignment.orm-entity';
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
+import { InvoiceNumberingSeriesRepository } from './infrastructure/persistence/repositories/invoice-numbering-series.repository';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
+  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
@@ -33,6 +37,7 @@ import {
 
 export {
   INVOICE_RECORD_REPOSITORY_TOKEN,
+  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
@@ -41,7 +46,11 @@ export {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InvoiceRecordOrmEntity]),
+    TypeOrmModule.forFeature([
+      InvoiceRecordOrmEntity,
+      InvoiceNumberingSeriesOrmEntity,
+      InvoiceNumberingAssignmentOrmEntity,
+    ]),
     // InvoiceService injects INTEGRATIONS_SERVICE_TOKEN to resolve the
     // 'Invoicing' capability adapter per-connection. IntegrationsModule exports
     // that token but is NOT @Global, so it must be imported (mirrors
@@ -59,6 +68,11 @@ export {
     {
       provide: INVOICE_RECORD_REPOSITORY_TOKEN,
       useExisting: InvoiceRecordRepository,
+    },
+    InvoiceNumberingSeriesRepository,
+    {
+      provide: INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
+      useExisting: InvoiceNumberingSeriesRepository,
     },
     InvoiceService,
     {
@@ -88,6 +102,7 @@ export {
   // fail the worker's DI at boot (#1121 plan decision #12).
   exports: [
     INVOICE_RECORD_REPOSITORY_TOKEN,
+    INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
     INVOICE_SERVICE_TOKEN,
     AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
     AutoIssueTriggerService,

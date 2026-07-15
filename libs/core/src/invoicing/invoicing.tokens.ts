@@ -9,6 +9,11 @@
  */
 export const INVOICE_RECORD_REPOSITORY_TOKEN = Symbol('InvoiceRecordRepositoryPort');
 
+/** Binding token for the {@link InvoiceNumberingSeriesRepositoryPort} (#1575). */
+export const INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN = Symbol(
+  'InvoiceNumberingSeriesRepositoryPort',
+);
+
 /** Binding token for the {@link IInvoiceService} application service (ADR-026 "SVC"). */
 export const INVOICE_SERVICE_TOKEN = Symbol('IInvoiceService');
 

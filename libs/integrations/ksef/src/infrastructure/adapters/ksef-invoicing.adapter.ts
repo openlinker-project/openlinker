@@ -59,6 +59,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type {
   CorrectionIssuer,
   CorrectionLine,
+  DocumentNumberConsumer,
   RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
@@ -94,6 +95,7 @@ import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provide
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KsefInvalidCorrectionException } from '../../domain/exceptions/ksef-invalid-correction.exception';
+import { KsefMissingDocumentNumberException } from '../../domain/exceptions/ksef-missing-document-number.exception';
 import {
   KSEF_NUMBER_PATTERN,
   KSEF_STATUS_SUCCESS,
@@ -118,9 +120,18 @@ export class KsefInvoicingAdapter
     InvoicingPort,
     RegulatoryTransmitter,
     RegulatoryDocumentReader,
-    CorrectionIssuer
+    CorrectionIssuer,
+    DocumentNumberConsumer
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
+
+  /**
+   * Marks KSeF as an OpenLinker-numbered provider (#1575): the core
+   * `InvoiceService` allocates the FA(3) `P_2` from the connection's numbering
+   * series and passes it as `IssueInvoiceCommand.documentNumber`. Read by
+   * `isDocumentNumberConsumer`.
+   */
+  readonly consumesDocumentNumber = true as const;
 
   /**
    * Resolved connection-level payment defaults (#1311) — `undefined` when the
@@ -174,25 +185,15 @@ export class KsefInvoicingAdapter
     this.assertCorrectionConsistency(cmd);
 
     const issuedAt = this.now();
-    // The FA(3) P_2 document number. Single source for BOTH the XML builder's
+    // The FA(3) P_2 document number (#1575). KSeF is a `DocumentNumberConsumer`:
+    // the core `InvoiceService` allocates a real per-seller sequential number
+    // from the connection's numbering series and passes it as
+    // `cmd.documentNumber`. Single source for BOTH the XML builder's
     // `invoiceNumber` and the persisted `InvoiceRecord.providerInvoiceNumber` —
     // the correction precondition (#1289) matches on the persisted value, so the
-    // two must never diverge (#1338).
-    // TODO: replace the orderId placeholder with a real per-seller sequential
-    // FA(3) invoice-number source (P_2 must be a unique invoice number, not an
-    // order id) before prod. Owned by the core InvoiceService numbering
-    // follow-up (#1118), not the C6 clearance-read (#1150).
-    //
-    // #1364 interim fix: a correction MUST NOT reuse the original document's
-    // P_2 — KSeF rejects it live with "Duplikat faktury" (confirmed against
-    // the real test environment) once the same order is corrected a second
-    // time. Give every correction a distinct suffix so it never collides with
-    // the document it corrects (or an earlier correction of the same order).
-    // Not the real sequential-numbering source #1364 ultimately wants — just
-    // enough to stop the collision until that lands.
-    const documentNumber = cmd.correction
-      ? this.buildCorrectionDocumentNumber(cmd.orderId, cmd.idempotencyKey, issuedAt)
-      : cmd.orderId;
+    // two must never diverge (#1338). Corrections draw a distinct number from the
+    // correction series upstream, so no per-correction suffix hack is needed here.
+    const documentNumber = this.resolveDocumentNumber(cmd);
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
@@ -283,21 +284,18 @@ export class KsefInvoicingAdapter
   }
 
   /**
-   * #1364 interim fix: derive a P_2 for a correction that is distinct from the
-   * original document's P_2 (`orderId`) and from any earlier correction of the
-   * same order. Keyed off `idempotencyKey` when the caller supplied one (stable
-   * across retries of the SAME correction attempt — a retry must reuse the same
-   * P_2, not mint a new one), else falls back to the issue timestamp. Not the
-   * real per-seller sequential FA(3) numbering source #1364 ultimately wants —
-   * just enough to stop the live "Duplikat faktury" collision until that lands.
+   * Resolve the FA(3) `P_2` from the core-allocated `cmd.documentNumber` (#1575).
+   * KSeF is a `DocumentNumberConsumer`, so the core `InvoiceService` always
+   * allocates and supplies it; a missing value is a wiring invariant violation,
+   * thrown terminally before any session/XML work so the service records a
+   * failure rather than the adapter emitting a document with no legal number.
    */
-  private buildCorrectionDocumentNumber(
-    orderId: string,
-    idempotencyKey: string | undefined,
-    issuedAt: Date,
-  ): string {
-    const suffix = idempotencyKey ? idempotencyKey.slice(0, 16) : issuedAt.getTime().toString(36);
-    return `${orderId}-KOR-${suffix}`;
+  private resolveDocumentNumber(cmd: IssueInvoiceCommand): string {
+    const documentNumber = cmd.documentNumber?.trim();
+    if (!documentNumber) {
+      throw new KsefMissingDocumentNumberException(cmd.orderId);
+    }
+    return documentNumber;
   }
 
   /** Wrap the built FA(3) XML as a neutral, jsonb-persistable {@link StoredDocument}. */
@@ -353,12 +351,14 @@ export class KsefInvoicingAdapter
       );
     }
     const correctedLines = this.applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines);
-    // #1364: `issueInvoice` below stamps a distinct P_2 whenever `correction` is
-    // present (see `buildCorrectionDocumentNumber`), so delegating with the same
-    // `orderId` here no longer collides with the original document's P_2.
+    // #1575: the correction's own P_2 is the number the core `InvoiceService`
+    // allocated from the connection's CORRECTION series and passed as
+    // `cmd.documentNumber`. Threaded onto the delegated `issueInvoice` so the KOR
+    // carries a distinct, series-owned number — no per-correction suffix hack.
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
+      documentNumber: cmd.documentNumber,
       buyer: cmd.originalDocument.buyer,
       currency: cmd.originalDocument.currency,
       // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per

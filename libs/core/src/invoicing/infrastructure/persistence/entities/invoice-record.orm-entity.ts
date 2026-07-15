@@ -52,6 +52,19 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
   where:
     '"status" = \'issued\' AND "regulatoryStatus" NOT IN (\'accepted\', \'rejected\', \'not-applicable\')',
 })
+// Last-line-of-defense numbering guards (#1575): a rendered document number is
+// unique within its series AND within its connection. Partial so the (common)
+// null-number rows a non-`DocumentNumberConsumer` provider produces never
+// collide. Catches a nextSeq rollback / pattern edit re-rendering an issued
+// number in OpenLinker instead of at the provider.
+@Index('UQ_invoice_records_series_document_number', ['numberingSeriesId', 'documentNumber'], {
+  unique: true,
+  where: '"documentNumber" IS NOT NULL',
+})
+@Index('UQ_invoice_records_connection_document_number', ['connectionId', 'documentNumber'], {
+  unique: true,
+  where: '"documentNumber" IS NOT NULL',
+})
 export class InvoiceRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -165,6 +178,23 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   issuedLineSnapshot!: IssuedLineSnapshot | null;
+
+  /**
+   * The numbering series this document's `documentNumber` was allocated from
+   * (#1575) — `null` for a provider that numbers documents itself (not a
+   * `DocumentNumberConsumer`). No FK: a detached series never orphans records.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  numberingSeriesId!: string | null;
+
+  /**
+   * The OpenLinker-allocated legal document number (#1575). `null` for a
+   * non-`DocumentNumberConsumer` provider (the provider's own number lives on
+   * `providerInvoiceNumber` instead). Persisted atomically with the series
+   * advance; immutable once assigned.
+   */
+  @Column({ type: 'text', nullable: true })
+  documentNumber!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
