@@ -11,6 +11,7 @@ import { KsefHttpClient, type KsefTokenLifecycle } from '../ksef-http-client';
 import type { KsefAuthenticationToken } from '../ksef-http-client.types';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
 
 function token(expiresInMs = 3_600_000, accessToken = 'access-token'): KsefAuthenticationToken {
@@ -201,13 +202,18 @@ describe('KsefHttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('should fail fast on a 403 as a non-retryable KsefApiException without refreshing', async () => {
+    it('should fail fast on a 403 as a non-retryable KsefPermissionDeniedException without refreshing', async () => {
       // 403 is an authorization decision, not an expired token — refreshing
-      // can never change the outcome, so the client must not refresh+retry.
+      // can never change the outcome, so the client must not refresh+retry. It is
+      // surfaced DISTINCTLY as a permission-denied (least-privilege) signal while
+      // remaining a KsefApiException subclass (retry classification unchanged).
       fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
       const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
 
-      await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
+      const error = await client.get('/sessions/online').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(KsefPermissionDeniedException);
+      expect(error).toBeInstanceOf(KsefApiException);
+      expect((error as KsefPermissionDeniedException).statusCode).toBe(403);
       expect(lifecycle.refresh).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
