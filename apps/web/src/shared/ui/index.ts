@@ -82,3 +82,7 @@ export type { CheckboxCellProps } from './checkbox-cell';
 // ── Disclosure (#1303) ───────────────────────────────────────────────
 export { InlineDisclosure } from './inline-disclosure';
 export type { InlineDisclosureProps } from './inline-disclosure';
+
+// ── QR verification code (#1579) ────────────────────────────
+export { QrCode } from './qr-code';
+export type { QrCodeErrorCorrectionLevel } from './qr-code';

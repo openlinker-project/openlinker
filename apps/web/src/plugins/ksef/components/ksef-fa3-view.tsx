@@ -45,7 +45,7 @@ import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 import type { KsefFormaPlatnosci } from './ksef-setup.schema';
 import type { FaData, FaLine, FaParty, FaPayment, FaVatBand } from './ksef-fa3-view.types';
 import { buildKsefVerificationUrl } from '../lib/ksef-verification';
-import { QrCode } from '../../../shared/ui/qr-code';
+import { QrCode } from '../../../shared/ui';
 
 interface KsefFa3ViewProps {
   xmlText: string;

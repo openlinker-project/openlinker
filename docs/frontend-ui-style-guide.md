@@ -597,6 +597,7 @@ Adopted (FE-002):
 | `@radix-ui/react-popover` | portal + positioning | `Popover` |
 | `@radix-ui/react-toast` | queue + focus management | `Toast` |
 | `@radix-ui/react-tabs` | roving tabindex | `Tabs` |
+| `qrcode-generator` | QR module-matrix computation (KOD I invoice verification, #1579) | `QrCode` |
 
 **Adding a library requires:** (1) a written rationale in the PR description explaining why the behavior can't be built from native HTML, (2) a wrapping primitive under `shared/ui/` with its own CSS, (3) an update to this section.
 
