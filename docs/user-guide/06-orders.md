@@ -9,7 +9,7 @@ OpenLinker ingests orders from every connected marketplace and shop automaticall
 Orders are ingested in two ways:
 
 - **Webhooks (primary path)** — when a buyer places an order on Allegro, Allegro sends a webhook to OpenLinker in near-real-time. OpenLinker validates the signature, deduplicates the event, and enqueues a `marketplace.order.sync` job.
-- **Polling (reconciliation fallback)** — every 10 minutes OpenLinker polls each connected source for orders changed since the last run (using a cursor — see [Diagnostics](./06-diagnostics.md)). This heals any orders that were dropped or missed by the webhook path.
+- **Polling (reconciliation fallback)** — every 10 minutes OpenLinker polls each connected source for orders changed since the last run (using a cursor — see [Diagnostics](./07-diagnostics.md)). This heals any orders that were dropped or missed by the webhook path.
 
 Both paths converge on the same idempotent ingestion logic — an order arriving twice is processed once.
 
@@ -20,7 +20,7 @@ Both paths converge on the same idempotent ingestion logic — an order arriving
 Open **Orders** in the sidebar (under **Operations**).
 
 <!-- screenshot: orders list showing summary cards at the top and order rows with status chips, channel, and amount columns -->
-![Orders list](./images/05-orders-list.png)
+![Orders list](./images/06-orders-list.png)
 
 ### Summary cards
 
@@ -72,7 +72,7 @@ Filter the list by **source connection** (dropdown) and by a **date range** (FRO
 Click any order row to open the order detail page.
 
 <!-- screenshot: order detail page showing the order header, summary fields, pricing section, activity log, and shipment panel -->
-![Order detail](./images/05-order-detail.png)
+![Order detail](./images/06-order-detail.png)
 
 ### Header
 
@@ -102,7 +102,7 @@ Shows the destination sync state. "No sync destinations configured. Idempotent c
 
 ### Shipment panel
 
-![Order detail — Shipment panel with Generate label form](./images/05-order-detail-shipment.png)
+![Order detail — Shipment panel with Generate label form](./images/06-order-detail-shipment.png)
 
 The shipment panel is on the right side of the order detail. Before dispatch it shows a **Generate label** button. Clicking it expands the label-generation form:
 
@@ -119,6 +119,16 @@ Once a shipment label is generated and the order is dispatched, the panel shows:
 
 Shipment data is pushed to the destination shop automatically. For InPost, tracking status updates arrive via webhook (if configured) or are polled on a schedule.
 
+### Invoice panel
+
+![Order detail — Sync status, Shipment, and Invoice panels](./images/05-order-invoices-detail2.png)
+
+Below the shipment panel, an **Invoice** panel shows the fiscal document status for this order (not-issued, pending, issued, failed, in-doubt) and, once issued, its regulatory clearance status. For a provider that supports corrections (e.g. KSeF), an **Issue correction** button opens a per-line correction dialog:
+
+![Issue correction dialog — KOR correction with per-line quantity/price deltas](./images/06-order-issue-correction.png)
+
+See **[Invoices](./04-invoices.md#order-level-invoice-panel)** for the full walkthrough of every invoice panel state and the correction flow.
+
 ---
 
 ## Troubleshooting a missing order
@@ -127,7 +137,7 @@ If an order you expect to see hasn't appeared:
 
 1. **Check Jobs & Logs** — search for `marketplace.order.sync` jobs around the time the order was placed. A `dead` status means the job exhausted its retries; click the job for the error detail.
 2. **Check the Webhooks log** — if the order arrived via webhook, it will appear in the **Webhooks** delivery log. A missing entry means the webhook was never delivered to OpenLinker (check the Allegro developer console for delivery failures).
-3. **Check Cursors** — if the poll cursor is stuck, orders after a certain timestamp won't be re-fetched. See [Diagnostics → Cursors](./06-diagnostics.md#cursors) for how to inspect and reset.
+3. **Check Cursors** — if the poll cursor is stuck, orders after a certain timestamp won't be re-fetched. See [Diagnostics → Cursors](./07-diagnostics.md#cursors) for how to inspect and reset.
 
 ---
 
@@ -136,7 +146,7 @@ If an order you expect to see hasn't appeared:
 Open **Customers** in the sidebar (under **Operations**).
 
 <!-- screenshot: customers list showing empty state with Browse orders CTA -->
-![Customers](./images/05-customers.png)
+![Customers](./images/06-customers.png)
 
 The Customers page shows **customer identity projections** — OpenLinker's internal view of every buyer whose order has been processed. A projection is created automatically the first time an order arrives for a buyer; it is not editable here.
 
@@ -163,4 +173,4 @@ If no orders have been processed yet, the page shows "No customer projections ha
 
 When something isn't working as expected, the Diagnostics surfaces help you investigate:
 
-→ **[Diagnostics](./06-diagnostics.md)** — Jobs & Logs, Webhooks, Cursors
+→ **[Diagnostics](./07-diagnostics.md)** — Jobs & Logs, Webhooks, Cursors
