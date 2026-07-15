@@ -133,6 +133,7 @@ export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-buil
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
 export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
+export type { IDeliveryPriceListService } from './application/interfaces/delivery-price-list.service.interface';
 export type {
   SellerPoliciesCacheRepositoryPort,
   CachedSellerPolicies,
@@ -173,6 +174,7 @@ export type {
 } from './domain/types/offer-create.types';
 export type { OfferParameter } from './domain/types/offer-parameter.types';
 export type { SellerPolicy, SellerPolicies } from './domain/types/seller-policies.types';
+export type { DeliveryPriceList } from './domain/types/delivery-price-list.types';
 export { OfferCreateRejectedException } from './domain/exceptions/offer-create-rejected.exception';
 
 // OfferManagerPort sub-capabilities (#337): optional capabilities extracted into
@@ -275,6 +277,8 @@ export type {
 } from './domain/types/marketplace-offer.types';
 export type { SellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
 export { isSellerPoliciesReader } from './domain/ports/capabilities/seller-policies-reader.capability';
+export type { DeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
+export { isDeliveryPriceListReader } from './domain/ports/capabilities/delivery-price-list-reader.capability';
 export type {
   SafetyAttachmentUploader,
   SafetyAttachmentUploadInput,

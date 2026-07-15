@@ -32,12 +32,14 @@ import {
   OfferCreationRecord,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
+  DELIVERY_PRICE_LIST_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
   IResponsibleProducerService,
+  IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
@@ -58,6 +60,7 @@ describe('ListingsController', () => {
   let offerCreationEnqueue: jest.Mocked<IOfferCreationEnqueueService>;
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
   let responsibleProducers: jest.Mocked<IResponsibleProducerService>;
+  let deliveryPriceLists: jest.Mocked<IDeliveryPriceListService>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
@@ -108,6 +111,10 @@ describe('ListingsController', () => {
     offerCreationEnqueue = {
       enqueueCreation: jest.fn(),
     };
+    deliveryPriceLists = {
+      listDeliveryPriceLists: jest.fn(),
+    };
+
     sellerPolicies = {
       getSellerPolicies: jest.fn(),
     };
@@ -141,6 +148,7 @@ describe('ListingsController', () => {
         { provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, useValue: offerCreationEnqueue },
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
         { provide: RESPONSIBLE_PRODUCER_SERVICE_TOKEN, useValue: responsibleProducers },
+        { provide: DELIVERY_PRICE_LIST_SERVICE_TOKEN, useValue: deliveryPriceLists },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -584,6 +592,25 @@ describe('ListingsController', () => {
         ],
       });
       expect(responsibleProducers.listResponsibleProducers).toHaveBeenCalledWith('conn-1');
+    });
+  });
+
+  describe('getDeliveryPriceLists', () => {
+    it('delegates to the delivery-price-list service and wraps the result', async () => {
+      deliveryPriceLists.listDeliveryPriceLists.mockResolvedValue([
+        { id: '1', name: '*' },
+        { id: '2', name: 'Kurier' },
+      ]);
+
+      const result = await controller.getDeliveryPriceLists('conn-1');
+
+      expect(result).toEqual({
+        deliveryPriceLists: [
+          { id: '1', name: '*' },
+          { id: '2', name: 'Kurier' },
+        ],
+      });
+      expect(deliveryPriceLists.listDeliveryPriceLists).toHaveBeenCalledWith('conn-1');
     });
   });
 

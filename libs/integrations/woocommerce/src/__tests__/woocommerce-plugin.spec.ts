@@ -24,6 +24,7 @@ interface HostStub {
   credentialsRegistry: { register: jest.Mock };
   authFailureRegistry: { register: jest.Mock };
   schedulerRegistry: { register: jest.Mock };
+  translatorRegistry: { register: jest.Mock };
 }
 
 function makeHostStub(): HostStub {
@@ -32,6 +33,7 @@ function makeHostStub(): HostStub {
   const credentialsRegistry = { register: jest.fn() };
   const authFailureRegistry = { register: jest.fn() };
   const schedulerRegistry = { register: jest.fn() };
+  const translatorRegistry = { register: jest.fn() };
 
   const host = {
     connectionTesterRegistry: testerRegistry,
@@ -42,6 +44,7 @@ function makeHostStub(): HostStub {
     authFailureClassifierRegistry: authFailureRegistry,
     schedulerTaskRegistry: schedulerRegistry,
     webhookProvisioningRegistry: { register: jest.fn() },
+    webhookEventTranslatorRegistry: translatorRegistry,
     oauthCompletionRegistry: { register: jest.fn() },
     adapterRegistry: { register: jest.fn() },
     factoryResolver: { registerFactory: jest.fn() },
@@ -55,7 +58,15 @@ function makeHostStub(): HostStub {
     } as unknown as HostServices['credentialsResolver'],
   } as unknown as HostServices;
 
-  return { host, testerRegistry, configRegistry, credentialsRegistry, authFailureRegistry, schedulerRegistry };
+  return {
+    host,
+    testerRegistry,
+    configRegistry,
+    credentialsRegistry,
+    authFailureRegistry,
+    schedulerRegistry,
+    translatorRegistry,
+  };
 }
 
 const mockConnection: Connection = {
@@ -204,16 +215,25 @@ describe('createWooCommercePlugin → register(host) — #876 additions', () => 
   });
 });
 
+describe('createWooCommercePlugin → register(host) — #1548 inbound webhooks', () => {
+  it('should register the webhook event translator at the plugin adapterKey', () => {
+    const { host, translatorRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(translatorRegistry.register).toHaveBeenCalledWith(
+      'woocommerce.restapi.v3',
+      expect.objectContaining({ translate: expect.any(Function) }),
+    );
+  });
+});
+
 describe('WooCommerceIntegrationModule', () => {
-  // The module is a top-level `DynamicModule` const built by
-  // `createNestAdapterModule({ plugin: createWooCommercePlugin() })`, so merely
-  // importing this spec already exercises the composition — a regression there
-  // throws at module load. These assertions lock the composed shape so the
-  // breakage surfaces at unit speed (#1023; no host bootstrap required).
-  it('composes a DynamicModule (host module class + framework imports)', () => {
-    expect(WooCommerceIntegrationModule.module).toBeDefined();
-    expect(typeof WooCommerceIntegrationModule.module).toBe('function');
-    expect(Array.isArray(WooCommerceIntegrationModule.imports)).toBe(true);
-    expect(WooCommerceIntegrationModule.imports!.length).toBeGreaterThan(0);
+  // Since #1552 the module is a bespoke `@Module` class (Shape A) — it provides
+  // the customer + address provisioners and builds the descriptor with those
+  // plugin-specific deps in `onModuleInit`, mirroring PrestaShop. Importing this
+  // spec exercises the decorator metadata; a class-shape regression surfaces at
+  // unit speed (no host bootstrap required).
+  it('is a NestJS module class implementing onModuleInit', () => {
+    expect(typeof WooCommerceIntegrationModule).toBe('function');
+    expect(typeof WooCommerceIntegrationModule.prototype.onModuleInit).toBe('function');
   });
 });

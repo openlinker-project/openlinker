@@ -15,6 +15,7 @@
 import { useEffect, useMemo, type ReactElement } from 'react';
 
 import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
+import { ErliDeliveryPriceListField } from './erli-delivery-price-list-field';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import { ErliProducerField } from './erli-producer-field';
 import {
@@ -39,6 +40,8 @@ export function ErliBulkConfigSection({
   // Batch-default producer (#1531). Applies to every row unless a row overrides
   // it in the per-row edit modal; empty string = no batch default chosen.
   const producer = typeof platformParams.producer === 'string' ? platformParams.producer : '';
+  const deliveryPriceList =
+    typeof platformParams.deliveryPriceList === 'string' ? platformParams.deliveryPriceList : '';
 
   // Seed the form with the connection default + fix currency to PLN. Keyed on
   // the connection so switching marketplaces re-seeds; `form`/`connectionDefault`
@@ -76,6 +79,17 @@ export function ErliBulkConfigSection({
           form.setValue(
             'platformParams',
             { ...form.getValues('platformParams'), producer: next },
+            { shouldDirty: true },
+          );
+        }}
+      />
+      <ErliDeliveryPriceListField
+        connectionId={connection.id}
+        value={deliveryPriceList}
+        onChange={(next) => {
+          form.setValue(
+            'platformParams',
+            { ...form.getValues('platformParams'), deliveryPriceList: next },
             { shouldDirty: true },
           );
         }}

@@ -13,11 +13,18 @@ import {
   isValidEmail,
 } from '../woocommerce-order-processor.adapter';
 import { toPositiveInt } from '../../../utils/woocommerce-utils';
-import { WC_ORDER_STATUS_MAP } from '../woocommerce-order.types';
+import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from '../woocommerce-order.types';
+import { isOrderStatusWriteback, isDestinationOptionsReader } from '@openlinker/core/orders';
+import { WC_ORDER_STATUS_LABELS } from '../woocommerce-options.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
 import type { OrderCreate, OrderItem, OrderStatus } from '@openlinker/core/orders';
+import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import { DestinationAddressMapping } from '@openlinker/core/customers';
+import type { SyncLockPort } from '@openlinker/core/sync';
+import { WooCommerceCustomerProvisioner } from '../../../provisioners/woocommerce-customer-provisioner';
+import { WooCommerceAddressProvisioner } from '../../../provisioners/woocommerce-address-provisioner';
 import { WooCommerceResourceNotFoundException } from '../../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { WooCommerceOrderProcessingException } from '../../../../domain/exceptions/woocommerce-order-processing.exception';
@@ -29,6 +36,16 @@ import { WooCommerceUnauthorizedException } from '../../../../domain/exceptions/
 // ─── Test fixtures ─────────────────────────────────────────────────────────
 
 const CONNECTION_ID = 'conn-wc-001';
+
+// Address reuse tracking hashes the address (getPiiConfig requires a salt).
+const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
+beforeAll(() => {
+  process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
+});
+afterAll(() => {
+  if (originalPiiHashSalt === undefined) delete process.env.OL_PII_HASH_SALT;
+  else process.env.OL_PII_HASH_SALT = originalPiiHashSalt;
+});
 
 const mockConnection: Connection = {
   id: CONNECTION_ID,
@@ -65,11 +82,62 @@ function makeIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
   };
 }
 
+/** In-memory SyncLockPort — single-holder-per-key, enough for the adapter tests. */
+function makeSyncLock(): SyncLockPort {
+  const locks = new Map<string, string>();
+  return {
+    acquire: jest.fn((key: string) => {
+      if (locks.has(key)) return Promise.resolve(null);
+      const token = `tok-${Math.random().toString(36).slice(2)}`;
+      locks.set(key, token);
+      return Promise.resolve(token);
+    }),
+    release: jest.fn((key: string, token: string) => {
+      if (locks.get(key) === token) {
+        locks.delete(key);
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+  };
+}
+
+/**
+ * Stub customer-projection repository. `findDestinationAddressMapping` returns a
+ * reuse HIT by default so the address provisioner short-circuits and adds no HTTP
+ * calls — these createOrder tests focus on customer + order-payload behaviour,
+ * not address reuse (that has its own dedicated provisioner spec).
+ */
+function makeProjectionRepo(): jest.Mocked<CustomerProjectionRepositoryPort> {
+  return {
+    findById: jest.fn(),
+    findByEmailHash: jest.fn(),
+    findMany: jest.fn(),
+    upsert: jest.fn(),
+    findAddressesByCustomerId: jest.fn(),
+    upsertAddress: jest.fn(),
+    findDestinationAddressMapping: jest.fn(() =>
+      Promise.resolve(
+        new DestinationAddressMapping('ol-cust-1', CONNECTION_ID, 'hash', 'billing', '7', new Date(), new Date()),
+      ),
+    ),
+    upsertDestinationAddressMapping: jest.fn((m) => Promise.resolve(m)),
+  } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
+}
+
 function makeAdapter(
   httpClient: jest.Mocked<IWooCommerceHttpClient>,
   identifierMapping: jest.Mocked<IdentifierMappingPort>,
 ): WooCommerceOrderProcessorAdapter {
-  return new WooCommerceOrderProcessorAdapter(httpClient, identifierMapping, mockConnection);
+  const syncLock = makeSyncLock();
+  return new WooCommerceOrderProcessorAdapter(
+    httpClient,
+    identifierMapping,
+    mockConnection,
+    new WooCommerceCustomerProvisioner(syncLock),
+    new WooCommerceAddressProvisioner(syncLock),
+    makeProjectionRepo(),
+  );
 }
 
 function makeOrder(overrides: Partial<OrderCreate> = {}): OrderCreate {
@@ -134,6 +202,26 @@ describe('WC_ORDER_STATUS_MAP', () => {
 
   it('should map shipped and delivered both to completed', () => {
     expect(WC_ORDER_STATUS_MAP.shipped).toBe(WC_ORDER_STATUS_MAP.delivered);
+  });
+});
+
+describe('WC_ORDER_STATUS_VALUES', () => {
+  it('should expose the WooCommerce core status vocabulary', () => {
+    expect(WC_ORDER_STATUS_VALUES).toEqual([
+      'pending',
+      'processing',
+      'on-hold',
+      'completed',
+      'cancelled',
+      'refunded',
+      'failed',
+    ]);
+  });
+
+  it('should contain every value produced by the neutral → WC map', () => {
+    for (const wcStatus of Object.values(WC_ORDER_STATUS_MAP)) {
+      expect(WC_ORDER_STATUS_VALUES).toContain(wcStatus);
+    }
   });
 });
 
@@ -806,5 +894,221 @@ describe('WooCommerceOrderProcessorAdapter — updateFulfillment', () => {
     ).resolves.toBeUndefined();
     const [, payload] = httpClient.put.mock.calls[0];
     expect(payload).not.toHaveProperty('tracking_number');
+  });
+});
+
+// ─── OrderStatusWriteback (write) ────────────────────────────────────────────
+
+describe('WooCommerceOrderProcessorAdapter — OrderStatusWriteback', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should be detected by the isOrderStatusWriteback guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isOrderStatusWriteback(adapter)).toBe(true);
+  });
+
+  // ── dispatched ──
+
+  it('should PUT status completed for a dispatched event', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.put.mockResolvedValue({ id: 55, status: 'completed' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'dispatched', externalOrderId: '55' });
+
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { status: 'completed' });
+    expect(result).toEqual({ outcome: 'applied' });
+  });
+
+  it('should accept a trackingNumber on a dispatched event without failing', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.put.mockResolvedValue({ id: 55, status: 'completed' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({
+      type: 'dispatched',
+      externalOrderId: '55',
+      trackingNumber: 'TRACK123',
+    });
+
+    expect(result).toEqual({ outcome: 'applied' });
+    const [, payload] = httpClient.put.mock.calls[0];
+    expect(payload).not.toHaveProperty('tracking_number');
+  });
+
+  // ── cancelled ──
+
+  it('should read the order then PUT status cancelled for a cancelled event', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.put.mockResolvedValue({ id: 55, status: 'cancelled' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55');
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', { status: 'cancelled' });
+    expect(result).toEqual({ outcome: 'applied' });
+  });
+
+  it.each(['completed', 'refunded'])(
+    'should reject a cancel writeback when WC is already %s (no PUT)',
+    async (currentStatus) => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue({ id: 55, status: currentStatus });
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain(currentStatus);
+      expect(httpClient.put).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should treat a cancel writeback as an idempotent no-op when already cancelled (no PUT)', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'cancelled' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(result).toEqual({ outcome: 'applied' });
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  // ── failure / validation ──
+
+  it.each(['1/refunds', 'abc', '', '-1'])(
+    'should reject (not throw) a non-numeric externalOrderId "%s"',
+    async (id) => {
+      const httpClient = makeHttpClient();
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: id });
+
+      expect(result.outcome).toBe('rejected');
+      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.put).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should return rejected (never throw) when the WC PUT fails', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.get.mockResolvedValue({ id: 55, status: 'processing' });
+    httpClient.put.mockRejectedValue(new WooCommerceHttpResponseException(500, 'server error'));
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'cancelled', externalOrderId: '55' });
+
+    expect(result.outcome).toBe('rejected');
+    expect(result.detail).toBeDefined();
+  });
+});
+
+// ─── DestinationOptionsReader (#472 / #1551) ────────────────────────────────
+
+describe('WooCommerceOrderProcessorAdapter — DestinationOptionsReader', () => {
+  it('should satisfy the isDestinationOptionsReader guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isDestinationOptionsReader(adapter)).toBe(true);
+  });
+
+  describe('listOrderStatuses', () => {
+    it('should return the full WC status vocabulary as neutral options with labels', async () => {
+      const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+
+      const options = await adapter.listOrderStatuses();
+
+      expect(options.length).toBeGreaterThan(0);
+      expect(options).toContainEqual({ value: 'processing', label: 'Processing' });
+      expect(options).toContainEqual({ value: 'on-hold', label: 'On hold' });
+      // every option carries a non-empty label sourced from the shared label map
+      for (const option of options) {
+        expect(option.label).toBe(
+          WC_ORDER_STATUS_LABELS[option.value as keyof typeof WC_ORDER_STATUS_LABELS],
+        );
+        expect(option.label.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should not hit the network (static vocabulary)', async () => {
+      const httpClient = makeHttpClient();
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      await adapter.listOrderStatuses();
+
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listPaymentMethods', () => {
+    it('should map GET /payment_gateways rows to neutral options', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([
+        { id: 'bacs', title: 'Direct bank transfer', enabled: true },
+        { id: 'cod', title: 'Cash on delivery', enabled: false },
+      ]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listPaymentMethods();
+
+      expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/payment_gateways');
+      expect(options).toEqual([
+        { value: 'bacs', label: 'Direct bank transfer' },
+        { value: 'cod', label: 'Cash on delivery' },
+      ]);
+    });
+
+    it('should fall back to the gateway id when title is missing', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 'paypal' }]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listPaymentMethods();
+
+      expect(options).toEqual([{ value: 'paypal', label: 'paypal' }]);
+    });
+  });
+
+  describe('listCarriers', () => {
+    it('should map GET /shipping_methods rows to neutral options', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([
+        { id: 'flat_rate', title: 'Flat rate' },
+        { id: 'free_shipping', title: 'Free shipping' },
+        { id: 'local_pickup', title: 'Local pickup' },
+      ]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(httpClient.get).toHaveBeenCalledWith('/wp-json/wc/v3/shipping_methods');
+      expect(options).toEqual([
+        { value: 'flat_rate', label: 'Flat rate' },
+        { value: 'free_shipping', label: 'Free shipping' },
+        { value: 'local_pickup', label: 'Local pickup' },
+      ]);
+    });
+
+    it('should fall back to the method id when title is missing', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 'flat_rate' }]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(options).toEqual([{ value: 'flat_rate', label: 'flat_rate' }]);
+    });
+
+    it('should return an empty list when the store registers no shipping methods', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+      const options = await adapter.listCarriers();
+
+      expect(options).toEqual([]);
+    });
   });
 });

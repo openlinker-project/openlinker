@@ -1288,6 +1288,77 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('listDeliveryPriceLists (#1530 — DeliveryPriceListReader)', () => {
+    it('maps GET /delivery/priceLists items ({id,name}) to neutral DeliveryPriceList[]', async () => {
+      httpClient.get.mockResolvedValue({
+        status: 200,
+        data: [
+          { id: 1, name: '*' },
+          { id: 42, name: 'Kurier' },
+        ],
+      });
+
+      const result = await adapter.listDeliveryPriceLists();
+
+      expect(httpClient.get).toHaveBeenCalledWith('delivery/priceLists');
+      expect(result).toEqual([
+        { id: '1', name: '*' },
+        { id: '42', name: 'Kurier' },
+      ]);
+    });
+
+    it('drops items without a usable name and tolerates an empty/bodyless response', async () => {
+      httpClient.get.mockResolvedValue({ status: 200, data: undefined });
+
+      await expect(adapter.listDeliveryPriceLists()).resolves.toEqual([]);
+    });
+
+    it('caches the mapped result per connection when a cache is wired', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+      httpClient.get.mockResolvedValue({ status: 200, data: [{ id: 7, name: 'Standard' }] });
+
+      const result = await cached.listDeliveryPriceLists();
+
+      expect(result).toEqual([{ id: '7', name: 'Standard' }]);
+      expect(cache.set).toHaveBeenCalledWith(
+        'erli:delivery-price-lists:conn-1',
+        [{ id: '7', name: 'Standard' }],
+        expect.any(Number),
+      );
+    });
+
+    it('returns the cached value without hitting the API on a cache hit', async () => {
+      const cache: jest.Mocked<CachePort> = {
+        get: jest.fn().mockResolvedValue([{ id: '9', name: 'Cached' }]),
+        set: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+      const cached = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        { period: 2, unit: 'day' },
+        cache,
+      );
+
+      const result = await cached.listDeliveryPriceLists();
+
+      expect(result).toEqual([{ id: '9', name: 'Cached' }]);
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
   describe('create body — responsible producer (#1531)', () => {
     it('stamps the operator-selected producer id onto the create body', async () => {
       await adapter.createOffer(createCmd({ overrides: { platformParams: { producer: '42' } } }));
@@ -1317,6 +1388,33 @@ describe('ErliOfferManagerAdapter', () => {
 
       const body = httpClient.post.mock.calls[0][1] as { producerId?: number };
       expect(body.producerId).toBeUndefined();
+    });
+  });
+
+  describe('create body — delivery price list (#1530)', () => {
+    it('stamps the operator-selected deliveryPriceList onto the create body', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { deliveryPriceList: 'Kurier' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBe('Kurier');
+    });
+
+    it('omits deliveryPriceList when no selection is supplied', async () => {
+      await adapter.createOffer(createCmd());
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBeUndefined();
+    });
+
+    it('ignores a blank deliveryPriceList selection', async () => {
+      await adapter.createOffer(
+        createCmd({ overrides: { platformParams: { deliveryPriceList: '   ' } } }),
+      );
+
+      const body = httpClient.post.mock.calls[0][1] as { deliveryPriceList?: string };
+      expect(body.deliveryPriceList).toBeUndefined();
     });
   });
 });

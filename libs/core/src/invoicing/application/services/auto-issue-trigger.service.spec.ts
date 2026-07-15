@@ -243,6 +243,57 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
+  describe('shipping-line label wiring (#1562)', () => {
+    // Order with a gross shipping cost so the mapper appends a shipping line.
+    const paidShippingOrder = (): Order =>
+      makeOrder({
+        paymentStatus: 'paid',
+        items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget' }],
+        totals: {
+          subtotal: 100,
+          tax: 0,
+          shipping: 10,
+          total: 110,
+          currency: 'PLN',
+          taxTreatment: 'inclusive',
+        },
+      });
+
+    const shippingLineName = (): string => {
+      const lines = (
+        syncJobs.schedule.mock.calls[0][0].payload as { lines: Array<{ name: string }> }
+      ).lines;
+      return lines[lines.length - 1].name;
+    };
+
+    it("threads config.invoicing.shippingLineName into the payload's shipping line", async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', {
+          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: 'Koszt wysyłki' } },
+        }),
+      ]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(shippingLineName()).toBe('Koszt wysyłki');
+    });
+
+    it('falls back to the neutral default label when no shippingLineName is configured', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(shippingLineName()).toBe('Shipping');
+    });
+
+    it('ignores a blank shippingLineName and uses the neutral default', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', {
+          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: '   ' } },
+        }),
+      ]);
+      await service.onOrderTransition(paidShippingOrder(), 'src-1');
+      expect(shippingLineName()).toBe('Shipping');
+    });
+  });
+
   describe('per-connection isolation + PII-safe catch (F9/D11)', () => {
     it('a connection whose composition throws InvalidBuyerProfileError is skipped; others still enqueue', async () => {
       connectionPort.list.mockResolvedValue([

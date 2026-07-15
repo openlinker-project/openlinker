@@ -20,6 +20,7 @@ import {
   type ShipmentCanceller,
   type PickupPointFinder,
   type LabelDocumentReader,
+  type DispatchProtocolReader,
   type GenerateLabelCommand,
   type GenerateLabelResult,
   type LabelDocument,
@@ -34,6 +35,7 @@ import type { IInpostHttpClient } from '../http/inpost-http-client.interface';
 import {
   buildCreateShipmentRequest,
   buildPointsQuery,
+  buildProtocolQuery,
   mapShipXStatus,
   toGenerateLabelResult,
   toPickupPoint,
@@ -43,7 +45,12 @@ import {
 const SUPPORTED_METHODS: readonly ShippingMethod[] = ['paczkomat', 'kurier'];
 
 export class InpostShippingAdapter
-  implements ShippingProviderManagerPort, ShipmentCanceller, PickupPointFinder, LabelDocumentReader
+  implements
+    ShippingProviderManagerPort,
+    ShipmentCanceller,
+    PickupPointFinder,
+    LabelDocumentReader,
+    DispatchProtocolReader
 {
   private readonly logger = new Logger(InpostShippingAdapter.name);
 
@@ -133,6 +140,22 @@ export class InpostShippingAdapter
       method: 'GET',
       path: `/v1/shipments/${input.providerShipmentId}/label`,
       query: { format: 'pdf' },
+    });
+    return { contentType: contentType || 'application/pdf', body };
+  }
+
+  async generateProtocol(input: { providerShipmentIds: string[] }): Promise<LabelDocument> {
+    // The handover protocol ("protokół odbioru") is a per-batch manifest ShipX
+    // renders from `dispatch_orders/printouts` over already-confirmed shipments,
+    // with or without a courier pickup order. Idempotent read (no carrier side
+    // effect) → shares the client's retry machinery via `requestBinary`. ShipX
+    // returns a single PDF when all shipments share one service and a ZIP when
+    // they span several; the reported content type is forwarded either way and
+    // defaults to PDF only when the header is absent (matches `fetchLabel`).
+    const { body, contentType } = await this.http.requestBinary({
+      method: 'GET',
+      path: `/v1/organizations/${this.config.organizationId}/dispatch_orders/printouts`,
+      query: buildProtocolQuery(input.providerShipmentIds),
     });
     return { contentType: contentType || 'application/pdf', body };
   }

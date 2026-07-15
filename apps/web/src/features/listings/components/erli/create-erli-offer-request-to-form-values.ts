@@ -57,6 +57,10 @@ export function createErliOfferRequestToFormValues(
       : typeof producerRaw === 'number'
         ? String(producerRaw)
         : '';
+  // Delivery price list (#1530) rides `overrides.platformParams.deliveryPriceList`.
+  const deliveryPriceListRaw = overrides?.platformParams?.deliveryPriceList;
+  const deliveryPriceList =
+    typeof deliveryPriceListRaw === 'string' ? deliveryPriceListRaw : '';
 
   return {
     internalVariantId: request.internalVariantId,
@@ -69,6 +73,7 @@ export function createErliOfferRequestToFormValues(
     stock: request.stock,
     description: overrides?.description ?? '',
     producer,
+    deliveryPriceList,
     publishImmediately: request.publishImmediately,
     dispatchPeriod: dispatch.period,
     dispatchUnit: dispatch.unit,

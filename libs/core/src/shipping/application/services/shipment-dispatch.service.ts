@@ -318,6 +318,10 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         deliveryMethodId: this.resolveProviderDeliveryMethodId(input),
         recipient: input.recipient,
         parcel: input.parcel,
+        // Declared-value / insurance (#1542) — caller-supplied pass-through,
+        // not order-sourced (unlike COD below). Insurance-incapable adapters
+        // ignore it; insurance-capable ones (InPost ShipX) translate it.
+        insuredValue: input.insuredValue,
         // Payment-status-authorized COD (#1435): stripped for non-COD orders,
         // sourced from the order when available, caller amount only as fallback.
         // COD-incapable adapters ignore it; COD-capable ones translate it.

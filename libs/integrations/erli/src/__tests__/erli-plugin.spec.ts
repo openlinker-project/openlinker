@@ -119,6 +119,10 @@ describe('erliAdapterManifest', () => {
     expect(erliAdapterManifest.supportedCapabilities).toContain('ResponsibleProducerReader');
   });
 
+  it('should advertise the DeliveryPriceListReader sub-capability so the FE gates the delivery-price-list picker (#1530)', () => {
+    expect(erliAdapterManifest.supportedCapabilities).toContain('DeliveryPriceListReader');
+  });
+
   it('should be the platform-default adapter', () => {
     expect(erliAdapterManifest.isDefault).toBe(true);
   });

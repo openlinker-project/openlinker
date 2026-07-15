@@ -42,10 +42,12 @@ import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
   RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
+  DELIVERY_PRICE_LIST_SERVICE_TOKEN,
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
   IResponsibleProducerService,
+  IDeliveryPriceListService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
@@ -76,6 +78,7 @@ import { CreateOfferResponseDto } from './dto/create-offer-response.dto';
 import { OfferCreationStatusResponseDto } from './dto/offer-creation-status-response.dto';
 import { SellerPoliciesResponseDto } from './dto/seller-policies-response.dto';
 import { ResponsibleProducersResponseDto } from './dto/responsible-producers-response.dto';
+import { DeliveryPriceListsResponseDto } from './dto/delivery-price-lists-response.dto';
 import type { CategoryParameterResponseDto } from './dto/category-parameter-response.dto';
 import { CategoryParametersListResponseDto } from './dto/category-parameter-response.dto';
 import { ResolveCategoryRequestDto, ResolveCategoryResponseDto } from './dto/resolve-category.dto';
@@ -107,6 +110,8 @@ export class ListingsController {
     private readonly sellerPolicies: ISellerPoliciesService,
     @Inject(RESPONSIBLE_PRODUCER_SERVICE_TOKEN)
     private readonly responsibleProducers: IResponsibleProducerService,
+    @Inject(DELIVERY_PRICE_LIST_SERVICE_TOKEN)
+    private readonly deliveryPriceLists: IDeliveryPriceListService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
@@ -434,6 +439,33 @@ export class ListingsController {
     const responsibleProducers =
       await this.responsibleProducers.listResponsibleProducers(connectionId);
     return { responsibleProducers };
+  }
+
+  @Roles('admin', 'operator')
+  @Get('connections/:connectionId/delivery-price-lists')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiOperation({
+    summary: 'List seller-configured delivery price lists (#1530)',
+    description:
+      'Returns the delivery price lists ("cennik dostawy") configured for the connection, fetched live from the marketplace. The offer-creation wizard renders these so the operator can attach one and the created offer is buyable.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery price lists wrapped under `deliveryPriceLists`.',
+    type: DeliveryPriceListsResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description: 'Adapter does not support delivery-price-list listing',
+  })
+  async getDeliveryPriceLists(
+    @Param('connectionId') connectionId: string
+  ): Promise<DeliveryPriceListsResponseDto> {
+    const deliveryPriceLists = await this.deliveryPriceLists.listDeliveryPriceLists(connectionId);
+    return { deliveryPriceLists };
   }
 
   @Roles('admin', 'operator')

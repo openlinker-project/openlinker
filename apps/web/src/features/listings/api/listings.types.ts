@@ -379,6 +379,22 @@ export interface ResponsibleProducersResponse {
   responsibleProducers: ResponsibleProducer[];
 }
 
+/** ----- Delivery price lists (#1530) --------------------------------------
+ *
+ * A seller-configured delivery price list ("cennik dostawy") returned by
+ * `GET /listings/connections/:connectionId/delivery-price-lists`, fetched live
+ * from the marketplace. The offer-creation wizard renders these so the operator
+ * can attach one and the created offer is buyable.
+ */
+export interface DeliveryPriceList {
+  id: string;
+  name: string;
+}
+
+export interface DeliveryPriceListsResponse {
+  deliveryPriceLists: DeliveryPriceList[];
+}
+
 /** ----- Category parameters (#410) ----------------------------------------
  *
  * Marketplace-neutral shape for category parameters returned by
