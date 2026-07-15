@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Connection } from '../../features/connections/api/connections.types';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../test/test-utils';
 import { ConnectionDetailPage } from './connection-detail-page';
 
 const PRESTASHOP_UUID_1 = '11111111-1111-4111-8111-111111111111';
@@ -269,6 +274,53 @@ describe('ConnectionDetailPage', () => {
       // After filtering self, candidates = 0 → no-candidates warning, not auto-linked.
       expect(await screen.findByText('Product catalog not linked')).toBeInTheDocument();
       expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
+    });
+  });
+
+  describe('Health tab access for a demo read-only viewer (#1614)', () => {
+    it('lets a demo viewer open the connection detail page and read the Health tab', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        connections: {
+          getDiagnostics: vi.fn().mockResolvedValue({
+            connectionId: sampleConnection.id,
+            connectionName: sampleConnection.name,
+            connectionStatus: 'active',
+            lastSucceededAt: '2026-01-15T10:00:00.000Z',
+            lastFailedAt: null,
+            recentErrors: [],
+            recentJobs: [],
+          }),
+        },
+      });
+      const viewerSession = createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: null,
+        role: 'viewer',
+        permissions: ['connections:read', 'sync:read'],
+      });
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+        </Routes>,
+        { apiClient, sessionAdapter: viewerSession, route: `/connections/${sampleConnection.id}` },
+      );
+
+      await screen.findByRole('heading', { name: 'Overview' });
+      await user.click(screen.getByRole('tab', { name: 'Health' }));
+
+      expect(screen.getByRole('tab', { name: 'Health' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByRole('heading', { name: 'Diagnostics' })).toBeInTheDocument();
+      expect(screen.getByText('Last succeeded')).toBeInTheDocument();
+      expect(screen.getByText('Last failed')).toBeInTheDocument();
+
+      // Diagnostics is a pure read surface — no write controls should ever
+      // appear inside the Health tab, for any role.
+      expect(screen.queryByRole('button', { name: /disable/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument();
     });
   });
 
