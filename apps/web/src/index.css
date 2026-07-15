@@ -11093,6 +11093,558 @@ html[data-density='compact'] .status-badge {
   color: var(--status-info-fg);
 }
 
+/* ── Product detail (#1304) ── */
+
+.product-detail-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem 1.125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.product-detail-hero__body {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.product-detail-hero__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.product-detail-hero__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.product-detail-hero__badges {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.product-detail-hero__id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.product-detail-hero__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-top: 0.125rem;
+}
+
+.product-detail-hero__fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.product-detail-hero__fact-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 6.5rem;
+}
+
+.product-gallery {
+  display: grid;
+  gap: 0.5rem;
+  width: 8rem;
+  flex: 0 0 auto;
+}
+
+.product-gallery__main {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  cursor: zoom-in;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-surface-muted);
+  box-shadow: var(--shadow-xs);
+}
+
+.product-gallery__main:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.product-gallery__main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-gallery__expand-hint {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.45);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-gallery__expand-hint svg {
+  width: 11px;
+  height: 11px;
+}
+
+.product-gallery__thumbs {
+  display: flex;
+  gap: 0.375rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.product-gallery__thumb {
+  position: relative;
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  padding: 0;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-surface-muted);
+}
+
+.product-gallery__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-gallery__thumb.is-active {
+  border-color: var(--accent-primary);
+}
+
+.product-gallery__thumb:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+/* Lightbox now renders through shared/ui/dialog.tsx's Dialog/DialogContent
+   (Radix) — these two modifiers strip the default `.dialog__content` card
+   chrome (background/border/shadow/radius) back to a transparent frame for
+   the `.lightbox` markup below, but deliberately keep `.dialog__content`'s
+   own `position:fixed; top:50%; left:50%; transform:translate(-50%,-50%)`
+   centering (content-sized, not viewport-spanning) — Overlay and Content
+   are portal SIBLINGS, not parent/child, so Content can't be centered via
+   the Overlay. A viewport-spanning Content (the original #1537-review fix
+   attempt) made every click "inside" Content, which silently broke
+   click-outside-to-close; this stays a small, content-sized box instead. */
+.lightbox-dialog-overlay {
+  z-index: 300;
+}
+
+.lightbox-dialog-content {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  width: min(880px, 92vw);
+  max-width: none;
+  max-height: none;
+  padding: var(--space-6);
+  overflow: visible;
+  z-index: 300;
+  outline: none;
+}
+
+.lightbox {
+  position: relative;
+  width: min(760px, 100%);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.lightbox__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-surface-muted);
+}
+
+.lightbox__frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--bg-shell);
+}
+
+.lightbox__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.lightbox__nav:hover {
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
+}
+
+.lightbox__nav--prev {
+  left: var(--space-3);
+}
+
+.lightbox__nav--next {
+  right: var(--space-3);
+}
+
+.lightbox__close {
+  position: absolute;
+  top: -2.75rem;
+  right: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: rgb(15 18 26 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: var(--shadow-md);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.lightbox__close:hover {
+  background: rgb(15 18 26 / 0.75);
+  border-color: rgb(255 255 255 / 0.8);
+}
+
+.lightbox__caption {
+  text-align: center;
+  color: var(--text-inverse);
+  font-size: 0.8125rem;
+}
+
+.product-detail__primary-grid--split {
+  display: grid;
+  gap: var(--space-5);
+}
+
+@media (min-width: 1024px) {
+  .product-detail__primary-grid--split {
+    grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+}
+
+.product-detail__stack {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.product-detail__kpi-row {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.product-detail__kpi-row--cols-1 {
+  grid-template-columns: 1fr;
+}
+
+.product-detail__kpi-row--cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 479.98px) {
+  .product-detail__kpi-row--cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.description-block {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.id-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.id-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.id-chip__platform {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.id-chip--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.id-chip--link:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface-hover);
+  color: var(--accent-primary);
+}
+
+.id-chip--link:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.detail-section__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.sync-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.sync-freshness__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-success);
+  flex: 0 0 auto;
+}
+
+.stock-cell--warning {
+  color: var(--status-warning-fg);
+  font-weight: 600;
+}
+
+.stock-cell--error {
+  color: var(--status-error-fg);
+  font-weight: 600;
+}
+
+.variant-stock-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-3);
+  padding-right: 0;
+}
+
+.variant-stock-table__expand-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+}
+
+.variant-stock-table__expand-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+
+.variant-stock-table__expand-btn svg {
+  width: 11px;
+  height: 11px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.variant-stock-table__expand-btn[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.variant-stock-table__variant-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.variant-stock-table__expand-row > td {
+  padding: 0;
+  border-top: 0;
+}
+
+.variant-stock-table__expand-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-normal) var(--ease-out);
+  background: var(--bg-shell);
+}
+
+.variant-stock-table__expand-row.is-open > td {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.variant-stock-table__expand-row.is-open .variant-stock-table__expand-content {
+  grid-template-rows: 1fr;
+}
+
+.variant-stock-table__expand-content-inner {
+  overflow: hidden;
+}
+
+.listings-panel {
+  padding: var(--space-3) var(--space-4) var(--space-4) calc(2.25rem + var(--space-4));
+}
+
+.listings-panel__title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.listings-subtable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.listings-subtable th,
+.listings-subtable td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.listings-subtable th:nth-child(1),
+.listings-subtable td:nth-child(1) {
+  width: 16%;
+}
+
+.listings-subtable th:nth-child(2),
+.listings-subtable td:nth-child(2) {
+  width: 34%;
+}
+
+.listings-subtable th:nth-child(3),
+.listings-subtable td:nth-child(3) {
+  width: 25%;
+}
+
+.listings-subtable th:nth-child(4),
+.listings-subtable td:nth-child(4) {
+  width: 25%;
+}
+
+/* Beats `.data-table td .mono-text` (2399) which otherwise clips this
+   nested table's own mono-text cells to 20ch — they sit inside a <td> of
+   the outer Variants & stock .data-table. */
+.listings-panel .listings-subtable td.mono-text {
+  display: table-cell;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.listings-subtable thead th {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-size: 0.625rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.listings-subtable tbody tr + tr td {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.listings-subtable__empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.listings-subtable__link {
+  color: var(--text-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.listings-subtable__link:hover {
+  text-decoration: underline;
+}
+
 .guest-form__demo-callout-icon {
   font-size: 14px;
   flex-shrink: 0;

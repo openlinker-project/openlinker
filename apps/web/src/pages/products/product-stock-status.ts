@@ -1,26 +1,21 @@
 /**
- * Inventory Stock Status
+ * Product Stock Status
  *
  * Pure helper + lookup tables for deriving a qualitative stock status from
- * an available-quantity value, and mapping it to the StatusBadge and KpiCard
- * tones used in the detail-page hero and KPI block.
+ * an aggregate available-quantity value, and mapping it to the StatusBadge
+ * and KpiCard tones used on the product-detail hero and KPI strip.
  *
- * Page-local logic (not shared across features), so colocated under
- * `pages/inventory/`.
+ * Page-local logic (not shared across features) — originally colocated as a
+ * copy of the same pattern the standalone Inventory detail page used before
+ * that page was removed (its stock/listings data is now merged into this one).
  *
- * @module pages/inventory
+ * @module pages/products
  */
 import type { KpiCardTone } from '../../shared/ui/kpi-card';
 import type { StatusBadgeTone } from '../../shared/ui/status-badge';
 
 export type StockStatus = 'out-of-stock' | 'low-stock' | 'in-stock';
 
-/**
- * Default threshold for the "low stock" boundary (inclusive). Per-variant
- * overrides are not modelled yet — tracked as a follow-up issue after #381.
- * Exported as a named constant so every caller (helper default, tests, any
- * future consumer) references one grep-able value instead of a magic 5.
- */
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export function deriveStockStatus(

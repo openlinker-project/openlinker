@@ -240,7 +240,7 @@ export function InventoryListPage(): ReactElement {
             columns={COLUMNS}
             rows={query.data?.items ?? []}
             rowKey={(item) => item.id}
-            rowHref={(item) => item.id}
+            rowHref={(item) => `/products/${item.productId}`}
             sort={sort}
             onSortChange={setSort}
             cardView={{
