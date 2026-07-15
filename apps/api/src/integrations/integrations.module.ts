@@ -26,6 +26,8 @@ import { SubiektController } from './http/subiekt.controller';
 import { ConnectionService } from './application/services/connection.service';
 import { OAuthConnectionService } from './application/services/oauth-connection.service';
 import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-connection.service.interface';
+import { DemoModeService } from '../auth/demo-mode.service';
+import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 
 @Module({
   imports: [
@@ -44,6 +46,11 @@ import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-c
     // longer imports AllegroAccountReader or any Allegro OAuth service.
     OAuthConnectionService,
     { provide: OAUTH_CONNECTION_SERVICE_TOKEN, useExisting: OAuthConnectionService },
+    // Wired locally (mirrors SystemModule) — DemoModeService depends only on
+    // the global ConfigService, so IntegrationsModule doesn't need AuthModule
+    // just to gate demo-viewer config visibility (#1616 review fix).
+    DemoModeService,
+    { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
   ],
   exports: [PluginRegistryModule],
 })
