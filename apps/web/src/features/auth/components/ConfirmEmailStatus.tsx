@@ -6,10 +6,15 @@
  * input to collect, unlike ResetPasswordForm — and shows a pending / success
  * / failure state.
  *
+ * Uses `useConfirmEmail`'s plain-state hook rather than `useMutation`
+ * directly, because this component is reached via a cold/fresh navigation
+ * (the user clicking the confirmation link from their email client) — the
+ * same scenario `useHandleAllegroCallback` documents as unreliable for
+ * TanStack Query's mutation observer re-renders.
+ *
  * @module features/auth/components
  */
 import type { ReactElement } from 'react';
-import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useConfirmEmail } from '../hooks/use-confirm-email';
 import { Alert } from '../../../shared/ui/alert';
@@ -19,20 +24,14 @@ interface ConfirmEmailStatusProps {
   token: string;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+}
+
 export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactElement {
-  const mutation = useConfirmEmail();
-  const requested = useRef(false);
+  const { state, retry } = useConfirmEmail(token);
 
-  useEffect(() => {
-    if (requested.current) {
-      return;
-    }
-    requested.current = true;
-    mutation.mutate({ token });
-    // Fire once per mount — `mutation` is intentionally omitted from deps.
-  }, [token]);
-
-  if (mutation.isSuccess) {
+  if (state.status === 'success') {
     return (
       <div className="guest-page__success">
         <p>Your email is confirmed and your account is now active.</p>
@@ -41,13 +40,13 @@ export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactEle
     );
   }
 
-  if (mutation.isError) {
+  if (state.status === 'error') {
     return (
       <div className="guest-form__demo-callout">
         <Alert tone="error" title="Confirmation failed">
-          {mutation.error.message}
+          {getErrorMessage(state.error)}
         </Alert>
-        <Button type="button" tone="secondary" onClick={() => mutation.mutate({ token })}>
+        <Button type="button" tone="secondary" onClick={retry}>
           Try again
         </Button>
         <p className="guest-form__footer-link">

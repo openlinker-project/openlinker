@@ -19,6 +19,7 @@ import {
   EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
   InvalidEmailConfirmationTokenException,
   MAILER_TOKEN,
+  UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
   type User,
@@ -39,6 +40,11 @@ export class EmailConfirmationService implements IEmailConfirmationService {
   constructor(
     @Inject(EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN)
     private readonly tokenRepository: EmailConfirmationTokenRepositoryPort,
+    // Intentional: MailerPort injected directly rather than a dedicated
+    // EmailConfirmationNotifierPort. This is the lighter-weight pattern for
+    // single-purpose notifications (vs. PasswordResetNotifierPort, which
+    // exists for a flow with more variation) — see the class header for
+    // the full rationale (#1623/#1624).
     @Inject(MAILER_TOKEN)
     private readonly mailer: MailerPort,
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
@@ -59,34 +65,51 @@ export class EmailConfirmationService implements IEmailConfirmationService {
       return;
     }
 
-    const now = new Date();
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = this.hashToken(rawToken);
-    const expiresAt = new Date(now.getTime() + this.ttlMinutes * 60 * 1000);
-
-    await this.tokenRepository.save({ userId: user.id, tokenHash, expiresAt });
-
-    const base = this.configService.get<string>('WEB_URL', 'http://localhost:4173');
-    const link = `${base.replace(/\/$/, '')}/confirm-email/${rawToken}`;
-    const text = `Hello ${user.username},\n\nThanks for signing up for OpenLinker. Confirm your email address to activate your account:\n\n${link}\n\nThis link expires in ${Math.round(this.ttlMinutes / 60)} hours. If you did not create this account, you can ignore this email.`;
-
+    // The entire generate-token + persist-token + send-email sequence is
+    // wrapped here (not just the mailer call) — a transient failure while
+    // saving the token must not surface as a failed registration request
+    // when the user row is already committed. The account still exists and
+    // can be resent a link by an admin either way.
     try {
+      const now = new Date();
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = this.hashToken(rawToken);
+      const expiresAt = new Date(now.getTime() + this.ttlMinutes * 60 * 1000);
+
+      await this.tokenRepository.save({ userId: user.id, tokenHash, expiresAt });
+
+      const base = this.configService.get<string>('WEB_URL', 'http://localhost:4173');
+      const link = `${base.replace(/\/$/, '')}/confirm-email/${rawToken}`;
+      const text = `Hello ${user.username},\n\nThanks for signing up for OpenLinker. Confirm your email address to activate your account:\n\n${link}\n\nThis link expires in ${Math.round(this.ttlMinutes / 60)} hours. If you did not create this account, you can ignore this email.`;
+
       await this.mailer.sendEmail({
         to: user.email,
         subject: 'Confirm your OpenLinker account',
         text,
       });
     } catch (error) {
-      // Never let a transport failure (e.g. SMTP down) fail registration —
-      // the account is created either way; the user can be resent a link by
-      // an admin. Mirrors PasswordResetService's non-blocking send.
+      // Never let a token-persistence or transport failure (e.g. DB hiccup,
+      // SMTP down) fail registration — the account is created either way;
+      // the user can be resent a link by an admin. Mirrors
+      // PasswordResetService's non-blocking send.
       this.logger.error(
-        'Failed to send email confirmation notification',
+        'Failed to generate/send email confirmation notification',
         (error as Error).stack
       );
     }
   }
 
+  /**
+   * Consumes the token in a single atomic conditional UPDATE
+   * (`EmailConfirmationTokenRepositoryPort.consumeToken`) so two concurrent
+   * requests presenting the same raw token can't both succeed — only one
+   * `consumeToken` call ever observes a non-null `userId`. This closes the
+   * find -> check -> activate -> markUsed race that would otherwise let a
+   * second, losing caller reach `userManagementService.confirmEmail` against
+   * an already-activated user and surface a `UserNotPendingConfirmationException`
+   * (which carries the internal user id in its message — never let that
+   * reach the HTTP layer, hence the catch-and-remap below).
+   */
   async confirmEmail(token: string): Promise<void> {
     if (!token) {
       throw new InvalidEmailConfirmationTokenException();
@@ -94,13 +117,23 @@ export class EmailConfirmationService implements IEmailConfirmationService {
 
     const tokenHash = this.hashToken(token);
     const now = new Date();
-    const record = await this.tokenRepository.findByTokenHash(tokenHash);
-    if (!record || !record.isUsable(now)) {
+    const userId = await this.tokenRepository.consumeToken(tokenHash, now);
+    if (!userId) {
       throw new InvalidEmailConfirmationTokenException();
     }
 
-    await this.userManagementService.confirmEmail(record.userId);
-    await this.tokenRepository.markUsed(record.id, now);
+    try {
+      await this.userManagementService.confirmEmail(userId);
+    } catch (error) {
+      if (error instanceof UserNotPendingConfirmationException) {
+        // Token was valid and consumed, but the user was no longer in
+        // `pending_confirmation` status (e.g. already activated through
+        // another path). Surface the same generic invalid-token error the
+        // public endpoint already returns for any other invalid-token case.
+        throw new InvalidEmailConfirmationTokenException();
+      }
+      throw error;
+    }
   }
 
   private hashToken(rawToken: string): string {

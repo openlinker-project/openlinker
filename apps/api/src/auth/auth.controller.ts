@@ -31,6 +31,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import { Logger } from '@openlinker/shared/logging';
 import type { User } from '@openlinker/core/users';
 import {
   EmailNotConfirmedException,
@@ -84,6 +85,8 @@ function readCookie(req: Request, name: string): string | null {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     @Inject(AUTH_SERVICE_TOKEN)
     private readonly authService: IAuthService,
@@ -174,7 +177,13 @@ export class AuthController {
         error instanceof InvalidEmailConfirmationTokenException ||
         error instanceof UserNotPendingConfirmationException
       ) {
-        throw new BadRequestException(error.message);
+        // Never surface `error.message` from these domain exceptions on this
+        // public, unauthenticated endpoint — some (e.g.
+        // UserNotPendingConfirmationException) carry an internal user id.
+        // Log the specific reason server-side and return one generic,
+        // non-identifying message regardless of which exception fired.
+        this.logger.warn(`Email confirmation failed: ${(error as Error).message}`);
+        throw new BadRequestException('This confirmation link is invalid or has expired.');
       }
       throw error;
     }

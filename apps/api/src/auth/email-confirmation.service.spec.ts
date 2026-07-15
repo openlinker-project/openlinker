@@ -8,6 +8,7 @@ import {
   EmailConfirmationToken,
   InvalidEmailConfirmationTokenException,
   User,
+  UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
 } from '@openlinker/core/users';
@@ -24,8 +25,7 @@ const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
 
 const makeTokenRepo = (): jest.Mocked<EmailConfirmationTokenRepositoryPort> => ({
   save: jest.fn(),
-  findByTokenHash: jest.fn(),
-  markUsed: jest.fn(),
+  consumeToken: jest.fn(),
 });
 
 const makeMailer = (): jest.Mocked<MailerPort> => ({
@@ -104,23 +104,29 @@ describe('EmailConfirmationService', () => {
 
       await expect(service.sendConfirmation(makeUser())).resolves.toBeUndefined();
     });
+
+    it('does not throw when persisting the token fails (finding 4)', async () => {
+      const tokenRepo = makeTokenRepo();
+      tokenRepo.save.mockRejectedValue(new Error('DB connection reset'));
+      const mailer = makeMailer();
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        mailer,
+        makeUserManagementService(),
+        makeConfig({}),
+      );
+
+      await expect(service.sendConfirmation(makeUser())).resolves.toBeUndefined();
+      // A failed save must short-circuit before ever attempting to send.
+      expect(mailer.sendEmail).not.toHaveBeenCalled();
+    });
   });
 
   describe('confirmEmail', () => {
-    it('activates the user and marks the token used for a valid token', async () => {
+    it('atomically consumes the token and activates the user for a valid token', async () => {
       const tokenRepo = makeTokenRepo();
       const userManagementService = makeUserManagementService();
-      const futureExpiry = new Date(Date.now() + 60_000);
-      const record = new EmailConfirmationToken(
-        'token-id',
-        'user-1',
-        // sha256('raw-token')
-        'hash-does-not-need-to-match-in-this-mock',
-        futureExpiry,
-        null,
-        new Date(),
-      );
-      tokenRepo.findByTokenHash.mockResolvedValue(record);
+      tokenRepo.consumeToken.mockResolvedValue('user-1');
       const service = new EmailConfirmationService(
         tokenRepo,
         makeMailer(),
@@ -130,66 +136,26 @@ describe('EmailConfirmationService', () => {
 
       await service.confirmEmail('raw-token');
 
+      expect(tokenRepo.consumeToken).toHaveBeenCalledWith(expect.any(String), expect.any(Date));
       expect(userManagementService.confirmEmail).toHaveBeenCalledWith('user-1');
-      expect(tokenRepo.markUsed).toHaveBeenCalledWith('token-id', expect.any(Date));
     });
 
-    it('throws InvalidEmailConfirmationTokenException for an unknown token', async () => {
+    it('throws InvalidEmailConfirmationTokenException when consumeToken finds no match (unknown/expired/used)', async () => {
       const tokenRepo = makeTokenRepo();
-      tokenRepo.findByTokenHash.mockResolvedValue(null);
+      tokenRepo.consumeToken.mockResolvedValue(null);
+      const userManagementService = makeUserManagementService();
       const service = new EmailConfirmationService(
         tokenRepo,
         makeMailer(),
-        makeUserManagementService(),
+        userManagementService,
         makeConfig({}),
       );
 
       await expect(service.confirmEmail('bad-token')).rejects.toThrow(
         InvalidEmailConfirmationTokenException,
       );
-    });
-
-    it('throws InvalidEmailConfirmationTokenException for an expired token', async () => {
-      const tokenRepo = makeTokenRepo();
-      const pastExpiry = new Date(Date.now() - 60_000);
-      tokenRepo.findByTokenHash.mockResolvedValue(
-        new EmailConfirmationToken('token-id', 'user-1', 'hash', pastExpiry, null, new Date()),
-      );
-      const service = new EmailConfirmationService(
-        tokenRepo,
-        makeMailer(),
-        makeUserManagementService(),
-        makeConfig({}),
-      );
-
-      await expect(service.confirmEmail('expired-token')).rejects.toThrow(
-        InvalidEmailConfirmationTokenException,
-      );
-    });
-
-    it('throws InvalidEmailConfirmationTokenException for an already-used token', async () => {
-      const tokenRepo = makeTokenRepo();
-      const futureExpiry = new Date(Date.now() + 60_000);
-      tokenRepo.findByTokenHash.mockResolvedValue(
-        new EmailConfirmationToken(
-          'token-id',
-          'user-1',
-          'hash',
-          futureExpiry,
-          new Date(),
-          new Date(),
-        ),
-      );
-      const service = new EmailConfirmationService(
-        tokenRepo,
-        makeMailer(),
-        makeUserManagementService(),
-        makeConfig({}),
-      );
-
-      await expect(service.confirmEmail('used-token')).rejects.toThrow(
-        InvalidEmailConfirmationTokenException,
-      );
+      // No match means the atomic UPDATE never fired — never call through.
+      expect(userManagementService.confirmEmail).not.toHaveBeenCalled();
     });
 
     it('throws InvalidEmailConfirmationTokenException for an empty token', async () => {
@@ -203,6 +169,47 @@ describe('EmailConfirmationService', () => {
       await expect(service.confirmEmail('')).rejects.toThrow(
         InvalidEmailConfirmationTokenException,
       );
+    });
+
+    it('remaps UserNotPendingConfirmationException to InvalidEmailConfirmationTokenException (finding 1)', async () => {
+      const tokenRepo = makeTokenRepo();
+      tokenRepo.consumeToken.mockResolvedValue('user-1');
+      const userManagementService = makeUserManagementService();
+      userManagementService.confirmEmail.mockRejectedValue(
+        new UserNotPendingConfirmationException('user-1'),
+      );
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        userManagementService,
+        makeConfig({}),
+      );
+
+      await expect(service.confirmEmail('raw-token')).rejects.toThrow(
+        InvalidEmailConfirmationTokenException,
+      );
+    });
+
+    it('does not consume the token twice for two concurrent calls with the same raw token (finding 2)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userManagementService = makeUserManagementService();
+      // First caller wins the atomic UPDATE; second sees no matching row.
+      tokenRepo.consumeToken.mockResolvedValueOnce('user-1').mockResolvedValueOnce(null);
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        userManagementService,
+        makeConfig({}),
+      );
+
+      const [first, second] = await Promise.allSettled([
+        service.confirmEmail('raw-token'),
+        service.confirmEmail('raw-token'),
+      ]);
+
+      expect(first.status).toBe('fulfilled');
+      expect(second.status).toBe('rejected');
+      expect(userManagementService.confirmEmail).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -23,6 +23,7 @@ import {
   InvalidPasswordResetTokenException,
   RefreshTokenReuseDetectedException,
   User,
+  UserNotPendingConfirmationException,
 } from '@openlinker/core/users';
 import type { IPasswordResetService } from './password-reset.service.interface';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
@@ -349,6 +350,28 @@ describe('AuthController', () => {
     it('converts InvalidEmailConfirmationTokenException to 400', async () => {
       emailConfirmationService.confirmEmail.mockRejectedValue(
         new InvalidEmailConfirmationTokenException(),
+      );
+      await expect(controller.confirmEmail(dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns a generic message and never leaks the internal user id (finding 1)', async () => {
+      emailConfirmationService.confirmEmail.mockRejectedValue(
+        new UserNotPendingConfirmationException('ol_user_super-secret-internal-uuid'),
+      );
+
+      await expect(controller.confirmEmail(dto)).rejects.toMatchObject({
+        response: { message: 'This confirmation link is invalid or has expired.' },
+      });
+      // Must never surface the raw domain-exception message, which embeds
+      // the internal user id.
+      await expect(controller.confirmEmail(dto)).rejects.not.toMatchObject({
+        message: expect.stringContaining('ol_user_super-secret-internal-uuid'),
+      });
+    });
+
+    it('converts UserNotPendingConfirmationException to the same generic 400', async () => {
+      emailConfirmationService.confirmEmail.mockRejectedValue(
+        new UserNotPendingConfirmationException('some-user-id'),
       );
       await expect(controller.confirmEmail(dto)).rejects.toThrow(BadRequestException);
     });

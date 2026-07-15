@@ -33,13 +33,19 @@ export class EmailConfirmationTokenRepository implements EmailConfirmationTokenR
     return this.toDomain(saved);
   }
 
-  async findByTokenHash(tokenHash: string): Promise<EmailConfirmationToken | null> {
-    const entity = await this.ormRepository.findOne({ where: { tokenHash } });
-    return entity ? this.toDomain(entity) : null;
-  }
+  async consumeToken(tokenHash: string, now: Date): Promise<string | null> {
+    const result = await this.ormRepository
+      .createQueryBuilder()
+      .update(EmailConfirmationTokenOrmEntity)
+      .set({ usedAt: now })
+      .where('token_hash = :tokenHash', { tokenHash })
+      .andWhere('used_at IS NULL')
+      .andWhere('expires_at > :now', { now })
+      .returning(['user_id'])
+      .execute();
 
-  async markUsed(id: string, usedAt: Date): Promise<void> {
-    await this.ormRepository.update({ id }, { usedAt });
+    const row = (result.raw as Array<{ user_id: string }>)[0];
+    return row ? row.user_id : null;
   }
 
   private toDomain(entity: EmailConfirmationTokenOrmEntity): EmailConfirmationToken {
