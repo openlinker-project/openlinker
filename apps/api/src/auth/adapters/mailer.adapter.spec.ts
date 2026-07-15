@@ -52,6 +52,26 @@ describe('SmtpMailerAdapter', () => {
       html: undefined,
     });
   });
+
+  it('forwards an HTML body alongside the plain-text fallback when present', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+
+    await adapter.sendEmail({
+      to: 'a@b.com',
+      subject: 'Hi',
+      text: 'Body',
+      html: '<p>Body</p>',
+    });
+
+    expect(transport.sendMail).toHaveBeenCalledWith({
+      from: 'no-reply@openlinker.local',
+      to: 'a@b.com',
+      subject: 'Hi',
+      text: 'Body',
+      html: '<p>Body</p>',
+    });
+  });
 });
 
 describe('ConsoleMailerAdapter', () => {
@@ -59,6 +79,13 @@ describe('ConsoleMailerAdapter', () => {
     const adapter = new ConsoleMailerAdapter();
     await expect(
       adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('resolves without throwing when an HTML body is present (ignored gracefully)', async () => {
+    const adapter = new ConsoleMailerAdapter();
+    await expect(
+      adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body', html: '<p>Body</p>' }),
     ).resolves.toBeUndefined();
   });
 });

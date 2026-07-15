@@ -30,6 +30,7 @@ import {
   IUserManagementService,
   USER_MANAGEMENT_SERVICE_TOKEN,
 } from '../users/user-management.service.interface';
+import { renderConfirmationEmailHtml } from './templates/confirmation-email.template';
 
 const DEFAULT_TTL_MINUTES = 24 * 60;
 
@@ -81,12 +82,15 @@ export class EmailConfirmationService implements IEmailConfirmationService {
 
       const base = this.configService.get<string>('WEB_URL', 'http://localhost:4173');
       const link = `${base.replace(/\/$/, '')}/confirm-email/${rawToken}`;
-      const text = `Hello ${user.username},\n\nThanks for signing up for OpenLinker. Confirm your email address to activate your account:\n\n${link}\n\nThis link expires in ${Math.round(this.ttlMinutes / 60)} hours. If you did not create this account, you can ignore this email.`;
+      const ttlHours = Math.round(this.ttlMinutes / 60);
+      const text = `Hello ${user.username},\n\nThanks for signing up for OpenLinker. Confirm your email address to activate your account:\n\n${link}\n\nThis link expires in ${ttlHours} hours. If you did not create this account, you can ignore this email.`;
+      const html = renderConfirmationEmailHtml({ username: user.username, link, ttlHours });
 
       await this.mailer.sendEmail({
         to: user.email,
         subject: 'Confirm your OpenLinker account',
         text,
+        html,
       });
     } catch (error) {
       // Never let a token-persistence or transport failure (e.g. DB hiccup,
