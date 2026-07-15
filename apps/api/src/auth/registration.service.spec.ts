@@ -79,6 +79,22 @@ describe('RegistrationService', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
+  it('should throw UserAlreadyExistsException for a case-variant duplicate email (#1625)', async () => {
+    // Mirrors what the real UserRepository.findByEmail does — it normalizes
+    // the lookup internally, so a caller passing a mixed-case email still
+    // resolves the existing lowercase-stored user.
+    const repo = makeRepo();
+    repo.findByUsername.mockResolvedValue(null);
+    repo.findByEmail.mockResolvedValue(makeUser('foo'));
+    const service = new RegistrationService(repo, makeConfig({ OL_REGISTRATION_ENABLED: 'true' }), makeDemoService(false), new InMemoryCacheAdapter());
+
+    await expect(service.register('user2', 'FOO@EXAMPLE.COM', 'pass123')).rejects.toThrow(
+      UserAlreadyExistsException
+    );
+    expect(repo.findByEmail).toHaveBeenCalledWith('FOO@EXAMPLE.COM');
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
   it('should save user in pending status with viewer role when demo mode is off', async () => {
     const repo = makeRepo();
     repo.findByUsername.mockResolvedValue(null);
