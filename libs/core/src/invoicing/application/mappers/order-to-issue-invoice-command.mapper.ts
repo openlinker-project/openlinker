@@ -191,9 +191,15 @@ function toBuyerAddress(address: Address): BuyerAddress {
 /**
  * Map an {@link OrderItem} onto an {@link InvoiceLine}. `unitPriceGross` is the
  * line price (gross — see treatment guard above). `name` falls back to
- * `sku` then `productId` when the source omitted a label. `taxRate` is left
- * empty here — the provider adapter resolves the regime rate; core never names
- * a tax rate on the order contract.
+ * `sku` then `productId` when the source omitted a label.
+ *
+ * `taxRate` (#1586 Phase 1, ADR-035): forwards the item's genuine per-line rate
+ * when the source populated `OrderItem.taxRate`, else falls back to `''` — the
+ * long-standing "empty ⇒ provider adapter resolves the connection-level default
+ * rate" contract. No order-source adapter fills `OrderItem.taxRate` yet (Phase
+ * 2), so this is behaviour-preserving today: the seam is open, the default path
+ * unchanged. The value stays an opaque neutral code — core never names or
+ * interprets a country/scheme tax rate (ADR-026).
  *
  * Throws {@link InvalidInvoiceLineError} (PII-clean, cites only `orderId`) when
  * the quantity is not a positive finite number - a malformed order snapshot
@@ -210,7 +216,7 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
     unitPriceGross: item.price,
-    taxRate: '',
+    taxRate: item.taxRate ?? '',
   };
 }
 
