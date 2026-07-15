@@ -10,4 +10,4 @@
  */
 export { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
 export { InvoiceNumberingSeriesOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-series.orm-entity';
-export { InvoiceNumberingAssignmentOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-assignment.orm-entity';
+export { InvoiceNumberingRouteOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-route.orm-entity';

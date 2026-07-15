@@ -14,8 +14,9 @@ import type { InvoiceNumberingSeries } from '../entities/invoice-numbering-serie
 import type {
   AllocatedNumber,
   CreateInvoiceNumberingSeriesInput,
-  SeriesAssignmentData,
+  SeriesRouteData,
   UpdateInvoiceNumberingSeriesInput,
+  UpsertSeriesRouteInput,
 } from '../types/invoice-numbering.types';
 
 export interface InvoiceNumberingSeriesRepositoryPort {
@@ -43,25 +44,36 @@ export interface InvoiceNumberingSeriesRepositoryPort {
     patch: UpdateInvoiceNumberingSeriesInput,
   ): Promise<InvoiceNumberingSeries>;
 
-  /** Read the assignment for a connection; `null` when none is configured. */
-  findAssignmentByConnectionId(connectionId: string): Promise<SeriesAssignmentData | null>;
+  /**
+   * Resolve the series id that numbers a connection's document of `documentType`
+   * in the optional `register` scope (#9 / #10). Resolution precedence:
+   *   1. the exact `(connectionId, documentType, register)` route (when a
+   *      non-null register is supplied);
+   *   2. the register-less default `(connectionId, documentType, NULL)` route.
+   * Returns `null` when no route matches. Correction→base-type fallback is a
+   * caller (`InvoiceService`) concern, not this method's.
+   */
+  findSeriesIdForDocument(
+    connectionId: string,
+    documentType: string,
+    register: string | null,
+  ): Promise<string | null>;
+
+  /** List every routing rule for a connection (#9 / #10). Backs the C2 routing surface. */
+  findRoutesByConnectionId(connectionId: string): Promise<SeriesRouteData[]>;
 
   /**
-   * Create or replace the connection's assignment (main + optional correction
-   * series). Detachable pointer — never cascade-deletes a series.
+   * Create or replace a routing rule keyed by `(connectionId, documentType,
+   * register)`. Detachable pointer — never cascade-deletes a series.
    */
-  upsertAssignment(input: {
-    connectionId: string;
-    mainSeriesId: string;
-    correctionSeriesId: string | null;
-  }): Promise<SeriesAssignmentData>;
+  upsertRoute(input: UpsertSeriesRouteInput): Promise<SeriesRouteData>;
 
   /**
-   * Detach a connection's assignment (C2 "detach" flow, #1576). Removes only the
-   * detachable pointer — the referenced series survive (never cascade-deleted).
-   * A no-op when the connection has no assignment.
+   * Remove a routing rule (C2 "detach" flow). Removes only the detachable
+   * pointer — the referenced series survives. A no-op when no route matches the
+   * `(connectionId, documentType, register)` key.
    */
-  deleteAssignmentByConnectionId(connectionId: string): Promise<void>;
+  deleteRoute(connectionId: string, documentType: string, register: string | null): Promise<void>;
 
   /**
    * Atomically allocate the next number from `seriesId` for `recordId` and
@@ -70,18 +82,24 @@ export interface InvoiceNumberingSeriesRepositoryPort {
    * resolves the period reset inside the statement (no check-then-increment
    * race); the rendered number is written onto the record under a
    * `documentNumber IS NULL` guard so a re-run cannot double-allocate. The
-   * document issue date drives both the date variables and the period key.
+   * document issue date drives both the date variables and the period key, both
+   * resolved in `timeZone` (the seller's IANA zone, #7).
    *
    * Throws `InvoiceNumberingSeriesNotFoundException` when the series is missing,
-   * `InvoiceRecordNotFoundException` when the record is missing, and
+   * `InvoiceRecordNotFoundException` when the record is missing,
    * `DuplicateDocumentNumberException` when the rendered number collides with an
    * already-issued one (the last-line-of-defense unique index fired — e.g. after
-   * a `nextSeq` rollback).
+   * a `nextSeq` rollback), and `DocumentNumberTooLongException` when the rendered
+   * number exceeds `maxDocumentNumberLength` (#11).
    */
   allocateNumber(input: {
     seriesId: string;
     recordId: string;
     connectionId: string;
     issueDate: Date;
+    /** Seller IANA timezone the date variables + period key resolve in (#7). */
+    timeZone: string;
+    /** Provider max document-number length; over-length renders throw (#11). Absent = no limit. */
+    maxDocumentNumberLength?: number;
   }): Promise<AllocatedNumber>;
 }

@@ -14,6 +14,7 @@ export {
   renderInvoiceNumber,
   validateNumberingPattern,
   assertValidNumberingPattern,
+  assertDocumentNumberWithinLength,
   computePeriodKey,
 } from './domain/numbering/invoice-number-pattern';
 export {
@@ -47,6 +48,7 @@ export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export * from './domain/exceptions/missing-numbering-series.exception';
 export * from './domain/exceptions/duplicate-document-number.exception';
+export * from './domain/exceptions/document-number-too-long.exception';
 export * from './domain/exceptions/invalid-numbering-pattern.exception';
 export * from './domain/exceptions/invoice-numbering-series-not-found.exception';
 export * from './domain/exceptions/source-document-immutable.error';

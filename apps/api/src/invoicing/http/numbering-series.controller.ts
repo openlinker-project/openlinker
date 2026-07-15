@@ -41,6 +41,8 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   assertValidNumberingPattern,
   computePeriodKey,
+  CORRECTION_NUMBERING_DOCUMENT_TYPE,
+  DEFAULT_NUMBERING_DOCUMENT_TYPE,
   DuplicateDocumentNumberException,
   INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
   InvalidNumberingPatternException,
@@ -52,7 +54,7 @@ import {
 import { InvoiceNumberingSeriesRepositoryPort } from '@openlinker/core/invoicing';
 import type {
   InvoiceNumberingSeries,
-  SeriesAssignmentData,
+  SeriesRouteData,
   UpdateInvoiceNumberingSeriesInput,
 } from '@openlinker/core/invoicing';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -95,6 +97,9 @@ export class NumberingSeriesController {
     // Seed periodKey so the first allocation honours the configured nextSeq under
     // the chosen reset cadence (C1 contract).
     const periodKey = computePeriodKey(dto.resetPolicy, new Date());
+    // COMPAT SHIM (core-numbering-v2): the C2 create DTO has no documentType /
+    // register field yet (the API wave adds them). Default to the neutral base
+    // type + register-less scope so the pre-v2 behaviour is preserved.
     const created = await this.repository.createSeries({
       name: dto.name,
       pattern: dto.pattern,
@@ -102,6 +107,8 @@ export class NumberingSeriesController {
       seqPadding: dto.seqPadding,
       resetPolicy: dto.resetPolicy,
       periodKey,
+      documentType: DEFAULT_NUMBERING_DOCUMENT_TYPE,
+      register: null,
     });
     return this.toSeriesResponse(created);
   }
@@ -189,13 +196,17 @@ export class NumberingSeriesController {
   async getAssignment(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
   ): Promise<NumberingAssignmentResponseDto> {
-    const assignment = await this.repository.findAssignmentByConnectionId(connectionId);
-    if (!assignment) {
+    // COMPAT SHIM (core-numbering-v2): project the register-less `invoice` +
+    // `corrected` routes back onto the pre-v2 main/correction assignment shape.
+    const routes = await this.repository.findRoutesByConnectionId(connectionId);
+    const main = this.findDefaultRoute(routes, DEFAULT_NUMBERING_DOCUMENT_TYPE);
+    if (!main) {
       throw new NotFoundException(
         `No numbering assignment configured for connection ${connectionId}`,
       );
     }
-    return this.toAssignmentResponse(assignment);
+    const correction = this.findDefaultRoute(routes, CORRECTION_NUMBERING_DOCUMENT_TYPE);
+    return this.toAssignmentResponse(connectionId, main, correction?.seriesId ?? null);
   }
 
   @Roles('admin')
@@ -215,12 +226,26 @@ export class NumberingSeriesController {
       await this.assertSeriesExists(correctionSeriesId, 'correctionSeriesId');
     }
 
-    const assignment = await this.repository.upsertAssignment({
+    // COMPAT SHIM (core-numbering-v2): the main series → register-less `invoice`
+    // route, the correction series → register-less `corrected` route (detached
+    // when none is supplied), preserving the pre-v2 attach/replace semantics.
+    const main = await this.repository.upsertRoute({
       connectionId,
-      mainSeriesId: dto.mainSeriesId,
-      correctionSeriesId,
+      documentType: DEFAULT_NUMBERING_DOCUMENT_TYPE,
+      register: null,
+      seriesId: dto.mainSeriesId,
     });
-    return this.toAssignmentResponse(assignment);
+    if (correctionSeriesId !== null) {
+      await this.repository.upsertRoute({
+        connectionId,
+        documentType: CORRECTION_NUMBERING_DOCUMENT_TYPE,
+        register: null,
+        seriesId: correctionSeriesId,
+      });
+    } else {
+      await this.repository.deleteRoute(connectionId, CORRECTION_NUMBERING_DOCUMENT_TYPE, null);
+    }
+    return this.toAssignmentResponse(connectionId, main, correctionSeriesId);
   }
 
   @Roles('admin')
@@ -233,7 +258,18 @@ export class NumberingSeriesController {
   async detachAssignment(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
   ): Promise<void> {
-    await this.repository.deleteAssignmentByConnectionId(connectionId);
+    // COMPAT SHIM (core-numbering-v2): detach both register-less default routes
+    // the pre-v2 assignment mapped to. Each delete is a no-op when absent.
+    await this.repository.deleteRoute(connectionId, DEFAULT_NUMBERING_DOCUMENT_TYPE, null);
+    await this.repository.deleteRoute(connectionId, CORRECTION_NUMBERING_DOCUMENT_TYPE, null);
+  }
+
+  /** Register-less default route for a document type (the pre-v2 assignment target). */
+  private findDefaultRoute(
+    routes: SeriesRouteData[],
+    documentType: string,
+  ): SeriesRouteData | undefined {
+    return routes.find((r) => r.documentType === documentType && r.register === null);
   }
 
   private assertPattern(pattern: string, resetPolicy: Parameters<typeof assertValidNumberingPattern>[1]): void {
@@ -301,13 +337,19 @@ export class NumberingSeriesController {
     };
   }
 
-  private toAssignmentResponse(assignment: SeriesAssignmentData): NumberingAssignmentResponseDto {
+  private toAssignmentResponse(
+    connectionId: string,
+    mainRoute: SeriesRouteData,
+    correctionSeriesId: string | null,
+  ): NumberingAssignmentResponseDto {
+    // Timestamps come from the main (`invoice`) route — the pre-v2 assignment
+    // aggregate had a single created/updated pair keyed by connection.
     return {
-      connectionId: assignment.connectionId,
-      mainSeriesId: assignment.mainSeriesId,
-      correctionSeriesId: assignment.correctionSeriesId,
-      createdAt: assignment.createdAt.toISOString(),
-      updatedAt: assignment.updatedAt.toISOString(),
+      connectionId,
+      mainSeriesId: mainRoute.seriesId,
+      correctionSeriesId,
+      createdAt: mainRoute.createdAt.toISOString(),
+      updatedAt: mainRoute.updatedAt.toISOString(),
     };
   }
 }

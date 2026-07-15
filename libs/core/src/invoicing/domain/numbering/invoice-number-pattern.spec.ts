@@ -4,10 +4,12 @@
  * @module libs/core/src/invoicing/domain/numbering
  */
 import {
+  assertDocumentNumberWithinLength,
   computePeriodKey,
   renderInvoiceNumber,
   validateNumberingPattern,
 } from './invoice-number-pattern';
+import { DocumentNumberTooLongException } from '../exceptions/document-number-too-long.exception';
 
 // 2026-05-04 is Q2, month 05, year 2026 (UTC).
 const MAY_2026 = new Date('2026-05-04T12:00:00.000Z');
@@ -38,6 +40,48 @@ describe('renderInvoiceNumber', () => {
       '458',
     );
   });
+
+  it('renders {DD} (day) and {FY} (fiscal year == calendar year today)', () => {
+    expect(
+      renderInvoiceNumber('{seq}/{DD}/{MM}/{FY}', { seq: 3, seqPadding: 2, issueDate: MAY_2026 }),
+    ).toBe('03/04/05/2026');
+  });
+
+  it('resolves date variables in the seller timezone (#7)', () => {
+    // 2026-01-31T23:00:00Z is Feb 1 (00:00) in Europe/Warsaw (UTC+1 in winter).
+    expect(
+      renderInvoiceNumber('{seq}/{DD}/{MM}/{YYYY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: JAN_2026,
+        timeZone: 'Europe/Warsaw',
+      }),
+    ).toBe('1/01/02/2026');
+    // Same instant in UTC stays Jan 31.
+    expect(
+      renderInvoiceNumber('{seq}/{DD}/{MM}/{YYYY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: JAN_2026,
+        timeZone: 'UTC',
+      }),
+    ).toBe('1/31/01/2026');
+  });
+});
+
+describe('assertDocumentNumberWithinLength', () => {
+  it('does not throw when within (or at) the limit, or when no limit is set', () => {
+    expect(() => assertDocumentNumberWithinLength('FV/0001', 256)).not.toThrow();
+    expect(() => assertDocumentNumberWithinLength('ABCDE', 5)).not.toThrow();
+    expect(() => assertDocumentNumberWithinLength('x'.repeat(1000))).not.toThrow();
+    expect(() => assertDocumentNumberWithinLength('x'.repeat(1000), 0)).not.toThrow();
+  });
+
+  it('throws DocumentNumberTooLongException when the rendered number exceeds the limit', () => {
+    expect(() => assertDocumentNumberWithinLength('ABCDEF', 5)).toThrow(
+      DocumentNumberTooLongException,
+    );
+  });
 });
 
 describe('validateNumberingPattern', () => {
@@ -66,6 +110,11 @@ describe('validateNumberingPattern', () => {
     expect(validateNumberingPattern('FV/{seq}', 'yearly')).not.toEqual([]);
     expect(validateNumberingPattern('FV/{seq}/{YYYY}', 'yearly')).toEqual([]);
   });
+
+  it('accepts {FY} as a year disambiguator', () => {
+    expect(validateNumberingPattern('FV/{seq}/{FY}', 'yearly')).toEqual([]);
+    expect(validateNumberingPattern('FV/{seq}/{MM}/{FY}', 'monthly')).toEqual([]);
+  });
 });
 
 describe('computePeriodKey', () => {
@@ -86,5 +135,11 @@ describe('computePeriodKey', () => {
   it('keys by year-quarter for quarterly', () => {
     expect(computePeriodKey('quarterly', MAY_2026)).toBe('2026-Q2');
     expect(computePeriodKey('quarterly', JAN_2026)).toBe('2026-Q1');
+  });
+
+  it('resolves the period bucket in the seller timezone (#7)', () => {
+    // 2026-01-31T23:00Z rolls to Feb in Europe/Warsaw → the monthly bucket moves.
+    expect(computePeriodKey('monthly', JAN_2026, 'Europe/Warsaw')).toBe('2026-02');
+    expect(computePeriodKey('monthly', JAN_2026, 'UTC')).toBe('2026-01');
   });
 });

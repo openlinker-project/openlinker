@@ -215,8 +215,10 @@ describe('InvoiceService', () => {
       listSeries: jest.fn(),
       listUnassignedSeries: jest.fn(),
       updateSeries: jest.fn(),
-      findAssignmentByConnectionId: jest.fn(),
-      upsertAssignment: jest.fn(),
+      findSeriesIdForDocument: jest.fn(),
+      findRoutesByConnectionId: jest.fn(),
+      upsertRoute: jest.fn(),
+      deleteRoute: jest.fn(),
       allocateNumber: jest.fn(),
     };
 
@@ -984,6 +986,8 @@ describe('InvoiceService', () => {
         upsertCustomer: jest.fn(),
         getSupportedDocumentTypes: jest.fn(),
         consumesDocumentNumber: true,
+        numberingTimeZone: 'Europe/Warsaw',
+        maxDocumentNumberLength: 256,
       } as unknown as jest.Mocked<InvoicingPort> & { consumesDocumentNumber: true };
       integrations.getCapabilityAdapter.mockResolvedValue(consumer);
       repo.findByIdempotencyKey.mockResolvedValue(null);
@@ -992,14 +996,8 @@ describe('InvoiceService', () => {
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
     });
 
-    it('allocates from the main series and passes the rendered number to the adapter', async () => {
-      numberingRepo.findAssignmentByConnectionId.mockResolvedValue({
-        connectionId: CONNECTION,
-        mainSeriesId: 'series-main',
-        correctionSeriesId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+    it('routes an invoice to the invoice series and passes the rendered number to the adapter', async () => {
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
       numberingRepo.allocateNumber.mockResolvedValue({
         documentNumber: 'FV/2026/06/0001',
         allocatedSeq: 1,
@@ -1007,22 +1005,27 @@ describe('InvoiceService', () => {
 
       await service.issueInvoice(makeCmd());
 
+      expect(numberingRepo.findSeriesIdForDocument).toHaveBeenCalledWith(
+        CONNECTION,
+        'invoice',
+        null,
+      );
       expect(numberingRepo.allocateNumber).toHaveBeenCalledWith(
-        expect.objectContaining({ seriesId: 'series-main', recordId: 'rec-1', connectionId: CONNECTION }),
+        expect.objectContaining({
+          seriesId: 'series-main',
+          recordId: 'rec-1',
+          connectionId: CONNECTION,
+          timeZone: 'Europe/Warsaw',
+          maxDocumentNumberLength: 256,
+        }),
       );
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0001' }),
       );
     });
 
-    it('draws a correction from the correction series when one is assigned', async () => {
-      numberingRepo.findAssignmentByConnectionId.mockResolvedValue({
-        connectionId: CONNECTION,
-        mainSeriesId: 'series-main',
-        correctionSeriesId: 'series-correction',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+    it('routes a correction to the corrected series when a correction route exists', async () => {
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-correction');
       numberingRepo.allocateNumber.mockResolvedValue({
         documentNumber: 'FK/2026/06/0001',
         allocatedSeq: 1,
@@ -1057,8 +1060,8 @@ describe('InvoiceService', () => {
       expect(issuedCmd.documentNumber).toBeUndefined();
     });
 
-    it('fails the record (rejected) and throws when the connection has no series assigned', async () => {
-      numberingRepo.findAssignmentByConnectionId.mockResolvedValue(null);
+    it('fails the record (rejected) and throws when the connection has no series route', async () => {
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue(null);
 
       await expect(service.issueInvoice(makeCmd())).rejects.toBeInstanceOf(
         MissingNumberingSeriesException,
@@ -1078,7 +1081,7 @@ describe('InvoiceService', () => {
       await service.issueInvoice(makeCmd());
 
       expect(numberingRepo.allocateNumber).not.toHaveBeenCalled();
-      expect(numberingRepo.findAssignmentByConnectionId).not.toHaveBeenCalled();
+      expect(numberingRepo.findSeriesIdForDocument).not.toHaveBeenCalled();
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
       );

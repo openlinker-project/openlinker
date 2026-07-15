@@ -30,6 +30,23 @@ export interface DocumentNumberConsumer {
    * interface would be invisible to a runtime guard.
    */
   readonly consumesDocumentNumber: true;
+
+  /**
+   * IANA timezone (e.g. `'Europe/Warsaw'`) the numbering date variables and the
+   * period-reset bucket resolve in (#7). The provider adapter owns this value —
+   * resolved from its connection config with a provider-appropriate default —
+   * so core never hardcodes a seller timezone. The core `InvoiceService` threads
+   * it into the allocation's render context.
+   */
+  readonly numberingTimeZone: string;
+
+  /**
+   * Optional max length the provider accepts for a document number (#11) — e.g.
+   * KSeF's FA(3) `P_2` limit of 256. When set, the core allocation validates the
+   * rendered number against it and throws `DocumentNumberTooLongException` before
+   * the provider boundary; absent = no OL-side length guard.
+   */
+  readonly maxDocumentNumberLength?: number;
 }
 
 export function isDocumentNumberConsumer(

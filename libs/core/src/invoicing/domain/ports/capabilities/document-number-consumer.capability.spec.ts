@@ -21,6 +21,8 @@ describe('isDocumentNumberConsumer', () => {
     const consumer: InvoicingPort & DocumentNumberConsumer = {
       ...base,
       consumesDocumentNumber: true,
+      numberingTimeZone: 'Europe/Warsaw',
+      maxDocumentNumberLength: 256,
     };
     expect(isDocumentNumberConsumer(consumer)).toBe(true);
   });

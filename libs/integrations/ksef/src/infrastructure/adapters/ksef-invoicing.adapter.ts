@@ -112,6 +112,21 @@ import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
+/**
+ * Max length of the FA(3) `P_2` document number (the KSeF/FA(3) schema caps it
+ * at 256 chars). Declared to the core numbering allocation (#11) so an
+ * over-length rendered number is rejected in OpenLinker before the session opens.
+ */
+const FA3_P2_MAX_LENGTH = 256;
+
+/**
+ * Default IANA timezone the numbering date variables + period-reset bucket
+ * resolve in (#7) when the connection config carries none. Poland's zone: FA(3)
+ * document dates are the seller's local dates, so an issuance just after local
+ * midnight at a month/year boundary must number in the local calendar day.
+ */
+const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
+
 /** Content type assumed for a UPO when KSeF omits the response `content-type` (the UPO is XML). */
 const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
 
@@ -132,6 +147,16 @@ export class KsefInvoicingAdapter
    * `isDocumentNumberConsumer`.
    */
   readonly consumesDocumentNumber = true as const;
+
+  /**
+   * IANA timezone (#7) the core numbering allocation resolves the FA(3) date
+   * variables + period-reset bucket in. Resolved by the factory from the
+   * connection config (`Europe/Warsaw` default); read by the core `InvoiceService`.
+   */
+  readonly numberingTimeZone: string;
+
+  /** FA(3) `P_2` max length (#11) declared to the core numbering allocation. */
+  readonly maxDocumentNumberLength = FA3_P2_MAX_LENGTH;
 
   /**
    * Resolved connection-level payment defaults (#1311) — `undefined` when the
@@ -170,6 +195,7 @@ export class KsefInvoicingAdapter
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
     this.now = options.now ?? ((): Date => new Date());
+    this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {

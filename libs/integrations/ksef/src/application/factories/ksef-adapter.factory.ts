@@ -63,6 +63,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const payment = this.resolvePayment(connection);
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
+    const numberingTimeZone = this.resolveNumberingTimeZone(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -84,7 +85,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         fa3Builder,
         seller,
         defaultTaxRate,
-        { payment, defaultLineUnit },
+        { payment, defaultLineUnit, numberingTimeZone },
       ),
     };
   }
@@ -166,6 +167,18 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     return typeof lineUnit === 'string' && lineUnit.trim().length > 0
       ? lineUnit.trim()
       : undefined;
+  }
+
+  /**
+   * Resolve the connection-level numbering timezone (#7) from
+   * `config.invoiceDefaults.numberingTimeZone`. Returns `undefined` for an
+   * absent/empty value so the adapter applies its `Europe/Warsaw` default — the
+   * seller-timezone default lives in the plugin, never in `libs/core`.
+   */
+  private resolveNumberingTimeZone(connection: Connection): string | undefined {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    const zone = config?.invoiceDefaults?.numberingTimeZone;
+    return typeof zone === 'string' && zone.trim().length > 0 ? zone.trim() : undefined;
   }
 
   /**

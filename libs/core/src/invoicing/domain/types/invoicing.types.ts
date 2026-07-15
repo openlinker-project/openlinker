@@ -428,6 +428,13 @@ export interface IssueInvoiceCommand {
   correction?: CorrectionReference;
   idempotencyKey?: string;
   /**
+   * Optional neutral register / entity-scope label (#10). Routes numbering to
+   * the connection's series for `(documentType, register)`; when absent the
+   * register-less default series for the document type is used. Ignored by
+   * providers that number documents themselves.
+   */
+  register?: string;
+  /**
    * OpenLinker-allocated legal document number (#1575). Set by the core
    * `InvoiceService` ONLY when the resolved adapter passes
    * `isDocumentNumberConsumer` (today: KSeF) — the adapter then uses it for its
@@ -516,6 +523,12 @@ export interface IssueCorrectionCommand {
   reason?: string;
   lines: CorrectionLine[];
   idempotencyKey?: string;
+  /**
+   * Optional neutral register / entity-scope label (#10). Routes the correction's
+   * numbering to the connection's series for `(documentType, register)`; when
+   * absent the register-less default correction series is used.
+   */
+  register?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
   /**

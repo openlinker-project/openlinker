@@ -1,8 +1,10 @@
 /**
  * Numbering Assignment Response DTO (#1576, C2)
  *
- * Response for the connection assignment reads/writes. Mirrors the neutral
- * `SeriesAssignmentData` shape from `@openlinker/core/invoicing`.
+ * Response for the connection assignment reads/writes. Under core-numbering-v2
+ * this is a COMPATIBILITY projection: the controller maps the register-less
+ * `invoice` / `corrected` document-type routes back onto this main/correction
+ * shape (the API wave replaces these endpoints with the routing surface).
  *
  * @module apps/api/src/invoicing/http/dto
  */

@@ -15,7 +15,7 @@
  * @module apps/api/test/integration/invoicing
  */
 import {
-  InvoiceNumberingAssignmentOrmEntity,
+  InvoiceNumberingRouteOrmEntity,
   InvoiceNumberingSeriesOrmEntity,
   InvoiceRecordOrmEntity,
 } from '@openlinker/core/invoicing/orm-entities';
@@ -50,11 +50,11 @@ describe('invoice numbering allocation (integration)', () => {
     seriesRepo = ds.getRepository(InvoiceNumberingSeriesOrmEntity);
     recordRepo = ds.getRepository(InvoiceRecordOrmEntity);
     await ds.query(
-      'TRUNCATE "invoice_numbering_assignments", "invoice_numbering_series" RESTART IDENTITY CASCADE',
+      'TRUNCATE "invoice_numbering_routes", "invoice_numbering_series" RESTART IDENTITY CASCADE',
     );
     repo = new InvoiceNumberingSeriesRepository(
       seriesRepo,
-      ds.getRepository(InvoiceNumberingAssignmentOrmEntity),
+      ds.getRepository(InvoiceNumberingRouteOrmEntity),
       ds,
     );
   });
@@ -106,6 +106,7 @@ describe('invoice numbering allocation (integration)', () => {
           recordId: r.id,
           connectionId: CONNECTION_ID,
           issueDate: new Date('2026-06-15T10:00:00.000Z'),
+          timeZone: 'Europe/Warsaw',
         }),
       ),
     );
@@ -142,12 +143,14 @@ describe('invoice numbering allocation (integration)', () => {
       recordId: juneRecord.id,
       connectionId: CONNECTION_ID,
       issueDate: new Date('2026-06-30T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
     });
     const july = await repo.allocateNumber({
       seriesId: series.id,
       recordId: julyRecord.id,
       connectionId: CONNECTION_ID,
       issueDate: new Date('2026-07-01T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
     });
 
     // June kept the configured sequence; July rolled back to 1.
@@ -168,6 +171,7 @@ describe('invoice numbering allocation (integration)', () => {
       recordId: first.id,
       connectionId: CONNECTION_ID,
       issueDate: new Date('2026-06-15T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
     });
     expect(firstResult.documentNumber).toBe('FV/0001');
 
@@ -180,6 +184,7 @@ describe('invoice numbering allocation (integration)', () => {
         recordId: second.id,
         connectionId: CONNECTION_ID,
         issueDate: new Date('2026-06-15T10:00:00.000Z'),
+        timeZone: 'Europe/Warsaw',
       }),
     ).rejects.toBeInstanceOf(DuplicateDocumentNumberException);
   });

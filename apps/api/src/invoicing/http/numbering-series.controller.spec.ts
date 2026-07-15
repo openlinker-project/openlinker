@@ -20,7 +20,7 @@ import {
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceNumberingSeriesRepositoryPort,
-  SeriesAssignmentData,
+  SeriesRouteData,
 } from '@openlinker/core/invoicing';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { NumberingSeriesController } from './numbering-series.controller';
@@ -36,16 +36,19 @@ function seriesFixture(overrides: Partial<InvoiceNumberingSeries> = {}): Invoice
     overrides.seqPadding ?? 5,
     overrides.resetPolicy ?? 'yearly',
     overrides.periodKey ?? '2026',
+    overrides.documentType ?? 'invoice',
+    overrides.register ?? null,
     overrides.createdAt ?? NOW,
     overrides.updatedAt ?? NOW,
   );
 }
 
-function assignmentFixture(overrides: Partial<SeriesAssignmentData> = {}): SeriesAssignmentData {
+function routeFixture(overrides: Partial<SeriesRouteData> = {}): SeriesRouteData {
   return {
     connectionId: overrides.connectionId ?? 'conn-1',
-    mainSeriesId: overrides.mainSeriesId ?? '11111111-1111-4111-8111-111111111111',
-    correctionSeriesId: overrides.correctionSeriesId ?? null,
+    documentType: overrides.documentType ?? 'invoice',
+    register: overrides.register ?? null,
+    seriesId: overrides.seriesId ?? '11111111-1111-4111-8111-111111111111',
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
   };
@@ -62,9 +65,10 @@ describe('NumberingSeriesController', () => {
       listSeries: jest.fn(),
       listUnassignedSeries: jest.fn(),
       updateSeries: jest.fn(),
-      findAssignmentByConnectionId: jest.fn(),
-      upsertAssignment: jest.fn(),
-      deleteAssignmentByConnectionId: jest.fn(),
+      findSeriesIdForDocument: jest.fn(),
+      findRoutesByConnectionId: jest.fn(),
+      upsertRoute: jest.fn(),
+      deleteRoute: jest.fn(),
       allocateNumber: jest.fn(),
     };
 
@@ -222,31 +226,61 @@ describe('NumberingSeriesController', () => {
 
   describe('getAssignment', () => {
     it('should return the assignment when configured', async () => {
-      repository.findAssignmentByConnectionId.mockResolvedValue(assignmentFixture());
+      repository.findRoutesByConnectionId.mockResolvedValue([routeFixture()]);
       const result = await controller.getAssignment('conn-1');
       expect(result.connectionId).toBe('conn-1');
+      expect(result.mainSeriesId).toBe('11111111-1111-4111-8111-111111111111');
       expect(result.correctionSeriesId).toBeNull();
     });
 
-    it('should throw 404 when the connection has no assignment', async () => {
-      repository.findAssignmentByConnectionId.mockResolvedValue(null);
+    it('should project the corrected route onto correctionSeriesId', async () => {
+      repository.findRoutesByConnectionId.mockResolvedValue([
+        routeFixture(),
+        routeFixture({ documentType: 'corrected', seriesId: '22222222-2222-4222-8222-222222222222' }),
+      ]);
+      const result = await controller.getAssignment('conn-1');
+      expect(result.correctionSeriesId).toBe('22222222-2222-4222-8222-222222222222');
+    });
+
+    it('should throw 404 when the connection has no invoice route', async () => {
+      repository.findRoutesByConnectionId.mockResolvedValue([]);
       await expect(controller.getAssignment('conn-1')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
   describe('setAssignment', () => {
-    it('should upsert when the main series exists and no correction is given', async () => {
+    it('should upsert the invoice route and detach corrected when no correction is given', async () => {
       repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.upsertAssignment.mockResolvedValue(assignmentFixture());
+      repository.upsertRoute.mockResolvedValue(routeFixture());
       const result = await controller.setAssignment('conn-1', {
         mainSeriesId: '11111111-1111-4111-8111-111111111111',
       });
-      expect(repository.upsertAssignment).toHaveBeenCalledWith({
+      expect(repository.upsertRoute).toHaveBeenCalledWith({
         connectionId: 'conn-1',
-        mainSeriesId: '11111111-1111-4111-8111-111111111111',
-        correctionSeriesId: null,
+        documentType: 'invoice',
+        register: null,
+        seriesId: '11111111-1111-4111-8111-111111111111',
       });
+      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
       expect(result.connectionId).toBe('conn-1');
+      expect(result.correctionSeriesId).toBeNull();
+    });
+
+    it('should upsert both routes when a correction series is given', async () => {
+      repository.findSeriesById.mockResolvedValue(seriesFixture());
+      repository.upsertRoute.mockResolvedValue(routeFixture());
+      const result = await controller.setAssignment('conn-1', {
+        mainSeriesId: '11111111-1111-4111-8111-111111111111',
+        correctionSeriesId: '22222222-2222-4222-8222-222222222222',
+      });
+      expect(repository.upsertRoute).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        documentType: 'corrected',
+        register: null,
+        seriesId: '22222222-2222-4222-8222-222222222222',
+      });
+      expect(repository.deleteRoute).not.toHaveBeenCalled();
+      expect(result.correctionSeriesId).toBe('22222222-2222-4222-8222-222222222222');
     });
 
     it('should validate the correction series exists when provided', async () => {
@@ -259,7 +293,7 @@ describe('NumberingSeriesController', () => {
           correctionSeriesId: '22222222-2222-4222-8222-222222222222',
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.upsertAssignment).not.toHaveBeenCalled();
+      expect(repository.upsertRoute).not.toHaveBeenCalled();
     });
 
     it('should 400 when the main series does not exist', async () => {
@@ -271,10 +305,11 @@ describe('NumberingSeriesController', () => {
   });
 
   describe('detachAssignment', () => {
-    it('should delegate to the repository (no-op safe)', async () => {
-      repository.deleteAssignmentByConnectionId.mockResolvedValue(undefined);
+    it('should delete both register-less default routes (no-op safe)', async () => {
+      repository.deleteRoute.mockResolvedValue(undefined);
       await controller.detachAssignment('conn-1');
-      expect(repository.deleteAssignmentByConnectionId).toHaveBeenCalledWith('conn-1');
+      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'invoice', null);
+      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
     });
   });
 

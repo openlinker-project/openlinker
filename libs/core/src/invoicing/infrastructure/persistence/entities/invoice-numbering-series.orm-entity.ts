@@ -43,6 +43,14 @@ export class InvoiceNumberingSeriesOrmEntity {
   @Column({ type: 'text', default: '' })
   periodKey!: string;
 
+  /** Neutral document type this series numbers (#9); defaults to `invoice`. */
+  @Column({ type: 'text', default: 'invoice' })
+  documentType!: string;
+
+  /** Optional neutral register/entity scope (#10); NULL = the type's register-less default. */
+  @Column({ type: 'text', nullable: true })
+  register!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

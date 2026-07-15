@@ -1,37 +1,50 @@
 /**
  * Invoice Numbering Series Repository
  *
- * TypeORM implementation of `InvoiceNumberingSeriesRepositoryPort` (#1575). Maps
- * ORM ↔ domain privately. The `allocateNumber` primitive is the fiscal heart: a
- * SINGLE atomic `UPDATE ... RETURNING` advances the sequence and resolves the
- * period reset inside the statement (no check-then-increment race), then the
- * rendered number is written onto the invoice record under a
+ * TypeORM implementation of `InvoiceNumberingSeriesRepositoryPort` (#1575, #9,
+ * #10). Maps ORM ↔ domain privately. The `allocateNumber` primitive is the
+ * fiscal heart: a SINGLE atomic `UPDATE ... RETURNING` advances the sequence and
+ * resolves the period reset inside the statement (no check-then-increment race),
+ * then the rendered number is written onto the invoice record under a
  * `documentNumber IS NULL` guard — BOTH inside one transaction so a series is
- * never advanced without the number landing on the record (and vice versa).
- * Postgres unique-violations on the numbering guards surface as
- * `DuplicateDocumentNumberException`; a missing series/record as their
- * respective not-found domain errors.
+ * never advanced without the number landing on the record (and vice versa). The
+ * date variables + period key resolve from the document issue date in the
+ * seller's timezone (#7); the rendered number is length-checked against the
+ * provider limit (#11) before it is persisted. Postgres unique-violations on the
+ * numbering guards surface as `DuplicateDocumentNumberException`; a missing
+ * series/record as their respective not-found domain errors.
+ *
+ * Document-type routing (#9 / #10) replaces the pre-#9 main/correction
+ * assignment: a connection's document resolves to a series by
+ * `(connectionId, documentType, register)`, falling back to the register-less
+ * default route for that type.
  *
  * @module libs/core/src/invoicing/infrastructure/persistence/repositories
  * @implements {InvoiceNumberingSeriesRepositoryPort}
  */
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, IsNull, QueryFailedError, Repository } from 'typeorm';
+import type { FindOptionsWhere } from 'typeorm';
 
 import { InvoiceNumberingSeries } from '../../../domain/entities/invoice-numbering-series.entity';
 import { DuplicateDocumentNumberException } from '../../../domain/exceptions/duplicate-document-number.exception';
 import { InvoiceNumberingSeriesNotFoundException } from '../../../domain/exceptions/invoice-numbering-series-not-found.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
 import type { InvoiceNumberingSeriesRepositoryPort } from '../../../domain/ports/invoice-numbering-series-repository.port';
-import { computePeriodKey, renderInvoiceNumber } from '../../../domain/numbering/invoice-number-pattern';
+import {
+  assertDocumentNumberWithinLength,
+  computePeriodKey,
+  renderInvoiceNumber,
+} from '../../../domain/numbering/invoice-number-pattern';
 import type {
   AllocatedNumber,
   CreateInvoiceNumberingSeriesInput,
-  SeriesAssignmentData,
+  SeriesRouteData,
   UpdateInvoiceNumberingSeriesInput,
+  UpsertSeriesRouteInput,
 } from '../../../domain/types/invoice-numbering.types';
-import { InvoiceNumberingAssignmentOrmEntity } from '../entities/invoice-numbering-assignment.orm-entity';
+import { InvoiceNumberingRouteOrmEntity } from '../entities/invoice-numbering-route.orm-entity';
 import { InvoiceNumberingSeriesOrmEntity } from '../entities/invoice-numbering-series.orm-entity';
 import { InvoiceRecordOrmEntity } from '../entities/invoice-record.orm-entity';
 
@@ -47,8 +60,8 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
   constructor(
     @InjectRepository(InvoiceNumberingSeriesOrmEntity)
     private readonly seriesRepo: Repository<InvoiceNumberingSeriesOrmEntity>,
-    @InjectRepository(InvoiceNumberingAssignmentOrmEntity)
-    private readonly assignmentRepo: Repository<InvoiceNumberingAssignmentOrmEntity>,
+    @InjectRepository(InvoiceNumberingRouteOrmEntity)
+    private readonly routeRepo: Repository<InvoiceNumberingRouteOrmEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
@@ -61,6 +74,8 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
       seqPadding: input.seqPadding,
       resetPolicy: input.resetPolicy,
       periodKey: input.periodKey,
+      documentType: input.documentType,
+      register: input.register,
     });
     const saved = await this.seriesRepo.save(entity);
     return this.toSeriesDomain(saved);
@@ -77,16 +92,19 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
   }
 
   async listUnassignedSeries(): Promise<InvoiceNumberingSeries[]> {
-    const assignments = await this.assignmentRepo.find();
-    const assigned = new Set<string>();
-    for (const a of assignments) {
-      assigned.add(a.mainSeriesId);
-      if (a.correctionSeriesId) {
-        assigned.add(a.correctionSeriesId);
-      }
-    }
-    const all = await this.seriesRepo.find({ order: { createdAt: 'DESC' } });
-    return all.filter((e) => !assigned.has(e.id)).map((e) => this.toSeriesDomain(e));
+    // #13: single LEFT JOIN — series with no referencing route are "unassigned".
+    // Replaces the load-all-and-diff-in-TS implementation.
+    const entities = await this.seriesRepo
+      .createQueryBuilder('series')
+      .leftJoin(
+        InvoiceNumberingRouteOrmEntity,
+        'route',
+        'route."seriesId" = series.id',
+      )
+      .where('route.id IS NULL')
+      .orderBy('series.createdAt', 'DESC')
+      .getMany();
+    return entities.map((e) => this.toSeriesDomain(e));
   }
 
   async updateSeries(
@@ -102,34 +120,76 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
     return this.toSeriesDomain(saved);
   }
 
-  async findAssignmentByConnectionId(
+  async findSeriesIdForDocument(
     connectionId: string,
-  ): Promise<SeriesAssignmentData | null> {
-    const entity = await this.assignmentRepo.findOne({ where: { connectionId } });
-    return entity ? this.toAssignmentDomain(entity) : null;
+    documentType: string,
+    register: string | null,
+  ): Promise<string | null> {
+    // Precedence: exact (register) route, then the register-less default route.
+    if (register !== null) {
+      const exact = await this.routeRepo.findOne({
+        where: this.routeKey(connectionId, documentType, register),
+      });
+      if (exact) {
+        return exact.seriesId;
+      }
+    }
+    const fallback = await this.routeRepo.findOne({
+      where: this.routeKey(connectionId, documentType, null),
+    });
+    return fallback ? fallback.seriesId : null;
   }
 
-  async upsertAssignment(input: {
-    connectionId: string;
-    mainSeriesId: string;
-    correctionSeriesId: string | null;
-  }): Promise<SeriesAssignmentData> {
-    const existing = await this.assignmentRepo.findOne({
-      where: { connectionId: input.connectionId },
+  /**
+   * Build the `(connectionId, documentType, register)` where-clause. A `null`
+   * register maps to `IsNull()` — TypeORM's `FindOptionsWhere` does not accept a
+   * bare `null` for a nullable string column.
+   */
+  private routeKey(
+    connectionId: string,
+    documentType: string,
+    register: string | null,
+  ): FindOptionsWhere<InvoiceNumberingRouteOrmEntity> {
+    return {
+      connectionId,
+      documentType,
+      register: register === null ? IsNull() : register,
+    };
+  }
+
+  async findRoutesByConnectionId(connectionId: string): Promise<SeriesRouteData[]> {
+    const routes = await this.routeRepo.find({
+      where: { connectionId },
+      order: { documentType: 'ASC', createdAt: 'ASC' },
+    });
+    return routes.map((r) => this.toRouteDomain(r));
+  }
+
+  async upsertRoute(input: UpsertSeriesRouteInput): Promise<SeriesRouteData> {
+    const register = input.register ?? null;
+    const existing = await this.routeRepo.findOne({
+      where: this.routeKey(input.connectionId, input.documentType, register),
     });
     const entity =
       existing ??
-      this.assignmentRepo.create({ connectionId: input.connectionId });
-    entity.mainSeriesId = input.mainSeriesId;
-    entity.correctionSeriesId = input.correctionSeriesId;
-    const saved = await this.assignmentRepo.save(entity);
-    return this.toAssignmentDomain(saved);
+      this.routeRepo.create({
+        connectionId: input.connectionId,
+        documentType: input.documentType,
+        register,
+      });
+    entity.seriesId = input.seriesId;
+    const saved = await this.routeRepo.save(entity);
+    return this.toRouteDomain(saved);
   }
 
-  async deleteAssignmentByConnectionId(connectionId: string): Promise<void> {
-    // Delete only the assignment pointer; the referenced series are never
-    // cascade-deleted (#1575 detachable-pointer guarantee). No-op when absent.
-    await this.assignmentRepo.delete({ connectionId });
+  async deleteRoute(
+    connectionId: string,
+    documentType: string,
+    register: string | null,
+  ): Promise<void> {
+    // Delete only the route pointer; the referenced series is never
+    // cascade-deleted (detachable-pointer guarantee). No-op when absent.
+    await this.routeRepo.delete(this.routeKey(connectionId, documentType, register));
   }
 
   async allocateNumber(input: {
@@ -137,15 +197,18 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
     recordId: string;
     connectionId: string;
     issueDate: Date;
+    timeZone: string;
+    maxDocumentNumberLength?: number;
   }): Promise<AllocatedNumber> {
     // Precompute every candidate period key in TS (the pure helper is the single
     // source of truth for period-key formatting) and let one SQL statement pick
     // the right one by the row's own resetPolicy — so the reset is resolved
-    // INSIDE the atomic UPDATE with no re-read of the row.
-    const noneKey = computePeriodKey('none', input.issueDate);
-    const yearlyKey = computePeriodKey('yearly', input.issueDate);
-    const monthlyKey = computePeriodKey('monthly', input.issueDate);
-    const quarterlyKey = computePeriodKey('quarterly', input.issueDate);
+    // INSIDE the atomic UPDATE with no re-read of the row. Every key resolves in
+    // the seller timezone (#7) so the reset bucket matches the seller's calendar.
+    const noneKey = computePeriodKey('none', input.issueDate, input.timeZone);
+    const yearlyKey = computePeriodKey('yearly', input.issueDate, input.timeZone);
+    const monthlyKey = computePeriodKey('monthly', input.issueDate, input.timeZone);
+    const quarterlyKey = computePeriodKey('quarterly', input.issueDate, input.timeZone);
 
     return this.dataSource.transaction(async (manager) => {
       // Single guarded UPDATE ... RETURNING. SET expressions read the OLD row
@@ -188,7 +251,11 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         seq: allocatedSeq,
         seqPadding: Number(row.seqPadding),
         issueDate: input.issueDate,
+        timeZone: input.timeZone,
       });
+      // #11: reject an over-length rendered number in OpenLinker (inside the
+      // transaction, so the series advance rolls back) rather than at the provider.
+      assertDocumentNumberWithinLength(documentNumber, input.maxDocumentNumberLength);
 
       // Persist the rendered number onto the record under a null-guard so a
       // re-run cannot double-allocate onto an already-numbered record. The
@@ -232,18 +299,19 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
       entity.seqPadding,
       entity.resetPolicy,
       entity.periodKey,
+      entity.documentType,
+      entity.register,
       entity.createdAt,
       entity.updatedAt,
     );
   }
 
-  private toAssignmentDomain(
-    entity: InvoiceNumberingAssignmentOrmEntity,
-  ): SeriesAssignmentData {
+  private toRouteDomain(entity: InvoiceNumberingRouteOrmEntity): SeriesRouteData {
     return {
       connectionId: entity.connectionId,
-      mainSeriesId: entity.mainSeriesId,
-      correctionSeriesId: entity.correctionSeriesId,
+      documentType: entity.documentType,
+      register: entity.register,
+      seriesId: entity.seriesId,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };

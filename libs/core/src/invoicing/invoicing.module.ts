@@ -20,7 +20,7 @@ import { SyncModule } from '@openlinker/core/sync';
 import { InvoiceService } from './application/services/invoice.service';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
 import { InvoiceNumberingSeriesOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-series.orm-entity';
-import { InvoiceNumberingAssignmentOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-assignment.orm-entity';
+import { InvoiceNumberingRouteOrmEntity } from './infrastructure/persistence/entities/invoice-numbering-route.orm-entity';
 import { InvoiceRecordRepository } from './infrastructure/persistence/repositories/invoice-record.repository';
 import { InvoiceNumberingSeriesRepository } from './infrastructure/persistence/repositories/invoice-numbering-series.repository';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
@@ -49,7 +49,7 @@ export {
     TypeOrmModule.forFeature([
       InvoiceRecordOrmEntity,
       InvoiceNumberingSeriesOrmEntity,
-      InvoiceNumberingAssignmentOrmEntity,
+      InvoiceNumberingRouteOrmEntity,
     ]),
     // InvoiceService injects INTEGRATIONS_SERVICE_TOKEN to resolve the
     // 'Invoicing' capability adapter per-connection. IntegrationsModule exports

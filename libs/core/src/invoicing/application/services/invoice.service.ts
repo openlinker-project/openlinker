@@ -29,6 +29,10 @@ import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
 import { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/invoice-numbering-series-repository.port';
 import {
+  CORRECTION_NUMBERING_DOCUMENT_TYPE,
+  DEFAULT_NUMBERING_DOCUMENT_TYPE,
+} from '../../domain/types/invoice-numbering.types';
+import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
 } from '../../invoicing.tokens';
@@ -450,15 +454,21 @@ export class InvoiceService implements IInvoiceService {
    *
    * Idempotent per record: a record that already carries a `documentNumber` (a
    * retry of a previously-numbered attempt) reuses it — no new sequence is burned.
-   * Otherwise it resolves the connection's series (main, or the correction series
-   * for a correction — falling back to the main series when none is configured),
-   * throwing {@link MissingNumberingSeriesException} when the connection has no
-   * assignment, and delegates to the repository's atomic allocate+persist.
+   * Otherwise it resolves the connection's series by document-type routing (#9):
+   * the document's neutral type (`invoice` by default, `corrected` for a
+   * correction) plus the command's optional `register` (#10), falling back to the
+   * register-less default route for that type and — for a correction with no
+   * dedicated correction route — to the base (`invoice`) route, preserving the
+   * pre-#9 "correction falls back to the main series" behaviour. Throws
+   * {@link MissingNumberingSeriesException} when no route resolves, and delegates
+   * to the repository's atomic allocate+persist. The issue date resolves in the
+   * adapter-supplied seller timezone (#7) and the rendered number is length-checked
+   * against the adapter's declared limit (#11).
    */
   private async allocateDocumentNumber(
     adapter: InvoicingPort,
     record: InvoiceRecord,
-    cmd: { connectionId: string },
+    cmd: { connectionId: string; documentType?: string; register?: string },
     opts: { correction: boolean },
   ): Promise<string | undefined> {
     if (!isDocumentNumberConsumer(adapter)) {
@@ -468,20 +478,39 @@ export class InvoiceService implements IInvoiceService {
       // Retry of an already-numbered record — reuse the persisted number.
       return record.documentNumber;
     }
-    const assignment = await this.numberingRepo.findAssignmentByConnectionId(cmd.connectionId);
-    if (!assignment) {
+
+    const register = cmd.register ?? null;
+    const routingType =
+      cmd.documentType ??
+      (opts.correction ? CORRECTION_NUMBERING_DOCUMENT_TYPE : DEFAULT_NUMBERING_DOCUMENT_TYPE);
+
+    let seriesId = await this.numberingRepo.findSeriesIdForDocument(
+      cmd.connectionId,
+      routingType,
+      register,
+    );
+    if (seriesId === null && opts.correction) {
+      // A correction with no dedicated correction route falls back to the base
+      // (main-equivalent) series — the pre-#9 default behaviour.
+      seriesId = await this.numberingRepo.findSeriesIdForDocument(
+        cmd.connectionId,
+        DEFAULT_NUMBERING_DOCUMENT_TYPE,
+        register,
+      );
+    }
+    if (seriesId === null) {
       throw new MissingNumberingSeriesException(cmd.connectionId);
     }
-    const seriesId = opts.correction
-      ? assignment.correctionSeriesId ?? assignment.mainSeriesId
-      : assignment.mainSeriesId;
+
     const allocation = await this.numberingRepo.allocateNumber({
       seriesId,
       recordId: record.id,
       connectionId: cmd.connectionId,
       // The number is allocated AT ISSUE TIME; the date variables + period reset
-      // resolve from this instant (the record has no separate issue-date input).
+      // resolve from this instant in the seller timezone the adapter supplies.
       issueDate: new Date(),
+      timeZone: adapter.numberingTimeZone,
+      maxDocumentNumberLength: adapter.maxDocumentNumberLength,
     });
     return allocation.documentNumber;
   }

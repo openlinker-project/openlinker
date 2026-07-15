@@ -25,6 +25,10 @@ export class InvoiceNumberingSeries {
     public readonly resetPolicy: ResetPolicy,
     /** Opaque marker of the period `nextSeq` belongs to; empty for `none`. */
     public readonly periodKey: string,
+    /** Neutral document type this series numbers (#9): `invoice` / `corrected` / … */
+    public readonly documentType: string,
+    /** Optional neutral register/entity scope (#10); `null` = the type's register-less default. */
+    public readonly register: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
