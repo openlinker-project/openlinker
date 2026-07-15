@@ -42,6 +42,7 @@ The sidebar is always visible and organized into groups, separated by frequency 
 - **Customers** — customer projections built from order data
 - **Listings** — marketplace offers managed by OpenLinker
 - **Shipments** — shipment tracking and dispatch
+- **Invoices** — issued/pending/failed invoices per order, with regulatory (e.g. KSeF) clearance status — see [Invoices](./04-invoices.md)
 
 **Diagnostics** — when something needs investigation:
 - **Jobs & Logs** — every background sync job: status, payload, and detail
@@ -57,7 +58,7 @@ The sidebar is always visible and organized into groups, separated by frequency 
 - **Prompt templates** — editable prompts used when generating offer descriptions
 - **Provider settings** — configure and activate an AI provider (Anthropic / OpenAI)
 
-Below the AI group you'll see **Automations** and **Invoices** listed in a muted style. These are planned future features — they are not yet functional and are not covered by this guide.
+Below the AI group you'll see **Automations** listed in a muted style. This is a planned future feature — it is not yet functional and is not covered by this guide.
 
 ### Top Bar
 
@@ -81,7 +82,7 @@ Four cards at the top give a quick health read:
 
 | Card | What it shows |
 |---|---|
-| **Integration health** | `2 / 2` — how many connections are active out of the total configured |
+| **Integration health** | `5 / 7` — how many connections are active out of the total configured |
 | **System health** | OK when all core dependencies (PostgreSQL, Redis, PrestaShop, Worker) are reachable |
 | **Failed jobs** | Count of jobs in `dead` state that need attention |
 | **Queued jobs** | Jobs currently waiting to be picked up by the worker |
