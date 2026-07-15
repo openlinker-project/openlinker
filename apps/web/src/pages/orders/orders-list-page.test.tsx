@@ -618,4 +618,62 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
     expect(within(row).getByText('buyer@allegromail.pl')).toBeInTheDocument();
   });
+
+  it('should preview the single item name in the collapsed row (#1646)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
+    // Collapsed — the full "N item(s)" detail summary isn't rendered yet.
+    expect(container.querySelector('.data-table__detail-row')).toBeNull();
+  });
+
+  it('should preview the first item name plus a "+N more" suffix for multi-item orders (#1646)', async () => {
+    const multiItemOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_multi',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        items: [
+          { id: 'i1', quantity: 1, price: 40, name: 'Filtr kubełkowy AquaPro' },
+          { id: 'i2', quantity: 2, price: 22.1, name: 'Wkład węglowy' },
+          { id: 'i3', quantity: 1, price: 22.1, name: 'Uszczelka' },
+        ],
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([multiItemOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).getByText('Filtr kubełkowy AquaPro +2 more')).toBeInTheDocument();
+  });
+
+  it('should not render an items preview line when the snapshot has no named items (#1646)', async () => {
+    const noItemsOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_noitems',
+      orderSnapshot: { ...syncedOrder.orderSnapshot, items: [] },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([noItemsOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+    expect(within(row).queryByText(/more$/)).not.toBeInTheDocument();
+  });
 });
