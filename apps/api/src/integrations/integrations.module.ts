@@ -24,6 +24,7 @@ import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
 import { SubiektController } from './http/subiekt.controller';
 import { ConnectionService } from './application/services/connection.service';
+import { CONNECTION_SERVICE_TOKEN } from './application/interfaces/connection.service.interface';
 import { OAuthConnectionService } from './application/services/oauth-connection.service';
 import { OAUTH_CONNECTION_SERVICE_TOKEN } from './application/interfaces/oauth-connection.service.interface';
 import { DemoModeService } from '../auth/demo-mode.service';
@@ -40,6 +41,7 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
   controllers: [ConnectionController, AdapterController, AllegroController, SubiektController],
   providers: [
     ConnectionService,
+    { provide: CONNECTION_SERVICE_TOKEN, useExisting: ConnectionService },
     // Neutral OAuth orchestration (#859). Allegro's OAuth knowledge (URLs,
     // token exchange, `/me`) now lives in the plugin behind OAuthCompletionPort,
     // resolved at runtime via OAuthCompletionRegistryService — so the host no
@@ -52,6 +54,10 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     DemoModeService,
     { provide: DEMO_MODE_SERVICE_TOKEN, useExisting: DemoModeService },
   ],
-  exports: [PluginRegistryModule],
+  // CoreIntegrationsModule is re-exported so downstream modules (e.g. HealthModule,
+  // for the infra-connection health rollup, #1619) can inject INTEGRATIONS_SERVICE_TOKEN
+  // via this module without re-importing CoreIntegrationsModule directly.
+  // (NestJS dedupes the singleton instance, so plugin-registered testers stay intact.)
+  exports: [PluginRegistryModule, CoreIntegrationsModule, CONNECTION_SERVICE_TOKEN],
 })
 export class IntegrationsModule {}

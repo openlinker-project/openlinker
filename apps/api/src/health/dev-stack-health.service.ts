@@ -18,9 +18,12 @@ import { firstValueFrom, timeout } from 'rxjs';
 import { RedisClientType } from 'redis';
 import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker';
 import type { IDevStackHealthService } from './dev-stack-health.service.interface';
+import { IConnectionInfraHealthService } from './connection-infra-health.service.interface';
+import { CONNECTION_INFRA_HEALTH_SERVICE_TOKEN } from './health.tokens';
 import type {
   InternalHealthReadiness,
   DevStackHealthResponse,
+  ConnectionHealthEntry,
   ServiceHealth,
   ServiceStatus,
 } from './dev-stack-health.types';
@@ -39,7 +42,9 @@ export class DevStackHealthService implements IDevStackHealthService {
     @Inject('REDIS_CLIENT')
     private readonly redisClient: RedisClientType,
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @Inject(CONNECTION_INFRA_HEALTH_SERVICE_TOKEN)
+    private readonly connectionInfraHealthService: IConnectionInfraHealthService
   ) {}
 
   async checkInternalHealth(): Promise<InternalHealthReadiness> {
@@ -63,11 +68,12 @@ export class DevStackHealthService implements IDevStackHealthService {
   async checkDevStackHealth(): Promise<DevStackHealthResponse> {
     // Run all checks in parallel so checkWorker()'s GET reaches Redis before
     // checkRedis()'s xAdd is queued, preventing pipeline blocking.
-    const [postgres, redis, prestashop, worker] = await Promise.all([
+    const [postgres, redis, prestashop, worker, connections] = await Promise.all([
       this.checkPostgres(),
       this.checkRedis(),
       this.checkPrestaShop(),
       this.checkWorker(),
+      this.checkInfraConnections(),
     ]);
     const services = { postgres, redis, prestashop, worker };
 
@@ -78,14 +84,18 @@ export class DevStackHealthService implements IDevStackHealthService {
     const hasExternalError =
       services.prestashop.status === 'error' ||
       services.worker.status === 'error' ||
-      services.worker.status === 'warning';
+      services.worker.status === 'warning' ||
+      connections.some(
+        (connection) => connection.status === 'error' || connection.status === 'warning'
+      );
 
     let status: 'ok' | 'degraded' | 'error';
     if (hasInternalError) {
       // Internal services (PostgreSQL, Redis) are down - critical error
       status = 'error';
     } else if (hasExternalError) {
-      // Internal services are healthy, but external (PrestaShop/worker) is down/slow - degraded
+      // Internal services are healthy, but an external dependency (PrestaShop,
+      // worker, or an infra-bearing connection) is down/slow - degraded
       status = 'degraded';
     } else {
       // All services (internal + external) are healthy
@@ -95,8 +105,19 @@ export class DevStackHealthService implements IDevStackHealthService {
     return {
       status,
       services,
+      connections,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  private async checkInfraConnections(): Promise<ConnectionHealthEntry[]> {
+    try {
+      return await this.connectionInfraHealthService.checkInfraConnections();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Infra connection health rollup failed: ${errorMessage}`, error);
+      return [];
+    }
   }
 
   private async checkPostgres(): Promise<ServiceHealth> {

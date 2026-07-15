@@ -6,6 +6,19 @@ export interface ServiceHealth {
   message?: string;
 }
 
+/**
+ * Health entry for a single infrastructure-bearing connection (#1619) - a
+ * connection whose adapter backs a real shop/warehouse system (e.g. a
+ * connected WooCommerce shop) rather than a marketplace listing channel.
+ */
+export interface ConnectionHealthEntry {
+  connectionId: string;
+  name: string;
+  platformType: string;
+  status: ServiceStatus;
+  message?: string;
+}
+
 export interface DevStackHealth {
   status: OverallStatus;
   services: {
@@ -14,5 +27,11 @@ export interface DevStackHealth {
     prestashop: ServiceHealth;
     worker?: ServiceHealth;
   };
+  /**
+   * Infra-bearing connections (e.g. a connected WooCommerce shop) discovered
+   * and probed alongside the fixed core services. Empty when none exist.
+   * Optional for backward compatibility with cached/older responses.
+   */
+  connections?: ConnectionHealthEntry[];
   timestamp: string;
 }
