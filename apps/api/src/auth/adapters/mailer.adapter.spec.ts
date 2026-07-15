@@ -1,41 +1,27 @@
 /**
- * Mailer infrastructure unit tests: transport selection by config, the
- * console + SMTP adapter contracts, and the password-reset notifier that
- * composes MailerPort.
+ * Mailer infrastructure unit tests: the console + SMTP adapter contracts,
+ * the DB-backed router adapter that resolves the effective transport per
+ * send (#1643), and the password-reset notifier that composes MailerPort.
  */
 import type { ConfigService } from '@nestjs/config';
 import { User, type MailerPort } from '@openlinker/core/users';
+import type { IMailerSettingsService } from '@openlinker/core/mailer';
 import { ConsoleMailerAdapter } from './console-mailer.adapter';
 import { SmtpMailerAdapter, type SmtpTransport } from './smtp-mailer.adapter';
-import { createMailer } from './mailer.provider';
 import { MailerPasswordResetNotifierAdapter } from './mailer-password-reset-notifier.adapter';
+import { DbBackedMailerAdapter } from './db-backed-mailer.adapter';
+
+const sendMailMock = jest.fn().mockResolvedValue({});
+const createTransportMock = jest.fn((..._args: unknown[]) => ({ sendMail: sendMailMock }));
+jest.mock('nodemailer', () => ({
+  createTransport: (...args: unknown[]) => createTransportMock(...args),
+}));
 
 function makeConfig(values: Record<string, string>): ConfigService {
   return {
     get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback),
   } as unknown as ConfigService;
 }
-
-describe('createMailer (transport selection)', () => {
-  it('defaults to the console adapter when no SMTP host is configured', () => {
-    const mailer = createMailer(makeConfig({}));
-    expect(mailer).toBeInstanceOf(ConsoleMailerAdapter);
-  });
-
-  it('uses the console adapter when MAIL_TRANSPORT=console even if a host is set', () => {
-    const mailer = createMailer(makeConfig({ MAIL_TRANSPORT: 'console', MAIL_SMTP_HOST: 'smtp.x' }));
-    expect(mailer).toBeInstanceOf(ConsoleMailerAdapter);
-  });
-
-  it('uses the SMTP adapter when a host is configured', () => {
-    const mailer = createMailer(makeConfig({ MAIL_SMTP_HOST: 'smtp.example.com' }));
-    expect(mailer).toBeInstanceOf(SmtpMailerAdapter);
-  });
-
-  it('throws when MAIL_TRANSPORT=smtp but no host is set', () => {
-    expect(() => createMailer(makeConfig({ MAIL_TRANSPORT: 'smtp' }))).toThrow(/MAIL_SMTP_HOST/);
-  });
-});
 
 describe('SmtpMailerAdapter', () => {
   it('forwards the message to the underlying transport with the From address', async () => {
@@ -58,8 +44,109 @@ describe('ConsoleMailerAdapter', () => {
   it('resolves without throwing (logs only)', async () => {
     const adapter = new ConsoleMailerAdapter();
     await expect(
-      adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' }),
+      adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' })
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('DbBackedMailerAdapter', () => {
+  const buildSettings = (
+    resolved: Awaited<ReturnType<IMailerSettingsService['resolveTransportConfig']>>
+  ): jest.Mocked<IMailerSettingsService> => ({
+    getSettings: jest.fn(),
+    updateSettings: jest.fn(),
+    setSmtpPassword: jest.fn(),
+    clearSmtpPassword: jest.fn(),
+    resolveTransportConfig: jest.fn().mockResolvedValue(resolved),
+  });
+
+  beforeEach(() => {
+    sendMailMock.mockClear();
+    createTransportMock.mockClear();
+  });
+
+  it('sends via the console adapter when the resolved transport is console', async () => {
+    const settings = buildSettings({
+      transport: 'console',
+      smtpHost: null,
+      smtpPort: 587,
+      smtpSecure: false,
+      smtpUser: null,
+      smtpPassword: null,
+      fromAddress: 'no-reply@openlinker.local',
+    });
+    const consoleSpy = jest.spyOn(ConsoleMailerAdapter.prototype, 'sendEmail');
+    const adapter = new DbBackedMailerAdapter(settings);
+
+    await adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' });
+
+    expect(consoleSpy).toHaveBeenCalledWith({ to: 'a@b.com', subject: 'Hi', text: 'Body' });
+    expect(createTransportMock).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('falls back to console when transport is smtp but no host is resolved (defensive)', async () => {
+    const settings = buildSettings({
+      transport: 'smtp',
+      smtpHost: null,
+      smtpPort: 587,
+      smtpSecure: false,
+      smtpUser: null,
+      smtpPassword: null,
+      fromAddress: 'no-reply@openlinker.local',
+    });
+    const adapter = new DbBackedMailerAdapter(settings);
+
+    await expect(
+      adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' })
+    ).resolves.toBeUndefined();
+    expect(createTransportMock).not.toHaveBeenCalled();
+  });
+
+  it('builds an SMTP transporter from the resolved config and sends through it', async () => {
+    const settings = buildSettings({
+      transport: 'smtp',
+      smtpHost: 'smtp.example.com',
+      smtpPort: 587,
+      smtpSecure: false,
+      smtpUser: 'user',
+      smtpPassword: 'pass',
+      fromAddress: 'no-reply@openlinker.local',
+    });
+    const adapter = new DbBackedMailerAdapter(settings);
+
+    await adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' });
+
+    expect(createTransportMock).toHaveBeenCalledWith({
+      host: 'smtp.example.com',
+      port: 587,
+      secure: false,
+      auth: { user: 'user', pass: 'pass' },
+    });
+    expect(sendMailMock).toHaveBeenCalledWith({
+      from: 'no-reply@openlinker.local',
+      to: 'a@b.com',
+      subject: 'Hi',
+      text: 'Body',
+      html: undefined,
+    });
+  });
+
+  it('omits auth when no SMTP user is resolved', async () => {
+    const settings = buildSettings({
+      transport: 'smtp',
+      smtpHost: 'smtp.example.com',
+      smtpPort: 587,
+      smtpSecure: false,
+      smtpUser: null,
+      smtpPassword: null,
+      fromAddress: 'no-reply@openlinker.local',
+    });
+    const adapter = new DbBackedMailerAdapter(settings);
+
+    await adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body' });
+
+    expect(createTransportMock).toHaveBeenCalledWith(expect.objectContaining({ auth: undefined }));
   });
 });
 
@@ -71,7 +158,7 @@ describe('MailerPasswordResetNotifierAdapter', () => {
     const mailer: jest.Mocked<MailerPort> = { sendEmail: jest.fn().mockResolvedValue(undefined) };
     const notifier = new MailerPasswordResetNotifierAdapter(
       mailer,
-      makeConfig({ WEB_URL: 'https://app.example.com' }),
+      makeConfig({ WEB_URL: 'https://app.example.com' })
     );
 
     await notifier.notifyResetRequested(makeUser('user@example.com'), 'raw-token-123');

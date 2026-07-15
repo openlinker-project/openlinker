@@ -22,6 +22,7 @@ import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { AiModule as CoreAiModule } from '@openlinker/core/ai';
+import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -39,6 +40,7 @@ import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { UsersApiModule } from './users/users.module';
 import { SystemModule } from './system/system.module';
+import { MailerApiModule } from './mailer/mailer.module';
 
 @Module({
   imports: [
@@ -69,6 +71,8 @@ import { SystemModule } from './system/system.module';
     InvoicingModule, // Invoicing domain foundation — port + record + repo (#751, ADR-026)
     CoreAiModule, // Editable prompt-template storage + render service (#341)
     AiApiModule, // REST surface for prompt templates (#341)
+    CoreMailerModule, // DB-backed mailer/SMTP settings resolution (#1643)
+    MailerApiModule, // Admin REST surface for mailer/SMTP settings (#1643)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
@@ -79,4 +83,3 @@ import { SystemModule } from './system/system.module';
   providers: [AppService],
 })
 export class AppModule {}
-

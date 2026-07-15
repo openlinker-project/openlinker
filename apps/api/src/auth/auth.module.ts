@@ -14,6 +14,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -40,6 +41,9 @@ import { UsersApiModule } from '../users/users.module';
   imports: [
     UsersModule,
     UsersApiModule,
+    // For MAILER_SETTINGS_SERVICE_TOKEN, consumed by DbBackedMailerAdapter
+    // (#1643) to resolve the DB-backed transport at send time.
+    CoreMailerModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
