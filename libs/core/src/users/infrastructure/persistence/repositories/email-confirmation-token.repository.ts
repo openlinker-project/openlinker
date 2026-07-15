@@ -8,7 +8,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { EmailConfirmationToken } from '../../../domain/entities/email-confirmation-token.entity';
 import type { EmailConfirmationTokenRepositoryPort } from '../../../domain/ports/email-confirmation-token-repository.port';
 import { EmailConfirmationTokenOrmEntity } from '../entities/email-confirmation-token.orm-entity';
@@ -41,11 +41,22 @@ export class EmailConfirmationTokenRepository implements EmailConfirmationTokenR
       .where('token_hash = :tokenHash', { tokenHash })
       .andWhere('used_at IS NULL')
       .andWhere('expires_at > :now', { now })
-      .returning(['user_id'])
+      // Entity PROPERTY name ('userId'), not the raw DB column name
+      // ('user_id') — TypeORM's QueryBuilder#returning resolves entries
+      // against column metadata keyed by property name and silently emits
+      // no RETURNING output for a name it can't match (#1649: `affected: 1`
+      // but `raw: []`, so this always returned null even though the token
+      // was correctly consumed — the account got permanently stuck in
+      // `pending_confirmation` with a burned, unusable token).
+      .returning(['userId'])
       .execute();
 
     const row = (result.raw as Array<{ user_id: string }>)[0];
     return row ? row.user_id : null;
+  }
+
+  async invalidateActiveForUser(userId: string, now: Date): Promise<void> {
+    await this.ormRepository.update({ userId, usedAt: IsNull() }, { usedAt: now });
   }
 
   private toDomain(entity: EmailConfirmationTokenOrmEntity): EmailConfirmationToken {

@@ -23,6 +23,16 @@ export interface IEmailConfirmationService {
    * unknown/expired/used token.
    */
   confirmEmail(token: string): Promise<void>;
+
+  /**
+   * Issues a fresh confirmation token and resends the confirmation email for
+   * the account matching `email`, invalidating any previously-issued
+   * unconsumed token first (#1649). No-ops (never throws) for an unknown
+   * email or an account that isn't `pending_confirmation` — the caller
+   * always returns a generic 200, mirroring `PasswordResetService.requestReset`'s
+   * enumeration-safe posture.
+   */
+  resendConfirmation(email: string): Promise<void>;
 }
 
 export const EMAIL_CONFIRMATION_SERVICE_TOKEN = Symbol('IEmailConfirmationService');

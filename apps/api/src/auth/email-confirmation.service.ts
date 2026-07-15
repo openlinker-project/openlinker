@@ -19,11 +19,13 @@ import {
   EMAIL_CONFIRMATION_TOKEN_REPOSITORY_TOKEN,
   InvalidEmailConfirmationTokenException,
   MAILER_TOKEN,
+  USER_REPOSITORY_TOKEN,
   UserNotFoundException,
   UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
   type User,
+  type UserRepositoryPort,
 } from '@openlinker/core/users';
 import type { IEmailConfirmationService } from './email-confirmation.service.interface';
 import {
@@ -51,6 +53,8 @@ export class EmailConfirmationService implements IEmailConfirmationService {
     private readonly mailer: MailerPort,
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
     private readonly userManagementService: IUserManagementService,
+    @Inject(USER_REPOSITORY_TOKEN)
+    private readonly userRepository: UserRepositoryPort,
     private readonly configService: ConfigService
   ) {
     this.ttlMinutes = Number(
@@ -124,11 +128,17 @@ export class EmailConfirmationService implements IEmailConfirmationService {
     const now = new Date();
     const userId = await this.tokenRepository.consumeToken(tokenHash, now);
     if (!userId) {
+      // Distinct failure mode from the catch block below: no row matched
+      // the atomic consume — the token itself is unknown, expired, or
+      // already used. Logged so ops can tell this apart from "token was
+      // consumed fine, activation itself failed" (#1649).
+      this.logger.warn('Email confirmation failed: no matching unconsumed token');
       throw new InvalidEmailConfirmationTokenException();
     }
 
     try {
       await this.userManagementService.confirmEmail(userId);
+      this.logger.log(`Email confirmed and account activated: ${userId}`);
     } catch (error) {
       if (
         error instanceof UserNotPendingConfirmationException ||
@@ -139,13 +149,42 @@ export class EmailConfirmationService implements IEmailConfirmationService {
         // another path) or no longer exists (e.g. removed by the demo
         // account cleanup job in the window between consumeToken and this
         // call). Both exceptions carry the internal user id in their
-        // message — always remap to the same generic invalid-token error
-        // the public endpoint already returns for every other invalid-token
-        // case, regardless of which exception fired.
+        // message — never let that reach the HTTP layer or the log, so we
+        // remap to the same generic invalid-token error the public endpoint
+        // already returns for every other invalid-token case. The original
+        // exception's constructor name (never its message — that's the
+        // part carrying the user id) is logged server-side BEFORE the
+        // remap, so ops can distinguish "token fine, activation failed for
+        // an unrelated reason" from a genuinely bad token (#1649) — the
+        // regression this closes is that the previous remap discarded this
+        // distinction before `AuthController`'s own logging ever saw it.
+        this.logger.warn(
+          `Email confirmation token was consumed but activation failed: ${error.constructor.name}`
+        );
         throw new InvalidEmailConfirmationTokenException();
       }
       throw error;
     }
+  }
+
+  async resendConfirmation(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email);
+    if (!user || user.status !== 'pending_confirmation') {
+      // No-op for an unknown email or an account not awaiting confirmation
+      // (already active, deactivated, etc.) — mirrors
+      // PasswordResetService.requestReset's enumeration-safe posture. The
+      // caller always returns the same generic 200 regardless.
+      this.logger.debug('Resend confirmation requested for a non-pending-confirmation account');
+      return;
+    }
+
+    const now = new Date();
+    // Invalidate any previously-issued, still-unconsumed token first so a
+    // stale link from an earlier email can no longer be used once the new
+    // one is sent (#1649) — mirrors
+    // PasswordResetTokenRepositoryPort.invalidateActiveForUser.
+    await this.tokenRepository.invalidateActiveForUser(user.id, now);
+    await this.sendConfirmation(user);
   }
 
   private hashToken(rawToken: string): string {

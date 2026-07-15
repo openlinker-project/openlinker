@@ -23,4 +23,12 @@ export interface EmailConfirmationTokenRepositoryPort {
    * result for a given token.
    */
   consumeToken(tokenHash: string, now: Date): Promise<string | null>;
+
+  /**
+   * Marks every still-unconsumed token for `userId` as used as of `now`.
+   * Called before issuing a fresh token (resend, #1649) so a stale link
+   * from an earlier email can no longer be used once a newer one has been
+   * sent — mirrors `PasswordResetTokenRepositoryPort.invalidateActiveForUser`.
+   */
+  invalidateActiveForUser(userId: string, now: Date): Promise<void>;
 }

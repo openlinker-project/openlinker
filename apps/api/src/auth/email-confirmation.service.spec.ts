@@ -12,12 +12,15 @@ import {
   UserNotPendingConfirmationException,
   type EmailConfirmationTokenRepositoryPort,
   type MailerPort,
+  type UserRepositoryPort,
 } from '@openlinker/core/users';
 import { EmailConfirmationService } from './email-confirmation.service';
 import type { IUserManagementService } from '../users/user-management.service.interface';
 
-const makeUser = (email: string | null = 'demo@test.com'): User =>
-  new User('user-1', 'demo_user', email, 'hash', 'viewer', 'pending_confirmation', new Date(), new Date());
+const makeUser = (
+  email: string | null = 'demo@test.com',
+  status: User['status'] = 'pending_confirmation',
+): User => new User('user-1', 'demo_user', email, 'hash', 'viewer', status, new Date(), new Date());
 
 const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
   ({
@@ -27,6 +30,7 @@ const makeConfig = (overrides: Record<string, string> = {}): ConfigService =>
 const makeTokenRepo = (): jest.Mocked<EmailConfirmationTokenRepositoryPort> => ({
   save: jest.fn(),
   consumeToken: jest.fn(),
+  invalidateActiveForUser: jest.fn(),
 });
 
 const makeMailer = (): jest.Mocked<MailerPort> => ({
@@ -44,6 +48,23 @@ const makeUserManagementService = (): jest.Mocked<IUserManagementService> => ({
   confirmEmail: jest.fn(),
 });
 
+const makeUserRepo = (): jest.Mocked<UserRepositoryPort> => ({
+  findByUsername: jest.fn(),
+  findByEmail: jest.fn(),
+  findById: jest.fn(),
+  findAll: jest.fn(),
+  updatePasswordHash: jest.fn(),
+  updateStatus: jest.fn(),
+  updateRole: jest.fn(),
+  approveUser: jest.fn(),
+  deleteById: jest.fn(),
+  findStaleViewerAccounts: jest.fn(),
+  save: jest.fn(),
+  deactivateAdminAtomically: jest.fn(),
+  updateAdminRoleAtomically: jest.fn(),
+  deleteAdminAtomically: jest.fn(),
+});
+
 describe('EmailConfirmationService', () => {
   describe('sendConfirmation', () => {
     it('saves a hashed token and emails the confirmation link', async () => {
@@ -57,6 +78,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         mailer,
         userManagementService,
+        makeUserRepo(),
         makeConfig({ WEB_URL: 'https://app.example.com' }),
       );
 
@@ -82,6 +104,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         mailer,
         makeUserManagementService(),
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -102,6 +125,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         mailer,
         makeUserManagementService(),
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -116,6 +140,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         mailer,
         makeUserManagementService(),
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -134,6 +159,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         makeMailer(),
         userManagementService,
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -151,6 +177,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         makeMailer(),
         userManagementService,
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -166,6 +193,7 @@ describe('EmailConfirmationService', () => {
         makeTokenRepo(),
         makeMailer(),
         makeUserManagementService(),
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -185,6 +213,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         makeMailer(),
         userManagementService,
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -204,12 +233,44 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         makeMailer(),
         userManagementService,
+        makeUserRepo(),
         makeConfig({}),
       );
 
       await expect(service.confirmEmail('raw-token')).rejects.toThrow(
         InvalidEmailConfirmationTokenException,
       );
+    });
+
+    it('logs the original exception constructor name (not its message) before remapping (#1649)', async () => {
+      const tokenRepo = makeTokenRepo();
+      tokenRepo.consumeToken.mockResolvedValue('user-1');
+      const userManagementService = makeUserManagementService();
+      userManagementService.confirmEmail.mockRejectedValue(
+        new UserNotPendingConfirmationException('user-1'),
+      );
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        userManagementService,
+        makeUserRepo(),
+        makeConfig({}),
+      );
+      const warnSpy = jest.spyOn(
+        (service as unknown as { logger: { warn: (msg: string) => void } }).logger,
+        'warn',
+      );
+
+      await expect(service.confirmEmail('raw-token')).rejects.toThrow(
+        InvalidEmailConfirmationTokenException,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('UserNotPendingConfirmationException'),
+      );
+      // The raw exception message carries the internal user id — must never
+      // be logged.
+      expect(warnSpy.mock.calls.some((call) => String(call[0]).includes('user-1'))).toBe(false);
     });
 
     it('does not consume the token twice for two concurrent calls with the same raw token (finding 2)', async () => {
@@ -221,6 +282,7 @@ describe('EmailConfirmationService', () => {
         tokenRepo,
         makeMailer(),
         userManagementService,
+        makeUserRepo(),
         makeConfig({}),
       );
 
@@ -232,6 +294,68 @@ describe('EmailConfirmationService', () => {
       expect(first.status).toBe('fulfilled');
       expect(second.status).toBe('rejected');
       expect(userManagementService.confirmEmail).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('resendConfirmation', () => {
+    it('invalidates the existing token and sends a fresh one for a pending_confirmation account', async () => {
+      const tokenRepo = makeTokenRepo();
+      const mailer = makeMailer();
+      const userRepo = makeUserRepo();
+      const user = makeUser();
+      userRepo.findByEmail.mockResolvedValue(user);
+      tokenRepo.save.mockResolvedValue(
+        new EmailConfirmationToken('t2', 'user-1', 'hash', new Date(), null, new Date()),
+      );
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        mailer,
+        makeUserManagementService(),
+        userRepo,
+        makeConfig({ WEB_URL: 'https://app.example.com' }),
+      );
+
+      await service.resendConfirmation('demo@test.com');
+
+      expect(tokenRepo.invalidateActiveForUser).toHaveBeenCalledWith('user-1', expect.any(Date));
+      expect(tokenRepo.save).toHaveBeenCalledTimes(1);
+      expect(mailer.sendEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('no-ops for an unknown email (enumeration-safe)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      userRepo.findByEmail.mockResolvedValue(null);
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeConfig({}),
+      );
+
+      await expect(service.resendConfirmation('ghost@test.com')).resolves.toBeUndefined();
+
+      expect(tokenRepo.invalidateActiveForUser).not.toHaveBeenCalled();
+      expect(tokenRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('no-ops for an account that is not pending_confirmation (enumeration-safe)', async () => {
+      const tokenRepo = makeTokenRepo();
+      const userRepo = makeUserRepo();
+      userRepo.findByEmail.mockResolvedValue(makeUser('demo@test.com', 'active'));
+      const service = new EmailConfirmationService(
+        tokenRepo,
+        makeMailer(),
+        makeUserManagementService(),
+        userRepo,
+        makeConfig({}),
+      );
+
+      await expect(service.resendConfirmation('demo@test.com')).resolves.toBeUndefined();
+
+      expect(tokenRepo.invalidateActiveForUser).not.toHaveBeenCalled();
+      expect(tokenRepo.save).not.toHaveBeenCalled();
     });
   });
 });
