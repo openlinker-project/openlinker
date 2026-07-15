@@ -7674,6 +7674,18 @@ a.kpi-card:focus-visible {
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
+/* The `flex-wrap: wrap` above lives on `.orders-toolbar` itself, but its
+   only DOM child is `.toolbar__group` (a nested flex row holding the
+   actual source/date/SLA/fulfillment controls) — a single flex item never
+   wraps. `.toolbar__group` (shared with connections/products/etc.) stays
+   `nowrap` by default because those simpler toolbars fit in one row; the
+   5-control orders bar needs it to wrap so the controls can drop onto
+   their own line(s) instead of shrinking past their native min-content
+   width and overflowing the viewport on mobile (#1669).
+*/
+.orders-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
 /* Inline date field: small mono-caps label sitting left of the native input. */
 .orders-toolbar__field {
   display: inline-flex;
