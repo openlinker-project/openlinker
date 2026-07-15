@@ -140,6 +140,70 @@ describe('buildFa3Xml', () => {
     expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
   });
 
+  describe('Adnotacje classification (#1580)', () => {
+    it('keeps the all-negative default for a plain standard-rate invoice', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<P_16>2</P_16>');
+      expect(xml).toContain('<P_18>2</P_18>');
+      expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
+      expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+      expect(() => validateFa3Xml(buildFa3Xml(b2bInput()))).not.toThrow();
+    });
+
+    it('emits the PMarzy yes-branch (used-goods sub-kind) when marginScheme is set', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), marginScheme: true });
+      expect(xml).toContain('<PMarzy><P_PMarzy>1</P_PMarzy><P_PMarzy_3_1>1</P_PMarzy_3_1></PMarzy>');
+      expect(xml).not.toContain('<P_PMarzyN>');
+      expect(() => validateFa3Xml(buildFa3Xml({ ...b2bInput(), marginScheme: true }))).not.toThrow();
+    });
+
+    it('flips the Zwolnienie group to its yes-branch when a line is VAT-exempt (zw)', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Used book', quantity: 1, unitPriceGross: 50, p12: 'zw' }],
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toMatch(/<Zwolnienie><P_19>1<\/P_19><P_19C>[^<]+<\/P_19C><\/Zwolnienie>/);
+      expect(xml).not.toContain('<P_19N>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+
+    it('carries the operator exemptionLegalBasis text into P_19C', () => {
+      const xml = buildFa3Xml({
+        ...b2bInput(),
+        lines: [{ name: 'Exempt service', quantity: 1, unitPriceGross: 100, p12: 'zw' }],
+        exemptionLegalBasis: 'art. 43 ust. 1 pkt 1 ustawy o VAT',
+      });
+      expect(xml).toContain('<P_19C>art. 43 ust. 1 pkt 1 ustawy o VAT</P_19C>');
+    });
+
+    it('sets P_18 (reverse charge) from a line carrying the oo band', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Reverse-charge good', quantity: 1, unitPriceGross: 200, p12: 'oo' }],
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_18>1</P_18>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+
+    it('emits each operator flag on its yes-branch when set (P_16/P_17/P_18A/P_23)', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        cashAccounting: true,
+        selfBilling: true,
+        splitPayment: true,
+        triangulation: true,
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_16>1</P_16>');
+      expect(xml).toContain('<P_17>1</P_17>');
+      expect(xml).toContain('<P_18A>1</P_18A>');
+      expect(xml).toContain('<P_23>1</P_23>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+  });
+
   it('should emit Fa children in schema order (P_15 → Adnotacje → RodzajFaktury → FaWiersz)', () => {
     const xml = buildFa3Xml(b2bInput());
     expect(xml).toMatch(/<P_15>[^]*<Adnotacje>[^]*<\/Adnotacje>[^]*<RodzajFaktury>[^]*<FaWiersz/);

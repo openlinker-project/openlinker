@@ -404,6 +404,39 @@ export interface StoredDocument {
 }
 
 /**
+ * Neutral, operator-supplied fiscal annotation flags on an invoice (#1580,
+ * ADR-037). Country-agnostic (ADR-026): each flag is a generic commercial /
+ * fiscal concept a provider maps to its own regime — a KSeF adapter maps them
+ * to the FA(3) `Adnotacje` block. Every field is optional; an absent flag ⇒ the
+ * provider emits its own "does not apply" default. Core never interprets them.
+ *
+ * Note what is *deliberately absent*: reverse-charge and VAT-exemption are NOT
+ * boolean flags here. A provider derives both from the per-line tax codes it
+ * already receives ({@link InvoiceLine.taxRate}), so re-declaring them at the
+ * header level would risk contradicting the lines. `exemptionLegalBasis` is the
+ * sole exemption-adjacent field — it carries the free-text legal grounds a
+ * provider that annotates exemptions must cite.
+ */
+export interface InvoiceAnnotations {
+  /** Supply settled on a cash basis (KSeF: `P_16`). */
+  cashAccounting?: boolean;
+  /** Buyer issues the invoice on the seller's behalf (KSeF: `P_17`). */
+  selfBilling?: boolean;
+  /** The split-payment mechanism applies (KSeF: `P_18A`). */
+  splitPayment?: boolean;
+  /** Simplified intra-EU triangular transaction (KSeF: `P_23`). */
+  triangulation?: boolean;
+  /** The VAT margin scheme applies (KSeF: `PMarzy` / `P_PMarzy`). */
+  marginScheme?: boolean;
+  /**
+   * Free-text legal grounds for a VAT-exempt sale (KSeF: `Zwolnienie` / `P_19`).
+   * When a provider annotates an exemption (e.g. because a line is exempt), it
+   * cites this text; supplying it also asserts the exemption annotation applies.
+   */
+  exemptionLegalBasis?: string;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -420,6 +453,8 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Operator-supplied fiscal annotation flags (#1580); see {@link InvoiceAnnotations}. */
+  annotations?: InvoiceAnnotations;
   /**
    * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
    * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from

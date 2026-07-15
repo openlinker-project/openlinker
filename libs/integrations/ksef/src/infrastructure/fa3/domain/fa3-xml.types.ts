@@ -61,6 +61,16 @@ export const FA3_WYBOR_NIE = '2';
 export const FA3_WYBOR_TAK = '1';
 
 /**
+ * Fallback `Zwolnienie/P_19C` free-text legal grounds emitted when an exempt
+ * (`zw`) line forces the exemption annotation on but the operator supplied no
+ * explicit `exemptionLegalBasis` (#1580). `P_19C` ("inna podstawa prawna" — an
+ * open free-text `TZnakowy`) is the catch-all grounds slot; a descriptive
+ * placeholder keeps the yes-branch schema-valid while flagging that the operator
+ * SHOULD refine it with the precise statutory basis (operator UI is a follow-up).
+ */
+export const FA3_DEFAULT_EXEMPTION_BASIS = 'Zwolnienie z podatku VAT';
+
+/**
  * Seller identity + address — injected into the builder by the adapter (resolved
  * from connection config), never discovered inside the pure builder. `nip` is a
  * required system-configuration value (Podmiot1 always carries a seller NIP).
@@ -271,6 +281,24 @@ export interface Fa3BuilderInput {
    */
   buyerIsPublicSectorEntity?: boolean;
   buyerIsVatGroupMember?: boolean;
+  /**
+   * Operator-supplied / line-derived fiscal annotation flags → the FA(3)
+   * `Adnotacje` block (#1580, ADR-037). The operator declarations
+   * (`cashAccounting` → `P_16`, `selfBilling` → `P_17`, `splitPayment` →
+   * `P_18A`, `triangulation` → `P_23`, `marginScheme` → the `PMarzy` yes-branch)
+   * arrive from the neutral `IssueInvoiceCommand.annotations`; each absent flag
+   * emits its "does not apply" default (`2`, or the group's negative branch).
+   * Reverse-charge (`P_18`) and exemption (`Zwolnienie`) are NOT flags here —
+   * the builder derives them from the lines' own `p12` codes (`oo` / `zw`), so
+   * the header can never contradict the per-line treatment. `exemptionLegalBasis`
+   * supplies the `P_19C` grounds text for the exemption yes-branch.
+   */
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  splitPayment?: boolean;
+  triangulation?: boolean;
+  marginScheme?: boolean;
+  exemptionLegalBasis?: string;
   currency: Fa3KodWaluty;
   /**
    * Invoice issue date (`P_1`), ISO-8601 calendar date `YYYY-MM-DD`. Supplied by

@@ -18,6 +18,7 @@
 import type {
   BuyerAddress,
   CorrectionReference,
+  InvoiceAnnotations,
   InvoiceLine,
   IssueInvoiceCommand,
 } from '@openlinker/core/invoicing';
@@ -101,6 +102,10 @@ export function mapToFa3BuilderInput(
     ...(cmd.buyer.isVatGroupMember !== undefined
       ? { buyerIsVatGroupMember: cmd.buyer.isVatGroupMember }
       : {}),
+    // Operator-supplied fiscal annotation flags → the FA(3) Adnotacje block
+    // (#1580). Forwarded only when set; the builder derives reverse-charge /
+    // exemption from the lines' own p12 codes independently of these.
+    ...mapAnnotations(cmd.annotations),
     currency: resolveKodWaluty(cmd.currency),
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
@@ -114,6 +119,41 @@ export function mapToFa3BuilderInput(
       : {}),
     ...(context.payment !== undefined ? { payment: context.payment } : {}),
   };
+}
+
+/**
+ * Flatten the neutral {@link InvoiceAnnotations} bag onto the builder input's
+ * flat annotation fields, forwarding only the flags the operator actually set
+ * (each absent flag lets the builder emit its "does not apply" default). Kept as
+ * a conditional copy — mirroring the JST/GV forwarding above — so an undefined
+ * flag never lands as an explicit `undefined` on the builder input.
+ */
+function mapAnnotations(
+  annotations: InvoiceAnnotations | undefined,
+): Partial<Fa3BuilderInput> {
+  if (annotations === undefined) {
+    return {};
+  }
+  const out: Partial<Fa3BuilderInput> = {};
+  if (annotations.cashAccounting !== undefined) {
+    out.cashAccounting = annotations.cashAccounting;
+  }
+  if (annotations.selfBilling !== undefined) {
+    out.selfBilling = annotations.selfBilling;
+  }
+  if (annotations.splitPayment !== undefined) {
+    out.splitPayment = annotations.splitPayment;
+  }
+  if (annotations.triangulation !== undefined) {
+    out.triangulation = annotations.triangulation;
+  }
+  if (annotations.marginScheme !== undefined) {
+    out.marginScheme = annotations.marginScheme;
+  }
+  if (annotations.exemptionLegalBasis !== undefined) {
+    out.exemptionLegalBasis = annotations.exemptionLegalBasis;
+  }
+  return out;
 }
 
 /**
