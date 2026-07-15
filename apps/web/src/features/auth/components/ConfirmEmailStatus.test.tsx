@@ -23,29 +23,35 @@ describe('ConfirmEmailStatus', () => {
 
     renderWithProviders(<ConfirmEmailStatus token="raw-token" />, { apiClient });
 
+    expect(await screen.findByText(/you're all set/i)).toBeInTheDocument();
     expect(
-      await screen.findByText(/your email is confirmed and your account is now active/i),
+      screen.getByText(/your email is confirmed and your account is now active/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /sign in now/i })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: /continue to sign in/i })).toHaveAttribute(
+      'href',
+      '/login',
+    );
   });
 
-  it('shows an error state with a retry option when confirmation fails', async () => {
+  it('shows an error state with a retry option and a way back to sign-in when confirmation fails', async () => {
     const confirmEmail = vi.fn().mockRejectedValue(new Error('Invalid or expired token'));
     const apiClient = createMockApiClient({ auth: { confirmEmail } });
 
     renderWithProviders(<ConfirmEmailStatus token="raw-token" />, { apiClient });
 
-    expect(await screen.findByText('Confirmation failed')).toBeInTheDocument();
+    expect(await screen.findByText(/we couldn't confirm this link/i)).toBeInTheDocument();
     expect(screen.getByText('Invalid or expired token')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to sign in/i })).toHaveAttribute(
+      'href',
+      '/login',
+    );
     expect(confirmEmail).toHaveBeenCalledWith({ token: 'raw-token' });
     expect(confirmEmail).toHaveBeenCalledTimes(1);
 
     confirmEmail.mockResolvedValueOnce({ ok: true });
     screen.getByRole('button', { name: /try again/i }).click();
 
-    expect(
-      await screen.findByText(/your email is confirmed and your account is now active/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/you're all set/i)).toBeInTheDocument();
     expect(confirmEmail).toHaveBeenCalledTimes(2);
   });
 

@@ -71,6 +71,8 @@ describe('EmailConfirmationService', () => {
       const message = mailer.sendEmail.mock.calls[0][0];
       expect(message.to).toBe('demo@test.com');
       expect(message.text).toContain('https://app.example.com/confirm-email/');
+      expect(message.html).toContain('https://app.example.com/confirm-email/');
+      expect(message.html).toContain('Confirm your email address');
     });
 
     it('does not send when the user has no email', async () => {

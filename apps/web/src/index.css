@@ -3371,6 +3371,81 @@ textarea,
   text-decoration: underline;
 }
 
+/*
+ * Confirm-email states (#1650) — pending / success / error outcomes of
+ * consuming a single-use email-confirmation token. A small tone-colored
+ * "seal" glyph gives each outcome an at-a-glance signal above the text;
+ * success stays unboxed (light touch — good news needs no container),
+ * error stays boxed in `.alert` (dynamic, server-supplied message gets the
+ * stronger, accessible treatment). `.confirm-email__actions` is a plain
+ * vertical stack, deliberately generic, so a future "Resend confirmation
+ * email" action can slot in below the existing two without a redesign.
+ */
+.confirm-email {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.confirm-email--pending {
+  padding: var(--space-4) 0;
+}
+
+.confirm-email__seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.confirm-email__seal--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-fg);
+}
+
+.confirm-email__seal--error {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  color: var(--status-error-fg);
+}
+
+.confirm-email__heading {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.confirm-email__message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.confirm-email .alert {
+  width: 100%;
+  text-align: left;
+}
+
+.confirm-email__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.confirm-email__actions .button {
+  width: 100%;
+}
+
 /* Badge group (inline badge list) */
 .badge-group {
   display: flex;
