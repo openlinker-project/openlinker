@@ -108,7 +108,7 @@ export class RegistrationService implements IRegistrationService {
    */
   private async enforceRateLimit(clientIp: string): Promise<void> {
     const limit = Number(
-      this.configService.get<string>('OL_DEMO_REGISTRATION_RATE_LIMIT', '5'),
+      this.configService.get<string>('OL_DEMO_REGISTRATION_RATE_LIMIT', '100'),
     );
     const windowSeconds = Number(
       this.configService.get<string>('OL_DEMO_REGISTRATION_RATE_WINDOW_SECONDS', '3600'),
