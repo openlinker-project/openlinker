@@ -140,14 +140,30 @@ function quantity(value: number): string {
   return fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
 }
 
-/** Seller / Podmiot1 address → FA(3) `Adres` element. */
+/**
+ * Party address → FA(3) `Adres` element (#1580). The FA(3) `Adres` type carries
+ * two free-text lines: `AdresL1` (street + building/apartment number) and
+ * `AdresL2` (postal code + locality) — the standard Polish invoice fold. Art.
+ * 106e ust. 1 pkt 3 requires the FULL address of both parties, so `postalCode`
+ * and `city` (both required on `BuyerAddress`, previously dropped) are now
+ * folded into `AdresL2`; any supplementary `line2` (suite/apartment) joins the
+ * street on `AdresL1`. `AdresL2` is omitted only in the degenerate case where
+ * neither postal code, city, nor `line2` is present.
+ */
 function addressNode(address: BuyerAddress): XmlNodeObject {
+  const streetLine = [address.line1, address.line2]
+    .filter((part): part is string => part !== null && part.trim() !== '')
+    .join(', ');
+  const postalCity = [address.postalCode, address.city]
+    .filter((part) => typeof part === 'string' && part.trim() !== '')
+    .join(' ')
+    .trim();
   const adres: XmlNodeObject = {
     KodKraju: address.countryIso2,
-    AdresL1: address.line1,
+    AdresL1: streetLine,
   };
-  if (address.line2 !== null && address.line2 !== '') {
-    adres.AdresL2 = address.line2;
+  if (postalCity !== '') {
+    adres.AdresL2 = postalCity;
   }
   return adres;
 }
@@ -310,13 +326,14 @@ function buyerNode(input: Fa3BuilderInput): XmlNodeObject {
       Nazwa: input.buyerName,
     },
     Adres: addressNode(input.buyerAddress),
-    // JST and GV are REQUIRED by the FA(3) XSD (no minOccurs="0").
-    // 2 = "nie dotyczy" — not a JST subsidiary unit / not a VAT group member.
-    // KNOWN LIMITATION: hard-coded — a buyer that IS a JST unit / VAT-group
-    // member gets a false declaration; see FA3_IMPLEMENTATION_NOTES.md
-    // § Known limitations (PR #1317 review).
-    JST: 2,
-    GV: 2,
+    // JST and GV are REQUIRED by the FA(3) XSD (no minOccurs="0"): 1 = "dotyczy"
+    // (applies), 2 = "nie dotyczy" (does not apply). Driven by the operator-
+    // supplied neutral buyer classification (#1580) — no order-source platform
+    // carries this, so it defaults to 2 when the flag is absent (the prior
+    // hard-coded behaviour, now the correct default rather than a false
+    // declaration for the B2G niche that does set it).
+    JST: input.buyerIsPublicSectorEntity ? 1 : 2,
+    GV: input.buyerIsVatGroupMember ? 1 : 2,
   };
 }
 

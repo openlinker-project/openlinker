@@ -85,6 +85,47 @@ describe('buildFa3Xml', () => {
     expect(buildFa3Xml(b2bInput())).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
   });
 
+  describe('address city/postcode + JST/GV (#1580)', () => {
+    it('folds postalCode + city into the buyer AdresL2 (art. 106e ust. 1 pkt 3)', () => {
+      const xml = buildFa3Xml(b2bInput());
+      // Buyer AdresL1 = street, AdresL2 = "postalCode city" — both now present.
+      expect(xml).toContain('<AdresL1>Main St 5</AdresL1>');
+      expect(xml).toContain('<AdresL2>10115 Berlin</AdresL2>');
+    });
+
+    it('folds seller postalCode + city into the seller AdresL2', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<AdresL1>ul. Testowa 1</AdresL1>');
+      expect(xml).toContain('<AdresL2>00-001 Warszawa</AdresL2>');
+    });
+
+    it('joins a supplementary line2 onto AdresL1 while postcode+city stay on AdresL2', () => {
+      const input = b2bInput();
+      input.buyerAddress = { ...input.buyerAddress, line2: 'Suite 4' };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<AdresL1>Main St 5, Suite 4</AdresL1>');
+      expect(xml).toContain('<AdresL2>10115 Berlin</AdresL2>');
+    });
+
+    it('defaults JST/GV to 2 ("does not apply") when the buyer flags are absent', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<JST>2</JST>');
+      expect(xml).toContain('<GV>2</GV>');
+    });
+
+    it('emits JST=1 when the buyer is flagged a public-sector entity', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), buyerIsPublicSectorEntity: true });
+      expect(xml).toContain('<JST>1</JST>');
+      expect(xml).toContain('<GV>2</GV>');
+    });
+
+    it('emits GV=1 when the buyer is flagged a VAT-group member', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), buyerIsVatGroupMember: true });
+      expect(xml).toContain('<JST>2</JST>');
+      expect(xml).toContain('<GV>1</GV>');
+    });
+  });
+
   it('should emit the required Adnotacje children with "nothing special" defaults', () => {
     const xml = buildFa3Xml(b2bInput());
     // The five TWybor1_2 flags default to "2" (no).

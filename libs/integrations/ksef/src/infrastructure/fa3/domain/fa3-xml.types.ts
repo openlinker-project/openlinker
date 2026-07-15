@@ -260,6 +260,17 @@ export interface Fa3BuilderInput {
   buyer: BuyerIdentity;
   buyerName: string;
   buyerAddress: BuyerAddress;
+  /**
+   * Operator-supplied buyer classification (#1580) mapped to the FA(3)
+   * `JST`/`GV` flags on `Podmiot2`. `buyerIsPublicSectorEntity` → `JST`
+   * (jednostka samorządu terytorialnego / local-government unit),
+   * `buyerIsVatGroupMember` → `GV` (członek grupy VAT / VAT-group member).
+   * Absent ⇒ the flag emits `2` ("does not apply"), the safe default for the
+   * common B2C/B2B case. No order source carries these, so they arrive only via
+   * the operator on a manual issue.
+   */
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsVatGroupMember?: boolean;
   currency: Fa3KodWaluty;
   /**
    * Invoice issue date (`P_1`), ISO-8601 calendar date `YYYY-MM-DD`. Supplied by
