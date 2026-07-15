@@ -8269,10 +8269,13 @@ html[data-density='compact'] .status-badge {
 }
 
 /* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
- * out-specificity the base `input[type='number'] { width: 100%; }` rule
- * (attribute selector = higher specificity than a lone class) - otherwise
- * these compact dimension/weight fields silently stretch to share the row's
- * flex space instead of staying at their intended width (#1658). */
+ * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
+ * rule combines an element-type selector with an attribute selector (0,1,1),
+ * which beats a bare class selector (0,1,0) regardless of source order; adding
+ * the `input` element-type selector here brings this rule to the same
+ * specificity tier so it wins on source order instead - otherwise these
+ * compact dimension/weight fields silently stretch to share the row's flex
+ * space instead of staying at their intended width (#1658). */
 input.bulk-dispatch__num {
   width: 52px;
   flex-shrink: 0;
