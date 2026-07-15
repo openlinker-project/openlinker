@@ -107,6 +107,75 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Advisory shared-rate-limit-bucket detection (#1594). Some invoicing
+   * providers (e.g. KSeF) bucket their per-hour request ceilings by the seller's
+   * tax id: two OL connections configured against the SAME seller tax id on the
+   * same adapter, egressing from the same deployment IP, therefore share ONE
+   * provider-side rate-limit budget. A bulk run on one can then throttle the
+   * other in ways that look like an unrelated flake.
+   *
+   * This surfaces a NON-BLOCKING warning at connection create/edit time when a
+   * new/updated connection's `config.seller.nip` matches another ACTIVE
+   * connection on the same adapter. Platform-neutral: it reads the generic
+   * `config.seller.nip` shape (no KSeF vocabulary) and only fires for adapters
+   * that carry a seller tax id. Never throws — advisory only; a lookup failure
+   * yields no warning rather than failing the operation.
+   */
+  async findSharedRateLimitBucketWarnings(connection: Connection): Promise<string[]> {
+    const nip = this.extractSellerTaxId(connection.config);
+    if (!nip || !connection.adapterKey) {
+      return [];
+    }
+    let candidates: Connection[];
+    try {
+      candidates = await this.connectionPort.list({ status: 'active' });
+    } catch (error) {
+      this.logger.warn(
+        `Shared-rate-limit-bucket check skipped for connection ${connection.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return [];
+    }
+    const colliding = candidates.filter(
+      (c) =>
+        c.id !== connection.id &&
+        c.adapterKey === connection.adapterKey &&
+        this.extractSellerTaxId(c.config) === nip
+    );
+    if (colliding.length === 0) {
+      return [];
+    }
+    const names = colliding.map((c) => c.name).join(', ');
+    this.logger.warn(
+      `Connection ${connection.id} shares seller tax id ${nip} on adapter ` +
+        `${connection.adapterKey} with active connection(s): ${names} — shared provider rate-limit bucket.`
+    );
+    return [
+      `Another active connection (${names}) uses the same adapter and seller tax id (${nip}). ` +
+        `They share the provider's per-seller rate-limit bucket, so heavy activity on one ` +
+        `(e.g. a bulk invoice run) can throttle the other. This is a warning, not a block.`,
+    ];
+  }
+
+  /**
+   * Extract a normalized seller tax id from a connection config, or `null` when
+   * the config carries none. Reads only the generic `seller.nip` shape so no
+   * provider vocabulary leaks into this platform-agnostic service.
+   */
+  private extractSellerTaxId(config: unknown): string | null {
+    if (!config || typeof config !== 'object') {
+      return null;
+    }
+    const seller = (config as Record<string, unknown>).seller;
+    if (!seller || typeof seller !== 'object') {
+      return null;
+    }
+    const nip = (seller as Record<string, unknown>).nip;
+    return typeof nip === 'string' && nip.trim().length > 0 ? nip.trim() : null;
+  }
+
+  /**
    * Run the plugin's config / credentials shape validators if registered.
    * The registries are keyed by adapterKey; the domain exception payload
    * is re-thrown as `BadRequestException` so the HTTP layer surfaces a

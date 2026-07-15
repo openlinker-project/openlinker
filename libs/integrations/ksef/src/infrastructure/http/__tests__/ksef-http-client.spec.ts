@@ -12,6 +12,7 @@ import type { KsefAuthenticationToken } from '../ksef-http-client.types';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
 import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
+import type { KsefRateLimiter } from '../ksef-rate-limiter';
 
 function token(expiresInMs = 3_600_000, accessToken = 'access-token'): KsefAuthenticationToken {
   return {
@@ -350,6 +351,70 @@ describe('KsefHttpClient', () => {
       const client = new KsefHttpClient('conn-1', baseUrl, lifecycle);
 
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
+    });
+  });
+
+  describe('proactive rate-limit pacing (#1594)', () => {
+    function stubLimiter(): { limiter: KsefRateLimiter; acquire: jest.Mock } {
+      const acquire = jest.fn().mockResolvedValue(undefined);
+      return { limiter: { acquire } as unknown as KsefRateLimiter, acquire };
+    }
+
+    it('acquires a session-open permit before POST /sessions/online', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.post('/sessions/online', { x: 1 });
+
+      expect(acquire).toHaveBeenCalledWith('nip-123', 'session-open');
+    });
+
+    it('classifies the invoice-submit and session-close endpoints', async () => {
+      // Fresh Response per call — a Response body can only be read once.
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(jsonResponse(200, { referenceNumber: 'r' })),
+      );
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.post('/sessions/online/session-ref-1/invoices', { x: 1 });
+      await client.post('/sessions/online/session-ref-1/close', undefined, { idempotent: true });
+
+      expect(acquire).toHaveBeenNthCalledWith(1, 'nip-123', 'invoice-submit');
+      expect(acquire).toHaveBeenNthCalledWith(2, 'nip-123', 'session-close');
+    });
+
+    it('does not pace reads or non-session writes', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true })));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.get('/sessions/session-ref-1'); // status read
+      await client.post('/auth/challenge', undefined, { idempotent: true, skipAuth: true });
+
+      expect(acquire).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the connection id as the bucket key when none is supplied', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-99', baseUrl, lifecycle, undefined, {
+        rateLimiter: limiter,
+      });
+
+      await client.post('/sessions/online', { x: 1 });
+
+      expect(acquire).toHaveBeenCalledWith('conn-99', 'session-open');
     });
   });
 });

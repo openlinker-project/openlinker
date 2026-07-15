@@ -12,6 +12,13 @@
  *   - `failed`  — the order was missing / not invoiceable, or the provider
  *                 rejected the request; carries a neutral, PII-free `reason`.
  *
+ * Partial-completion (#1594): this is the operator's completion feedback for a
+ * bulk run — the endpoint processes every id and reports each outcome, so a
+ * failure on one order never aborts the rest and the caller sees exactly what
+ * happened per id. It remains a single synchronous request; live streaming /
+ * async-job progress for very large batches is a documented follow-up (the
+ * batch is capped at 100 ids, which bounds the call duration in the meantime).
+ *
  * Neutral — no provider vocabulary, never the raw provider rejection text.
  *
  * @module apps/api/src/invoicing/http/dto
@@ -45,6 +52,13 @@ export class BulkIssueInvoiceResultDto {
 }
 
 export class BulkIssueInvoicesResponseDto {
+  @ApiProperty({
+    description:
+      'Total number of distinct orders processed in this batch (issued + skipped + failed). ' +
+      'Equals the de-duplicated `orderIds` count — a progress denominator for the operator UI.',
+  })
+  total!: number;
+
   @ApiProperty({ description: 'Number of invoices issued.' })
   issued!: number;
 

@@ -543,7 +543,10 @@ export class InvoicingController {
       'deterministic key `invoice:{connectionId}:{orderId}` (same key the auto-issue ' +
       'trigger uses), so a re-submitted batch does not double-issue. Orders already ' +
       'issued / in progress are skipped; a per-order failure is captured without ' +
-      'aborting the rest. At most 100 order ids per request. Returns a per-id summary.',
+      'aborting the rest. At most 100 order ids per request. Returns a per-id summary ' +
+      '(partial-completion feedback). The provider adapter self-paces its own per-hour ' +
+      'rate-limit ceilings (#1594), so a large batch throttles itself rather than ' +
+      'relying solely on reactive backoff.',
   })
   @ApiResponse({ status: 200, description: 'Per-id issue summary', type: BulkIssueInvoicesResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (empty array, blank ids, or batch > 100)' })
@@ -563,7 +566,17 @@ export class InvoicingController {
 
     const issued = results.filter((r) => r.outcome === 'issued').length;
     const skipped = results.filter((r) => r.outcome === 'skipped').length;
-    return { issued, skipped, failed: results.length - issued - skipped, results };
+    // Partial-completion feedback (#1594): every id is processed and reported
+    // per-outcome (no all-or-nothing), with `total` as the progress denominator.
+    // Live streaming progress for very large batches is a documented follow-up;
+    // the max-100 cap bounds the synchronous call duration until then.
+    return {
+      total: results.length,
+      issued,
+      skipped,
+      failed: results.length - issued - skipped,
+      results,
+    };
   }
 
   /**

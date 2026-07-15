@@ -65,6 +65,7 @@ describe('ConnectionController', () => {
   beforeEach(async () => {
     const mockService = {
       create: jest.fn(),
+      findSharedRateLimitBucketWarnings: jest.fn().mockResolvedValue([]),
       list: jest.fn(),
       get: jest.fn(),
       update: jest.fn(),
