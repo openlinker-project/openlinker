@@ -2704,7 +2704,8 @@ textarea,
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  flex: 1;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .data-table__card-main--link {
@@ -2733,10 +2734,13 @@ textarea,
 .data-table__card-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: 0;
   font-size: 12px;
   color: var(--text-secondary);
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .data-table__cards-empty {
@@ -2850,15 +2854,23 @@ textarea,
 
 /* ── Mobile card select + detail (#1620) ─────────────────────────────── */
 
+/* Grid (not flex row) so the badge/meta row (#1662) drops onto its own line
+   under the id/title, indented to column 2 - the same column the title
+   starts in, whether or not a select checkbox occupies column 1. A plain
+   flex row here forces select + title + badges to share one non-wrapping
+   line, which overlaps at narrow (~375px) mobile widths. */
 .data-table__card-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 6px;
   width: 100%;
 }
 
 .data-table__card-select {
-  flex-shrink: 0;
+  grid-column: 1;
+  grid-row: 1;
   padding-top: 2px;
 }
 
