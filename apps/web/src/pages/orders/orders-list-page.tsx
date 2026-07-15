@@ -47,7 +47,10 @@ import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
-import { usePermission } from '../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
@@ -339,7 +342,11 @@ export function OrdersListPage(): ReactElement {
   const slaSummary = slaSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
-  const canRetryOrder = usePermission('orders:write');
+  const demoMode = useDemoMode();
+  // Per-row "Retry" fires the retry mutation immediately (a direct-write
+  // action, no intermediate form) - visible-but-disabled with a read-only
+  // tooltip for a demo viewer, per the #1615 precedent.
+  const retryWrite = useWriteAccess('orders:write', demoMode);
 
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
@@ -626,19 +633,21 @@ export function OrdersListPage(): ReactElement {
         align: 'right',
         cell: (order) => {
           const failed = order.syncStatus.find((s) => s.status === 'failed');
-          if (order.recordStatus === 'awaiting_mapping' || !failed || !canRetryOrder) return null;
+          if (order.recordStatus === 'awaiting_mapping' || !failed || !retryWrite.visible) return null;
           const isRetrying =
             retryMutation.isPending &&
             retryMutation.variables?.internalOrderId === order.internalOrderId;
           return (
-            <Button
-              tone="ghost"
-              className="button--sm"
-              disabled={isRetrying}
-              onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
-            >
-              {isRetrying ? 'Retrying…' : 'Retry'}
-            </Button>
+            <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="ghost"
+                className="button--sm"
+                disabled={isRetrying || retryWrite.demoReadOnly}
+                onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+              >
+                {isRetrying ? 'Retrying…' : 'Retry'}
+              </Button>
+            </ReadOnlyLock>
           );
         },
       },
@@ -652,6 +661,8 @@ export function OrdersListPage(): ReactElement {
       platformByConnection,
       retryMutation.isPending,
       retryMutation.variables,
+      retryWrite.visible,
+      retryWrite.demoReadOnly,
       // Selection state — the select column re-renders as checkboxes toggle (#1109).
       selectedIds,
       atCapSources,
@@ -1042,15 +1053,20 @@ export function OrdersListPage(): ReactElement {
                         {shipBy.remaining}
                       </StatusBadge>
                     ) : null}
-                    {failed && order.recordStatus !== 'awaiting_mapping' && canRetryOrder ? (
-                      <Button
-                        tone="ghost"
-                        className="button--sm"
-                        disabled={isRetrying}
-                        onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+                    {failed && order.recordStatus !== 'awaiting_mapping' && retryWrite.visible ? (
+                      <ReadOnlyLock
+                        active={retryWrite.demoReadOnly}
+                        message={DEMO_READ_ONLY_ACTION_MESSAGE}
                       >
-                        {isRetrying ? 'Retrying…' : 'Retry'}
-                      </Button>
+                        <Button
+                          tone="ghost"
+                          className="button--sm"
+                          disabled={isRetrying || retryWrite.demoReadOnly}
+                          onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+                        >
+                          {isRetrying ? 'Retrying…' : 'Retry'}
+                        </Button>
+                      </ReadOnlyLock>
                     ) : null}
                   </span>
                 );

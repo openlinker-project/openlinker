@@ -10,7 +10,8 @@ import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge'
 import { Button } from '../../shared/ui/button';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Select } from '../../shared/ui/select';
-import { usePermission } from '../../shared/auth/use-permission';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -69,7 +70,11 @@ export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, setSort } = useTableSort([{ id: 'name', desc: false }]);
   const plugins = usePlatforms();
-  const canWrite = usePermission('connections:write');
+  const demoMode = useDemoMode();
+  // "New connection" opens the create-connection form (an "open a form"
+  // action, #1615 precedent) - stays visible AND enabled for a demo viewer;
+  // only the form's own final submit gets locked (create-connection-form.tsx).
+  const write = useWriteAccess('connections:write', demoMode);
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -111,7 +116,7 @@ export function ConnectionsListPage(): ReactElement {
       title="Connections"
       description="All configured integration connections — filter by platform or status."
       actions={
-        canWrite ? (
+        write.visible ? (
           <Link className="button" to="/connections/new">
             New connection
           </Link>
@@ -169,7 +174,7 @@ export function ConnectionsListPage(): ReactElement {
           action={
             filtersActive ? (
               <Button onClick={clearFilters}>Clear filters</Button>
-            ) : canWrite ? (
+            ) : write.visible ? (
               <Link className="button button--primary" to="/connections/new">
                 Add the first connection
               </Link>
