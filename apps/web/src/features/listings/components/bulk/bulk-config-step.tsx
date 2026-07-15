@@ -21,9 +21,10 @@ import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react
 import { useForm } from 'react-hook-form';
 
 import { Alert, Button, FormField, Input, Select } from '../../../../shared/ui';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
-import { BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE } from '../../../../shared/config/demo-mode';
-import { usePermission } from '../../../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { useWriteAccess } from '../../../../shared/auth/use-permission';
+import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
 import type { Connection } from '../../../connections';
 import { usePlatform, usePlatforms, type BulkConfigFormValues } from '../../../../shared/plugins';
@@ -106,7 +107,8 @@ export function BulkConfigStep({
   const section = platform?.bulkOfferConfigSection;
 
   const values = form.watch();
-  const canGenerateDescription = usePermission('listings:write');
+  const demoMode = useDemoMode();
+  const generateDescriptionAccess = useWriteAccess('listings:write', demoMode);
 
   // ---- shared-slice validity (explicit, deterministic — not formState.isValid) ----
   const markupValid =
@@ -336,31 +338,34 @@ export function BulkConfigStep({
         </span>
       </label>
 
-      {(() => {
-        // Gated on `listings:write` (admin + operator), not demo mode — the
+      {generateDescriptionAccess.visible ? (
+        // Direct-write-adjacent action (triggers an LLM completion per row via
+        // the worker), so it follows the `useWriteAccess` + `ReadOnlyLock`
+        // pattern (#1615/#1668): visible-but-disabled for a demo viewer,
+        // hidden entirely for a genuinely unauthorized non-demo session. The
         // bulk-create endpoint is `@Roles('admin', 'operator')`-gated in
-        // every environment, so a viewer session would otherwise see an
-        // enabled toggle that 403s on submit, in both demo and production
-        // alike. Lock it with an explanatory tooltip; the span wrap is
-        // required because a disabled checkbox emits no pointer events.
-        const locked = !canGenerateDescription;
-        const field = (
+        // every environment, so a session without `listings:write` could
+        // never actually have this take effect even if it slipped through.
+        <ReadOnlyLock
+          active={generateDescriptionAccess.demoReadOnly}
+          message={DEMO_READ_ONLY_ACTION_MESSAGE}
+        >
           <label
             style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
-            aria-disabled={locked}
+            aria-disabled={generateDescriptionAccess.demoReadOnly}
           >
             <input
               type="checkbox"
-              checked={locked ? false : values.generateDescription}
-              disabled={locked}
+              checked={generateDescriptionAccess.demoReadOnly ? false : values.generateDescription}
+              disabled={generateDescriptionAccess.demoReadOnly}
               onChange={(e) => {
-                if (locked) return;
+                if (generateDescriptionAccess.demoReadOnly) return;
                 form.setValue('generateDescription', e.target.checked, { shouldDirty: true });
               }}
             />
             <span>
               <strong>
-                {locked ? (
+                {generateDescriptionAccess.demoReadOnly ? (
                   <span aria-hidden="true" style={{ marginRight: 'var(--space-1)' }}>
                     🔒
                   </span>
@@ -368,24 +373,14 @@ export function BulkConfigStep({
                 Generate AI descriptions by default
               </strong>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-                {locked
-                  ? BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE
+                {generateDescriptionAccess.demoReadOnly
+                  ? DEMO_READ_ONLY_ACTION_MESSAGE
                   : 'Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal overrides this.'}
               </small>
             </span>
           </label>
-        );
-        return locked ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0}>{field}</span>
-            </TooltipTrigger>
-            <TooltipContent>{BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE}</TooltipContent>
-          </Tooltip>
-        ) : (
-          field
-        );
-      })()}
+        </ReadOnlyLock>
+      ) : null}
 
       <footer className="bulk-wizard__footer">
         <div className="bulk-wizard__footer-spacer" />

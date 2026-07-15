@@ -1,14 +1,13 @@
 /**
- * Access-control copy constants for AI-generation and demo-mode UI affordances
+ * Access-control copy constants for demo-mode UI affordances
  *
- * `AI_SUGGEST_REQUIRES_ADMIN_MESSAGE` / `BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE`
- * are shown when an AI-generation control is disabled because the current
- * session lacks the required permission (`ai:suggest` / `listings:write`).
- * This holds in every environment, not just demo — the underlying
- * `@Roles('admin')` / `@Roles('admin', 'operator')` guards on the backend are
- * permanent. Gating on permission (not `demoMode`) also fixes the pre-existing
- * bug where a non-permitted session saw an enabled control that then 403'd,
- * in both demo and production alike (#1379 re-scope).
+ * The AI-suggest trigger and the bulk wizard's AI-generate-description toggle
+ * (`ai:suggest` / `listings:write`) invoke a real backend call (an LLM
+ * completion), so they're treated as direct-write-adjacent actions — same
+ * `useWriteAccess` + `ReadOnlyLock` pattern as Test-connection /
+ * Disable-connection (#1615/#1668): a demo viewer sees the control rendered
+ * but disabled with `DEMO_READ_ONLY_ACTION_MESSAGE`, while a genuinely
+ * unauthorized non-demo session doesn't see it at all.
  *
  * `NAV_DEMO_RESTRICTED_MESSAGE` remains demo-mode-specific — it's the
  * "visible but locked" tooltip for admin-only nav groups shown to non-admins
@@ -17,14 +16,6 @@
  *
  * @module shared/config
  */
-
-/** Tooltip on the "Suggest with AI" trigger when the session lacks `ai:suggest` (admin-only). */
-export const AI_SUGGEST_REQUIRES_ADMIN_MESSAGE =
-  'AI suggestions require an administrator role.';
-
-/** Tooltip on the bulk "Generate AI descriptions" toggle when the session lacks `listings:write`. */
-export const BULK_AI_TOGGLE_REQUIRES_WRITE_MESSAGE =
-  'Generating AI descriptions requires listings write access.';
 
 /**
  * Tooltip on nav groups shown as "visible but locked" in demo mode. Names the
