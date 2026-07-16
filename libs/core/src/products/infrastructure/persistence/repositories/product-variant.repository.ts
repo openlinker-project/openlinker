@@ -172,6 +172,40 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
+  /**
+   * Soft-mark every live variant of `productId` that is NOT in `keepVariantIds`
+   * as stale (#1599), returning the ids actually flipped. Mirrors the inventory
+   * `markStaleExceptVariants` intent, but `product_variants` is keyed by a
+   * non-null `id` PK, so no three-valued NULL handling is needed. An empty
+   * keep-set marks EVERY live row (the product-fully-deleted / 404 path) — the
+   * `NOT IN` clause is only appended when there is something to keep, because
+   * `id NOT IN ()` is invalid SQL. Already-stale rows are skipped so `staleAt`
+   * keeps the first-marked timestamp.
+   */
+  async markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly string[]
+  ): Promise<string[]> {
+    const qb = this.repository
+      .createQueryBuilder()
+      .update(ProductVariantOrmEntity)
+      .set({ isStale: true, staleAt: () => 'NOW()' })
+      .where('productId = :productId', { productId })
+      .andWhere('isStale = false');
+
+    if (keepVariantIds.length > 0) {
+      qb.andWhere('id NOT IN (:...keep)', { keep: [...keepVariantIds] });
+    }
+
+    // Array form of `.returning(...)` — resolves column metadata and emits a
+    // quoted identifier. (The string form produces the same quoted SQL in
+    // TypeORM 0.3.17's UpdateQueryBuilder, but the array form is the documented,
+    // version-robust way and matches the sibling inventory repository.)
+    const result = await qb.returning(['id']).execute();
+    const raw = result.raw as { id: string }[];
+    return raw.map((row) => row.id);
+  }
+
   async upsert(variant: ProductVariant): Promise<ProductVariant> {
     const entity = this.toOrmEntity(variant);
     const saved = await this.repository.save(entity);
@@ -229,6 +263,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       ean: entity.ean,
       gtin: entity.gtin,
       price: entity.price !== null ? Number(entity.price) : undefined,
+      isStale: entity.isStale,
+      staleAt: entity.staleAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -246,6 +282,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     entity.ean = variant.ean;
     entity.gtin = variant.gtin;
     entity.price = variant.price ?? null;
+    // Un-stale on reappearance: a master re-sync builds the domain variant
+    // without staleness set, so upsert clears the flag (#1599). Callers that
+    // intend to mark stale use markStaleExceptVariants, not upsert.
+    entity.isStale = variant.isStale ?? false;
+    entity.staleAt = variant.staleAt ?? null;
     // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;

@@ -72,6 +72,19 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findBySeriesId(seriesId: string): Promise<InvoiceRecord[]> {
+    // Only rows that actually consumed a sequence integer from the series back
+    // the gap-audit read model (#8); a null `allocatedSeq` carries no seq.
+    const entities = await this.repository
+      .createQueryBuilder('record')
+      .where('record.numberingSeriesId = :seriesId', { seriesId })
+      .andWhere('record.allocatedSeq IS NOT NULL')
+      .orderBy('record.allocatedSeq', 'ASC')
+      .addOrderBy('record.createdAt', 'ASC')
+      .getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
   async findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null> {
     const entity = await this.repository.findOne({
       where: { orderId },
@@ -360,6 +373,9 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.sourceDocument,
       entity.issuedLineSnapshot,
       entity.paymentStatus,
+      entity.numberingSeriesId,
+      entity.documentNumber,
+      entity.allocatedSeq,
     );
   }
 }

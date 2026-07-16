@@ -31,8 +31,14 @@ describe('ksefPlugin', () => {
       const paths = (ksefPlugin.build?.routes ?? []).map((route) => route.path);
       expect(paths).toContain('connections/new/ksef');
     });
-    it('does NOT contribute API namespaces or marketplace/shop wizards', () => {
-      expect(ksefPlugin.build?.apiNamespaces).toBeUndefined();
+    it('contributes the invoice numbering route (#1577)', () => {
+      const paths = (ksefPlugin.build?.routes ?? []).map((route) => route.path);
+      expect(paths).toContain('connections/:connectionId/numbering');
+    });
+    it('contributes the invoice-numbering API namespace (#1577)', () => {
+      expect(ksefPlugin.build?.apiNamespaces).toBeDefined();
+    });
+    it('does NOT contribute marketplace/shop wizards', () => {
       expect(ksefPlugin.build?.offerCreationWizard).toBeUndefined();
       expect(ksefPlugin.build?.shopProductPublishWizard).toBeUndefined();
     });
@@ -56,10 +62,12 @@ describe('ksefPlugin', () => {
     it('contributes the invoice-correction flow slot (C1 KOR)', () => {
       expect(ksefPlugin.platform?.invoiceCorrectionFlow).toBeDefined();
     });
+    it('contributes the connection-actions slot (#1577 invoice numbering row)', () => {
+      expect(ksefPlugin.platform?.ConnectionActions).toBeDefined();
+    });
     it('does NOT contribute marketplace or async-pickup slots', () => {
       expect(ksefPlugin.platform?.supportsListingEdit).toBeUndefined();
       expect(ksefPlugin.platform?.pickupPointResolvesAsync).toBeUndefined();
-      expect(ksefPlugin.platform?.ConnectionActions).toBeUndefined();
     });
   });
 

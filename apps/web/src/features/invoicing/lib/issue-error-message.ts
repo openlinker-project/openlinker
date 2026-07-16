@@ -44,6 +44,21 @@ export function isCapabilityDisabledError(error: unknown): boolean {
   return Boolean(body?.error && CAPABILITY_EXCEPTION_NAMES.has(body.error));
 }
 
+/**
+ * Discriminates the "no numbering series configured" 400 (AC #6). The invoicing
+ * controller maps `MissingNumberingSeriesException` to a 400 carrying
+ * `{ error: 'MissingNumberingSeriesException' }`, so an issue-without-series
+ * rejection can be surfaced as an actionable CTA (link to the numbering page)
+ * instead of a bare toast. Name-based, not status alone.
+ */
+export function isMissingNumberingSeriesError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 400) {
+    return false;
+  }
+  const body = error.details as CapabilityErrorBody | null;
+  return body?.error === 'MissingNumberingSeriesException';
+}
+
 export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
   // Branch order matters: the capability-disabled 400 (fixed copy, no PII echo)
   // MUST be tested before the generic 400 branch that surfaces `error.message`.

@@ -52,7 +52,7 @@ import type { OrderRecord } from '../../orders';
 import type { InvoiceRecord } from '../api/invoicing.types';
 import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
-import { resolveIssueErrorMessage } from '../lib/issue-error-message';
+import { resolveIssueErrorMessage, isMissingNumberingSeriesError } from '../lib/issue-error-message';
 import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
 import { InvoiceStatusBadge } from './invoice-status-badge';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
@@ -195,6 +195,9 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
 
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  // AC #6: an issue-without-a-numbering-series rejection is surfaced as an
+  // actionable CTA (link to the numbering page), not a bare toast.
+  const [missingNumbering, setMissingNumbering] = useState(false);
 
   // Loading skeleton while connections settle
   if (connectionsQuery.isLoading) {
@@ -280,6 +283,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
 
   const handleIssue = (): void => {
     if (!invoicingConnection) return;
+    setMissingNumbering(false);
     issueMutation.mutate(
       { connectionId: invoicingConnection.id, orderId: order.internalOrderId, documentType },
       {
@@ -291,6 +295,12 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           });
         },
         onError: (error) => {
+          // Missing-numbering-series surfaces as a persistent CTA below (no toast,
+          // so the error isn't surfaced twice).
+          if (isMissingNumberingSeriesError(error)) {
+            setMissingNumbering(true);
+            return;
+          }
           showToast({
             tone: 'error',
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
@@ -338,6 +348,28 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           >
             {t('invoice.query.retry', 'Retry')}
           </Button>
+        </Alert>
+      ) : null}
+
+      {/* AC #6: no numbering series configured — actionable CTA, not a toast */}
+      {missingNumbering && invoicingConnection ? (
+        <Alert
+          tone="warning"
+          className="order-invoice-panel__error"
+          title={t('invoice.numbering.missingTitle', 'Numbering not configured')}
+          action={
+            <Link
+              className="button button--primary button--sm"
+              to={`/connections/${invoicingConnection.id}/numbering`}
+            >
+              {t('invoice.numbering.configure', 'Configure numbering')}
+            </Link>
+          }
+        >
+          {t(
+            'invoice.numbering.missingBody',
+            'This connection has no invoice numbering series configured. Set one up before issuing invoices.',
+          )}
         </Alert>
       ) : null}
 

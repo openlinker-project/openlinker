@@ -72,6 +72,7 @@ import {
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
   InvoiceRecordNotFoundException,
+  MissingNumberingSeriesException,
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
@@ -1205,6 +1206,17 @@ export class InvoicingController {
     }
     if (error instanceof OrderSnapshotUnavailableError) {
       return new UnprocessableEntityException('Order buyer details are unavailable for invoicing');
+    }
+    // A connection with no numbering series configured is an actionable
+    // CONFIGURATION fault, not a provider rejection. Surface it as a 400 that
+    // carries the exception name so the FE can render a "configure numbering"
+    // CTA (AC #6) instead of a generic toast. The message is PII-clean (it names
+    // only the connection id) and mirrors the capability-filter body shape.
+    if (error instanceof MissingNumberingSeriesException) {
+      return new BadRequestException({
+        message: error.message,
+        error: 'MissingNumberingSeriesException',
+      });
     }
     // Capability resolution / enablement errors are a connection-CONFIGURATION
     // fault, NOT an issuance rejection. Propagate them UNCAUGHT so the global

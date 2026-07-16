@@ -112,4 +112,17 @@ export class ProductsService implements IProductsService {
   ): Promise<PaginatedProductVariants> {
     return this.variantRepository.findMany(filters, pagination);
   }
+
+  async markVariantsStaleExcept(
+    productId: string,
+    keepVariantIds: readonly string[]
+  ): Promise<string[]> {
+    const marked = await this.variantRepository.markStaleExceptVariants(productId, keepVariantIds);
+    if (marked.length > 0) {
+      this.logger.warn(
+        `products_prune_marked_stale (productId: ${productId}, markedStale=${marked.length}, kept=${keepVariantIds.length})`
+      );
+    }
+    return marked;
+  }
 }

@@ -104,4 +104,13 @@ export interface IProductsService {
     filters: ProductVariantListFilters,
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants>;
+
+  /**
+   * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
+   * stale — deleted at the master (#1599). An empty keep-set marks all live
+   * variants (product fully removed / 404). Returns the ids newly flipped so
+   * the caller can emit a master-deletion event. Un-staling happens implicitly
+   * on the next successful upsert of a reappearing variant.
+   */
+  markVariantsStaleExcept(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
 }

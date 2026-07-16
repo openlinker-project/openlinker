@@ -1,0 +1,100 @@
+/**
+ * KsefNumberingEditor tests
+ *
+ * Covers the live preview (valid render + invalid dash), the length meter, the
+ * lowering-next-number warning, the create submit path, and the field-level
+ * mapping of a server 400 `errors[]` onto the pattern field.
+ *
+ * @module plugins/ksef/components
+ */
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
+import type { NumberingSeries } from '../../../features/invoicing';
+import { KsefNumberingEditor } from './ksef-numbering-editor';
+
+const series: NumberingSeries = {
+  id: 'series_main',
+  name: 'Sales invoices',
+  pattern: 'FV/{seq}/{MM}/{YYYY}',
+  nextSeq: 42,
+  seqPadding: 0,
+  resetPolicy: 'monthly',
+  documentType: 'invoice',
+  register: null,
+  periodKey: '2026-07',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+describe('KsefNumberingEditor', () => {
+  afterEach(cleanup);
+
+  it('renders a live preview for the prefilled create pattern', () => {
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+    );
+    // Default prefill FV/{seq}/{MM}/{YYYY} — the preview tokenises into spans.
+    expect(screen.getAllByText('FV/').length).toBeGreaterThan(0);
+  });
+
+  it('shows a dash and an error when the pattern breaks the reset rule', async () => {
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const patternInput = screen.getByPlaceholderText('FV/{seq}/{MM}/{YYYY}');
+    fireEvent.change(patternInput, { target: { value: 'FV/{seq}/{YYYY}' } });
+
+    expect(await screen.findAllByText('—')).not.toHaveLength(0);
+    expect(screen.getAllByText(/Monthly reset needs \{MM\}/).length).toBeGreaterThan(0);
+  });
+
+  it('warns when lowering the next number below the persisted value', async () => {
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" series={series} onDone={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const nextInput = screen.getByDisplayValue('42');
+    fireEvent.change(nextInput, { target: { value: '10' } });
+
+    expect(await screen.findByText(/Lowering the next number can reproduce/)).toBeInTheDocument();
+  });
+
+  it('creates a series on submit', async () => {
+    const createSeries = vi.fn().mockResolvedValue(series);
+    const apiClient = createMockApiClient({ invoiceNumbering: { createSeries } });
+    const onDone = vi.fn();
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={onDone} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save series' }));
+
+    await waitFor(() => expect(createSeries).toHaveBeenCalledTimes(1));
+    expect(createSeries).toHaveBeenCalledWith(
+      expect.objectContaining({ documentType: 'invoice', pattern: 'FV/{seq}/{MM}/{YYYY}' }),
+    );
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
+  it('maps a server 400 errors[] onto the pattern field', async () => {
+    const createSeries = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Invalid pattern', 400, { errors: ['Pattern must contain the {seq} variable.'] }));
+    const apiClient = createMockApiClient({ invoiceNumbering: { createSeries } });
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save series' }));
+
+    // Surfaced on the pattern field (and mirrored in the error summary).
+    const shown = await screen.findAllByText('Pattern must contain the {seq} variable.');
+    expect(shown.length).toBeGreaterThan(0);
+    expect(document.querySelector('.form-field__error')?.textContent).toContain(
+      'Pattern must contain the {seq} variable.',
+    );
+  });
+});

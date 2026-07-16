@@ -45,6 +45,20 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   price!: number | null;
 
+  // Soft-mark for a variant that no longer appears in the master's
+  // getProductVariants response, or whose product 404s at the master
+  // (#1599 — the products-context counterpart of inventory_items.isStale,
+  // #1478). Excluded from nothing at the persistence layer; consulted by
+  // order-item resolution to fail early. Cleared (false, staleAt=null) when
+  // the variant reappears via upsert.
+  @Column({ type: 'boolean', default: false })
+  isStale!: boolean;
+
+  // `timestamptz` (not bare `timestamp`) so the `NOW()` write is stored without a
+  // silent tz coercion — the #1296 correction applied to invoice_records (#1599).
+  @Column({ type: 'timestamptz', nullable: true })
+  staleAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

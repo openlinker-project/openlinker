@@ -36,4 +36,15 @@ export interface ProductVariant {
   price?: number;
   /** Master-derived, not persisted on the variants table. */
   weight?: number;
+  /**
+   * Soft-mark set when the variant is deleted at the master — absent from the
+   * master's `getProductVariants` response, or the product itself 404s (#1599).
+   * Optional at the domain level so adapter drafts and test factories may omit
+   * it; the repository normalises `undefined → false` on write. Order-item
+   * resolution consults this to fail early instead of passing a zombie variant
+   * downstream. Cleared on the variant's reappearance via upsert.
+   */
+  isStale?: boolean;
+  /** Timestamp of the most recent stale-marking; `null`/absent when live. */
+  staleAt?: Date | null;
 }

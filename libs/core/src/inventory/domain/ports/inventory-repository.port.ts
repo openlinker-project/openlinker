@@ -15,6 +15,7 @@ import type {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  PruneStaleVariantsResult,
 } from '../types/inventory.types';
 
 /**
@@ -96,10 +97,11 @@ export interface InventoryRepositoryPort {
    *
    * @param productId internal OpenLinker product ID
    * @param keepVariantIds variant keys to keep live (may include `null`)
-   * @returns number of rows newly marked stale
+   * @returns rows newly marked stale (`markedCount`) + the distinct non-null
+   *   variant ids flagged (`variantIds`, for the master-deletion event)
    */
   markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly (string | null)[]
-  ): Promise<number>;
+  ): Promise<PruneStaleVariantsResult>;
 }
