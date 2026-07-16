@@ -1,9 +1,10 @@
 /**
  * Numbering Audit Service — unit specs (#8)
  *
- * Covers gap classification (issued / pending / abandoned / skipped), skipped-
- * integer inference gated on a non-resetting series, note joining + summary
- * counts, the `onlyGaps` filter, empty-reason rejection, and not-found.
+ * Covers gap classification (issued / pending / abandoned / skipped), per-reset-
+ * period skipped-integer inference (none / yearly / monthly buckets), note
+ * joining + summary counts, the `onlyGaps` filter, empty-reason rejection, and
+ * not-found.
  *
  * @module libs/core/src/invoicing/application/services
  */
@@ -38,6 +39,9 @@ function makeRecord(
   seq: number,
   status: InvoiceStatus,
   regulatoryStatus: RegulatoryStatus = 'not-applicable',
+  // The record's issue/allocation date - governs which reset period it buckets
+  // into. Defaults to a fixed Jan-2026 instant so single-period tests are stable.
+  periodDate: Date = new Date('2026-01-05T09:00:00Z'),
 ): InvoiceRecord {
   return new InvoiceRecord(
     `rec-${seq}`,
@@ -52,10 +56,10 @@ function makeRecord(
     null,
     null,
     null,
-    status === 'issued' ? new Date('2026-01-05T10:00:00Z') : null,
+    status === 'issued' ? periodDate : null,
     null,
-    new Date('2026-01-05T09:00:00Z'),
-    new Date('2026-01-05T10:00:00Z'),
+    periodDate,
+    periodDate,
     null,
     null,
     null,
@@ -128,19 +132,64 @@ describe('NumberingAuditService', () => {
       });
     });
 
-    it('should NOT infer skipped integers for a resetting series', async () => {
-      seriesRepo.findSeriesById.mockResolvedValue(makeSeries({ resetPolicy: 'monthly' }));
+    it('should infer skipped integers per period for a yearly resetting series', async () => {
+      seriesRepo.findSeriesById.mockResolvedValue(makeSeries({ resetPolicy: 'yearly' }));
+      // 2024 period: seq 1 + 3 issued -> 2 skipped. 2025 period: seq 1 + 2 issued
+      // -> no hole. The same seq recurs across periods; each is bucketed apart.
       recordRepo.findBySeriesId.mockResolvedValue([
-        makeRecord(1, 'issued'),
-        makeRecord(3, 'issued'),
+        makeRecord(1, 'issued', 'not-applicable', new Date('2024-03-01T09:00:00Z')),
+        makeRecord(3, 'issued', 'not-applicable', new Date('2024-09-01T09:00:00Z')),
+        makeRecord(1, 'issued', 'not-applicable', new Date('2025-02-01T09:00:00Z')),
+        makeRecord(2, 'issued', 'not-applicable', new Date('2025-06-01T09:00:00Z')),
       ]);
       gapNoteRepo.listBySeriesId.mockResolvedValue([]);
 
       const audit = await service.getSeriesAudit('series-1');
 
-      expect(audit.skippedInferenceApplied).toBe(false);
-      expect(audit.entries.map((e) => e.seq)).toEqual([1, 3]);
-      expect(audit.summary.skippedCount).toBe(0);
+      expect(audit.skippedInferenceApplied).toBe(true);
+      // Ordered by (period asc, seq asc); the 2024 hole at seq 2 is inferred.
+      expect(audit.entries.map((e) => [e.periodKey, e.seq, e.status])).toEqual([
+        ['2024', 1, 'issued'],
+        ['2024', 2, 'skipped'],
+        ['2024', 3, 'issued'],
+        ['2025', 1, 'issued'],
+        ['2025', 2, 'issued'],
+      ]);
+      expect(audit.summary.skippedCount).toBe(1);
+      expect(audit.summary.gapCount).toBe(1);
+      expect(audit.summary.issuedCount).toBe(4);
+    });
+
+    it('should infer skipped integers per period for a monthly resetting series', async () => {
+      seriesRepo.findSeriesById.mockResolvedValue(makeSeries({ resetPolicy: 'monthly' }));
+      // 2026-01: seq 1 issued, seq 2 failed (abandoned) -> no skipped hole.
+      // 2026-02: seq 1 issued, seq 3 issued -> seq 2 skipped.
+      recordRepo.findBySeriesId.mockResolvedValue([
+        makeRecord(1, 'issued', 'not-applicable', new Date('2026-01-10T09:00:00Z')),
+        makeRecord(2, 'failed', 'not-applicable', new Date('2026-01-11T09:00:00Z')),
+        makeRecord(1, 'issued', 'not-applicable', new Date('2026-02-05T09:00:00Z')),
+        makeRecord(3, 'issued', 'not-applicable', new Date('2026-02-20T09:00:00Z')),
+      ]);
+      gapNoteRepo.listBySeriesId.mockResolvedValue([]);
+
+      const audit = await service.getSeriesAudit('series-1');
+
+      expect(audit.skippedInferenceApplied).toBe(true);
+      expect(audit.entries.map((e) => [e.periodKey, e.seq, e.status])).toEqual([
+        ['2026-01', 1, 'issued'],
+        ['2026-01', 2, 'abandoned'],
+        ['2026-02', 1, 'issued'],
+        ['2026-02', 2, 'skipped'],
+        ['2026-02', 3, 'issued'],
+      ]);
+      expect(audit.summary).toEqual({
+        issuedCount: 3,
+        pendingCount: 0,
+        abandonedCount: 1,
+        skippedCount: 1,
+        gapCount: 2,
+        explainedGapCount: 0,
+      });
     });
 
     it('should treat pending/issuing records as non-gap pending', async () => {

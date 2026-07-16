@@ -45,7 +45,13 @@ export class NumberingSeriesService implements INumberingSeriesService {
   async createSeries(input: CreateNumberingSeriesServiceInput): Promise<InvoiceNumberingSeries> {
     assertValidNumberingPattern(input.pattern, input.resetPolicy);
     // Seed periodKey so the first allocation honours the configured nextSeq under
-    // the chosen reset cadence.
+    // the chosen reset cadence. A series is org-global with no single seller
+    // timezone at create time, so the seed is computed in UTC. This is acceptable:
+    // the seed only fixes the FIRST period bucket, and the authoritative
+    // period-reset check at allocation time recomputes the key in the consuming
+    // connection's seller timezone (the zone that actually governs correctness) -
+    // a first-allocation just after local midnight at a period boundary rolls the
+    // seq under the seller-local period, not this UTC seed.
     const periodKey = computePeriodKey(input.resetPolicy, new Date());
     return this.repository.createSeries({
       name: input.name,
@@ -100,6 +106,9 @@ export class NumberingSeriesService implements INumberingSeriesService {
       // Reset policy changed → re-seed periodKey to the new cadence's current
       // period so rollover detection stays coherent.
       if (patch.resetPolicy !== undefined && patch.resetPolicy !== existing.resetPolicy) {
+        // UTC seed acceptable for the same reason as createSeries: it only fixes
+        // the current period bucket; allocation re-derives the key in the
+        // consuming connection's seller timezone.
         repoPatch.periodKey = computePeriodKey(patch.resetPolicy, new Date());
       }
     }

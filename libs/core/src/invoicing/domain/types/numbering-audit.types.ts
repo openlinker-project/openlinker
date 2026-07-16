@@ -23,8 +23,8 @@
  *    - not (yet) a gap; it may still complete or become abandoned.
  *  - `abandoned`: a record consumed it but ended terminal-non-issued (`failed`,
  *    or a `rejected` regulatory outcome). A GAP needing a written explanation.
- *  - `skipped`: NO record carries this integer inside the consumed range. A GAP
- *    (inferred only for a non-resetting series - see {@link SeriesAudit}).
+ *  - `skipped`: NO record carries this integer inside the consumed range of its
+ *    reset PERIOD. A GAP (inferred per reset-period - see {@link SeriesAudit}).
  */
 export const NumberingSeqStatusValues = ['issued', 'pending', 'abandoned', 'skipped'] as const;
 export type NumberingSeqStatus = (typeof NumberingSeqStatusValues)[number];
@@ -71,6 +71,13 @@ export interface RecordNumberingGapNoteInput {
  */
 export interface SeriesAuditEntry {
   seq: number;
+  /**
+   * The reset period this integer belongs to (the opaque `computePeriodKey`
+   * value: `''` for `none`, `'YYYY'` yearly, `'YYYY-MM'` monthly, `'YYYY-QN'`
+   * quarterly). Disambiguates a `seq` that recurs across periods on a resetting
+   * series. Optional so consumers that predate per-period bucketing keep working.
+   */
+  periodKey?: string;
   status: NumberingSeqStatus;
   /** True when {@link status} is `abandoned` or `skipped`. */
   isGap: boolean;
@@ -92,7 +99,7 @@ export interface SeriesAuditSummary {
   pendingCount: number;
   /** Consumed integers whose record ended terminal-non-issued. */
   abandonedCount: number;
-  /** Integers with no record inside the consumed range (non-resetting series only). */
+  /** Integers with no record inside the consumed range of their reset period. */
   skippedCount: number;
   /** Total gaps (`abandonedCount + skippedCount`). */
   gapCount: number;
@@ -105,11 +112,11 @@ export interface SeriesAudit {
   seriesId: string;
   seriesName: string;
   /**
-   * Whether skipped-integer inference ran. Only a non-resetting series
-   * (`resetPolicy === 'none'`) has a well-defined contiguous integer line, so
-   * `skipped` entries are inferred ONLY there; for a resetting series the same
-   * integer recurs across periods, so `skipped` inference is omitted and only
-   * `abandoned` records are flagged as gaps.
+   * Whether skipped-integer inference ran. Within a single reset PERIOD the
+   * sequence is contiguous, so `skipped` entries are inferred per-period for
+   * EVERY reset policy (`none` is the degenerate single-period case). Always
+   * `true` today; retained as a field so a future series whose integer line
+   * cannot be bucketed (e.g. an imported legacy series) can opt out.
    */
   skippedInferenceApplied: boolean;
   summary: SeriesAuditSummary;

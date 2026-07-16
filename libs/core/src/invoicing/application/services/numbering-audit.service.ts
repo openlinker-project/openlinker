@@ -9,10 +9,12 @@
  *   - `abandoned` - a record consumed the integer but ended terminal-non-issued
  *     (issuance `failed`, or a `rejected` regulatory outcome). The number is
  *     burned; it is never reused to fill the gap.
- *   - `skipped` - no record carries the integer inside the consumed range. Only
- *     inferred for a non-resetting series (`resetPolicy === 'none'`), where the
- *     integer line is contiguous; for a resetting series the same integer recurs
- *     across periods so skipped-inference is unsafe and is omitted.
+ *   - `skipped` - no record carries the integer inside the consumed range of its
+ *     reset PERIOD. Consumed integers are bucketed by reset period (via
+ *     `computePeriodKey` on each record's issue/allocation date, honouring the
+ *     series `resetPolicy`); within one period the sequence is contiguous, so
+ *     holes are inferable per-period for every reset policy - monthly, quarterly,
+ *     yearly, and the degenerate single-period `none`.
  *
  * Each gap is joined to its recorded explanation (if any). Pure/repository reads
  * only - no allocation. Country-agnostic (ADR-026): the explanation is a neutral
@@ -26,6 +28,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InvoiceNumberingSeriesNotFoundException } from '../../domain/exceptions/invoice-numbering-series-not-found.exception';
 import { NumberingGapNoteReasonRequiredException } from '../../domain/exceptions/numbering-gap-note-reason-required.exception';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
+import { computePeriodKey } from '../../domain/numbering/invoice-number-pattern';
+import type { ResetPolicy } from '../../domain/types/invoice-numbering.types';
 // Value imports (not `import type`): these ports are injected via @Inject and
 // surface in the constructor's decorator metadata.
 import { InvoiceNumberGapNoteRepositoryPort } from '../../domain/ports/invoice-number-gap-note-repository.port';
@@ -71,12 +75,12 @@ export class NumberingAuditService implements INumberingAuditService {
     ]);
     const notesBySeq = new Map<number, NumberingGapNoteData>(notes.map((n) => [n.seq, n]));
 
-    // A resetting series recurs the same integer across periods, so a "skipped"
-    // integer is not well-defined; only infer skipped integers for a single
-    // ever-growing (`none`) sequence.
-    const skippedInferenceApplied = series.resetPolicy === 'none';
+    // Within a single reset period the sequence is contiguous, so skipped
+    // integers are inferable per-period for every reset policy (`none` is the
+    // degenerate single-period case). See {@link buildEntries}.
+    const skippedInferenceApplied = true;
 
-    const entries = this.buildEntries(records, notesBySeq, skippedInferenceApplied);
+    const entries = this.buildEntries(records, notesBySeq, series.resetPolicy);
     const summary = this.summarize(entries);
     const visible = opts?.onlyGaps ? entries.filter((e) => e.isGap) : entries;
 
@@ -97,48 +101,74 @@ export class NumberingAuditService implements INumberingAuditService {
   }
 
   /**
-   * Build one entry per consumed sequence (from the records), then - for a
-   * non-resetting series - fill the integer holes between the min and max
-   * consumed seq as `skipped`. The consumed range starts at the lowest allocated
-   * integer (never asserting 1..min-1 are skipped, since the series may have
-   * started above 1). Entries are returned ascending by seq.
+   * Build one entry per consumed sequence (from the records), then fill the
+   * integer holes between the min and max consumed seq of EACH reset period as
+   * `skipped`. Consumed entries are bucketed by reset period (derived from each
+   * record's issue/allocation date via {@link computePeriodKey}, honouring the
+   * series `resetPolicy`); within one period the sequence is contiguous, so the
+   * min..max hole-fill is a genuine skipped-integer detection - for a resetting
+   * series (monthly/quarterly/yearly) as well as the single-period `none`. The
+   * range starts at the lowest allocated integer per period (never asserting
+   * 1..min-1 are skipped, since a period may open above its reset floor). Numbers
+   * are never reused; this read model only surfaces the holes. Entries are
+   * returned ordered by (period ascending, seq ascending) - `periodKey` strings
+   * sort chronologically for every cadence.
    */
   private buildEntries(
     records: InvoiceRecord[],
     notesBySeq: Map<number, NumberingGapNoteData>,
-    inferSkipped: boolean,
+    resetPolicy: ResetPolicy,
   ): SeriesAuditEntry[] {
-    const bySeq = new Map<number, SeriesAuditEntry>();
+    // periodKey -> (seq -> entry). The audit has no seller timezone, so periods
+    // are bucketed in UTC (computePeriodKey's neutral fallback). This matches the
+    // allocation's period except for an issuance within a few hours of a period
+    // boundary - an acceptable approximation for a read-only gap audit.
+    const buckets = new Map<string, Map<number, SeriesAuditEntry>>();
     for (const record of records) {
       if (record.allocatedSeq === null) {
         continue;
       }
+      const periodKey = computePeriodKey(resetPolicy, record.issuedAt ?? record.createdAt);
+      const bySeq = buckets.get(periodKey) ?? new Map<number, SeriesAuditEntry>();
+      buckets.set(periodKey, bySeq);
       const status = this.classify(record);
-      // A consumed seq should be unique per series (the atomic allocation burns
-      // each integer once). If a duplicate ever appears, prefer the issued row so
-      // a re-numbered retry doesn't mask a real success.
+      // A consumed seq should be unique per (series, period) - the atomic
+      // allocation burns each integer once. If a duplicate ever appears, prefer
+      // the issued row so a re-numbered retry doesn't mask a real success.
       const existing = bySeq.get(record.allocatedSeq);
       if (existing && existing.status === 'issued') {
         continue;
       }
       bySeq.set(
         record.allocatedSeq,
-        this.toEntry(record.allocatedSeq, status, record, notesBySeq),
+        this.toEntry(record.allocatedSeq, periodKey, status, record, notesBySeq),
       );
     }
 
-    if (inferSkipped && bySeq.size > 0) {
+    for (const [periodKey, bySeq] of buckets) {
+      if (bySeq.size === 0) {
+        continue;
+      }
       const consumed = [...bySeq.keys()];
       const min = Math.min(...consumed);
       const max = Math.max(...consumed);
       for (let seq = min; seq <= max; seq++) {
         if (!bySeq.has(seq)) {
-          bySeq.set(seq, this.toSkippedEntry(seq, notesBySeq));
+          bySeq.set(seq, this.toSkippedEntry(seq, periodKey, notesBySeq));
         }
       }
     }
 
-    return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+    return [...buckets.values()]
+      .flatMap((bySeq) => [...bySeq.values()])
+      .sort((a, b) => {
+        const pa = a.periodKey ?? '';
+        const pb = b.periodKey ?? '';
+        if (pa !== pb) {
+          return pa < pb ? -1 : 1;
+        }
+        return a.seq - b.seq;
+      });
   }
 
   /** Terminal-non-issued (failed / regulatory-rejected) burns the number; in-flight stays pending. */
@@ -154,6 +184,7 @@ export class NumberingAuditService implements INumberingAuditService {
 
   private toEntry(
     seq: number,
+    periodKey: string,
     status: NumberingSeqStatus,
     record: InvoiceRecord,
     notesBySeq: Map<number, NumberingGapNoteData>,
@@ -161,6 +192,7 @@ export class NumberingAuditService implements INumberingAuditService {
     const isGap = isGapSeqStatus(status);
     return {
       seq,
+      periodKey,
       status,
       isGap,
       documentNumber: record.documentNumber,
@@ -175,10 +207,12 @@ export class NumberingAuditService implements INumberingAuditService {
 
   private toSkippedEntry(
     seq: number,
+    periodKey: string,
     notesBySeq: Map<number, NumberingGapNoteData>,
   ): SeriesAuditEntry {
     return {
       seq,
+      periodKey,
       status: 'skipped',
       isGap: true,
       documentNumber: null,
