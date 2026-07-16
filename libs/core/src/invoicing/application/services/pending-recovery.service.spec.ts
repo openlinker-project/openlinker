@@ -67,7 +67,9 @@ function makeRecord(
     null, // issuedLineSnapshot
     'unknown', // paymentStatus
     null, // numberingSeriesId
-    overrides.documentNumber ?? 'FV/1',
+    // Honour an explicit `null` (a crashed-before-claim row has no number);
+    // default only when the override is absent.
+    'documentNumber' in overrides ? overrides.documentNumber : 'FV/1',
   );
 }
 
@@ -244,6 +246,46 @@ describe('PendingRecoveryService', () => {
       expect(result.markedInDoubt).toBe(1);
       // The frontier is still swept even without a locator (records must be resolved).
       expect(repo.findStuckPending).toHaveBeenCalled();
+    });
+  });
+
+  describe('stuck pending row with no document number -> in-doubt (#1585 B1)', () => {
+    it('does not reconcile a numberless orphan even when the authority holds a lone unrelated result', async () => {
+      // A locator faithful to the fixed adapter contract: it positively matches
+      // ONLY on an exact document number and returns null when none is supplied
+      // (a lone date-window result could be an unrelated invoice).
+      const locate = jest.fn((criteria: { documentNumber?: string }) =>
+        Promise.resolve(
+          criteria.documentNumber
+            ? {
+                providerInvoiceId: 'PROV-Z',
+                regulatoryStatus: 'accepted' as RegulatoryStatus,
+                clearanceReference: 'KSEF-Z',
+              }
+            : null,
+        ),
+      );
+      const adapter = {
+        ...baseAdapter(),
+        locateByQuery: locate,
+      } as unknown as InvoicingPort & RegulatoryRecordLocator;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      // A stuck `pending` row that crashed before the CAS claim: no document
+      // number allocated and no provider number backfilled.
+      const record = makeRecord({ id: 'rec-numberless', status: 'pending', documentNumber: null });
+      repo.findStuckPending.mockResolvedValue({ items: [record], total: 1 });
+
+      const result = await service.recover(CONNECTION_ID, { limit: 50 });
+
+      // The criteria carried no document number, so the locator returned null.
+      const criteria = (locate.mock.calls[0] as [{ documentNumber?: string }])[0];
+      expect(criteria.documentNumber).toBeUndefined();
+      // Fiscal-safe: marked in-doubt, NEVER reconciled to the unrelated result.
+      const patch = ((repo.updateOutcome as jest.Mock).mock.calls[0] as [unknown, Record<string, unknown>])[1];
+      expect(patch.status).toBe('failed');
+      expect(patch.failureMode).toBe('in-doubt');
+      expect(result.markedInDoubt).toBe(1);
+      expect(result.recovered).toBe(0);
     });
   });
 

@@ -398,7 +398,9 @@ export class KsefInvoicingAdapter
    * `clearanceReference`, `regulatoryStatus='accepted'` — a document present in
    * the metadata index has cleared), or `null` when the authority holds none (the
    * caller then treats the interrupted attempt as never having landed and
-   * re-issues). `providerInvoiceId` is `null`: the metadata query does not expose
+   * re-issues). A positive match REQUIRES an exact `documentNumber` hit (#1585 B1):
+   * without one this returns `null` rather than trusting a lone date-window result,
+   * which could belong to an unrelated invoice. `providerInvoiceId` is `null`: the metadata query does not expose
    * the `{sessionRef}:{invoiceRef}` composite this adapter's own id packs, and the
    * contract permits returning only what is available. A transport failure throws.
    */
@@ -442,20 +444,27 @@ export class KsefInvoicingAdapter
   }
 
   /**
-   * Pick the metadata item that matches the requested document number, defending
-   * against a wire that ignores the server-side `invoiceNumber` filter: when a
-   * document number was supplied we match on it exactly (never a wrong-positive);
-   * otherwise we take the single result only when exactly one is present.
+   * Pick the metadata item that matches the requested document number. A positive
+   * match REQUIRES an exact document-number hit (#1585 B1, fiscal safety):
+   *   - No document number supplied -> return `null`. The query is then scoped
+   *     only by seller + issue-date window, and a lone date-window result can be
+   *     an UNRELATED invoice the seller happened to issue in that window; trusting
+   *     it would silently mis-attribute someone else's authority reference to an
+   *     orphaned record. The caller resolves such a record to in-doubt instead.
+   *   - Document number supplied -> match on it exactly client-side even when the
+   *     server returned a single result, defending against a wire that ignores the
+   *     `invoiceNumber` filter (a loose server-side filter never yields a
+   *     wrong-positive).
    */
   private selectMetadataMatch(
     invoices: InvoiceMetadataItem[] | undefined,
     documentNumber: string | undefined,
   ): InvoiceMetadataItem | null {
-    const items = invoices ?? [];
-    if (documentNumber) {
-      return items.find((item) => item.invoiceNumber === documentNumber) ?? null;
+    if (!documentNumber) {
+      return null;
     }
-    return items.length === 1 ? items[0] : null;
+    const items = invoices ?? [];
+    return items.find((item) => item.invoiceNumber === documentNumber) ?? null;
   }
 
   /**

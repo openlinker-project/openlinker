@@ -14,7 +14,12 @@ import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import type { OfflineResubmitter } from '../../domain/ports/capabilities/offline-resubmitter.capability';
-import type { OfflineResubmitResult, RegulatoryStatus } from '../../domain/types/invoicing.types';
+import type { RegulatoryRecordLocator } from '../../domain/ports/capabilities/regulatory-record-locator.capability';
+import type {
+  OfflineResubmitResult,
+  RegulatoryLocateResult,
+  RegulatoryStatus,
+} from '../../domain/types/invoicing.types';
 import { OfflineResubmissionService } from './offline-resubmission.service';
 
 const CONNECTION_ID = 'conn-invoicing-1';
@@ -67,6 +72,26 @@ function resubmitterAdapter(
     ...baseAdapter(),
     resubmit: fn,
   } as unknown as InvoicingPort & OfflineResubmitter;
+}
+
+/**
+ * An Invoicing adapter that implements BOTH OfflineResubmitter and
+ * RegulatoryRecordLocator (the KSeF shape). Used to exercise the #1585 I1
+ * confirm-non-receipt gate.
+ */
+function resubmitterLocatorAdapter(
+  resubmit: OfflineResubmitResult | ((record: InvoiceRecord) => Promise<OfflineResubmitResult>),
+  locate: RegulatoryLocateResult | null | ((criteria: unknown) => Promise<RegulatoryLocateResult | null>),
+): InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator {
+  const resubmitFn =
+    typeof resubmit === 'function' ? jest.fn(resubmit) : jest.fn().mockResolvedValue(resubmit);
+  const locateFn =
+    typeof locate === 'function' ? jest.fn(locate) : jest.fn().mockResolvedValue(locate);
+  return {
+    ...baseAdapter(),
+    resubmit: resubmitFn,
+    locateByQuery: locateFn,
+  } as unknown as InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator;
 }
 
 describe('OfflineResubmissionService', () => {
@@ -314,6 +339,88 @@ describe('OfflineResubmissionService', () => {
       });
       // ...so the tail row was reached and resubmitted within the same run.
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-new', { regulatoryStatus: 'submitted' });
+    });
+  });
+
+  describe('confirm non-receipt before resubmitting (#1585 I1)', () => {
+    it('reconciles WITHOUT resubmitting when the locator finds the document already at the authority', async () => {
+      const resubmit = jest.fn();
+      const adapter = resubmitterLocatorAdapter(
+        (record) => {
+          resubmit(record);
+          return Promise.resolve({
+            regulatoryStatus: 'submitted' as RegulatoryStatus,
+            providerInvoiceId: null,
+            clearanceReference: null,
+          });
+        },
+        { providerInvoiceId: 'PROV-LANDED', regulatoryStatus: 'accepted', clearanceReference: 'KSEF-LANDED' },
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({
+        items: [makeRecord({ id: 'rec-landed', providerInvoiceId: null, clearanceReference: null })],
+        total: 1,
+      });
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(adapter.locateByQuery).toHaveBeenCalledTimes(1);
+      // The document already landed - it must NOT be resubmitted.
+      expect(resubmit).not.toHaveBeenCalled();
+      // Reconciled in place off the located triple.
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-landed', {
+        regulatoryStatus: 'accepted',
+        providerInvoiceId: 'PROV-LANDED',
+        clearanceReference: 'KSEF-LANDED',
+      });
+      expect(result.updated).toBe(1);
+      expect(result.scanned).toBe(1);
+      expect(result.resubmitErrors).toBe(0);
+    });
+
+    it('resubmits when the locator does not find the document at the authority', async () => {
+      const resubmit = jest.fn().mockResolvedValue({
+        regulatoryStatus: 'submitted' as RegulatoryStatus,
+        providerInvoiceId: 'PROV-NEW',
+        clearanceReference: null,
+      });
+      const adapter = {
+        ...baseAdapter(),
+        resubmit,
+        locateByQuery: jest.fn().mockResolvedValue(null),
+      } as unknown as InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({
+        items: [makeRecord({ id: 'rec-absent', providerInvoiceId: null })],
+        total: 1,
+      });
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(adapter.locateByQuery).toHaveBeenCalledTimes(1);
+      expect(resubmit).toHaveBeenCalledTimes(1);
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-absent', {
+        regulatoryStatus: 'submitted',
+        providerInvoiceId: 'PROV-NEW',
+      });
+      expect(result.updated).toBe(1);
+      expect(result.scanned).toBe(1);
+    });
+
+    it('resubmits (no confirmation) when the adapter is not a RegulatoryRecordLocator', async () => {
+      const adapter = resubmitterAdapter({
+        regulatoryStatus: 'submitted',
+        providerInvoiceId: 'PROV-1',
+        clearanceReference: null,
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({ items: [makeRecord({ id: 'rec-nolocator' })], total: 1 });
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(adapter.resubmit).toHaveBeenCalledTimes(1);
+      expect(result.updated).toBe(1);
+      expect(result.scanned).toBe(1);
     });
   });
 });

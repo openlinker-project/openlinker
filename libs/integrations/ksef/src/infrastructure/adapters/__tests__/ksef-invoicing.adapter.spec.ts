@@ -1102,5 +1102,26 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should return null when no document number is supplied even if the authority returns a lone result (#1585 B1)', async () => {
+      const http = new FakeKsefHttpClient();
+      // A single unrelated invoice in the seller + date window must NOT be trusted
+      // when the query carried no document number - it could be someone else's.
+      http.seed('POST', '/invoices/query/metadata', {
+        data: {
+          invoices: [{ ksefNumber: KSEF_NUMBER, invoiceNumber: 'FV/2026/06/7777', issueDate: '2026-06-23' }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).locateByQuery({
+        sellerTaxId: '1234567890',
+        issuedFrom: new Date('2026-06-01T00:00:00.000Z'),
+        issuedTo: new Date('2026-06-30T23:59:59.000Z'),
+      });
+
+      expect(result).toBeNull();
+    });
   });
 });
