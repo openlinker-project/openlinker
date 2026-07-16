@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddPosthogSettings1819000000001 implements MigrationInterface {
-  name = 'AddPosthogSettings1819000000001';
+export class AddPosthogSettings1823000000000 implements MigrationInterface {
+  name = 'AddPosthogSettings1823000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
