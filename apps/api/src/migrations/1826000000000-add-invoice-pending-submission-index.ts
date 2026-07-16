@@ -14,8 +14,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoicePendingSubmissionIndex1825000000000 implements MigrationInterface {
-  name = 'AddInvoicePendingSubmissionIndex1825000000000';
+export class AddInvoicePendingSubmissionIndex1826000000000 implements MigrationInterface {
+  name = 'AddInvoicePendingSubmissionIndex1826000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
