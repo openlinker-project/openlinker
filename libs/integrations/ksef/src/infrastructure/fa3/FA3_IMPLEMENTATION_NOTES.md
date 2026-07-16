@@ -209,3 +209,17 @@ full field-scope audit and design mockup.
   server-side decryption (the observed status-430 rejection of per-document IVs).
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
+- ⏸ Continuous-supply / period-of-service invoicing (`OkresFa` — [#1597](https://github.com/openlinker-project/openlinker/issues/1597)).
+  Art. 106e ust. 1 pkt 6 requires a supply-period *range* (`P_6_Od` / `P_6_Do`) rather
+  than a single `P_6` date for continuous/recurring services (subscriptions, SaaS,
+  digital-content access). The vendored XSD defines the alternative
+  `OkresFa { P_6_Od, P_6_Do }` (`schema/schemat_fa3_v1-0e.xsd`), but the builder only
+  emits single-date `P_6` from `IssueInvoiceCommand.saleDate`, and neither
+  `IssueInvoiceCommand`/`InvoiceLine` nor the `Order`/`OrderItem` domain carries any
+  period-start/period-end concept — the whole pipeline models a discrete-delivery sale.
+  **Dormant**: no current OL order source produces a recurring/subscription order, so this
+  is unreachable today. When one is added to `libs/core/src/orders/` (e.g. a WooCommerce
+  Subscriptions source or SaaS-billing integration), revisit before shipping to a
+  KSeF-connected seller: add an optional `supplyPeriod { from, to }` to the neutral
+  invoice command/line and have `fa3-xml.builder.ts` emit `OkresFa` in place of `P_6`
+  when a period is present.
