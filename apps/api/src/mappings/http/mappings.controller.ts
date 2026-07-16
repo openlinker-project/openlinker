@@ -3,10 +3,13 @@
  *
  * HTTP REST API endpoints for connection-scoped mapping configuration.
  * Supports CRUD for status, carrier, and payment mapping types.
- * Write endpoints (PUT/DELETE) require admin role (class-level default);
- * the 5 read (GET) endpoints are relaxed to admin/operator/viewer via a
- * per-method override (#1652) so demo viewers can inspect mapping
- * configuration without a 403.
+ * Read (GET) endpoints allow admin/operator/viewer (#1652) so demo viewers
+ * can inspect mapping configuration without a 403. Write endpoints
+ * (PUT/DELETE) allow admin/operator (#1653) — mapping configuration is
+ * routine operator work, matching operator's write access in sibling
+ * controllers (listings, orders). The class-level @Roles('admin') stays as a
+ * deny-by-default safety net for any future endpoint added without a
+ * per-method override.
  *
  * @module apps/api/src/mappings/http
  */
@@ -62,6 +65,7 @@ export class MappingsController {
   }
 
   @Put('status')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replace all status mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
@@ -92,6 +96,7 @@ export class MappingsController {
   }
 
   @Put('carriers')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replace all carrier mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
@@ -122,6 +127,7 @@ export class MappingsController {
   }
 
   @Put('order-states')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replace all OL→destination order-state mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
@@ -155,6 +161,7 @@ export class MappingsController {
   }
 
   @Put('payments')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replace all payment mappings for a connection' })
   @ApiParam({ name: 'connectionId', type: String })
@@ -185,6 +192,7 @@ export class MappingsController {
   }
 
   @Put('categories/:prestashopCategoryId')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create or update a category mapping for a PrestaShop category' })
   @ApiParam({ name: 'connectionId', type: String })
@@ -210,6 +218,7 @@ export class MappingsController {
   }
 
   @Delete('categories/:prestashopCategoryId')
+  @Roles('admin', 'operator')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a category mapping for a PrestaShop category' })
   @ApiParam({ name: 'connectionId', type: String })

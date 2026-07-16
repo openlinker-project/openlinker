@@ -47,6 +47,7 @@ import { WebhookDeliveryController } from '../webhooks/http/webhook-delivery.con
 import { AiProviderSettingsController } from '../ai/http/ai-provider-settings.controller';
 import { PromptTemplatesController } from '../ai/http/prompt-templates.controller';
 import { ContentController } from '../content/http/content.controller';
+import { MappingsController } from '../mappings/http/mappings.controller';
 import { MailerSettingsController } from '../mailer/http/mailer-settings.controller';
 
 const METHOD_METADATA = 'method';
@@ -80,6 +81,7 @@ const CONTROLLERS = [
   PromptTemplatesController,
   ContentController,
   MailerSettingsController,
+  MappingsController,
 ];
 
 describe('Write-guard coverage invariant (#1124 / #1126 / #1357)', () => {
