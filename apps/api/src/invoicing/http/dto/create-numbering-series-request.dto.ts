@@ -74,4 +74,18 @@ export class CreateNumberingSeriesRequestDto {
   @IsString()
   @IsNotEmpty()
   register?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Calendar month (1-12) the fiscal year starts on, governing {FY}. ' +
+      '1 (default) = calendar year, so {FY} renders identically to {YYYY}.',
+    example: 1,
+    minimum: 1,
+    maximum: 12,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  fiscalYearStartMonth?: number;
 }

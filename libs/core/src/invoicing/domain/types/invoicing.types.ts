@@ -424,6 +424,15 @@ export interface IssueInvoiceCommand {
    * not carry a placement date; adapters omit the corresponding wire field.
    */
   saleDate?: string;
+  /**
+   * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
+   * the allocated document number's date variables/period AND the provider's
+   * legal issue date resolve from ONE instant (no day/period-boundary
+   * divergence). A `DocumentNumberConsumer` adapter (KSeF) stamps its legal
+   * issue date from this value; absent (e.g. a direct adapter call in a test)
+   * the adapter falls back to its own clock.
+   */
+  issuedAt?: Date;
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
@@ -522,6 +531,12 @@ export interface IssueCorrectionCommand {
   documentType?: string;
   reason?: string;
   lines: CorrectionLine[];
+  /**
+   * Single issuance instant for the correction document (#1692). Set by the core
+   * `InvoiceService` so the correction's allocated number and the provider's
+   * legal issue date resolve from ONE instant. See {@link IssueInvoiceCommand.issuedAt}.
+   */
+  issuedAt?: Date;
   idempotencyKey?: string;
   /**
    * Optional neutral register / entity-scope label (#10). Routes the correction's

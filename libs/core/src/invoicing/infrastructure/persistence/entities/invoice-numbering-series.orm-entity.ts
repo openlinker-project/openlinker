@@ -51,6 +51,13 @@ export class InvoiceNumberingSeriesOrmEntity {
   @Column({ type: 'text', nullable: true })
   register!: string | null;
 
+  /**
+   * Calendar month (1–12) the series' fiscal year starts on (#1692), governing
+   * `{FY}`. Defaults to `1` (calendar year), so `{FY}` === `{YYYY}`.
+   */
+  @Column({ type: 'integer', default: 1 })
+  fiscalYearStartMonth!: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

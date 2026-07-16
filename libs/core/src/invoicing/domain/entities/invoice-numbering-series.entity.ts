@@ -29,6 +29,8 @@ export class InvoiceNumberingSeries {
     public readonly documentType: string,
     /** Optional neutral register/entity scope (#10); `null` = the type's register-less default. */
     public readonly register: string | null,
+    /** Fiscal-year start month (1–12) governing `{FY}` (#1692); `1` = calendar year. */
+    public readonly fiscalYearStartMonth: number,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}

@@ -30,6 +30,8 @@ interface KsefNumberingPreviewProps {
   nextSeq: string;
   seqPadding: string;
   resetPolicy: ResetPolicy;
+  /** Fiscal-year start month (1-12) as a form string; governs {FY} (#1692). */
+  fiscalYearStartMonth: string;
 }
 
 export function KsefNumberingPreview({
@@ -37,9 +39,13 @@ export function KsefNumberingPreview({
   nextSeq,
   seqPadding,
   resetPolicy,
+  fiscalYearStartMonth,
 }: KsefNumberingPreviewProps): ReactElement {
   const parsedSeq = /^\d+$/.test(nextSeq.trim()) ? Number(nextSeq.trim()) : NaN;
   const parsedPadding = /^\d+$/.test(seqPadding.trim()) ? Number(seqPadding.trim()) : 0;
+  const parsedFyStart = /^\d+$/.test(fiscalYearStartMonth.trim())
+    ? Number(fiscalYearStartMonth.trim())
+    : 1;
   const preview = buildNumberingPreview({
     pattern,
     nextSeq: parsedSeq,
@@ -47,6 +53,7 @@ export function KsefNumberingPreview({
     resetPolicy,
     now: new Date(),
     timeZone: KSEF_TIME_ZONE,
+    fiscalYearStartMonth: parsedFyStart,
   });
 
   const overLimit = preview.renderedLength > FA3_P2_MAX_LENGTH;

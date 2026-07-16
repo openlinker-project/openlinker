@@ -23,6 +23,7 @@ const series: NumberingSeries = {
   resetPolicy: 'monthly',
   documentType: 'invoice',
   register: null,
+  fiscalYearStartMonth: 1,
   periodKey: '2026-07',
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
@@ -48,6 +49,41 @@ describe('KsefNumberingEditor', () => {
 
     expect(await screen.findAllByText('—')).not.toHaveLength(0);
     expect(screen.getAllByText(/Monthly reset needs \{MM\}/).length).toBeGreaterThan(0);
+  });
+
+  it('shows the fiscal-year start picker only when the pattern uses {FY}', async () => {
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+    );
+    // Default prefill has no {FY} — the picker is hidden.
+    expect(screen.queryByLabelText('Fiscal year starts in')).not.toBeInTheDocument();
+
+    const patternInput = screen.getByPlaceholderText('FV/{seq}/{MM}/{YYYY}');
+    fireEvent.change(patternInput, { target: { value: 'FV/{seq}/{FY}' } });
+
+    expect(await screen.findByLabelText('Fiscal year starts in')).toBeInTheDocument();
+  });
+
+  it('sends fiscalYearStartMonth from the picker on submit', async () => {
+    const createSeries = vi.fn().mockResolvedValue(series);
+    const apiClient = createMockApiClient({ invoiceNumbering: { createSeries } });
+    renderWithProviders(
+      <KsefNumberingEditor connectionId="conn_1" onDone={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    // Keep {MM} so the pattern stays valid under the default monthly reset.
+    const patternInput = screen.getByPlaceholderText('FV/{seq}/{MM}/{YYYY}');
+    fireEvent.change(patternInput, { target: { value: 'FV/{seq}/{MM}/{FY}' } });
+    const monthSelect = await screen.findByLabelText('Fiscal year starts in');
+    fireEvent.change(monthSelect, { target: { value: '4' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save series' }));
+
+    await waitFor(() => expect(createSeries).toHaveBeenCalledTimes(1));
+    expect(createSeries).toHaveBeenCalledWith(
+      expect.objectContaining({ fiscalYearStartMonth: 4, pattern: 'FV/{seq}/{MM}/{FY}' }),
+    );
   });
 
   it('warns when lowering the next number below the persisted value', async () => {

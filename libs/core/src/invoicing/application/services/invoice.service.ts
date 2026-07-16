@@ -352,6 +352,14 @@ export class InvoiceService implements IInvoiceService {
       INVOICING_CAPABILITY,
     );
 
+    // (3a′) Single issuance instant (#1692). Compute ONE `issuedAt` here and
+    // thread it into BOTH the numbering allocation (its date variables + period
+    // key) AND the command handed to the adapter (a `DocumentNumberConsumer`
+    // stamps its legal issue date from it) — so the allocated number and the
+    // provider's issue date can never straddle a day/period boundary.
+    const issuedAt = new Date();
+    cmd = { ...cmd, issuedAt };
+
     // (3b) Numbering allocation (#1575). ONLY when the adapter passes
     // `isDocumentNumberConsumer` (KSeF today): allocate + persist the rendered
     // number onto this record in ONE transaction BEFORE crossing the provider
@@ -363,6 +371,7 @@ export class InvoiceService implements IInvoiceService {
     try {
       const documentNumber = await this.allocateDocumentNumber(adapter, claimed, cmd, {
         correction: cmd.correction !== undefined,
+        issueDate: issuedAt,
       });
       if (documentNumber !== undefined) {
         cmd = { ...cmd, documentNumber };
@@ -461,15 +470,16 @@ export class InvoiceService implements IInvoiceService {
    * dedicated correction route — to the base (`invoice`) route, preserving the
    * pre-#9 "correction falls back to the main series" behaviour. Throws
    * {@link MissingNumberingSeriesException} when no route resolves, and delegates
-   * to the repository's atomic allocate+persist. The issue date resolves in the
-   * adapter-supplied seller timezone (#7) and the rendered number is length-checked
+   * to the repository's atomic allocate+persist. The issue date is the single
+   * issuance instant threaded by the caller (#1692), resolved in the
+   * adapter-supplied seller timezone (#7); the rendered number is length-checked
    * against the adapter's declared limit (#11).
    */
   private async allocateDocumentNumber(
     adapter: InvoicingPort,
     record: InvoiceRecord,
     cmd: { connectionId: string; documentType?: string; register?: string },
-    opts: { correction: boolean },
+    opts: { correction: boolean; issueDate: Date },
   ): Promise<string | undefined> {
     if (!isDocumentNumberConsumer(adapter)) {
       return undefined;
@@ -506,9 +516,10 @@ export class InvoiceService implements IInvoiceService {
       seriesId,
       recordId: record.id,
       connectionId: cmd.connectionId,
-      // The number is allocated AT ISSUE TIME; the date variables + period reset
-      // resolve from this instant in the seller timezone the adapter supplies.
-      issueDate: new Date(),
+      // The single issuance instant (#1692) — the SAME `Date` the adapter stamps
+      // its legal issue date from; date variables + period reset resolve from it
+      // in the seller timezone the adapter supplies.
+      issueDate: opts.issueDate,
       timeZone: adapter.numberingTimeZone,
       maxDocumentNumberLength: adapter.maxDocumentNumberLength,
     });
@@ -644,6 +655,12 @@ export class InvoiceService implements IInvoiceService {
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
     }
 
+    // Single issuance instant for the correction (#1692): threaded into BOTH the
+    // correction-number allocation and the command the adapter stamps its legal
+    // issue date from, so the two can never straddle a day/period boundary.
+    const issuedAt = new Date();
+    cmd = { ...cmd, issuedAt };
+
     // Numbering allocation for the CORRECTION document (#1575) — a correction
     // draws a FRESH number from the connection's correction series (never reuses
     // the original's). Only for `DocumentNumberConsumer` adapters; a self-
@@ -651,6 +668,7 @@ export class InvoiceService implements IInvoiceService {
     try {
       const documentNumber = await this.allocateDocumentNumber(adapter, pending, cmd, {
         correction: true,
+        issueDate: issuedAt,
       });
       if (documentNumber !== undefined) {
         cmd = { ...cmd, documentNumber };

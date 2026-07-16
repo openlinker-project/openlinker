@@ -252,7 +252,9 @@ describe('InvoiceService', () => {
         }),
       );
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION, 'Invoicing');
-      expect(adapter.issueInvoice).toHaveBeenCalledWith(cmd);
+      // The command is threaded verbatim PLUS the single issuance instant (#1692),
+      // which every adapter now receives (a non-consumer provider ignores it).
+      expect(adapter.issueInvoice).toHaveBeenCalledWith({ ...cmd, issuedAt: expect.any(Date) });
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', expect.objectContaining({
         status: 'issued',
         providerType: 'subiekt',
@@ -1023,6 +1025,23 @@ describe('InvoiceService', () => {
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0001' }),
       );
+    });
+
+    it('threads ONE issuance instant into allocateNumber AND the adapter command (#1692)', async () => {
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.allocateNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0001',
+        allocatedSeq: 1,
+      });
+
+      await service.issueInvoice(makeCmd());
+
+      const allocateArg = numberingRepo.allocateNumber.mock.calls[0][0];
+      const [issuedCmd] = consumer.issueInvoice.mock.calls[0];
+      // The same Date instance is handed to the allocation (as issueDate) and to
+      // the adapter command (as issuedAt) — no day/period-boundary divergence.
+      expect(allocateArg.issueDate).toBeInstanceOf(Date);
+      expect(issuedCmd.issuedAt).toBe(allocateArg.issueDate);
     });
 
     it('routes a correction to the corrected series when a correction route exists', async () => {

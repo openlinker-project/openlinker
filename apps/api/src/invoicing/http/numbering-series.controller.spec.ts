@@ -46,6 +46,7 @@ function seriesFixture(overrides: Partial<InvoiceNumberingSeries> = {}): Invoice
     overrides.periodKey ?? '2026',
     overrides.documentType ?? 'invoice',
     overrides.register ?? null,
+    overrides.fiscalYearStartMonth ?? 1,
     overrides.createdAt ?? NOW,
     overrides.updatedAt ?? NOW,
   );

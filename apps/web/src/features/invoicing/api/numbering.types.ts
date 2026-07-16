@@ -18,7 +18,7 @@ export type { DocumentType } from './invoicing.types';
 import type { DocumentType } from './invoicing.types';
 
 /** Reset cadence of a series' sequence counter (mirrors core `ResetPolicy`). */
-export const ResetPolicyValues = ['none', 'monthly', 'quarterly', 'yearly'] as const;
+export const ResetPolicyValues = ['none', 'daily', 'monthly', 'quarterly', 'yearly'] as const;
 export type ResetPolicy = (typeof ResetPolicyValues)[number];
 
 /** Resolved outcome of one sequence integer in the gap-audit read model. */
@@ -50,6 +50,8 @@ export interface NumberingSeries {
   resetPolicy: ResetPolicy;
   documentType: string;
   register: string | null;
+  /** Calendar month (1-12) the fiscal year starts on, governing {FY}; 1 = calendar year. */
+  fiscalYearStartMonth: number;
   periodKey: string;
   createdAt: string;
   updatedAt: string;
@@ -89,6 +91,8 @@ export interface CreateNumberingSeriesInput {
   resetPolicy: ResetPolicy;
   documentType: DocumentType;
   register?: string | null;
+  /** Fiscal-year start month (1-12) governing {FY}; omitted = 1 (calendar year). */
+  fiscalYearStartMonth?: number;
 }
 
 /** `PATCH /invoicing/numbering-series/:id` body — all fields optional. */
@@ -100,6 +104,8 @@ export interface UpdateNumberingSeriesInput {
   resetPolicy?: ResetPolicy;
   documentType?: DocumentType;
   register?: string | null;
+  /** Fiscal-year start month (1-12) governing {FY}; 1 = calendar year. */
+  fiscalYearStartMonth?: number;
 }
 
 /** `PUT /invoicing/connections/:id/numbering-routes` body. */

@@ -31,6 +31,7 @@ function seriesRow(overrides: Partial<InvoiceNumberingSeriesOrmEntity> = {}): In
       periodKey: '2026-06',
       documentType: 'invoice',
       register: null,
+      fiscalYearStartMonth: 1,
       createdAt: new Date('2026-06-01T00:00:00.000Z'),
       updatedAt: new Date('2026-06-01T00:00:00.000Z'),
     },
@@ -64,8 +65,10 @@ describe('InvoiceNumberingSeriesRepository', () => {
     repo = new InvoiceNumberingSeriesRepository(seriesRepo, routeRepo, dataSource);
   });
 
-  it('createSeries maps the persisted row (incl. documentType/register) to a domain entity', async () => {
-    seriesRepo.save.mockResolvedValue(seriesRow({ documentType: 'corrected', register: 'PL' }));
+  it('createSeries maps the persisted row (incl. documentType/register/fiscalYearStartMonth) to a domain entity', async () => {
+    seriesRepo.save.mockResolvedValue(
+      seriesRow({ documentType: 'corrected', register: 'PL', fiscalYearStartMonth: 4 }),
+    );
     const result = await repo.createSeries({
       name: 'Main',
       pattern: 'FV/{seq}/{MM}/{YYYY}',
@@ -75,10 +78,12 @@ describe('InvoiceNumberingSeriesRepository', () => {
       periodKey: '2026-06',
       documentType: 'corrected',
       register: 'PL',
+      fiscalYearStartMonth: 4,
     });
     expect(result).toBeInstanceOf(InvoiceNumberingSeries);
     expect(result.documentType).toBe('corrected');
     expect(result.register).toBe('PL');
+    expect(result.fiscalYearStartMonth).toBe(4);
   });
 
   it('findSeriesById returns null when the row is absent', async () => {

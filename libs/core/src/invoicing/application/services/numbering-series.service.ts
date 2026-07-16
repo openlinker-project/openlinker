@@ -23,7 +23,10 @@ import {
   assertValidNumberingPattern,
   computePeriodKey,
 } from '../../domain/numbering/invoice-number-pattern';
-import { DEFAULT_NUMBERING_DOCUMENT_TYPE } from '../../domain/types/invoice-numbering.types';
+import {
+  DEFAULT_FISCAL_YEAR_START_MONTH,
+  DEFAULT_NUMBERING_DOCUMENT_TYPE,
+} from '../../domain/types/invoice-numbering.types';
 import type {
   CreateNumberingSeriesServiceInput,
   ListNumberingSeriesFilter,
@@ -62,6 +65,7 @@ export class NumberingSeriesService implements INumberingSeriesService {
       periodKey,
       documentType: input.documentType ?? DEFAULT_NUMBERING_DOCUMENT_TYPE,
       register: input.register ?? null,
+      fiscalYearStartMonth: input.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH,
     });
   }
 

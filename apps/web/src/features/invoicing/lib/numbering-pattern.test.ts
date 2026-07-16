@@ -25,6 +25,21 @@ describe('renderInvoiceNumber', () => {
   it('leaves literals untouched', () => {
     expect(renderInvoiceNumber('INV-{seq}', { seq: 7, seqPadding: 3, issueDate: ISSUE_DATE })).toBe('INV-007');
   });
+
+  it('renders {FY} == {YYYY} by default and diverges with a non-January start (#1692)', () => {
+    expect(renderInvoiceNumber('{seq}/{FY}', { seq: 1, seqPadding: 0, issueDate: ISSUE_DATE })).toBe(
+      '1/2026',
+    );
+    // Fiscal year starts in October; July 2026 (month 7 < 10) → started Oct 2025 → 2025.
+    expect(
+      renderInvoiceNumber('{seq}/{FY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: ISSUE_DATE,
+        fiscalYearStartMonth: 10,
+      }),
+    ).toBe('1/2025');
+  });
 });
 
 describe('validateNumberingPattern', () => {
@@ -49,5 +64,10 @@ describe('validateNumberingPattern', () => {
   it('flags yearly reset without a year variable', () => {
     expect(validateNumberingPattern('FV/{seq}/{MM}', 'yearly')).toHaveLength(1);
     expect(validateNumberingPattern('FV/{seq}/{YY}', 'yearly')).toEqual([]);
+  });
+
+  it('flags daily reset without {DD} + {MM} + year (#1692)', () => {
+    expect(validateNumberingPattern('FV/{seq}/{MM}/{YYYY}', 'daily')).toHaveLength(1);
+    expect(validateNumberingPattern('FV/{seq}/{DD}/{MM}/{YYYY}', 'daily')).toEqual([]);
   });
 });

@@ -44,6 +44,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 
 export const RESET_POLICY_LABELS: Record<ResetPolicy, string> = {
   none: 'Never',
+  daily: 'Daily',
   monthly: 'Monthly',
   quarterly: 'Quarterly',
   yearly: 'Yearly',
@@ -56,7 +57,7 @@ export const VARIABLE_LEGEND: Record<NumberingPatternVariable, string> = {
   '{seq}': 'Sequence number',
   '{YYYY}': '4-digit year',
   '{YY}': '2-digit year',
-  '{FY}': 'Fiscal year (currently = calendar year)',
+  '{FY}': 'Fiscal year',
   '{MM}': 'Month 01-12',
   '{QQ}': 'Quarter 1-4',
   '{DD}': 'Day 01-31',
@@ -113,6 +114,25 @@ export const KSEF_ROUTED_DOCUMENT_TYPES: readonly KsefRoutedDocumentType[] = [
     label: 'Proforma',
     hint: 'Proforma documents (no legal numbering requirement).',
   },
+];
+
+/**
+ * Month options for the "fiscal year starts in" picker (#1692), shown only when
+ * the pattern uses `{FY}`. Value is the 1-12 calendar month; label is its name.
+ */
+export const FISCAL_YEAR_START_MONTHS: readonly { value: number; label: string }[] = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' },
 ];
 
 export function resetCaption(resetPolicy: ResetPolicy): string {

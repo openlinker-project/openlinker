@@ -30,6 +30,7 @@ function makeSeries(overrides: Partial<{ id: string; name: string; resetPolicy: 
     '',
     'invoice',
     null,
+    1,
     new Date('2026-01-01T00:00:00Z'),
     new Date('2026-01-01T00:00:00Z'),
   );

@@ -121,6 +121,7 @@ export class NumberingSeriesController {
         resetPolicy: dto.resetPolicy,
         documentType: dto.documentType,
         register: dto.register ?? null,
+        fiscalYearStartMonth: dto.fiscalYearStartMonth,
       });
       return this.toSeriesResponse(created);
     } catch (error) {
@@ -189,6 +190,7 @@ export class NumberingSeriesController {
         resetPolicy: dto.resetPolicy,
         documentType: dto.documentType,
         register: dto.register,
+        fiscalYearStartMonth: dto.fiscalYearStartMonth,
       });
       return this.toSeriesResponse(updated);
     } catch (error) {
@@ -324,6 +326,7 @@ export class NumberingSeriesController {
       resetPolicy: series.resetPolicy,
       documentType: series.documentType,
       register: series.register,
+      fiscalYearStartMonth: series.fiscalYearStartMonth,
       periodKey: series.periodKey,
       createdAt: series.createdAt.toISOString(),
       updatedAt: series.updatedAt.toISOString(),
@@ -341,6 +344,7 @@ export class NumberingSeriesController {
             seq: lastIssuedSeq,
             seqPadding: series.seqPadding,
             issueDate: series.updatedAt,
+            fiscalYearStartMonth: series.fiscalYearStartMonth,
           });
     return {
       ...this.toSeriesResponse(series),

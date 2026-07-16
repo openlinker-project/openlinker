@@ -53,6 +53,7 @@ interface AllocateRow {
   allocated_seq: number | string;
   pattern: string;
   seqPadding: number | string;
+  fiscalYearStartMonth: number | string;
 }
 
 @Injectable()
@@ -76,6 +77,7 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
       periodKey: input.periodKey,
       documentType: input.documentType,
       register: input.register,
+      fiscalYearStartMonth: input.fiscalYearStartMonth,
     });
     const saved = await this.seriesRepo.save(entity);
     return this.toSeriesDomain(saved);
@@ -209,6 +211,7 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
     const yearlyKey = computePeriodKey('yearly', input.issueDate, input.timeZone);
     const monthlyKey = computePeriodKey('monthly', input.issueDate, input.timeZone);
     const quarterlyKey = computePeriodKey('quarterly', input.issueDate, input.timeZone);
+    const dailyKey = computePeriodKey('daily', input.issueDate, input.timeZone);
 
     return this.dataSource.transaction(async (manager) => {
       // Single guarded UPDATE ... RETURNING. SET expressions read the OLD row
@@ -223,16 +226,18 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
              WHEN "periodKey" IS DISTINCT FROM (
                CASE "resetPolicy"
                  WHEN 'none' THEN $2 WHEN 'yearly' THEN $3
-                 WHEN 'monthly' THEN $4 WHEN 'quarterly' THEN $5 END)
+                 WHEN 'monthly' THEN $4 WHEN 'quarterly' THEN $5
+                 WHEN 'daily' THEN $6 END)
              THEN 2 ELSE "nextSeq" + 1 END,
            "periodKey" = (
              CASE "resetPolicy"
                WHEN 'none' THEN $2 WHEN 'yearly' THEN $3
-               WHEN 'monthly' THEN $4 WHEN 'quarterly' THEN $5 END),
+               WHEN 'monthly' THEN $4 WHEN 'quarterly' THEN $5
+               WHEN 'daily' THEN $6 END),
            "updatedAt" = now()
          WHERE "id" = $1
-         RETURNING ("nextSeq" - 1) AS allocated_seq, "pattern", "seqPadding"`,
-        [input.seriesId, noneKey, yearlyKey, monthlyKey, quarterlyKey],
+         RETURNING ("nextSeq" - 1) AS allocated_seq, "pattern", "seqPadding", "fiscalYearStartMonth"`,
+        [input.seriesId, noneKey, yearlyKey, monthlyKey, quarterlyKey, dailyKey],
       )) as unknown;
 
       // TypeORM's `query()` returns `[rows, affectedCount]` for a data-modifying
@@ -252,6 +257,7 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         seqPadding: Number(row.seqPadding),
         issueDate: input.issueDate,
         timeZone: input.timeZone,
+        fiscalYearStartMonth: Number(row.fiscalYearStartMonth),
       });
       // #11: reject an over-length rendered number in OpenLinker (inside the
       // transaction, so the series advance rolls back) rather than at the provider.
@@ -304,6 +310,7 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
       entity.periodKey,
       entity.documentType,
       entity.register,
+      entity.fiscalYearStartMonth,
       entity.createdAt,
       entity.updatedAt,
     );
