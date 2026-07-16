@@ -88,6 +88,12 @@ export type {
 } from './application/services/offline-resubmission.service.interface';
 export { OfflineResubmissionService } from './application/services/offline-resubmission.service';
 export type {
+  IPendingRecoveryService,
+  PendingRecoveryOptions,
+  PendingRecoveryResult,
+} from './application/services/pending-recovery.service.interface';
+export { PendingRecoveryService } from './application/services/pending-recovery.service';
+export type {
   IPaymentStatusRefreshService,
   PaymentStatusRefreshOutcome,
   PaymentStatusRefreshResult,

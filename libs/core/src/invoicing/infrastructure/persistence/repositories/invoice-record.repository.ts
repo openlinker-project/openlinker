@@ -363,6 +363,57 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
+  async findStuckPending(
+    connectionId: string,
+    opts: { olderThan: Date; limit: number; cursor?: { updatedAt: Date; id: string } },
+  ): Promise<{ items: InvoiceRecord[]; total: number }> {
+    // Selection predicate (#1703): a row stuck mid-issuance, connection-scoped -
+    //   status = 'pending'  AND updatedAt   <= olderThan      (never claimed / advanced), OR
+    //   status = 'issuing'  AND leaseExpiresAt <= olderThan   (crashed attempt, lease lapsed).
+    // Both arms are gated by `olderThan` (now - safety margin) so a legitimately
+    // in-flight attempt whose lease is about to be re-claimed is never swept.
+    // An `issuing` row with a NULL lease is excluded (it cannot be a lapsed claim).
+    // Ordered `updatedAt ASC, id ASC` (oldest-first, deterministic tie-break),
+    // capped at `opts.limit`, KEYSET-paged after `opts.cursor`. `pending` /
+    // `issuing` are transient states, so the plain `(status)` index suffices - no
+    // dedicated partial index (#1703).
+    //
+    // Precision note: the same millisecond-truncation trick as
+    // `findPendingSubmission` - truncate `updatedAt` to milliseconds on BOTH the
+    // keyset comparison and the ORDER BY so the Postgres `timestamp` (microsecond)
+    // column resolution matches the cursor's JS `Date` (millisecond) resolution
+    // and the walk cannot stall by re-selecting the cursor row forever.
+    const UPDATED_AT_MS = "date_trunc('milliseconds', record.updatedAt)";
+    const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) =>
+      qb.where('record.connectionId = :connectionId', { connectionId }).andWhere(
+        `(
+          (record.status = 'pending' AND record.updatedAt <= :olderThan)
+          OR (record.status = 'issuing' AND record.leaseExpiresAt IS NOT NULL AND record.leaseExpiresAt <= :olderThan)
+        )`,
+        { olderThan: opts.olderThan },
+      );
+
+    const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
+    if (opts.cursor) {
+      pageQb.andWhere(`(${UPDATED_AT_MS}, record.id) > (:cursorUpdatedAt, :cursorId)`, {
+        cursorUpdatedAt: opts.cursor.updatedAt,
+        cursorId: opts.cursor.id,
+      });
+    }
+    const entities = await pageQb
+      .orderBy(UPDATED_AT_MS, 'ASC')
+      .addOrderBy('record.id', 'ASC')
+      .take(opts.limit)
+      .getMany();
+
+    // `total` is the FULL stuck count (cursor-independent) - coverage logging
+    // only, never used for paging - so it stays stable across the sweep's
+    // intra-run page walk.
+    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
+
+    return { items: entities.map((e) => this.toDomain(e)), total };
+  }
+
   private buildOrmEntity(input: CreateInvoiceRecordInput): InvoiceRecordOrmEntity {
     const entity = new InvoiceRecordOrmEntity();
     entity.connectionId = input.connectionId;

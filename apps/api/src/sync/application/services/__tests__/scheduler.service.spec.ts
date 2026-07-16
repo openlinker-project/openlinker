@@ -172,6 +172,8 @@ describe('SchedulerService', () => {
       expect(registeredJobs.sort()).toEqual([
         'master-inventory-sync',
         'master-product-sync',
+        'offline-resubmit',
+        'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
       ]);

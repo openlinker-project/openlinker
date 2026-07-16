@@ -28,6 +28,7 @@ import { InvoiceNumberGapNoteRepository } from './infrastructure/persistence/rep
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+import { PendingRecoveryService } from './application/services/pending-recovery.service';
 import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 import { NumberingAuditService } from './application/services/numbering-audit.service';
 import { NumberingSeriesService } from './application/services/numbering-series.service';
@@ -38,6 +39,7 @@ import {
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
   OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+  PENDING_RECOVERY_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
@@ -51,6 +53,7 @@ export {
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
   OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+  PENDING_RECOVERY_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
@@ -108,6 +111,11 @@ export {
       provide: OFFLINE_RESUBMISSION_SERVICE_TOKEN,
       useExisting: OfflineResubmissionService,
     },
+    PendingRecoveryService,
+    {
+      provide: PENDING_RECOVERY_SERVICE_TOKEN,
+      useExisting: PendingRecoveryService,
+    },
     PaymentStatusRefreshService,
     {
       provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
@@ -144,6 +152,9 @@ export {
     // Exported so the worker's SyncWorkerModule can inject the service into
     // OfflineResubmitHandler (#1702) — same reason as the reconciliation token.
     OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the service into
+    // PendingRecoveryHandler (#1703) — same reason as the reconciliation token.
+    PENDING_RECOVERY_SERVICE_TOKEN,
     // Exported so the worker's SyncWorkerModule can inject the service into
     // PaymentStatusRefreshHandler (#1354) — same reason as the reconciliation token.
     PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,

@@ -32,6 +32,7 @@ import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
+import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 
 @Injectable()
@@ -61,6 +62,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
+    private readonly pendingRecoveryHandler: PendingRecoveryHandler,
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler
   ) {}
 
@@ -145,6 +147,11 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'invoicing.offlineSubmission.resubmit',
       this.offlineResubmitHandler
+    );
+    // Register crash-recovery sweep handler (#1703)
+    this.handlerRegistry.register(
+      'invoicing.pendingRecovery.sweep',
+      this.pendingRecoveryHandler
     );
     // Register by-id payment-status refresh handler (#1354)
     this.handlerRegistry.register(

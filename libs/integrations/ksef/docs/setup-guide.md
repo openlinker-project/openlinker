@@ -212,6 +212,89 @@ path, with its `buyerTaxId: null` and line-fidelity caveats).
 
 ---
 
+## Session-lifecycle resilience (offline24 + crash recovery, epic #1585)
+
+A KSeF online session can fail in two operator-visible ways. Both are handled by
+neutral core sweeps (no KSeF vocabulary in `libs/core`), scheduled per `Invoicing`
+connection and driven by ADR-002 sub-capabilities the KSeF adapter implements.
+
+### Offline24 degraded-mode issuance + resubmission (#1700 / #1701 / #1702)
+
+When KSeF is unreachable at issue time, the regime permits issuing a document
+with **legal effect** locally and transmitting it once the authority recovers (a
+bounded "offline" grace window). The adapter builds and locally issues the FA(3),
+returns `status='issued'` with the neutral `regulatoryStatus='pending-submission'`
+(non-terminal) and `providerInvoiceId=null` (no session landed - a reference is
+NEVER fabricated), and rides the FA(3) XML back as the neutral source document.
+
+The scheduled `invoicing.offlineSubmission.resubmit` sweep (core
+`OfflineResubmissionService`, worker `OfflineResubmitHandler`) later calls the
+`OfflineResubmitter` sub-capability (`resubmit`) once KSeF is back, retransmitting
+the persisted XML and advancing the record to `submitted` (then `accepted` via the
+normal clearance poll). A still-unreachable authority just leaves the record
+`pending-submission` for the next run.
+
+### Crash recovery for stuck `pending` / `issuing` records (#1703)
+
+`issueInvoice` opens a session, submits, and closes it in a `finally`. If the
+worker is killed **between a successful submit and the `finally`**, `closeSession`
+never runs and the record stays non-terminal - `status='pending'` (never CAS-
+claimed) or `status='issuing'` with a CAS lease that eventually expires.
+`POST /invoices/retry` deliberately skips `pending`, and nothing else revisits it.
+
+The scheduled `invoicing.pendingRecovery.sweep` (core `PendingRecoveryService`,
+worker `PendingRecoveryHandler`) is the recovery path. It selects rows stuck past
+a safety margin (`repo.findStuckPending`, margin = one `ISSUING_LEASE_MS` window
+beyond the lease/last-update so a legitimately in-flight attempt is never swept),
+then resolves each via the **query-metadata fallback**:
+
+- **Query-metadata fallback (`RegulatoryRecordLocator.locateByQuery`, #1701).** OL
+  cannot know from its own state whether KSeF received the interrupted document,
+  so the adapter queries `POST /invoices/query/metadata` by seller NIP + issue-date
+  window + document number.
+  - **Found** → reconcile: `status='issued'`, `regulatoryStatus='accepted'`,
+    clearance reference set, WARN "recovered orphaned invoice".
+  - **Not found** (or the adapter ships no locator) → **fiscal-safe**: mark
+    `status='failed'` with the `in-doubt` failure mode + an operator-visible alert,
+    and **never auto-retry** - a silent re-issue could double-issue a fiscal
+    document whose original attempt actually landed. Uncertainty always resolves to
+    a human, never an automatic re-attempt.
+
+### Status-code safety net
+
+The clearance `status.code` mapping above already treats unknown codes as
+non-terminal (keep polling) and only `400`/`440`/`445` as terminal-rejected, so a
+transient/unrecognised KSeF response can never strand a document in a wrong
+terminal state. The crash-recovery sweep is the second-layer net: it also emits
+the "session sat non-terminal longer than the expected window" WARN/metric, so a
+record that outlives its issuance window is always surfaced.
+
+### Scheduling / env vars
+
+Both sweeps are capability-scoped (`Invoicing`) core scheduler tasks, fanned out
+one job per connection, alongside the #1121 regulatory-status reconcile sweep:
+
+| Sweep | Job type | Enable | Cron | Default cron |
+|---|---|---|---|---|
+| Regulatory-status reconcile (#1121) | `invoicing.regulatoryStatus.reconcile` | `OL_REGULATORY_RECONCILE_ENABLED` | `OL_REGULATORY_RECONCILE_CRON` | `*/30 * * * *` |
+| Offline-submission resubmit (#1702) | `invoicing.offlineSubmission.resubmit` | `OL_OFFLINE_RESUBMIT_ENABLED` | `OL_OFFLINE_RESUBMIT_CRON` | `*/15 * * * *` |
+| Crash-recovery sweep (#1703) | `invoicing.pendingRecovery.sweep` | `OL_PENDING_RECOVERY_ENABLED` | `OL_PENDING_RECOVERY_CRON` | `*/20 * * * *` |
+
+Each `*_ENABLED` flag defaults ON (set to `false` to disable); each `*_CRON`
+overrides the default expression.
+
+### v1 scope vs deferred
+
+- **Shipped (v1):** offline24 degraded-mode issuance + resubmission, crash recovery
+  via the query-metadata fallback, and the status-code safety net.
+- **Deferred:** the MF-announced `offline` (planned outage) and `awaria` (declared
+  KSeF failure) regimes as distinct modes, and legal deadline-window enforcement
+  (next-business-day transmission for a bounded grace period). A still-unreachable
+  authority currently just leaves the record `pending-submission` for the next run,
+  with no deadline tracking.
+
+---
+
 ## Limitations
 
 OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
