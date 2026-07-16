@@ -149,8 +149,8 @@ describe('CreateConnectionForm', () => {
       fireEvent.change(nameInput, { target: { value: 'Should not persist' } });
       expect(nameInput).toHaveValue('Should not persist');
 
-      const submit = within(view.container).getByRole('button', { name: 'Create connection' });
       await waitFor(() => {
+        const submit = within(view.container).getByRole('button', { name: 'Create connection' });
         expect(submit).toBeDisabled();
       });
     });
