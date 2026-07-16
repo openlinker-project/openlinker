@@ -23,6 +23,25 @@ export const WOOCOMMERCE_WEBHOOK_PROVIDER = 'woocommerce';
 export const WOOCOMMERCE_WEBHOOKS_PATH = '/wp-json/wc/v3/webhooks';
 
 /**
+ * Delivery header carrying the base64 HMAC-SHA256 of the raw body, keyed by the
+ * connection's rotated webhook secret. Verified by
+ * `WooCommerceInboundWebhookDecoderAdapter.verify`.
+ */
+export const WOOCOMMERCE_WEBHOOK_SIGNATURE_HEADER = 'x-wc-webhook-signature';
+
+/** Delivery header carrying the full topic, e.g. `order.created` / `order.updated`. */
+export const WOOCOMMERCE_WEBHOOK_TOPIC_HEADER = 'x-wc-webhook-topic';
+
+/** Delivery header carrying the resource, e.g. `order`. */
+export const WOOCOMMERCE_WEBHOOK_RESOURCE_HEADER = 'x-wc-webhook-resource';
+
+/** Delivery header carrying the bare action, e.g. `created` / `updated`. */
+export const WOOCOMMERCE_WEBHOOK_EVENT_HEADER = 'x-wc-webhook-event';
+
+/** `objectType` the decoder stamps for an order delivery (consumed by the translator). */
+export const WOOCOMMERCE_WEBHOOK_ORDER_RESOURCE = 'order';
+
+/**
  * Order-relevant WooCommerce webhook topics OL provisions. WooCommerce is used
  * here as an order SOURCE over webhooks (low-latency nudge; the poll reconciles),
  * so only the order lifecycle topics are registered. `order.created` and
