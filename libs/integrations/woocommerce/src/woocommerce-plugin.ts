@@ -35,6 +35,7 @@ import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/pr
 import { WooCommerceOfferManagerAdapter } from './infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
 import { WooCommerceWebhookEventTranslatorAdapter } from './infrastructure/adapters/woocommerce-webhook-event-translator.adapter';
+import { WooCommerceInboundWebhookDecoderAdapter } from './infrastructure/adapters/woocommerce-inbound-webhook-decoder.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
 
 /**
@@ -111,6 +112,16 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
       host.authFailureClassifierRegistry.register(
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      // Inbound webhook decoder (ADR-021 / #1563), provider-keyed by
+      // platformType: authenticates the base64 HMAC-SHA256 `X-WC-Webhook-Signature`
+      // against the connection's rotated secret and decodes the order body, so
+      // real WooCommerce deliveries are no longer dropped by the host's
+      // fail-closed OL-HMAC default decoder. WC sends no signed timestamp, so
+      // the decoder omits it and the host skips the replay-window check.
+      host.inboundWebhookDecoderRegistry.register(
+        woocommerceAdapterManifest.platformType,
+        new WooCommerceInboundWebhookDecoderAdapter(),
       );
       // Inbound webhook-event translator (ADR-015 / #1548) — decodes WC order
       // webhook events into neutral CanonicalInboundEvents. The webhook

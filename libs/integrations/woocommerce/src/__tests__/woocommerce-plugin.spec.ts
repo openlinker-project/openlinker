@@ -25,6 +25,7 @@ interface HostStub {
   authFailureRegistry: { register: jest.Mock };
   schedulerRegistry: { register: jest.Mock };
   translatorRegistry: { register: jest.Mock };
+  decoderRegistry: { register: jest.Mock };
 }
 
 function makeHostStub(): HostStub {
@@ -34,6 +35,7 @@ function makeHostStub(): HostStub {
   const authFailureRegistry = { register: jest.fn() };
   const schedulerRegistry = { register: jest.fn() };
   const translatorRegistry = { register: jest.fn() };
+  const decoderRegistry = { register: jest.fn() };
 
   const host = {
     connectionTesterRegistry: testerRegistry,
@@ -45,6 +47,7 @@ function makeHostStub(): HostStub {
     schedulerTaskRegistry: schedulerRegistry,
     webhookProvisioningRegistry: { register: jest.fn() },
     webhookEventTranslatorRegistry: translatorRegistry,
+    inboundWebhookDecoderRegistry: decoderRegistry,
     oauthCompletionRegistry: { register: jest.fn() },
     adapterRegistry: { register: jest.fn() },
     factoryResolver: { registerFactory: jest.fn() },
@@ -66,6 +69,7 @@ function makeHostStub(): HostStub {
     authFailureRegistry,
     schedulerRegistry,
     translatorRegistry,
+    decoderRegistry,
   };
 }
 
@@ -222,6 +226,18 @@ describe('createWooCommercePlugin → register(host) — #1548 inbound webhooks'
     expect(translatorRegistry.register).toHaveBeenCalledWith(
       'woocommerce.restapi.v3',
       expect.objectContaining({ translate: expect.any(Function) }),
+    );
+  });
+
+  it('should register the inbound webhook decoder keyed by platformType (#1563)', () => {
+    const { host, decoderRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(decoderRegistry.register).toHaveBeenCalledWith(
+      'woocommerce',
+      expect.objectContaining({
+        verify: expect.any(Function),
+        extractEnvelope: expect.any(Function),
+      }),
     );
   });
 });
