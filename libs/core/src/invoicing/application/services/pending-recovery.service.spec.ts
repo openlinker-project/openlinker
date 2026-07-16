@@ -339,9 +339,10 @@ describe('PendingRecoveryService', () => {
 
       expect(repo.findStuckPending).toHaveBeenCalledTimes(2);
       // Page 2 is bounded strictly after the last row of page 1 (b @ 11:00).
-      const secondCallOpts = (repo.findStuckPending as jest.Mock).mock.calls[1][1] as {
-        cursor?: { updatedAt: Date; id: string };
-      };
+      const calls = (repo.findStuckPending as jest.Mock).mock.calls as Array<
+        [unknown, { cursor?: { updatedAt: Date; id: string } }]
+      >;
+      const secondCallOpts = calls[1][1];
       expect(secondCallOpts.cursor).toEqual({
         updatedAt: new Date('2026-06-01T11:00:00Z'),
         id: 'b',

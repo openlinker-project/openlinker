@@ -98,6 +98,8 @@ describe('SchedulerService', () => {
         'OL_PRODUCT_SYNC_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -359,6 +361,8 @@ describe('SchedulerService', () => {
         'OL_PRODUCT_SYNC_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_PENDING_RECOVERY_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
