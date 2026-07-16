@@ -427,6 +427,22 @@ export interface IssueInvoiceCommand {
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * Optional neutral register / entity-scope label (#10). Routes numbering to
+   * the connection's series for `(documentType, register)`; when absent the
+   * register-less default series for the document type is used. Ignored by
+   * providers that number documents themselves.
+   */
+  register?: string;
+  /**
+   * OpenLinker-allocated legal document number (#1575). Set by the core
+   * `InvoiceService` ONLY when the resolved adapter passes
+   * `isDocumentNumberConsumer` (today: KSeF) — the adapter then uses it for its
+   * legal number (KSeF FA(3) `P_2`) and echoes it as
+   * `InvoiceRecord.providerInvoiceNumber` (single source, #1338). Absent for a
+   * provider that numbers documents itself (inFakt/Subiekt).
+   */
+  documentNumber?: string;
 }
 
 /**
@@ -507,8 +523,23 @@ export interface IssueCorrectionCommand {
   reason?: string;
   lines: CorrectionLine[];
   idempotencyKey?: string;
+  /**
+   * Optional neutral register / entity-scope label (#10). Routes the correction's
+   * numbering to the connection's series for `(documentType, register)`; when
+   * absent the register-less default correction series is used.
+   */
+  register?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
+  /**
+   * OpenLinker-allocated legal document number for the CORRECTION document
+   * (#1575). Set by the core `InvoiceService` from the connection's correction
+   * series ONLY when the resolved adapter passes `isDocumentNumberConsumer`. The
+   * adapter uses it for the corrected document's own legal number (KSeF FA(3)
+   * `P_2` on the KOR) — corrections draw from their own series, never reusing the
+   * original's number. Absent for a self-numbering provider.
+   */
+  documentNumber?: string;
 }
 
 /**

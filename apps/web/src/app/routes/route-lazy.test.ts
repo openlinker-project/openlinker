@@ -59,15 +59,15 @@ const lazyRoutes = collectLazyRoutes([
  *     `product-detail-page.tsx` subsumed per-item stock detail)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
- *   - 10 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
- *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, inpost setup,
- *     infakt setup (#1282))
+ *   - 11 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
+ *     invoice numbering (#1577), inpost setup, infakt setup (#1282))
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 49;
+const EXPECTED_LAZY_ROUTE_COUNT = 50;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

@@ -28,6 +28,15 @@ export interface InvoiceRecordRepositoryPort {
   findByOrderId(orderId: string, connectionId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * List every record that consumed a sequence from a numbering series (#8) -
+   * i.e. rows whose `numberingSeriesId` matches AND `allocatedSeq IS NOT NULL`.
+   * Ordered by `allocatedSeq` ASC (then `createdAt` ASC for determinism). Backs
+   * the numbering gap-audit read model; returns `[]` for a series that has
+   * allocated nothing yet.
+   */
+  findBySeriesId(seriesId: string): Promise<InvoiceRecord[]>;
+
+  /**
    * Find the most-recently-created record for an order across all connections.
    * Backs the order-detail invoice projection (#1224) where the invoicing
    * connection is not known to the caller; `null` when the order has no record.

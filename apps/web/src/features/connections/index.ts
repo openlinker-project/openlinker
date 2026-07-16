@@ -28,6 +28,7 @@ export type {
 export { CORE_PLATFORM_TYPES, CORE_CAPABILITY_VALUES } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';
+export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
