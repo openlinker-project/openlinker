@@ -24,7 +24,7 @@
  *
  * @module pages/orders
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -53,6 +53,7 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
+import { itemsSummary, paymentBadge } from '../../features/orders/lib/order-row';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -126,28 +127,14 @@ function isOrderDir(value: string | null): value is OrderSortDirection {
 }
 
 /**
- * Sortable-column wiring (#944). The table column `id` and the server sort key
- * diverge only for ship-by (`shipBy` column ↔ `dispatchBy` key); the rest match.
- * Columns not in these maps (Order / Channel / Payment / actions) aren't sortable.
+ * Native react-table-sortable columns (#1713): only these two carry the built-in
+ * header-button + arrow. Their column `id` equals the server sort key. Every
+ * other sortable field (ship-by, fulfillment, total, payment, created) lives in
+ * a merged column whose header renders its own per-label sort controls that call
+ * `applySort` directly — so those keys are driven by custom buttons, not by
+ * react-table's single-column sorting model.
  */
-const SORT_KEY_TO_COLUMN: Record<OrderSortValue, string> = {
-  dispatchBy: 'shipBy',
-  createdAt: 'createdAt',
-  customer: 'customer',
-  items: 'items',
-  status: 'status',
-  total: 'total',
-  fulfillment: 'fulfillment',
-};
-const COLUMN_TO_SORT_KEY: Record<string, OrderSortValue> = {
-  shipBy: 'dispatchBy',
-  createdAt: 'createdAt',
-  customer: 'customer',
-  items: 'items',
-  status: 'status',
-  total: 'total',
-  fulfillment: 'fulfillment',
-};
+const NATIVE_SORTABLE_COLUMNS: readonly OrderSortValue[] = ['customer', 'status'];
 
 /**
  * First-click direction per sort key (#944): the operator-intuitive default
@@ -162,6 +149,7 @@ const DEFAULT_DIR: Record<OrderSortValue, OrderSortDirection> = {
   status: 'asc',
   total: 'desc',
   fulfillment: 'asc',
+  payment: 'asc',
 };
 
 /** Type-guard for the `slaState` URL filter (#1108). */
@@ -234,21 +222,6 @@ function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | n
   const name = [a?.firstName, a?.lastName].filter(Boolean).join(' ').trim();
   if (name.length > 0) return name;
   return parsed.customerEmail ?? null;
-}
-
-/**
- * Compact items preview for the collapsed row (#1646). Live feedback: the
- * order's contents were only visible after expanding the accordion — this
- * gives an at-a-glance signal in the Order cell without duplicating the full
- * per-line quantities/prices, which stay in `OrderRowDetail`. First item name
- * plus a "+N more" suffix when the order has more than one line; `null` when
- * the snapshot carries no named items (parse failure or genuinely empty).
- */
-function itemsPreview(parsed: ReturnType<typeof parseOrderSnapshot>): string | null {
-  const names = parsed.items.map((i) => i.name).filter((n): n is string => Boolean(n));
-  if (names.length === 0) return null;
-  const [first, ...rest] = names;
-  return rest.length > 0 ? `${first} +${rest.length} more` : first;
 }
 
 /**
@@ -476,6 +449,53 @@ export function OrdersListPage(): ReactElement {
     );
   }
 
+  /**
+   * Apply a server-side sort (#1713): clicking a sort key flips its direction
+   * when it's already active, else starts at the key's default direction. The
+   * single entry point for both the native react-table columns (customer /
+   * status) and the merged-column per-label sort buttons. Drops `offset` so a
+   * re-sort lands on page 1. Stable across renders except when the active
+   * sort/dir change, so the columns memo (which renders the sort buttons in its
+   * headers) rebuilds exactly when the active-state arrows need to.
+   */
+  const applySort = useCallback(
+    (key: OrderSortValue): void => {
+      const nextDir: OrderSortDirection =
+        key === sort ? (dir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[key];
+      setSearchParams((prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('sort', key);
+        p.set('dir', nextDir);
+        p.delete('offset');
+        return p;
+      });
+    },
+    [sort, dir, setSearchParams],
+  );
+
+  /** Render one per-label sort control for a merged-column header (#1713). */
+  const sortLabel = useCallback(
+    (label: string, key: OrderSortValue): ReactElement => {
+      const active = sort === key;
+      return (
+        <button
+          type="button"
+          className={['orders-sortbtn', active ? 'orders-sortbtn--active' : '']
+            .filter(Boolean)
+            .join(' ')}
+          onClick={() => { applySort(key); }}
+          aria-pressed={active}
+        >
+          {label}
+          <span className="orders-sortbtn__ind" aria-hidden="true">
+            {active ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      );
+    },
+    [sort, dir, applySort],
+  );
+
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
     () => [
       {
@@ -498,7 +518,13 @@ export function OrdersListPage(): ReactElement {
         header: 'Order',
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
-          const preview = itemsPreview(parsed);
+          const items = itemsSummary(parsed.items);
+          const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
+          const source = channelLabel(sourcePlatform);
+          const destPlatform = order.syncStatus[0]
+            ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+            : undefined;
+          const dest = channelLabel(destPlatform);
           return (
             <span className="orders-cell-stack">
               <EntityLabel
@@ -506,9 +532,28 @@ export function OrdersListPage(): ReactElement {
                 name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
                 to={order.internalOrderId}
               />
-              {preview ? (
-                <span className="text-muted orders-cell-sub orders-items-preview" title={preview}>
-                  {preview}
+              {items ? (
+                <span className="orders-items-line">
+                  <span
+                    className="text-muted orders-cell-sub orders-items-preview"
+                    title={items.firstName}
+                  >
+                    {items.firstName}
+                  </span>
+                  {items.moreCount > 0 ? (
+                    <span className="orders-more-count">+{items.moreCount}</span>
+                  ) : null}
+                </span>
+              ) : null}
+              {/* Channel folds under the order name below the Channel column's
+                  hide breakpoint (#1713) — hidden on wide screens where the
+                  standalone Channel column is visible. */}
+              {source ? (
+                <span className="orders-order-channel">
+                  <span className="channel-pill" data-channel={sourcePlatform}>
+                    {source}
+                  </span>
+                  {dest ? <span className="text-muted orders-cell-sub">→ {dest}</span> : null}
                 </span>
               ) : null}
             </span>
@@ -535,6 +580,9 @@ export function OrdersListPage(): ReactElement {
       {
         id: 'channel',
         header: 'Channel',
+        // Folds under the order name below 1024px (#1713) — the order cell then
+        // renders the channel pill inline instead.
+        hideBelow: 1024,
         cell: (order) => {
           const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
           const destPlatform = order.syncStatus[0]
@@ -573,56 +621,90 @@ export function OrdersListPage(): ReactElement {
         },
       },
       {
-        id: 'shipBy',
-        header: 'Ship-by',
-        sortable: true,
+        id: 'shipment',
+        // Merged dispatch column (#1713): fulfillment status + ship-by SLA (with
+        // the live countdown) + carrier, one per-label sort control each in the
+        // header. Not `sortable` — the header renders its own sort buttons.
+        header: (
+          <span className="orders-sortstack orders-sortstack--left">
+            {sortLabel('Shipment', 'fulfillment')}
+            {sortLabel('Ship-by', 'dispatchBy')}
+          </span>
+        ),
         cell: (order) => {
+          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const f = fulfillmentBadge(order.fulfillmentState);
+          // BE-owned SLA bucket drives the badge (#1108); the live countdown
+          // stays client-side, falling back to the client-derived urgency for
+          // older payloads without slaState.
+          const sla = slaBadge(order.slaState);
           const due = order.dispatchByAt ?? null;
           const view = formatShipBy(due);
-          if (!due || !view) return <span className="text-muted">—</span>;
-          // BE-owned SLA bucket drives the badge (#1108) — single source of truth
-          // the filter agrees with; the live countdown stays client-side. Falls
-          // back to the client-derived urgency for older payloads without slaState.
-          // The exact ship-by date moved to the expandable detail panel (#1620).
-          const sla = slaBadge(order.slaState);
-          const tone = sla ? sla.tone : SHIP_BY_TONE[view.level];
-          const label = sla ? sla.label : view.remaining;
+          // Carrier at row level (#1617): the list can't fetch per-order
+          // shipments, so `shipping.methodName` (the source's stated delivery
+          // method) is the best signal, falling back to the pickup-point name.
+          const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
           return (
             <span className="orders-cell-stack">
-              <StatusBadge tone={tone} withDot compact>
-                {label}
+              <StatusBadge tone={f.tone} withDot compact>
+                {f.label}
               </StatusBadge>
               {sla ? (
-                <span className="text-muted orders-cell-sub mono tabular">{view.remaining}</span>
+                <span className="orders-shipby-row">
+                  <StatusBadge tone={sla.tone} withDot compact>
+                    {sla.label}
+                  </StatusBadge>
+                  {view ? (
+                    <span className="text-muted orders-cell-sub mono tabular">{view.remaining}</span>
+                  ) : null}
+                </span>
+              ) : due && view ? (
+                <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+                  {view.remaining}
+                </StatusBadge>
+              ) : null}
+              {carrier ? (
+                <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
+                  {carrier}
+                </span>
               ) : null}
             </span>
           );
         },
       },
       {
-        id: 'fulfillment',
-        header: 'Fulfillment',
-        sortable: true,
-        cell: (order) => {
-          const f = fulfillmentBadge(order.fulfillmentState);
-          return (
-            <StatusBadge tone={f.tone} withDot compact>
-              {f.label}
-            </StatusBadge>
-          );
-        },
-      },
-      {
-        id: 'total',
-        header: 'Total',
+        id: 'money',
         align: 'right',
-        sortable: true,
+        // Merged money column (#1713): total + payment pill + created, each an
+        // independent per-label sort control in the header. Not `sortable` — the
+        // header renders its own sort buttons.
+        header: (
+          <span className="orders-sortstack orders-sortstack--right">
+            {sortLabel('Total', 'total')}
+            {sortLabel('Payment', 'payment')}
+            {sortLabel('Created', 'createdAt')}
+          </span>
+        ),
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
-          if (!parsed.totals) return <span className="text-muted">—</span>;
+          const pay = paymentBadge(parsed.paymentStatus);
           return (
-            <span className="mono tabular">
-              {formatCurrency(parsed.totals.total, parsed.totals.currency, locale)}
+            <span className="orders-cell-stack orders-cell-stack--end">
+              {parsed.totals ? (
+                <span className="mono tabular orders-money-total">
+                  {formatCurrency(parsed.totals.total, parsed.totals.currency, locale)}
+                </span>
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+              {pay ? (
+                <StatusBadge tone={pay.tone} withDot compact>
+                  {pay.label}
+                </StatusBadge>
+              ) : null}
+              <span className="text-muted orders-cell-sub mono tabular">
+                <TimeDisplay iso={order.createdAt} format="datetime" />
+              </span>
             </span>
           );
         },
@@ -667,6 +749,10 @@ export function OrdersListPage(): ReactElement {
       selectedIds,
       atCapSources,
       headerCheckboxState,
+      // Sort controls in the merged-column headers (#1713) — rebuild so the
+      // active-state arrows track the current sort/dir. `sortLabel` is a
+      // useCallback keyed on sort/dir, so this rebuilds exactly on a sort change.
+      sortLabel,
     ],
   );
 
@@ -745,10 +831,14 @@ export function OrdersListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
-  // Controlled (server-side) sort state for the DataTable (#944): the active
-  // sort key → its table column id, plus direction. Structurally a
+  // Controlled (server-side) sort state for the DataTable (#944/#1713): only the
+  // two native-sortable columns (customer / status) drive react-table's arrow;
+  // merged-column keys render their own arrows via the per-label sort buttons, so
+  // the SortingState is empty when one of those is active. Structurally a
   // `SortingState` ({ id, desc }[]) without importing the react-table type.
-  const sortingState = [{ id: SORT_KEY_TO_COLUMN[sort], desc: dir === 'desc' }];
+  const sortingState = NATIVE_SORTABLE_COLUMNS.includes(sort)
+    ? [{ id: sort, desc: dir === 'desc' }]
+    : [];
 
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
@@ -975,25 +1065,16 @@ export function OrdersListPage(): ReactElement {
             manualSorting
             sort={sortingState}
             onSortChange={(updater) => {
-              // Server-side sort (#944): take the column the user interacted
-              // with (the new state's column, or the active one when react-table
-              // cleared on a third click), then apply our own asc⇄desc toggle —
-              // same column flips, a new column starts at its default direction.
+              // Server-side sort (#944/#1713): react-table only fires this for the
+              // native-sortable columns (customer / status), whose column id equals
+              // the sort key. Resolve the interacted column and delegate to the
+              // shared `applySort` toggle. Merged-column keys go through their own
+              // header buttons, not this path.
               const next =
                 typeof updater === 'function' ? updater(sortingState) : updater;
-              const clickedColumnId =
-                next.length > 0 ? next[0].id : SORT_KEY_TO_COLUMN[sort];
-              const key = COLUMN_TO_SORT_KEY[clickedColumnId];
-              if (!key) return;
-              const nextDir: OrderSortDirection =
-                key === sort ? (dir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[key];
-              setSearchParams((prev) => {
-                const p = new URLSearchParams(prev);
-                p.set('sort', key);
-                p.set('dir', nextDir);
-                p.delete('offset');
-                return p;
-              });
+              const clickedColumnId = next.length > 0 ? next[0].id : sort;
+              if (!isOrderSort(clickedColumnId)) return;
+              applySort(clickedColumnId);
             }}
             cardView={{
               // Per-row select stays usable in the mobile card layout (#1109/#1620).
@@ -1008,9 +1089,26 @@ export function OrdersListPage(): ReactElement {
                   />
                 );
               },
-              subtitle: (order) => <TimeDisplay iso={order.createdAt} format="relative" />,
-              // Full field set below the badges — the mobile counterpart of the
-              // desktop accordion; a collapsed card still shows every field (#1620).
+              subtitle: (order) => {
+                const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+                return (
+                  <span className="orders-card-sub">
+                    {source ? (
+                      <span
+                        className="channel-pill"
+                        data-channel={platformByConnection.get(order.sourceConnectionId)}
+                      >
+                        {source}
+                      </span>
+                    ) : null}
+                    <TimeDisplay iso={order.createdAt} format="relative" />
+                  </span>
+                );
+              },
+              // Full field set behind a "View full details" disclosure (#1713) —
+              // the mobile counterpart of the desktop accordion. Collapsed by
+              // default so the card leads with the summary, not a wall of fields.
+              collapsibleDetail: true,
               detail: (order) => (
                 <OrderRowDetail
                   order={order}
@@ -1018,9 +1116,68 @@ export function OrdersListPage(): ReactElement {
                   platformByConnection={platformByConnection}
                 />
               ),
+              // Scannable essentials shown before expanding (#1713): the items
+              // summary plus a tight facts grid (total / payment / customer /
+              // created / shipment carrier).
+              summary: (order) => {
+                const parsed = parseOrderSnapshot(order.orderSnapshot);
+                const items = itemsSummary(parsed.items);
+                const pay = paymentBadge(parsed.paymentStatus);
+                const cust = customerName(parsed);
+                const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+                return (
+                  <div className="orders-card-summary">
+                    {items ? (
+                      <div className="orders-items-line">
+                        <span className="orders-items-preview" title={items.firstName}>
+                          {items.firstName}
+                        </span>
+                        {items.moreCount > 0 ? (
+                          <span className="orders-more-count">+{items.moreCount}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <dl className="orders-card-facts">
+                      <div>
+                        <dt>Total</dt>
+                        <dd className="mono tabular">
+                          {parsed.totals
+                            ? formatCurrency(parsed.totals.total, parsed.totals.currency, locale)
+                            : '—'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Payment</dt>
+                        <dd>
+                          {pay ? (
+                            <StatusBadge tone={pay.tone} withDot compact>
+                              {pay.label}
+                            </StatusBadge>
+                          ) : (
+                            '—'
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Customer</dt>
+                        <dd>{cust ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Created</dt>
+                        <dd className="mono tabular">
+                          <TimeDisplay iso={order.createdAt} format="datetime" />
+                        </dd>
+                      </div>
+                      <div className="orders-card-facts__wide">
+                        <dt>Shipment</dt>
+                        <dd>{carrier ?? '—'}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                );
+              },
               meta: (order) => {
                 const h = deriveOrderHealth(order);
-                const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
                 const shipBy = formatShipBy(order.dispatchByAt ?? null);
                 const sla = slaBadge(order.slaState);
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
@@ -1030,14 +1187,6 @@ export function OrdersListPage(): ReactElement {
                   retryMutation.variables?.internalOrderId === order.internalOrderId;
                 return (
                   <span className="data-table__badge-row">
-                    {source && (
-                      <span
-                        className="channel-pill"
-                        data-channel={platformByConnection.get(order.sourceConnectionId)}
-                      >
-                        {source}
-                      </span>
-                    )}
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>

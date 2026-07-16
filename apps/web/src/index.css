@@ -2814,12 +2814,24 @@ textarea,
   padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
 }
 
-/* Detail field grid — shared by the desktop accordion and the mobile card. */
+/* Detail field grid — shared by the desktop accordion and the mobile card.
+   Inset "drawer" (#1713): a recessed panel (color-mix darkens the current
+   theme's surface, so it reads recessed in both light and dark) with side
+   padding, set apart from the row above. */
 .orders-detail {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-3) var(--space-5);
+  gap: var(--space-4) var(--space-5);
   margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: color-mix(in oklch, var(--bg-surface), black 7%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Full-width detail row (the itemised line list) spanning the auto-fill grid. */
+.orders-detail__field--wide {
+  grid-column: 1 / -1;
 }
 
 .orders-detail__field {
@@ -7705,6 +7717,166 @@ a.kpi-card:focus-visible {
   border-radius: var(--radius-sm);
   padding: 1px 7px;
 }
+
+/* ── Orders list redesign (#1713) ────────────────────────────────────
+   Merged Shipment + money columns, per-label sort controls, the row items
+   summary, the folded channel line, and the mobile card summary/facts. */
+
+/* Right-aligned two-line stack (the money column). */
+.orders-cell-stack--end { align-items: flex-end; text-align: right; }
+.orders-money-total { font-weight: 640; }
+
+/* Row items summary: a truncating first-item name + a never-truncated "+N"
+   count chip, so a multi-item order never reads as a single-item one. */
+.orders-items-line { display: inline-flex; align-items: center; gap: 6px; max-width: 250px; min-width: 0; }
+.orders-items-line .orders-items-preview { flex: 0 1 auto; min-width: 0; }
+.orders-more-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+}
+
+/* Ship-by badge + live countdown share one line inside the Shipment cell. */
+.orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
+.orders-carrier { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Channel folds under the order name below the Channel column's 1024px hide
+   breakpoint — hidden on wide screens where the standalone column shows. */
+.orders-order-channel { display: none; align-items: center; gap: 6px; }
+@media (max-width: 1023px) {
+  .orders-order-channel { display: inline-flex; }
+}
+
+/* Per-label sort controls in the merged-column headers. */
+.orders-sortstack { display: inline-flex; flex-direction: column; gap: 4px; }
+.orders-sortstack--left { align-items: flex-start; }
+.orders-sortstack--right { align-items: flex-end; }
+.orders-sortbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.orders-sortbtn:hover { color: var(--text-secondary); }
+.orders-sortbtn:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+.orders-sortbtn--active { color: var(--text-secondary); }
+.orders-sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
+.orders-sortbtn--active .orders-sortbtn__ind { color: var(--accent-primary); }
+
+/* Accordion "Open order" links strip + itemised line list. */
+.orders-detail__links {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px dashed var(--border-default);
+}
+.orders-ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+.orders-ext-link:hover { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); }
+.orders-ext-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.orders-ext-link::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.orders-ext-link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
+.orders-ext-link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.orders-ext-link[data-channel='erli']::before { background: oklch(66% 0.17 320); }
+.orders-ext-link__arrow { color: var(--accent-primary); }
+.orders-ext-link--internal { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); font-weight: 600; }
+.orders-ext-link--internal::before { background: var(--accent-primary); }
+
+.orders-detail__items-list { display: flex; flex-direction: column; gap: 6px; }
+.orders-line-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.orders-line-item__qty { color: var(--text-muted); font-size: 0.75rem; }
+.orders-line-item__name { min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.orders-line-item__sku { display: block; font-size: 0.6875rem; color: var(--text-muted); }
+.orders-line-item__price { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; }
+
+/* Mobile card: subtitle (channel + relative time), always-visible summary +
+   facts grid, and the collapsible-detail disclosure. */
+.orders-card-sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.orders-card-summary { display: flex; flex-direction: column; gap: var(--space-3); }
+.orders-card-items { font-size: 0.8125rem; color: var(--text-secondary); }
+.orders-card-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+.orders-card-facts > div { min-width: 0; }
+.orders-card-facts__wide { grid-column: 1 / -1; }
+.orders-card-facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.5938rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.orders-card-facts dd { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+.data-table__card-summary { margin-top: var(--space-3); }
+.data-table__card-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+  padding: 4px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+}
+.data-table__card-disclosure:hover { color: var(--text-secondary); }
+.data-table__card-disclosure:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+.data-table__card-disclosure-chev { color: var(--accent-primary); }
 
 /* ── Orders list filter/sort bar (#939) ─────────────────────────────── */
 .orders-toolbar {

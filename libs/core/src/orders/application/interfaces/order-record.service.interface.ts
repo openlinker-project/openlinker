@@ -28,12 +28,16 @@ export interface IOrderRecordService {
    * @param order - Unified order with internal IDs
    * @param sourceConnectionId - Source connection ID (where order originated)
    * @param sourceEventId - Optional source event ID
+   * @param sourceExternalUrl - Optional deep link to the order in the source
+   *   platform's UI (#1713), built by the source adapter; persisted onto the
+   *   snapshot as `sourceExternalUrl`.
    * @returns Persisted order record
    */
   persistOrder(
     order: Order,
     sourceConnectionId: string,
-    sourceEventId: string | null
+    sourceEventId: string | null,
+    sourceExternalUrl?: string | null
   ): Promise<OrderRecord>;
 
   /**

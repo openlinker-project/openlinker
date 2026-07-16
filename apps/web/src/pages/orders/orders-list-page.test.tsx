@@ -282,7 +282,8 @@ describe('OrdersListPage', () => {
 
     const detailRow = container.querySelector('.data-table__detail-row') as HTMLElement;
     expect(detailRow).not.toBeNull();
-    expect(within(detailRow).getByText('1 item')).toBeInTheDocument();
+    // The accordion now leads with an itemised list headed "Items (N)" (#1713).
+    expect(within(detailRow).getByText('Items (1)')).toBeInTheDocument();
     expect(row).toHaveAttribute('class', expect.stringContaining('data-table__row--expanded'));
 
     await user.click(row);
@@ -322,7 +323,11 @@ describe('OrdersListPage', () => {
 
       const card = container.querySelector('.data-table__card') as HTMLElement;
       expect(card).not.toBeNull();
-      expect(within(card).getByText('1 item')).toBeInTheDocument();
+      // The full field set is collapsed behind a "View full details" disclosure
+      // now (#1713); the summary shows up front. Expand it, then assert a field.
+      const disclosure = within(card).getByRole('button', { name: /view full details/i });
+      await user.click(disclosure);
+      expect(within(card).getByText('Items (1)')).toBeInTheDocument();
 
       const checkbox = within(card).getByRole('checkbox', { name: 'Select ol_order_synced' });
       await user.click(checkbox);
@@ -711,7 +716,10 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     const row = container.querySelector('.data-table__row') as HTMLElement;
-    expect(within(row).getByText('Filtr kubełkowy AquaPro +2 more')).toBeInTheDocument();
+    // The first item name truncates in its own span; the "+N" count is a separate
+    // never-truncated chip now (#1713), so assert the two pieces independently.
+    expect(within(row).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
+    expect(within(row).getByText('+2')).toBeInTheDocument();
   });
 
   it('should not render an items preview line when the snapshot has no named items (#1646)', async () => {

@@ -127,6 +127,12 @@ export interface ParsedOrderSnapshot {
   orderNumber?: string;
   status?: string;
   /**
+   * Deep link to this order in the source platform's own UI (#1713), built by
+   * the source adapter (Allegro Sales Center today; other sources hide the link
+   * until a stable URL scheme is confirmed). Absent ⇒ no source link rendered.
+   */
+  sourceExternalUrl?: string;
+  /**
    * Buyer email from the source platform — adapters typically populate from
    * `IncomingOrder.customerEmail`. Consumed by the Generate Label form
    * (#769) to pre-fill the recipient.email field; absent for sources that
@@ -211,6 +217,10 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
   const orderNumber =
     typeof snapshot.orderNumber === 'string' ? snapshot.orderNumber : undefined;
   const status = typeof snapshot.status === 'string' ? snapshot.status : undefined;
+  const sourceExternalUrl =
+    typeof snapshot.sourceExternalUrl === 'string' && snapshot.sourceExternalUrl.length > 0
+      ? snapshot.sourceExternalUrl
+      : undefined;
   const customerEmail =
     typeof snapshot.customerEmail === 'string' && snapshot.customerEmail.length > 0
       ? snapshot.customerEmail
@@ -332,6 +342,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     id,
     orderNumber,
     status,
+    sourceExternalUrl,
     customerEmail,
     placedAt,
     items,
