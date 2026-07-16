@@ -63,6 +63,7 @@ describe('ProductsService', () => {
     upsert: jest.fn(),
     upsertMany: jest.fn(),
     findMany: jest.fn(),
+    markStaleExceptVariants: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -233,6 +234,19 @@ describe('ProductsService', () => {
         { search: '1234567890123' },
         { limit: 20, offset: 0 }
       );
+    });
+  });
+
+  describe('markVariantsStaleExcept', () => {
+    it('delegates to the repository and returns the flagged variant ids (#1599)', async () => {
+      variantRepo.markStaleExceptVariants.mockResolvedValue(['ol_variant_gone']);
+
+      const marked = await service.markVariantsStaleExcept('ol_product_1', ['ol_variant_keep']);
+
+      expect(variantRepo.markStaleExceptVariants).toHaveBeenCalledWith('ol_product_1', [
+        'ol_variant_keep',
+      ]);
+      expect(marked).toEqual(['ol_variant_gone']);
     });
   });
 });

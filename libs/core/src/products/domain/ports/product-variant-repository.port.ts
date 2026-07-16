@@ -98,4 +98,19 @@ export interface ProductVariantRepositoryPort {
     filters: ProductVariantListFilters,
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants>;
+
+  /**
+   * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
+   * stale (#1599 — deleted at the master). An empty keep-set marks all live
+   * variants (the product-fully-deleted / 404 path). Returns the ids actually
+   * flipped (already-stale rows are skipped, preserving their `staleAt`).
+   *
+   * @param productId - Internal OpenLinker product ID
+   * @param keepVariantIds - Variant ids present in the current master response
+   * @returns Ids of the variants newly marked stale
+   */
+  markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly string[]
+  ): Promise<string[]>;
 }
