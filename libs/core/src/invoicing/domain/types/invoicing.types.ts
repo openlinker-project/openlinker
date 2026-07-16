@@ -93,9 +93,19 @@ export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
  * a regime's native states (KSeF, IT SDI, ES SII…) onto these. `not-applicable`
  * is the default for providers without regulatory transmission.
+ *
+ * `pending-submission` (#1700) is the deferred-submission window: a document
+ * that has been ISSUED with legal effect but not yet transmitted to the
+ * authority, because the authority was unreachable at issuance and the regime
+ * permits a bounded degraded-mode grace period. It is regime-neutral by design
+ * — several CTC regimes offer an analogous outage-tolerance window, so the
+ * name deliberately avoids any single regime's label. It is NON-terminal: a
+ * background sweep later resubmits the document and advances it to `submitted`
+ * (see {@link OfflineResubmitter}).
  */
 export const RegulatoryStatusValues = [
   'not-applicable',
+  'pending-submission',
   'submitted',
   'cleared',
   'accepted',
@@ -121,6 +131,56 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+}
+
+/**
+ * Outcome of an offline-resubmission attempt (#1700). Returned by
+ * `OfflineResubmitter.resubmit` when a background sweep retransmits a document
+ * that was issued during a degraded-mode outage (`pending-submission`). Carries
+ * the full triple the caller persists via `updateOutcome` so no field is lost
+ * when a resubmit both advances the status AND surfaces the authority reference
+ * the original offline issuance could not know. A business verdict (incl.
+ * `rejected`) is carried as data; a transport/infra failure throws.
+ */
+export interface OfflineResubmitResult {
+  /** Neutral CTC clearance lifecycle the resubmit yielded (`submitted`/`cleared`/…). */
+  regulatoryStatus: RegulatoryStatus;
+  /** Provider-native document id assigned at (re)submission, or `null` if unchanged. */
+  providerInvoiceId: string | null;
+  /** Authority-assigned reference now known, or `null` until the authority assigns one. */
+  clearanceReference: string | null;
+}
+
+/**
+ * Neutral criteria for the last-resort "find it on the authority's side" lookup
+ * (#1700). Backs crash recovery: after a process died mid-submit, OL cannot know
+ * from its own state whether the authority actually received the document, so it
+ * queries the authority by whatever business coordinates it holds. Every field is
+ * optional — an adapter uses the subset its provider's query surface supports.
+ * Country/regulatory-agnostic: `sellerTaxId` is a scheme-tagged identifier value
+ * the adapter interprets, never a named national id.
+ */
+export interface RegulatoryLocateCriteria {
+  sellerTaxId?: string;
+  documentNumber?: string;
+  issuedFrom?: Date;
+  issuedTo?: Date;
+}
+
+/**
+ * Outcome of a {@link RegulatoryLocateCriteria} lookup (#1700). Returned by
+ * `RegulatoryRecordLocator.locateByQuery` when the authority holds a matching
+ * document, or `null` when it does not (the caller then treats the original
+ * attempt as never having landed). Mirrors the persist-triple shape so the
+ * recovery sweep reconciles OL's record with no translation.
+ */
+export interface RegulatoryLocateResult {
+  /** Provider-native document id the authority reports for the match, or `null`. */
+  providerInvoiceId: string | null;
+  /** Neutral CTC clearance lifecycle the authority reports for the located document. */
+  regulatoryStatus: RegulatoryStatus;
+  /** Authority-assigned reference for the located document, or `null` if none yet. */
+  clearanceReference: string | null;
 }
 
 /**

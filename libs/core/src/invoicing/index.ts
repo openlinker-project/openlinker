@@ -38,6 +38,10 @@ export * from './domain/ports/capabilities/payment-status-reader.capability';
 export * from './domain/ports/capabilities/payment-marker.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
+// Re-exports both `OfflineResubmitter` and `isOfflineResubmitter` (#1700).
+export * from './domain/ports/capabilities/offline-resubmitter.capability';
+// Re-exports both `RegulatoryRecordLocator` and `isRegulatoryRecordLocator` (#1700).
+export * from './domain/ports/capabilities/regulatory-record-locator.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';
