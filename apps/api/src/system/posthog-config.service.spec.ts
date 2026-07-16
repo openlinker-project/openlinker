@@ -21,6 +21,7 @@ describe('PosthogConfigService', () => {
     expect(makeService({ OL_POSTHOG_KEY: 'phc_abc123' }).getConfig()).toEqual({
       key: 'phc_abc123',
       host: 'https://eu.posthog.com',
+      hostWasExplicit: false,
     });
   });
 
@@ -30,6 +31,6 @@ describe('PosthogConfigService', () => {
         OL_POSTHOG_KEY: 'phc_abc123',
         OL_POSTHOG_HOST: 'https://us.posthog.com',
       }).getConfig(),
-    ).toEqual({ key: 'phc_abc123', host: 'https://us.posthog.com' });
+    ).toEqual({ key: 'phc_abc123', host: 'https://us.posthog.com', hostWasExplicit: true });
   });
 });

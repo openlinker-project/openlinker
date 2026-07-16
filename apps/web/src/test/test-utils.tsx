@@ -369,6 +369,24 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.mailerSettings,
     } as ApiClient['mailerSettings'],
+    posthogSettings: {
+      get: vi.fn().mockResolvedValue({
+        enabled: false,
+        region: 'eu',
+        customHost: null,
+        autocapture: false,
+        sessionRecording: false,
+        apiKeyConfigured: false,
+        wouldOverrideEnv: false,
+        overriddenEnvVars: [],
+        updatedAt: null,
+        updatedBy: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      setCredentials: vi.fn().mockResolvedValue(undefined),
+      clearCredentials: vi.fn().mockResolvedValue(undefined),
+      ...overrides.posthogSettings,
+    } as ApiClient['posthogSettings'],
     products: {
       list: vi.fn().mockResolvedValue({
         items: [],

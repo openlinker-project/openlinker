@@ -14,6 +14,11 @@
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./analytics": {
+      "types": "./dist/analytics/index.d.ts",
+      "require": "./dist/analytics/index.js",
+      "default": "./dist/analytics/index.js"
+    },
     "./integrations": {
       "types": "./dist/integrations/index.d.ts",
       "require": "./dist/integrations/index.js",

@@ -20,13 +20,13 @@ describe('SystemController', () => {
     systemService = module.get(SYSTEM_SERVICE_TOKEN);
   });
 
-  it('should return the system config', () => {
-    systemService.getConfig.mockReturnValue({ demoMode: true });
-    expect(controller.getConfig()).toEqual({ demoMode: true });
+  it('should return the system config', async () => {
+    systemService.getConfig.mockResolvedValue({ demoMode: true });
+    await expect(controller.getConfig()).resolves.toEqual({ demoMode: true });
   });
 
-  it('should return demoMode: false when demo mode is off', () => {
-    systemService.getConfig.mockReturnValue({ demoMode: false });
-    expect(controller.getConfig()).toEqual({ demoMode: false });
+  it('should return demoMode: false when demo mode is off', async () => {
+    systemService.getConfig.mockResolvedValue({ demoMode: false });
+    await expect(controller.getConfig()).resolves.toEqual({ demoMode: false });
   });
 });
