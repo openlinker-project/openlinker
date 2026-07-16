@@ -82,6 +82,12 @@ export type {
 } from './application/services/regulatory-status-reconciliation.service.interface';
 export { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 export type {
+  IOfflineResubmissionService,
+  OfflineResubmissionOptions,
+  OfflineResubmissionResult,
+} from './application/services/offline-resubmission.service.interface';
+export { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+export type {
   IPaymentStatusRefreshService,
   PaymentStatusRefreshOutcome,
   PaymentStatusRefreshResult,

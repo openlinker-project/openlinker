@@ -318,6 +318,51 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
+  async findPendingSubmission(
+    connectionId: string,
+    opts: { limit: number; cursor?: { updatedAt: Date; id: string } },
+  ): Promise<{ items: InvoiceRecord[]; total: number }> {
+    // Selection predicate (mirrored by the `IDX_invoice_records_pending_submission`
+    // partial index): regulatoryStatus = 'pending-submission'. Connection-scoped,
+    // ordered `updatedAt ASC, id ASC` (oldest-first, deterministic `id` tie-break),
+    // capped at `opts.limit`. When a cursor is supplied the page is the rows
+    // strictly AFTER it in `(updatedAt, id)` order - KEYSET paging that lets the
+    // offline-resubmit sweep walk the WHOLE pending frontier within one run even
+    // when the oldest rows never bump `updatedAt` (#1702).
+    //
+    // Precision note: the same millisecond-truncation trick as
+    // `findIssuedNonTerminal` - the column is Postgres `timestamp` (microsecond
+    // precision) while the cursor `updatedAt` round-trips through a JS `Date`
+    // (millisecond precision). Truncate `updatedAt` to milliseconds on BOTH the
+    // keyset comparison and the ORDER BY so the resolutions match and the walk
+    // cannot stall by re-selecting the cursor row forever.
+    const UPDATED_AT_MS = "date_trunc('milliseconds', record.updatedAt)";
+    const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) =>
+      qb
+        .where('record.connectionId = :connectionId', { connectionId })
+        .andWhere('record.regulatoryStatus = :pending', { pending: 'pending-submission' });
+
+    const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
+    if (opts.cursor) {
+      pageQb.andWhere(
+        `(${UPDATED_AT_MS}, record.id) > (:cursorUpdatedAt, :cursorId)`,
+        { cursorUpdatedAt: opts.cursor.updatedAt, cursorId: opts.cursor.id },
+      );
+    }
+    const entities = await pageQb
+      .orderBy(UPDATED_AT_MS, 'ASC')
+      .addOrderBy('record.id', 'ASC')
+      .take(opts.limit)
+      .getMany();
+
+    // `total` is the FULL pending-submission count (cursor-independent) - coverage
+    // logging only, never used for paging - so it stays stable across the sweep's
+    // intra-run page walk.
+    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
+
+    return { items: entities.map((e) => this.toDomain(e)), total };
+  }
+
   private buildOrmEntity(input: CreateInvoiceRecordInput): InvoiceRecordOrmEntity {
     const entity = new InvoiceRecordOrmEntity();
     entity.connectionId = input.connectionId;

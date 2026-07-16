@@ -36,6 +36,12 @@ import { Logger } from '@openlinker/shared/logging';
 const REGULATORY_RECONCILE_DEFAULT_LIMIT = 100;
 
 /**
+ * Default page size for the offline-resubmission sweep fan-out payload (#1702).
+ * The worker handler clamps a payload-supplied `limit` to its own MAX_LIMIT.
+ */
+const OFFLINE_RESUBMIT_DEFAULT_LIMIT = 100;
+
+/**
  * Static descriptor for a core capability-scoped scheduler task. The four core
  * tasks (inventory / product / pickup-point / regulatory-reconcile) are
  * structurally identical — drain every active connection supporting `capability`
@@ -114,6 +120,17 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     idempotencyKey: (connectionId, timestamp) =>
       `invoicing:${connectionId}:regulatoryStatus:reconcile:${timestamp}`,
     extraPayload: { limit: REGULATORY_RECONCILE_DEFAULT_LIMIT },
+  },
+  {
+    taskId: 'offline-resubmit',
+    jobType: 'invoicing.offlineSubmission.resubmit',
+    capability: 'Invoicing',
+    enabledEnvVar: 'OL_OFFLINE_RESUBMIT_ENABLED',
+    cronEnvVar: 'OL_OFFLINE_RESUBMIT_CRON',
+    defaultCron: '*/15 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `invoicing:${connectionId}:offlineSubmission:resubmit:${timestamp}`,
+    extraPayload: { limit: OFFLINE_RESUBMIT_DEFAULT_LIMIT },
   },
 ];
 

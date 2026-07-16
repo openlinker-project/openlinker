@@ -93,6 +93,17 @@ export interface RegulatoryStatusReconcilePayloadV1 {
 }
 
 /**
+ * Payload for `invoicing.offlineSubmission.resubmit` (#1702). Carries only the
+ * page size - the offline-resubmission frontier is a `(updatedAt, id)` keyset
+ * walked WITHIN one run (mirrors the reconcile payload); no persisted cursor.
+ */
+export interface OfflineResubmitPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: max number of `pending-submission` records to resubmit this run. */
+  limit: number;
+}
+
+/**
  * Payload for `invoicing.paymentStatus.refreshByExternalId` (#1354). Carries the
  * provider's invoice id named by the payment webhook; the handler re-reads
  * authoritative payment state for THAT document (webhook is a trigger, not the

@@ -27,6 +27,7 @@ import { InvoiceNumberingSeriesRepository } from './infrastructure/persistence/r
 import { InvoiceNumberGapNoteRepository } from './infrastructure/persistence/repositories/invoice-number-gap-note.repository';
 import { AutoIssueTriggerService } from './application/services/auto-issue-trigger.service';
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
+import { OfflineResubmissionService } from './application/services/offline-resubmission.service';
 import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 import { NumberingAuditService } from './application/services/numbering-audit.service';
 import { NumberingSeriesService } from './application/services/numbering-series.service';
@@ -36,6 +37,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  OFFLINE_RESUBMISSION_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
@@ -48,6 +50,7 @@ export {
   INVOICE_SERVICE_TOKEN,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+  OFFLINE_RESUBMISSION_SERVICE_TOKEN,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
@@ -100,6 +103,11 @@ export {
       provide: REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
       useExisting: RegulatoryStatusReconciliationService,
     },
+    OfflineResubmissionService,
+    {
+      provide: OFFLINE_RESUBMISSION_SERVICE_TOKEN,
+      useExisting: OfflineResubmissionService,
+    },
     PaymentStatusRefreshService,
     {
       provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
@@ -133,6 +141,9 @@ export {
     AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
     AutoIssueTriggerService,
     REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
+    // Exported so the worker's SyncWorkerModule can inject the service into
+    // OfflineResubmitHandler (#1702) — same reason as the reconciliation token.
+    OFFLINE_RESUBMISSION_SERVICE_TOKEN,
     // Exported so the worker's SyncWorkerModule can inject the service into
     // PaymentStatusRefreshHandler (#1354) — same reason as the reconciliation token.
     PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,

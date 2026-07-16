@@ -124,4 +124,30 @@ export interface InvoiceRecordRepositoryPort {
       cursor?: { updatedAt: Date; id: string };
     },
   ): Promise<{ items: InvoiceRecord[]; total: number }>;
+
+  /**
+   * Select records on the connection whose regulatory status is
+   * `pending-submission` (#1702) - documents issued with legal effect during a
+   * degraded-mode outage that still await retransmission to the authority.
+   * Ordered `updatedAt ASC, id ASC` (oldest-first, deterministic `id` tie-break),
+   * capped at `opts.limit`.
+   *
+   * KEYSET PAGING (mirrors `findIssuedNonTerminal`): when `opts.cursor` is
+   * supplied the page is bounded to rows strictly AFTER it in `(updatedAt, id)`
+   * order - `(updatedAt, id) > (cursor.updatedAt, cursor.id)`. The offline-resubmit
+   * sweep threads the last-seen `(updatedAt, id)` across pages within one run so
+   * the whole pending-submission frontier is visited even when the oldest rows
+   * never bump `updatedAt` (a still-unreachable authority leaves the record
+   * untouched). `total` is the full pending-submission count for the connection
+   * (cursor-independent) - for coverage logging only. The
+   * `IDX_invoice_records_pending_submission` partial index keys `(updatedAt, id)`
+   * so the keyset seek stays index-only.
+   */
+  findPendingSubmission(
+    connectionId: string,
+    opts: {
+      limit: number;
+      cursor?: { updatedAt: Date; id: string };
+    },
+  ): Promise<{ items: InvoiceRecord[]; total: number }>;
 }
