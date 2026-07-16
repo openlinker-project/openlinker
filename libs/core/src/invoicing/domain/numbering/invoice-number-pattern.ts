@@ -19,7 +19,8 @@
  *   {seq}  — the allocated sequence number, zero-padded to `seqPadding`
  *   {YYYY} — 4-digit year        {YY} — 2-digit year
  *   {MM}   — 2-digit month 01–12 {QQ} — calendar quarter 1–4
- *   {DD}   — 2-digit day 01–31   {FY} — 4-digit fiscal year (== calendar year today, #11)
+ *   {DD}   — 2-digit day 01–31   {FY} — 4-digit fiscal year (configurable start
+ *                                       month, #1692; == calendar year by default)
  *
  * @module libs/core/src/invoicing/domain/numbering
  */
@@ -34,6 +35,23 @@ import { DocumentNumberTooLongException } from '../exceptions/document-number-to
 const SEQ_VAR = '{seq}';
 const MONTH_VAR = '{MM}';
 const QUARTER_VAR = '{QQ}';
+const DAY_VAR = '{DD}';
+
+/** Default fiscal-year start month — January, i.e. the fiscal year is the calendar year. */
+const DEFAULT_FISCAL_YEAR_START_MONTH = 1;
+
+/**
+ * Compute the fiscal-year LABEL for an issue date under a start month (#1692).
+ * Convention: a fiscal year is labelled by the calendar year in which it STARTS.
+ * With `startMonth` = M, an issue in month ≥ M belongs to the fiscal year that
+ * started this calendar year (label = `year`); an issue in a month < M belongs
+ * to the fiscal year that started last calendar year (label = `year - 1`). When
+ * `startMonth` = 1 every month is ≥ 1, so the label is always the calendar year
+ * and `{FY}` === `{YYYY}` (back-compatible). Pure.
+ */
+function fiscalYearLabel(year: number, month: number, startMonth: number): number {
+  return month >= startMonth ? year : year - 1;
+}
 
 /** Calendar parts of an instant resolved in an IANA timezone (UTC when absent). */
 interface ZonedDateParts {
@@ -83,6 +101,8 @@ function pad2(value: number): string {
  */
 export function renderInvoiceNumber(pattern: string, ctx: NumberRenderContext): string {
   const { year, month, day } = zonedParts(ctx.issueDate, ctx.timeZone);
+  const startMonth = ctx.fiscalYearStartMonth ?? DEFAULT_FISCAL_YEAR_START_MONTH;
+  const fiscalYear = fiscalYearLabel(year, month, startMonth);
   const replacements: Record<string, string> = {
     '{seq}': String(ctx.seq).padStart(Math.max(ctx.seqPadding, 0), '0'),
     '{YYYY}': String(year).padStart(4, '0'),
@@ -90,9 +110,9 @@ export function renderInvoiceNumber(pattern: string, ctx: NumberRenderContext): 
     '{MM}': pad2(month),
     '{QQ}': String(quarterOf(month)),
     '{DD}': pad2(day),
-    // Fiscal year == calendar year today (#11); a distinct token so a future
-    // configurable fiscal-year start can diverge it without touching {YYYY}.
-    '{FY}': String(year).padStart(4, '0'),
+    // Fiscal year (#1692): a distinct token from {YYYY} that resolves from the
+    // series' configurable start month. Equal to {YYYY} when the start month is 1.
+    '{FY}': String(fiscalYear).padStart(4, '0'),
   };
   return pattern.replace(
     /\{(seq|YYYY|YY|MM|QQ|DD|FY)\}/g,
@@ -106,6 +126,7 @@ export function renderInvoiceNumber(pattern: string, ctx: NumberRenderContext): 
  *   - `{seq}` is required (a series with no sequence is meaningless).
  *   - the reset cadence must be disambiguated by the pattern, or a reset would
  *     re-render an already-issued number:
+ *       daily     → needs {DD} + {MM} + a year variable
  *       monthly   → needs {MM} + a year variable
  *       quarterly → needs {QQ} + a year variable
  *       yearly    → needs a year variable
@@ -122,8 +143,16 @@ export function validateNumberingPattern(pattern: string, resetPolicy: ResetPoli
   const hasYear = NumberingYearVariableValues.some((v) => pattern.includes(v));
   const hasMonth = pattern.includes(MONTH_VAR);
   const hasQuarter = pattern.includes(QUARTER_VAR);
+  const hasDay = pattern.includes(DAY_VAR);
 
   switch (resetPolicy) {
+    case 'daily':
+      if (!hasDay || !hasMonth || !hasYear) {
+        errors.push(
+          'A daily reset policy requires the {DD}, {MM} and a year ({YYYY}, {YY} or {FY}) variable.',
+        );
+      }
+      break;
     case 'monthly':
       if (!hasMonth || !hasYear) {
         errors.push('A monthly reset policy requires the {MM} and a year ({YYYY}, {YY} or {FY}) variable.');
@@ -186,16 +215,18 @@ export function computePeriodKey(
   issueDate: Date,
   timeZone?: string,
 ): string {
-  const { year, month } = zonedParts(issueDate, timeZone);
+  const { year, month, day } = zonedParts(issueDate, timeZone);
   const yearStr = String(year).padStart(4, '0');
   switch (resetPolicy) {
     case 'none':
       return '';
     case 'yearly':
       return yearStr;
-    case 'monthly':
-      return `${yearStr}-${pad2(month)}`;
     case 'quarterly':
       return `${yearStr}-Q${quarterOf(month)}`;
+    case 'monthly':
+      return `${yearStr}-${pad2(month)}`;
+    case 'daily':
+      return `${yearStr}-${pad2(month)}-${pad2(day)}`;
   }
 }

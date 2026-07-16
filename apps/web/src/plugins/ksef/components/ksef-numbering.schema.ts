@@ -40,6 +40,8 @@ export interface NumberingFormValues {
   resetPolicy: ResetPolicy;
   seqPadding: string;
   nextSeq: string;
+  /** Fiscal-year start month (1-12) as a form string; governs {FY}. */
+  fiscalYearStartMonth: string;
 }
 
 export const numberingFormSchema = z
@@ -51,6 +53,7 @@ export const numberingFormSchema = z
     resetPolicy: z.enum(ResetPolicyValues),
     seqPadding: z.string(),
     nextSeq: z.string(),
+    fiscalYearStartMonth: z.string(),
   })
   .superRefine((values, ctx) => {
     if (values.name.trim().length === 0) {
@@ -75,6 +78,15 @@ export const numberingFormSchema = z
         message: 'Next number must be a whole number of at least 1.',
       });
     }
+    // Only relevant when the pattern uses {FY}; still range-checked defensively.
+    const fyStart = parseIntStrict(values.fiscalYearStartMonth);
+    if (fyStart === null || fyStart < 1 || fyStart > 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fiscalYearStartMonth'],
+        message: 'Fiscal year start must be a month between 1 and 12.',
+      });
+    }
   });
 
 /** Prefills for a brand-new series (a standard monthly VAT series). */
@@ -86,6 +98,7 @@ export const NUMBERING_CREATE_DEFAULTS: NumberingFormValues = {
   resetPolicy: 'monthly',
   seqPadding: '0',
   nextSeq: '1',
+  fiscalYearStartMonth: '1',
 };
 
 /** Seed the form from an existing series (edit mode). */
@@ -100,6 +113,7 @@ export function seriesToFormValues(series: NumberingSeries): NumberingFormValues
     resetPolicy: series.resetPolicy,
     seqPadding: String(series.seqPadding),
     nextSeq: String(series.nextSeq),
+    fiscalYearStartMonth: String(series.fiscalYearStartMonth),
   };
 }
 
@@ -117,6 +131,7 @@ export function toCreateInput(values: NumberingFormValues): CreateNumberingSerie
     resetPolicy: values.resetPolicy,
     seqPadding: Number(values.seqPadding),
     nextSeq: Number(values.nextSeq),
+    fiscalYearStartMonth: Number(values.fiscalYearStartMonth),
   };
 }
 
@@ -129,6 +144,7 @@ export function toUpdateInput(values: NumberingFormValues): UpdateNumberingSerie
     resetPolicy: values.resetPolicy,
     seqPadding: Number(values.seqPadding),
     nextSeq: Number(values.nextSeq),
+    fiscalYearStartMonth: Number(values.fiscalYearStartMonth),
   };
 }
 

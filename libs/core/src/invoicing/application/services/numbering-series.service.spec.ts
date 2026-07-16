@@ -29,6 +29,7 @@ function seriesFixture(overrides: Partial<InvoiceNumberingSeries> = {}): Invoice
     overrides.periodKey ?? '2026',
     overrides.documentType ?? 'invoice',
     overrides.register ?? null,
+    overrides.fiscalYearStartMonth ?? 1,
     overrides.createdAt ?? NOW,
     overrides.updatedAt ?? NOW,
   );
@@ -67,8 +68,23 @@ describe('NumberingSeriesService', () => {
       const [input] = repository.createSeries.mock.calls[0];
       expect(input.documentType).toBe('invoice');
       expect(input.register).toBeNull();
+      expect(input.fiscalYearStartMonth).toBe(1);
       expect(input.periodKey).toBe(computePeriodKey('yearly', new Date()));
       expect(input.periodKey).not.toBe('');
+    });
+
+    it('should pass an explicit fiscalYearStartMonth through (#1692)', async () => {
+      repository.createSeries.mockResolvedValue(seriesFixture());
+      await service.createSeries({
+        name: 'FY series',
+        pattern: 'FV/{FY}/{seq}',
+        nextSeq: 1,
+        seqPadding: 0,
+        resetPolicy: 'yearly',
+        fiscalYearStartMonth: 4,
+      });
+      const [input] = repository.createSeries.mock.calls[0];
+      expect(input.fiscalYearStartMonth).toBe(4);
     });
 
     it('should throw InvalidNumberingPatternException when the pattern lacks {seq}', async () => {

@@ -54,6 +54,7 @@ function tokenize(
   seqPadding: number,
   issueDate: Date,
   timeZone?: string,
+  fiscalYearStartMonth?: number,
 ): PreviewToken[] {
   const parts = pattern.split(VARIABLE_RE).filter((part) => part.length > 0);
   return parts.map((part) => {
@@ -61,7 +62,13 @@ function tokenize(
       // `test` advances lastIndex on a global regex — reset so the next call is clean.
       VARIABLE_RE.lastIndex = 0;
       return {
-        text: renderInvoiceNumber(part, { seq, seqPadding, issueDate, timeZone }),
+        text: renderInvoiceNumber(part, {
+          seq,
+          seqPadding,
+          issueDate,
+          timeZone,
+          fiscalYearStartMonth,
+        }),
         kind: kindOf(part),
       };
     }
@@ -77,11 +84,22 @@ export interface BuildNumberingPreviewInput {
   now: Date;
   /** IANA zone id; date parts resolve in this zone (UTC when absent). */
   timeZone?: string;
+  /** Fiscal-year start month (1-12) governing {FY}; absent / 1 = calendar year. */
+  fiscalYearStartMonth?: number;
   thenCount?: number;
 }
 
 export function buildNumberingPreview(input: BuildNumberingPreviewInput): NumberingPreview {
-  const { pattern, nextSeq, seqPadding, resetPolicy, now, timeZone, thenCount = 3 } = input;
+  const {
+    pattern,
+    nextSeq,
+    seqPadding,
+    resetPolicy,
+    now,
+    timeZone,
+    fiscalYearStartMonth,
+    thenCount = 3,
+  } = input;
   const errors = validateNumberingPattern(pattern, resetPolicy);
   const seqValid = Number.isFinite(nextSeq) && nextSeq >= 1;
   const valid = errors.length === 0 && seqValid;
@@ -90,11 +108,19 @@ export function buildNumberingPreview(input: BuildNumberingPreviewInput): Number
     return { valid: false, errors, tokens: [], rendered: '', renderedLength: 0, then: [] };
   }
 
-  const tokens = tokenize(pattern, nextSeq, seqPadding, now, timeZone);
+  const tokens = tokenize(pattern, nextSeq, seqPadding, now, timeZone, fiscalYearStartMonth);
   const rendered = tokens.map((token) => token.text).join('');
   const then: string[] = [];
   for (let i = 1; i <= thenCount; i += 1) {
-    then.push(renderInvoiceNumber(pattern, { seq: nextSeq + i, seqPadding, issueDate: now, timeZone }));
+    then.push(
+      renderInvoiceNumber(pattern, {
+        seq: nextSeq + i,
+        seqPadding,
+        issueDate: now,
+        timeZone,
+        fiscalYearStartMonth,
+      }),
+    );
   }
   return { valid: true, errors, tokens, rendered, renderedLength: rendered.length, then };
 }

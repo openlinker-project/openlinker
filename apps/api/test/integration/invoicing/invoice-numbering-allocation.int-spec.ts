@@ -161,6 +161,57 @@ describe('invoice numbering allocation (integration)', () => {
     expect(after.nextSeq).toBe(2);
   });
 
+  it('resets the sequence to 1 on a daily period rollover inside the atomic statement (#1692)', async () => {
+    const series = await createSeries({
+      pattern: 'FV/{seq}/{DD}/{MM}/{YYYY}',
+      resetPolicy: 'daily',
+      nextSeq: 5,
+      periodKey: '2026-06-30',
+    });
+    const day1Record = await createRecord('ol_order_day1');
+    const day2Record = await createRecord('ol_order_day2');
+
+    const day1 = await repo.allocateNumber({
+      seriesId: series.id,
+      recordId: day1Record.id,
+      connectionId: CONNECTION_ID,
+      issueDate: new Date('2026-06-30T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
+    });
+    const day2 = await repo.allocateNumber({
+      seriesId: series.id,
+      recordId: day2Record.id,
+      connectionId: CONNECTION_ID,
+      issueDate: new Date('2026-07-01T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
+    });
+
+    expect(day1.documentNumber).toBe('FV/0005/30/06/2026');
+    expect(day2.documentNumber).toBe('FV/0001/01/07/2026');
+    const after = await seriesRepo.findOneByOrFail({ id: series.id });
+    expect(after.periodKey).toBe('2026-07-01');
+    expect(after.nextSeq).toBe(2);
+  });
+
+  it('renders {FY} from a non-January fiscalYearStartMonth (#1692)', async () => {
+    // Fiscal year starts in July; a June 2026 issue belongs to the fiscal year
+    // that started July 2025 → {FY} label 2025.
+    const series = await createSeries({
+      pattern: 'FV/{seq}/{FY}',
+      resetPolicy: 'none',
+      fiscalYearStartMonth: 7,
+    });
+    const record = await createRecord('ol_order_fy');
+    const result = await repo.allocateNumber({
+      seriesId: series.id,
+      recordId: record.id,
+      connectionId: CONNECTION_ID,
+      issueDate: new Date('2026-06-15T10:00:00.000Z'),
+      timeZone: 'Europe/Warsaw',
+    });
+    expect(result.documentNumber).toBe('FV/0001/2025');
+  });
+
   it('rejects a re-rendered number (nextSeq rollback) with DuplicateDocumentNumberException', async () => {
     const series = await createSeries();
     const first = await createRecord('ol_order_dup_1');

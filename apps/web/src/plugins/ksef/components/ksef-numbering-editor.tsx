@@ -35,6 +35,7 @@ import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { KsefNumberingPreview } from './ksef-numbering-preview';
 import {
   DOCUMENT_TYPE_LABELS,
+  FISCAL_YEAR_START_MONTHS,
   NUMBERING_VARIABLE_CHIPS,
   RESET_POLICY_LABELS,
 } from './ksef-numbering.lib';
@@ -158,6 +159,10 @@ export function KsefNumberingEditor({
     series !== undefined &&
     series.nextSeq > 1 &&
     values.pattern.trim() !== series.pattern.trim();
+
+  // The fiscal-year start only affects the {FY} variable, so the picker only
+  // appears when the pattern actually uses it.
+  const usesFiscalYear = values.pattern.includes('{FY}');
 
   const onSubmit = form.handleSubmit(async (submitted) => {
     setTopLevelError(null);
@@ -292,6 +297,23 @@ export function KsefNumberingEditor({
           </Select>
         </FormField>
 
+        {usesFiscalYear ? (
+          <FormField
+            label="Fiscal year starts in"
+            name="fiscalYearStartMonth"
+            description="Governs the {FY} variable. A fiscal year is labelled by the calendar year it starts in; leave at January for {FY} = calendar year."
+            error={errors.fiscalYearStartMonth?.message}
+          >
+            <Select {...form.register('fiscalYearStartMonth')}>
+              {FISCAL_YEAR_START_MONTHS.map((month) => (
+                <option key={month.value} value={String(month.value)}>
+                  {month.label}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        ) : null}
+
         <div className="numbering-editor__row">
           <FormField
             label="Padding"
@@ -335,6 +357,7 @@ export function KsefNumberingEditor({
           nextSeq={values.nextSeq}
           seqPadding={values.seqPadding}
           resetPolicy={values.resetPolicy}
+          fiscalYearStartMonth={values.fiscalYearStartMonth}
         />
       </div>
     </div>

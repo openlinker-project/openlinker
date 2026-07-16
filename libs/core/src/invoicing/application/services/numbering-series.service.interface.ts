@@ -15,6 +15,7 @@
 import type { InvoiceNumberingSeries } from '../../domain/entities/invoice-numbering-series.entity';
 import type {
   CreateNumberingSeriesServiceInput,
+  DeleteSeriesRouteInput,
   ListNumberingSeriesFilter,
   SeriesRouteData,
   UpdateNumberingSeriesServiceInput,
@@ -57,14 +58,19 @@ export interface INumberingSeriesService {
   findRoutesByConnectionId(connectionId: string): Promise<SeriesRouteData[]>;
 
   /**
-   * Create or replace a routing rule keyed by `(connectionId, documentType,
-   * register)`. Callers must ensure the referenced series exists (see
-   * {@link seriesExists}) — this is a detachable pointer, never a cascade.
+   * Create or replace a routing rule keyed by the full tuple
+   * `(connectionId, documentType, register, currency, source)` (#1694). Callers
+   * must ensure the referenced series exists (see {@link seriesExists}) — this
+   * is a detachable pointer, never a cascade.
    */
   upsertRoute(input: UpsertSeriesRouteInput): Promise<SeriesRouteData>;
 
   /** Remove a routing rule (the referenced series survives). No-op when absent. */
-  deleteRoute(connectionId: string, documentType: string, register: string | null): Promise<void>;
+  deleteRoute(
+    connectionId: string,
+    documentType: string,
+    axes: DeleteSeriesRouteInput,
+  ): Promise<void>;
 
   /** Whether a series with the given id exists — backs the routing 400-on-unknown guard. */
   seriesExists(id: string): Promise<boolean>;
