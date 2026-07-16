@@ -86,5 +86,7 @@ export { PaymentStatusRefreshOutcomeValues } from './application/services/paymen
 export { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 export type { INumberingAuditService } from './application/services/numbering-audit.service.interface';
 export { NumberingAuditService } from './application/services/numbering-audit.service';
+export type { INumberingSeriesService } from './application/services/numbering-series.service.interface';
+export { NumberingSeriesService } from './application/services/numbering-series.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';

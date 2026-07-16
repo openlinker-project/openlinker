@@ -29,6 +29,7 @@ import { AutoIssueTriggerService } from './application/services/auto-issue-trigg
 import { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
 import { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
 import { NumberingAuditService } from './application/services/numbering-audit.service';
+import { NumberingSeriesService } from './application/services/numbering-series.service';
 import {
   INVOICE_RECORD_REPOSITORY_TOKEN,
   INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
@@ -38,6 +39,7 @@ import {
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
+  NUMBERING_SERIES_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 export {
@@ -49,6 +51,7 @@ export {
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
   NUMBERING_AUDIT_SERVICE_TOKEN,
+  NUMBERING_SERIES_SERVICE_TOKEN,
 } from './invoicing.tokens';
 
 @Module({
@@ -112,6 +115,11 @@ export {
       provide: NUMBERING_AUDIT_SERVICE_TOKEN,
       useExisting: NumberingAuditService,
     },
+    NumberingSeriesService,
+    {
+      provide: NUMBERING_SERIES_SERVICE_TOKEN,
+      useExisting: NumberingSeriesService,
+    },
   ],
   // Export BOTH the token and the provider so OrdersModule (which imports this
   // module) can inject the trigger service by token (F2/F3). The reconciliation
@@ -131,6 +139,9 @@ export {
     // Exported so the C2/W3 API layer can inject the gap-audit read model (#8).
     NUMBERING_AUDIT_SERVICE_TOKEN,
     INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN,
+    // Exported so the W3 API layer can inject the series/routing service (#9/#10)
+    // instead of the repository port (cross-context contract).
+    NUMBERING_SERIES_SERVICE_TOKEN,
   ],
 })
 export class InvoicingModule {}

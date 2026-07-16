@@ -11,10 +11,19 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
-import { ResetPolicyValues } from '@openlinker/core/invoicing';
-// Value import (not `import type`): the property type feeds decorator metadata.
-import { ResetPolicy } from '@openlinker/core/invoicing';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { DocumentTypeValues, ResetPolicyValues } from '@openlinker/core/invoicing';
+// Value imports (not `import type`): the property types feed decorator metadata.
+import { DocumentType, ResetPolicy } from '@openlinker/core/invoicing';
 
 export class UpdateNumberingSeriesRequestDto {
   @ApiPropertyOptional({ description: 'Human-readable series name', example: 'Sales invoices 2026' })
@@ -49,4 +58,23 @@ export class UpdateNumberingSeriesRequestDto {
   @IsOptional()
   @IsIn(ResetPolicyValues)
   resetPolicy?: ResetPolicy;
+
+  @ApiPropertyOptional({
+    description: 'Neutral document type this series numbers (invoice / corrected / …)',
+    enum: DocumentTypeValues,
+  })
+  @IsOptional()
+  @IsIn(DocumentTypeValues)
+  documentType?: DocumentType;
+
+  @ApiPropertyOptional({
+    description: 'Neutral register / entity scope; null = the register-less default.',
+    nullable: true,
+    type: String,
+  })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @IsNotEmpty()
+  register?: string | null;
 }

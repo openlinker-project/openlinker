@@ -1,10 +1,11 @@
 /**
- * NumberingSeriesController unit tests (#1576, C2)
+ * NumberingSeriesController unit tests (#9 / #10 / #8)
  *
- * Covers series CRUD (DTO-independent behaviour: validation delegation, error
- * mapping, periodKey seeding), connection assignment (attach/detach/read,
- * referenced-series validation), the orphaned-series list (last-issued
- * derivation), and role-guard metadata. The repository port is mocked — no DB.
+ * Covers series CRUD (delegation + error mapping), per-document-type routing
+ * (list / upsert-with-unknown-series guard / detach), the orphaned-series list
+ * (last-issued derivation), and the gap-audit surface (audit read + gap-note
+ * explain). Both core application services are mocked — no DB, no domain logic in
+ * the controller.
  *
  * @module apps/api/src/invoicing/http
  */
@@ -13,19 +14,26 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import 'reflect-metadata';
 import {
   DuplicateDocumentNumberException,
-  INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN,
+  InvalidNumberingPatternException,
   InvoiceNumberingSeries,
   InvoiceNumberingSeriesNotFoundException,
-  computePeriodKey,
+  NUMBERING_AUDIT_SERVICE_TOKEN,
+  NUMBERING_SERIES_SERVICE_TOKEN,
+  NumberingGapNoteReasonRequiredException,
 } from '@openlinker/core/invoicing';
 import type {
-  InvoiceNumberingSeriesRepositoryPort,
+  INumberingAuditService,
+  INumberingSeriesService,
+  NumberingGapNoteData,
+  SeriesAudit,
   SeriesRouteData,
 } from '@openlinker/core/invoicing';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 import { NumberingSeriesController } from './numbering-series.controller';
 
 const NOW = new Date('2026-06-23T10:00:00.000Z');
+const ADMIN: AuthenticatedUser = { id: 'user-1', username: 'admin', role: 'admin' };
 
 function seriesFixture(overrides: Partial<InvoiceNumberingSeries> = {}): InvoiceNumberingSeries {
   return new InvoiceNumberingSeries(
@@ -54,97 +62,167 @@ function routeFixture(overrides: Partial<SeriesRouteData> = {}): SeriesRouteData
   };
 }
 
+function gapNoteFixture(overrides: Partial<NumberingGapNoteData> = {}): NumberingGapNoteData {
+  return {
+    id: overrides.id ?? 'note-1',
+    seriesId: overrides.seriesId ?? '11111111-1111-4111-8111-111111111111',
+    seq: overrides.seq ?? 42,
+    documentNumber: overrides.documentNumber ?? 'FV/2026/00042',
+    reason: overrides.reason ?? 'Abandoned draft',
+    actorUserId: overrides.actorUserId ?? 'user-1',
+    createdAt: overrides.createdAt ?? NOW,
+    updatedAt: overrides.updatedAt ?? NOW,
+  };
+}
+
+function auditFixture(overrides: Partial<SeriesAudit> = {}): SeriesAudit {
+  return {
+    seriesId: overrides.seriesId ?? '11111111-1111-4111-8111-111111111111',
+    seriesName: overrides.seriesName ?? 'Sales invoices 2026',
+    skippedInferenceApplied: overrides.skippedInferenceApplied ?? true,
+    summary: overrides.summary ?? {
+      issuedCount: 2,
+      pendingCount: 0,
+      abandonedCount: 1,
+      skippedCount: 1,
+      gapCount: 2,
+      explainedGapCount: 1,
+    },
+    entries: overrides.entries ?? [
+      {
+        seq: 3,
+        status: 'abandoned',
+        isGap: true,
+        documentNumber: 'FV/2026/00003',
+        recordId: 'rec-3',
+        orderId: 'ord-3',
+        issuedAt: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+        note: gapNoteFixture({ seq: 3 }),
+      },
+      {
+        seq: 4,
+        status: 'skipped',
+        isGap: true,
+        documentNumber: null,
+        recordId: null,
+        orderId: null,
+        issuedAt: null,
+        createdAt: null,
+        updatedAt: null,
+        note: null,
+      },
+    ],
+  };
+}
+
 describe('NumberingSeriesController', () => {
   let controller: NumberingSeriesController;
-  let repository: jest.Mocked<InvoiceNumberingSeriesRepositoryPort>;
+  let seriesService: jest.Mocked<INumberingSeriesService>;
+  let auditService: jest.Mocked<INumberingAuditService>;
 
   beforeEach(async () => {
-    repository = {
+    seriesService = {
       createSeries: jest.fn(),
-      findSeriesById: jest.fn(),
+      getSeries: jest.fn(),
       listSeries: jest.fn(),
       listUnassignedSeries: jest.fn(),
       updateSeries: jest.fn(),
-      findSeriesIdForDocument: jest.fn(),
       findRoutesByConnectionId: jest.fn(),
       upsertRoute: jest.fn(),
       deleteRoute: jest.fn(),
-      allocateNumber: jest.fn(),
+      seriesExists: jest.fn(),
+    };
+    auditService = {
+      getSeriesAudit: jest.fn(),
+      recordGapNote: jest.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [NumberingSeriesController],
-      providers: [{ provide: INVOICE_NUMBERING_SERIES_REPOSITORY_TOKEN, useValue: repository }],
+      providers: [
+        { provide: NUMBERING_SERIES_SERVICE_TOKEN, useValue: seriesService },
+        { provide: NUMBERING_AUDIT_SERVICE_TOKEN, useValue: auditService },
+      ],
     }).compile();
 
     controller = moduleRef.get(NumberingSeriesController);
   });
 
   describe('createSeries', () => {
-    it('should create a series and seed periodKey via computePeriodKey when the pattern is valid', async () => {
-      const created = seriesFixture();
-      repository.createSeries.mockResolvedValue(created);
-
+    it('should delegate to the service with documentType + register and map the response', async () => {
+      seriesService.createSeries.mockResolvedValue(
+        seriesFixture({ documentType: 'corrected', register: 'BR1' }),
+      );
       const result = await controller.createSeries({
         name: 'Sales invoices 2026',
         pattern: 'FV/{YYYY}/{seq}',
         nextSeq: 1,
         seqPadding: 5,
         resetPolicy: 'yearly',
+        documentType: 'corrected',
+        register: 'BR1',
       });
-
-      const [input] = repository.createSeries.mock.calls[0];
-      expect(input.periodKey).toBe(computePeriodKey('yearly', new Date()));
-      expect(input.periodKey).not.toBe('');
-      expect(result.id).toBe(created.id);
+      expect(seriesService.createSeries).toHaveBeenCalledWith({
+        name: 'Sales invoices 2026',
+        pattern: 'FV/{YYYY}/{seq}',
+        nextSeq: 1,
+        seqPadding: 5,
+        resetPolicy: 'yearly',
+        documentType: 'corrected',
+        register: 'BR1',
+      });
+      expect(result.documentType).toBe('corrected');
+      expect(result.register).toBe('BR1');
       expect(result.createdAt).toBe(NOW.toISOString());
     });
 
-    it('should return 400 with the issue list when the pattern is invalid', async () => {
+    it('should map InvalidNumberingPatternException to a 400 with the issue list', async () => {
+      seriesService.createSeries.mockRejectedValue(
+        new InvalidNumberingPatternException(['Pattern must contain the {seq} variable.']),
+      );
       await expect(
         controller.createSeries({
           name: 'Bad',
-          pattern: 'FV/{YYYY}', // missing {seq}
+          pattern: 'FV/{YYYY}',
           nextSeq: 1,
           seqPadding: 0,
           resetPolicy: 'yearly',
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.createSeries).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 when the reset policy is not covered by the pattern', async () => {
-      await expect(
-        controller.createSeries({
-          name: 'Monthly no month',
-          pattern: 'FV/{YYYY}/{seq}', // monthly needs {MM}
-          nextSeq: 1,
-          seqPadding: 0,
-          resetPolicy: 'monthly',
+          documentType: 'invoice',
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('listSeries', () => {
-    it('should map all series to response DTOs', async () => {
-      repository.listSeries.mockResolvedValue([seriesFixture()]);
+    it('should pass a documentType/register filter through to the service', async () => {
+      seriesService.listSeries.mockResolvedValue([seriesFixture()]);
+      await controller.listSeries('invoice', 'BR1');
+      expect(seriesService.listSeries).toHaveBeenCalledWith({
+        documentType: 'invoice',
+        register: 'BR1',
+      });
+    });
+
+    it('should call the service with no filter when no query params are given', async () => {
+      seriesService.listSeries.mockResolvedValue([seriesFixture()]);
       const result = await controller.listSeries();
+      expect(seriesService.listSeries).toHaveBeenCalledWith(undefined);
       expect(result).toHaveLength(1);
-      expect(result[0].pattern).toBe('FV/{YYYY}/{seq}');
     });
   });
 
   describe('listUnassignedSeries', () => {
     it('should derive lastIssuedSeq and a rendered preview when numbers were issued', async () => {
-      repository.listUnassignedSeries.mockResolvedValue([seriesFixture({ nextSeq: 43 })]);
+      seriesService.listUnassignedSeries.mockResolvedValue([seriesFixture({ nextSeq: 43 })]);
       const result = await controller.listUnassignedSeries();
       expect(result[0].lastIssuedSeq).toBe(42);
       expect(result[0].lastIssuedNumberPreview).toBe('FV/2026/00042');
     });
 
     it('should return null last-issued fields when nothing has been issued (nextSeq=1)', async () => {
-      repository.listUnassignedSeries.mockResolvedValue([seriesFixture({ nextSeq: 1 })]);
+      seriesService.listUnassignedSeries.mockResolvedValue([seriesFixture({ nextSeq: 1 })]);
       const result = await controller.listUnassignedSeries();
       expect(result[0].lastIssuedSeq).toBeNull();
       expect(result[0].lastIssuedNumberPreview).toBeNull();
@@ -153,61 +231,32 @@ describe('NumberingSeriesController', () => {
 
   describe('getSeries', () => {
     it('should return the series when found', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
+      seriesService.getSeries.mockResolvedValue(seriesFixture());
       const result = await controller.getSeries('11111111-1111-4111-8111-111111111111');
       expect(result.id).toBe('11111111-1111-4111-8111-111111111111');
     });
 
     it('should throw 404 when not found', async () => {
-      repository.findSeriesById.mockResolvedValue(null);
+      seriesService.getSeries.mockResolvedValue(null);
       await expect(controller.getSeries('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
   describe('updateSeries', () => {
-    it('should throw 404 when the series does not exist', async () => {
-      repository.findSeriesById.mockResolvedValue(null);
-      await expect(controller.updateSeries('missing', { name: 'x' })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
-      expect(repository.updateSeries).not.toHaveBeenCalled();
-    });
-
-    it('should apply a name-only patch without re-validating the pattern', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.updateSeries.mockResolvedValue(seriesFixture({ name: 'Renamed' }));
+    it('should delegate the patch to the service and map the response', async () => {
+      seriesService.updateSeries.mockResolvedValue(seriesFixture({ name: 'Renamed' }));
       const result = await controller.updateSeries('11111111-1111-4111-8111-111111111111', {
         name: 'Renamed',
       });
-      expect(repository.updateSeries).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', {
-        name: 'Renamed',
-      });
+      expect(seriesService.updateSeries).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        expect.objectContaining({ name: 'Renamed' }),
+      );
       expect(result.name).toBe('Renamed');
     });
 
-    it('should re-validate the merged pattern + reset policy and 400 on an incompatible pair', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture({ resetPolicy: 'yearly' }));
-      await expect(
-        controller.updateSeries('11111111-1111-4111-8111-111111111111', { resetPolicy: 'monthly' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.updateSeries).not.toHaveBeenCalled();
-    });
-
-    it('should re-seed periodKey when the reset policy changes to a valid coverage', async () => {
-      repository.findSeriesById.mockResolvedValue(
-        seriesFixture({ pattern: 'FV/{YYYY}/{MM}/{seq}', resetPolicy: 'yearly' }),
-      );
-      repository.updateSeries.mockResolvedValue(seriesFixture());
-      await controller.updateSeries('11111111-1111-4111-8111-111111111111', {
-        resetPolicy: 'monthly',
-      });
-      const [, patch] = repository.updateSeries.mock.calls[0];
-      expect(patch.periodKey).toBe(computePeriodKey('monthly', new Date()));
-    });
-
-    it('should map InvoiceNumberingSeriesNotFoundException from the repo to 404', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.updateSeries.mockRejectedValue(
+    it('should map InvoiceNumberingSeriesNotFoundException to 404', async () => {
+      seriesService.updateSeries.mockRejectedValue(
         new InvoiceNumberingSeriesNotFoundException('11111111-1111-4111-8111-111111111111'),
       );
       await expect(
@@ -215,106 +264,163 @@ describe('NumberingSeriesController', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('should map DuplicateDocumentNumberException from the repo to 409', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.updateSeries.mockRejectedValue(new DuplicateDocumentNumberException('conn-1', 'FV/2026/1'));
+    it('should map InvalidNumberingPatternException to 400', async () => {
+      seriesService.updateSeries.mockRejectedValue(
+        new InvalidNumberingPatternException(['bad']),
+      );
+      await expect(
+        controller.updateSeries('11111111-1111-4111-8111-111111111111', { resetPolicy: 'monthly' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should map DuplicateDocumentNumberException to 409', async () => {
+      seriesService.updateSeries.mockRejectedValue(
+        new DuplicateDocumentNumberException('conn-1', 'FV/2026/1'),
+      );
       await expect(
         controller.updateSeries('11111111-1111-4111-8111-111111111111', { nextSeq: 1 }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
-  describe('getAssignment', () => {
-    it('should return the assignment when configured', async () => {
-      repository.findRoutesByConnectionId.mockResolvedValue([routeFixture()]);
-      const result = await controller.getAssignment('conn-1');
-      expect(result.connectionId).toBe('conn-1');
-      expect(result.mainSeriesId).toBe('11111111-1111-4111-8111-111111111111');
-      expect(result.correctionSeriesId).toBeNull();
-    });
-
-    it('should project the corrected route onto correctionSeriesId', async () => {
-      repository.findRoutesByConnectionId.mockResolvedValue([
+  describe('listRoutes', () => {
+    it('should map the connection routes to response DTOs', async () => {
+      seriesService.findRoutesByConnectionId.mockResolvedValue([
         routeFixture(),
-        routeFixture({ documentType: 'corrected', seriesId: '22222222-2222-4222-8222-222222222222' }),
+        routeFixture({ documentType: 'corrected', register: 'BR1' }),
       ]);
-      const result = await controller.getAssignment('conn-1');
-      expect(result.correctionSeriesId).toBe('22222222-2222-4222-8222-222222222222');
-    });
-
-    it('should throw 404 when the connection has no invoice route', async () => {
-      repository.findRoutesByConnectionId.mockResolvedValue([]);
-      await expect(controller.getAssignment('conn-1')).rejects.toBeInstanceOf(NotFoundException);
+      const result = await controller.listRoutes('conn-1');
+      expect(result).toHaveLength(2);
+      expect(result[1].documentType).toBe('corrected');
+      expect(result[1].register).toBe('BR1');
+      expect(result[0].createdAt).toBe(NOW.toISOString());
     });
   });
 
-  describe('setAssignment', () => {
-    it('should upsert the invoice route and detach corrected when no correction is given', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.upsertRoute.mockResolvedValue(routeFixture());
-      const result = await controller.setAssignment('conn-1', {
-        mainSeriesId: '11111111-1111-4111-8111-111111111111',
-      });
-      expect(repository.upsertRoute).toHaveBeenCalledWith({
-        connectionId: 'conn-1',
-        documentType: 'invoice',
-        register: null,
+  describe('upsertRoute', () => {
+    it('should upsert the route when the referenced series exists', async () => {
+      seriesService.seriesExists.mockResolvedValue(true);
+      seriesService.upsertRoute.mockResolvedValue(routeFixture({ documentType: 'corrected' }));
+      const result = await controller.upsertRoute('conn-1', {
+        documentType: 'corrected',
         seriesId: '11111111-1111-4111-8111-111111111111',
       });
-      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
-      expect(result.connectionId).toBe('conn-1');
-      expect(result.correctionSeriesId).toBeNull();
-    });
-
-    it('should upsert both routes when a correction series is given', async () => {
-      repository.findSeriesById.mockResolvedValue(seriesFixture());
-      repository.upsertRoute.mockResolvedValue(routeFixture());
-      const result = await controller.setAssignment('conn-1', {
-        mainSeriesId: '11111111-1111-4111-8111-111111111111',
-        correctionSeriesId: '22222222-2222-4222-8222-222222222222',
-      });
-      expect(repository.upsertRoute).toHaveBeenCalledWith({
+      expect(seriesService.upsertRoute).toHaveBeenCalledWith({
         connectionId: 'conn-1',
         documentType: 'corrected',
         register: null,
-        seriesId: '22222222-2222-4222-8222-222222222222',
+        seriesId: '11111111-1111-4111-8111-111111111111',
       });
-      expect(repository.deleteRoute).not.toHaveBeenCalled();
-      expect(result.correctionSeriesId).toBe('22222222-2222-4222-8222-222222222222');
+      expect(result.documentType).toBe('corrected');
     });
 
-    it('should validate the correction series exists when provided', async () => {
-      repository.findSeriesById
-        .mockResolvedValueOnce(seriesFixture()) // main
-        .mockResolvedValueOnce(null); // correction missing
+    it('should pass the register scope through', async () => {
+      seriesService.seriesExists.mockResolvedValue(true);
+      seriesService.upsertRoute.mockResolvedValue(routeFixture({ register: 'BR1' }));
+      await controller.upsertRoute('conn-1', {
+        documentType: 'invoice',
+        register: 'BR1',
+        seriesId: '11111111-1111-4111-8111-111111111111',
+      });
+      expect(seriesService.upsertRoute).toHaveBeenCalledWith(
+        expect.objectContaining({ register: 'BR1' }),
+      );
+    });
+
+    it('should 400 when the referenced series does not exist', async () => {
+      seriesService.seriesExists.mockResolvedValue(false);
       await expect(
-        controller.setAssignment('conn-1', {
-          mainSeriesId: '11111111-1111-4111-8111-111111111111',
-          correctionSeriesId: '22222222-2222-4222-8222-222222222222',
+        controller.upsertRoute('conn-1', {
+          documentType: 'invoice',
+          seriesId: 'missing',
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(repository.upsertRoute).not.toHaveBeenCalled();
-    });
-
-    it('should 400 when the main series does not exist', async () => {
-      repository.findSeriesById.mockResolvedValue(null);
-      await expect(
-        controller.setAssignment('conn-1', { mainSeriesId: 'missing' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(seriesService.upsertRoute).not.toHaveBeenCalled();
     });
   });
 
-  describe('detachAssignment', () => {
-    it('should delete both register-less default routes (no-op safe)', async () => {
-      repository.deleteRoute.mockResolvedValue(undefined);
-      await controller.detachAssignment('conn-1');
-      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'invoice', null);
-      expect(repository.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
+  describe('deleteRoute', () => {
+    it('should detach the route (no-op safe)', async () => {
+      seriesService.deleteRoute.mockResolvedValue(undefined);
+      await controller.deleteRoute('conn-1', { documentType: 'corrected' });
+      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
+    });
+
+    it('should pass the register scope through', async () => {
+      seriesService.deleteRoute.mockResolvedValue(undefined);
+      await controller.deleteRoute('conn-1', { documentType: 'invoice', register: 'BR1' });
+      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'invoice', 'BR1');
+    });
+  });
+
+  describe('getSeriesAudit', () => {
+    it('should return the audit read model with dates projected to ISO strings', async () => {
+      auditService.getSeriesAudit.mockResolvedValue(auditFixture());
+      const result = await controller.getSeriesAudit('11111111-1111-4111-8111-111111111111');
+      expect(auditService.getSeriesAudit).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        { onlyGaps: false },
+      );
+      expect(result.summary.gapCount).toBe(2);
+      expect(result.entries[0].createdAt).toBe(NOW.toISOString());
+      expect(result.entries[0].note?.reason).toBe('Abandoned draft');
+      expect(result.entries[1].createdAt).toBeNull();
+    });
+
+    it('should pass onlyGaps=true when the query flag is set', async () => {
+      auditService.getSeriesAudit.mockResolvedValue(auditFixture());
+      await controller.getSeriesAudit('11111111-1111-4111-8111-111111111111', 'true');
+      expect(auditService.getSeriesAudit).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        { onlyGaps: true },
+      );
+    });
+
+    it('should map InvoiceNumberingSeriesNotFoundException to 404', async () => {
+      auditService.getSeriesAudit.mockRejectedValue(
+        new InvoiceNumberingSeriesNotFoundException('missing'),
+      );
+      await expect(
+        controller.getSeriesAudit('11111111-1111-4111-8111-111111111111'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('recordGapNote', () => {
+    it('should record the explanation with the current user as actor', async () => {
+      auditService.recordGapNote.mockResolvedValue(gapNoteFixture());
+      const result = await controller.recordGapNote(
+        '11111111-1111-4111-8111-111111111111',
+        { seq: 42, reason: 'Abandoned draft' },
+        ADMIN,
+      );
+      expect(auditService.recordGapNote).toHaveBeenCalledWith({
+        seriesId: '11111111-1111-4111-8111-111111111111',
+        seq: 42,
+        documentNumber: null,
+        reason: 'Abandoned draft',
+        actorUserId: 'user-1',
+      });
+      expect(result.seq).toBe(42);
+      expect(result.actorUserId).toBe('user-1');
+    });
+
+    it('should map NumberingGapNoteReasonRequiredException to 400', async () => {
+      auditService.recordGapNote.mockRejectedValue(
+        new NumberingGapNoteReasonRequiredException('11111111-1111-4111-8111-111111111111', 42),
+      );
+      await expect(
+        controller.recordGapNote(
+          '11111111-1111-4111-8111-111111111111',
+          { seq: 42, reason: '   ' },
+          ADMIN,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('role guards', () => {
-    it('should gate all write endpoints behind @Roles(admin) and leave reads open', () => {
+    it('should gate write endpoints behind @Roles(admin) and leave reads open', () => {
       const admin = (method: string): unknown =>
         Reflect.getMetadata(
           ROLES_KEY,
@@ -322,12 +428,14 @@ describe('NumberingSeriesController', () => {
         ) as unknown;
       expect(admin('createSeries')).toEqual(['admin']);
       expect(admin('updateSeries')).toEqual(['admin']);
-      expect(admin('setAssignment')).toEqual(['admin']);
-      expect(admin('detachAssignment')).toEqual(['admin']);
+      expect(admin('upsertRoute')).toEqual(['admin']);
+      expect(admin('deleteRoute')).toEqual(['admin']);
+      expect(admin('recordGapNote')).toEqual(['admin']);
       expect(admin('listSeries')).toBeUndefined();
       expect(admin('getSeries')).toBeUndefined();
       expect(admin('listUnassignedSeries')).toBeUndefined();
-      expect(admin('getAssignment')).toBeUndefined();
+      expect(admin('listRoutes')).toBeUndefined();
+      expect(admin('getSeriesAudit')).toBeUndefined();
     });
   });
 });

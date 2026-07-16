@@ -8,7 +8,7 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { ResetPolicyValues } from '@openlinker/core/invoicing';
+import { DocumentTypeValues, ResetPolicyValues } from '@openlinker/core/invoicing';
 // Value import (not `import type`): the property type feeds decorator metadata.
 import { ResetPolicy } from '@openlinker/core/invoicing';
 
@@ -30,6 +30,16 @@ export class NumberingSeriesResponseDto {
 
   @ApiProperty({ description: 'Reset cadence of the sequence counter', enum: ResetPolicyValues })
   resetPolicy!: ResetPolicy;
+
+  @ApiProperty({ description: 'Neutral document type this series numbers (open-world)', enum: DocumentTypeValues })
+  documentType!: string;
+
+  @ApiProperty({
+    description: 'Neutral register / entity scope; null = the register-less default',
+    nullable: true,
+    type: String,
+  })
+  register!: string | null;
 
   @ApiProperty({ description: 'Opaque marker of the period nextSeq belongs to (empty for none)' })
   periodKey!: string;

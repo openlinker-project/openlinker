@@ -139,6 +139,37 @@ export interface UpdateInvoiceNumberingSeriesInput {
   register?: string | null;
 }
 
+/**
+ * Service-facing create input (#9/#10). Unlike {@link CreateInvoiceNumberingSeriesInput}
+ * (the persistence contract) the caller does NOT supply `periodKey` — the
+ * `INumberingSeriesService` seeds it from the reset policy — and `documentType`
+ * is optional (defaults to {@link DEFAULT_NUMBERING_DOCUMENT_TYPE}).
+ */
+export interface CreateNumberingSeriesServiceInput {
+  name: string;
+  pattern: string;
+  nextSeq: number;
+  seqPadding: number;
+  resetPolicy: ResetPolicy;
+  documentType?: string;
+  register?: string | null;
+}
+
+/**
+ * Service-facing update patch (#9/#10): the mutable subset a caller may edit,
+ * minus `periodKey` — the service re-seeds that itself on a reset-policy change.
+ */
+export type UpdateNumberingSeriesServiceInput = Omit<UpdateInvoiceNumberingSeriesInput, 'periodKey'>;
+
+/**
+ * Optional filter for {@link INumberingSeriesService.listSeries} (#10). An absent
+ * field is not filtered on; `register: null` selects register-less default series.
+ */
+export interface ListNumberingSeriesFilter {
+  documentType?: string;
+  register?: string | null;
+}
+
 /** Input to render one document number from a series' pattern. */
 export interface NumberRenderContext {
   /** The allocated sequence number (pre-padding). */

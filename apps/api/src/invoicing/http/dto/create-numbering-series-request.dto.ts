@@ -9,11 +9,20 @@
  *
  * @module apps/api/src/invoicing/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
-import { ResetPolicyValues } from '@openlinker/core/invoicing';
-// Value import (not `import type`): the property type feeds decorator metadata.
-import { ResetPolicy } from '@openlinker/core/invoicing';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { DocumentTypeValues, ResetPolicyValues } from '@openlinker/core/invoicing';
+// Value imports (not `import type`): the property types feed decorator metadata.
+import { DocumentType, ResetPolicy } from '@openlinker/core/invoicing';
 
 export class CreateNumberingSeriesRequestDto {
   @ApiProperty({ description: 'Human-readable series name', example: 'Sales invoices 2026' })
@@ -22,7 +31,7 @@ export class CreateNumberingSeriesRequestDto {
   name!: string;
 
   @ApiProperty({
-    description: 'Number pattern of positional variables ({seq}, {YYYY}, {YY}, {MM}, {QQ})',
+    description: 'Number pattern of positional variables ({seq}, {YYYY}, {YY}, {MM}, {QQ}, {DD}, {FY})',
     example: 'FV/{YYYY}/{seq}',
   })
   @IsString()
@@ -43,4 +52,26 @@ export class CreateNumberingSeriesRequestDto {
   @ApiProperty({ description: 'Reset cadence of the sequence counter', enum: ResetPolicyValues })
   @IsIn(ResetPolicyValues)
   resetPolicy!: ResetPolicy;
+
+  @ApiProperty({
+    description: 'Neutral document type this series numbers (invoice / corrected / …)',
+    enum: DocumentTypeValues,
+    example: 'invoice',
+  })
+  @IsIn(DocumentTypeValues)
+  documentType!: DocumentType;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional neutral register / entity scope segmenting a connection into ' +
+      'parallel series for the same document type. null = the register-less default.',
+    nullable: true,
+    type: String,
+  })
+  @IsOptional()
+  // Allow an explicit null (register-less default); otherwise require a non-empty string.
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @IsNotEmpty()
+  register?: string | null;
 }

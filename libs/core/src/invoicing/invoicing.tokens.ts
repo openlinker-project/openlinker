@@ -47,3 +47,11 @@ export const INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN = Symbol(
 
 /** Binding token for the {@link INumberingAuditService} gap-audit read model (#8). */
 export const NUMBERING_AUDIT_SERVICE_TOKEN = Symbol('INumberingAuditService');
+
+/**
+ * Binding token for the {@link INumberingSeriesService} application service (#9/#10).
+ * The API layer injects this instead of the repository port directly, keeping the
+ * cross-context contract to an `I*Service` seam (pattern validation + periodKey
+ * seeding live behind it, never in the controller).
+ */
+export const NUMBERING_SERIES_SERVICE_TOKEN = Symbol('INumberingSeriesService');
