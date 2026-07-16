@@ -242,6 +242,17 @@ describe('Viewer Role Authorization', () => {
         .set('Authorization', `Bearer ${viewerToken}`);
       expect(res.status).not.toBe(403);
     });
+
+    // #1707 — the connection-edit seller-defaults section reads producers from
+    // this Allegro-controller endpoint; it must match the listings sibling so a
+    // non-admin editing a connection isn't 403'd with "Insufficient permissions".
+    it('GET /integrations/allegro/connections/:id/responsible-producers', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .get(`/v1/integrations/allegro/connections/${FAKE_CONNECTION_ID}/responsible-producers`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).not.toBe(403);
+    });
   });
 
   // ─── writes: viewer gets 403 ────────────────────────────────────────────────

@@ -389,7 +389,7 @@ export class AllegroController {
    * created in Allegro's seller panel, not from inside OL), so freshness
    * matters more than latency for a settings page.
    */
-  @Roles('admin')
+  @Roles('admin', 'operator', 'viewer')
   @ApiBearerAuth()
   @Get('connections/:id/responsible-producers')
   @ApiOperation({
