@@ -12,6 +12,88 @@ import { IntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import * as crypto from 'crypto';
 
+const INBOUND_WEBHOOK_STREAM = 'events.inbound.webhooks';
+const WEBHOOK_HANDLER_CONSUMER_GROUP = 'webhook-handler';
+const JOBS_SYNC_STREAM = 'jobs.sync';
+
+type HarnessRedisClient = NonNullable<ReturnType<IntegrationTestHarness['getRedisClient']>>;
+
+/**
+ * Ensure the `webhook-handler` consumer group exists on the inbound stream.
+ *
+ * The `WebhookToJobHandler` creates this group once at app boot, but
+ * `resetTestHarness()` calls `flushDb()` between tests, which drops both the
+ * stream and the group. Recreating it here (idempotently) lets the still-running
+ * handler resume consuming new messages, so a test that runs after the first
+ * `afterEach` reset still exercises the real drain path instead of a dead
+ * consumer loop.
+ */
+async function ensureWebhookConsumerGroup(redisClient: HarnessRedisClient): Promise<void> {
+  try {
+    await redisClient.xGroupCreate(INBOUND_WEBHOOK_STREAM, WEBHOOK_HANDLER_CONSUMER_GROUP, '$', {
+      MKSTREAM: true,
+    });
+  } catch (error) {
+    // BUSYGROUP = group already exists (boot-time creation survived) — fine.
+    if (!(error instanceof Error && error.message.includes('BUSYGROUP'))) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Poll the `jobs.sync` stream until a message with the given idempotency key
+ * appears, or time out. This is the downstream job the `WebhookToJobHandler`
+ * enqueues after consuming + routing an inbound webhook event.
+ */
+async function waitForEnqueuedJob(
+  redisClient: HarnessRedisClient,
+  idempotencyKey: string,
+  timeoutMs = 15000,
+): Promise<Record<string, string> | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const jobs = await redisClient.xRead([{ key: JOBS_SYNC_STREAM, id: '0' }], { COUNT: 100 });
+    const match = jobs?.[0]?.messages.find((msg) => msg.message.idempotencyKey === idempotencyKey);
+    if (match) {
+      return match.message;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return undefined;
+}
+
+interface WebhookDeliveryRow {
+  status: string;
+  downstreamJobType: string | null;
+  downstreamJobId: string | null;
+}
+
+/**
+ * Poll `webhook_deliveries` until the handler upserts the row to
+ * `job_enqueued`, or time out. The handler records the delivery a hair after it
+ * writes `jobs.sync`, so this avoids a race with {@link waitForEnqueuedJob}.
+ */
+async function waitForEnqueuedDelivery(
+  harness: IntegrationTestHarness,
+  connectionId: string,
+  eventId: string,
+  timeoutMs = 5000,
+): Promise<WebhookDeliveryRow | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = (await harness.getDataSource().query(
+      `SELECT status, "downstreamJobType", "downstreamJobId" FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+      ['prestashop', connectionId, eventId],
+    )) as WebhookDeliveryRow[];
+    if (rows[0]?.status === 'job_enqueued') {
+      return rows[0];
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return undefined;
+}
+
 describe('Webhook Ingestion Integration', () => {
   let harness: IntegrationTestHarness;
   const webhookSecret = 'test-secret-key-12345';
@@ -312,6 +394,86 @@ describe('Webhook Ingestion Integration', () => {
         // Should be at most 1 job (idempotency prevents duplicates)
         expect(ourJobs.length).toBeLessThanOrEqual(1);
       }
+    });
+
+    // #1511: representative end-to-end webhook slice. Every other test in this
+    // file stops at "event published to the Redis stream" — none proves the
+    // running `WebhookToJobHandler` consumer (group `webhook-handler`) actually
+    // consumes that event, translates + capability-routes it, and enqueues the
+    // downstream sync job. A webhook that publishes correctly but whose handler
+    // is broken would pass every other assertion here. This drives the full
+    // inbound -> event bus -> job path and asserts the enqueued `jobs.sync`
+    // message. Other providers may follow this pattern later.
+    it('should drain the published event through the WebhookToJobHandler and enqueue the downstream sync job (#1511)', async () => {
+      const redisClient = harness.getRedisClient();
+      if (!redisClient) throw new Error('Redis client not available');
+
+      // `resetTestHarness()` flushed Redis (dropping the boot-time consumer
+      // group) after the previous test — recreate it so the running handler can
+      // consume the event we are about to publish.
+      await ensureWebhookConsumerGroup(redisClient);
+
+      // The order route requires the `OrderSource` capability to be BOTH
+      // supported by the adapter (prestashop manifest advertises it) AND enabled
+      // on the connection (routing-policy gate), else it dead-letters instead of
+      // enqueuing.
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['OrderSource'],
+      });
+
+      const eventId = 'drain-order-event-1511';
+      const externalOrderId = '778899';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'order.created',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'order', externalId: externalOrderId },
+        payload: { id_order: externalOrderId },
+      };
+
+      const rawBody = Buffer.from(JSON.stringify(payload));
+      const timestamp = Date.now().toString();
+      const signature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(timestamp + '.' + rawBody.toString())
+        .digest('hex');
+
+      await harness
+        .getHttp()
+        .post(`/webhooks/prestashop/${connection.id}`)
+        .set('X-OpenLinker-Timestamp', timestamp)
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(payload)
+        .expect(202);
+
+      // The routing policy stamps `{platformType}:{connectionId}:{sourceEventId}`
+      // as the job idempotency key.
+      const expectedIdempotencyKey = `prestashop:${connection.id}:${eventId}`;
+      const jobMessage = await waitForEnqueuedJob(redisClient, expectedIdempotencyKey);
+
+      // The handler consumed the stream event and enqueued the downstream job —
+      // the segment none of the other tests cover.
+      expect(jobMessage).toBeDefined();
+      expect(jobMessage!.jobType).toBe('marketplace.order.sync');
+      expect(jobMessage!.connectionId).toBe(connection.id);
+      const jobPayload = JSON.parse(jobMessage!.payloadJson) as {
+        externalOrderId: string;
+        sourceEventId: string;
+        eventType: string;
+      };
+      expect(jobPayload.externalOrderId).toBe(externalOrderId);
+      expect(jobPayload.sourceEventId).toBe(eventId);
+      expect(jobPayload.eventType).toBe('created');
+
+      // The delivery row also records the handler's enqueue outcome (the handler
+      // upserts status='job_enqueued' with the downstream job type/id).
+      const delivery = await waitForEnqueuedDelivery(harness, connection.id, eventId);
+      expect(delivery).toBeDefined();
+      expect(delivery!.downstreamJobType).toBe('marketplace.order.sync');
+      expect(delivery!.downstreamJobId).not.toBeNull();
     });
 
     // #711: Postgres-authoritative replay protection. Three identical signed
