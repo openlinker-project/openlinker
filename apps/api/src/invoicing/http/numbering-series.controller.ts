@@ -121,6 +121,7 @@ export class NumberingSeriesController {
         resetPolicy: dto.resetPolicy,
         documentType: dto.documentType,
         register: dto.register ?? null,
+        fiscalYearStartMonth: dto.fiscalYearStartMonth,
       });
       return this.toSeriesResponse(created);
     } catch (error) {
@@ -189,6 +190,7 @@ export class NumberingSeriesController {
         resetPolicy: dto.resetPolicy,
         documentType: dto.documentType,
         register: dto.register,
+        fiscalYearStartMonth: dto.fiscalYearStartMonth,
       });
       return this.toSeriesResponse(updated);
     } catch (error) {
@@ -272,6 +274,8 @@ export class NumberingSeriesController {
       connectionId,
       documentType: dto.documentType,
       register: dto.register ?? null,
+      currency: dto.currency ?? null,
+      source: dto.source ?? null,
       seriesId: dto.seriesId,
     });
     return this.toRouteResponse(route);
@@ -286,7 +290,11 @@ export class NumberingSeriesController {
     @Param('connectionId', connectionIdPipe()) connectionId: string,
     @Body() dto: DeleteNumberingRouteRequestDto,
   ): Promise<void> {
-    await this.seriesService.deleteRoute(connectionId, dto.documentType, dto.register ?? null);
+    await this.seriesService.deleteRoute(connectionId, dto.documentType, {
+      register: dto.register ?? null,
+      currency: dto.currency ?? null,
+      source: dto.source ?? null,
+    });
   }
 
   // --- Mapping helpers -------------------------------------------------------
@@ -324,6 +332,7 @@ export class NumberingSeriesController {
       resetPolicy: series.resetPolicy,
       documentType: series.documentType,
       register: series.register,
+      fiscalYearStartMonth: series.fiscalYearStartMonth,
       periodKey: series.periodKey,
       createdAt: series.createdAt.toISOString(),
       updatedAt: series.updatedAt.toISOString(),
@@ -341,6 +350,7 @@ export class NumberingSeriesController {
             seq: lastIssuedSeq,
             seqPadding: series.seqPadding,
             issueDate: series.updatedAt,
+            fiscalYearStartMonth: series.fiscalYearStartMonth,
           });
     return {
       ...this.toSeriesResponse(series),
@@ -354,6 +364,8 @@ export class NumberingSeriesController {
       connectionId: route.connectionId,
       documentType: route.documentType,
       register: route.register,
+      currency: route.currency,
+      source: route.source,
       seriesId: route.seriesId,
       createdAt: route.createdAt.toISOString(),
       updatedAt: route.updatedAt.toISOString(),

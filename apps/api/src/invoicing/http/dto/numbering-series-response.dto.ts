@@ -41,6 +41,14 @@ export class NumberingSeriesResponseDto {
   })
   register!: string | null;
 
+  @ApiProperty({
+    description:
+      'Calendar month (1-12) the fiscal year starts on, governing {FY}. 1 = calendar year',
+    minimum: 1,
+    maximum: 12,
+  })
+  fiscalYearStartMonth!: number;
+
   @ApiProperty({ description: 'Opaque marker of the period nextSeq belongs to (empty for none)' })
   periodKey!: string;
 

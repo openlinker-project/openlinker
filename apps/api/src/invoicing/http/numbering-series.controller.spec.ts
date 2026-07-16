@@ -46,6 +46,7 @@ function seriesFixture(overrides: Partial<InvoiceNumberingSeries> = {}): Invoice
     overrides.periodKey ?? '2026',
     overrides.documentType ?? 'invoice',
     overrides.register ?? null,
+    overrides.fiscalYearStartMonth ?? 1,
     overrides.createdAt ?? NOW,
     overrides.updatedAt ?? NOW,
   );
@@ -56,6 +57,8 @@ function routeFixture(overrides: Partial<SeriesRouteData> = {}): SeriesRouteData
     connectionId: overrides.connectionId ?? 'conn-1',
     documentType: overrides.documentType ?? 'invoice',
     register: overrides.register ?? null,
+    currency: overrides.currency ?? null,
+    source: overrides.source ?? null,
     seriesId: overrides.seriesId ?? '11111111-1111-4111-8111-111111111111',
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
@@ -309,6 +312,8 @@ describe('NumberingSeriesController', () => {
         connectionId: 'conn-1',
         documentType: 'corrected',
         register: null,
+        currency: null,
+        source: null,
         seriesId: '11111111-1111-4111-8111-111111111111',
       });
       expect(result.documentType).toBe('corrected');
@@ -343,13 +348,26 @@ describe('NumberingSeriesController', () => {
     it('should detach the route (no-op safe)', async () => {
       seriesService.deleteRoute.mockResolvedValue(undefined);
       await controller.deleteRoute('conn-1', { documentType: 'corrected' });
-      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', null);
+      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'corrected', {
+        register: null,
+        currency: null,
+        source: null,
+      });
     });
 
-    it('should pass the register scope through', async () => {
+    it('should pass the register / currency / source scope through (#1694)', async () => {
       seriesService.deleteRoute.mockResolvedValue(undefined);
-      await controller.deleteRoute('conn-1', { documentType: 'invoice', register: 'BR1' });
-      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'invoice', 'BR1');
+      await controller.deleteRoute('conn-1', {
+        documentType: 'invoice',
+        register: 'BR1',
+        currency: 'EUR',
+        source: 'allegro',
+      });
+      expect(seriesService.deleteRoute).toHaveBeenCalledWith('conn-1', 'invoice', {
+        register: 'BR1',
+        currency: 'EUR',
+        source: 'allegro',
+      });
     });
   });
 

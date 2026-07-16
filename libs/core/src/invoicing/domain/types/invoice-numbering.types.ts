@@ -13,19 +13,27 @@
 /**
  * Reset cadence of a series' sequence counter. On a period change the atomic
  * allocation rolls `seq` back to 1 (see the numbering repository). `none` never
- * resets — one ever-growing sequence.
+ * resets — one ever-growing sequence. `daily` buckets per calendar day in the
+ * seller timezone (#1692), consistent with monthly/quarterly/yearly.
  */
-export const ResetPolicyValues = ['none', 'monthly', 'quarterly', 'yearly'] as const;
+export const ResetPolicyValues = ['none', 'daily', 'monthly', 'quarterly', 'yearly'] as const;
 export type ResetPolicy = (typeof ResetPolicyValues)[number];
+
+/**
+ * Default fiscal-year start month (#1692) — `1` (January) makes the fiscal year
+ * equal the calendar year, so `{FY}` renders identically to `{YYYY}` and every
+ * pre-#1692 series is unchanged.
+ */
+export const DEFAULT_FISCAL_YEAR_START_MONTH = 1;
 
 /**
  * Pattern variables a series pattern may reference. Anything outside this set is
  * a literal. `{seq}` is the (zero-padded) sequence number; the rest resolve from
  * the document issue date IN THE SELLER TIMEZONE. `{QQ}` is the calendar quarter
  * (`1`–`4`); `{DD}` is the 2-digit day of month; `{FY}` is the 4-digit fiscal
- * year — kept a DISTINCT token from `{YYYY}` so a future configurable
- * fiscal-year start (out of scope, #11) can diverge it from the calendar year.
- * For now `{FY}` renders the calendar year of the issue date.
+ * year — a DISTINCT token from `{YYYY}` so a configurable fiscal-year start
+ * (`fiscalYearStartMonth`, #1692) can diverge it from the calendar year. With
+ * the default start month (`1` = January) `{FY}` renders identically to `{YYYY}`.
  */
 export const NumberingPatternVariableValues = [
   '{seq}',
@@ -40,10 +48,12 @@ export type NumberingPatternVariable = (typeof NumberingPatternVariableValues)[n
 
 /**
  * Year-carrying variables — a reset policy's period must be disambiguated by one
- * of these. `{FY}` counts as a year disambiguator (it equals the calendar year
- * today); if a configurable fiscal-year start ever diverges `{FY}` from the
- * calendar year, the yearly/monthly/quarterly period keys (calendar-based) would
- * need to move with it before `{FY}` alone can safely disambiguate a reset.
+ * of these. `{FY}` counts as a year disambiguator. NOTE (#1692): a series with a
+ * non-January `fiscalYearStartMonth` diverges `{FY}` from the calendar year,
+ * while the yearly/monthly/quarterly period keys stay calendar-based; `{FY}`
+ * still disambiguates a reset because it is monotonic across a calendar year (it
+ * changes at most once per calendar year, at the fiscal-year boundary), so a
+ * reset never re-renders an already-issued number.
  */
 export const NumberingYearVariableValues = ['{YYYY}', '{YY}', '{FY}'] as const;
 
@@ -82,32 +92,88 @@ export interface InvoiceNumberingSeriesData {
    * register-less default series for that type.
    */
   register: string | null;
+  /**
+   * Calendar month (1–12) the series' fiscal year starts on (#1692), governing
+   * the `{FY}` variable. `1` (default) = calendar year, so `{FY}` === `{YYYY}`.
+   */
+  fiscalYearStartMonth: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
  * A document-type routing rule linking a connection to a numbering series (#9,
- * #10). Resolution key: `(connectionId, documentType, register)`. Replaces the
+ * #10, #1694). Resolution key:
+ * `(connectionId, documentType, register, currency, source)`. Replaces the
  * pre-#9 main/correction assignment split. The route is a detachable pointer:
  * deleting a connection never cascade-deletes the series it referenced, and the
  * series FK is `ON DELETE RESTRICT`.
+ *
+ * `register`, `currency`, and `source` are optional nullable axes; a `null` on
+ * an axis is a WILDCARD ("match any value on this axis"). Resolution is
+ * most-specific-match-wins (see {@link SeriesRouteMatchAxes}).
  */
 export interface SeriesRouteData {
   connectionId: string;
   documentType: string;
   register: string | null;
+  /**
+   * Optional ISO-4217 invoice currency axis (#1694); `null` = wildcard (matches
+   * any currency). Segments numbering per settlement currency.
+   */
+  currency: string | null;
+  /**
+   * Optional neutral order-origin axis (#1694) — the source connection's
+   * `platformType` / marketplace-of-origin; `null` = wildcard (matches any
+   * source). Segments numbering per sales channel. Neutral by construction
+   * (ADR-026): no marketplace name is hardcoded in core.
+   */
+  source: string | null;
   seriesId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Create/replace input for a document-type routing rule. `register` absent = `null`. */
+/**
+ * Create/replace input for a document-type routing rule. Any absent axis
+ * (`register` / `currency` / `source`) defaults to `null` (wildcard).
+ */
 export interface UpsertSeriesRouteInput {
   connectionId: string;
   documentType: string;
   register?: string | null;
+  /** ISO-4217 currency axis (#1694); absent/`null` = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis (#1694); absent/`null` = wildcard. */
+  source?: string | null;
   seriesId: string;
+}
+
+/**
+ * The optional matching axes a document carries into route resolution (#1694).
+ * Each is the document's CONCRETE value on that axis (or `null`/absent when the
+ * document does not carry it). Resolution is most-specific-match-wins with a
+ * FIXED fallback precedence — the most specific axis is dropped (widened to a
+ * wildcard route) until a route matches:
+ *
+ *   (register, currency, source)  exact
+ *     -> drop source    (register, currency, *)
+ *     -> drop currency  (register, *, *)
+ *     -> drop register  (*, *, *)          = the type's default route
+ *
+ * `source` is the most specific axis, then `currency`, then `register`.
+ */
+export interface SeriesRouteMatchAxes {
+  register?: string | null;
+  currency?: string | null;
+  source?: string | null;
+}
+
+/** Identifying key of a routing rule to detach (#1694). Absent axis = `null`. */
+export interface DeleteSeriesRouteInput {
+  register?: string | null;
+  currency?: string | null;
+  source?: string | null;
 }
 
 /** Persistence input for a new numbering series. `periodKey` is caller-computed (see `computePeriodKey`). */
@@ -122,6 +188,8 @@ export interface CreateInvoiceNumberingSeriesInput {
   documentType: string;
   /** Optional neutral register/entity scope (#10); `null` = the type's register-less default. */
   register: string | null;
+  /** Fiscal-year start month (1–12) governing `{FY}` (#1692); `1` = calendar year. */
+  fiscalYearStartMonth: number;
 }
 
 /**
@@ -137,6 +205,8 @@ export interface UpdateInvoiceNumberingSeriesInput {
   periodKey?: string;
   documentType?: string;
   register?: string | null;
+  /** Fiscal-year start month (1–12) governing `{FY}` (#1692); `1` = calendar year. */
+  fiscalYearStartMonth?: number;
 }
 
 /**
@@ -153,6 +223,11 @@ export interface CreateNumberingSeriesServiceInput {
   resetPolicy: ResetPolicy;
   documentType?: string;
   register?: string | null;
+  /**
+   * Fiscal-year start month (1–12) governing `{FY}` (#1692); the service defaults
+   * it to {@link DEFAULT_FISCAL_YEAR_START_MONTH} (calendar year) when omitted.
+   */
+  fiscalYearStartMonth?: number;
 }
 
 /**
@@ -184,6 +259,11 @@ export interface NumberRenderContext {
    * adapter, never hardcoded in core).
    */
   timeZone?: string;
+  /**
+   * Calendar month (1–12) the fiscal year starts on (#1692), governing `{FY}`.
+   * Absent / `1` = calendar year, so `{FY}` === `{YYYY}`.
+   */
+  fiscalYearStartMonth?: number;
 }
 
 /** Outcome of an atomic allocation against a series. */

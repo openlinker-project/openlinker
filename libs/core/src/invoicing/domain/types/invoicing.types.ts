@@ -424,6 +424,15 @@ export interface IssueInvoiceCommand {
    * not carry a placement date; adapters omit the corresponding wire field.
    */
   saleDate?: string;
+  /**
+   * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
+   * the allocated document number's date variables/period AND the provider's
+   * legal issue date resolve from ONE instant (no day/period-boundary
+   * divergence). A `DocumentNumberConsumer` adapter (KSeF) stamps its legal
+   * issue date from this value; absent (e.g. a direct adapter call in a test)
+   * the adapter falls back to its own clock.
+   */
+  issuedAt?: Date;
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
@@ -434,6 +443,16 @@ export interface IssueInvoiceCommand {
    * providers that number documents themselves.
    */
   register?: string;
+  /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes numbering
+   * to the connection's series scoped to this source; when absent the routing
+   * falls back past the source axis (source is the most-specific, first-dropped
+   * axis). Country-agnostic (ADR-026): an opaque neutral string, never a
+   * hardcoded marketplace name. Ignored by providers that number documents
+   * themselves.
+   */
+  source?: string;
   /**
    * OpenLinker-allocated legal document number (#1575). Set by the core
    * `InvoiceService` ONLY when the resolved adapter passes
@@ -522,6 +541,12 @@ export interface IssueCorrectionCommand {
   documentType?: string;
   reason?: string;
   lines: CorrectionLine[];
+  /**
+   * Single issuance instant for the correction document (#1692). Set by the core
+   * `InvoiceService` so the correction's allocated number and the provider's
+   * legal issue date resolve from ONE instant. See {@link IssueInvoiceCommand.issuedAt}.
+   */
+  issuedAt?: Date;
   idempotencyKey?: string;
   /**
    * Optional neutral register / entity-scope label (#10). Routes the correction's
@@ -529,6 +554,14 @@ export interface IssueCorrectionCommand {
    * absent the register-less default correction series is used.
    */
   register?: string;
+  /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes the
+   * correction's numbering to the series scoped to this source; falls back past
+   * the source axis when absent. Country-agnostic (ADR-026). The correction's
+   * currency axis is taken from `originalDocument.currency`.
+   */
+  source?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
   /**

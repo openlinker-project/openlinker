@@ -47,6 +47,42 @@ describe('renderInvoiceNumber', () => {
     ).toBe('03/04/05/2026');
   });
 
+  it('renders {FY} == {YYYY} when the fiscal year starts in January (default, #1692)', () => {
+    expect(
+      renderInvoiceNumber('{seq}/{FY}', { seq: 1, seqPadding: 0, issueDate: MAY_2026 }),
+    ).toBe('1/2026');
+    expect(
+      renderInvoiceNumber('{seq}/{FY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: MAY_2026,
+        fiscalYearStartMonth: 1,
+      }),
+    ).toBe('1/2026');
+  });
+
+  it('labels {FY} by the calendar year the fiscal year STARTS in (#1692)', () => {
+    // Fiscal year starts in July. May 2026 (month 5 < 7) falls in the fiscal year
+    // that started in July 2025 → label 2025.
+    expect(
+      renderInvoiceNumber('{seq}/{FY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: MAY_2026,
+        fiscalYearStartMonth: 7,
+      }),
+    ).toBe('1/2025');
+    // An August 2026 issue (month 8 ≥ 7) is in the fiscal year that started July 2026 → 2026.
+    expect(
+      renderInvoiceNumber('{seq}/{FY}', {
+        seq: 1,
+        seqPadding: 0,
+        issueDate: new Date('2026-08-15T12:00:00.000Z'),
+        fiscalYearStartMonth: 7,
+      }),
+    ).toBe('1/2026');
+  });
+
   it('resolves date variables in the seller timezone (#7)', () => {
     // 2026-01-31T23:00:00Z is Feb 1 (00:00) in Europe/Warsaw (UTC+1 in winter).
     expect(
@@ -115,6 +151,14 @@ describe('validateNumberingPattern', () => {
     expect(validateNumberingPattern('FV/{seq}/{FY}', 'yearly')).toEqual([]);
     expect(validateNumberingPattern('FV/{seq}/{MM}/{FY}', 'monthly')).toEqual([]);
   });
+
+  it('requires {DD}, {MM} and a year for daily (#1692)', () => {
+    expect(validateNumberingPattern('FV/{seq}/{MM}/{YYYY}', 'daily')).not.toEqual([]);
+    expect(validateNumberingPattern('FV/{seq}/{DD}/{YYYY}', 'daily')).not.toEqual([]);
+    expect(validateNumberingPattern('FV/{seq}/{DD}/{MM}', 'daily')).not.toEqual([]);
+    expect(validateNumberingPattern('FV/{seq}/{DD}/{MM}/{YYYY}', 'daily')).toEqual([]);
+    expect(validateNumberingPattern('FV/{seq}/{DD}/{MM}/{FY}', 'daily')).toEqual([]);
+  });
 });
 
 describe('computePeriodKey', () => {
@@ -135,6 +179,17 @@ describe('computePeriodKey', () => {
   it('keys by year-quarter for quarterly', () => {
     expect(computePeriodKey('quarterly', MAY_2026)).toBe('2026-Q2');
     expect(computePeriodKey('quarterly', JAN_2026)).toBe('2026-Q1');
+  });
+
+  it('keys by year-month-day for daily (#1692)', () => {
+    expect(computePeriodKey('daily', MAY_2026)).toBe('2026-05-04');
+    expect(computePeriodKey('daily', JAN_2026)).toBe('2026-01-31');
+  });
+
+  it('resolves the daily bucket in the seller timezone (#1692)', () => {
+    // 2026-01-31T23:00Z is Feb 1 in Europe/Warsaw → the daily bucket rolls to the next day.
+    expect(computePeriodKey('daily', JAN_2026, 'Europe/Warsaw')).toBe('2026-02-01');
+    expect(computePeriodKey('daily', JAN_2026, 'UTC')).toBe('2026-01-31');
   });
 
   it('resolves the period bucket in the seller timezone (#7)', () => {

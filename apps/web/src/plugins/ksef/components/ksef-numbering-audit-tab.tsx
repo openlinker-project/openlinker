@@ -4,16 +4,19 @@
  * A read model of a series' allocated-vs-issued sequence, with gap rows
  * highlighted. For an unexplained gap the operator can record a written
  * explanation (the PL "oświadczenie o pominięciu numeru"); an explained gap
- * shows its recorded note. Turns a silent numbering-gap liability into a
+ * shows its recorded note. From either state the operator can open a printable
+ * oświadczenie document (#1695). Turns a silent numbering-gap liability into a
  * manageable, documented one.
  *
  * @module plugins/ksef/components
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useConnectionQuery } from '../../../features/connections';
 import {
   useNumberingSeriesListQuery,
   useRecordGapNoteMutation,
   useSeriesAuditQuery,
+  type NumberingSeries,
   type SeriesAuditEntry,
 } from '../../../features/invoicing';
 import { Alert } from '../../../shared/ui/alert';
@@ -27,20 +30,40 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { SEQ_STATUS_LABELS, SEQ_STATUS_TONES } from './ksef-numbering.lib';
+import { KsefOswiadczenieDocument } from './ksef-oswiadczenie-document';
+import { readKsefSellerProfile, type KsefOswiadczenieContent } from '../lib/ksef-oswiadczenie';
 
 interface KsefNumberingAuditTabProps {
   connectionId: string;
   readOnly: boolean;
 }
 
+/** Assemble the oświadczenie content from the selected series, a gap entry, and the reason. */
+function buildOswiadczenieContent(
+  series: NumberingSeries | undefined,
+  entry: SeriesAuditEntry,
+  reason: string,
+  sellerConfig: Record<string, unknown>,
+): KsefOswiadczenieContent {
+  return {
+    seller: readKsefSellerProfile(sellerConfig),
+    seriesName: series?.name ?? '',
+    seriesPattern: series?.pattern ?? '',
+    skippedNumber: entry.documentNumber ?? String(entry.seq),
+    reason,
+  };
+}
+
 export function KsefNumberingAuditTab({
-  connectionId: _connectionId,
+  connectionId,
   readOnly,
 }: KsefNumberingAuditTabProps): ReactElement {
   const seriesQuery = useNumberingSeriesListQuery();
+  const connectionQuery = useConnectionQuery(connectionId);
   const [seriesId, setSeriesId] = useState<string>('');
   const [onlyGaps, setOnlyGaps] = useState(false);
   const [gapTarget, setGapTarget] = useState<SeriesAuditEntry | null>(null);
+  const [printContent, setPrintContent] = useState<KsefOswiadczenieContent | null>(null);
 
   const auditQuery = useSeriesAuditQuery(seriesId || null, { onlyGaps });
 
@@ -65,6 +88,12 @@ export function KsefNumberingAuditTab({
   }
 
   const audit = auditQuery.data;
+  const selectedSeries = series.find((s) => s.id === seriesId);
+  const sellerConfig = connectionQuery.data?.config ?? {};
+
+  function openPrint(entry: SeriesAuditEntry, reason: string): void {
+    setPrintContent(buildOswiadczenieContent(selectedSeries, entry, reason, sellerConfig));
+  }
 
   return (
     <div className="numbering-audit">
@@ -176,6 +205,13 @@ export function KsefNumberingAuditTab({
                               Explain gap
                             </Button>
                           </ReadOnlyLock>
+                        ) : entry.isGap && entry.note ? (
+                          <Button
+                            tone="secondary"
+                            onClick={() => openPrint(entry, entry.note?.reason ?? '')}
+                          >
+                            Print oświadczenie
+                          </Button>
                         ) : null}
                       </td>
                     </tr>
@@ -193,7 +229,15 @@ export function KsefNumberingAuditTab({
           entry={gapTarget}
           readOnly={readOnly}
           onClose={() => setGapTarget(null)}
+          onSaveAndPrint={(entry, reason) => {
+            setGapTarget(null);
+            openPrint(entry, reason);
+          }}
         />
+      ) : null}
+
+      {printContent ? (
+        <KsefOswiadczenieDocument content={printContent} onClose={() => setPrintContent(null)} />
       ) : null}
     </div>
   );
@@ -204,36 +248,64 @@ interface ExplainGapDialogProps {
   entry: SeriesAuditEntry;
   readOnly: boolean;
   onClose: () => void;
+  onSaveAndPrint: (entry: SeriesAuditEntry, reason: string) => void;
 }
 
-function ExplainGapDialog({ seriesId, entry, readOnly, onClose }: ExplainGapDialogProps): ReactElement {
+function ExplainGapDialog({
+  seriesId,
+  entry,
+  readOnly,
+  onClose,
+  onSaveAndPrint,
+}: ExplainGapDialogProps): ReactElement {
   const recordNote = useRecordGapNoteMutation();
   const { showToast } = useToast();
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function submit(): Promise<void> {
+  // Record the note; returns the trimmed reason on success, null on failure so
+  // the caller can decide whether to also open the print view.
+  async function record(): Promise<string | null> {
     setError(null);
-    if (reason.trim().length === 0) {
+    const trimmed = reason.trim();
+    if (trimmed.length === 0) {
       setError('Enter a reason before recording the explanation.');
       textareaRef.current?.focus();
-      return;
+      return null;
     }
     try {
       await recordNote.mutateAsync({
         seriesId,
-        input: { seq: entry.seq, documentNumber: entry.documentNumber, reason: reason.trim() },
+        input: { seq: entry.seq, documentNumber: entry.documentNumber, reason: trimmed },
       });
-      showToast({
-        tone: 'success',
-        title: 'Explanation recorded',
-        description: `The oświadczenie for number ${entry.seq} was saved.`,
-      });
-      onClose();
+      return trimmed;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not record the explanation.');
+      return null;
     }
+  }
+
+  async function submit(): Promise<void> {
+    const recorded = await record();
+    if (recorded === null) return;
+    showToast({
+      tone: 'success',
+      title: 'Explanation recorded',
+      description: `The oświadczenie for number ${entry.seq} was saved.`,
+    });
+    onClose();
+  }
+
+  async function saveAndPrint(): Promise<void> {
+    const recorded = await record();
+    if (recorded === null) return;
+    showToast({
+      tone: 'success',
+      title: 'Explanation recorded',
+      description: `The oświadczenie for number ${entry.seq} was saved.`,
+    });
+    onSaveAndPrint(entry, recorded);
   }
 
   return (
@@ -274,11 +346,18 @@ function ExplainGapDialog({ seriesId, entry, readOnly, onClose }: ExplainGapDial
             Cancel
           </Button>
           <Button
-            tone="primary"
+            tone="secondary"
             onClick={() => void submit()}
             disabled={recordNote.isPending || readOnly}
           >
             {recordNote.isPending ? 'Saving…' : 'Record explanation'}
+          </Button>
+          <Button
+            tone="primary"
+            onClick={() => void saveAndPrint()}
+            disabled={recordNote.isPending || readOnly}
+          >
+            Save &amp; print oświadczenie
           </Button>
         </DialogFooter>
       </DialogContent>

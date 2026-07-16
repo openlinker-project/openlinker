@@ -5931,6 +5931,44 @@ a.kpi-card:focus-visible {
   margin: 0.75rem 0;
 }
 
+/*
+ * ── PostHog Analytics Settings (#1685) ──────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; these cover the
+ * tile's status-chip row and the autocapture/session-recording checkbox
+ * labels, same shape as `.mailer-settings-checkbox`.
+ */
+.posthog-settings-tile__badges {
+  margin-bottom: 0.5rem;
+}
+
+.posthog-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
+.posthog-settings-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.posthog-settings-test-result {
+  font-size: 0.8125rem;
+}
+
+.posthog-settings-hint {
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
+}
+
 .create-offer-variant-picker {
   display: grid;
   gap: 0.5rem;
@@ -12193,6 +12231,164 @@ input.bulk-dispatch__num--wide {
   flex: 0 1 20rem;
 }
 
+/* ── Routing axes: multi-axis table + add-route + resolution panel (#1694) ── */
+.numbering-routing__table-wrap {
+  overflow-x: auto;
+}
+
+.numbering-routing__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.numbering-routing__table thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.numbering-routing__table tbody td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.numbering-routing__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.numbering-routing__table .control--select {
+  max-width: 22rem;
+}
+
+.numbering-routing__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.numbering-routing__add-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.numbering-routing__add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-routing__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.numbering-routing__field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-routing__add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Resolution-order panel: the most-specific-match-wins fallback visualization */
+.numbering-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.numbering-resolution__heading {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.numbering-resolution__inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.numbering-resolution__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  counter-reset: resolution-step;
+}
+
+.numbering-resolution__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.numbering-resolution__step--winner {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+}
+
+.numbering-resolution__step--dropped {
+  opacity: 0.55;
+}
+
+.numbering-resolution__step-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 7rem;
+}
+
+.numbering-resolution__step-key {
+  flex: 1 1 auto;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.numbering-resolution__step-result {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-resolution__step--winner .numbering-resolution__step-result {
+  color: var(--status-success-fg);
+}
+
+.numbering-resolution__none {
+  margin: 0;
+}
+
 /* Number audit tab */
 .numbering-audit {
   display: flex;
@@ -12234,6 +12430,180 @@ input.bulk-dispatch__num--wide {
 
 .numbering-audit__note {
   color: var(--text-primary);
+}
+
+/* ── Oświadczenie o pominięciu numeru — printable document (#1695) ──
+   The overlay chrome (portal + toolbar) is themed; the sheet is deliberately
+   theme-independent (paper) and always renders light — it is a print artifact.
+   Literal colours on the sheet are intentional, not token drift. */
+.oswiadczenie-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--overlay-scrim);
+}
+
+.oswiadczenie-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  flex-wrap: wrap;
+}
+
+.oswiadczenie-toolbar__group {
+  display: inline-flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.oswiadczenie-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.oswiadczenie-sheet {
+  /* Paper sheet — fixed light presentation regardless of app theme. */
+  width: 100%;
+  max-width: 48rem;
+  min-height: 60vh;
+  padding: 3.5rem 3rem;
+  background: #ffffff;
+  color: #1a1a1a;
+  border-radius: 2px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.oswiadczenie-sheet__seller {
+  margin-bottom: 2.5rem;
+}
+
+.oswiadczenie-sheet__seller-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.oswiadczenie-sheet__seller-line {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__seller-missing {
+  margin: 0;
+  font-style: italic;
+  color: #6b6b6b;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__place-date {
+  margin: 0 0 2.5rem;
+  text-align: right;
+}
+
+.oswiadczenie-sheet__title {
+  margin: 0 0 2rem;
+  text-align: center;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.oswiadczenie-sheet__body,
+.oswiadczenie-sheet__reason,
+.oswiadczenie-sheet__continuity {
+  margin: 0 0 1.5rem;
+  text-align: justify;
+}
+
+.oswiadczenie-sheet__reason-label {
+  font-weight: 700;
+}
+
+.oswiadczenie-sheet__series {
+  margin: 2rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #d4d4d4;
+  border-radius: 2px;
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.oswiadczenie-sheet__series div {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.oswiadczenie-sheet__series dt {
+  min-width: 9rem;
+  margin: 0;
+  color: #555555;
+}
+
+.oswiadczenie-sheet__series dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.oswiadczenie-sheet__mono {
+  font-family: 'Courier New', monospace;
+}
+
+.oswiadczenie-sheet__signature {
+  margin-top: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.oswiadczenie-sheet__signature-line {
+  display: block;
+  width: 16rem;
+  border-top: 1px solid #1a1a1a;
+}
+
+.oswiadczenie-sheet__signature-caption {
+  font-size: 0.8125rem;
+  color: #555555;
+}
+
+@media print {
+  /* Hide the whole app; print only the sheet. The portal is a direct body
+     child (createPortal → document.body), so #root is a sibling to hide. */
+  body > *:not(.oswiadczenie-portal) {
+    display: none !important;
+  }
+  .oswiadczenie-portal {
+    position: static;
+    background: none;
+  }
+  .oswiadczenie-toolbar {
+    display: none;
+  }
+  .oswiadczenie-scroll {
+    overflow: visible;
+    padding: 0;
+    display: block;
+  }
+  .oswiadczenie-sheet {
+    max-width: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    min-height: 0;
+  }
 }
 
 /* Editor: two-column form + preview */

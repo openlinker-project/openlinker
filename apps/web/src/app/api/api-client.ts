@@ -41,6 +41,10 @@ import {
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
+import {
+  createPosthogSettingsApi,
+  type PosthogSettingsApi,
+} from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -108,6 +112,7 @@ export interface CoreApiClient {
   listings: ListingsApi;
   mailerSettings: MailerSettingsApi;
   orders: OrdersApi;
+  posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
@@ -261,6 +266,7 @@ export function createApiClient({
     mailerSettings: createMailerSettingsApi(request),
     mappings: createMappingsApi(request),
     orders: createOrdersApi(request),
+    posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,

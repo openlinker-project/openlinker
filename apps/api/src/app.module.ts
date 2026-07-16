@@ -22,6 +22,7 @@ import { CustomersModule } from '@openlinker/core/customers';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { AiModule as CoreAiModule } from '@openlinker/core/ai';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
 import { AuthModule } from './auth/auth.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -41,6 +42,7 @@ import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { UsersApiModule } from './users/users.module';
 import { SystemModule } from './system/system.module';
 import { MailerApiModule } from './mailer/mailer.module';
+import { AnalyticsApiModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -73,6 +75,8 @@ import { MailerApiModule } from './mailer/mailer.module';
     AiApiModule, // REST surface for prompt templates (#341)
     CoreMailerModule, // DB-backed mailer/SMTP settings resolution (#1643)
     MailerApiModule, // Admin REST surface for mailer/SMTP settings (#1643)
+    CoreAnalyticsModule, // DB-backed PostHog analytics settings resolution (#1685)
+    AnalyticsApiModule, // Admin REST surface for PostHog analytics settings (#1685)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)

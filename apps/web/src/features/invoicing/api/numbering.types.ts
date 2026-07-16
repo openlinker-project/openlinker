@@ -18,7 +18,7 @@ export type { DocumentType } from './invoicing.types';
 import type { DocumentType } from './invoicing.types';
 
 /** Reset cadence of a series' sequence counter (mirrors core `ResetPolicy`). */
-export const ResetPolicyValues = ['none', 'monthly', 'quarterly', 'yearly'] as const;
+export const ResetPolicyValues = ['none', 'daily', 'monthly', 'quarterly', 'yearly'] as const;
 export type ResetPolicy = (typeof ResetPolicyValues)[number];
 
 /** Resolved outcome of one sequence integer in the gap-audit read model. */
@@ -50,6 +50,8 @@ export interface NumberingSeries {
   resetPolicy: ResetPolicy;
   documentType: string;
   register: string | null;
+  /** Calendar month (1-12) the fiscal year starts on, governing {FY}; 1 = calendar year. */
+  fiscalYearStartMonth: number;
   periodKey: string;
   createdAt: string;
   updatedAt: string;
@@ -64,11 +66,20 @@ export interface UnassignedNumberingSeries extends NumberingSeries {
   lastIssuedNumberPreview: string | null;
 }
 
-/** A connection's document-type numbering route. */
+/**
+ * A connection's document-type numbering route (#1694). The routing key is
+ * `(connectionId, documentType, register, currency, source)`; `register` /
+ * `currency` / `source` are optional nullable axes where `null` is a wildcard
+ * ("match any value on this axis").
+ */
 export interface NumberingRoute {
   connectionId: string;
   documentType: string;
   register: string | null;
+  /** ISO-4217 currency axis (#1694); null = wildcard (matches any currency). */
+  currency: string | null;
+  /** Neutral order-origin axis (#1694); null = wildcard (matches any source). */
+  source: string | null;
   seriesId: string;
   createdAt: string;
   updatedAt: string;
@@ -89,6 +100,8 @@ export interface CreateNumberingSeriesInput {
   resetPolicy: ResetPolicy;
   documentType: DocumentType;
   register?: string | null;
+  /** Fiscal-year start month (1-12) governing {FY}; omitted = 1 (calendar year). */
+  fiscalYearStartMonth?: number;
 }
 
 /** `PATCH /invoicing/numbering-series/:id` body — all fields optional. */
@@ -100,19 +113,29 @@ export interface UpdateNumberingSeriesInput {
   resetPolicy?: ResetPolicy;
   documentType?: DocumentType;
   register?: string | null;
+  /** Fiscal-year start month (1-12) governing {FY}; 1 = calendar year. */
+  fiscalYearStartMonth?: number;
 }
 
-/** `PUT /invoicing/connections/:id/numbering-routes` body. */
+/** `PUT /invoicing/connections/:id/numbering-routes` body (#1694). */
 export interface UpsertNumberingRouteInput {
   documentType: DocumentType;
   register?: string | null;
+  /** ISO-4217 currency axis; omit or null = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis; omit or null = wildcard. */
+  source?: string | null;
   seriesId: string;
 }
 
-/** `DELETE /invoicing/connections/:id/numbering-routes` body. */
+/** `DELETE /invoicing/connections/:id/numbering-routes` body (#1694). */
 export interface DeleteNumberingRouteInput {
   documentType: DocumentType;
   register?: string | null;
+  /** ISO-4217 currency axis; omit or null = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis; omit or null = wildcard. */
+  source?: string | null;
 }
 
 /** A recorded neutral explanation for a numbering gap. */

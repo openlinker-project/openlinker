@@ -24,6 +24,8 @@ const route: NumberingRoute = {
   connectionId: ksefConnection.id,
   documentType: 'invoice',
   register: null,
+  currency: null,
+  source: null,
   seriesId: 'series_main',
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',

@@ -210,7 +210,11 @@ export class KsefInvoicingAdapter
     // the wrong document. Assert the two agree, terminally, before any build/send.
     this.assertCorrectionConsistency(cmd);
 
-    const issuedAt = this.now();
+    // Single issuance instant (#1692): the core `InvoiceService` threads ONE
+    // `issuedAt` so the FA(3) `P_1` (legal issue date) and the allocated `P_2`
+    // number's date variables/period resolve from the SAME instant. Fall back to
+    // the injected clock only for a direct adapter call that does not thread one.
+    const issuedAt = cmd.issuedAt ?? this.now();
     // The FA(3) P_2 document number (#1575). KSeF is a `DocumentNumberConsumer`:
     // the core `InvoiceService` allocates a real per-seller sequential number
     // from the connection's numbering series and passes it as
@@ -385,6 +389,9 @@ export class KsefInvoicingAdapter
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
       documentNumber: cmd.documentNumber,
+      // Thread the single issuance instant (#1692) onto the delegated issue so
+      // the KOR's `P_1` matches the instant its correction number was allocated at.
+      issuedAt: cmd.issuedAt,
       buyer: cmd.originalDocument.buyer,
       currency: cmd.originalDocument.currency,
       // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per

@@ -8,14 +8,11 @@
  * @implements {ISystemService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { POSTHOG_SETTINGS_SERVICE_TOKEN, type IPosthogSettingsService } from '@openlinker/core/analytics';
 import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../auth/demo-mode.service.interface';
-import {
-  POSTHOG_CONFIG_SERVICE_TOKEN,
-  type IPosthogConfigService,
-} from './posthog-config.service.interface';
 import type { ISystemService } from './system.service.interface';
 import type { SystemConfigDto } from './dto/system-config.dto';
 
@@ -24,17 +21,17 @@ export class SystemService implements ISystemService {
   constructor(
     @Inject(DEMO_MODE_SERVICE_TOKEN)
     private readonly demoModeService: IDemoModeService,
-    @Inject(POSTHOG_CONFIG_SERVICE_TOKEN)
-    private readonly posthogConfigService: IPosthogConfigService,
+    @Inject(POSTHOG_SETTINGS_SERVICE_TOKEN)
+    private readonly posthogSettingsService: IPosthogSettingsService,
   ) {}
 
-  getConfig(): SystemConfigDto {
+  async getConfig(): Promise<SystemConfigDto> {
     const demoMode = this.demoModeService.isDemoModeEnabled();
     if (!demoMode) {
       return { demoMode };
     }
 
-    const posthog = this.posthogConfigService.getConfig();
+    const posthog = await this.posthogSettingsService.resolveConfig();
     if (!posthog) {
       return { demoMode };
     }

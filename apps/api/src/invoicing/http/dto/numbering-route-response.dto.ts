@@ -19,11 +19,25 @@ export class NumberingRouteResponseDto {
   documentType!: string;
 
   @ApiProperty({
-    description: 'Neutral register / entity scope; null = the register-less default route',
+    description: 'Neutral register / entity scope; null = wildcard (the register-less default route)',
     nullable: true,
     type: String,
   })
   register!: string | null;
+
+  @ApiProperty({
+    description: 'ISO-4217 currency axis (#1694); null = wildcard (matches any currency)',
+    nullable: true,
+    type: String,
+  })
+  currency!: string | null;
+
+  @ApiProperty({
+    description: 'Neutral order-origin axis (#1694); null = wildcard (matches any source)',
+    nullable: true,
+    type: String,
+  })
+  source!: string | null;
 
   @ApiProperty({ description: 'Numbering series id this document type routes to' })
   seriesId!: string;
