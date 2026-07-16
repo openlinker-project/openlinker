@@ -303,9 +303,14 @@ describe('WoocommercePublishWizard', () => {
       fireEvent.change(stockInput, { target: { value: '5' } });
       expect(stockInput).not.toBeDisabled();
 
-      const submitButton = screen.getByRole('button', { name: /^publish$/i });
-      expect(submitButton).toBeDisabled();
-      fireEvent.click(submitButton);
+      // `demoMode` resolves from the async `useDemoMode()` config query; once it
+      // settles the submit button is re-wrapped in a read-only lock (a new DOM
+      // node), so re-query inside waitFor rather than holding a stale reference
+      // to the pre-wrap button (flaked in CI, #1519/#1518).
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^publish$/i })).toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
       expect(shopPublish).not.toHaveBeenCalled();
     });
 
@@ -329,9 +334,11 @@ describe('WoocommercePublishWizard', () => {
       await screen.findByPlaceholderText('master');
       fireEvent.click(screen.getByRole('button', { name: /^review$/i }));
 
-      const confirmButton = await screen.findByRole('button', { name: /confirm & publish/i });
-      expect(confirmButton).toBeDisabled();
-      fireEvent.click(confirmButton);
+      await screen.findByRole('button', { name: /confirm & publish/i });
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /confirm & publish/i })).toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: /confirm & publish/i }));
       expect(shopPublish).not.toHaveBeenCalled();
     });
   });
