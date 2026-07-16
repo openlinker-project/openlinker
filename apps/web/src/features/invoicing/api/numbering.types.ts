@@ -66,11 +66,20 @@ export interface UnassignedNumberingSeries extends NumberingSeries {
   lastIssuedNumberPreview: string | null;
 }
 
-/** A connection's document-type numbering route. */
+/**
+ * A connection's document-type numbering route (#1694). The routing key is
+ * `(connectionId, documentType, register, currency, source)`; `register` /
+ * `currency` / `source` are optional nullable axes where `null` is a wildcard
+ * ("match any value on this axis").
+ */
 export interface NumberingRoute {
   connectionId: string;
   documentType: string;
   register: string | null;
+  /** ISO-4217 currency axis (#1694); null = wildcard (matches any currency). */
+  currency: string | null;
+  /** Neutral order-origin axis (#1694); null = wildcard (matches any source). */
+  source: string | null;
   seriesId: string;
   createdAt: string;
   updatedAt: string;
@@ -108,17 +117,25 @@ export interface UpdateNumberingSeriesInput {
   fiscalYearStartMonth?: number;
 }
 
-/** `PUT /invoicing/connections/:id/numbering-routes` body. */
+/** `PUT /invoicing/connections/:id/numbering-routes` body (#1694). */
 export interface UpsertNumberingRouteInput {
   documentType: DocumentType;
   register?: string | null;
+  /** ISO-4217 currency axis; omit or null = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis; omit or null = wildcard. */
+  source?: string | null;
   seriesId: string;
 }
 
-/** `DELETE /invoicing/connections/:id/numbering-routes` body. */
+/** `DELETE /invoicing/connections/:id/numbering-routes` body (#1694). */
 export interface DeleteNumberingRouteInput {
   documentType: DocumentType;
   register?: string | null;
+  /** ISO-4217 currency axis; omit or null = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis; omit or null = wildcard. */
+  source?: string | null;
 }
 
 /** A recorded neutral explanation for a numbering gap. */

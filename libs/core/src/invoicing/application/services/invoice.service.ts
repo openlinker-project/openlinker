@@ -372,6 +372,9 @@ export class InvoiceService implements IInvoiceService {
       const documentNumber = await this.allocateDocumentNumber(adapter, claimed, cmd, {
         correction: cmd.correction !== undefined,
         issueDate: issuedAt,
+        // #1694: the document's currency + order-origin feed numbering routing.
+        currency: cmd.currency,
+        source: cmd.source ?? null,
       });
       if (documentNumber !== undefined) {
         cmd = { ...cmd, documentNumber };
@@ -479,7 +482,14 @@ export class InvoiceService implements IInvoiceService {
     adapter: InvoicingPort,
     record: InvoiceRecord,
     cmd: { connectionId: string; documentType?: string; register?: string },
-    opts: { correction: boolean; issueDate: Date },
+    opts: {
+      correction: boolean;
+      issueDate: Date;
+      /** ISO-4217 currency axis for numbering routing (#1694); `null` = wildcard. */
+      currency?: string | null;
+      /** Neutral order-origin axis for numbering routing (#1694); `null` = wildcard. */
+      source?: string | null;
+    },
   ): Promise<string | undefined> {
     if (!isDocumentNumberConsumer(adapter)) {
       return undefined;
@@ -489,7 +499,14 @@ export class InvoiceService implements IInvoiceService {
       return record.documentNumber;
     }
 
-    const register = cmd.register ?? null;
+    // #1694: the full routing axes carried into most-specific-match-wins
+    // resolution (register + currency + source). currency/source are wildcards
+    // when absent; the repository drops source -> currency -> register in turn.
+    const axes = {
+      register: cmd.register ?? null,
+      currency: opts.currency ?? null,
+      source: opts.source ?? null,
+    };
     const routingType =
       cmd.documentType ??
       (opts.correction ? CORRECTION_NUMBERING_DOCUMENT_TYPE : DEFAULT_NUMBERING_DOCUMENT_TYPE);
@@ -497,7 +514,7 @@ export class InvoiceService implements IInvoiceService {
     let seriesId = await this.numberingRepo.findSeriesIdForDocument(
       cmd.connectionId,
       routingType,
-      register,
+      axes,
     );
     if (seriesId === null && opts.correction) {
       // A correction with no dedicated correction route falls back to the base
@@ -505,7 +522,7 @@ export class InvoiceService implements IInvoiceService {
       seriesId = await this.numberingRepo.findSeriesIdForDocument(
         cmd.connectionId,
         DEFAULT_NUMBERING_DOCUMENT_TYPE,
-        register,
+        axes,
       );
     }
     if (seriesId === null) {
@@ -669,6 +686,10 @@ export class InvoiceService implements IInvoiceService {
       const documentNumber = await this.allocateDocumentNumber(adapter, pending, cmd, {
         correction: true,
         issueDate: issuedAt,
+        // #1694: a correction's currency axis is the original document's currency;
+        // its source axis is the caller-supplied order origin.
+        currency: cmd.originalDocument?.currency ?? null,
+        source: cmd.source ?? null,
       });
       if (documentNumber !== undefined) {
         cmd = { ...cmd, documentNumber };

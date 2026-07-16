@@ -274,6 +274,8 @@ export class NumberingSeriesController {
       connectionId,
       documentType: dto.documentType,
       register: dto.register ?? null,
+      currency: dto.currency ?? null,
+      source: dto.source ?? null,
       seriesId: dto.seriesId,
     });
     return this.toRouteResponse(route);
@@ -288,7 +290,11 @@ export class NumberingSeriesController {
     @Param('connectionId', connectionIdPipe()) connectionId: string,
     @Body() dto: DeleteNumberingRouteRequestDto,
   ): Promise<void> {
-    await this.seriesService.deleteRoute(connectionId, dto.documentType, dto.register ?? null);
+    await this.seriesService.deleteRoute(connectionId, dto.documentType, {
+      register: dto.register ?? null,
+      currency: dto.currency ?? null,
+      source: dto.source ?? null,
+    });
   }
 
   // --- Mapping helpers -------------------------------------------------------
@@ -358,6 +364,8 @@ export class NumberingSeriesController {
       connectionId: route.connectionId,
       documentType: route.documentType,
       register: route.register,
+      currency: route.currency,
+      source: route.source,
       seriesId: route.seriesId,
       createdAt: route.createdAt.toISOString(),
       updatedAt: route.updatedAt.toISOString(),

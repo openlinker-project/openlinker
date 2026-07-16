@@ -1,18 +1,19 @@
 /**
  * Invoice Numbering Route ORM Entity
  *
- * TypeORM entity for the `invoice_numbering_routes` table (#9 / #10) — the
- * detachable rule routing a connection's document to a numbering series by its
- * neutral document type and optional register/entity scope. Replaces the pre-#9
- * `invoice_numbering_assignments` main/correction split.
+ * TypeORM entity for the `invoice_numbering_routes` table (#9 / #10 / #1694) —
+ * the detachable rule routing a connection's document to a numbering series by
+ * its neutral document type and optional register / currency / source axes.
+ * Replaces the pre-#9 `invoice_numbering_assignments` main/correction split.
  *
- * Resolution key: `(connectionId, documentType, register)`. A surrogate `id`
- * primary key is used because `register` is nullable (a NULL cannot sit in a
- * composite primary key); two partial unique indexes enforce
- * NULL-distinct uniqueness on the routing key (see the migration). No FK to
- * `connections`: the route (and its series) survives connection deletion, and
- * the FK to `invoice_numbering_series` is `ON DELETE RESTRICT` so a series is
- * never cascade-deleted out from under a route.
+ * Resolution key: `(connectionId, documentType, register, currency, source)`. A
+ * surrogate `id` primary key is used because the axis columns are nullable (a
+ * NULL cannot sit in a composite primary key); a single COALESCE-based unique
+ * index enforces NULL-distinct uniqueness across the full routing key (see the
+ * migration). No FK to `connections`: the route (and its series) survives
+ * connection deletion, and the FK to `invoice_numbering_series` is
+ * `ON DELETE RESTRICT` so a series is never cascade-deleted out from under a
+ * route.
  *
  * @module libs/core/src/invoicing/infrastructure/persistence/entities
  */
@@ -35,9 +36,17 @@ export class InvoiceNumberingRouteOrmEntity {
   @Column({ type: 'text' })
   documentType!: string;
 
-  /** Optional neutral register/entity scope; NULL = the type's register-less default route. */
+  /** Optional neutral register/entity scope; NULL = wildcard (the register-less default route). */
   @Column({ type: 'text', nullable: true })
   register!: string | null;
+
+  /** Optional ISO-4217 currency axis (#1694); NULL = wildcard (matches any currency). */
+  @Column({ type: 'text', nullable: true })
+  currency!: string | null;
+
+  /** Optional neutral order-origin axis (#1694); NULL = wildcard (matches any source). */
+  @Column({ type: 'text', nullable: true })
+  source!: string | null;
 
   @Column({ type: 'uuid' })
   seriesId!: string;

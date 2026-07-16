@@ -444,6 +444,16 @@ export interface IssueInvoiceCommand {
    */
   register?: string;
   /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes numbering
+   * to the connection's series scoped to this source; when absent the routing
+   * falls back past the source axis (source is the most-specific, first-dropped
+   * axis). Country-agnostic (ADR-026): an opaque neutral string, never a
+   * hardcoded marketplace name. Ignored by providers that number documents
+   * themselves.
+   */
+  source?: string;
+  /**
    * OpenLinker-allocated legal document number (#1575). Set by the core
    * `InvoiceService` ONLY when the resolved adapter passes
    * `isDocumentNumberConsumer` (today: KSeF) — the adapter then uses it for its
@@ -544,6 +554,14 @@ export interface IssueCorrectionCommand {
    * absent the register-less default correction series is used.
    */
   register?: string;
+  /**
+   * Optional neutral order-origin axis for numbering routing (#1694) — the
+   * source connection's `platformType` / marketplace-of-origin. Routes the
+   * correction's numbering to the series scoped to this source; falls back past
+   * the source axis when absent. Country-agnostic (ADR-026). The correction's
+   * currency axis is taken from `originalDocument.currency`.
+   */
+  source?: string;
   /** Caller-assembled full original-document snapshot; see {@link OriginalDocumentSnapshot}. */
   originalDocument?: OriginalDocumentSnapshot;
   /**

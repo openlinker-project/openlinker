@@ -303,6 +303,31 @@ export class InvoicingController {
   }
 
   /**
+   * Resolve the order's originating connection `platformType` (#1694) to thread
+   * onto the issuance command's `source` numbering axis. Country-agnostic
+   * (ADR-026): a neutral opaque string, never a hardcoded marketplace name.
+   * Resilient by design: any lookup failure returns `undefined` (the source axis
+   * is simply not applied) rather than breaking issuance — the per-source route
+   * degrades gracefully to a source-wildcard route.
+   */
+  private async resolveSourcePlatformType(
+    sourceConnectionId: string,
+  ): Promise<string | undefined> {
+    try {
+      const connection = await this.connectionPort.get(sourceConnectionId);
+      const platformType = connection.platformType.trim();
+      return platformType.length > 0 ? platformType : undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
+          `per-source numbering axis not applied: ${message}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * These endpoints are pure provider proxies, so a live provider call
    * failing is upstream trouble, not a server bug — map it to 502 with a
    * generic message. Provider error text is logged, never returned (same PII
@@ -394,6 +419,8 @@ export class InvoicingController {
     // the mapper (ADR-026 neutral - core forwards an opaque string). Blank/absent
     // defers to the mapper's neutral `SHIPPING_LINE_NAME` default.
     const shippingLineName = await this.resolveShippingLineName(dto.connectionId);
+    // #1694: resolve the order-origin platformType for the per-source numbering axis.
+    const source = await this.resolveSourcePlatformType(record.sourceConnectionId);
 
     let command: IssueInvoiceCommand;
     try {
@@ -404,6 +431,7 @@ export class InvoicingController {
         documentType: dto.documentType,
         idempotencyKey,
         shippingLineName,
+        source,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -509,6 +537,8 @@ export class InvoicingController {
         idempotencyKey: record.idempotencyKey ?? undefined,
         // #1562: same operator-supplied shipping-line label as the single-issue path.
         shippingLineName: await this.resolveShippingLineName(record.connectionId),
+        // #1694: same per-source numbering axis as the single-issue path.
+        source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
       });
       await this.invoiceService.issueInvoice(command);
       return { id: invoiceId, outcome: 'retried' };
@@ -633,6 +663,8 @@ export class InvoicingController {
         idempotencyKey,
         // #1562: same operator-supplied shipping-line label as the single-issue path.
         shippingLineName: await this.resolveShippingLineName(connectionId),
+        // #1694: same per-source numbering axis as the single-issue path.
+        source: await this.resolveSourcePlatformType(record.sourceConnectionId),
       });
       const issued = await this.invoiceService.issueInvoice(command);
       return { orderId, outcome: 'issued', invoiceId: issued.id };
@@ -727,6 +759,14 @@ export class InvoicingController {
       // (rows issued before this column) fall back to rebuilding from the order's
       // CURRENT state — the pre-#1297 behaviour, with its accepted line-fidelity
       // and `buyerTaxId: null` caveats (see `OriginalDocumentSnapshot`'s doc).
+      // #1694: per-source numbering axis for the correction, from the original
+      // order's origin. Resolved ONLY on the pre-#1297 rebuild path (which
+      // already fetches the order record) — the snapshot path deliberately does
+      // NOT fetch the order (#1297), so `source` stays absent there and the
+      // correction's numbering simply falls back past the source axis (on to
+      // currency/register/default, or the base series).
+      let source: string | undefined;
+
       let originalDocument: OriginalDocumentSnapshot | undefined;
       if (original.issuedLineSnapshot) {
         originalDocument = this.buildSnapshotFromRecord(original, original.issuedLineSnapshot);
@@ -747,6 +787,9 @@ export class InvoicingController {
               shippingLineName: await this.resolveShippingLineName(original.connectionId),
             })
           : undefined;
+        source = orderRecord
+          ? await this.resolveSourcePlatformType(orderRecord.sourceConnectionId)
+          : undefined;
       }
 
       issued = await this.invoiceService.issueCorrection({
@@ -762,6 +805,7 @@ export class InvoicingController {
         })),
         idempotencyKey: dto.idempotencyKey,
         originalDocument,
+        source,
       });
     } catch (error) {
       throw this.toHttpException(error);

@@ -68,6 +68,13 @@ export interface InvoicingIssuePayloadV1 {
   buyer: InvoicingIssueBuyerV1;
   /** The order's source connection (provenance / debugging). */
   sourceConnectionId: string;
+  /**
+   * Neutral order-origin platformType (#1694) — the source connection's
+   * `platformType`, threaded onto the command's `source` axis for numbering
+   * routing. Optional additive field (no `schemaVersion` bump); absent = routing
+   * falls back past the source axis.
+   */
+  source?: string;
   /** Only trace token at the seam (D10); optional — NO `correlationId` exists. */
   sourceEventId?: string;
   /** The trigger model that produced this job. */

@@ -126,6 +126,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (!isNonEmptyString(p.currency)) return fail('currency');
     // Optional additive field (#1525): validated only when present.
     if (p.saleDate !== undefined && !isNonEmptyString(p.saleDate)) return fail('saleDate');
+    // Optional additive field (#1694): validated only when present.
+    if (p.source !== undefined && !isNonEmptyString(p.source)) return fail('source');
 
     if (!Array.isArray(p.lines) || p.lines.length < 1 || p.lines.length > MAX_INVOICE_LINES) {
       return fail('lines');
@@ -189,6 +191,10 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // #1525: restore the sale date so the auto-issue path emits it (P_6 on KSeF).
     if (payload.saleDate !== undefined) {
       command.saleDate = payload.saleDate;
+    }
+    // #1694: thread the order-origin onto the command's `source` numbering axis.
+    if (payload.source !== undefined) {
+      command.source = payload.source;
     }
 
     return command;

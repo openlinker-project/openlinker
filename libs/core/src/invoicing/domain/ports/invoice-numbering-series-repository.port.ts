@@ -14,7 +14,9 @@ import type { InvoiceNumberingSeries } from '../entities/invoice-numbering-serie
 import type {
   AllocatedNumber,
   CreateInvoiceNumberingSeriesInput,
+  DeleteSeriesRouteInput,
   SeriesRouteData,
+  SeriesRouteMatchAxes,
   UpdateInvoiceNumberingSeriesInput,
   UpsertSeriesRouteInput,
 } from '../types/invoice-numbering.types';
@@ -45,35 +47,45 @@ export interface InvoiceNumberingSeriesRepositoryPort {
   ): Promise<InvoiceNumberingSeries>;
 
   /**
-   * Resolve the series id that numbers a connection's document of `documentType`
-   * in the optional `register` scope (#9 / #10). Resolution precedence:
-   *   1. the exact `(connectionId, documentType, register)` route (when a
-   *      non-null register is supplied);
-   *   2. the register-less default `(connectionId, documentType, NULL)` route.
-   * Returns `null` when no route matches. Correction→base-type fallback is a
-   * caller (`InvoiceService`) concern, not this method's.
+   * Resolve the series id that numbers a connection's document of `documentType`,
+   * given the document's optional `register` / `currency` / `source` axes
+   * (#9 / #10 / #1694). Resolution is MOST-SPECIFIC-MATCH-WINS with a FIXED
+   * fallback precedence — the most specific axis is dropped (widened to a
+   * wildcard route) until a route matches:
+   *   1. exact `(register, currency, source)`;
+   *   2. drop `source`   -> `(register, currency, *)`;
+   *   3. drop `currency` -> `(register, *, *)`;
+   *   4. drop `register` -> `(*, *, *)` — the type's register-less default.
+   * The first matching route wins. Returns `null` when no route matches.
+   * Correction→base-type fallback is a caller (`InvoiceService`) concern, not
+   * this method's.
    */
   findSeriesIdForDocument(
     connectionId: string,
     documentType: string,
-    register: string | null,
+    axes: SeriesRouteMatchAxes,
   ): Promise<string | null>;
 
-  /** List every routing rule for a connection (#9 / #10). Backs the C2 routing surface. */
+  /** List every routing rule for a connection (#9 / #10 / #1694). Backs the C2 routing surface. */
   findRoutesByConnectionId(connectionId: string): Promise<SeriesRouteData[]>;
 
   /**
-   * Create or replace a routing rule keyed by `(connectionId, documentType,
-   * register)`. Detachable pointer — never cascade-deletes a series.
+   * Create or replace a routing rule keyed by the full tuple
+   * `(connectionId, documentType, register, currency, source)` (#1694).
+   * Detachable pointer — never cascade-deletes a series.
    */
   upsertRoute(input: UpsertSeriesRouteInput): Promise<SeriesRouteData>;
 
   /**
    * Remove a routing rule (C2 "detach" flow). Removes only the detachable
    * pointer — the referenced series survives. A no-op when no route matches the
-   * `(connectionId, documentType, register)` key.
+   * `(connectionId, documentType, register, currency, source)` key (#1694).
    */
-  deleteRoute(connectionId: string, documentType: string, register: string | null): Promise<void>;
+  deleteRoute(
+    connectionId: string,
+    documentType: string,
+    axes: DeleteSeriesRouteInput,
+  ): Promise<void>;
 
   /**
    * Atomically allocate the next number from `seriesId` for `recordId` and

@@ -40,7 +40,9 @@ import {
 import type {
   AllocatedNumber,
   CreateInvoiceNumberingSeriesInput,
+  DeleteSeriesRouteInput,
   SeriesRouteData,
+  SeriesRouteMatchAxes,
   UpdateInvoiceNumberingSeriesInput,
   UpsertSeriesRouteInput,
 } from '../../../domain/types/invoice-numbering.types';
@@ -125,37 +127,65 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
   async findSeriesIdForDocument(
     connectionId: string,
     documentType: string,
-    register: string | null,
+    axes: SeriesRouteMatchAxes,
   ): Promise<string | null> {
-    // Precedence: exact (register) route, then the register-less default route.
-    if (register !== null) {
-      const exact = await this.routeRepo.findOne({
-        where: this.routeKey(connectionId, documentType, register),
+    const register = axes.register ?? null;
+    const currency = axes.currency ?? null;
+    const source = axes.source ?? null;
+
+    // Most-specific-match-wins with a FIXED fallback precedence (#1694): drop the
+    // most specific axis (widen it to a wildcard route) until a route matches —
+    // exact -> drop source -> drop currency -> drop register (the default). The
+    // first matching route wins. Candidate tuples are deduped so an already-null
+    // axis does not issue a redundant identical query.
+    const candidates: Array<{
+      register: string | null;
+      currency: string | null;
+      source: string | null;
+    }> = [
+      { register, currency, source },
+      { register, currency, source: null },
+      { register, currency: null, source: null },
+      { register: null, currency: null, source: null },
+    ];
+
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+      const dedupeKey = `${candidate.register ?? ''}|${candidate.currency ?? ''}|${candidate.source ?? ''}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      const match = await this.routeRepo.findOne({
+        where: this.routeKey(connectionId, documentType, candidate),
       });
-      if (exact) {
-        return exact.seriesId;
+      if (match) {
+        return match.seriesId;
       }
     }
-    const fallback = await this.routeRepo.findOne({
-      where: this.routeKey(connectionId, documentType, null),
-    });
-    return fallback ? fallback.seriesId : null;
+    return null;
   }
 
   /**
-   * Build the `(connectionId, documentType, register)` where-clause. A `null`
-   * register maps to `IsNull()` — TypeORM's `FindOptionsWhere` does not accept a
-   * bare `null` for a nullable string column.
+   * Build the `(connectionId, documentType, register, currency, source)`
+   * where-clause. A `null` axis maps to `IsNull()` — TypeORM's
+   * `FindOptionsWhere` does not accept a bare `null` for a nullable string
+   * column. Absent axis fields default to `null` (wildcard).
    */
   private routeKey(
     connectionId: string,
     documentType: string,
-    register: string | null,
+    axes: SeriesRouteMatchAxes,
   ): FindOptionsWhere<InvoiceNumberingRouteOrmEntity> {
+    const register = axes.register ?? null;
+    const currency = axes.currency ?? null;
+    const source = axes.source ?? null;
     return {
       connectionId,
       documentType,
       register: register === null ? IsNull() : register,
+      currency: currency === null ? IsNull() : currency,
+      source: source === null ? IsNull() : source,
     };
   }
 
@@ -169,8 +199,14 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
 
   async upsertRoute(input: UpsertSeriesRouteInput): Promise<SeriesRouteData> {
     const register = input.register ?? null;
+    const currency = input.currency ?? null;
+    const source = input.source ?? null;
     const existing = await this.routeRepo.findOne({
-      where: this.routeKey(input.connectionId, input.documentType, register),
+      where: this.routeKey(input.connectionId, input.documentType, {
+        register,
+        currency,
+        source,
+      }),
     });
     const entity =
       existing ??
@@ -178,6 +214,8 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         connectionId: input.connectionId,
         documentType: input.documentType,
         register,
+        currency,
+        source,
       });
     entity.seriesId = input.seriesId;
     const saved = await this.routeRepo.save(entity);
@@ -187,11 +225,11 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
   async deleteRoute(
     connectionId: string,
     documentType: string,
-    register: string | null,
+    axes: DeleteSeriesRouteInput,
   ): Promise<void> {
     // Delete only the route pointer; the referenced series is never
     // cascade-deleted (detachable-pointer guarantee). No-op when absent.
-    await this.routeRepo.delete(this.routeKey(connectionId, documentType, register));
+    await this.routeRepo.delete(this.routeKey(connectionId, documentType, axes));
   }
 
   async allocateNumber(input: {
@@ -321,6 +359,8 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
       connectionId: entity.connectionId,
       documentType: entity.documentType,
       register: entity.register,
+      currency: entity.currency,
+      source: entity.source,
       seriesId: entity.seriesId,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,

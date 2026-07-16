@@ -111,33 +111,68 @@ describe('InvoiceNumberingSeriesRepository', () => {
     expect(result.map((s) => s.id)).toEqual(['series-3']);
   });
 
-  it('findSeriesIdForDocument returns the exact register route when present', async () => {
+  it('findSeriesIdForDocument returns the exact (register, currency, source) route first (#1694)', async () => {
     routeRepo.findOne.mockResolvedValueOnce({
-      seriesId: 'series-reg',
+      seriesId: 'series-exact',
     } as InvoiceNumberingRouteOrmEntity);
-    const result = await repo.findSeriesIdForDocument('conn-1', 'invoice', 'PL');
-    expect(result).toBe('series-reg');
-    expect(routeRepo.findOne).toHaveBeenCalledWith({
-      where: { connectionId: 'conn-1', documentType: 'invoice', register: 'PL' },
+    const result = await repo.findSeriesIdForDocument('conn-1', 'invoice', {
+      register: 'PL',
+      currency: 'EUR',
+      source: 'allegro',
+    });
+    expect(result).toBe('series-exact');
+    // The FIRST lookup keys on all three concrete axes.
+    expect(routeRepo.findOne).toHaveBeenNthCalledWith(1, {
+      where: expect.objectContaining({
+        connectionId: 'conn-1',
+        documentType: 'invoice',
+        register: 'PL',
+        currency: 'EUR',
+        source: 'allegro',
+      }),
     });
   });
 
-  it('findSeriesIdForDocument falls back to the register-less default route', async () => {
-    // No exact register route, then a register-less default hit.
+  it('findSeriesIdForDocument drops source, then currency, then register in order (#1694)', async () => {
+    // Miss exact + drop-source + drop-currency, hit the register-less default.
     routeRepo.findOne
       .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ seriesId: 'series-default' } as InvoiceNumberingRouteOrmEntity);
-    const result = await repo.findSeriesIdForDocument('conn-1', 'invoice', 'PL');
+    const result = await repo.findSeriesIdForDocument('conn-1', 'invoice', {
+      register: 'PL',
+      currency: 'EUR',
+      source: 'allegro',
+    });
     expect(result).toBe('series-default');
-    // The fallback query keys on the register-less default (register → IsNull()).
+    expect(routeRepo.findOne).toHaveBeenCalledTimes(4);
+    // Candidate 2 drops source; candidate 3 drops currency; candidate 4 (last)
+    // drops register — the all-wildcard default.
     expect(routeRepo.findOne).toHaveBeenLastCalledWith({
       where: expect.objectContaining({ connectionId: 'conn-1', documentType: 'invoice' }),
     });
   });
 
-  it('findSeriesIdForDocument returns null when no route matches', async () => {
+  it('findSeriesIdForDocument matches a source-wildcard route when only source diverges (#1694)', async () => {
+    // Exact (all three) misses; drop-source hits.
+    routeRepo.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ seriesId: 'series-cur' } as InvoiceNumberingRouteOrmEntity);
+    const result = await repo.findSeriesIdForDocument('conn-1', 'invoice', {
+      register: 'PL',
+      currency: 'EUR',
+      source: 'allegro',
+    });
+    expect(result).toBe('series-cur');
+    expect(routeRepo.findOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('findSeriesIdForDocument dedupes redundant candidates when axes are already null (#1694)', async () => {
+    // register/currency/source all null → every candidate collapses to one query.
     routeRepo.findOne.mockResolvedValue(null);
-    expect(await repo.findSeriesIdForDocument('conn-1', 'invoice', null)).toBeNull();
+    expect(await repo.findSeriesIdForDocument('conn-1', 'invoice', {})).toBeNull();
+    expect(routeRepo.findOne).toHaveBeenCalledTimes(1);
   });
 
   it('upsertRoute persists the seriesId under the routing key', async () => {

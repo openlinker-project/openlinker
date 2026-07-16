@@ -1011,7 +1011,8 @@ describe('InvoiceService', () => {
       expect(numberingRepo.findSeriesIdForDocument).toHaveBeenCalledWith(
         CONNECTION,
         'invoice',
-        null,
+        // #1694: the document's currency + order-origin feed the routing axes.
+        { register: null, currency: 'PLN', source: null },
       );
       expect(numberingRepo.allocateNumber).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1025,6 +1026,22 @@ describe('InvoiceService', () => {
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0001' }),
       );
+    });
+
+    it('threads the command currency + source into the numbering routing axes (#1694)', async () => {
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.allocateNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0001',
+        allocatedSeq: 1,
+      });
+
+      await service.issueInvoice(makeCmd({ currency: 'EUR', source: 'allegro' }));
+
+      expect(numberingRepo.findSeriesIdForDocument).toHaveBeenCalledWith(CONNECTION, 'invoice', {
+        register: null,
+        currency: 'EUR',
+        source: 'allegro',
+      });
     });
 
     it('threads ONE issuance instant into allocateNumber AND the adapter command (#1692)', async () => {

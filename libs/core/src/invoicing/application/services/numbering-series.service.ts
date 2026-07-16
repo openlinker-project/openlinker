@@ -29,6 +29,7 @@ import {
 } from '../../domain/types/invoice-numbering.types';
 import type {
   CreateNumberingSeriesServiceInput,
+  DeleteSeriesRouteInput,
   ListNumberingSeriesFilter,
   SeriesRouteData,
   UpdateInvoiceNumberingSeriesInput,
@@ -131,9 +132,9 @@ export class NumberingSeriesService implements INumberingSeriesService {
   async deleteRoute(
     connectionId: string,
     documentType: string,
-    register: string | null,
+    axes: DeleteSeriesRouteInput,
   ): Promise<void> {
-    return this.repository.deleteRoute(connectionId, documentType, register);
+    return this.repository.deleteRoute(connectionId, documentType, axes);
   }
 
   async seriesExists(id: string): Promise<boolean> {

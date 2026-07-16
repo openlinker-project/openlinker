@@ -103,26 +103,77 @@ export interface InvoiceNumberingSeriesData {
 
 /**
  * A document-type routing rule linking a connection to a numbering series (#9,
- * #10). Resolution key: `(connectionId, documentType, register)`. Replaces the
+ * #10, #1694). Resolution key:
+ * `(connectionId, documentType, register, currency, source)`. Replaces the
  * pre-#9 main/correction assignment split. The route is a detachable pointer:
  * deleting a connection never cascade-deletes the series it referenced, and the
  * series FK is `ON DELETE RESTRICT`.
+ *
+ * `register`, `currency`, and `source` are optional nullable axes; a `null` on
+ * an axis is a WILDCARD ("match any value on this axis"). Resolution is
+ * most-specific-match-wins (see {@link SeriesRouteMatchAxes}).
  */
 export interface SeriesRouteData {
   connectionId: string;
   documentType: string;
   register: string | null;
+  /**
+   * Optional ISO-4217 invoice currency axis (#1694); `null` = wildcard (matches
+   * any currency). Segments numbering per settlement currency.
+   */
+  currency: string | null;
+  /**
+   * Optional neutral order-origin axis (#1694) — the source connection's
+   * `platformType` / marketplace-of-origin; `null` = wildcard (matches any
+   * source). Segments numbering per sales channel. Neutral by construction
+   * (ADR-026): no marketplace name is hardcoded in core.
+   */
+  source: string | null;
   seriesId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Create/replace input for a document-type routing rule. `register` absent = `null`. */
+/**
+ * Create/replace input for a document-type routing rule. Any absent axis
+ * (`register` / `currency` / `source`) defaults to `null` (wildcard).
+ */
 export interface UpsertSeriesRouteInput {
   connectionId: string;
   documentType: string;
   register?: string | null;
+  /** ISO-4217 currency axis (#1694); absent/`null` = wildcard. */
+  currency?: string | null;
+  /** Neutral order-origin axis (#1694); absent/`null` = wildcard. */
+  source?: string | null;
   seriesId: string;
+}
+
+/**
+ * The optional matching axes a document carries into route resolution (#1694).
+ * Each is the document's CONCRETE value on that axis (or `null`/absent when the
+ * document does not carry it). Resolution is most-specific-match-wins with a
+ * FIXED fallback precedence — the most specific axis is dropped (widened to a
+ * wildcard route) until a route matches:
+ *
+ *   (register, currency, source)  exact
+ *     -> drop source    (register, currency, *)
+ *     -> drop currency  (register, *, *)
+ *     -> drop register  (*, *, *)          = the type's default route
+ *
+ * `source` is the most specific axis, then `currency`, then `register`.
+ */
+export interface SeriesRouteMatchAxes {
+  register?: string | null;
+  currency?: string | null;
+  source?: string | null;
+}
+
+/** Identifying key of a routing rule to detach (#1694). Absent axis = `null`. */
+export interface DeleteSeriesRouteInput {
+  register?: string | null;
+  currency?: string | null;
+  source?: string | null;
 }
 
 /** Persistence input for a new numbering series. `periodKey` is caller-computed (see `computePeriodKey`). */
