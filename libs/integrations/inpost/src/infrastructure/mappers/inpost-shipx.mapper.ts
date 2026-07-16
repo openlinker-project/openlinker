@@ -122,6 +122,27 @@ export function buildCreateShipmentRequest(
 ): ShipXCreateShipmentRequest {
   const sender = toSenderPeer(config.senderAddress);
 
+  // Defense-in-depth: `parcel` and `recipient` are required on the typed
+  // GenerateLabelCommand, but nothing guarantees their presence at runtime (an
+  // API client can omit them). Guard here — the single entry point for both the
+  // locker and courier builders — so a missing field is a neutral preflight
+  // rejection (clean 4xx) rather than an unhandled TypeError deeper in the
+  // builders / toReceiverPeer (#1518).
+  if (!cmd.parcel) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-parcel',
+      'parcel is required to generate a label',
+    );
+  }
+  if (!cmd.recipient) {
+    throw new ShippingProviderRejectionException(
+      'inpost',
+      'preflight.missing-recipient',
+      'recipient is required to generate a label',
+    );
+  }
+
   if (cmd.shippingMethod === 'paczkomat') {
     if (cmd.cod) {
       // InPost lockers DO support COD via a ShipX COD-capable locker service;
