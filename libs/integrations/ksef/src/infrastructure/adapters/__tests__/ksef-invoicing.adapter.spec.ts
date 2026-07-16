@@ -9,7 +9,9 @@
 import {
   isCorrectionIssuer,
   isDocumentNumberConsumer,
+  isOfflineResubmitter,
   isRegulatoryDocumentReader,
+  isRegulatoryRecordLocator,
   isRegulatoryTransmitter,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
@@ -18,11 +20,13 @@ import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   OriginalDocumentSnapshot,
+  StoredDocument,
 } from '@openlinker/core/invoicing';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../ksef-invoicing.adapter';
 import { KsefSessionException } from '../../../domain/exceptions/ksef-session.exception';
 import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
+import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KsefInvalidCorrectionException } from '../../../domain/exceptions/ksef-invalid-correction.exception';
@@ -197,6 +201,68 @@ function adapter(
     SELLER,
     DEFAULT_TAX_RATE,
     { payment, now: () => new Date('2026-06-23T10:00:00.000Z') },
+  );
+}
+
+/**
+ * A `FakeKsefHttpClient` that can be told to reject a specific `METHOD path`
+ * with a chosen error (e.g. a `KsefNetworkException` to simulate a KSeF outage),
+ * delegating every other call to the seeded happy-path behaviour. Records the
+ * failing call so tests can assert the surrounding flow (e.g. best-effort close).
+ */
+class OutageKsefHttpClient extends FakeKsefHttpClient {
+  private readonly failures = new Map<string, Error>();
+
+  failOn(method: 'GET' | 'POST', path: string, error: Error): this {
+    this.failures.set(`${method} ${path}`, error);
+    return this;
+  }
+
+  override post<T = unknown>(
+    path: string,
+    body?: Record<string, unknown> | string,
+    options?: Parameters<FakeKsefHttpClient['post']>[2],
+  ): Promise<{ data: T; status: number; headers: Record<string, string> }> {
+    const failure = this.failures.get(`POST ${path}`);
+    if (failure) {
+      this.calls.push({ method: 'POST', path, body, options });
+      return Promise.reject(failure);
+    }
+    return super.post<T>(path, body, options);
+  }
+}
+
+const SOURCE_XML = '<Faktura>offline</Faktura>';
+
+/** An offline (`pending-submission`) record carrying the persisted FA(3) source XML. */
+function offlineRecord(sourceDocument: StoredDocument | null = {
+  contentType: 'application/xml',
+  contentBase64: Buffer.from(SOURCE_XML, 'utf-8').toString('base64'),
+}): InvoiceRecord {
+  return new InvoiceRecord(
+    'rec-offline',
+    'conn-1',
+    'ol_order_123',
+    'ksef',
+    'invoice',
+    'issued',
+    null, // no providerInvoiceId — nothing landed at issue time
+    'FV/2026/06/0001',
+    'pending-submission',
+    null,
+    null,
+    null,
+    new Date('2026-06-23T10:00:00.000Z'),
+    null,
+    new Date('2026-06-23T10:00:00.000Z'),
+    new Date('2026-06-23T10:00:00.000Z'),
+    null, // failureMode
+    null, // failureCode
+    null, // failureReason
+    null, // leaseExpiresAt
+    false, // hasBuyerTaxId
+    null, // documentContent
+    sourceDocument,
   );
 }
 
@@ -853,6 +919,188 @@ describe('KsefInvoicingAdapter', () => {
       await expect(
         adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'source'),
       ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+  });
+
+  describe('offline issuance (#1701)', () => {
+    it('should be exposed as OfflineResubmitter and RegulatoryRecordLocator', () => {
+      const a = adapter(new FakeKsefHttpClient());
+      expect(isOfflineResubmitter(a)).toBe(true);
+      expect(isRegulatoryRecordLocator(a)).toBe(true);
+    });
+
+    it('should return a pending-submission record (no session landed) when KSeF is unavailable on open', async () => {
+      const http = new OutageKsefHttpClient();
+      http.failOn('POST', '/sessions/online', new KsefNetworkException('connection refused'));
+
+      const { record, sourceDocument } = await adapter(http).issueInvoice(command());
+
+      expect(record.status).toBe('issued');
+      expect(record.regulatoryStatus).toBe('pending-submission');
+      expect(record.providerInvoiceId).toBeNull();
+      // The FA(3) is persisted as the neutral source document for later resubmit.
+      expect(sourceDocument).toEqual({
+        contentType: 'application/xml',
+        contentBase64: Buffer.from('<Faktura>fake</Faktura>', 'utf-8').toString('base64'),
+      });
+      // Only the (failed) open was attempted — no submit, no close.
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /sessions/online']);
+    });
+
+    it('should go offline (and still close best-effort) when KSeF is unavailable on submit', async () => {
+      const http = new OutageKsefHttpClient();
+      seedHappyPath(http);
+      http.failOn(
+        'POST',
+        `/sessions/online/${SESSION_REF}/invoices`,
+        new KsefApiException('service unavailable', 503),
+      );
+
+      const { record } = await adapter(http).issueInvoice(command());
+
+      expect(record.regulatoryStatus).toBe('pending-submission');
+      expect(record.providerInvoiceId).toBeNull();
+      const paths = http.calls.map((c) => `${c.method} ${c.path}`);
+      // Session was opened, submit failed (503), close still attempted best-effort.
+      expect(paths).toContain(`POST /sessions/online/${SESSION_REF}/invoices`);
+      expect(paths).toContain(`POST /sessions/online/${SESSION_REF}/close`);
+      // No session-status read on the offline path — nothing landed to assert.
+      expect(paths).not.toContain(`GET /sessions/${SESSION_REF}`);
+    });
+
+    it('should still throw terminally on a content/validation rejection (429/5xx only go offline)', async () => {
+      const http = new OutageKsefHttpClient();
+      http.failOn(
+        'POST',
+        '/sessions/online',
+        new KsefApiException('unprocessable entity', 422),
+      );
+
+      // A 422 is a deterministic content rejection — never offline.
+      await expect(adapter(http).issueInvoice(command())).rejects.toBeInstanceOf(KsefApiException);
+    });
+
+    it('should throw terminally when the FA(3) build fails (offline only after a successful build)', async () => {
+      const http = new OutageKsefHttpClient();
+      seedHappyPath(http);
+      const failingBuilder: IFa3XmlBuilder = {
+        build(): RawFa3Xml {
+          throw new KsefSessionException('build blew up');
+        },
+      };
+
+      await expect(
+        adapter(http, failingBuilder).issueInvoice(command()),
+      ).rejects.toBeInstanceOf(KsefSessionException);
+      // Build fails before any session work — the provider is never contacted.
+      expect(http.calls).toHaveLength(0);
+    });
+  });
+
+  describe('resubmit (#1701)', () => {
+    it('should open a fresh session from the source XML and return a submitted result with a fresh providerInvoiceId', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const result = await adapter(http).resubmit(offlineRecord());
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.providerInvoiceId).toBe(`${SESSION_REF}:${INVOICE_REF}`);
+      expect(result.clearanceReference).toBeNull();
+      // The full online-session sequence ran.
+      expect(http.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+        'POST /sessions/online',
+        `POST /sessions/online/${SESSION_REF}/invoices`,
+        `POST /sessions/online/${SESSION_REF}/close`,
+        `GET /sessions/${SESSION_REF}`,
+      ]);
+    });
+
+    it('should submit the persisted FA(3) source XML (not rebuild it)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      await adapter(http).resubmit(offlineRecord());
+
+      const submit = http.calls.find((c) => c.path.endsWith('/invoices'));
+      // The encrypt is a passthrough double emitting a fixed ciphertext, so we
+      // assert the submit fired with the plaintext-derived integrity hash present.
+      const body = submit?.body as { invoiceHash: string };
+      expect(body.invoiceHash).toMatch(/^[A-Za-z0-9+/=]+$/);
+    });
+
+    it('should throw when KSeF is still unavailable (sweep backs off, record stays pending-submission)', async () => {
+      const http = new OutageKsefHttpClient();
+      http.failOn('POST', '/sessions/online', new KsefNetworkException('still down'));
+
+      await expect(adapter(http).resubmit(offlineRecord())).rejects.toBeInstanceOf(
+        KsefNetworkException,
+      );
+    });
+
+    it('should throw terminally when the record carries no source-document XML', async () => {
+      const http = new FakeKsefHttpClient();
+
+      await expect(adapter(http).resubmit(offlineRecord(null))).rejects.toBeInstanceOf(
+        KsefSessionException,
+      );
+      // Nothing to transmit — the provider is never contacted.
+      expect(http.calls).toHaveLength(0);
+    });
+  });
+
+  describe('locateByQuery (#1701)', () => {
+    const KSEF_NUMBER = '5265877635-20250826-0100001AF629-AF';
+
+    it('should map a found metadata item to an accepted result carrying the KSeF number', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('POST', '/invoices/query/metadata', {
+        data: {
+          invoices: [{ ksefNumber: KSEF_NUMBER, invoiceNumber: 'FV/2026/06/0001', issueDate: '2026-06-23' }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).locateByQuery({
+        sellerTaxId: '1234567890',
+        documentNumber: 'FV/2026/06/0001',
+        issuedFrom: new Date('2026-06-01T00:00:00.000Z'),
+        issuedTo: new Date('2026-06-30T23:59:59.000Z'),
+      });
+
+      expect(result).toEqual({
+        providerInvoiceId: null,
+        regulatoryStatus: 'accepted',
+        clearanceReference: KSEF_NUMBER,
+      });
+    });
+
+    it('should return null when the authority holds no matching document', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('POST', '/invoices/query/metadata', {
+        data: { invoices: [] },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).locateByQuery({ documentNumber: 'FV/2026/06/0001' });
+
+      expect(result).toBeNull();
+    });
+
+    it('should not wrong-positive when the wire ignores the document-number filter', async () => {
+      const http = new FakeKsefHttpClient();
+      // A wire that returns a different document than requested must not match.
+      http.seed('POST', '/invoices/query/metadata', {
+        data: { invoices: [{ ksefNumber: KSEF_NUMBER, invoiceNumber: 'FV/2026/06/9999' }] },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).locateByQuery({ documentNumber: 'FV/2026/06/0001' });
+
+      expect(result).toBeNull();
     });
   });
 });

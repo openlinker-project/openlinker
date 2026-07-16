@@ -39,19 +39,10 @@ import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ks
 import { KsefInvalidCorrectionException } from '../../domain/exceptions/ksef-invalid-correction.exception';
 import { Fa3BuildException } from '../../domain/exceptions/fa3-builder.exception';
 import { Fa3XsdValidationException } from '../../domain/exceptions/fa3-validation.exception';
-
-/**
- * Deterministic KSeF 4xx status codes — retrying never helps.
- *
- * Excludes:
- *   - 401 (raised as `KsefAuthenticationException`, handled via reauth, never as
- *     a `KsefApiException` — so it never reaches the status-code check here).
- *   - 408 / 425 (transient by spec).
- *   - 429 (rate limit — `KsefApiException` carrying a `retryAfterMs`; retryable).
- */
-const NON_RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([
-  400, 403, 404, 405, 409, 415, 422,
-]);
+// The content-rejection status set is factored into the shared availability
+// module (#1701) so the retry classifier and `isKsefUnavailable` can never
+// drift on which 4xx are terminal versus which failures are a transient outage.
+import { NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-availability';
 
 export class KsefRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
@@ -68,7 +59,7 @@ export class KsefRetryClassifierAdapter implements RetryClassifierPort {
     if (
       cause instanceof KsefApiException &&
       cause.statusCode !== undefined &&
-      NON_RETRYABLE_STATUS_CODES.has(cause.statusCode)
+      NON_RETRYABLE_KSEF_STATUS_CODES.has(cause.statusCode)
     ) {
       return true;
     }
