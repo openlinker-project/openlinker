@@ -1,13 +1,14 @@
 /**
- * Mapping controllers role-guard coverage (#1652)
+ * Mapping controllers role-guard coverage (#1652 / #1653)
  *
- * Verifies the demo-viewer-read-access relaxation applied to
- * `MappingOptionsController` (class-level, every method is a read) and
- * `MappingsController` (per-method override on exactly the 5 GET handlers,
- * class-level `@Roles('admin')` default still gating all 6 PUT/DELETE
- * writes). Exercises the real `RolesGuard` + `Reflector` against the actual
- * controller prototypes so the test fails if a future edit drifts the role
- * set on any of these handlers.
+ * Verifies the role posture of the mapping controllers:
+ * `MappingOptionsController` (class-level read relaxation, every method is a
+ * read) and `MappingsController` (per-method overrides — the 5 GET handlers
+ * open to admin/operator/viewer via #1652, the 6 PUT/DELETE writes open to
+ * admin/operator via #1653; viewer stays denied on writes). Exercises the
+ * real `RolesGuard` + `Reflector` against the actual controller prototypes so
+ * the test fails if a future edit drifts the role set on any of these
+ * handlers.
  *
  * @module apps/api/src/mappings/http/__tests__
  */
@@ -104,15 +105,15 @@ describe('Mapping controllers role-guard coverage (#1652)', () => {
     });
   });
 
-  describe('MappingsController — 6 write handlers stay admin-only (class-level fallback)', () => {
+  describe('MappingsController — 6 write handlers open to admin/operator (#1653)', () => {
     it.each(MAPPINGS_WRITE_HANDLERS)('%s rejects viewer', (methodName) => {
       const context = createContext(MappingsController, methodName, 'viewer');
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
 
-    it.each(MAPPINGS_WRITE_HANDLERS)('%s rejects operator (unchanged baseline — no operator write access)', (methodName) => {
+    it.each(MAPPINGS_WRITE_HANDLERS)('%s allows operator', (methodName) => {
       const context = createContext(MappingsController, methodName, 'operator');
-      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+      expect(guard.canActivate(context)).toBe(true);
     });
 
     it.each(MAPPINGS_WRITE_HANDLERS)('%s allows admin', (methodName) => {
