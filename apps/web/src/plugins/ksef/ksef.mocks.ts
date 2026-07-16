@@ -1,11 +1,10 @@
 /**
- * KSeF plugin — test-only mock defaults (#1577)
+ * KSeF plugin — test-only mock defaults
  *
  * Provides the `invoiceNumbering` namespace default the test ApiClient folds in
- * when a test doesn't override it. The default assignment read rejects with a
- * 404 (the `useNumberingAssignmentQuery` maps that to "not set up yet"), so a
- * KSeF connection's Actions row renders its unconfigured state without a
- * per-test override. Co-located with the plugin per the `*.mocks.ts`
+ * when a test doesn't override it. The default route + series reads resolve
+ * empty, so a KSeF connection's Actions row renders its "not set up yet" state
+ * without a per-test override. Co-located with the plugin per the `*.mocks.ts`
  * convention; never imported by production code.
  *
  * @module plugins/ksef
@@ -24,9 +23,24 @@ export function ksefMockApiNamespaces(): Partial<PluginApiNamespaces> {
       getSeries: vi.fn().mockRejectedValue(new ApiError('Not found', 404, null)),
       createSeries: vi.fn(),
       updateSeries: vi.fn(),
-      getAssignment: vi.fn().mockRejectedValue(new ApiError('No assignment', 404, null)),
-      setAssignment: vi.fn(),
-      deleteAssignment: vi.fn().mockResolvedValue(undefined),
+      getSeriesAudit: vi.fn().mockResolvedValue({
+        seriesId: '',
+        seriesName: '',
+        skippedInferenceApplied: false,
+        summary: {
+          issuedCount: 0,
+          pendingCount: 0,
+          abandonedCount: 0,
+          skippedCount: 0,
+          gapCount: 0,
+          explainedGapCount: 0,
+        },
+        entries: [],
+      }),
+      recordGapNote: vi.fn(),
+      listRoutes: vi.fn().mockResolvedValue([]),
+      upsertRoute: vi.fn(),
+      deleteRoute: vi.fn().mockResolvedValue(undefined),
     } satisfies NumberingApi,
   };
 }

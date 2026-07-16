@@ -1,23 +1,20 @@
 /**
- * KSeF numbering — connection Actions row (#1577)
+ * KSeF numbering — connection Actions row
  *
  * Contributed to `ConnectionActionsPanel` via the KSeF plugin's
  * `ConnectionActions` slot (the same seam PrestaShop uses for "Configure
  * webhooks"). Because only the KSeF plugin registers this slot, the row is
- * KSeF-only by construction — the capability gate is the plugin boundary, not
- * a platformType literal. The row's description carries the numbering status
- * inline (the rendered next number, or "not set up yet"); the primary button
- * opens the dedicated numbering page.
+ * KSeF-only by construction — the capability gate is the plugin boundary, not a
+ * platformType literal. The row's description carries the numbering status
+ * inline (how many document types are routed, or "not set up yet"); while the
+ * status query is in flight it shows a skeleton rather than flashing an empty
+ * tail. The primary button opens the dedicated numbering page.
  *
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  renderInvoiceNumber,
-  useNumberingAssignmentQuery,
-  useNumberingSeriesQuery,
-} from '../../../features/invoicing';
+import { useNumberingRoutesQuery } from '../../../features/invoicing';
 import type { Connection } from '../../../features/connections';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
@@ -32,34 +29,24 @@ export function KsefNumberingActions({
   connection,
   readOnly = false,
 }: KsefNumberingActionsProps): ReactElement {
-  const assignmentQuery = useNumberingAssignmentQuery(connection.id);
-  const assignment = assignmentQuery.data ?? null;
-  const mainSeriesQuery = useNumberingSeriesQuery(assignment?.mainSeriesId ?? null);
-
-  const configured = Boolean(assignment);
+  const routesQuery = useNumberingRoutesQuery(connection.id);
+  const routeCount = routesQuery.data?.length ?? 0;
+  const configured = routeCount > 0;
+  const resolved = routesQuery.isSuccess;
   const to = `/connections/${connection.id}/numbering`;
-
-  const nextPreview =
-    mainSeriesQuery.data !== undefined
-      ? renderInvoiceNumber(mainSeriesQuery.data.pattern, {
-          seq: mainSeriesQuery.data.nextSeq,
-          seqPadding: mainSeriesQuery.data.seqPadding,
-          issueDate: new Date(),
-        })
-      : null;
 
   return (
     <div className="action-list__item">
       <div>
         <strong>Invoice numbering</strong>
         <p className="muted-text">
-          Sequential number OpenLinker stamps on every KSeF invoice.{' '}
-          {assignmentQuery.isLoading ? null : configured ? (
-            nextPreview ? (
-              <>
-                Next: <span className="mono-text tabular">{nextPreview}</span>
-              </>
-            ) : null
+          Sequential numbers OpenLinker stamps on every KSeF invoice.{' '}
+          {!resolved ? (
+            <span className="numbering-status-skeleton" aria-hidden="true" />
+          ) : configured ? (
+            <span>
+              {routeCount} document {routeCount === 1 ? 'type' : 'types'} routed
+            </span>
           ) : (
             <span className="numbering-status-warning">not set up yet</span>
           )}

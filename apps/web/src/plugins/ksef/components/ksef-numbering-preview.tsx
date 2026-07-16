@@ -1,39 +1,35 @@
 /**
- * KSeF numbering live-preview panel (#1577)
+ * KSeF numbering live-preview panel
  *
  * The editor's signature surface: renders the next document number large in
- * mono, painting the `{seq}` span in the accent colour and date-derived spans
- * in a secondary tone so the variable→value mapping is legible. Shows an
- * ordered "Then" strip of the next three numbers (numbering is a sequence, so
- * the ordered ghost list is meaningful), a caption describing the reset
- * cadence, and a variable legend. While the pattern is invalid it renders a
- * dash instead of a fabricated number and lists the issues.
+ * mono, painting the `{seq}` span in the accent colour and date-derived spans in
+ * a secondary tone so the variable→value mapping is legible. Shows a
+ * rendered-length meter against the FA(3) `P_2` limit, an ordered "Then" strip
+ * of the next numbers, a caption stating the number renders from the invoice's
+ * issue date in the seller timezone, and a variable legend. While the pattern is
+ * invalid it renders a dash and lists the issues.
+ *
+ * a11y: only the rendered number + a validity summary sit in the `aria-live`
+ * region, so a screen reader re-announces just the number on each keystroke —
+ * not the whole panel, caption, and legend.
  *
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
 import { buildNumberingPreview, type ResetPolicy } from '../../../features/invoicing';
-import { NUMBERING_VARIABLE_CHIPS, RESET_POLICY_LABELS } from './ksef-numbering.schema';
+import {
+  FA3_P2_MAX_LENGTH,
+  KSEF_TIME_ZONE,
+  NUMBERING_VARIABLE_CHIPS,
+  VARIABLE_LEGEND,
+  resetCaption,
+} from './ksef-numbering.lib';
 
 interface KsefNumberingPreviewProps {
   pattern: string;
   nextSeq: string;
   seqPadding: string;
   resetPolicy: ResetPolicy;
-}
-
-const VARIABLE_LEGEND: Record<(typeof NUMBERING_VARIABLE_CHIPS)[number], string> = {
-  '{seq}': 'Sequence number',
-  '{YYYY}': '4-digit year',
-  '{YY}': '2-digit year',
-  '{MM}': 'Month 01-12',
-  '{QQ}': 'Quarter 1-4',
-};
-
-function resetCaption(resetPolicy: ResetPolicy): string {
-  return resetPolicy === 'none'
-    ? 'never resets'
-    : `resets ${RESET_POLICY_LABELS[resetPolicy].toLowerCase()}`;
 }
 
 export function KsefNumberingPreview({
@@ -50,30 +46,61 @@ export function KsefNumberingPreview({
     seqPadding: parsedPadding,
     resetPolicy,
     now: new Date(),
+    timeZone: KSEF_TIME_ZONE,
   });
 
+  const overLimit = preview.renderedLength > FA3_P2_MAX_LENGTH;
+  const meterPct = Math.min(100, Math.round((preview.renderedLength / FA3_P2_MAX_LENGTH) * 100));
+
   return (
-    <aside className="numbering-preview" aria-live="polite">
+    <aside className="numbering-preview">
       <p className="numbering-preview__eyebrow">Live preview</p>
       <p className="numbering-preview__caption-top">Next invoice number</p>
 
-      {preview.valid ? (
-        <p className="numbering-preview__number mono-text tabular">
-          {preview.tokens.map((token, index) => (
-            <span key={index} className={`numbering-preview__token numbering-preview__token--${token.kind}`}>
-              {token.text}
-            </span>
-          ))}
-        </p>
-      ) : (
-        <p className="numbering-preview__number numbering-preview__number--empty mono-text" aria-hidden="true">
-          —
-        </p>
-      )}
+      <div className="numbering-preview__live" aria-live="polite">
+        {preview.valid ? (
+          <p className="numbering-preview__number mono-text tabular">
+            {preview.tokens.map((token, index) => (
+              <span
+                key={index}
+                className={`numbering-preview__token numbering-preview__token--${token.kind}`}
+              >
+                {token.text}
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p
+            className="numbering-preview__number numbering-preview__number--empty mono-text"
+            aria-hidden="true"
+          >
+            —
+          </p>
+        )}
+        <span className="sr-only">
+          {preview.valid
+            ? `Renders as ${preview.rendered}${overLimit ? ', over the maximum length' : ''}`
+            : 'Pattern is not valid yet'}
+        </span>
+      </div>
 
       <p className="numbering-preview__caption">
-        Renders from today&apos;s date · {resetCaption(resetPolicy)}
+        Renders from the invoice&apos;s issue date · {KSEF_TIME_ZONE} · {resetCaption(resetPolicy)}
       </p>
+
+      {preview.valid ? (
+        <div
+          className={`numbering-preview__meter${overLimit ? ' numbering-preview__meter--over' : ''}`}
+        >
+          <div className="numbering-preview__meter-track" aria-hidden="true">
+            <span className="numbering-preview__meter-fill" style={{ width: `${meterPct}%` }} />
+          </div>
+          <p className="numbering-preview__meter-caption">
+            {preview.renderedLength} / {FA3_P2_MAX_LENGTH} characters
+            {overLimit ? ' — too long for the KSeF invoice-number field' : ''}
+          </p>
+        </div>
+      ) : null}
 
       {preview.valid && preview.then.length > 0 ? (
         <div className="numbering-preview__then">

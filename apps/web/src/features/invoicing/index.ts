@@ -46,37 +46,64 @@ export { useKsefFa3 } from './hooks/use-ksef-fa3';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 
-// Invoice numbering (#1577, binds C2 #1576). The API factory rides the KSeF
-// plugin's `apiNamespaces` build slot; the hooks/types/lib are feature-owned.
+// Invoice numbering (binds the numbering-series HTTP API). The API factory rides
+// the KSeF plugin's `apiNamespaces` build slot; the hooks/types/lib are
+// feature-owned (per-document-type routing + gap-audit, replacing the pre-v2
+// main/correction assignment).
 export { createNumberingApi, type NumberingApi } from './api/numbering.api';
 export { numberingQueryKeys } from './api/numbering.query-keys';
 export {
   ResetPolicyValues,
+  DocumentTypeValues,
+  NumberingSeqStatusValues,
   NumberingPatternVariableValues,
 } from './api/numbering.types';
 export type {
   ResetPolicy,
+  NumberingSeqStatus,
   NumberingPatternVariable,
   NumberingSeries,
   UnassignedNumberingSeries,
-  NumberingAssignment,
+  NumberingRoute,
+  ListNumberingSeriesFilter,
   CreateNumberingSeriesInput,
   UpdateNumberingSeriesInput,
-  SetNumberingAssignmentInput,
+  UpsertNumberingRouteInput,
+  DeleteNumberingRouteInput,
+  NumberingGapNote,
+  RecordGapNoteInput,
+  SeriesAudit,
+  SeriesAuditEntry,
+  SeriesAuditSummary,
 } from './api/numbering.types';
-export { useNumberingAssignmentQuery } from './hooks/use-numbering-assignment-query';
 export { useNumberingSeriesQuery } from './hooks/use-numbering-series-query';
+export { useNumberingSeriesListQuery } from './hooks/use-numbering-series-list-query';
 export { useUnassignedNumberingSeriesQuery } from './hooks/use-unassigned-numbering-series-query';
 export { useCreateNumberingSeriesMutation } from './hooks/use-create-numbering-series-mutation';
 export {
   useUpdateNumberingSeriesMutation,
   type UpdateNumberingSeriesVariables,
 } from './hooks/use-update-numbering-series-mutation';
+export { useNumberingRoutesQuery } from './hooks/use-numbering-routes-query';
 export {
-  useSetNumberingAssignmentMutation,
-  type SetNumberingAssignmentVariables,
-} from './hooks/use-set-numbering-assignment-mutation';
-export { renderInvoiceNumber, validateNumberingPattern } from './lib/numbering-pattern';
+  useUpsertNumberingRouteMutation,
+  type UpsertNumberingRouteVariables,
+} from './hooks/use-upsert-numbering-route-mutation';
+export {
+  useDeleteNumberingRouteMutation,
+  type DeleteNumberingRouteVariables,
+} from './hooks/use-delete-numbering-route-mutation';
+export { useSeriesAuditQuery } from './hooks/use-series-audit-query';
+export {
+  useRecordGapNoteMutation,
+  type RecordGapNoteVariables,
+} from './hooks/use-record-gap-note-mutation';
+export {
+  renderInvoiceNumber,
+  validateNumberingPattern,
+  type NumberRenderContext,
+} from './lib/numbering-pattern';
+export { isMissingNumberingSeriesError } from './lib/issue-error-message';
 export {
   buildNumberingPreview,
   type NumberingPreview,

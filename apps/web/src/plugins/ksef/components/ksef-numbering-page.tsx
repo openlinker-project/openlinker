@@ -1,145 +1,75 @@
 /**
- * KSeF numbering page (#1577)
+ * KSeF numbering page
  *
- * Dedicated numbering surface reached from the connection's Actions tab. Owns
- * the assignment / series queries and the local editing mode; renders the
- * configured cards, the not-set-up empty state, or the editor. Reached only for
- * a KSeF connection (the route is contributed by the KSeF plugin), so the
- * capability gate is the plugin boundary itself — no platformType literal here.
+ * Dedicated numbering surface reached from the connection's Actions tab. Two
+ * tabs — Series (series table + document routing) and Number audit (per-series
+ * gap audit). Reached only for a KSeF connection (the route is contributed by
+ * the KSeF plugin), so the capability gate is the plugin boundary itself — no
+ * platformType literal here. The active tab is URL state (`?tab=`), and the
+ * write affordances degrade to read-only in demo mode.
  *
  * @module plugins/ksef/components
  */
-import { useState, type ReactElement } from 'react';
-import { useParams } from 'react-router-dom';
-import {
-  useNumberingAssignmentQuery,
-  useNumberingSeriesQuery,
-  type NumberingSeries,
-} from '../../../features/invoicing';
+import type { ReactElement } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../../features/connections';
 import { PageLayout } from '../../../shared/ui/page-layout';
-import { Button } from '../../../shared/ui/button';
-import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
-import { KsefNumberingConfigured } from './ksef-numbering-configured';
-import { KsefNumberingEditor } from './ksef-numbering-editor';
-import { KsefNumberingEmpty } from './ksef-numbering-empty';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../shared/ui/tabs';
+import { useDemoMode } from '../../../features/system';
+import { KsefNumberingAuditTab } from './ksef-numbering-audit-tab';
+import { KsefNumberingSeriesTab } from './ksef-numbering-series-tab';
 
-type EditorMode =
-  | { kind: 'view' }
-  | { kind: 'setup' }
-  | { kind: 'edit'; label: 'main' | 'correction'; series: NumberingSeries };
+const TAB_VALUES = ['series', 'audit'] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
+function isTabValue(value: string | null): value is TabValue {
+  return value === 'series' || value === 'audit';
+}
 
 export function KsefNumberingPage(): ReactElement {
   const { connectionId = '' } = useParams();
-  const [mode, setMode] = useState<EditorMode>({ kind: 'view' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isDemoMode = useDemoMode();
 
   const connectionQuery = useConnectionQuery(connectionId);
-  const assignmentQuery = useNumberingAssignmentQuery(connectionId);
-  const assignment = assignmentQuery.data ?? null;
+  const connectionName = connectionQuery.data?.name;
 
-  const mainSeriesQuery = useNumberingSeriesQuery(assignment?.mainSeriesId ?? null);
-  const correctionSeriesQuery = useNumberingSeriesQuery(assignment?.correctionSeriesId ?? null);
+  const activeTab: TabValue = isTabValue(searchParams.get('tab')) ? (searchParams.get('tab') as TabValue) : 'series';
 
-  const connectionName = connectionQuery.data?.name ?? 'connection';
-  const backTo = { to: `/connections/${connectionId}?tab=actions`, label: `Actions · ${connectionName}` };
-
-  function renderBody(): ReactElement {
-    if (assignmentQuery.isLoading) {
-      return <LoadingState title="Loading numbering" message="Checking this connection's numbering setup…" />;
-    }
-    if (assignmentQuery.error) {
-      return (
-        <ErrorState
-          title="Unable to load numbering"
-          message={assignmentQuery.error.message}
-          action={
-            <Button tone="secondary" onClick={() => void assignmentQuery.refetch()}>
-              Retry
-            </Button>
-          }
-        />
-      );
-    }
-
-    if (mode.kind === 'setup') {
-      return (
-        <KsefNumberingEditor
-          connectionId={connectionId}
-          mode="setup"
-          onDone={() => setMode({ kind: 'view' })}
-          onCancel={() => setMode({ kind: 'view' })}
-        />
-      );
-    }
-
-    if (mode.kind === 'edit') {
-      return (
-        <KsefNumberingEditor
-          connectionId={connectionId}
-          mode="edit"
-          seriesLabel={mode.label}
-          series={mode.series}
-          onDone={() => setMode({ kind: 'view' })}
-          onCancel={() => setMode({ kind: 'view' })}
-        />
-      );
-    }
-
-    // Resting view.
-    if (!assignment) {
-      return <KsefNumberingEmpty connectionId={connectionId} onSetup={() => setMode({ kind: 'setup' })} />;
-    }
-
-    if (mainSeriesQuery.isLoading || (assignment.correctionSeriesId && correctionSeriesQuery.isLoading)) {
-      return <LoadingState title="Loading series" message="Fetching the assigned numbering series…" />;
-    }
-    if (mainSeriesQuery.error) {
-      return (
-        <ErrorState
-          title="Unable to load the assigned series"
-          message={mainSeriesQuery.error.message}
-          action={
-            <Button tone="secondary" onClick={() => void mainSeriesQuery.refetch()}>
-              Retry
-            </Button>
-          }
-        />
-      );
-    }
-    if (!mainSeriesQuery.data) {
-      return (
-        <EmptyState
-          title="Assigned series is missing"
-          message="The connection points to a series that no longer exists. Set up numbering again."
-          action={
-            <Button tone="primary" onClick={() => setMode({ kind: 'setup' })}>
-              Set up numbering
-            </Button>
-          }
-        />
-      );
-    }
-
-    return (
-      <KsefNumberingConfigured
-        mainSeries={mainSeriesQuery.data}
-        correctionSeries={correctionSeriesQuery.data ?? null}
-        onEditMain={() =>
-          setMode({ kind: 'edit', label: 'main', series: mainSeriesQuery.data as NumberingSeries })
-        }
-        onEditCorrection={(series) => setMode({ kind: 'edit', label: 'correction', series })}
-      />
+  function setTab(next: string): void {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('tab', next);
+        return params;
+      },
+      { replace: true },
     );
   }
+
+  // Skeleton the connection name into the back-link — never flash a placeholder.
+  const backLabel = connectionName ? `Actions · ${connectionName}` : 'Actions';
+  const backTo = { to: `/connections/${connectionId}?tab=actions`, label: backLabel };
 
   return (
     <PageLayout
       backTo={backTo}
       eyebrow="Invoicing"
       title="Invoice numbering"
-      description="Configure the sequential number OpenLinker stamps on every invoice cleared through this connection."
+      description="Configure the sequential numbers OpenLinker stamps on every invoice cleared through this connection."
     >
-      {renderBody()}
+      <Tabs value={activeTab} onValueChange={setTab}>
+        <TabsList aria-label="Invoice numbering sections">
+          <TabsTrigger value="series">Series</TabsTrigger>
+          <TabsTrigger value="audit">Number audit</TabsTrigger>
+        </TabsList>
+        <TabsContent value="series">
+          <KsefNumberingSeriesTab connectionId={connectionId} readOnly={isDemoMode} />
+        </TabsContent>
+        <TabsContent value="audit">
+          <KsefNumberingAuditTab connectionId={connectionId} />
+        </TabsContent>
+      </Tabs>
     </PageLayout>
   );
 }

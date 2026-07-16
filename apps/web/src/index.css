@@ -3374,7 +3374,7 @@ textarea,
   display: inline-block;
   margin-top: 0.5rem;
   font-size: 0.875rem;
-  color: var(--accent-text);
+  color: var(--accent-primary);
   text-align: center;
   text-decoration: none;
 }
@@ -11979,42 +11979,31 @@ input.bulk-dispatch__num--wide {
   line-height: 1.3;
 }
 
-/* ── Invoice numbering (#1577) ────────────────────────────────────────── */
+/* ── Invoice numbering (#1527 / #1577) ─────────────────────────────────── */
 
 .numbering-status-warning {
   color: var(--status-warning-fg);
   font-weight: 500;
 }
 
-/* Resting / configured view */
-.numbering-configured {
+/* Actions-row status placeholder — a skeleton pill, never an empty tail */
+.numbering-status-skeleton {
+  display: inline-block;
+  width: 8rem;
+  height: 0.7em;
+  vertical-align: middle;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+
+/* Series tab */
+.numbering-series-tab {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.numbering-configured__cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: var(--space-4);
-}
-
-.numbering-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-5);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-}
-
-.numbering-card--muted {
-  background: var(--bg-surface-muted);
-  border-style: dashed;
-}
-
-.numbering-card__header {
+.numbering-series-tab__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -12022,90 +12011,204 @@ input.bulk-dispatch__num--wide {
   flex-wrap: wrap;
 }
 
-.numbering-card__pattern {
+.numbering-series-tab__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Empty-state glyph */
+.numbering-empty-glyph {
+  margin: 0 auto var(--space-3);
+  width: 3.5rem;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: 50%;
+}
+
+/* Tables (series + audit) */
+.numbering-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.numbering-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.numbering-table thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface-muted);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.numbering-table tbody td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.numbering-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.numbering-table__pattern {
   padding: var(--space-1) var(--space-2);
   background: var(--bg-muted);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   font-size: 0.8125rem;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
-.numbering-card__label {
-  margin-top: var(--space-2);
-  color: var(--text-muted);
-  font-size: 0.8125rem;
+.numbering-table__actions {
+  text-align: right;
+  white-space: nowrap;
 }
 
-.numbering-card__number {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
+.numbering-table__empty {
+  text-align: center;
+  padding: var(--space-5);
 }
 
-.numbering-card__meta {
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-}
-
-.numbering-card__actions {
-  margin-top: var(--space-2);
-}
-
-/* Empty view + unassigned list */
-.numbering-empty {
+/* Document routing card */
+.numbering-routing {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
 }
 
-.numbering-empty__cta {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.numbering-empty__unassigned {
+.numbering-routing__header {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-1);
 }
 
-.numbering-unassigned-list {
+.numbering-routing__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
-.numbering-unassigned-list__item {
+.numbering-routing__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.numbering-unassigned-list__info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+.numbering-routing__row:first-child {
+  border-top: none;
+}
+
+.numbering-routing__label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
 }
 
-.numbering-unassigned-list__pattern {
+.numbering-routing__code {
+  grid-row: span 2;
+  align-self: center;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.numbering-routing__name {
   font-weight: 600;
   color: var(--text-primary);
 }
 
-/* Editor: two-column form + sticky preview */
+.numbering-routing__hint {
+  grid-column: 2;
+  font-size: 0.8125rem;
+}
+
+.numbering-routing__row .control--select {
+  max-width: 20rem;
+  flex: 0 1 20rem;
+}
+
+/* Number audit tab */
+.numbering-audit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.numbering-audit__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.numbering-audit__picker {
+  flex: 1 1 18rem;
+  max-width: 28rem;
+}
+
+.numbering-audit__gaps-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.numbering-audit__summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.numbering-audit__row--gap td {
+  background: var(--status-warning-soft);
+}
+
+.numbering-audit__note {
+  color: var(--text-primary);
+}
+
+/* Editor: two-column form + preview */
 .numbering-editor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
@@ -12127,39 +12230,31 @@ input.bulk-dispatch__num--wide {
   margin-top: calc(var(--space-2) * -1);
 }
 
+/* Plain insert-action chips (NOT toggle semantics) */
+.numbering-chip {
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.numbering-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.numbering-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .numbering-editor__row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--space-3);
-}
-
-.numbering-editor__correction {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--bg-surface-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-}
-
-.numbering-editor__toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  cursor: pointer;
-}
-
-.numbering-editor__toggle-help {
-  margin: 0;
-  font-size: 0.8125rem;
-}
-
-.numbering-editor__correction-fields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
 }
 
 .numbering-editor__actions {
@@ -12168,7 +12263,6 @@ input.bulk-dispatch__num--wide {
   justify-content: flex-end;
 }
 
-.numbering-editor__server-issues,
 .numbering-preview__errors {
   margin: 0;
   padding-left: var(--space-4);
@@ -12202,7 +12296,7 @@ input.bulk-dispatch__num--wide {
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--accent-text);
+  color: var(--accent-primary);
 }
 
 .numbering-preview__caption-top {
@@ -12224,7 +12318,7 @@ input.bulk-dispatch__num--wide {
 }
 
 .numbering-preview__token--seq {
-  color: var(--accent-text);
+  color: var(--accent-primary);
 }
 
 .numbering-preview__token--date {
@@ -12239,6 +12333,40 @@ input.bulk-dispatch__num--wide {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.75rem;
+}
+
+/* Rendered-length meter vs the FA(3) P_2 limit */
+.numbering-preview__meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.numbering-preview__meter-track {
+  height: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+
+.numbering-preview__meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary);
+}
+
+.numbering-preview__meter--over .numbering-preview__meter-fill {
+  background: var(--status-error-fg);
+}
+
+.numbering-preview__meter-caption {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.numbering-preview__meter--over .numbering-preview__meter-caption {
+  color: var(--status-error-fg);
 }
 
 .numbering-preview__then {
@@ -12296,7 +12424,10 @@ input.bulk-dispatch__num--wide {
   .numbering-editor {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Live preview sits above the form (and its actions) so it stays visible
+     while typing on a narrow viewport. */
   .numbering-editor__preview {
     position: static;
+    order: -1;
   }
 }

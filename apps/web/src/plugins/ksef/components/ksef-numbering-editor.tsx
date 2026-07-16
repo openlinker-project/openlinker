@@ -1,57 +1,56 @@
 /**
- * KSeF numbering editor (#1577)
+ * KSeF numbering editor
  *
- * Two-column editing surface: the form on the left, the sticky live-preview
- * panel on the right. Handles both flows:
- *   - setup: create the main series + (optionally) a separate correction series,
- *     then assign both to the connection.
- *   - edit: patch a single existing series (main or correction).
- *
- * Validation mirrors the C1 rule for instant UX feedback, but the API stays the
- * source of truth — the server's 400 `errors[]` are surfaced verbatim on
- * submit. Lowering the next number is allowed but warned (a migration case).
+ * Two-column editing surface: the form on the left, the live-preview panel on
+ * the right (which drops directly under the form on the mobile breakpoint via
+ * CSS `order`, so the number stays visible while typing). Creates a new series
+ * or patches an existing one. Client-side Zod mirrors the core rule for instant
+ * feedback; the API stays the source of truth — server 400 `errors[]` are
+ * mapped onto the pattern field via `setError`, other rejections surface in a
+ * single top-level alert (no duplicate toast).
  *
  * @module plugins/ksef/components
  */
-import { useRef, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import {
   useCreateNumberingSeriesMutation,
-  useSetNumberingAssignmentMutation,
   useUpdateNumberingSeriesMutation,
+  DocumentTypeValues,
+  ResetPolicyValues,
+  type DocumentType,
   type NumberingSeries,
   type ResetPolicy,
 } from '../../../features/invoicing';
-import { ResetPolicyValues } from '../../../features/invoicing';
 import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { Chip } from '../../../shared/ui/chip';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import { KsefNumberingPreview } from './ksef-numbering-preview';
 import {
-  NUMBERING_SETUP_DEFAULTS,
+  DOCUMENT_TYPE_LABELS,
   NUMBERING_VARIABLE_CHIPS,
   RESET_POLICY_LABELS,
+} from './ksef-numbering.lib';
+import {
+  NUMBERING_CREATE_DEFAULTS,
+  SERVER_ISSUE_FIELD,
   numberingFormSchema,
   seriesToFormValues,
-  toCorrectionCreateInput,
-  toMainCreateInput,
-  toSeriesUpdateInput,
+  toCreateInput,
+  toUpdateInput,
   type NumberingFormValues,
 } from './ksef-numbering.schema';
 
 interface KsefNumberingEditorProps {
   connectionId: string;
-  mode: 'setup' | 'edit';
-  /** Which series is being edited (labels/copy only); ignored in setup. */
-  seriesLabel?: 'main' | 'correction';
-  /** The series being edited (edit mode only). */
+  /** The series being edited (edit mode); absent = create mode. */
   series?: NumberingSeries;
   onDone: () => void;
   onCancel: () => void;
@@ -69,30 +68,44 @@ function extractServerIssues(error: unknown): string[] {
 }
 
 export function KsefNumberingEditor({
-  connectionId,
-  mode,
-  seriesLabel = 'main',
+  connectionId: _connectionId,
   series,
   onDone,
   onCancel,
 }: KsefNumberingEditorProps): ReactElement {
+  const isEdit = series !== undefined;
   const { showToast } = useToast();
   const createSeries = useCreateNumberingSeriesMutation();
   const updateSeries = useUpdateNumberingSeriesMutation();
-  const setAssignment = useSetNumberingAssignmentMutation();
   const patternInputRef = useRef<HTMLInputElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const [topLevelError, setTopLevelError] = useState<string | null>(null);
+  // Server pattern-coverage issues are held in local state (not only RHF
+  // `setError`) because a resolver re-run can clear a manually-set field error;
+  // this keeps the field-level message visible until the pattern is edited.
+  const [patternServerError, setPatternServerError] = useState<string | null>(null);
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+
+  // Focus the heading when the editor mounts so keyboard / SR users land on the
+  // new surface rather than being dropped at the top of the document.
+  useEffect(() => {
+    headingRef.current?.focus({ preventScroll: prefersReducedMotion });
+  }, [prefersReducedMotion]);
 
   const form = useForm<NumberingFormValues>({
-    defaultValues:
-      mode === 'edit' && series ? seriesToFormValues(series) : NUMBERING_SETUP_DEFAULTS,
+    defaultValues: series ? seriesToFormValues(series) : NUMBERING_CREATE_DEFAULTS,
     resolver: zodResolver(numberingFormSchema),
     mode: 'onChange',
   });
 
   const values = form.watch();
   const { errors } = form.formState;
-
   const patternRegister = form.register('pattern');
+
+  // Clear a stale server pattern error once the operator edits the pattern.
+  useEffect(() => {
+    setPatternServerError(null);
+  }, [values.pattern]);
 
   function insertVariable(variable: string): void {
     const input = patternInputRef.current;
@@ -105,7 +118,6 @@ export function KsefNumberingEditor({
     const end = input.selectionEnd ?? current.length;
     const next = `${current.slice(0, start)}${variable}${current.slice(end)}`;
     form.setValue('pattern', next, { shouldDirty: true, shouldValidate: true });
-    // Restore the caret just after the inserted token on the next tick.
     requestAnimationFrame(() => {
       const caret = start + variable.length;
       input.focus();
@@ -113,50 +125,44 @@ export function KsefNumberingEditor({
     });
   }
 
-  const isPending = createSeries.isPending || updateSeries.isPending || setAssignment.isPending;
-  const submitError = createSeries.error ?? updateSeries.error ?? setAssignment.error ?? null;
-  const serverIssues = extractServerIssues(submitError);
+  const isPending = createSeries.isPending || updateSeries.isPending;
 
   const validationMessages = Object.values(errors).flatMap((error) =>
     error && 'message' in error && error.message ? [String(error.message)] : [],
   );
 
-  // Lowering the next number below the persisted value is allowed but warned.
   const loweringNextNumber =
-    mode === 'edit' &&
+    isEdit &&
     series !== undefined &&
     /^\d+$/.test(values.nextSeq.trim()) &&
     Number(values.nextSeq.trim()) < series.nextSeq;
 
   const onSubmit = form.handleSubmit(async (submitted) => {
+    setTopLevelError(null);
+    setPatternServerError(null);
     try {
-      if (mode === 'edit' && series) {
-        await updateSeries.mutateAsync({ seriesId: series.id, input: toSeriesUpdateInput(submitted) });
+      if (isEdit && series) {
+        await updateSeries.mutateAsync({ seriesId: series.id, input: toUpdateInput(submitted) });
       } else {
-        const main = await createSeries.mutateAsync(toMainCreateInput(submitted));
-        let correctionSeriesId: string | null = null;
-        if (submitted.correctionEnabled) {
-          const correction = await createSeries.mutateAsync(toCorrectionCreateInput(submitted));
-          correctionSeriesId = correction.id;
-        }
-        await setAssignment.mutateAsync({
-          connectionId,
-          input: { mainSeriesId: main.id, correctionSeriesId },
-        });
+        await createSeries.mutateAsync(toCreateInput(submitted));
       }
       showToast({ tone: 'success', title: 'Series saved', description: 'Invoice numbering is set.' });
       onDone();
-    } catch {
-      // Surfaced below via submitError / serverIssues.
+    } catch (error) {
+      const issues = extractServerIssues(error);
+      if (issues.length > 0) {
+        // Server pattern-coverage issues are identifiable — attach to the field.
+        const joined = issues.join(' ');
+        setPatternServerError(joined);
+        form.setError(SERVER_ISSUE_FIELD, { type: 'server', message: joined });
+        patternInputRef.current?.focus({ preventScroll: prefersReducedMotion });
+      } else {
+        setTopLevelError(error instanceof Error ? error.message : 'Could not save the series.');
+      }
     }
   });
 
-  const heading =
-    mode === 'setup'
-      ? 'Set up numbering'
-      : seriesLabel === 'correction'
-        ? 'Edit correction series'
-        : 'Edit main series';
+  const heading = isEdit ? 'Edit series' : 'Add series';
 
   return (
     <div className="numbering-editor">
@@ -165,20 +171,13 @@ export function KsefNumberingEditor({
         onSubmit={(event) => void onSubmit(event)}
         noValidate
       >
-        <h3 className="section-title">{heading}</h3>
+        <h3 className="section-title" ref={headingRef} tabIndex={-1}>
+          {heading}
+        </h3>
 
-        {submitError && serverIssues.length === 0 ? (
+        {topLevelError ? (
           <Alert tone="error" title="Could not save the series">
-            {submitError.message}
-          </Alert>
-        ) : null}
-        {serverIssues.length > 0 ? (
-          <Alert tone="error" title="The server rejected the series">
-            <ul className="numbering-editor__server-issues">
-              {serverIssues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
+            {topLevelError}
           </Alert>
         ) : null}
 
@@ -187,14 +186,40 @@ export function KsefNumberingEditor({
         ) : null}
 
         <FormField label="Series name" name="name" error={errors.name?.message}>
-          <Input {...form.register('name')} placeholder="Main invoices" />
+          <Input {...form.register('name')} placeholder="Sales invoices" />
         </FormField>
+
+        <div className="numbering-editor__row">
+          <FormField
+            label="Document type"
+            name="documentType"
+            description="Which document this series numbers."
+            error={errors.documentType?.message}
+          >
+            <Select {...form.register('documentType')}>
+              {DocumentTypeValues.map((type: DocumentType) => (
+                <option key={type} value={type}>
+                  {DOCUMENT_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          <FormField
+            label="Register / entity"
+            name="register"
+            description="Optional scope; leave blank for the default."
+            error={errors.register?.message}
+          >
+            <Input {...form.register('register')} placeholder="e.g. warehouse-2" />
+          </FormField>
+        </div>
 
         <FormField
           label="Pattern"
           name="pattern"
           description="{seq} is required; everything else is literal text."
-          error={errors.pattern?.message}
+          error={errors.pattern?.message ?? patternServerError ?? undefined}
         >
           <Input
             {...patternRegister}
@@ -207,11 +232,17 @@ export function KsefNumberingEditor({
           />
         </FormField>
 
-        <div className="numbering-editor__chips" role="group" aria-label="Insert pattern variable">
+        <div className="numbering-editor__chips">
           {NUMBERING_VARIABLE_CHIPS.map((variable) => (
-            <Chip key={variable} type="button" onClick={() => insertVariable(variable)}>
+            <button
+              key={variable}
+              type="button"
+              className="numbering-chip"
+              aria-label={`Insert ${variable}`}
+              onClick={() => insertVariable(variable)}
+            >
               <span className="mono-text">{variable}</span>
-            </Chip>
+            </button>
           ))}
         </div>
 
@@ -232,108 +263,24 @@ export function KsefNumberingEditor({
             description="Leading zeros on {seq}."
             error={errors.seqPadding?.message}
           >
-            <Input
-              {...form.register('seqPadding')}
-              type="number"
-              min={0}
-              max={20}
-              inputMode="numeric"
-            />
+            <Input {...form.register('seqPadding')} type="number" min={0} max={20} inputMode="numeric" />
           </FormField>
 
-          <FormField label="Next number" name="nextSeq" error={errors.nextSeq?.message}>
-            <Input
-              {...form.register('nextSeq')}
-              type="number"
-              min={1}
-              inputMode="numeric"
-            />
+          <FormField
+            label="Next number"
+            name="nextSeq"
+            description="Issued numbers are permanent and gap-sensitive — this is where the series continues from."
+            error={errors.nextSeq?.message}
+          >
+            <Input {...form.register('nextSeq')} type="number" min={1} inputMode="numeric" />
           </FormField>
         </div>
 
         {loweringNextNumber ? (
           <Alert tone="warning" title="Lowering the next number">
-            Lowering the next number can reproduce a number you have already issued. Only do this
-            when migrating from another system.
+            Lowering the next number can reproduce a number you have already issued. Only do this when
+            migrating from another system.
           </Alert>
-        ) : null}
-
-        {mode === 'setup' ? (
-          <div className="numbering-editor__correction">
-            <label className="numbering-editor__toggle">
-              <input type="checkbox" {...form.register('correctionEnabled')} />
-              <span>
-                <strong>Separate series for corrections</strong>
-                <span className="muted-text"> (prefilled FK/…)</span>
-              </span>
-            </label>
-            <p className="muted-text numbering-editor__toggle-help">
-              When off, corrections draw their number from the main series.
-            </p>
-
-            {values.correctionEnabled ? (
-              <div className="numbering-editor__correction-fields">
-                <FormField
-                  label="Correction series name"
-                  name="correctionName"
-                  error={errors.correctionName?.message}
-                >
-                  <Input {...form.register('correctionName')} placeholder="Corrections" />
-                </FormField>
-                <FormField
-                  label="Correction pattern"
-                  name="correctionPattern"
-                  error={errors.correctionPattern?.message}
-                >
-                  <Input
-                    {...form.register('correctionPattern')}
-                    className="mono-text"
-                    placeholder="FK/{seq}/{MM}/{YYYY}"
-                  />
-                </FormField>
-                <div className="numbering-editor__row">
-                  <FormField
-                    label="Correction reset counter"
-                    name="correctionResetPolicy"
-                    error={errors.correctionResetPolicy?.message}
-                  >
-                    <Select {...form.register('correctionResetPolicy')}>
-                      {ResetPolicyValues.map((policy: ResetPolicy) => (
-                        <option key={policy} value={policy}>
-                          {RESET_POLICY_LABELS[policy]}
-                        </option>
-                      ))}
-                    </Select>
-                  </FormField>
-                  <FormField
-                    label="Correction padding"
-                    name="correctionSeqPadding"
-                    error={errors.correctionSeqPadding?.message}
-                  >
-                    <Input
-                      {...form.register('correctionSeqPadding')}
-                      type="number"
-                      min={0}
-                      max={20}
-                      inputMode="numeric"
-                    />
-                  </FormField>
-                  <FormField
-                    label="Correction next number"
-                    name="correctionNextSeq"
-                    error={errors.correctionNextSeq?.message}
-                  >
-                    <Input
-                      {...form.register('correctionNextSeq')}
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                    />
-                  </FormField>
-                </div>
-              </div>
-            ) : null}
-          </div>
         ) : null}
 
         <div className="numbering-editor__actions">
@@ -353,14 +300,6 @@ export function KsefNumberingEditor({
           seqPadding={values.seqPadding}
           resetPolicy={values.resetPolicy}
         />
-        {mode === 'setup' && values.correctionEnabled ? (
-          <KsefNumberingPreview
-            pattern={values.correctionPattern}
-            nextSeq={values.correctionNextSeq}
-            seqPadding={values.correctionSeqPadding}
-            resetPolicy={values.correctionResetPolicy}
-          />
-        ) : null}
       </div>
     </div>
   );
