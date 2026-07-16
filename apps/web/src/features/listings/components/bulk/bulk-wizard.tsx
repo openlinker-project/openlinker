@@ -82,7 +82,8 @@ export function BulkWizard({
   // the request — a demo viewer's `demoReadOnly` toggle in the Config step is
   // already forced off, but this re-derives from the real permission
   // regardless of what `config` snapshot reached this point.
-  const canGenerateDescription = useWriteAccess('listings:write', demoMode).canWrite;
+  const write = useWriteAccess('listings:write', demoMode);
+  const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products));
@@ -413,6 +414,7 @@ export function BulkWizard({
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
+            demoReadOnly={write.demoReadOnly}
             errorMessage={mutation.error ? mutation.error.message : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);

@@ -9,6 +9,8 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Alert, Button } from '../../../../shared/ui';
+import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +28,11 @@ interface BulkConfirmModalProps {
   marketplaceName: string;
   initialPublishImmediately: boolean;
   isSubmitting: boolean;
+  /**
+   * Demo read-only viewer — the final "Create offers" submit renders disabled
+   * with a read-only tooltip instead of hitting the backend 403 (#1704).
+   */
+  demoReadOnly: boolean;
   errorMessage: string | null;
   onConfirm: (publishImmediately: boolean) => void;
 }
@@ -38,6 +45,7 @@ export function BulkConfirmModal({
   marketplaceName,
   initialPublishImmediately,
   isSubmitting,
+  demoReadOnly,
   errorMessage,
   onConfirm,
 }: BulkConfirmModalProps): ReactElement {
@@ -96,13 +104,15 @@ export function BulkConfirmModal({
           >
             Cancel
           </Button>
-          <Button
-            tone="primary"
-            onClick={() => { onConfirm(publish); }}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? 'Creating…' : 'Create offers'}
-          </Button>
+          <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button
+              tone="primary"
+              onClick={() => { onConfirm(publish); }}
+              disabled={isSubmitting || demoReadOnly}
+            >
+              {isSubmitting ? 'Creating…' : 'Create offers'}
+            </Button>
+          </ReadOnlyLock>
         </DialogFooter>
       </DialogContent>
     </Dialog>
