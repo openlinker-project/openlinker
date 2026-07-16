@@ -21,7 +21,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedbac
 import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { KsefNumberingEditor } from './ksef-numbering-editor';
-import { KsefNumberingRoutingCard } from './ksef-numbering-routing-card';
+import { KsefNumberingRoutingCard, type RoutingSeriesPrefill } from './ksef-numbering-routing-card';
 import { KSEF_TIME_ZONE, documentTypeLabel, RESET_POLICY_LABELS } from './ksef-numbering.lib';
 
 interface KsefNumberingSeriesTabProps {
@@ -29,7 +29,10 @@ interface KsefNumberingSeriesTabProps {
   readOnly: boolean;
 }
 
-type Mode = { kind: 'list' } | { kind: 'create' } | { kind: 'edit'; series: NumberingSeries };
+type Mode =
+  | { kind: 'list' }
+  | { kind: 'create'; prefill?: RoutingSeriesPrefill }
+  | { kind: 'edit'; series: NumberingSeries };
 
 const ALL_REGISTERS = '__all__';
 const DEFAULT_REGISTER = '__default__';
@@ -73,6 +76,7 @@ export function KsefNumberingSeriesTab({
       <KsefNumberingEditor
         connectionId={connectionId}
         series={mode.kind === 'edit' ? mode.series : undefined}
+        createPrefill={mode.kind === 'create' ? mode.prefill : undefined}
         onDone={backToList}
         onCancel={backToList}
       />
@@ -131,9 +135,14 @@ export function KsefNumberingSeriesTab({
   return (
     <div className="numbering-series-tab">
       <div className="numbering-series-tab__toolbar">
-        <h3 className="section-title" ref={headingRef} tabIndex={-1}>
-          Series
-        </h3>
+        <div className="numbering-series-tab__heading">
+          <h3 className="section-title" ref={headingRef} tabIndex={-1}>
+            Series
+          </h3>
+          <p className="muted-text numbering-series-tab__subtitle">
+            Shared across every connection; routing below is per-connection.
+          </p>
+        </div>
         <div className="numbering-series-tab__toolbar-actions">
           {registerValues.length > 0 ? (
             <>
@@ -214,7 +223,7 @@ export function KsefNumberingSeriesTab({
         series={series}
         routes={routes}
         readOnly={readOnly}
-        onAddSeries={() => setMode({ kind: 'create' })}
+        onAddSeries={(prefill) => setMode({ kind: 'create', prefill })}
       />
     </div>
   );

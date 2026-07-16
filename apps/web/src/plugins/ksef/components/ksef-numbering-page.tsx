@@ -56,7 +56,7 @@ export function KsefNumberingPage(): ReactElement {
       backTo={backTo}
       eyebrow="Invoicing"
       title="Invoice numbering"
-      description="Configure the sequential numbers OpenLinker stamps on every invoice cleared through this connection."
+      description="Numbering series are shared across every connection; this page controls which series each document type on this connection is routed to."
     >
       <Tabs value={activeTab} onValueChange={setTab}>
         <TabsList aria-label="Invoice numbering sections">
@@ -67,7 +67,7 @@ export function KsefNumberingPage(): ReactElement {
           <KsefNumberingSeriesTab connectionId={connectionId} readOnly={isDemoMode} />
         </TabsContent>
         <TabsContent value="audit">
-          <KsefNumberingAuditTab connectionId={connectionId} />
+          <KsefNumberingAuditTab connectionId={connectionId} readOnly={isDemoMode} />
         </TabsContent>
       </Tabs>
     </PageLayout>

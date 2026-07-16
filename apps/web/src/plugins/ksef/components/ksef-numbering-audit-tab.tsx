@@ -23,14 +23,20 @@ import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { SEQ_STATUS_LABELS, SEQ_STATUS_TONES } from './ksef-numbering.lib';
 
 interface KsefNumberingAuditTabProps {
   connectionId: string;
+  readOnly: boolean;
 }
 
-export function KsefNumberingAuditTab({ connectionId: _connectionId }: KsefNumberingAuditTabProps): ReactElement {
+export function KsefNumberingAuditTab({
+  connectionId: _connectionId,
+  readOnly,
+}: KsefNumberingAuditTabProps): ReactElement {
   const seriesQuery = useNumberingSeriesListQuery();
   const [seriesId, setSeriesId] = useState<string>('');
   const [onlyGaps, setOnlyGaps] = useState(false);
@@ -107,6 +113,8 @@ export function KsefNumberingAuditTab({ connectionId: _connectionId }: KsefNumbe
             <span className="mono-text tabular">{audit.summary.issuedCount}</span> issued ·{' '}
             <span className="mono-text tabular">{audit.summary.gapCount}</span> gaps (
             <span className="mono-text tabular">{audit.summary.explainedGapCount}</span> explained) ·{' '}
+            <span className="mono-text tabular">{audit.summary.abandonedCount}</span> abandoned ·{' '}
+            <span className="mono-text tabular">{audit.summary.skippedCount}</span> skipped ·{' '}
             <span className="mono-text tabular">{audit.summary.pendingCount}</span> pending
           </p>
 
@@ -159,9 +167,15 @@ export function KsefNumberingAuditTab({ connectionId: _connectionId }: KsefNumbe
                       </td>
                       <td className="numbering-table__actions">
                         {entry.isGap && !entry.note ? (
-                          <Button tone="secondary" onClick={() => setGapTarget(entry)}>
-                            Explain gap
-                          </Button>
+                          <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                            <Button
+                              tone="secondary"
+                              onClick={() => setGapTarget(entry)}
+                              disabled={readOnly}
+                            >
+                              Explain gap
+                            </Button>
+                          </ReadOnlyLock>
                         ) : null}
                       </td>
                     </tr>
@@ -177,6 +191,7 @@ export function KsefNumberingAuditTab({ connectionId: _connectionId }: KsefNumbe
         <ExplainGapDialog
           seriesId={seriesId}
           entry={gapTarget}
+          readOnly={readOnly}
           onClose={() => setGapTarget(null)}
         />
       ) : null}
@@ -187,10 +202,11 @@ export function KsefNumberingAuditTab({ connectionId: _connectionId }: KsefNumbe
 interface ExplainGapDialogProps {
   seriesId: string;
   entry: SeriesAuditEntry;
+  readOnly: boolean;
   onClose: () => void;
 }
 
-function ExplainGapDialog({ seriesId, entry, onClose }: ExplainGapDialogProps): ReactElement {
+function ExplainGapDialog({ seriesId, entry, readOnly, onClose }: ExplainGapDialogProps): ReactElement {
   const recordNote = useRecordGapNoteMutation();
   const { showToast } = useToast();
   const [reason, setReason] = useState('');
@@ -257,7 +273,11 @@ function ExplainGapDialog({ seriesId, entry, onClose }: ExplainGapDialogProps): 
           <Button tone="secondary" onClick={onClose} disabled={recordNote.isPending}>
             Cancel
           </Button>
-          <Button tone="primary" onClick={() => void submit()} disabled={recordNote.isPending}>
+          <Button
+            tone="primary"
+            onClick={() => void submit()}
+            disabled={recordNote.isPending || readOnly}
+          >
             {recordNote.isPending ? 'Saving…' : 'Record explanation'}
           </Button>
         </DialogFooter>

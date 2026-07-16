@@ -2,7 +2,7 @@
  * KSeF numbering editor
  *
  * Two-column editing surface: the form on the left, the live-preview panel on
- * the right (which drops directly under the form on the mobile breakpoint via
+ * the right (which moves directly above the form on the mobile breakpoint via
  * CSS `order`, so the number stays visible while typing). Creates a new series
  * or patches an existing one. Client-side Zod mirrors the core rule for instant
  * feedback; the API stays the source of truth — server 400 `errors[]` are
@@ -52,6 +52,8 @@ interface KsefNumberingEditorProps {
   connectionId: string;
   /** The series being edited (edit mode); absent = create mode. */
   series?: NumberingSeries;
+  /** Create-mode prefill from a routing row ("Add a series first"). */
+  createPrefill?: { documentType?: DocumentType; register?: string | null };
   onDone: () => void;
   onCancel: () => void;
 }
@@ -70,6 +72,7 @@ function extractServerIssues(error: unknown): string[] {
 export function KsefNumberingEditor({
   connectionId: _connectionId,
   series,
+  createPrefill,
   onDone,
   onCancel,
 }: KsefNumberingEditorProps): ReactElement {
@@ -92,8 +95,14 @@ export function KsefNumberingEditor({
     headingRef.current?.focus({ preventScroll: prefersReducedMotion });
   }, [prefersReducedMotion]);
 
+  const createDefaults: NumberingFormValues = {
+    ...NUMBERING_CREATE_DEFAULTS,
+    ...(createPrefill?.documentType ? { documentType: createPrefill.documentType } : {}),
+    ...(createPrefill?.register != null ? { register: createPrefill.register } : {}),
+  };
+
   const form = useForm<NumberingFormValues>({
-    defaultValues: series ? seriesToFormValues(series) : NUMBERING_CREATE_DEFAULTS,
+    defaultValues: series ? seriesToFormValues(series) : createDefaults,
     resolver: zodResolver(numberingFormSchema),
     mode: 'onChange',
   });
@@ -136,6 +145,19 @@ export function KsefNumberingEditor({
     series !== undefined &&
     /^\d+$/.test(values.nextSeq.trim()) &&
     Number(values.nextSeq.trim()) < series.nextSeq;
+
+  // Editing the document type of a series can orphan or mis-show a route that
+  // still points at it (routes match a series by its document type).
+  const documentTypeChanged =
+    isEdit && series !== undefined && values.documentType !== series.documentType;
+
+  // A series that has already issued numbers (nextSeq > 1) is live; changing its
+  // pattern only affects numbers going forward, on every routed connection.
+  const patternChangedWithIssued =
+    isEdit &&
+    series !== undefined &&
+    series.nextSeq > 1 &&
+    values.pattern.trim() !== series.pattern.trim();
 
   const onSubmit = form.handleSubmit(async (submitted) => {
     setTopLevelError(null);
@@ -215,10 +237,17 @@ export function KsefNumberingEditor({
           </FormField>
         </div>
 
+        {documentTypeChanged ? (
+          <Alert tone="warning" title="Changing the document type">
+            This series may already be routed to a document type. Changing it can leave that route
+            pointing at a series that no longer matches. Recheck document routing after saving.
+          </Alert>
+        ) : null}
+
         <FormField
           label="Pattern"
           name="pattern"
-          description="{seq} is required; everything else is literal text."
+          description="{seq} is required; everything else is literal text. The series is shared, so a change applies to every connection routed to it."
           error={errors.pattern?.message ?? patternServerError ?? undefined}
         >
           <Input
@@ -246,6 +275,13 @@ export function KsefNumberingEditor({
           ))}
         </div>
 
+        {patternChangedWithIssued ? (
+          <Alert tone="warning" title="Changing an in-use pattern">
+            This series has already issued numbers. A new pattern changes the format only for
+            numbers going forward, on every connection routed to this series.
+          </Alert>
+        ) : null}
+
         <FormField label="Reset counter" name="resetPolicy" error={errors.resetPolicy?.message}>
           <Select {...form.register('resetPolicy')}>
             {ResetPolicyValues.map((policy: ResetPolicy) => (
@@ -269,7 +305,7 @@ export function KsefNumberingEditor({
           <FormField
             label="Next number"
             name="nextSeq"
-            description="Issued numbers are permanent and gap-sensitive — this is where the series continues from."
+            description="Where the series continues from. Issued numbers are permanent and gap-sensitive, and the series is shared across every routed connection."
             error={errors.nextSeq?.message}
           >
             <Input {...form.register('nextSeq')} type="number" min={1} inputMode="numeric" />

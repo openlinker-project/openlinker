@@ -56,7 +56,7 @@ export const VARIABLE_LEGEND: Record<NumberingPatternVariable, string> = {
   '{seq}': 'Sequence number',
   '{YYYY}': '4-digit year',
   '{YY}': '2-digit year',
-  '{FY}': 'Fiscal year',
+  '{FY}': 'Fiscal year (currently = calendar year)',
   '{MM}': 'Month 01-12',
   '{QQ}': 'Quarter 1-4',
   '{DD}': 'Day 01-31',
