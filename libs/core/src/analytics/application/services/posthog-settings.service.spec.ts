@@ -1,16 +1,19 @@
 /**
  * PostHog Settings Service — Unit Tests
  *
- * Mocks the settings repo + `ICredentialsService` + `PosthogEnvConfigPort`.
+ * Mocks the settings repo + `ICredentialsService` + `ConfigService`.
  * Asserts: GET view never carries the API key; DB row wins over env when
- * enabled and present; env-only fallback reproduces the pre-#1685
- * `PosthogConfigService.getConfig()` resolution when no enabled row exists
- * (including its hardcoded autocapture/sessionRecording defaults); env
- * override detection names the correct shadowed var(s); region→host mapping
- * incl. `custom`; enabled-but-unresolvable-key/host returns `null`.
+ * enabled AND the row has its own stored credential; env-only fallback
+ * reproduces the pre-#1685 `PosthogConfigService.getConfig()` resolution
+ * when no enabled row exists (including its hardcoded
+ * autocapture/sessionRecording defaults); env override detection names the
+ * correct shadowed var(s) and requires an actual DB credential (not just
+ * `enabled`); region→host mapping incl. `custom`;
+ * enabled-but-unresolvable-key/host returns `null`.
  *
  * @module libs/core/src/analytics/application/services
  */
+import type { ConfigService } from '@nestjs/config';
 import { Logger as SharedLogger } from '@openlinker/shared/logging';
 import {
   CredentialNotFoundException,
@@ -18,10 +21,15 @@ import {
   type ICredentialsService,
 } from '@openlinker/core/integrations';
 import { PosthogSettings } from '../../domain/entities/posthog-settings.entity';
-import type { PosthogEnvConfig, PosthogEnvConfigPort } from '../../domain/ports/posthog-env-config.port';
 import type { PosthogSettingsRepositoryPort } from '../../domain/ports/posthog-settings-repository.port';
 import { POSTHOG_API_KEY_CREDENTIALS_REF } from '../../domain/types/posthog-credentials.types';
 import { PosthogSettingsService } from './posthog-settings.service';
+
+const buildConfigService = (overrides: Record<string, string | undefined> = {}): ConfigService =>
+  ({
+    get: <T = string>(key: string, fallback?: T): T | undefined =>
+      (overrides[key] as T | undefined) ?? fallback,
+  }) as unknown as ConfigService;
 
 const buildCredential = (apiKey: string): IntegrationCredential =>
   new IntegrationCredential(
@@ -36,11 +44,10 @@ const buildCredential = (apiKey: string): IntegrationCredential =>
 describe('PosthogSettingsService', () => {
   let repository: jest.Mocked<PosthogSettingsRepositoryPort>;
   let credentials: jest.Mocked<ICredentialsService>;
-  let envConfigPort: jest.Mocked<PosthogEnvConfigPort>;
   let logSpy: jest.SpyInstance;
 
-  const buildService = (): PosthogSettingsService =>
-    new PosthogSettingsService(repository, credentials, envConfigPort);
+  const buildService = (config: ConfigService = buildConfigService()): PosthogSettingsService =>
+    new PosthogSettingsService(repository, credentials, config);
 
   beforeEach(() => {
     repository = {
@@ -53,11 +60,7 @@ describe('PosthogSettingsService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     };
-    envConfigPort = {
-      getConfig: jest.fn(),
-    };
     logSpy = jest.spyOn(SharedLogger.prototype, 'log').mockImplementation(() => undefined);
-    envConfigPort.getConfig.mockReturnValue(null);
     credentials.getByRef.mockRejectedValue(
       new CredentialNotFoundException(POSTHOG_API_KEY_CREDENTIALS_REF)
     );
@@ -102,13 +105,9 @@ describe('PosthogSettingsService', () => {
 
     it('reports apiKeyConfigured=true from env when no DB credential exists', async () => {
       repository.findSettings.mockResolvedValue(null);
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const view = await buildService().getSettings();
+      const view = await buildService(config).getSettings();
 
       expect(view.apiKeyConfigured).toBe(true);
     });
@@ -117,13 +116,24 @@ describe('PosthogSettingsService', () => {
       repository.findSettings.mockResolvedValue(
         new PosthogSettings(false, 'eu', null, false, false, new Date(), 'admin')
       );
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const view = await buildService().getSettings();
+      const view = await buildService(config).getSettings();
+
+      expect(view.wouldOverrideEnv).toBe(false);
+      expect(view.overriddenEnvVars).toEqual([]);
+    });
+
+    it('reports wouldOverrideEnv=false when the row is enabled but has no stored credential of its own, even if env is set', async () => {
+      // Regression guard: an earlier revision reported an override here even
+      // though resolveConfig() would (correctly) return null in this exact
+      // state — nothing is actually being overridden if the row has no key.
+      repository.findSettings.mockResolvedValue(
+        new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
+      );
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
+
+      const view = await buildService(config).getSettings();
 
       expect(view.wouldOverrideEnv).toBe(false);
       expect(view.overriddenEnvVars).toEqual([]);
@@ -133,13 +143,10 @@ describe('PosthogSettingsService', () => {
       repository.findSettings.mockResolvedValue(
         new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
       );
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const view = await buildService().getSettings();
+      const view = await buildService(config).getSettings();
 
       expect(view.wouldOverrideEnv).toBe(true);
       expect(view.overriddenEnvVars).toEqual(['OL_POSTHOG_KEY']);
@@ -149,13 +156,13 @@ describe('PosthogSettingsService', () => {
       repository.findSettings.mockResolvedValue(
         new PosthogSettings(true, 'us', null, false, false, new Date(), 'admin')
       );
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://us.posthog.com',
-        hostWasExplicit: true,
+      credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
+      const config = buildConfigService({
+        OL_POSTHOG_KEY: 'phc_env',
+        OL_POSTHOG_HOST: 'https://us.posthog.com',
       });
 
-      const view = await buildService().getSettings();
+      const view = await buildService(config).getSettings();
 
       expect(view.overriddenEnvVars).toEqual(['OL_POSTHOG_KEY', 'OL_POSTHOG_HOST']);
     });
@@ -224,16 +231,11 @@ describe('PosthogSettingsService', () => {
 
     it('falls back to env when no DB row exists, pinning pre-#1685 autocapture/sessionRecording defaults', async () => {
       repository.findSettings.mockResolvedValue(null);
-      const envConfig: PosthogEnvConfig = {
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      };
-      envConfigPort.getConfig.mockReturnValue(envConfig);
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const config = await buildService().resolveConfig();
+      const resolved = await buildService(config).resolveConfig();
 
-      expect(config).toEqual({
+      expect(resolved).toEqual({
         key: 'phc_env',
         host: 'https://eu.posthog.com',
         autocapture: false,
@@ -245,15 +247,11 @@ describe('PosthogSettingsService', () => {
       repository.findSettings.mockResolvedValue(
         new PosthogSettings(false, 'us', null, true, true, new Date(), 'admin')
       );
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const config = await buildService().resolveConfig();
+      const resolved = await buildService(config).resolveConfig();
 
-      expect(config).toEqual({
+      expect(resolved).toEqual({
         key: 'phc_env',
         host: 'https://eu.posthog.com',
         autocapture: false,
@@ -266,15 +264,11 @@ describe('PosthogSettingsService', () => {
         new PosthogSettings(true, 'us', null, true, false, new Date(), 'admin')
       );
       credentials.getByRef.mockResolvedValue(buildCredential('phc_db'));
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const config = await buildService().resolveConfig();
+      const resolved = await buildService(config).resolveConfig();
 
-      expect(config).toEqual({
+      expect(resolved).toEqual({
         key: 'phc_db',
         host: 'https://us.i.posthog.com',
         autocapture: true,
@@ -313,19 +307,18 @@ describe('PosthogSettingsService', () => {
       await expect(buildService().resolveConfig()).resolves.toBeNull();
     });
 
-    it('falls back to the env key when the DB row is enabled but no credential row exists', async () => {
+    it('does NOT fall back to the env key when the DB row is enabled but has no stored credential of its own', async () => {
+      // Safety-critical: an enabled row must be self-contained. Silently
+      // reusing an env-provisioned key (validated against whatever region
+      // the operator originally set OL_POSTHOG_HOST for) together with a
+      // DB-selected region is exactly the failure mode this feature exists
+      // to prevent (#1685) - deny-by-default instead.
       repository.findSettings.mockResolvedValue(
         new PosthogSettings(true, 'eu', null, false, false, new Date(), 'admin')
       );
-      envConfigPort.getConfig.mockReturnValue({
-        key: 'phc_env',
-        host: 'https://eu.posthog.com',
-        hostWasExplicit: false,
-      });
+      const config = buildConfigService({ OL_POSTHOG_KEY: 'phc_env' });
 
-      const config = await buildService().resolveConfig();
-
-      expect(config?.key).toBe('phc_env');
+      await expect(buildService(config).resolveConfig()).resolves.toBeNull();
     });
 
     it('returns null when enabled but no key resolves from either the credential store or env', async () => {

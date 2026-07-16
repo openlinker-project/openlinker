@@ -8,14 +8,16 @@
  * encrypted `integration_credentials` store (`CoreIntegrationsModule`), not
  * on this module's own table.
  *
- * This module does NOT bind `POSTHOG_ENV_CONFIG_PORT_TOKEN` — the concrete
- * env reader (`PosthogConfigService`) lives at the app layer
- * (`apps/api/src/system/`), so the host (`SystemModule`) supplies that
- * binding when composing this module.
+ * `PosthogSettingsService` reads the `OL_POSTHOG_KEY`/`OL_POSTHOG_HOST` env
+ * fallback directly via `ConfigService` (globally registered by the host's
+ * `ConfigModule.forRoot({ isGlobal: true })`) — mirroring exactly how
+ * `MailerSettingsService` reads `MAIL_*` env vars. No host-supplied port
+ * binding is needed for this module to be self-contained.
  *
  * @module libs/core/src/analytics
  */
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { POSTHOG_SETTINGS_REPOSITORY_TOKEN, POSTHOG_SETTINGS_SERVICE_TOKEN } from './analytics.tokens';
@@ -25,6 +27,7 @@ import { PosthogSettingsRepository } from './infrastructure/persistence/reposito
 
 @Module({
   imports: [
+    ConfigModule,
     // For CREDENTIALS_SERVICE_TOKEN, consumed by PosthogSettingsService to
     // store/resolve the API key.
     CoreIntegrationsModule,

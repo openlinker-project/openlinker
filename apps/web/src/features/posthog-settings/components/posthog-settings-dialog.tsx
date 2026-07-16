@@ -62,7 +62,7 @@ const REGION_HOST: Record<Exclude<PosthogRegion, 'custom'>, string> = {
   us: 'https://us.i.posthog.com',
 };
 
-type TestEventStatus = 'idle' | 'testing' | 'success' | 'error';
+type TestEventStatus = 'idle' | 'testing' | 'success' | 'error' | 'missing-input';
 
 function toFormValues(view: PosthogSettingsView): PosthogSettingsFormValues {
   return {
@@ -175,7 +175,7 @@ export function PosthogSettingsDialog({
 
   const handleSendTestEvent = async (): Promise<void> => {
     if (!resolvedHost || apiKey.trim().length === 0) {
-      setTestStatus('error');
+      setTestStatus('missing-input');
       return;
     }
     setTestStatus('testing');
@@ -327,7 +327,12 @@ export function PosthogSettingsDialog({
             ) : null}
             {testStatus === 'error' ? (
               <span className="context-chip context-chip--warning posthog-settings-test-result">
-                Rejected — check the key and region match the same PostHog project
+                Rejected - check the key and region match the same PostHog project
+              </span>
+            ) : null}
+            {testStatus === 'missing-input' ? (
+              <span className="context-chip context-chip--neutral posthog-settings-test-result">
+                Enter an API key and a resolved host first
               </span>
             ) : null}
           </div>
@@ -335,7 +340,7 @@ export function PosthogSettingsDialog({
           {view.apiKeyConfigured ? (
             <Button
               type="button"
-              tone="ghost"
+              tone="danger"
               className="button--sm"
               disabled={clearCredentialsMutation.isPending || updateMutation.isPending}
               onClick={() => {
@@ -348,7 +353,7 @@ export function PosthogSettingsDialog({
 
           {enabled && !view.apiKeyConfigured && apiKey.trim().length === 0 ? (
             <p className="muted-text posthog-settings-hint" role="status">
-              PostHog is enabled but no API key is set yet — events won't be tracked until one is
+              PostHog is enabled but no API key is set yet - events won't be tracked until one is
               configured.
             </p>
           ) : null}

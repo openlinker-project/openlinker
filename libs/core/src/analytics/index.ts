@@ -12,7 +12,6 @@ export {
   POSTHOG_SETTINGS_SINGLETON_ID,
 } from './domain/entities/posthog-settings.entity';
 export type { PosthogSettingsRepositoryPort } from './domain/ports/posthog-settings-repository.port';
-export type { PosthogEnvConfig, PosthogEnvConfigPort } from './domain/ports/posthog-env-config.port';
 export { PosthogRegionValues } from './domain/types/posthog-settings.types';
 export type {
   PosthogRegion,
