@@ -77,10 +77,10 @@ export class NumberingPerDocumentTypeRouting1821000000000 implements MigrationIn
     `);
 
     // 3. Carry the assignment data forward (only when the old table is present).
-    const assignmentsExist = await queryRunner.query(
+    const assignmentsExist = (await queryRunner.query(
       `SELECT to_regclass('public.invoice_numbering_assignments') AS reg`,
-    );
-    if (assignmentsExist?.[0]?.reg) {
+    )) as Array<{ reg: string | null }>;
+    if (assignmentsExist[0]?.reg) {
       // main → 'invoice' route.
       await queryRunner.query(`
         INSERT INTO "invoice_numbering_routes"
@@ -134,10 +134,10 @@ export class NumberingPerDocumentTypeRouting1821000000000 implements MigrationIn
 
     // Best-effort reconstruction: main = the 'invoice' default route, correction
     // = the 'corrected' default route (register-less) for the same connection.
-    const routesExist = await queryRunner.query(
+    const routesExist = (await queryRunner.query(
       `SELECT to_regclass('public.invoice_numbering_routes') AS reg`,
-    );
-    if (routesExist?.[0]?.reg) {
+    )) as Array<{ reg: string | null }>;
+    if (routesExist[0]?.reg) {
       await queryRunner.query(`
         INSERT INTO "invoice_numbering_assignments"
           ("connectionId", "mainSeriesId", "correctionSeriesId", "createdAt", "updatedAt")
