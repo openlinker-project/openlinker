@@ -119,6 +119,13 @@ export class InvoiceRecord {
      * `providerInvoiceNumber`). Immutable once assigned.
      */
     public readonly documentNumber: string | null = null,
+    /**
+     * The sequence integer allocated from {@link numberingSeriesId} for this
+     * document's {@link documentNumber} (#8, gap-audit); `null` for a provider
+     * that numbers documents itself. Backs integer-based gap detection in the
+     * numbering audit read model. Immutable once assigned.
+     */
+    public readonly allocatedSeq: number | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

@@ -10,6 +10,7 @@
  */
 export * from './domain/types/invoicing.types';
 export * from './domain/types/invoice-numbering.types';
+export * from './domain/types/numbering-audit.types';
 export {
   renderInvoiceNumber,
   validateNumberingPattern,
@@ -44,6 +45,7 @@ export * from './domain/ports/capabilities/bank-account-default-setter.capabilit
 export * from './domain/ports/capabilities/invoice-email-sender.capability';
 export * from './domain/ports/invoice-record-repository.port';
 export * from './domain/ports/invoice-numbering-series-repository.port';
+export * from './domain/ports/invoice-number-gap-note-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export * from './domain/exceptions/missing-numbering-series.exception';
@@ -51,6 +53,7 @@ export * from './domain/exceptions/duplicate-document-number.exception';
 export * from './domain/exceptions/document-number-too-long.exception';
 export * from './domain/exceptions/invalid-numbering-pattern.exception';
 export * from './domain/exceptions/invoice-numbering-series-not-found.exception';
+export * from './domain/exceptions/numbering-gap-note-reason-required.exception';
 export * from './domain/exceptions/source-document-immutable.error';
 export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
@@ -81,5 +84,7 @@ export type {
 } from './application/services/payment-status-refresh.service.interface';
 export { PaymentStatusRefreshOutcomeValues } from './application/services/payment-status-refresh.service.interface';
 export { PaymentStatusRefreshService } from './application/services/payment-status-refresh.service';
+export type { INumberingAuditService } from './application/services/numbering-audit.service.interface';
+export { NumberingAuditService } from './application/services/numbering-audit.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';

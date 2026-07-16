@@ -264,7 +264,10 @@ export class InvoiceNumberingSeriesRepository implements InvoiceNumberingSeriesR
         const updateResult = await manager
           .createQueryBuilder()
           .update(InvoiceRecordOrmEntity)
-          .set({ numberingSeriesId: input.seriesId, documentNumber })
+          // Persist the allocated sequence integer alongside the rendered number
+          // in the SAME guarded UPDATE (#8) so gap-audit can detect gaps by
+          // integer without re-parsing the rendered string.
+          .set({ numberingSeriesId: input.seriesId, documentNumber, allocatedSeq })
           .where('id = :id', { id: input.recordId })
           .andWhere('"documentNumber" IS NULL')
           .execute();

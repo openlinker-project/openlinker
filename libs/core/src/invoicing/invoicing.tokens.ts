@@ -39,3 +39,11 @@ export const REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN = Symbol(
  * `PaymentStatusReader` sub-capability when a provider payment webhook triggers.
  */
 export const PAYMENT_STATUS_REFRESH_SERVICE_TOKEN = Symbol('IPaymentStatusRefreshService');
+
+/** Binding token for the {@link InvoiceNumberGapNoteRepositoryPort} (#8). */
+export const INVOICE_NUMBER_GAP_NOTE_REPOSITORY_TOKEN = Symbol(
+  'InvoiceNumberGapNoteRepositoryPort',
+);
+
+/** Binding token for the {@link INumberingAuditService} gap-audit read model (#8). */
+export const NUMBERING_AUDIT_SERVICE_TOKEN = Symbol('INumberingAuditService');

@@ -196,6 +196,17 @@ export class InvoiceRecordOrmEntity {
   @Column({ type: 'text', nullable: true })
   documentNumber!: string | null;
 
+  /**
+   * The sequence integer allocated from {@link numberingSeriesId} for this
+   * document's {@link documentNumber} (#8, gap-audit). Persisted atomically with
+   * the series advance so gaps are detectable BY INTEGER (a consumed seq whose
+   * record ended terminal-non-issued, or a skipped integer) rather than by
+   * parsing the rendered number. `null` for a provider that numbers documents
+   * itself (no OL allocation). Immutable once assigned.
+   */
+  @Column({ type: 'integer', nullable: true })
+  allocatedSeq!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
