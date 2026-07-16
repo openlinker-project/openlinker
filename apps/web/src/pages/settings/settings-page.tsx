@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { env } from '../../shared/config/env';
 import { useSession } from '../../shared/auth/use-session';
 import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
+import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -18,6 +19,7 @@ export function SettingsPage(): ReactElement {
           <span className="toolbar-chip">Environment</span>
           <span className="toolbar-chip">Account</span>
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
+          {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -84,6 +86,9 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Mailer (admin-only) ──────────────────────────────────── */}
         {isAdmin ? <MailerSettingsTile /> : null}
+
+        {/* ── PostHog analytics (admin-only) ──────────────────────── */}
+        {isAdmin ? <PosthogSettingsTile /> : null}
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">

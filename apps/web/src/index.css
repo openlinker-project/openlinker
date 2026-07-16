@@ -5931,6 +5931,44 @@ a.kpi-card:focus-visible {
   margin: 0.75rem 0;
 }
 
+/*
+ * ── PostHog Analytics Settings (#1685) ──────────────────────────────
+ * The dialog renders inside the shared `Dialog` primitive; these cover the
+ * tile's status-chip row and the autocapture/session-recording checkbox
+ * labels, same shape as `.mailer-settings-checkbox`.
+ */
+.posthog-settings-tile__badges {
+  margin-bottom: 0.5rem;
+}
+
+.posthog-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0.75rem 0;
+}
+
+.posthog-settings-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.posthog-settings-test-result {
+  font-size: 0.8125rem;
+}
+
+.posthog-settings-hint {
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
+}
+
 .create-offer-variant-picker {
   display: grid;
   gap: 0.5rem;

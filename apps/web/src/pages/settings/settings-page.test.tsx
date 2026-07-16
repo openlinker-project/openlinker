@@ -83,4 +83,29 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('heading', { name: 'Mailer' })).not.toBeInTheDocument();
     expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
+
+  it('shows the PostHog tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'PostHog' })).toBeInTheDocument();
+    expect(screen.getByText('PostHog', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  it('never renders the PostHog tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+      }),
+    });
+
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'PostHog' })).not.toBeInTheDocument();
+    expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+  });
 });
