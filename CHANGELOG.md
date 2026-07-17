@@ -12,6 +12,26 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.3.0](https://github.com/openlinker-project/openlinker/compare/v0.2.0...v0.3.0) (2026-07-17)
+
+
+### Features
+
+* **ksef:** session-lifecycle failure resilience - offline24, crash recovery, query fallback ([#1585](https://github.com/openlinker-project/openlinker/issues/1585)) ([#1711](https://github.com/openlinker-project/openlinker/issues/1711)) ([eb4305f](https://github.com/openlinker-project/openlinker/commit/eb4305f8003f1de66e162d5b62df35c1ff8e1218))
+* **orders:** responsive orders-table redesign + deep links, invoicing status & empty-state actions ([#1715](https://github.com/openlinker-project/openlinker/issues/1715)) ([86a7d91](https://github.com/openlinker-project/openlinker/commit/86a7d911d353c6fea9f1dc651188468f56ec1ed6))
+* **products:** remove inventory list page, redesign products as catalog cockpit ([#1722](https://github.com/openlinker-project/openlinker/issues/1722)) ([5db487a](https://github.com/openlinker-project/openlinker/commit/5db487ac012d0a4da04259cd49330d216e5fa837))
+* **web/shipping:** scope COD currency to the routed carrier ([#1569](https://github.com/openlinker-project/openlinker/issues/1569)) ([#1716](https://github.com/openlinker-project/openlinker/issues/1716)) ([c2e2315](https://github.com/openlinker-project/openlinker/commit/c2e23158b370e95a5bbcad266c06c23e8ee14c0b))
+
+
+### Bug Fixes
+
+* **allegro:** allow operator/viewer to read responsible producers ([#1707](https://github.com/openlinker-project/openlinker/issues/1707)) ([#1708](https://github.com/openlinker-project/openlinker/issues/1708)) ([96b82c0](https://github.com/openlinker-project/openlinker/commit/96b82c0b0570621c4e8c2353e3c2114a19f19c9b))
+* **ci:** use SSH_HOSTNAME for ssh-keyscan in deploy workflow ([#1717](https://github.com/openlinker-project/openlinker/issues/1717)) ([cbbb0a3](https://github.com/openlinker-project/openlinker/commit/cbbb0a3ccd59a247a6614ca3c92930d9dcc3e241))
+* **inpost:** authenticate both documented webhook HMAC variants ([#1556](https://github.com/openlinker-project/openlinker/issues/1556)) ([#1721](https://github.com/openlinker-project/openlinker/issues/1721)) ([dc52cd5](https://github.com/openlinker-project/openlinker/commit/dc52cd52741663da88c73b5f71f8b46f69c3520f))
+* **ksef:** gate numbering demo mode via useWriteAccess, keep nav open ([#1705](https://github.com/openlinker-project/openlinker/issues/1705)) ([#1712](https://github.com/openlinker-project/openlinker/issues/1712)) ([6681d7d](https://github.com/openlinker-project/openlinker/commit/6681d7d48e90e2b2c2611902d5a791d32f1f3409))
+* **listings:** auto-retry bulk-wizard resolve step on transient failure ([#1710](https://github.com/openlinker-project/openlinker/issues/1710)) ([7fdf11d](https://github.com/openlinker-project/openlinker/commit/7fdf11d793b6dcdf9f545d410df8ab210125c732)), closes [#1709](https://github.com/openlinker-project/openlinker/issues/1709)
+* **listings:** gate Erli/bulk offer-creation submits on listings:write ([#1704](https://github.com/openlinker-project/openlinker/issues/1704)) ([#1706](https://github.com/openlinker-project/openlinker/issues/1706)) ([deef6d7](https://github.com/openlinker-project/openlinker/commit/deef6d75558e9c1b46cb5ef04b098309009e7343))
+
 ## [0.2.0](https://github.com/openlinker-project/openlinker/compare/v0.1.0...v0.2.0) (2026-07-16)
 
 
