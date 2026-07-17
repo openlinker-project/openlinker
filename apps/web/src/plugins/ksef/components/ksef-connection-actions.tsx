@@ -16,12 +16,10 @@ import { KsefNumberingActions } from './ksef-numbering-actions';
 
 interface KsefConnectionActionsProps {
   connection: Connection;
-  readOnly?: boolean;
 }
 
 export function KsefConnectionActions({
   connection,
-  readOnly = false,
 }: KsefConnectionActionsProps): ReactElement {
-  return <KsefNumberingActions connection={connection} readOnly={readOnly} />;
+  return <KsefNumberingActions connection={connection} />;
 }

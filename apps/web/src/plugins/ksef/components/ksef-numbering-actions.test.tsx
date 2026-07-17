@@ -3,8 +3,10 @@
  *
  * The row is KSeF-only by construction (it rides the KSeF plugin's
  * `ConnectionActions` slot). These tests cover its inline status derived from
- * the connection's numbering routes: "not set up yet" when unrouted, the routed
- * count when configured, and the read-only disabled CTA.
+ * the connection's numbering routes: "not set up yet" when unrouted and the
+ * routed count when configured. The CTA is pure navigation into the numbering
+ * page, so it stays a live link in every mode (the read-only gate lives on the
+ * save inside the editor, not here).
  *
  * @module plugins/ksef/components
  */
@@ -54,16 +56,19 @@ describe('KsefNumberingActions', () => {
     );
   });
 
-  it('disables the CTA in read-only mode', async () => {
+  it('keeps the CTA a live link (navigation is never gated)', async () => {
     const apiClient = createMockApiClient({
       invoiceNumbering: {
         listRoutes: vi.fn().mockResolvedValue([route]),
       },
     });
-    renderWithProviders(<KsefNumberingActions connection={ksefConnection} readOnly />, { apiClient });
+    renderWithProviders(<KsefNumberingActions connection={ksefConnection} />, { apiClient });
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Configure…' })).toBeDisabled(),
+      expect(screen.getByRole('link', { name: 'Configure…' })).toHaveAttribute(
+        'href',
+        `/connections/${ksefConnection.id}/numbering`,
+      ),
     );
   });
 });

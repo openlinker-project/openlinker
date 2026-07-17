@@ -77,6 +77,7 @@ export function KsefNumberingSeriesTab({
         connectionId={connectionId}
         series={mode.kind === 'edit' ? mode.series : undefined}
         createPrefill={mode.kind === 'create' ? mode.prefill : undefined}
+        readOnly={readOnly}
         onDone={backToList}
         onCancel={backToList}
       />
@@ -123,7 +124,7 @@ export function KsefNumberingSeriesTab({
           title="No numbering series yet"
           message="Create a series before issuing invoices — KSeF needs a unique, sequential number for every document."
           action={
-            <Button tone="primary" onClick={() => setMode({ kind: 'create' })} disabled={readOnly}>
+            <Button tone="primary" onClick={() => setMode({ kind: 'create' })}>
               Add series
             </Button>
           }
@@ -164,7 +165,7 @@ export function KsefNumberingSeriesTab({
               </Select>
             </>
           ) : null}
-          <Button tone="primary" onClick={() => setMode({ kind: 'create' })} disabled={readOnly}>
+          <Button tone="primary" onClick={() => setMode({ kind: 'create' })}>
             Add series
           </Button>
         </div>
@@ -201,7 +202,7 @@ export function KsefNumberingSeriesTab({
                 <td className="mono-text tabular">{nextNumber(s)}</td>
                 <td>{RESET_POLICY_LABELS[s.resetPolicy]}</td>
                 <td className="numbering-table__actions">
-                  <Button tone="secondary" onClick={() => setMode({ kind: 'edit', series: s })} disabled={readOnly}>
+                  <Button tone="secondary" onClick={() => setMode({ kind: 'edit', series: s })}>
                     Edit
                   </Button>
                 </td>
