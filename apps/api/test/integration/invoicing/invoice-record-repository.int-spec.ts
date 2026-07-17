@@ -373,4 +373,48 @@ describe('invoice_records persistence (integration)', () => {
       });
     });
   });
+
+  describe('findLatestByOrderIds — batch latest-per-order (#1713)', () => {
+    it('returns at most one (latest) record per order and omits orders with none', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      await repo.save(claimRow({ orderId: 'ol_o1', status: 'issued' }));
+      await repo.save(claimRow({ orderId: 'ol_o2', status: 'failed' }));
+      // Two records for the same order with EXPLICIT distinct createdAt (older
+      // then newer) → DISTINCT ON must keep the NEWEST, proving latest-per-order.
+      await repo.save(
+        claimRow({
+          orderId: 'ol_o3',
+          status: 'pending',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      );
+      await repo.save(
+        claimRow({
+          orderId: 'ol_o3',
+          status: 'issued',
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        }),
+      );
+
+      const results = await repository.findLatestByOrderIds([
+        'ol_o1',
+        'ol_o2',
+        'ol_o3',
+        'ol_missing',
+      ]);
+
+      const byOrder = new Map(results.map((r) => [r.orderId, r]));
+      expect(byOrder.size).toBe(3);
+      expect(byOrder.has('ol_missing')).toBe(false);
+      expect(byOrder.get('ol_o1')?.status).toBe('issued');
+      expect(byOrder.get('ol_o2')?.status).toBe('failed');
+      // The newer ol_o3 row wins — latest-per-order.
+      expect(byOrder.get('ol_o3')?.status).toBe('issued');
+    });
+
+    it('returns [] for an empty input', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      expect(await repository.findLatestByOrderIds([])).toEqual([]);
+    });
+  });
 });

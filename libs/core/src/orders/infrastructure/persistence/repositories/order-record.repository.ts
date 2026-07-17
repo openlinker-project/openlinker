@@ -249,6 +249,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly ITEMS_EXPR =
     `CASE WHEN jsonb_typeof(rec."orderSnapshot"->'items') = 'array' ` +
     `THEN jsonb_array_length(rec."orderSnapshot"->'items') END`;
+  // Top-level `paymentStatus` string (#1713). Sorts alphabetically
+  // (awaiting < cod < paid < refunded), NULLs last — good enough to group by
+  // payment state; a semantic ordinal isn't warranted for the current vocabulary.
+  private static readonly PAYMENT_EXPR = `rec."orderSnapshot"->>'paymentStatus'`;
 
   /**
    * Apply result ordering (#927/#944). `dispatchBy` is the list's triage
@@ -294,6 +298,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         return;
       case 'fulfillment':
         qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC')).addOrderBy(
+          'rec.createdAt',
+          'DESC'
+        );
+        return;
+      case 'payment':
+        qb.orderBy(OrderRecordRepository.PAYMENT_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
           'rec.createdAt',
           'DESC'
         );

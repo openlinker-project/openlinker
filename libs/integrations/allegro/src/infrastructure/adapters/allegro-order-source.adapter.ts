@@ -32,6 +32,7 @@ import type {
   OrderDispatchWindow,
 } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { getAllegroSalesCenterOrderUrl } from '../http/allegro-hosts';
 import { Logger } from '@openlinker/shared/logging';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
 import type {
@@ -70,12 +71,20 @@ export class AllegroOrderSourceAdapter
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
+  /**
+   * Allegro environment (`production` | `sandbox`), read from connection config
+   * to build the seller Sales Center order deep link (#1713). Defaults to '' so
+   * the host resolver falls back to sandbox on an absent/unknown value.
+   */
+  private readonly environment: string;
+
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IAllegroHttpClient,
-    _connection: Connection
+    connection: Connection
   ) {
-    void _connection;
+    const env = connection.config?.environment;
+    this.environment = typeof env === 'string' ? env : '';
   }
 
   /**
@@ -343,6 +352,9 @@ export class AllegroOrderSourceAdapter
       return {
         externalOrderId: checkoutFormId,
         orderNumber: checkoutFormId,
+        // Seller Sales Center deep link (#1713) — checkoutFormId is Allegro's
+        // native order id; the FE renders this as the source "Open order" link.
+        externalUrl: getAllegroSalesCenterOrderUrl(this.environment, checkoutFormId),
         status,
         customerExternalId: checkoutForm.buyer.id,
         customerEmail: checkoutForm.buyer.email,

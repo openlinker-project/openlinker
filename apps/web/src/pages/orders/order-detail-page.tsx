@@ -10,8 +10,8 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { useCallback, type ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, type ReactElement } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -63,6 +63,31 @@ export function OrderDetailPage(): ReactElement {
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
+  const location = useLocation();
+
+  // Scroll to the section a deep-link CTA targets (#1713): the orders-list
+  // "Generate label" / "Issue invoice" actions land here on `#shipment` /
+  // `#invoicing`. Runs once the order data is present (the anchor wrapper divs
+  // render with it) — the app has no other hash-scroll, and the panels mount
+  // asynchronously, so a native browser jump on first paint would miss.
+  const hasOrder = query.data !== undefined;
+  useEffect(() => {
+    if (!hasOrder) return;
+    const targetId = location.hash.replace(/^#/, '');
+    if (!targetId) return;
+    const raf = requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+      // Move focus to the section so keyboard/AT users follow the visual jump;
+      // `preventScroll` lets scrollIntoView own the (possibly smooth) scroll.
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior, block: 'start' });
+    });
+    return () => { cancelAnimationFrame(raf); };
+  }, [hasOrder, location.hash]);
 
   const pendingDestinationId =
     retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
@@ -290,8 +315,16 @@ export function OrderDetailPage(): ReactElement {
             sourcePlatformType={sourcePlatformType}
             carrier={carrier}
           />
-          <OrderShipmentPanel order={order} />
-          <OrderInvoicePanel order={order} />
+          {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
+              (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
+              divs so the target exists even while a panel is capability-gated
+              (renders null) or still loading. */}
+          <div id="shipment" tabIndex={-1}>
+            <OrderShipmentPanel order={order} />
+          </div>
+          <div id="invoicing" tabIndex={-1}>
+            <OrderInvoicePanel order={order} />
+          </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
       </div>
