@@ -93,6 +93,30 @@ export interface RegulatoryStatusReconcilePayloadV1 {
 }
 
 /**
+ * Payload for `invoicing.offlineSubmission.resubmit` (#1702). Carries only the
+ * page size - the offline-resubmission frontier is a `(updatedAt, id)` keyset
+ * walked WITHIN one run (mirrors the reconcile payload); no persisted cursor.
+ */
+export interface OfflineResubmitPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: max number of `pending-submission` records to resubmit this run. */
+  limit: number;
+}
+
+/**
+ * Payload for `invoicing.pendingRecovery.sweep` (#1703). Carries only the page
+ * size - the crash-recovery frontier is a `(updatedAt, id)` keyset walked WITHIN
+ * one run (mirrors the offline-resubmit payload); no persisted cursor. The safety
+ * margin gating which stuck rows are eligible is owned by the core service, not
+ * the payload.
+ */
+export interface PendingRecoverySweepPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: max number of stuck records to recover this run. */
+  limit: number;
+}
+
+/**
  * Payload for `invoicing.paymentStatus.refreshByExternalId` (#1354). Carries the
  * provider's invoice id named by the payment webhook; the handler re-reads
  * authoritative payment state for THAT document (webhook is a trigger, not the

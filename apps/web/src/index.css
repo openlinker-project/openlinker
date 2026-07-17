@@ -2340,6 +2340,14 @@ textarea,
   }
 }
 
+/* Honour reduced-motion (#1585 S7): the pulse is decorative — the tone-tinted
+   dot + mono label already carry the status without animation. */
+@media (prefers-reduced-motion: reduce) {
+  .status-badge--pulse .status-badge__dot {
+    animation: none;
+  }
+}
+
 .state-card {
   border: 1px solid var(--border-default);
   border-radius: 0.5rem;

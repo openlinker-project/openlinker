@@ -68,7 +68,10 @@ describe('AutoIssueTriggerService', () => {
 
   beforeEach(() => {
     connectionPort = { list: jest.fn() };
-    syncJobs = { schedule: jest.fn().mockResolvedValue({} as never) };
+    syncJobs = {
+      schedule: jest.fn().mockResolvedValue({} as never),
+      requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
+    };
     service = new AutoIssueTriggerService(
       connectionPort as unknown as ConnectionPort,
       syncJobs as unknown as ISyncJobsService,

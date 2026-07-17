@@ -148,3 +148,48 @@ export interface InvoiceStatusResponse {
  */
 export const KSEF_NUMBER_PATTERN =
   /^([1-9](\d[1-9]|[1-9]\d)\d{7})-(20[2-9][0-9]|2[1-9]\d{2}|[3-9]\d{3})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])-([0-9A-F]{12})-([0-9A-F]{2})$/;
+
+/* ─────────────── #1701: last-resort invoice-metadata query (crash recovery) ─────────────── */
+
+/**
+ * Body for the invoice-metadata query (`POST /invoices/query/metadata`) — the
+ * last-resort crash-recovery lookup (#1701): after a process died mid-submit,
+ * OL cannot know from its own state whether KSeF received the document, so it
+ * queries the authority by seller NIP + issue-date window + document number.
+ *
+ * BEST-EFFORT WIRE SHAPE: the KSeF v2 OpenAPI documents an invoice-metadata
+ * query surface, but the exact JSON field names for the seller-NIP + issue-date
+ * range + document-number filter are not pinned in-repo, so this is a
+ * conservative, clearly-typed approximation. This path is reached ONLY after a
+ * crash; a wire-shape mismatch degrades to "not found" (the caller re-issues) —
+ * it can never yield a wrong-positive, so the fiscal risk of the approximation
+ * is one avoidable re-issue, never a lost or duplicated cleared document.
+ */
+export interface InvoiceMetadataQueryRequest {
+  /** `subject1` = documents where the queried NIP is the SELLER (Podmiot1). */
+  subjectType?: string;
+  /** Seller NIP the documents were issued under (the OL-side seller identity). */
+  sellerNip?: string;
+  /** Human document number (FA(3) `P_2`) to narrow to a single document. */
+  invoiceNumber?: string;
+  /** ISO-8601 issue-date window (inclusive) the document was issued within. */
+  dateRange?: {
+    from?: string;
+    to?: string;
+  };
+}
+
+/** One item in the invoice-metadata query result. */
+export interface InvoiceMetadataItem {
+  /** The authority-assigned KSeF number, present once the document has cleared. */
+  ksefNumber?: string;
+  /** The human document number (FA(3) `P_2`) the document was issued with. */
+  invoiceNumber?: string;
+  /** ISO-8601 issue date the authority holds for the document. */
+  issueDate?: string;
+}
+
+/** Response envelope from `POST /invoices/query/metadata`. */
+export interface InvoiceMetadataQueryResponse {
+  invoices?: InvoiceMetadataItem[];
+}

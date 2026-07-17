@@ -189,8 +189,11 @@ describe('InvoiceService', () => {
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
       claimForIssue: jest.fn(),
+      claimPendingSubmission: jest.fn(),
       findMany: jest.fn(),
       findIssuedNonTerminal: jest.fn(),
+      findPendingSubmission: jest.fn(),
+      findStuckPending: jest.fn(),
     };
     // Default: every claim succeeds (returns a record with the live lease). Tests
     // that exercise a contended/lost claim override this per-case.
