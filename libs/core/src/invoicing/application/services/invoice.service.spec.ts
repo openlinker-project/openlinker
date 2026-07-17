@@ -189,6 +189,7 @@ describe('InvoiceService', () => {
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
       claimForIssue: jest.fn(),
+      claimPendingSubmission: jest.fn(),
       findMany: jest.fn(),
       findIssuedNonTerminal: jest.fn(),
       findPendingSubmission: jest.fn(),

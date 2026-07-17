@@ -13,36 +13,43 @@
  * v1 scope (#1702 task 6): resubmit whenever the authority recovers. Legal
  * deadline-window tracking (next-business-day for a bounded offline grace period)
  * is DEFERRED - a still-unreachable authority simply leaves the record
- * `pending-submission` for the next run. See part 4 (docs) for the follow-up.
+ * `pending-submission` for the next run. A record that lingers there is surfaced
+ * by the always-on `PendingRecoveryService` sweep's business-day-aware
+ * lingering WARN (#1585 F6), not here - so the signal fires even when THIS sweep
+ * is disabled (it defaults OFF until its wire contract is verified, #1585 B1).
+ * See part 4 (docs) for the escalation (email / KPI) follow-up.
  *
- * Duplicate-issue guard (#1585 I1, ADR-035): a `submitInvoice` whose request
- * reached the authority but whose response timed out is classified unavailable
- * and lands the document in `pending-submission` even though it actually cleared.
- * A blind resubmit would then double-issue. When the adapter is also a
- * `RegulatoryRecordLocator`, this sweep confirms non-receipt FIRST - it locates
- * the document on the authority side by its `documentNumber` (which
- * pending-submission rows carry) and, if FOUND, reconciles the record WITHOUT
- * resubmitting; only a confirmed non-receipt proceeds to `resubmit`. An adapter
- * that is not a locator keeps the pre-#1585 blind-resubmit behaviour (its residual
- * double-issue window is a known limitation for such providers).
+ * Double-issue guard (#1585 B1, three-layer, fails CLOSED):
+ *  1. Settling margin: a record is only considered `settlingMarginMs` after its
+ *     last touch, so a document that LANDED at the authority but is not yet
+ *     visible in its eventually-consistent metadata index has time to appear
+ *     before a `null` locate is trusted as a genuine non-receipt.
+ *  2. Per-record CAS claim (`claimPendingSubmission`): each record is leased
+ *     before any authority call, so two overlapping runs (or a run racing the
+ *     live path) can never both see `null` and both resubmit the same document.
+ *  3. Confirm-non-receipt: when the adapter is a `RegulatoryRecordLocator`, the
+ *     sweep locates the document by its `documentNumber` FIRST and, if FOUND,
+ *     reconciles WITHOUT resubmitting. An adapter that is NOT a locator cannot
+ *     confirm receipt, so the sweep does NOT blind-resubmit it (fiscal safety) -
+ *     it leaves the record `pending-submission` for manual handling, surfaced by
+ *     the `PendingRecoveryService` lingering WARN.
  *
  * Paging is a `(updatedAt, id)` KEYSET CURSOR walked across pages WITHIN one run
  * (mirrors `RegulatoryStatusReconciliationService`). `opts.limit` is the per-PAGE
  * size; the sweep keeps fetching the next page - bounded strictly after the
  * last-seen `(updatedAt, id)` - until a short page drains the frontier, capping
- * pages at `MAX_PAGES_PER_RUN` as a runaway guard. The cursor advances PAST every
- * scanned row regardless of whether it was written, so a record whose authority
- * is still down (no write, no `updatedAt` bump) cannot pin the front of the
- * window and starve newer rows.
+ * pages at `MAX_PAGES_PER_RUN`. The cursor advances PAST every scanned row
+ * regardless of whether it was written, so a record whose authority is still down
+ * (no write, no `updatedAt` bump) cannot pin the front of the window and starve
+ * newer rows.
  *
  * Error & write discipline (mirrors the reconcile sweep):
  *  - write-on-change: the patch omits a key whose value is null/unchanged;
- *    `providerInvoiceId` / `clearanceReference` are monotonic (never clobbered
- *    back to null by a later resubmit that surfaces no reference);
- *  - per-record resubmit errors are caught, counted, and logged BOUNDED (ids +
- *    error.name / sanitized message only) - never the raw provider string;
- *  - nothing re-throws past the per-record loop (a transport failure just leaves
- *    the record for the next run).
+ *    `providerInvoiceId` / `clearanceReference` are monotonic;
+ *  - per-record errors are caught, counted, and logged BOUNDED (ids +
+ *    error.name / sanitized message only) - never the raw provider string, and
+ *    the CAS lease is RELEASED so the next run can re-claim the record;
+ *  - nothing re-throws past the per-record loop.
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IOfflineResubmissionService}
@@ -59,6 +66,12 @@ import type {
   OfflineResubmissionOptions,
   OfflineResubmissionResult,
 } from './offline-resubmission.service.interface';
+import { ISSUING_LEASE_MS } from './invoice.service';
+import {
+  LOCATE_DATE_WINDOW_MS,
+  MAX_PAGES_PER_RUN,
+  sanitizeError,
+} from './invoice-sweep-support';
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
 import { INVOICE_RECORD_REPOSITORY_TOKEN } from '../../invoicing.tokens';
@@ -77,29 +90,27 @@ import type {
 const INVOICING_CAPABILITY = 'Invoicing';
 
 /**
- * Max length of a sanitized, operator-facing resubmit-error diagnostic. An
- * `OfflineResubmitter` adapter is third-party-shaped and its error may echo
- * buyer/authority-side data - bound it before logging (same idiom as the
- * reconcile sweep).
+ * DEFAULT settling margin a `pending-submission` record must age before this
+ * sweep considers it (#1585 B1 / F4). Host-tunable via
+ * `OfflineResubmissionOptions.settlingMarginMs`.
+ *
+ * Deliberately NOT `ISSUING_LEASE_MS` (#1585 F4): the CAS-lease window sizes a
+ * synchronous submit round-trip, but the confirm-non-receipt gate must instead
+ * outlast the authority's eventually-consistent metadata-INDEX lag — and the
+ * offline window is entered precisely because the authority was unavailable, so
+ * on recovery that indexing can trail by tens of minutes. Set to 30 minutes
+ * (materially larger than the ~5-minute lease): long enough that a landed-but-
+ * unindexed document reliably surfaces before a `null` locate is trusted as a
+ * genuine non-receipt, short enough that a real backlog still drains promptly.
  */
-const MAX_ERROR_MESSAGE_LENGTH = 500;
+export const OFFLINE_RESUBMIT_SETTLING_MARGIN_MS = 30 * 60 * 1000;
 
 /**
- * Runaway guard on the intra-run keyset page walk. The walk normally terminates
- * when a page returns fewer than `limit` rows; this caps the worst case so a
- * single run cannot spin unboundedly.
+ * Lease TTL for a per-record resubmit CAS claim (#1585 B1). One
+ * `ISSUING_LEASE_MS` window - long enough to cover the open→submit→close round
+ * trip, short enough that a crashed run's lease frees the record for the next.
  */
-const MAX_PAGES_PER_RUN = 1000;
-
-/**
- * Half-width of the issue-date window handed to the authority lookup that
- * confirms non-receipt before a resubmit (#1585 I1). Anchored on the record's
- * issue/last-touch instant with a full day either side - wide enough to catch a
- * document whose authority-side issue date drifted from OL's recorded instant,
- * narrow enough that the metadata query stays selective. Mirrors the same window
- * `PendingRecoveryService` uses.
- */
-const LOCATE_DATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const OFFLINE_RESUBMIT_LEASE_MS = ISSUING_LEASE_MS;
 
 @Injectable()
 export class OfflineResubmissionService implements IOfflineResubmissionService {
@@ -140,31 +151,39 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
     }
 
     // The locator is a runtime-detected sub-capability (ADR-002) used to confirm
-    // non-receipt before a resubmit (#1585 I1). An adapter without it keeps the
-    // blind-resubmit behaviour; one with it never resubmits a document already at
-    // the authority (the submit-timeout-after-landing double-issue guard).
+    // non-receipt before a resubmit (#1585 B1). An adapter WITHOUT it cannot
+    // confirm receipt, so - unlike the pre-#1585 blind-resubmit - the sweep does
+    // NOT resubmit its records at all (fiscal safety: a submit-timeout-after-
+    // landing would double-issue). Such records stay `pending-submission` and are
+    // surfaced by the PendingRecoveryService lingering WARN for manual handling.
     const locator = isRegulatoryRecordLocator(adapter) ? adapter : null;
     if (!locator) {
       this.logger.warn(
         `Connection ${connectionId} Invoicing adapter does not implement RegulatoryRecordLocator - ` +
-          `offline resubmission cannot confirm non-receipt first (residual double-issue window on a submit-timeout-after-landing).`,
+          `cannot confirm non-receipt, so offline records will NOT be auto-resubmitted (fiscal safety); ` +
+          `they remain pending-submission for manual reconciliation.`,
       );
     }
 
-    // Intra-run KEYSET page walk. `opts.limit` is the per-page size; we page
-    // forward by a `(updatedAt, id)` cursor - strictly AFTER the last row of the
-    // previous page - so the cursor advances independently of whether a scanned
-    // row was written. This visits every pending-submission row each run, even
-    // when the oldest rows stay untouched (their authority is still down).
-    // `total` (full frontier count, cursor-independent) is captured from page 1.
+    // Settling margin (#1585 B1 / F4): only records untouched for at least the
+    // host-tunable settling margin are eligible, so a landed-but-unindexed
+    // document has time to surface in the authority's metadata index. Defaults to
+    // OFFLINE_RESUBMIT_SETTLING_MARGIN_MS (30 min), sized to outlast index lag.
+    const settlingMarginMs = opts.settlingMarginMs ?? OFFLINE_RESUBMIT_SETTLING_MARGIN_MS;
+    const olderThan = new Date(Date.now() - settlingMarginMs);
+
+    // Intra-run KEYSET page walk. `total` (full frontier count, cursor-independent)
+    // is captured from page 1.
     let cursor: { updatedAt: Date; id: string } | undefined;
     let pages = 0;
     let totalCaptured = false;
+    let locateCalls = 0;
 
     while (pages < MAX_PAGES_PER_RUN) {
       const { items, total } = await this.repo.findPendingSubmission(connectionId, {
         limit: opts.limit,
         cursor,
+        olderThan,
       });
       if (!totalCaptured) {
         result.total = total;
@@ -177,38 +196,47 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
         // skip/continue) so the next page never re-reads it - forward progress
         // does not depend on a successful resubmit.
         cursor = { updatedAt: record.updatedAt, id: record.id };
-        // Count every record read + attempted this run (matches the interface
-        // JSDoc), so an errored record is still reflected in coverage metrics.
         result.scanned += 1;
 
+        // No-locator: fail closed. Cannot confirm receipt -> never resubmit.
+        if (!locator) {
+          continue;
+        }
+
+        // Per-record CAS claim (#1585 B1). A lost claim means an overlapping run
+        // (or the live path) already holds this record - skip WITHOUT resubmitting.
+        let claimed: InvoiceRecord | null;
         try {
-          // Confirm non-receipt BEFORE resubmitting (#1585 I1). If the document
-          // already landed at the authority (e.g. a submit whose response timed
-          // out), reconcile it in place and skip the resubmit - a blind resubmit
-          // would double-issue.
-          if (locator && (await this.reconcileIfAlreadyLanded(connectionId, locator, record, result))) {
-            continue;
-          }
-
-          const outcome = await this.resubmitOne(adapter, record);
-
-          // Write-on-change. An empty patch is a no-op (idempotent, safe to re-run).
-          const patch = this.buildPatch(record, outcome);
-          if (Object.keys(patch).length === 0) {
-            continue;
-          }
-          await this.repo.updateOutcome(record.id, patch);
-          result.updated += 1;
-        } catch (error) {
-          // Per-record errors (locate OR resubmit) are caught, counted, and
-          // logged BOUNDED (ids + error.name + sanitized message) - never the raw
-          // provider string. The sweep continues; nothing re-throws past the loop.
-          // A still-unreachable authority just leaves the record for the next run.
-          result.resubmitErrors += 1;
-          const err = error instanceof Error ? error : new Error(String(error));
-          this.logger.error(
-            `Offline resubmission failed (connection=${connectionId}, record=${record.id}): ${err.name}: ${this.sanitizeError(error)}`,
+          claimed = await this.repo.claimPendingSubmission(
+            record.id,
+            new Date(Date.now() + OFFLINE_RESUBMIT_LEASE_MS),
           );
+        } catch (error) {
+          result.resubmitErrors += 1;
+          this.logResubmitError(connectionId, record.id, error);
+          continue;
+        }
+        if (claimed === null) {
+          continue;
+        }
+
+        try {
+          locateCalls += 1;
+          // Confirm non-receipt BEFORE resubmitting. If the document already
+          // landed at the authority, reconcile it in place (releasing the lease)
+          // and skip the resubmit - a blind resubmit would double-issue.
+          if (await this.reconcileIfAlreadyLanded(connectionId, locator, claimed, result)) {
+            continue;
+          }
+
+          const outcome = await this.resubmitOne(adapter, claimed);
+          await this.persistResubmitOutcome(claimed, outcome, result);
+        } catch (error) {
+          // Per-record errors (locate OR resubmit) are caught, counted, logged
+          // BOUNDED, and the CAS lease is RELEASED so the next run can re-claim.
+          result.resubmitErrors += 1;
+          this.logResubmitError(connectionId, claimed.id, error);
+          await this.releaseLease(claimed.id);
           continue;
         }
       }
@@ -226,7 +254,45 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
       );
     }
 
+    // Rate-limit metric (#1585 suggestion): one authority lookup fires per claimed
+    // record, so on a large frontier this can pressure the provider's rate limit.
+    if (locateCalls > 0) {
+      this.logger.log(
+        `Offline resubmission performed ${locateCalls} authority lookup(s) for connection ${connectionId} ` +
+          `(scanned ${result.scanned}, updated ${result.updated}, errors ${result.resubmitErrors}).`,
+      );
+    }
+
     return result;
+  }
+
+  /**
+   * Persist a resubmit outcome (write-on-change) and ALWAYS release the CAS lease.
+   * When the resubmit left the record still `pending-submission` (#1585 intra-run
+   * re-submit suggestion) only the lease is released.
+   *
+   * Within-run non-re-selection safety comes from the SETTLING-MARGIN filter, NOT
+   * from skipping a write (#1585 S2): the lease-release `updateOutcome` still
+   * `save()`s and bumps `updatedAt`, so the row's key moves - but because the
+   * page query only selects rows with `updatedAt <= now - settlingMargin`, the
+   * freshly-bumped row is excluded from every later page in the same run. The CAS
+   * claim is the belt to that suspenders (a re-selected row would fail to re-claim
+   * anyway).
+   */
+  private async persistResubmitOutcome(
+    record: InvoiceRecord,
+    outcome: OfflineResubmitResult,
+    result: OfflineResubmissionResult,
+  ): Promise<void> {
+    const changePatch = this.buildPatch(record, outcome);
+    const stillPending = outcome.regulatoryStatus === 'pending-submission';
+    const patch: InvoiceOutcomePatch = stillPending
+      ? { leaseExpiresAt: null }
+      : { ...changePatch, leaseExpiresAt: null };
+    await this.repo.updateOutcome(record.id, patch);
+    if (!stillPending && Object.keys(changePatch).length > 0) {
+      result.updated += 1;
+    }
   }
 
   /**
@@ -258,12 +324,13 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
   }
 
   /**
-   * Confirm-non-receipt gate (#1585 I1). Locate the record on the authority side
-   * by its `documentNumber`; when FOUND, reconcile it in place (write-on-change)
-   * and return `true` so the caller skips the resubmit - the document already
-   * landed, so resubmitting would double-issue. Returns `false` when the authority
-   * holds no match (a genuine non-receipt), leaving the caller to resubmit. A
-   * transport/infra failure of the lookup throws for the caller's per-record catch.
+   * Confirm-non-receipt gate (#1585 B1). Locate the record on the authority side
+   * by its `documentNumber`; when FOUND, reconcile it in place (write-on-change,
+   * releasing the CAS lease) and return `true` so the caller skips the resubmit -
+   * the document already landed, so resubmitting would double-issue. Returns
+   * `false` when the authority holds no match (a genuine non-receipt), leaving the
+   * caller to resubmit. A transport/infra failure of the lookup throws for the
+   * caller's per-record catch (which releases the lease).
    */
   private async reconcileIfAlreadyLanded(
     connectionId: string,
@@ -278,9 +345,10 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
 
     // `RegulatoryLocateResult` is structurally the same triple as
     // `OfflineResubmitResult`, so the write-on-change patch builder handles it.
-    const patch = this.buildPatch(record, located);
-    if (Object.keys(patch).length > 0) {
-      await this.repo.updateOutcome(record.id, patch);
+    // Always release the CAS lease alongside the reconcile.
+    const patch: InvoiceOutcomePatch = { ...this.buildPatch(record, located), leaseExpiresAt: null };
+    await this.repo.updateOutcome(record.id, patch);
+    if (Object.keys(patch).length > 1) {
       result.updated += 1;
     }
     this.logger.warn(
@@ -288,6 +356,21 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
         `(regulatoryStatus=${located.regulatoryStatus}); reconciled WITHOUT resubmitting (duplicate-issue guard).`,
     );
     return true;
+  }
+
+  /**
+   * Best-effort CAS-lease release so a record left `pending-submission` (a
+   * resubmit error) can be re-claimed by the next run. A failure here is logged,
+   * never rethrown - the lease TTL is the backstop.
+   */
+  private async releaseLease(id: string): Promise<void> {
+    try {
+      await this.repo.updateOutcome(id, { leaseExpiresAt: null });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release offline-resubmit lease on record ${id}; the lease TTL will free it: ${sanitizeError(error)}`,
+      );
+    }
   }
 
   /**
@@ -317,17 +400,11 @@ export class OfflineResubmissionService implements IOfflineResubmissionService {
     return adapter.resubmit(record);
   }
 
-  /**
-   * Length-bounded, operator-facing diagnostic for a per-record resubmit error.
-   * INTERNAL-ONLY; may contain provider-echoed data - never log the raw,
-   * unbounded message to an external sink.
-   */
-  private sanitizeError(error: unknown): string {
-    const raw = error instanceof Error ? error.message : String(error);
-    if (raw.length <= MAX_ERROR_MESSAGE_LENGTH) {
-      return raw;
-    }
-    const marker = '…[truncated]';
-    return raw.slice(0, MAX_ERROR_MESSAGE_LENGTH - marker.length) + marker;
+  /** Bounded, PII-guarded per-record error log (shared sanitizer). */
+  private logResubmitError(connectionId: string, recordId: string, error: unknown): void {
+    const err = error instanceof Error ? error : new Error(String(error));
+    this.logger.error(
+      `Offline resubmission failed (connection=${connectionId}, record=${recordId}): ${err.name}: ${sanitizeError(error)}`,
+    );
   }
 }

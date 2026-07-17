@@ -6,6 +6,7 @@
  *
  * @module apps/worker/src/sync/handlers
  */
+import type { ConfigService } from '@nestjs/config';
 import type { IOfflineResubmissionService } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { SyncJob } from '@openlinker/core/sync';
@@ -31,13 +32,18 @@ const ZEROED = { scanned: 0, updated: 0, resubmitErrors: 0, total: 0 };
 
 describe('OfflineResubmitHandler', () => {
   let offlineResubmissionService: jest.Mocked<IOfflineResubmissionService>;
+  let configService: jest.Mocked<Pick<ConfigService, 'get'>>;
   let handler: OfflineResubmitHandler;
 
   beforeEach(() => {
     offlineResubmissionService = {
       resubmit: jest.fn().mockResolvedValue(ZEROED),
     };
-    handler = new OfflineResubmitHandler(offlineResubmissionService);
+    configService = { get: jest.fn().mockReturnValue(undefined) };
+    handler = new OfflineResubmitHandler(
+      offlineResubmissionService,
+      configService as unknown as ConfigService,
+    );
   });
 
   describe('getPayload', () => {
@@ -76,6 +82,24 @@ describe('OfflineResubmitHandler', () => {
 
       expect(offlineResubmissionService.resubmit).toHaveBeenCalledWith('conn-1', { limit: 50 });
       expect(result).toEqual({ outcome: 'ok' });
+    });
+
+    it('passes a positive OL_OFFLINE_RESUBMIT_SETTLING_MARGIN_MS through as settlingMarginMs (#1585 F4)', async () => {
+      configService.get.mockReturnValue('1800000');
+      await handler.execute(makeJob({ schemaVersion: 1, limit: 50 }));
+      expect(offlineResubmissionService.resubmit).toHaveBeenCalledWith('conn-1', {
+        limit: 50,
+        settlingMarginMs: 1_800_000,
+      });
+    });
+
+    it('ignores a non-positive settling-margin env, leaving the service default (#1585 F4)', async () => {
+      configService.get.mockReturnValue('0');
+      await handler.execute(makeJob({ schemaVersion: 1, limit: 50 }));
+      expect(offlineResubmissionService.resubmit).toHaveBeenCalledWith('conn-1', {
+        limit: 50,
+        settlingMarginMs: undefined,
+      });
     });
 
     it('wraps a thrown error in an OL-shaped SyncJobExecutionError carrying job id / type / connectionId', async () => {

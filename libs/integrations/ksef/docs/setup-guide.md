@@ -232,7 +232,48 @@ The scheduled `invoicing.offlineSubmission.resubmit` sweep (core
 `OfflineResubmitter` sub-capability (`resubmit`) once KSeF is back, retransmitting
 the persisted XML and advancing the record to `submitted` (then `accepted` via the
 normal clearance poll). A still-unreachable authority just leaves the record
-`pending-submission` for the next run.
+`pending-submission` for the next run. `resubmit` opens the fresh session with the
+**current** instant, never the document's (possibly days-old) legal issue date -
+the FA(3) `P_1` is already baked into the stored XML, and a stale timestamp would
+yield an expired session key (status 430, #1585 I4).
+
+**Double-issue guard (fails closed, #1585 B1).** A submit whose request reached
+KSeF but whose response timed out is classified unavailable and parked as
+`pending-submission` even though it actually cleared - a blind resubmit would then
+duplicate a national fiscal record (KSeF does not dedupe by human number). Three
+layers close this:
+
+1. **Settling margin.** A record is only eligible once it has been
+   `pending-submission` for at least the settling margin
+   (`repo.findPendingSubmission({ olderThan })`), giving a landed-but-unindexed
+   document time to appear in KSeF's eventually-consistent metadata index. The
+   default is **30 minutes** - deliberately much larger than the ~5-minute CAS
+   lease (#1585 F4), because the offline window is entered precisely when KSeF was
+   unavailable, so on recovery its indexing can trail by tens of minutes.
+   Override with `OL_OFFLINE_RESUBMIT_SETTLING_MARGIN_MS` (a non-positive value
+   falls back to the default).
+2. **Per-record CAS claim.** Each record is leased (`repo.claimPendingSubmission`)
+   before any authority call, so two overlapping sweep runs (cron is `*/15`, a run
+   can outlast the interval) - or a run racing the live issuance path - can never
+   both resubmit the same document.
+3. **Confirm-non-receipt.** With the locator present, the sweep queries KSeF for
+   the document FIRST; if found it reconciles WITHOUT resubmitting. An adapter that
+   is **not** a `RegulatoryRecordLocator` cannot confirm receipt, so the sweep does
+   **not** blind-resubmit it - it leaves the record `pending-submission` for manual
+   handling (surfaced by the lingering WARN below).
+
+Because this guard's safety ultimately rests on the unverified
+`POST /invoices/query/metadata` wire contract, the offline-resubmit sweep
+**defaults OFF** (`OL_OFFLINE_RESUBMIT_ENABLED` opt-in, #1585 B1). Verify the
+metadata-query request/response shape against your KSeF environment (a landed
+document must surface in the index, and the `invoiceNumber` / `sellerNip` filters
+must be honoured) before enabling it in production. A receipt-ambiguous failure -
+a post-request read timeout (the request was sent, so the document MAY have
+landed) or an HTTP `408`/`425` - is **never** parked as `pending-submission`
+(#1585 F5): it throws and routes the record to `in-doubt` for manual
+reconciliation, since auto-resubmitting a possibly-landed document would
+double-issue. Only a pre-receipt failure (DNS/TLS/connection-refused) or a `429`
+/ `5xx` is offline-eligible.
 
 ### Crash recovery for stuck `pending` / `issuing` records (#1703)
 
@@ -245,20 +286,42 @@ claimed) or `status='issuing'` with a CAS lease that eventually expires.
 The scheduled `invoicing.pendingRecovery.sweep` (core `PendingRecoveryService`,
 worker `PendingRecoveryHandler`) is the recovery path. It selects rows stuck past
 a safety margin (`repo.findStuckPending`, margin = one `ISSUING_LEASE_MS` window
-beyond the lease/last-update so a legitimately in-flight attempt is never swept),
-then resolves each via the **query-metadata fallback**:
+beyond the lease/last-update so a legitimately in-flight attempt is never swept).
+The two stuck shapes are **not** fiscally equivalent, so each is handled differently:
 
-- **Query-metadata fallback (`RegulatoryRecordLocator.locateByQuery`, #1701).** OL
-  cannot know from its own state whether KSeF received the interrupted document,
-  so the adapter queries `POST /invoices/query/metadata` by seller NIP + issue-date
-  window + document number.
-  - **Found** → reconcile: `status='issued'`, `regulatoryStatus='accepted'`,
-    clearance reference set, WARN "recovered orphaned invoice".
+- **`status='pending'` (never CAS-claimed → never transmitted).** The crash
+  happened before the provider boundary was crossed, so nothing landed at KSeF -
+  unambiguously safe to **re-drive**. The sweep requeues the record's original
+  dead `invoicing.issue` job (by its idempotency key); re-running the SAME keyed
+  job resumes issuance against the existing row through the `issued`-only
+  exactly-once gate (no double-issue). It is **never** marked in-doubt - doing so
+  would strand the order with no document AND make `claimForIssue` permanently
+  exclude the row. A `pending` row with no idempotency key (or whose job was
+  pruned) is left `pending` (still claimable) for manual re-issue.
+
+- **`status='issuing'` with a lapsed lease (crashed post-claim → may have landed).**
+  OL cannot know from its own state whether KSeF received the interrupted document,
+  so it resolves it via the **query-metadata fallback**
+  (`RegulatoryRecordLocator.locateByQuery`, #1701): the adapter queries
+  `POST /invoices/query/metadata` by seller NIP + issue-date window + document
+  number (a positive match REQUIRES an exact document-number hit - a lone
+  date-window result is never trusted, #1585 B1).
+  - **Found with a valid KSeF number** → reconcile: `status='issued'`,
+    `regulatoryStatus='accepted'`, clearance reference set, WARN "recovered
+    orphaned invoice". A hit still processing (no KSeF number yet) maps to the
+    non-terminal `pending-submission` - NOT `submitted` (#1585 I6/F3): the
+    metadata query cannot reconstruct the session-scoped composite the clearance
+    poll needs, and a `submitted`+null record would be re-selected by the poll and
+    throw every tick. `pending-submission` is excluded from the poll and re-checked
+    by the offline sweep, which promotes it to `accepted` once the number appears.
+    A located `rejected` records the rejection **without** forcing `status='issued'`.
   - **Not found** (or the adapter ships no locator) → **fiscal-safe**: mark
-    `status='failed'` with the `in-doubt` failure mode + an operator-visible alert,
-    and **never auto-retry** - a silent re-issue could double-issue a fiscal
-    document whose original attempt actually landed. Uncertainty always resolves to
-    a human, never an automatic re-attempt.
+    `status='failed'` with the `in-doubt` failure mode + the `transport-timeout`
+    failure code (whose operator copy correctly warns "a document may already
+    exist - verify before re-issuing", #1585 I8) + an operator-visible alert, and
+    **never auto-retry** - a silent re-issue could double-issue a fiscal document
+    whose original attempt actually landed. Uncertainty always resolves to a
+    human, never an automatic re-attempt.
 
 ### Status-code safety net
 
@@ -269,6 +332,17 @@ terminal state. The crash-recovery sweep is the second-layer net: it also emits
 the "session sat non-terminal longer than the expected window" WARN/metric, so a
 record that outlives its issuance window is always surfaced.
 
+The always-on crash-recovery sweep emits a **business-day-aware lingering WARN**
+(#1585 F6) on the oldest `pending-submission` record once it exceeds ~20 h of
+**business** time (weekends excluded, so a Friday-evening outage does not raise a
+Saturday alarm for a deadline that is really Monday). It lives on the
+`invoicing.pendingRecovery.sweep` (default ON) - NOT the offline-resubmit sweep
+(default OFF, #1585 B1) - so a lingering document is surfaced even when
+auto-resubmission is disabled. The WARN names the record id + business age +
+pending-submission count so an operator can act before any legal window is missed.
+(Enforcing the deadline as a hard state transition, and escalating the WARN to an
+email/push/KPI, remain deferred - see *v1 scope vs deferred* above.)
+
 ### Scheduling / env vars
 
 Both sweeps are capability-scoped (`Invoicing`) core scheduler tasks, fanned out
@@ -276,12 +350,17 @@ one job per connection, alongside the #1121 regulatory-status reconcile sweep:
 
 | Sweep | Job type | Enable | Cron | Default cron |
 |---|---|---|---|---|
-| Regulatory-status reconcile (#1121) | `invoicing.regulatoryStatus.reconcile` | `OL_REGULATORY_RECONCILE_ENABLED` | `OL_REGULATORY_RECONCILE_CRON` | `*/30 * * * *` |
-| Offline-submission resubmit (#1702) | `invoicing.offlineSubmission.resubmit` | `OL_OFFLINE_RESUBMIT_ENABLED` | `OL_OFFLINE_RESUBMIT_CRON` | `*/15 * * * *` |
-| Crash-recovery sweep (#1703) | `invoicing.pendingRecovery.sweep` | `OL_PENDING_RECOVERY_ENABLED` | `OL_PENDING_RECOVERY_CRON` | `*/20 * * * *` |
+| Regulatory-status reconcile (#1121) | `invoicing.regulatoryStatus.reconcile` | `OL_REGULATORY_RECONCILE_ENABLED` (ON) | `OL_REGULATORY_RECONCILE_CRON` | `*/30 * * * *` |
+| Offline-submission resubmit (#1702) | `invoicing.offlineSubmission.resubmit` | `OL_OFFLINE_RESUBMIT_ENABLED` (**OFF**) | `OL_OFFLINE_RESUBMIT_CRON` | `*/15 * * * *` |
+| Crash-recovery sweep (#1703) | `invoicing.pendingRecovery.sweep` | `OL_PENDING_RECOVERY_ENABLED` (ON) | `OL_PENDING_RECOVERY_CRON` | `*/20 * * * *` |
 
-Each `*_ENABLED` flag defaults ON (set to `false` to disable); each `*_CRON`
-overrides the default expression.
+The reconcile and crash-recovery flags default **ON**; the offline-resubmit flag
+defaults **OFF** and is opt-in until its metadata-query wire contract is verified
+(#1585 B1 - see the double-issue guard above). Set a flag to `false` to disable,
+or `OL_OFFLINE_RESUBMIT_ENABLED=true` to enable resubmission. Each `*_CRON`
+overrides the default expression;
+`OL_OFFLINE_RESUBMIT_SETTLING_MARGIN_MS` (default 30 min) tunes the
+confirm-non-receipt settling margin.
 
 ### v1 scope vs deferred
 
@@ -292,6 +371,41 @@ overrides the default expression.
   (next-business-day transmission for a bounded grace period). A still-unreachable
   authority currently just leaves the record `pending-submission` for the next run,
   with no deadline tracking.
+- **Deferred (offline-mode document marking):** the FA(3) resubmitted from the
+  `pending-submission` window is the plain online-mode document. The offline/awaria
+  regimes generally add an offline marking (+ verification/QR data) so the
+  authority/buyer can tell a deferred-transmission document apart. v1 does not emit
+  that marking (offline24 tolerates a plain resubmit within the grace window);
+  emitting it lands with the deferred `offline`/`awaria` modes above.
+
+### What an operator does with a pending-submission / in-doubt invoice
+
+- **`KSeF: awaiting submission` (regulatory `pending-submission`).** The document is
+  legally issued but not yet at KSeF; a sweep is retransmitting it. **No action** is
+  normally owed. If the lingering WARN fires (record past ~20 h of business time),
+  check KSeF availability - a prolonged outage may need the document transmitted
+  manually before the next-business-day deadline, or `OL_OFFLINE_RESUBMIT_ENABLED`
+  turned on so the sweep retransmits it automatically once KSeF recovers.
+- **`Needs review` (issuance `failed` + `in-doubt`).** A crashed submit could not be
+  confirmed - **a document may already exist at KSeF**. Do **not** blind-retry.
+  Verify in the KSeF portal (by the document number) whether it landed; if it did,
+  no re-issue is needed, otherwise re-issue deliberately. The record carries the
+  `transport-timeout` code precisely so the UI copy warns against a duplicate.
+
+> The "operator-visible alert" in this flow is a structured WARN log + the record's
+> `failureReason` / badge today; a one-click "Mark resolved" UI action + an aggregate
+> pending-submission KPI are a follow-up (see PR #1711 review).
+
+### Data-at-rest note (offline source document)
+
+An offline `pending-submission` record persists the full FA(3) XML (buyer name,
+NIP, address, lines, amounts) in the `sourceDocument` jsonb column, **base64-encoded
+(encoding, not encryption)** - the same mechanism the happy path uses, but for an
+offline document the DB row is the *only* copy of a legally-issued invoice and it
+dwells there until the authority recovers (hours, longer if it degrades to
+in-doubt). This is an **accepted risk for v1** (documented, not mitigated here);
+application-level encryption of `sourceDocument` at rest - or purging the blob once
+the record leaves `pending-submission` - is a tracked follow-up.
 
 ---
 

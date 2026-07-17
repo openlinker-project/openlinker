@@ -22,6 +22,18 @@
 export interface OfflineResubmissionOptions {
   /** Page size: max number of `pending-submission` records to resubmit this run. */
   limit: number;
+  /**
+   * How long (ms) a `pending-submission` record must age since its last touch
+   * before this sweep considers it (#1585 F4). Guards the confirm-non-receipt
+   * gate: a document that LANDED just before its response timed out needs time to
+   * surface in the authority's eventually-consistent metadata index before a
+   * `null` locate is trusted as a genuine non-receipt. Because the offline window
+   * is entered precisely when the authority was unavailable, index recovery can
+   * lag by tens of minutes; this is deliberately much larger than the CAS lease
+   * and is host-tunable. Falls back to
+   * {@link OFFLINE_RESUBMIT_SETTLING_MARGIN_MS} when omitted.
+   */
+  settlingMarginMs?: number;
 }
 
 export interface OfflineResubmissionResult {

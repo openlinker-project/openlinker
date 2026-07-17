@@ -59,7 +59,7 @@ export class PendingRecoveryHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `invoicing.pendingRecovery.sweep completed (connection=${job.connectionId}): scanned=${result.scanned}, recovered=${result.recovered}, markedInDoubt=${result.markedInDoubt}, errors=${result.errors}, total=${result.total}`,
+        `invoicing.pendingRecovery.sweep completed (connection=${job.connectionId}): scanned=${result.scanned}, recovered=${result.recovered}, reissued=${result.reissued}, markedInDoubt=${result.markedInDoubt}, errors=${result.errors}, total=${result.total}`,
       );
 
       return { outcome: 'ok' };

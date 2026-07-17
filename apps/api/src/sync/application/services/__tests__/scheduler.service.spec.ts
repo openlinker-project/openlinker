@@ -181,6 +181,35 @@ describe('SchedulerService', () => {
       ]);
     });
 
+    it('should NOT register the offline-resubmit task by default - it is opt-in (#1585 B1)', () => {
+      // Honour the descriptor default when the env var is unset (defaultConfigGet
+      // otherwise hardcodes 'true' for every enable key).
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_OFFLINE_RESUBMIT_ENABLED') return defaultValue;
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('offline-resubmit');
+      // The always-on invoicing sweeps still register.
+      expect(registeredJobs).toContain('pending-recovery');
+      expect(registeredJobs).toContain('regulatory-status-reconcile');
+    });
+
+    it('should register the offline-resubmit task when explicitly enabled (#1585 B1)', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_OFFLINE_RESUBMIT_ENABLED') return 'true';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('offline-resubmit');
+    });
+
     it('should skip a registry-contributed task whose enabledEnvVar resolves to false', () => {
       configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
         if (key === 'OL_PLUGIN_TASK_ENABLED') return 'false';

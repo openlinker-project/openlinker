@@ -98,7 +98,15 @@ double-issue.
 - One more non-terminal state the reconciliation predicate and any future
   partial index must account for.
 - `RegulatoryRecordLocator` depends on the authority exposing a query surface;
-  an adapter without one degrades to other recovery strategies.
+  an adapter without one cannot confirm receipt, so its `pending-submission`
+  records are NOT blind-resubmitted (fiscal safety) — they are surfaced for
+  manual handling instead.
+- A `pending-submission` document is the ONLY copy of a legally-issued invoice
+  and dwells in the `sourceDocument` column (base64, not encrypted) until the
+  authority recovers. Accepted for v1; application-level at-rest encryption /
+  post-window purge is a tracked follow-up.
+- The resubmitted document is the plain online-mode FA(3); explicit offline-mode
+  marking (verification/QR data) is deferred with the `offline`/`awaria` regimes.
 
 **Migration path (if applicable):**
 - Additive only. `pending-submission` is a new enum value; no existing record

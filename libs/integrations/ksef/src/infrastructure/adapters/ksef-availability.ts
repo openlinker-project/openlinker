@@ -57,10 +57,22 @@ export function isTransientKsefStatusCode(statusCode: number): boolean {
  * anything unrecognised. Only a TRUE verdict is allowed to enter the offline
  * (`pending-submission`) window: a content rejection can never clear on
  * resubmit, so it must fail terminally (fiscal safety).
+ *
+ * RECEIPT-AMBIGUOUS failures are DELIBERATELY not offline-eligible even though
+ * they are transient at the retry layer (#1585 F5):
+ *  - a post-request read-timeout / abort (`KsefNetworkException.receiptAmbiguous`)
+ *    — the request was fully sent, so the document MAY have landed at KSeF;
+ *  - `408` / `425` (request-timeout / too-early) at the API layer.
+ * A pre-receipt connection failure (DNS / TLS / connection-refused) provably
+ * never landed, so it stays offline-eligible. Parking a receipt-ambiguous
+ * failure in the offline window (which records `providerInvoiceId=null` and later
+ * auto-resubmits) would risk a double-issue; letting it throw routes the record
+ * through the service's `in-doubt` classification instead (surfaced for manual
+ * reconciliation, never auto-re-issued) — the fiscally safer path.
  */
 export function isKsefUnavailable(error: unknown): boolean {
   if (error instanceof KsefNetworkException) {
-    return true;
+    return !error.receiptAmbiguous;
   }
   if (error instanceof KsefApiException && error.statusCode !== undefined) {
     return isTransientKsefStatusCode(error.statusCode);

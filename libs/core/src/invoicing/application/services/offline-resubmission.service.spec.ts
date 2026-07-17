@@ -1,10 +1,14 @@
 /**
- * Unit tests for `OfflineResubmissionService` (#1702, mini-epic #1585).
+ * Unit tests for `OfflineResubmissionService` (#1702, mini-epic #1585; #1585 B1
+ * double-issue-guard hardening).
  *
- * Mocks the repository and an `OfflineResubmitter` adapter (no KSeF code). Pins
- * the guard-miss no-op, the success patch (status + providerInvoiceId +
- * clearanceReference), the write-on-change / monotonicity rules, per-record error
- * counting (never rethrown), and the intra-run keyset paging walk.
+ * Mocks the repository and an `OfflineResubmitter` (+ optional
+ * `RegulatoryRecordLocator`) adapter (no KSeF code). Pins the guard-miss no-op,
+ * the settling-margin query, the per-record CAS claim + lease release, the
+ * write-on-change / monotonicity rules, per-record error counting (never
+ * rethrown), the intra-run keyset paging walk, the confirm-non-receipt gate, the
+ * no-locator fail-closed (never blind-resubmit), and the overlapping-run (lost
+ * claim) guard.
  *
  * @module libs/core/src/invoicing/application/services
  */
@@ -20,7 +24,10 @@ import type {
   RegulatoryLocateResult,
   RegulatoryStatus,
 } from '../../domain/types/invoicing.types';
-import { OfflineResubmissionService } from './offline-resubmission.service';
+import {
+  OfflineResubmissionService,
+  OFFLINE_RESUBMIT_SETTLING_MARGIN_MS,
+} from './offline-resubmission.service';
 
 const CONNECTION_ID = 'conn-invoicing-1';
 
@@ -63,25 +70,21 @@ function baseAdapter(): InvoicingPort {
   } as unknown as InvoicingPort;
 }
 
-/** An Invoicing adapter that also implements the OfflineResubmitter sub-capability. */
+/** An Invoicing adapter that implements OfflineResubmitter only (no locator). */
 function resubmitterAdapter(
   resubmit: OfflineResubmitResult | ((record: InvoiceRecord) => Promise<OfflineResubmitResult>),
 ): InvoicingPort & OfflineResubmitter {
   const fn = typeof resubmit === 'function' ? jest.fn(resubmit) : jest.fn().mockResolvedValue(resubmit);
-  return {
-    ...baseAdapter(),
-    resubmit: fn,
-  } as unknown as InvoicingPort & OfflineResubmitter;
+  return { ...baseAdapter(), resubmit: fn } as unknown as InvoicingPort & OfflineResubmitter;
 }
 
-/**
- * An Invoicing adapter that implements BOTH OfflineResubmitter and
- * RegulatoryRecordLocator (the KSeF shape). Used to exercise the #1585 I1
- * confirm-non-receipt gate.
- */
+/** An Invoicing adapter that implements BOTH OfflineResubmitter and RegulatoryRecordLocator. */
 function resubmitterLocatorAdapter(
   resubmit: OfflineResubmitResult | ((record: InvoiceRecord) => Promise<OfflineResubmitResult>),
-  locate: RegulatoryLocateResult | null | ((criteria: unknown) => Promise<RegulatoryLocateResult | null>),
+  locate:
+    | RegulatoryLocateResult
+    | null
+    | ((criteria: unknown) => Promise<RegulatoryLocateResult | null>),
 ): InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator {
   const resubmitFn =
     typeof resubmit === 'function' ? jest.fn(resubmit) : jest.fn().mockResolvedValue(resubmit);
@@ -98,8 +101,19 @@ describe('OfflineResubmissionService', () => {
   let service: OfflineResubmissionService;
   let repo: jest.Mocked<InvoiceRecordRepositoryPort>;
   let integrations: jest.Mocked<IIntegrationsService>;
+  /** Records the per-record CAS claim resolves, keyed by id (echoes the page rows). */
+  let claimable: Map<string, InvoiceRecord>;
+
+  /** Register page rows so the default `claimPendingSubmission` echoes the SAME record. */
+  function registerClaimable(...records: InvoiceRecord[]): InvoiceRecord[] {
+    for (const r of records) {
+      claimable.set(r.id, r);
+    }
+    return records;
+  }
 
   beforeEach(() => {
+    claimable = new Map();
     repo = {
       create: jest.fn(),
       findById: jest.fn(),
@@ -107,6 +121,10 @@ describe('OfflineResubmissionService', () => {
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn().mockImplementation((id: string) => Promise.resolve(makeRecord({ id }))),
       findPendingSubmission: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      // Default: a WON claim echoes the registered page row (or a fresh one).
+      claimPendingSubmission: jest
+        .fn()
+        .mockImplementation((id: string) => Promise.resolve(claimable.get(id) ?? makeRecord({ id }))),
     } as unknown as jest.Mocked<InvoiceRecordRepositoryPort>;
 
     integrations = {
@@ -120,26 +138,37 @@ describe('OfflineResubmissionService', () => {
   });
 
   describe('adapter capability gating', () => {
-    it('queries the pending-submission frontier when the adapter is an OfflineResubmitter', async () => {
+    it('queries the pending-submission frontier with a settling-margin bound when the adapter is a locator+resubmitter', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(
-        resubmitterAdapter({ regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null }),
+        resubmitterLocatorAdapter(
+          { regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null },
+          null,
+        ),
       );
       repo.findPendingSubmission.mockResolvedValue({
-        items: [makeRecord()],
+        items: registerClaimable(makeRecord()),
         total: 1,
       });
 
       await service.resubmit(CONNECTION_ID, { limit: 50 });
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith(CONNECTION_ID, 'Invoicing');
-      // First page of the intra-run keyset walk carries no cursor.
-      expect(repo.findPendingSubmission).toHaveBeenCalledWith(CONNECTION_ID, {
-        limit: 50,
-        cursor: undefined,
-      });
+      const call = (repo.findPendingSubmission as jest.Mock).mock.calls[0] as [
+        string,
+        { limit: number; cursor?: unknown; olderThan?: Date },
+      ];
+      expect(call[0]).toBe(CONNECTION_ID);
+      expect(call[1].limit).toBe(50);
+      expect(call[1].cursor).toBeUndefined();
+      // Settling margin passed (older than ~now - margin).
+      expect(call[1].olderThan).toBeInstanceOf(Date);
+      const skewMs = Math.abs(
+        Date.now() - OFFLINE_RESUBMIT_SETTLING_MARGIN_MS - (call[1].olderThan as Date).getTime(),
+      );
+      expect(skewMs).toBeLessThan(5000);
     });
 
-    it('does not query the repo and returns a zeroed result when the adapter is not an OfflineResubmitter', async () => {
+    it('returns a zeroed result and does not query the repo when the adapter is not an OfflineResubmitter', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(baseAdapter());
 
       const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
@@ -150,24 +179,25 @@ describe('OfflineResubmissionService', () => {
     });
   });
 
-  describe('write / resubmission semantics', () => {
-    it('patches status + providerInvoiceId + clearanceReference when the resubmit advances the record', async () => {
+  describe('write / resubmission semantics (locator confirms non-receipt first)', () => {
+    it('patches status + providerInvoiceId + clearanceReference (and releases the lease) when the resubmit advances the record', async () => {
       const record = makeRecord({ providerInvoiceId: null, clearanceReference: null });
       integrations.getCapabilityAdapter.mockResolvedValue(
-        resubmitterAdapter({
-          regulatoryStatus: 'submitted',
-          providerInvoiceId: 'PROV-9',
-          clearanceReference: 'KSEF-9',
-        }),
+        resubmitterLocatorAdapter(
+          { regulatoryStatus: 'submitted', providerInvoiceId: 'PROV-9', clearanceReference: 'KSEF-9' },
+          null,
+        ),
       );
-      repo.findPendingSubmission.mockResolvedValue({ items: [record], total: 1 });
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(record), total: 1 });
 
       const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
 
+      expect(repo.claimPendingSubmission).toHaveBeenCalledWith(record.id, expect.any(Date));
       expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, {
         regulatoryStatus: 'submitted',
         providerInvoiceId: 'PROV-9',
         clearanceReference: 'KSEF-9',
+        leaseExpiresAt: null,
       });
       expect(result.updated).toBe(1);
       expect(result.scanned).toBe(1);
@@ -176,32 +206,35 @@ describe('OfflineResubmissionService', () => {
     it('omits monotonic keys the resubmit returns null for (never clobbers a prior value)', async () => {
       const record = makeRecord({ providerInvoiceId: 'PROV-OLD', clearanceReference: 'KSEF-OLD' });
       integrations.getCapabilityAdapter.mockResolvedValue(
-        resubmitterAdapter({ regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null }),
+        resubmitterLocatorAdapter(
+          { regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null },
+          null,
+        ),
       );
-      repo.findPendingSubmission.mockResolvedValue({ items: [record], total: 1 });
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(record), total: 1 });
 
       await service.resubmit(CONNECTION_ID, { limit: 50 });
 
       const patch = ((repo.updateOutcome as jest.Mock).mock.calls[0] as [unknown, Record<string, unknown>])[1];
-      expect(patch).toEqual({ regulatoryStatus: 'submitted' });
+      expect(patch).toEqual({ regulatoryStatus: 'submitted', leaseExpiresAt: null });
       expect('providerInvoiceId' in patch).toBe(false);
       expect('clearanceReference' in patch).toBe(false);
     });
 
-    it('does not call updateOutcome when nothing changed (no-op write)', async () => {
+    it('releases the lease WITHOUT a projection write when the resubmit leaves the record pending-submission', async () => {
       const record = makeRecord({ providerInvoiceId: 'PROV-1', clearanceReference: 'KSEF-1' });
       integrations.getCapabilityAdapter.mockResolvedValue(
-        resubmitterAdapter({
-          regulatoryStatus: 'pending-submission',
-          providerInvoiceId: 'PROV-1',
-          clearanceReference: 'KSEF-1',
-        }),
+        resubmitterLocatorAdapter(
+          { regulatoryStatus: 'pending-submission', providerInvoiceId: 'PROV-1', clearanceReference: 'KSEF-1' },
+          null,
+        ),
       );
-      repo.findPendingSubmission.mockResolvedValue({ items: [record], total: 1 });
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(record), total: 1 });
 
       const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
 
-      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      // Only the lease release — no status/id churn while still pending-submission.
+      expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, { leaseExpiresAt: null });
       expect(result.updated).toBe(0);
       expect(result.scanned).toBe(1);
     });
@@ -209,145 +242,29 @@ describe('OfflineResubmissionService', () => {
     it('writes a rejected verdict returned as data', async () => {
       const record = makeRecord();
       integrations.getCapabilityAdapter.mockResolvedValue(
-        resubmitterAdapter({ regulatoryStatus: 'rejected', providerInvoiceId: null, clearanceReference: null }),
+        resubmitterLocatorAdapter(
+          { regulatoryStatus: 'rejected', providerInvoiceId: null, clearanceReference: null },
+          null,
+        ),
       );
-      repo.findPendingSubmission.mockResolvedValue({ items: [record], total: 1 });
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(record), total: 1 });
 
       await service.resubmit(CONNECTION_ID, { limit: 50 });
 
-      expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, { regulatoryStatus: 'rejected' });
+      expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, {
+        regulatoryStatus: 'rejected',
+        leaseExpiresAt: null,
+      });
     });
   });
 
-  describe('error handling', () => {
-    it('increments resubmitErrors and continues the sweep when resubmit throws', async () => {
-      const failing = makeRecord({ id: 'rec-fail' });
-      const ok = makeRecord({ id: 'rec-ok' });
-      const adapter = resubmitterAdapter((record) =>
-        record.id === 'rec-fail'
-          ? Promise.reject(new Error('authority still down'))
-          : Promise.resolve({ regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null }),
-      );
-      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission.mockResolvedValue({ items: [failing, ok], total: 2 });
-
-      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
-
-      expect(result.resubmitErrors).toBe(1);
-      // The sweep continued and resubmitted the second record.
-      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-ok', { regulatoryStatus: 'submitted' });
-      expect(result.updated).toBe(1);
-    });
-
-    it('returns normally (does not re-throw) when a per-record resubmit throws', async () => {
-      const adapter = resubmitterAdapter(() => Promise.reject(new Error('provider down')));
-      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission.mockResolvedValue({ items: [makeRecord()], total: 1 });
-
-      await expect(service.resubmit(CONNECTION_ID, { limit: 50 })).resolves.toMatchObject({
-        resubmitErrors: 1,
-      });
-    });
-
-    it('logs only connectionId + record.id + error.name / bounded message - never the raw provider string', async () => {
-      const longSecret = 'X'.repeat(2000);
-      const adapter = resubmitterAdapter(() => Promise.reject(new Error(longSecret)));
-      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission.mockResolvedValue({
-        items: [makeRecord({ id: 'rec-secret' })],
-        total: 1,
-      });
-
-      const errorSpy = jest
-        .spyOn(
-          (service as unknown as { logger: { error: (m: string) => void } }).logger,
-          'error',
-        )
-        .mockImplementation(() => undefined);
-
-      await service.resubmit(CONNECTION_ID, { limit: 50 });
-
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      const logged = errorSpy.mock.calls[0][0];
-      expect(logged).toContain(CONNECTION_ID);
-      expect(logged).toContain('rec-secret');
-      expect(logged).toContain('Error');
-      expect(logged).not.toContain(longSecret);
-      expect(logged).toContain('…[truncated]');
-    });
-  });
-
-  describe('keyset paging', () => {
-    it('walks the WHOLE pending frontier within ONE run via the (updatedAt, id) cursor when total > limit', async () => {
-      const adapter = resubmitterAdapter({
-        regulatoryStatus: 'submitted',
-        providerInvoiceId: null,
-        clearanceReference: null,
-      });
-      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-
-      const recA = makeRecord({ id: 'rec-a', updatedAt: new Date('2026-06-01T10:00:00Z') });
-      const recB = makeRecord({ id: 'rec-b', updatedAt: new Date('2026-06-01T10:05:00Z') });
-      const recC = makeRecord({ id: 'rec-c', updatedAt: new Date('2026-06-01T10:10:00Z') });
-      repo.findPendingSubmission
-        .mockResolvedValueOnce({ items: [recA], total: 3 })
-        .mockResolvedValueOnce({ items: [recB], total: 3 })
-        .mockResolvedValueOnce({ items: [recC], total: 3 })
-        .mockResolvedValueOnce({ items: [], total: 0 });
-
-      const result = await service.resubmit(CONNECTION_ID, { limit: 1 });
-
-      expect(result.total).toBe(3);
-      expect(result.scanned).toBe(3);
-      expect(repo.findPendingSubmission).toHaveBeenNthCalledWith(1, CONNECTION_ID, {
-        limit: 1,
-        cursor: undefined,
-      });
-      expect(repo.findPendingSubmission).toHaveBeenNthCalledWith(2, CONNECTION_ID, {
-        limit: 1,
-        cursor: { updatedAt: recA.updatedAt, id: 'rec-a' },
-      });
-      expect(repo.findPendingSubmission).toHaveBeenNthCalledWith(3, CONNECTION_ID, {
-        limit: 1,
-        cursor: { updatedAt: recB.updatedAt, id: 'rec-b' },
-      });
-      // The TAIL row is reached and resubmitted.
-      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-c', { regulatoryStatus: 'submitted' });
-    });
-
-    it('advances the cursor past an error row so a still-down record does not starve newer rows', async () => {
-      const recStuck = makeRecord({ id: 'rec-stuck', updatedAt: new Date('2026-06-01T09:00:00Z') });
-      const recNew = makeRecord({ id: 'rec-new', updatedAt: new Date('2026-06-01T11:00:00Z') });
-      const adapter = resubmitterAdapter((record) =>
-        record.id === 'rec-stuck'
-          ? Promise.reject(new Error('still down'))
-          : Promise.resolve({ regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null }),
-      );
-      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission
-        .mockResolvedValueOnce({ items: [recStuck], total: 2 })
-        .mockResolvedValueOnce({ items: [recNew], total: 2 })
-        .mockResolvedValueOnce({ items: [], total: 2 });
-
-      const result = await service.resubmit(CONNECTION_ID, { limit: 1 });
-
-      expect(result.resubmitErrors).toBe(1);
-      // The cursor advanced past the errored row...
-      expect(repo.findPendingSubmission).toHaveBeenNthCalledWith(2, CONNECTION_ID, {
-        limit: 1,
-        cursor: { updatedAt: recStuck.updatedAt, id: 'rec-stuck' },
-      });
-      // ...so the tail row was reached and resubmitted within the same run.
-      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-new', { regulatoryStatus: 'submitted' });
-    });
-  });
-
-  describe('confirm non-receipt before resubmitting (#1585 I1)', () => {
-    it('reconciles WITHOUT resubmitting when the locator finds the document already at the authority', async () => {
+  describe('confirm non-receipt before resubmitting (#1585 B1)', () => {
+    it('reconciles WITHOUT resubmitting (releasing the lease) when the locator finds the document already at the authority', async () => {
       const resubmit = jest.fn();
+      const record = makeRecord({ id: 'rec-landed', providerInvoiceId: null, clearanceReference: null });
       const adapter = resubmitterLocatorAdapter(
-        (record) => {
-          resubmit(record);
+        (r) => {
+          resubmit(r);
           return Promise.resolve({
             regulatoryStatus: 'submitted' as RegulatoryStatus,
             providerInvoiceId: null,
@@ -357,24 +274,19 @@ describe('OfflineResubmissionService', () => {
         { providerInvoiceId: 'PROV-LANDED', regulatoryStatus: 'accepted', clearanceReference: 'KSEF-LANDED' },
       );
       integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission.mockResolvedValue({
-        items: [makeRecord({ id: 'rec-landed', providerInvoiceId: null, clearanceReference: null })],
-        total: 1,
-      });
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(record), total: 1 });
 
       const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
 
       expect(adapter.locateByQuery).toHaveBeenCalledTimes(1);
-      // The document already landed - it must NOT be resubmitted.
       expect(resubmit).not.toHaveBeenCalled();
-      // Reconciled in place off the located triple.
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-landed', {
         regulatoryStatus: 'accepted',
         providerInvoiceId: 'PROV-LANDED',
         clearanceReference: 'KSEF-LANDED',
+        leaseExpiresAt: null,
       });
       expect(result.updated).toBe(1);
-      expect(result.scanned).toBe(1);
       expect(result.resubmitErrors).toBe(0);
     });
 
@@ -391,7 +303,7 @@ describe('OfflineResubmissionService', () => {
       } as unknown as InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator;
       integrations.getCapabilityAdapter.mockResolvedValue(adapter);
       repo.findPendingSubmission.mockResolvedValue({
-        items: [makeRecord({ id: 'rec-absent', providerInvoiceId: null })],
+        items: registerClaimable(makeRecord({ id: 'rec-absent', providerInvoiceId: null })),
         total: 1,
       });
 
@@ -402,25 +314,153 @@ describe('OfflineResubmissionService', () => {
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-absent', {
         regulatoryStatus: 'submitted',
         providerInvoiceId: 'PROV-NEW',
+        leaseExpiresAt: null,
       });
       expect(result.updated).toBe(1);
-      expect(result.scanned).toBe(1);
     });
 
-    it('resubmits (no confirmation) when the adapter is not a RegulatoryRecordLocator', async () => {
+    it('fails CLOSED: never resubmits when the adapter is not a RegulatoryRecordLocator', async () => {
       const adapter = resubmitterAdapter({
         regulatoryStatus: 'submitted',
         providerInvoiceId: 'PROV-1',
         clearanceReference: null,
       });
       integrations.getCapabilityAdapter.mockResolvedValue(adapter);
-      repo.findPendingSubmission.mockResolvedValue({ items: [makeRecord({ id: 'rec-nolocator' })], total: 1 });
+      repo.findPendingSubmission.mockResolvedValue({
+        items: registerClaimable(makeRecord({ id: 'rec-nolocator' })),
+        total: 1,
+      });
 
       const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
 
-      expect(adapter.resubmit).toHaveBeenCalledTimes(1);
-      expect(result.updated).toBe(1);
+      expect(adapter.resubmit).not.toHaveBeenCalled();
+      expect(repo.claimPendingSubmission).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      expect(result.updated).toBe(0);
       expect(result.scanned).toBe(1);
+    });
+  });
+
+  describe('overlapping-run / CAS-claim guard (#1585 B1)', () => {
+    it('skips a record WITHOUT resubmitting when the per-record claim is lost (another run holds it)', async () => {
+      const resubmit = jest.fn().mockResolvedValue({
+        regulatoryStatus: 'submitted' as RegulatoryStatus,
+        providerInvoiceId: 'PROV-X',
+        clearanceReference: null,
+      });
+      const locateByQuery = jest.fn().mockResolvedValue(null);
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        ...baseAdapter(),
+        resubmit,
+        locateByQuery,
+      } as unknown as InvoicingPort & OfflineResubmitter & RegulatoryRecordLocator);
+      repo.findPendingSubmission.mockResolvedValue({ items: [makeRecord({ id: 'rec-contended' })], total: 1 });
+      // Lost claim -> null.
+      (repo.claimPendingSubmission as jest.Mock).mockResolvedValue(null);
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(repo.claimPendingSubmission).toHaveBeenCalledWith('rec-contended', expect.any(Date));
+      expect(locateByQuery).not.toHaveBeenCalled();
+      expect(resubmit).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      expect(result.scanned).toBe(1);
+      expect(result.updated).toBe(0);
+    });
+  });
+
+  describe('error handling', () => {
+    it('increments resubmitErrors, releases the lease, and continues when a resubmit throws', async () => {
+      const failing = makeRecord({ id: 'rec-fail' });
+      const ok = makeRecord({ id: 'rec-ok' });
+      const adapter = resubmitterLocatorAdapter(
+        (record) =>
+          record.id === 'rec-fail'
+            ? Promise.reject(new Error('authority still down'))
+            : Promise.resolve({ regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null }),
+        null,
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(failing, ok), total: 2 });
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(result.resubmitErrors).toBe(1);
+      // Lease released on the errored record.
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-fail', { leaseExpiresAt: null });
+      // The sweep continued and resubmitted the second record.
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-ok', {
+        regulatoryStatus: 'submitted',
+        leaseExpiresAt: null,
+      });
+      expect(result.updated).toBe(1);
+    });
+
+    it('does not re-throw when a per-record resubmit throws', async () => {
+      const adapter = resubmitterLocatorAdapter(() => Promise.reject(new Error('provider down')), null);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({ items: registerClaimable(makeRecord()), total: 1 });
+
+      await expect(service.resubmit(CONNECTION_ID, { limit: 50 })).resolves.toMatchObject({
+        resubmitErrors: 1,
+      });
+    });
+
+    it('logs only connectionId + record.id + error.name / bounded message - never the raw provider string', async () => {
+      const longSecret = 'X'.repeat(2000);
+      const adapter = resubmitterLocatorAdapter(() => Promise.reject(new Error(longSecret)), null);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      repo.findPendingSubmission.mockResolvedValue({
+        items: registerClaimable(makeRecord({ id: 'rec-secret' })),
+        total: 1,
+      });
+
+      const errorSpy = jest
+        .spyOn((service as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      await service.resubmit(CONNECTION_ID, { limit: 50 });
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const logged = errorSpy.mock.calls[0][0];
+      expect(logged).toContain(CONNECTION_ID);
+      expect(logged).toContain('rec-secret');
+      expect(logged).toContain('Error');
+      expect(logged).not.toContain(longSecret);
+      expect(logged).toContain('…[truncated]');
+    });
+  });
+
+  describe('keyset paging', () => {
+    it('walks the WHOLE pending frontier within ONE run via the (updatedAt, id) cursor when total > limit', async () => {
+      const adapter = resubmitterLocatorAdapter(
+        { regulatoryStatus: 'submitted', providerInvoiceId: null, clearanceReference: null },
+        null,
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const recA = makeRecord({ id: 'rec-a', updatedAt: new Date('2026-06-01T10:00:00Z') });
+      const recB = makeRecord({ id: 'rec-b', updatedAt: new Date('2026-06-01T10:05:00Z') });
+      const recC = makeRecord({ id: 'rec-c', updatedAt: new Date('2026-06-01T10:10:00Z') });
+      registerClaimable(recA, recB, recC);
+      repo.findPendingSubmission
+        .mockResolvedValueOnce({ items: [recA], total: 3 })
+        .mockResolvedValueOnce({ items: [recB], total: 3 })
+        .mockResolvedValueOnce({ items: [recC], total: 3 })
+        .mockResolvedValueOnce({ items: [], total: 0 });
+
+      const result = await service.resubmit(CONNECTION_ID, { limit: 1 });
+
+      expect(result.total).toBe(3);
+      expect(result.scanned).toBe(3);
+      const secondCall = (repo.findPendingSubmission as jest.Mock).mock.calls[1] as [string, { cursor?: unknown }];
+      expect(secondCall[1].cursor).toEqual({ updatedAt: recA.updatedAt, id: 'rec-a' });
+      const thirdCall = (repo.findPendingSubmission as jest.Mock).mock.calls[2] as [string, { cursor?: unknown }];
+      expect(thirdCall[1].cursor).toEqual({ updatedAt: recB.updatedAt, id: 'rec-b' });
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-c', {
+        regulatoryStatus: 'submitted',
+        leaseExpiresAt: null,
+      });
     });
   });
 });

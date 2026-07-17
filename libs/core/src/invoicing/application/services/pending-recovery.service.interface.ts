@@ -3,16 +3,20 @@
  *
  * Contract for the crash-recovery sweep (#1703, mini-epic #1585, ADR-035): for
  * one connection, resolve `InvoiceRecord`s left non-terminal by a process that
- * died mid-issuance (`status='pending'` never claimed, or a stale `issuing` row
- * whose CAS lease lapsed past a safety margin). Because OL cannot know from its
- * own state whether the authority actually received the interrupted document, it
- * asks the authority via the `RegulatoryRecordLocator` sub-capability:
- *   - FOUND on the authority side -> reconcile the record to its true outcome
- *     (`status='issued'`, `regulatoryStatus='accepted'`, clearance reference set);
- *   - NOT FOUND (or the adapter has no locator) -> fiscal-safe: mark the record
- *     `status='failed'` with the in-doubt failure mode + an operator-visible
- *     alert; NEVER auto-retry (a silent re-issue could double-issue a fiscal
- *     document whose original attempt did land).
+ * died mid-issuance. The two stuck shapes are NOT fiscally equivalent (#1585 I3):
+ *   - `status='pending'` (NEVER CLAIMED -> never transmitted): re-driven by
+ *     requeuing the original `invoicing.issue` job (safe; the `issued`-only
+ *     exactly-once gate makes the re-run a no-op if a document somehow exists).
+ *     NEVER marked in-doubt (that would strand the order AND block `claimForIssue`).
+ *   - `status='issuing'` (CRASHED POST-CLAIM -> may have landed): because OL
+ *     cannot know from its own state whether the authority received it, it asks
+ *     the authority via the `RegulatoryRecordLocator` sub-capability:
+ *       - FOUND -> reconcile to its located outcome (`status='issued'` for a
+ *         non-rejected result, clearance reference set);
+ *       - NOT FOUND (or the adapter has no locator) -> fiscal-safe: mark the
+ *         record `status='failed'` with the in-doubt failure mode + an
+ *         operator-visible alert; NEVER auto-retry (a silent re-issue could
+ *         double-issue a fiscal document whose original attempt did land).
  * Per-record errors are counted and never rethrown - a transient authority
  * failure simply leaves the record for the next run.
  *
@@ -33,9 +37,15 @@ export interface PendingRecoveryOptions {
 export interface PendingRecoveryResult {
   /** Records read + attempted this run. */
   scanned: number;
-  /** Records reconciled to `issued`/`accepted` (found on the authority side). */
+  /** `issuing` records reconciled to their located outcome (found on the authority side). */
   recovered: number;
-  /** Records marked `failed` in-doubt (not found / no locator) for manual review. */
+  /**
+   * Never-claimed `pending` records re-driven by requeuing their dead
+   * `invoicing.issue` job (#1585 I3) - nothing was transmitted, so re-driving is
+   * safe and preferred over marking in-doubt.
+   */
+  reissued: number;
+  /** `issuing` records marked `failed` in-doubt (not found / no locator) for manual review. */
   markedInDoubt: number;
   /** Records whose recovery threw (counted, sweep continued, left for the next run). */
   errors: number;

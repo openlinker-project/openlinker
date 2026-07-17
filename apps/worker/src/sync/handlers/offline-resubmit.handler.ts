@@ -18,6 +18,7 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   SyncJobHandler,
   SyncJobHandlerResult,
@@ -37,6 +38,9 @@ const DEFAULT_LIMIT = 100;
 /** Upper bound on the page size - caps `take` regardless of payload. */
 const MAX_LIMIT = 500;
 
+/** Env var overriding the confirm-non-receipt settling margin, in ms (#1585 F4). */
+const SETTLING_MARGIN_ENV = 'OL_OFFLINE_RESUBMIT_SETTLING_MARGIN_MS';
+
 @Injectable()
 export class OfflineResubmitHandler implements SyncJobHandler {
   private readonly logger = new Logger(OfflineResubmitHandler.name);
@@ -44,6 +48,7 @@ export class OfflineResubmitHandler implements SyncJobHandler {
   constructor(
     @Inject(OFFLINE_RESUBMISSION_SERVICE_TOKEN)
     private readonly offlineResubmissionService: IOfflineResubmissionService,
+    private readonly configService: ConfigService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -56,6 +61,7 @@ export class OfflineResubmitHandler implements SyncJobHandler {
     try {
       const result = await this.offlineResubmissionService.resubmit(job.connectionId, {
         limit: payload.limit,
+        settlingMarginMs: this.resolveSettlingMarginMs(),
       });
 
       this.logger.log(
@@ -96,5 +102,26 @@ export class OfflineResubmitHandler implements SyncJobHandler {
     );
 
     return { schemaVersion: 1, limit };
+  }
+
+  /**
+   * Resolve the confirm-non-receipt settling margin (#1585 F4) from
+   * `OL_OFFLINE_RESUBMIT_SETTLING_MARGIN_MS`. Returns `undefined` (service
+   * default) for an absent or non-positive value, so a misconfigured env can
+   * never shrink the guard to zero.
+   */
+  private resolveSettlingMarginMs(): number | undefined {
+    const raw = this.configService.get<string>(SETTLING_MARGIN_ENV);
+    if (raw === undefined || raw === null || raw === '') {
+      return undefined;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      this.logger.warn(
+        `${SETTLING_MARGIN_ENV}=${raw} is not a positive number; falling back to the service default settling margin.`,
+      );
+      return undefined;
+    }
+    return parsed;
   }
 }

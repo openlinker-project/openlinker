@@ -64,6 +64,12 @@ interface CoreCapabilityTaskDescriptor {
   readonly capability: string;
   /** Env var that gates registration AND each run (`'false'` disables). */
   readonly enabledEnvVar: string;
+  /**
+   * Default enablement when `enabledEnvVar` is unset (defaults to `true`). Set
+   * `false` for a task that must remain opt-in until an operator explicitly
+   * enables it (#1585 B1 — the offline-resubmit sweep).
+   */
+  readonly defaultEnabled?: boolean;
   /** Env var holding the cron expression. */
   readonly cronEnvVar: string;
   /** Cron expression used when `cronEnvVar` is unset. */
@@ -132,6 +138,12 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     jobType: 'invoicing.offlineSubmission.resubmit',
     capability: 'Invoicing',
     enabledEnvVar: 'OL_OFFLINE_RESUBMIT_ENABLED',
+    // Opt-in (#1585 B1): the sweep resubmits a locally-issued document once the
+    // authority recovers, and its duplicate-issue guard relies on the provider's
+    // record-locate wire contract. Until an operator has verified that contract
+    // against their own authority, this stays OFF so a mis-parsed locate response
+    // can never trigger an auto-resubmit that double-issues.
+    defaultEnabled: false,
     cronEnvVar: 'OL_OFFLINE_RESUBMIT_CRON',
     defaultCron: '*/15 * * * *',
     idempotencyKey: (connectionId, timestamp) =>
@@ -218,7 +230,10 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
   private scheduleTask(task: SchedulerTaskConfig): void {
     // Check if task is enabled
     const enabled = task.enabledEnvVar
-      ? this.configService.get<string>(task.enabledEnvVar, 'true') !== 'false'
+      ? this.configService.get<string>(
+          task.enabledEnvVar,
+          task.enabledDefault === false ? 'false' : 'true',
+        ) !== 'false'
       : true;
 
     if (!enabled) {
@@ -248,7 +263,10 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
   private async executeTask(task: SchedulerTaskConfig): Promise<void> {
     // Check if task is enabled (runtime check)
     const enabled = task.enabledEnvVar
-      ? this.configService.get<string>(task.enabledEnvVar, 'true') !== 'false'
+      ? this.configService.get<string>(
+          task.enabledEnvVar,
+          task.enabledDefault === false ? 'false' : 'true',
+        ) !== 'false'
       : true;
 
     if (!enabled) {
@@ -392,7 +410,11 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
    *  - the idempotency key uses the descriptor's per-task namespace builder.
    */
   private registerCapabilityTask(descriptor: CoreCapabilityTaskDescriptor): void {
-    const enabled = this.configService.get<string>(descriptor.enabledEnvVar, 'true');
+    const enabledDefaultValue = descriptor.defaultEnabled === false ? 'false' : 'true';
+    const enabled = this.configService.get<string>(
+      descriptor.enabledEnvVar,
+      enabledDefaultValue,
+    );
     if (enabled === 'false') {
       return;
     }
@@ -407,6 +429,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
       jobType: descriptor.jobType,
       cronExpression,
       enabledEnvVar: descriptor.enabledEnvVar,
+      enabledDefault: descriptor.defaultEnabled,
       connectionFilter: async () => {
         // `lazy` (#1206): the fan-out needs only `.connection`; deferring adapter
         // construction avoids building (and credential-resolving) a live adapter

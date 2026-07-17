@@ -21,7 +21,10 @@ export { OrderInvoicePanel } from './components/order-invoice-panel';
 export { InvoiceTimeline } from './components/invoice-timeline';
 export { InvoiceStatusBadge } from './components/invoice-status-badge';
 export type { InvoiceDisplayStatus } from './components/invoice-status-badge';
-export { RegulatoryStatusBadge } from './components/regulatory-status-badge';
+export {
+  RegulatoryStatusBadge,
+  REGULATORY_STATUS_LABEL_FALLBACK,
+} from './components/regulatory-status-badge';
 export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';

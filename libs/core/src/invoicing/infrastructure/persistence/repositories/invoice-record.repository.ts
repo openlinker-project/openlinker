@@ -224,6 +224,48 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   /**
+   * Atomic CAS claim of a `pending-submission` record for the offline-resubmit
+   * sweep (#1585 B1). Mirrors `claimForIssue`'s single guarded UPDATE +
+   * RETURNING shape, but gates on `regulatoryStatus='pending-submission'` and an
+   * absent/expired `leaseExpiresAt` so exactly one overlapping run (or the live
+   * path) can hold the resubmit slot.
+   */
+  async claimPendingSubmission(id: string, leaseExpiresAt: Date): Promise<InvoiceRecord | null> {
+    const now = new Date();
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(InvoiceRecordOrmEntity)
+      .set({ leaseExpiresAt })
+      .where('id = :id', { id })
+      .andWhere(`regulatoryStatus = 'pending-submission'`)
+      .andWhere('("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= :now)', { now })
+      .returning('*')
+      .execute();
+
+    if (result.affected && result.affected > 0) {
+      const rawRows = (Array.isArray(result.raw) ? result.raw : []) as unknown[];
+      const raw = rawRows[0] as Partial<InvoiceRecordOrmEntity> | undefined;
+      if (raw) {
+        return this.toDomain(this.repository.create(raw));
+      }
+      // Provably won but could not read back via RETURNING — re-read rather than
+      // downgrade a win to a loss (would orphan the lease).
+      const claimed = await this.repository.findOne({ where: { id } });
+      if (claimed) {
+        return this.toDomain(claimed);
+      }
+      throw new InvoiceRecordNotFoundException(id);
+    }
+
+    // No row updated: id absent, or the slot is held / no longer pending-submission.
+    const exists = await this.repository.findOne({ where: { id }, select: { id: true } });
+    if (!exists) {
+      throw new InvoiceRecordNotFoundException(id);
+    }
+    return null;
+  }
+
+  /**
    * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
    * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
    * bounds are inclusive and apply to `inv.issuedAt`. Ordered newest-first by
@@ -293,6 +335,14 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
         .andWhere('record.status = :status', { status: 'issued' })
         .andWhere('record.regulatoryStatus NOT IN (:...terminal)', {
           terminal: [...TerminalRegulatoryStatusValues],
+        })
+        // #1585 I5: `pending-submission` is deliberately non-terminal AND its
+        // offline rows are `status='issued'`, so they would otherwise be selected
+        // here and `getClearanceStatus` would throw every tick (their
+        // `providerInvoiceId` is null until a resubmit lands). Leave offline rows
+        // to the offline-resubmit sweep alone; the reconcile poller ignores them.
+        .andWhere('record.regulatoryStatus != :pendingSubmission', {
+          pendingSubmission: 'pending-submission',
         });
 
     const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
@@ -310,17 +360,19 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       .take(opts.limit)
       .getMany();
 
-    // `total` is the FULL non-terminal count (cursor-independent) — coverage
-    // logging only, never used for paging — so it stays stable across the
-    // service's intra-run page walk.
-    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
+    // `total` is the FULL non-terminal count — coverage logging only, captured by
+    // the service on page 1. Computed ONLY on page 1 (no cursor) so the O(n) count
+    // does not re-run on every keyset page (#1585 perf).
+    const total = opts.cursor
+      ? 0
+      : await baseWhere(this.repository.createQueryBuilder('record')).getCount();
 
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
 
   async findPendingSubmission(
     connectionId: string,
-    opts: { limit: number; cursor?: { updatedAt: Date; id: string } },
+    opts: { limit: number; cursor?: { updatedAt: Date; id: string }; olderThan?: Date },
   ): Promise<{ items: InvoiceRecord[]; total: number }> {
     // Selection predicate (mirrored by the `IDX_invoice_records_pending_submission`
     // partial index): regulatoryStatus = 'pending-submission'. Connection-scoped,
@@ -337,10 +389,18 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // keyset comparison and the ORDER BY so the resolutions match and the walk
     // cannot stall by re-selecting the cursor row forever.
     const UPDATED_AT_MS = "date_trunc('milliseconds', record.updatedAt)";
-    const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) =>
+    const baseWhere = (qb: ReturnType<typeof this.repository.createQueryBuilder>) => {
       qb
         .where('record.connectionId = :connectionId', { connectionId })
         .andWhere('record.regulatoryStatus = :pending', { pending: 'pending-submission' });
+      // Settling margin (#1585 B1): exclude rows touched more recently than
+      // `olderThan` so a landed-but-unindexed document has time to surface before
+      // the sweep trusts a `null` locate as a genuine non-receipt.
+      if (opts.olderThan) {
+        qb.andWhere('record.updatedAt <= :olderThan', { olderThan: opts.olderThan });
+      }
+      return qb;
+    };
 
     const pageQb = baseWhere(this.repository.createQueryBuilder('record'));
     if (opts.cursor) {
@@ -355,10 +415,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       .take(opts.limit)
       .getMany();
 
-    // `total` is the FULL pending-submission count (cursor-independent) - coverage
-    // logging only, never used for paging - so it stays stable across the sweep's
-    // intra-run page walk.
-    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
+    // `total` is the FULL pending-submission count - coverage logging only,
+    // captured by the sweep on page 1. Computed ONLY on page 1 (no cursor) so the
+    // O(n) count does not re-run on every keyset page (#1585 perf).
+    const total = opts.cursor
+      ? 0
+      : await baseWhere(this.repository.createQueryBuilder('record')).getCount();
 
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
@@ -406,10 +468,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       .take(opts.limit)
       .getMany();
 
-    // `total` is the FULL stuck count (cursor-independent) - coverage logging
-    // only, never used for paging - so it stays stable across the sweep's
-    // intra-run page walk.
-    const total = await baseWhere(this.repository.createQueryBuilder('record')).getCount();
+    // `total` is the FULL stuck count - coverage logging only, captured by the
+    // sweep on page 1. Computed ONLY on page 1 (no cursor) so the O(n) count does
+    // not re-run on every keyset page (#1585 perf).
+    const total = opts.cursor
+      ? 0
+      : await baseWhere(this.repository.createQueryBuilder('record')).getCount();
 
     return { items: entities.map((e) => this.toDomain(e)), total };
   }
