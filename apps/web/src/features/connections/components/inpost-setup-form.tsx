@@ -32,6 +32,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { codCurrenciesForPlatform } from '../../../shared/shipping/cod-currencies';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -200,6 +201,20 @@ export function InpostSetupForm(): ReactElement {
                 invalid={Boolean(form.formState.errors.organizationId)}
               />
             </FormField>
+
+            <div className="form-field">
+              <span className="form-field__label">Supported COD currencies</span>
+              <p className="form-field__description">
+                Cash on delivery is collected in these currencies — set by the carrier.
+              </p>
+              <div className="cod-currency-support">
+                {codCurrenciesForPlatform('inpost').map((currency) => (
+                  <span key={currency} className="cod-currency-support__chip">
+                    {currency}
+                  </span>
+                ))}
+              </div>
+            </div>
           </>
         ) : null}
 

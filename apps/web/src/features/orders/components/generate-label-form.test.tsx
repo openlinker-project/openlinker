@@ -6,7 +6,7 @@
  * Plus the happy-path render: with a complete snapshot, the form mounts
  * focused on the first input and the submit is enabled.
  */
-import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
 import {
@@ -798,5 +798,163 @@ describe('GenerateLabelForm — #953 dispatch-outcome toast', () => {
 
     expect(await findToastTitle(/Fulfilled by destination store/i)).toBeInTheDocument();
     expect(screen.queryByText(/Label generated/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── #1569 — COD currency scoped to the routed carrier ─────────────────────
+
+describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
+  function carrierConnection(id: string, platformType: string) {
+    return {
+      id,
+      platformType,
+      name: platformType,
+      status: 'active',
+      config: {},
+      credentialsBacked: true,
+      enabledCapabilities: [],
+      supportedCapabilities: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  function routedApi(
+    processorPlatform: string,
+    overrides: Parameters<typeof createMockApiClient>[0] = {},
+  ) {
+    return createMockApiClient({
+      mappings: {
+        getRoutingRules: vi.fn().mockResolvedValue([
+          {
+            id: 'rule-1',
+            sourceConnectionId: 'b3f1c2d4-0000-4000-8000-000000000099',
+            sourceDeliveryMethodId: 'allegro-courier',
+            processorKind: 'ol_managed_carrier',
+            processorConnectionId: `conn-${processorPlatform}`,
+          },
+        ]),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([carrierConnection(`conn-${processorPlatform}`, processorPlatform)]),
+      },
+      ...overrides,
+    });
+  }
+
+  function fillParcel(): void {
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+  }
+
+  function codOrder(currency?: string): OrderRecord {
+    const base = makeOrder();
+    return makeOrder({
+      orderSnapshot: {
+        ...(base.orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'cod',
+        ...(currency
+          ? { totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency } }
+          : {}),
+      },
+    });
+  }
+
+  it('should lock COD to PLN and hide the currency picker for an InPost-routed order', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('inpost', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    // Once the routing resolves the carrier, the picker collapses to a locked
+    // value + reason line and the select is gone.
+    expect(
+      await screen.findByText(/collects cash on delivery in PLN only/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'COD currency' })).toBeNull();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '129.90' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '129.90', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should offer the full set and default from the order currency for a DPD-routed order', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('dpd', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder('EUR')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    const select = await screen.findByRole('combobox', { name: 'COD currency' });
+    expect(within(select).getAllByRole('option')).toHaveLength(4);
+    expect(select).toHaveValue('EUR');
+    expect(screen.getByText(/Defaulted from the order \(EUR\)/i)).toBeInTheDocument();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '50.00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '50.00', currency: 'EUR' } }),
+      ),
+    );
+  });
+
+  it('should coerce an order currency the carrier rejects (CZK order → InPost) down to PLN', async () => {
+    const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
+    const apiClient = routedApi('inpost', { shipments: { generateLabel } });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder('CZK')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    expect(
+      await screen.findByText(/collects cash on delivery in PLN only/i),
+    ).toBeInTheDocument();
+
+    fillParcel();
+    fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '80.00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    await waitFor(() =>
+      expect(generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: { amount: '80.00', currency: 'PLN' } }),
+      ),
+    );
+  });
+
+  it('should keep the full currency union when no routing rule matches (carrier unknown)', async () => {
+    // Default mock returns [] routing rules → carrier unpredictable → union.
+    const apiClient = createMockApiClient({
+      shipments: { generateLabel: vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null }) },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={codOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    const select = await screen.findByRole('combobox', { name: 'COD currency' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'PLN',
+      'EUR',
+      'RON',
+      'CZK',
+    ]);
   });
 });
