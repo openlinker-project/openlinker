@@ -127,16 +127,6 @@ function isOrderDir(value: string | null): value is OrderSortDirection {
 }
 
 /**
- * Native react-table-sortable columns (#1713): only these two carry the built-in
- * header-button + arrow. Their column `id` equals the server sort key. Every
- * other sortable field (ship-by, fulfillment, total, payment, created) lives in
- * a merged column whose header renders its own per-label sort controls that call
- * `applySort` directly — so those keys are driven by custom buttons, not by
- * react-table's single-column sorting model.
- */
-const NATIVE_SORTABLE_COLUMNS: readonly OrderSortValue[] = ['customer', 'status'];
-
-/**
  * First-click direction per sort key (#944): the operator-intuitive default
  * when a column is newly selected. Re-clicking the active column flips it.
  * Ship-by asc (soonest first) is the list's default sort state.
@@ -347,6 +337,32 @@ export function OrdersListPage(): ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // Parse each row's snapshot once per page (#1713) — the order / customer /
+  // shipment / money cells and the mobile summary all read the same parse
+  // instead of re-parsing per cell. Keyed by internalOrderId over the current
+  // page's items.
+  const parsedByOrder = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof parseOrderSnapshot>>();
+    for (const order of query.data?.items ?? []) {
+      map.set(order.internalOrderId, parseOrderSnapshot(order.orderSnapshot));
+    }
+    return map;
+  }, [query.data?.items]);
+  const parsedFor = useCallback(
+    (order: OrderRecord): ReturnType<typeof parseOrderSnapshot> =>
+      parsedByOrder.get(order.internalOrderId) ?? parseOrderSnapshot(order.orderSnapshot),
+    [parsedByOrder],
+  );
+
+  // Whether ANY connection exposes the Invoicing capability (#1713). When none
+  // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
+  // issue invoices, so offering the action would dead-end. An existing invoice
+  // pill still renders regardless (the record exists independent of this gate).
+  const hasInvoicingCapability = useMemo(
+    () => (connectionsQuery.data ?? []).some((c) => c.enabledCapabilities.includes('Invoicing')),
+    [connectionsQuery.data],
+  );
+
   // Already-shipped orders can't be dispatched — their checkbox is disabled.
   const isSelectable = (order: OrderRecord): boolean =>
     order.fulfillmentState !== 'dispatched' && order.fulfillmentState !== 'delivered';
@@ -485,6 +501,11 @@ export function OrdersListPage(): ReactElement {
             .join(' ')}
           onClick={() => { applySort(key); }}
           aria-pressed={active}
+          aria-label={
+            active
+              ? `${label}, sorted ${dir === 'asc' ? 'ascending' : 'descending'}`
+              : `${label}, sort`
+          }
         >
           {label}
           <span className="orders-sortbtn__ind" aria-hidden="true">
@@ -517,7 +538,7 @@ export function OrdersListPage(): ReactElement {
         id: 'order',
         header: 'Order',
         cell: (order) => {
-          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const parsed = parsedFor(order);
           const items = itemsSummary(parsed.items);
           const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
           const source = channelLabel(sourcePlatform);
@@ -525,6 +546,9 @@ export function OrdersListPage(): ReactElement {
             ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
             : undefined;
           const dest = channelLabel(destPlatform);
+          // Multi-destination indicator (#1713): an order fanned out to more than
+          // one destination shows `→ Dest +N` where N is the extra destinations.
+          const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
           return (
             <span className="orders-cell-stack">
               <EntityLabel
@@ -553,7 +577,12 @@ export function OrdersListPage(): ReactElement {
                   <span className="channel-pill" data-channel={sourcePlatform}>
                     {source}
                   </span>
-                  {dest ? <span className="text-muted orders-cell-sub">→ {dest}</span> : null}
+                  {dest ? (
+                    <span className="text-muted orders-cell-sub">
+                      → {dest}
+                      {extraDests > 0 ? ` +${extraDests}` : ''}
+                    </span>
+                  ) : null}
                 </span>
               ) : null}
             </span>
@@ -562,10 +591,12 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'customer',
-        header: 'Customer',
-        sortable: true,
+        // Non-sortable in react-table's model (#1713) — the header renders the
+        // same per-label sort control as the merged columns, routed through
+        // `applySort`, so every sortable header shares one affordance.
+        header: <span className="orders-sortstack">{sortLabel('Customer', 'customer')}</span>,
         cell: (order) => {
-          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const parsed = parsedFor(order);
           const name = customerName(parsed);
           if (!name) return <span className="text-muted">—</span>;
           const city = parsed.shippingAddress?.city;
@@ -602,8 +633,9 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'status',
-        header: 'Status',
-        sortable: true,
+        // Non-sortable in react-table's model (#1713) — header uses the shared
+        // per-label sort control (see the customer column).
+        header: <span className="orders-sortstack">{sortLabel('Status', 'status')}</span>,
         cell: (order) => {
           const h = deriveOrderHealth(order);
           return (
@@ -632,7 +664,7 @@ export function OrdersListPage(): ReactElement {
           </span>
         ),
         cell: (order) => {
-          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const parsed = parsedFor(order);
           const f = fulfillmentBadge(order.fulfillmentState);
           // BE-owned SLA bucket drives the badge (#1108); the live countdown
           // stays client-side, falling back to the client-derived urgency for
@@ -644,13 +676,15 @@ export function OrdersListPage(): ReactElement {
           // shipments, so `shipping.methodName` (the source's stated delivery
           // method) is the best signal, falling back to the pickup-point name.
           const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
-          // Nothing dispatched yet → offer the action instead of a passive
-          // "Not shipped" status (#1713): deep-link to the order's shipment
-          // section where the operator generates the label.
-          const notShipped = (order.fulfillmentState ?? 'not-shipped') === 'not-shipped';
+          // Offer "Generate label" ONLY when fulfillment is EXPLICITLY not-shipped
+          // and the order isn't cancelled (#1713). An undefined fulfillmentState
+          // (genuinely unknown) or a cancelled order shows the passive fulfillment
+          // badge instead — never a dead-end action.
+          const canGenerateLabel =
+            order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
           return (
             <span className="orders-cell-stack">
-              {notShipped ? (
+              {canGenerateLabel ? (
                 <Link
                   className="orders-row-cta"
                   to={`/orders/${order.internalOrderId}#shipment`}
@@ -702,7 +736,7 @@ export function OrdersListPage(): ReactElement {
           </span>
         ),
         cell: (order) => {
-          const parsed = parseOrderSnapshot(order.orderSnapshot);
+          const parsed = parsedFor(order);
           const pay = paymentBadge(parsed.paymentStatus);
           const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
           return (
@@ -719,14 +753,15 @@ export function OrdersListPage(): ReactElement {
                   {pay.label}
                 </StatusBadge>
               ) : null}
-              {/* Invoice: the clearance-status pill when an invoice exists, else
+              {/* Invoice: the clearance-status pill when an invoice exists; else
                   the "Issue invoice" action deep-linking to the order's invoicing
-                  section (#1713). */}
+                  section — but only when some connection can actually issue an
+                  invoice (#1713). No invoicing capability ⇒ em dash. */}
               {inv ? (
                 <StatusBadge tone={inv.tone} withDot compact>
                   {inv.label}
                 </StatusBadge>
-              ) : (
+              ) : hasInvoicingCapability ? (
                 <Link
                   className="orders-row-cta"
                   to={`/orders/${order.internalOrderId}#invoicing`}
@@ -736,6 +771,8 @@ export function OrdersListPage(): ReactElement {
                   </span>{' '}
                   Issue invoice
                 </Link>
+              ) : (
+                <span className="text-muted">—</span>
               )}
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
@@ -788,6 +825,9 @@ export function OrdersListPage(): ReactElement {
       // active-state arrows track the current sort/dir. `sortLabel` is a
       // useCallback keyed on sort/dir, so this rebuilds exactly on a sort change.
       sortLabel,
+      // Per-page snapshot cache + invoicing-capability gate (#1713).
+      parsedFor,
+      hasInvoicingCapability,
     ],
   );
 
@@ -865,15 +905,6 @@ export function OrdersListPage(): ReactElement {
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
-
-  // Controlled (server-side) sort state for the DataTable (#944/#1713): only the
-  // two native-sortable columns (customer / status) drive react-table's arrow;
-  // merged-column keys render their own arrows via the per-label sort buttons, so
-  // the SortingState is empty when one of those is active. Structurally a
-  // `SortingState` ({ id, desc }[]) without importing the react-table type.
-  const sortingState = NATIVE_SORTABLE_COLUMNS.includes(sort)
-    ? [{ id: sort, desc: dir === 'desc' }]
-    : [];
 
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
@@ -1097,25 +1128,17 @@ export function OrdersListPage(): ReactElement {
               toggleLabel: (order, expanded) =>
                 `${expanded ? 'Collapse' : 'Expand'} details for order ${order.internalOrderId}`,
             }}
+            // Server-side ordering (#944/#1713): every sortable header (customer,
+            // status, and the merged shipment/money columns) renders its own
+            // per-label sort control that calls `applySort` directly, so no
+            // column is react-table-sortable and `onSortChange` never fires.
+            // `manualSorting` keeps react-table from client-sorting the page.
             manualSorting
-            sort={sortingState}
-            onSortChange={(updater) => {
-              // Server-side sort (#944/#1713): react-table only fires this for the
-              // native-sortable columns (customer / status), whose column id equals
-              // the sort key. Resolve the interacted column and delegate to the
-              // shared `applySort` toggle. Merged-column keys go through their own
-              // header buttons, not this path.
-              const next =
-                typeof updater === 'function' ? updater(sortingState) : updater;
-              const clickedColumnId = next.length > 0 ? next[0].id : sort;
-              if (!isOrderSort(clickedColumnId)) return;
-              applySort(clickedColumnId);
-            }}
             cardView={{
               // Per-row select stays usable in the mobile card layout (#1109/#1620).
               select: (order) => renderSelectCheckbox(order),
               title: (order) => {
-                const parsed = parseOrderSnapshot(order.orderSnapshot);
+                const parsed = parsedFor(order);
                 return (
                   <EntityLabel
                     id={order.internalOrderId}
@@ -1126,6 +1149,13 @@ export function OrdersListPage(): ReactElement {
               },
               subtitle: (order) => {
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+                const destPlatform = order.syncStatus[0]
+                  ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+                  : undefined;
+                const dest = channelLabel(destPlatform);
+                // Multi-destination indicator (#1713) — extra destinations beyond
+                // the first, mirroring the desktop order cell.
+                const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
                 return (
                   <span className="orders-card-sub">
                     {source ? (
@@ -1134,6 +1164,12 @@ export function OrdersListPage(): ReactElement {
                         data-channel={platformByConnection.get(order.sourceConnectionId)}
                       >
                         {source}
+                      </span>
+                    ) : null}
+                    {dest ? (
+                      <span className="text-muted orders-cell-sub">
+                        → {dest}
+                        {extraDests > 0 ? ` +${extraDests}` : ''}
                       </span>
                     ) : null}
                     <TimeDisplay iso={order.createdAt} format="relative" />
@@ -1155,13 +1191,17 @@ export function OrdersListPage(): ReactElement {
               // summary plus a tight facts grid (total / payment / customer /
               // created / shipment carrier).
               summary: (order) => {
-                const parsed = parseOrderSnapshot(order.orderSnapshot);
+                const parsed = parsedFor(order);
                 const items = itemsSummary(parsed.items);
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
                 const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
-                const notShipped = (order.fulfillmentState ?? 'not-shipped') === 'not-shipped';
+                const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                // Offer "Generate label" ONLY when explicitly not-shipped and not
+                // cancelled (#1713) — otherwise the passive fulfillment badge.
+                const canGenerateLabel =
+                  order.fulfillmentState === 'not-shipped' && parsed.status !== 'cancelled';
                 return (
                   <div className="orders-card-summary">
                     {items ? (
@@ -1202,7 +1242,7 @@ export function OrdersListPage(): ReactElement {
                             <StatusBadge tone={inv.tone} withDot compact>
                               {inv.label}
                             </StatusBadge>
-                          ) : (
+                          ) : hasInvoicingCapability ? (
                             <Link
                               className="orders-row-cta"
                               to={`/orders/${order.internalOrderId}#invoicing`}
@@ -1212,6 +1252,8 @@ export function OrdersListPage(): ReactElement {
                               </span>{' '}
                               Issue invoice
                             </Link>
+                          ) : (
+                            '—'
                           )}
                         </dd>
                       </div>
@@ -1219,16 +1261,10 @@ export function OrdersListPage(): ReactElement {
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
-                      <div>
-                        <dt>Created</dt>
-                        <dd className="mono tabular">
-                          <TimeDisplay iso={order.createdAt} format="datetime" />
-                        </dd>
-                      </div>
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
                         <dd>
-                          {notShipped ? (
+                          {canGenerateLabel ? (
                             <Link
                               className="orders-row-cta"
                               to={`/orders/${order.internalOrderId}#shipment`}
@@ -1239,7 +1275,14 @@ export function OrdersListPage(): ReactElement {
                               Generate label
                             </Link>
                           ) : (
-                            (carrier ?? '—')
+                            <span className="orders-cell-stack">
+                              <StatusBadge tone={fulfillment.tone} withDot compact>
+                                {fulfillment.label}
+                              </StatusBadge>
+                              {carrier ? (
+                                <span className="text-muted orders-cell-sub">{carrier}</span>
+                              ) : null}
+                            </span>
                           )}
                         </dd>
                       </div>

@@ -2815,8 +2815,8 @@ textarea,
 }
 
 /* Detail field grid — shared by the desktop accordion and the mobile card.
-   Inset "drawer" (#1713): a recessed panel (color-mix darkens the current
-   theme's surface, so it reads recessed in both light and dark) with side
+   Inset "drawer" (#1713): a recessed panel (the muted surface token reads
+   recessed in both light and dark, matching the mobile facts grid) with side
    padding, set apart from the row above. */
 .orders-detail {
   display: grid;
@@ -2824,7 +2824,7 @@ textarea,
   gap: var(--space-4) var(--space-5);
   margin: 0;
   padding: var(--space-4) var(--space-5);
-  background: color-mix(in oklch, var(--bg-surface), black 7%);
+  background: var(--bg-surface-muted);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
@@ -7733,7 +7733,7 @@ a.kpi-card:focus-visible {
 .orders-more-count {
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   color: var(--text-muted);
   background: var(--bg-surface-muted);
   border: 1px solid var(--border-subtle);
@@ -7743,27 +7743,33 @@ a.kpi-card:focus-visible {
 
 /* Inline row action shown in place of a status pill when the next step is
    unstarted — "Generate label" (no shipment) / "Issue invoice" (no invoice).
-   Accent-outlined; deep-links to the matching section of the order-detail page. */
+   Neutral/ghost at rest so the accent stays reserved (#1713 review): a plain
+   outline that lifts to the accent on hover/focus. `min-height: 24px` meets the
+   WCAG 2.5.8 target size without enlarging the visible text. */
 .orders-row-cta {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 24px;
   padding: 1px 8px;
-  border: 1px solid var(--accent-primary-border);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: var(--accent-primary-soft);
-  color: var(--accent-primary-soft-strong);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   text-decoration: none;
   white-space: nowrap;
 }
-.orders-row-cta:hover { border-color: var(--accent-primary); }
+.orders-row-cta:hover,
+.orders-row-cta:focus-visible {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
 .orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
-.orders-row-cta__plus { color: var(--accent-primary); font-weight: 700; }
+.orders-row-cta__plus { color: var(--text-muted); font-weight: 700; }
 
 /* Ship-by badge + live countdown share one line inside the Shipment cell. */
 .orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
@@ -7772,7 +7778,7 @@ a.kpi-card:focus-visible {
 /* Channel folds under the order name below the Channel column's 1024px hide
    breakpoint — hidden on wide screens where the standalone column shows. */
 .orders-order-channel { display: none; align-items: center; gap: 6px; }
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .orders-order-channel { display: inline-flex; }
 }
 
@@ -7798,7 +7804,7 @@ a.kpi-card:focus-visible {
 .orders-sortbtn:hover { color: var(--text-secondary); }
 .orders-sortbtn:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
 .orders-sortbtn--active { color: var(--text-secondary); }
-.orders-sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
+.orders-sortbtn__ind { color: var(--text-muted); font-size: 0.625rem; }
 .orders-sortbtn--active .orders-sortbtn__ind { color: var(--accent-primary); }
 
 /* Accordion "Open order" links strip + itemised line list. */
@@ -7856,13 +7862,12 @@ a.kpi-card:focus-visible {
 .orders-line-item__qty { color: var(--text-muted); font-size: 0.75rem; }
 .orders-line-item__name { min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
 .orders-line-item__sku { display: block; font-size: 0.6875rem; color: var(--text-muted); }
-.orders-line-item__price { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; }
+.orders-line-item__price { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
 
 /* Mobile card: subtitle (channel + relative time), always-visible summary +
    facts grid, and the collapsible-detail disclosure. */
 .orders-card-sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .orders-card-summary { display: flex; flex-direction: column; gap: var(--space-3); }
-.orders-card-items { font-size: 0.8125rem; color: var(--text-secondary); }
 .orders-card-facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -7876,7 +7881,7 @@ a.kpi-card:focus-visible {
 .orders-card-facts__wide { grid-column: 1 / -1; }
 .orders-card-facts dt {
   font-family: var(--font-mono);
-  font-size: 0.5938rem;
+  font-size: 0.6875rem;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);

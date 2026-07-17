@@ -18,6 +18,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
+import { isSafeHttpUrl } from '../../../shared/lib/is-safe-http-url';
 import {
   parseOrderSnapshot,
   type ParsedAddress,
@@ -113,7 +114,7 @@ export function OrderRowDetail({
         <Link className="orders-ext-link orders-ext-link--internal" to={`/orders/${order.internalOrderId}`}>
           Order details <span aria-hidden="true" className="orders-ext-link__arrow">→</span>
         </Link>
-        {parsed.sourceExternalUrl ? (
+        {parsed.sourceExternalUrl && isSafeHttpUrl(parsed.sourceExternalUrl) ? (
           <a
             className="orders-ext-link"
             data-channel={sourcePlatform}

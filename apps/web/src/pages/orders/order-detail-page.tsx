@@ -76,10 +76,15 @@ export function OrderDetailPage(): ReactElement {
     const targetId = location.hash.replace(/^#/, '');
     if (!targetId) return;
     const raf = requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
       const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
         ? 'auto'
         : 'smooth';
-      document.getElementById(targetId)?.scrollIntoView({ behavior, block: 'start' });
+      // Move focus to the section so keyboard/AT users follow the visual jump;
+      // `preventScroll` lets scrollIntoView own the (possibly smooth) scroll.
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior, block: 'start' });
     });
     return () => { cancelAnimationFrame(raf); };
   }, [hasOrder, location.hash]);
@@ -314,10 +319,10 @@ export function OrderDetailPage(): ReactElement {
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
               divs so the target exists even while a panel is capability-gated
               (renders null) or still loading. */}
-          <div id="shipment">
+          <div id="shipment" tabIndex={-1}>
             <OrderShipmentPanel order={order} />
           </div>
-          <div id="invoicing">
+          <div id="invoicing" tabIndex={-1}>
             <OrderInvoicePanel order={order} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />

@@ -381,6 +381,7 @@ describe('OrdersController', () => {
 
       expect(result.orderSnapshot.invoice).toEqual({
         invoiceId: 'rec-inv-1',
+        documentType: 'invoice',
         status: 'issued',
         regulatoryStatus: 'accepted',
         clearanceReference: '5265877635-20250826-0100001AF629-AF',

@@ -12,6 +12,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Fragment,
   useCallback,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -530,6 +531,7 @@ function DataTableCard<Row>({
   onClick,
 }: DataTableCardProps<Row>): ReactElement {
   const [detailOpen, setDetailOpen] = useState(false);
+  const detailId = useId();
   const detail = cardView.detail;
   const collapsible = cardView.collapsibleDetail ?? false;
   const showDetail = detail !== undefined && (!collapsible || detailOpen);
@@ -571,6 +573,7 @@ function DataTableCard<Row>({
           type="button"
           className="data-table__card-disclosure"
           aria-expanded={detailOpen}
+          aria-controls={detailId}
           onClick={(event) => {
             // Never bubble to the card-level navigation handler.
             event.stopPropagation();
@@ -584,7 +587,9 @@ function DataTableCard<Row>({
         </button>
       ) : null}
       {showDetail && detail ? (
-        <div className="data-table__card-detail">{detail(row)}</div>
+        <div id={detailId} className="data-table__card-detail">
+          {detail(row)}
+        </div>
       ) : null}
     </li>
   );

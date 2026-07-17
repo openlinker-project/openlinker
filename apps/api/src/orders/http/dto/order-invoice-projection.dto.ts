@@ -11,6 +11,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  DocumentTypeValues,
   InvoiceStatus,
   InvoiceStatusValues,
   RegulatoryStatus,
@@ -23,6 +24,13 @@ export class OrderInvoiceProjectionDto {
       'Internal invoice record id the UPO download endpoint (GET /invoices/:invoiceId/upo) keys on.',
   })
   invoiceId!: string;
+
+  @ApiProperty({
+    enum: DocumentTypeValues,
+    description:
+      'Neutral document type (open-world). Correction documents (`corrected` / `credit-note`) are distinguished from a plain `invoice` so the FE can label them.',
+  })
+  documentType!: string;
 
   @ApiProperty({
     enum: InvoiceStatusValues,

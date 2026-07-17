@@ -379,9 +379,22 @@ describe('invoice_records persistence (integration)', () => {
       const repository = new InvoiceRecordRepository(repo);
       await repo.save(claimRow({ orderId: 'ol_o1', status: 'issued' }));
       await repo.save(claimRow({ orderId: 'ol_o2', status: 'failed' }));
-      // Two records for the same order → DISTINCT ON collapses to one.
-      await repo.save(claimRow({ orderId: 'ol_o3', status: 'pending' }));
-      await repo.save(claimRow({ orderId: 'ol_o3', status: 'issued' }));
+      // Two records for the same order with EXPLICIT distinct createdAt (older
+      // then newer) → DISTINCT ON must keep the NEWEST, proving latest-per-order.
+      await repo.save(
+        claimRow({
+          orderId: 'ol_o3',
+          status: 'pending',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      );
+      await repo.save(
+        claimRow({
+          orderId: 'ol_o3',
+          status: 'issued',
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        }),
+      );
 
       const results = await repository.findLatestByOrderIds([
         'ol_o1',
@@ -395,8 +408,8 @@ describe('invoice_records persistence (integration)', () => {
       expect(byOrder.has('ol_missing')).toBe(false);
       expect(byOrder.get('ol_o1')?.status).toBe('issued');
       expect(byOrder.get('ol_o2')?.status).toBe('failed');
-      // Exactly one ol_o3 row survives the dedup; its status is one of the two saved.
-      expect(['pending', 'issued']).toContain(byOrder.get('ol_o3')?.status);
+      // The newer ol_o3 row wins — latest-per-order.
+      expect(byOrder.get('ol_o3')?.status).toBe('issued');
     });
 
     it('returns [] for an empty input', async () => {

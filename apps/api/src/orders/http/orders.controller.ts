@@ -200,9 +200,10 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     const dto = this.toDto(order);
-    // Order-detail-only invoice projection (#1224): the FE invoice panel reads a
-    // neutral `invoice` sub-tree off the snapshot. Joined on the detail read only
-    // (the list endpoint stays a single query — no N+1).
+    // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
+    // sub-tree off the snapshot. The list endpoint now shares the same projection
+    // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
+    // this detail read joins the single record for one order.
     const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
       order.internalOrderId
     );
@@ -292,6 +293,7 @@ export class OrdersController {
     const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
+      documentType: record.documentType,
       status: record.status,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,

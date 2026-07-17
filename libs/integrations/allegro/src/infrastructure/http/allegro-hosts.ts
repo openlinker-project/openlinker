@@ -93,5 +93,5 @@ export function getAllegroSalesCenterOrderUrl(
     environment === 'production'
       ? PRODUCTION_SALESCENTER_BASE_URL
       : SANDBOX_SALESCENTER_BASE_URL;
-  return `${base}/orders/${checkoutFormId}`;
+  return `${base}/orders/${encodeURIComponent(checkoutFormId)}`;
 }

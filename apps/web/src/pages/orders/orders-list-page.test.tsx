@@ -506,12 +506,37 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     // Total's first-click default direction is descending (biggest first).
-    await user.click(screen.getByRole('button', { name: 'Total' }));
+    // The sort button's accessible name now carries its sorted state (#1713).
+    await user.click(screen.getByRole('button', { name: /^Total,/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters]) => {
         const f = filters as { sort?: string; dir?: string } | undefined;
         return f?.sort === 'total' && f?.dir === 'desc';
+      });
+      expect(called).toBe(true);
+    });
+  });
+
+  it('should server-sort by payment and drop the offset when the Payment header is clicked (#1713)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    // Start on page 2 so the re-sort's offset-drop is observable.
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /^Payment/ }));
+
+    await vi.waitFor(() => {
+      const called = list.mock.calls.some(([filters, pagination]) => {
+        const f = filters as { sort?: string; dir?: string } | undefined;
+        const p = pagination as { offset?: number } | undefined;
+        return f?.sort === 'payment' && f?.dir === 'asc' && p?.offset === 0;
       });
       expect(called).toBe(true);
     });
@@ -532,7 +557,9 @@ describe('OrdersListPage', () => {
     });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: 'Ship-by' }));
+    // `/^Ship-by,/` targets the sort button (aria-label "Ship-by, sorted …"),
+    // not the "Ship-by ≤ 24h / overdue" chip (#1713).
+    await user.click(screen.getByRole('button', { name: /^Ship-by,/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters]) => {
@@ -741,10 +768,19 @@ describe('OrdersListPage', () => {
   });
 
   it('should offer "Issue invoice" and "Generate label" actions for an order with neither yet (#1713)', async () => {
-    // syncedOrder carries no invoice and no fulfillmentState (⇒ not-shipped).
+    // Explicit not-shipped order (the Generate-label gate needs it explicit,
+    // never undefined — #1713) with no invoice, plus an invoicing-capable
+    // connection so the "Issue invoice" CTA is offered rather than an em dash.
+    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const invoicingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_invoicing_1',
+      name: 'KSeF',
+      enabledCapabilities: ['Invoicing'],
+    };
     const mockApi = createMockApiClient({
-      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
-      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
     });
 
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
@@ -756,6 +792,24 @@ describe('OrdersListPage', () => {
     expect(invoiceCta).toHaveAttribute('href', '/orders/ol_order_synced#invoicing');
     const labelCta = within(row).getByRole('link', { name: /generate label/i });
     expect(labelCta).toHaveAttribute('href', '/orders/ol_order_synced#shipment');
+  });
+
+  it('should show an em dash for "Issue invoice" when no connection can issue invoices (#1713)', async () => {
+    const notShippedOrder: OrderRecord = { ...syncedOrder, fulfillmentState: 'not-shipped' };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
+      // sampleConnection has no Invoicing capability.
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    // Generate label is still offered — it isn't invoicing-gated.
+    expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
   });
 
   it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {

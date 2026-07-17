@@ -58,13 +58,34 @@ export function paymentBadge(
 }
 
 /**
+ * Neutral document types (mirrors `DocumentTypeValues` in
+ * `@openlinker/core/invoicing`) that represent a correction rather than an
+ * original invoice — the badge prefixes these with `Correction · `.
+ */
+const CORRECTION_DOCUMENT_TYPES: ReadonlySet<string> = new Set(['corrected', 'credit-note']);
+
+/**
  * Collapse an order's invoice projection (#1713) into one operator-facing badge:
  * the issue lifecycle (`status`) crossed with the neutral CTC clearance
- * lifecycle (`regulatoryStatus`). Only called when an invoice record exists — a
- * missing invoice is rendered as the "Issue invoice" action by the caller, not
- * here. Colour is never the only signal; the label always ships alongside.
+ * lifecycle (`regulatoryStatus`). Correction documents (`documentType` of
+ * `corrected` / `credit-note`, #1713) are prefixed `Correction · …` so a KOR
+ * reads distinctly from an original invoice. Only called when an invoice record
+ * exists — a missing invoice is rendered as the "Issue invoice" action by the
+ * caller, not here. Colour is never the only signal; the label always ships
+ * alongside.
  */
 export function invoiceBadge(invoice: ParsedOrderInvoice): {
+  label: string;
+  tone: StatusBadgeTone;
+} {
+  const base = invoiceBadgeBase(invoice);
+  const isCorrection = invoice.documentType
+    ? CORRECTION_DOCUMENT_TYPES.has(invoice.documentType)
+    : false;
+  return isCorrection ? { ...base, label: `Correction · ${base.label}` } : base;
+}
+
+function invoiceBadgeBase(invoice: ParsedOrderInvoice): {
   label: string;
   tone: StatusBadgeTone;
 } {

@@ -65,4 +65,23 @@ describe('invoiceBadge', () => {
     expect(invoiceBadge(inv('issued', 'accepted'))).toEqual({ label: 'Cleared', tone: 'success' });
     expect(invoiceBadge(inv('issued', 'rejected'))).toEqual({ label: 'Rejected', tone: 'error' });
   });
+
+  it('prefixes correction documents (corrected / credit-note) with "Correction · "', () => {
+    expect(invoiceBadge({ ...inv('issued', 'accepted'), documentType: 'corrected' })).toEqual({
+      label: 'Correction · Cleared',
+      tone: 'success',
+    });
+    expect(invoiceBadge({ ...inv('issued', 'not-applicable'), documentType: 'credit-note' })).toEqual({
+      label: 'Correction · Issued',
+      tone: 'success',
+    });
+  });
+
+  it('keeps the base label for a plain invoice or an unset document type', () => {
+    expect(invoiceBadge({ ...inv('issued', 'accepted'), documentType: 'invoice' })).toEqual({
+      label: 'Cleared',
+      tone: 'success',
+    });
+    expect(invoiceBadge(inv('issued', 'accepted'))).toEqual({ label: 'Cleared', tone: 'success' });
+  });
 });

@@ -126,6 +126,10 @@ export type RegulatoryStatus = (typeof RegulatoryStatusValues)[number];
  */
 const orderInvoiceSchema = z.object({
   invoiceId: z.string(),
+  /** Neutral document type (open-world) — correction documents (`corrected` /
+   *  `credit-note`) are distinguished from a plain invoice so the badge can
+   *  prefix them. Optional for backward-compat with pre-#1713 snapshots. */
+  documentType: z.string().nullish(),
   status: z.enum(InvoiceStatusValues),
   regulatoryStatus: z.enum(RegulatoryStatusValues),
   clearanceReference: z.string().nullish(),
