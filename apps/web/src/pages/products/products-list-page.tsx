@@ -10,8 +10,8 @@
  *   all URL-state-backed;
  * - a server-sorted DataTable (manualSorting + sort/dir URL params) with
  *   aggregated stock, per-connection listings coverage pills, a per-row
- *   "+ Create offers" CTA, and an expandable per-variant drawer reusing
- *   VariantStockTable;
+ *   "+ Create offers" CTA, and an expandable per-variant drawer
+ *   (ProductRowDetail) with a per-connection listings breakdown;
  * - bulk selection of 1-100 products for batch offer creation (#739), with
  *   the capability-gated wizard launch (#1096) and write-access gate (#1704)
  *   carried over unchanged.
