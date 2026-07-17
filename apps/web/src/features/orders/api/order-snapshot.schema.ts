@@ -101,6 +101,38 @@ const codToCollectSchema = z.object({
   currency: z.string(),
 });
 
+/**
+ * Invoice lifecycle values — hand-mirrored from `InvoiceStatusValues` /
+ * `RegulatoryStatusValues` in `@openlinker/core/invoicing` per the FE-001
+ * contract strategy. `status` is the issue lifecycle, `regulatoryStatus` the
+ * neutral CTC clearance lifecycle. Keep in sync with the core unions.
+ */
+export const InvoiceStatusValues = ['pending', 'issuing', 'issued', 'failed'] as const;
+export type InvoiceStatus = (typeof InvoiceStatusValues)[number];
+export const RegulatoryStatusValues = [
+  'not-applicable',
+  'submitted',
+  'cleared',
+  'accepted',
+  'rejected',
+] as const;
+export type RegulatoryStatus = (typeof RegulatoryStatusValues)[number];
+
+/**
+ * Order invoice projection (#1224/#1713) — merged onto `orderSnapshot.invoice`
+ * by the API (order-detail read AND, since #1713, the orders-list read). Drives
+ * the invoice-status pill / "Issue invoice" action and the accordion clearance
+ * reference. Absent ⇒ no invoice record yet.
+ */
+const orderInvoiceSchema = z.object({
+  invoiceId: z.string(),
+  status: z.enum(InvoiceStatusValues),
+  regulatoryStatus: z.enum(RegulatoryStatusValues),
+  clearanceReference: z.string().nullish(),
+  confirmationDocumentAvailable: z.boolean().optional(),
+});
+export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
+
 export type ParsedOrderItem = z.infer<typeof orderItemSchema>;
 export type ParsedAddress = z.infer<typeof addressSchema>;
 export type ParsedOrderTotals = z.infer<typeof orderTotalsSchema>;
@@ -165,6 +197,8 @@ export interface ParsedOrderSnapshot {
   pickupPoint?: ParsedOrderPickupPoint;
   /** Source-reported payment status (#928); absent when the source didn't report it. */
   paymentStatus?: PaymentStatus;
+  /** Invoice projection (#1713); absent when the order has no invoice record. */
+  invoice?: ParsedOrderInvoice;
   /**
    * Marketplace-sourced COD collect amount (#1435). Present only for a COD order
    * whose source exposed the amount; drives the read-only "from Allegro" COD
@@ -338,6 +372,22 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     }
   }
 
+  // Invoice projection — optional; only warn when present-but-malformed.
+  let invoice: ParsedOrderInvoice | undefined;
+  if (snapshot.invoice !== undefined && snapshot.invoice !== null) {
+    const candidate = asRecord(snapshot.invoice);
+    if (candidate === null) {
+      warnings.push({ field: 'invoice', message: 'expected an object' });
+    } else {
+      const result = orderInvoiceSchema.safeParse(candidate);
+      if (result.success) {
+        invoice = result.data;
+      } else {
+        warnings.push({ field: 'invoice', message: firstZodMessage(result.error) });
+      }
+    }
+  }
+
   return {
     id,
     orderNumber,
@@ -352,6 +402,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     shipping,
     pickupPoint,
     paymentStatus: readPaymentStatus(snapshot.paymentStatus, warnings),
+    invoice,
     codToCollect,
     parseWarnings: warnings,
   };

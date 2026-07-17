@@ -8,7 +8,11 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { ParsedOrderItem, PaymentStatus } from '../api/order-snapshot.schema';
+import type {
+  ParsedOrderInvoice,
+  ParsedOrderItem,
+  PaymentStatus,
+} from '../api/order-snapshot.schema';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 /** First named item + how many further lines the order carries. */
@@ -51,4 +55,34 @@ export function paymentBadge(
 ): { label: string; tone: StatusBadgeTone } | null {
   if (!status) return null;
   return PAYMENT_BADGE_META[status];
+}
+
+/**
+ * Collapse an order's invoice projection (#1713) into one operator-facing badge:
+ * the issue lifecycle (`status`) crossed with the neutral CTC clearance
+ * lifecycle (`regulatoryStatus`). Only called when an invoice record exists — a
+ * missing invoice is rendered as the "Issue invoice" action by the caller, not
+ * here. Colour is never the only signal; the label always ships alongside.
+ */
+export function invoiceBadge(invoice: ParsedOrderInvoice): {
+  label: string;
+  tone: StatusBadgeTone;
+} {
+  if (invoice.status === 'failed') return { label: 'Failed', tone: 'error' };
+  if (invoice.status === 'pending' || invoice.status === 'issuing') {
+    return { label: 'Issuing', tone: 'warning' };
+  }
+  // status === 'issued' — refine by clearance lifecycle.
+  switch (invoice.regulatoryStatus) {
+    case 'accepted':
+    case 'cleared':
+      return { label: 'Cleared', tone: 'success' };
+    case 'submitted':
+      return { label: 'Submitted', tone: 'info' };
+    case 'rejected':
+      return { label: 'Rejected', tone: 'error' };
+    case 'not-applicable':
+    default:
+      return { label: 'Issued', tone: 'success' };
+  }
 }

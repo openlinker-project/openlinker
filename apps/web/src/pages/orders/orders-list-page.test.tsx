@@ -739,4 +739,54 @@ describe('OrdersListPage', () => {
     const row = container.querySelector('.data-table__row') as HTMLElement;
     expect(within(row).queryByText(/more$/)).not.toBeInTheDocument();
   });
+
+  it('should offer "Issue invoice" and "Generate label" actions for an order with neither yet (#1713)', async () => {
+    // syncedOrder carries no invoice and no fulfillmentState (⇒ not-shipped).
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    const invoiceCta = within(row).getByRole('link', { name: /issue invoice/i });
+    expect(invoiceCta).toHaveAttribute('href', '/orders/ol_order_synced#invoicing');
+    const labelCta = within(row).getByRole('link', { name: /generate label/i });
+    expect(labelCta).toHaveAttribute('href', '/orders/ol_order_synced#shipment');
+  });
+
+  it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {
+    const richOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_rich',
+      fulfillmentState: 'dispatched',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        invoice: {
+          invoiceId: 'rec-1',
+          status: 'issued',
+          regulatoryStatus: 'accepted',
+          clearanceReference: 'KSEF-1',
+          confirmationDocumentAvailable: true,
+        },
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([richOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = container.querySelector('.data-table__row') as HTMLElement;
+
+    expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
+    expect(within(row).getByText('Cleared')).toBeInTheDocument();
+    expect(within(row).getByText('Dispatched')).toBeInTheDocument();
+  });
 });

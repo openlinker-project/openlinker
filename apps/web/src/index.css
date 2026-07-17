@@ -7741,6 +7741,30 @@ a.kpi-card:focus-visible {
   padding: 0 5px;
 }
 
+/* Inline row action shown in place of a status pill when the next step is
+   unstarted — "Generate label" (no shipment) / "Issue invoice" (no invoice).
+   Accent-outlined; deep-links to the matching section of the order-detail page. */
+.orders-row-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.orders-row-cta:hover { border-color: var(--accent-primary); }
+.orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.orders-row-cta__plus { color: var(--accent-primary); font-weight: 700; }
+
 /* Ship-by badge + live countdown share one line inside the Shipment cell. */
 .orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
 .orders-carrier { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -7817,6 +7841,7 @@ a.kpi-card:focus-visible {
 .orders-ext-link--internal { border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); font-weight: 600; }
 .orders-ext-link--internal::before { background: var(--accent-primary); }
 
+.orders-detail__invoice { display: inline-flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 .orders-detail__items-list { display: flex; flex-direction: column; gap: 6px; }
 .orders-line-item {
   display: grid;

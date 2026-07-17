@@ -112,8 +112,24 @@ export class OrdersController {
       { limit, offset }
     );
 
+    // Batch the invoice projection for the whole page (#1713): one query, not an
+    // N+1 of per-row `getLatestInvoiceForOrder`. Orders with no invoice are
+    // absent from the map and simply carry no `invoice` sub-tree — the FE then
+    // shows the "Issue invoice" action instead of a status pill.
+    const invoices = await this.invoiceService.getLatestInvoicesForOrders(
+      items.map((order) => order.internalOrderId)
+    );
+    const invoiceByOrderId = new Map(invoices.map((invoice) => [invoice.orderId, invoice]));
+
     return {
-      items: items.map((order) => this.toDto(order)),
+      items: items.map((order) => {
+        const dto = this.toDto(order);
+        const invoice = invoiceByOrderId.get(order.internalOrderId);
+        if (invoice) {
+          dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
+        }
+        return dto;
+      }),
       total,
       limit,
       offset,
@@ -276,6 +292,7 @@ export class OrdersController {
     const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
+      status: record.status,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,

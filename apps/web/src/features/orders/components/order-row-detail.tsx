@@ -23,6 +23,7 @@ import {
   type ParsedAddress,
   type ParsedOrderItem,
 } from '../api/order-snapshot.schema';
+import { invoiceBadge } from '../lib/order-row';
 import type { OrderRecord } from '../api/orders.types';
 
 interface OrderRowDetailProps {
@@ -140,6 +141,18 @@ export function OrderRowDetail({
       <Field label="Destination">{destLabel ?? EMPTY}</Field>
       <Field label="Ship-by">
         {order.dispatchByAt ? <TimeDisplay iso={order.dispatchByAt} format="datetime" /> : EMPTY}
+      </Field>
+      <Field label="Invoice">
+        {parsed.invoice ? (
+          <span className="orders-detail__invoice">
+            <span>{invoiceBadge(parsed.invoice).label}</span>
+            {parsed.invoice.clearanceReference ? (
+              <span className="mono text-muted">{parsed.invoice.clearanceReference}</span>
+            ) : null}
+          </span>
+        ) : (
+          EMPTY
+        )}
       </Field>
 
       <div className="orders-detail__field orders-detail__field--wide">

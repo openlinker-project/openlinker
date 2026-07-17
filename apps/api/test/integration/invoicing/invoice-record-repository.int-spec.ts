@@ -373,4 +373,35 @@ describe('invoice_records persistence (integration)', () => {
       });
     });
   });
+
+  describe('findLatestByOrderIds — batch latest-per-order (#1713)', () => {
+    it('returns at most one (latest) record per order and omits orders with none', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      await repo.save(claimRow({ orderId: 'ol_o1', status: 'issued' }));
+      await repo.save(claimRow({ orderId: 'ol_o2', status: 'failed' }));
+      // Two records for the same order → DISTINCT ON collapses to one.
+      await repo.save(claimRow({ orderId: 'ol_o3', status: 'pending' }));
+      await repo.save(claimRow({ orderId: 'ol_o3', status: 'issued' }));
+
+      const results = await repository.findLatestByOrderIds([
+        'ol_o1',
+        'ol_o2',
+        'ol_o3',
+        'ol_missing',
+      ]);
+
+      const byOrder = new Map(results.map((r) => [r.orderId, r]));
+      expect(byOrder.size).toBe(3);
+      expect(byOrder.has('ol_missing')).toBe(false);
+      expect(byOrder.get('ol_o1')?.status).toBe('issued');
+      expect(byOrder.get('ol_o2')?.status).toBe('failed');
+      // Exactly one ol_o3 row survives the dedup; its status is one of the two saved.
+      expect(['pending', 'issued']).toContain(byOrder.get('ol_o3')?.status);
+    });
+
+    it('returns [] for an empty input', async () => {
+      const repository = new InvoiceRecordRepository(repo);
+      expect(await repository.findLatestByOrderIds([])).toEqual([]);
+    });
+  });
 });

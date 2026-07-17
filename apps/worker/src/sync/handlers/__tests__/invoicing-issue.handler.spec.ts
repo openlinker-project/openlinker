@@ -69,6 +69,7 @@ describe('InvoicingIssueHandler', () => {
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      getLatestInvoicesForOrders: jest.fn(),
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),

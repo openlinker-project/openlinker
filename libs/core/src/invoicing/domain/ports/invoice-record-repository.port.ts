@@ -44,6 +44,15 @@ export interface InvoiceRecordRepositoryPort {
   findLatestByOrderId(orderId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * Batch counterpart of {@link findLatestByOrderId} (#1713): the most-recently-
+   * created record for each of the given order ids, at most one per order. Backs
+   * the orders-list invoice projection, which needs one query for the whole page
+   * rather than an N+1 of per-row `findLatestByOrderId`. Orders with no record
+   * are simply absent from the result; returns `[]` for an empty input.
+   */
+  findLatestByOrderIds(orderIds: string[]): Promise<InvoiceRecord[]>;
+
+  /**
    * Find the most-recently-created record for a provider invoice id on the
    * connection (#1354). Backs the payment-status refresh triggered by a
    * provider payment webhook, which names the document by its provider id;

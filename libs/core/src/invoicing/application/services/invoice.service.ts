@@ -794,6 +794,10 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findLatestByOrderId(orderId);
   }
 
+  async getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]> {
+    return this.repo.findLatestByOrderIds(orderIds);
+  }
+
   async listInvoices(
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,

@@ -10,7 +10,12 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { RegulatoryStatus, RegulatoryStatusValues } from '@openlinker/core/invoicing';
+import {
+  InvoiceStatus,
+  InvoiceStatusValues,
+  RegulatoryStatus,
+  RegulatoryStatusValues,
+} from '@openlinker/core/invoicing';
 
 export class OrderInvoiceProjectionDto {
   @ApiProperty({
@@ -18,6 +23,13 @@ export class OrderInvoiceProjectionDto {
       'Internal invoice record id the UPO download endpoint (GET /invoices/:invoiceId/upo) keys on.',
   })
   invoiceId!: string;
+
+  @ApiProperty({
+    enum: InvoiceStatusValues,
+    description:
+      'Issue lifecycle status of the invoice document (pending → issuing → issued | failed).',
+  })
+  status!: InvoiceStatus;
 
   @ApiProperty({
     enum: RegulatoryStatusValues,

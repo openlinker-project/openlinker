@@ -2,8 +2,8 @@
  * order-row view-model helper tests (#1713).
  */
 import { describe, expect, it } from 'vitest';
-import type { ParsedOrderItem } from '../api/order-snapshot.schema';
-import { itemsSummary, paymentBadge } from './order-row';
+import type { ParsedOrderInvoice, ParsedOrderItem } from '../api/order-snapshot.schema';
+import { itemsSummary, paymentBadge, invoiceBadge } from './order-row';
 
 function item(id: string, name?: string): ParsedOrderItem {
   return { id, quantity: 1, price: 10, name };
@@ -40,5 +40,29 @@ describe('paymentBadge', () => {
     expect(paymentBadge('cod')).toEqual({ label: 'COD', tone: 'review' });
     expect(paymentBadge('awaiting')).toEqual({ label: 'Awaiting', tone: 'warning' });
     expect(paymentBadge('refunded')).toEqual({ label: 'Refunded', tone: 'neutral' });
+  });
+});
+
+describe('invoiceBadge', () => {
+  const inv = (
+    status: ParsedOrderInvoice['status'],
+    regulatoryStatus: ParsedOrderInvoice['regulatoryStatus'],
+  ): ParsedOrderInvoice => ({ invoiceId: 'inv-1', status, regulatoryStatus });
+
+  it('reports a failed issue as an error', () => {
+    expect(invoiceBadge(inv('failed', 'not-applicable'))).toEqual({ label: 'Failed', tone: 'error' });
+  });
+
+  it('reports pending/issuing as in-progress', () => {
+    expect(invoiceBadge(inv('pending', 'not-applicable'))).toEqual({ label: 'Issuing', tone: 'warning' });
+    expect(invoiceBadge(inv('issuing', 'not-applicable'))).toEqual({ label: 'Issuing', tone: 'warning' });
+  });
+
+  it('refines an issued invoice by its clearance lifecycle', () => {
+    expect(invoiceBadge(inv('issued', 'not-applicable'))).toEqual({ label: 'Issued', tone: 'success' });
+    expect(invoiceBadge(inv('issued', 'submitted'))).toEqual({ label: 'Submitted', tone: 'info' });
+    expect(invoiceBadge(inv('issued', 'cleared'))).toEqual({ label: 'Cleared', tone: 'success' });
+    expect(invoiceBadge(inv('issued', 'accepted'))).toEqual({ label: 'Cleared', tone: 'success' });
+    expect(invoiceBadge(inv('issued', 'rejected'))).toEqual({ label: 'Rejected', tone: 'error' });
   });
 });

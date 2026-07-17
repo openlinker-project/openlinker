@@ -53,7 +53,7 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { itemsSummary, paymentBadge } from '../../features/orders/lib/order-row';
+import { itemsSummary, paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
@@ -644,11 +644,27 @@ export function OrdersListPage(): ReactElement {
           // shipments, so `shipping.methodName` (the source's stated delivery
           // method) is the best signal, falling back to the pickup-point name.
           const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+          // Nothing dispatched yet → offer the action instead of a passive
+          // "Not shipped" status (#1713): deep-link to the order's shipment
+          // section where the operator generates the label.
+          const notShipped = (order.fulfillmentState ?? 'not-shipped') === 'not-shipped';
           return (
             <span className="orders-cell-stack">
-              <StatusBadge tone={f.tone} withDot compact>
-                {f.label}
-              </StatusBadge>
+              {notShipped ? (
+                <Link
+                  className="orders-row-cta"
+                  to={`/orders/${order.internalOrderId}#shipment`}
+                >
+                  <span className="orders-row-cta__plus" aria-hidden="true">
+                    +
+                  </span>{' '}
+                  Generate label
+                </Link>
+              ) : (
+                <StatusBadge tone={f.tone} withDot compact>
+                  {f.label}
+                </StatusBadge>
+              )}
               {sla ? (
                 <span className="orders-shipby-row">
                   <StatusBadge tone={sla.tone} withDot compact>
@@ -688,6 +704,7 @@ export function OrdersListPage(): ReactElement {
         cell: (order) => {
           const parsed = parseOrderSnapshot(order.orderSnapshot);
           const pay = paymentBadge(parsed.paymentStatus);
+          const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
@@ -702,6 +719,24 @@ export function OrdersListPage(): ReactElement {
                   {pay.label}
                 </StatusBadge>
               ) : null}
+              {/* Invoice: the clearance-status pill when an invoice exists, else
+                  the "Issue invoice" action deep-linking to the order's invoicing
+                  section (#1713). */}
+              {inv ? (
+                <StatusBadge tone={inv.tone} withDot compact>
+                  {inv.label}
+                </StatusBadge>
+              ) : (
+                <Link
+                  className="orders-row-cta"
+                  to={`/orders/${order.internalOrderId}#invoicing`}
+                >
+                  <span className="orders-row-cta__plus" aria-hidden="true">
+                    +
+                  </span>{' '}
+                  Issue invoice
+                </Link>
+              )}
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1125,6 +1160,8 @@ export function OrdersListPage(): ReactElement {
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
                 const carrier = parsed.shipping?.methodName ?? parsed.pickupPoint?.name ?? null;
+                const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
+                const notShipped = (order.fulfillmentState ?? 'not-shipped') === 'not-shipped';
                 return (
                   <div className="orders-card-summary">
                     {items ? (
@@ -1159,6 +1196,26 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
+                        <dt>Invoice</dt>
+                        <dd>
+                          {inv ? (
+                            <StatusBadge tone={inv.tone} withDot compact>
+                              {inv.label}
+                            </StatusBadge>
+                          ) : (
+                            <Link
+                              className="orders-row-cta"
+                              to={`/orders/${order.internalOrderId}#invoicing`}
+                            >
+                              <span className="orders-row-cta__plus" aria-hidden="true">
+                                +
+                              </span>{' '}
+                              Issue invoice
+                            </Link>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
@@ -1170,7 +1227,21 @@ export function OrdersListPage(): ReactElement {
                       </div>
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
-                        <dd>{carrier ?? '—'}</dd>
+                        <dd>
+                          {notShipped ? (
+                            <Link
+                              className="orders-row-cta"
+                              to={`/orders/${order.internalOrderId}#shipment`}
+                            >
+                              <span className="orders-row-cta__plus" aria-hidden="true">
+                                +
+                              </span>{' '}
+                              Generate label
+                            </Link>
+                          ) : (
+                            (carrier ?? '—')
+                          )}
+                        </dd>
                       </div>
                     </dl>
                   </div>
