@@ -7771,6 +7771,31 @@ a.kpi-card:focus-visible {
 .orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .orders-row-cta__plus { color: var(--text-muted); font-weight: 700; }
 
+/* Inline Retry under the order name (#1713). Sits in the Order cell rather than
+   a trailing column so a rare failed row can't widen the whole table. Carries an
+   error tint because it only ever appears on a failed sync — a ghost button read
+   as decoration next to the row's error badge. */
+.orders-row-retry {
+  min-height: 24px;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px solid var(--status-error-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-error-soft);
+  color: var(--status-error-strong);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.orders-row-retry:hover:not(:disabled) {
+  border-color: var(--status-error-strong);
+  background: var(--status-error-soft);
+  color: var(--status-error-strong);
+}
+
 /* Ship-by badge + live countdown share one line inside the Shipment cell. */
 .orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
 .orders-carrier { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

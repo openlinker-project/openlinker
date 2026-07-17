@@ -549,6 +549,15 @@ export function OrdersListPage(): ReactElement {
           // Multi-destination indicator (#1713): an order fanned out to more than
           // one destination shows `→ Dest +N` where N is the extra destinations.
           const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
+          // The inline Retry lives under the order name rather than in its own
+          // trailing column (#1713): a column that only ever renders for failed
+          // rows widened the table past the viewport for every other row.
+          const failed = order.syncStatus.find((s) => s.status === 'failed');
+          const canRetry =
+            failed !== undefined && order.recordStatus !== 'awaiting_mapping' && retryWrite.visible;
+          const isRetrying =
+            retryMutation.isPending &&
+            retryMutation.variables?.internalOrderId === order.internalOrderId;
           return (
             <span className="orders-cell-stack">
               <EntityLabel
@@ -584,6 +593,18 @@ export function OrdersListPage(): ReactElement {
                     </span>
                   ) : null}
                 </span>
+              ) : null}
+              {canRetry && failed ? (
+                <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="ghost"
+                    className="button--sm orders-row-retry"
+                    disabled={isRetrying || retryWrite.demoReadOnly}
+                    onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+                  >
+                    {isRetrying ? 'Retrying…' : 'Retry'}
+                  </Button>
+                </ReadOnlyLock>
               ) : null}
             </span>
           );
@@ -778,30 +799,6 @@ export function OrdersListPage(): ReactElement {
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
             </span>
-          );
-        },
-      },
-      {
-        id: 'actions',
-        header: '',
-        align: 'right',
-        cell: (order) => {
-          const failed = order.syncStatus.find((s) => s.status === 'failed');
-          if (order.recordStatus === 'awaiting_mapping' || !failed || !retryWrite.visible) return null;
-          const isRetrying =
-            retryMutation.isPending &&
-            retryMutation.variables?.internalOrderId === order.internalOrderId;
-          return (
-            <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-              <Button
-                tone="ghost"
-                className="button--sm"
-                disabled={isRetrying || retryWrite.demoReadOnly}
-                onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
-              >
-                {isRetrying ? 'Retrying…' : 'Retry'}
-              </Button>
-            </ReadOnlyLock>
           );
         },
       },
