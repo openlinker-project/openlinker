@@ -8,10 +8,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
-import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
+import { ApiError } from '../../../../shared/api/api-error';
+import {
+  BulkResolveStep,
+  shouldRetryTransient,
+  type BulkResolveOutcome,
+} from './bulk-resolve-step';
 import type { BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
-import type { EanMatchResult } from '../../api/listings.types';
+import type {
+  EanMatchResult,
+  ResolveCategoriesBatchRequest,
+  ResolveCategoriesBatchResponse,
+} from '../../api/listings.types';
+
+type ResolveCategoriesBatchFn = (
+  connectionId: string,
+  body: ResolveCategoriesBatchRequest,
+) => Promise<ResolveCategoriesBatchResponse>;
 
 function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
   return {
@@ -63,14 +77,26 @@ function makeRow(productId: string, variant: Partial<ProductVariant>, product: P
 function mockClient(opts: {
   results?: Record<string, EanMatchResult>;
   availability?: Array<{ productVariantId: string; totalAvailable: number; locationCount: number }>;
-  categoryRejects?: boolean;
-}) {
+  /** Reject every category call with this error (persistent failure). */
+  categoryError?: Error;
+  /** Reject the first N category calls with this error, then resolve `results`. */
+  categoryTransientError?: { error: Error; failures: number };
+}): ReturnType<typeof createMockApiClient> {
+  const resolveCategoriesBatch = vi.fn<ResolveCategoriesBatchFn>();
+  if (opts.categoryError) {
+    resolveCategoriesBatch.mockRejectedValue(opts.categoryError);
+  } else if (opts.categoryTransientError) {
+    const { error, failures } = opts.categoryTransientError;
+    for (let i = 0; i < failures; i += 1) {
+      resolveCategoriesBatch.mockRejectedValueOnce(error);
+    }
+    resolveCategoriesBatch.mockResolvedValue({ results: opts.results ?? {} });
+  } else {
+    resolveCategoriesBatch.mockResolvedValue({ results: opts.results ?? {} });
+  }
+
   return createMockApiClient({
-    listings: {
-      resolveCategoriesBatch: opts.categoryRejects
-        ? vi.fn().mockRejectedValue(new Error('Allegro 503'))
-        : vi.fn().mockResolvedValue({ results: opts.results ?? {} }),
-    },
+    listings: { resolveCategoriesBatch },
     inventory: {
       availability: vi.fn().mockResolvedValue({ items: opts.availability ?? [] }),
     },
@@ -250,9 +276,9 @@ describe('BulkResolveStep', () => {
     });
   });
 
-  it('shows a Retry affordance and does not advance when the batch call fails', async () => {
+  it('fails fast on a hard 4xx: shows the Retry affordance, does not retry, does not advance', async () => {
     const onComplete = vi.fn<(outcomes: BulkResolveOutcome[]) => void>();
-    const apiClient = mockClient({ categoryRejects: true });
+    const apiClient = mockClient({ categoryError: new ApiError('Bad request', 400, null) });
 
     renderWithProviders(
       <BulkResolveStep
@@ -267,6 +293,56 @@ describe('BulkResolveStep', () => {
     );
 
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    // A 4xx is not transient - the single call is never retried.
+    expect(apiClient.listings.resolveCategoriesBatch).toHaveBeenCalledTimes(1);
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('auto-retries a transient 5xx and advances on the eventual success (no manual refresh)', async () => {
+    const onComplete = vi.fn<(outcomes: BulkResolveOutcome[]) => void>();
+    const apiClient = mockClient({
+      categoryTransientError: { error: new ApiError('Allegro 503', 503, null), failures: 1 },
+      results: { var_prod_a: { kind: 'matched', allegroCategoryId: 'cat-A', productCardId: 'card-A' } },
+      availability: [{ productVariantId: 'var_prod_a', totalAvailable: 5, locationCount: 1 }],
+    });
+
+    renderWithProviders(
+      <BulkResolveStep
+        rows={[makeRow('prod_a', { ean: '590' })]}
+        connectionId="conn_1"
+        pricingPolicy={{ mode: 'use-master' }}
+        stockPolicy={{ mode: 'use-master' }}
+        currency="PLN"
+        onComplete={onComplete}
+      />,
+      { apiClient },
+    );
+
+    // First call rejects (503, transient), the query retries after its backoff
+    // and the second call resolves - the step advances without operator action.
+    await waitFor(() => { expect(onComplete).toHaveBeenCalledTimes(1); }, { timeout: 6000 });
+    expect(apiClient.listings.resolveCategoriesBatch).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(onComplete.mock.calls[0][0][0].blockers.length).toBe(0);
+  }, 10000);
+});
+
+describe('shouldRetryTransient', () => {
+  it('retries transient conditions (timeout/network, 429, 5xx) up to the cap', () => {
+    expect(shouldRetryTransient(0, new ApiError('timeout', 0, null))).toBe(true);
+    expect(shouldRetryTransient(0, new ApiError('rate limited', 429, null))).toBe(true);
+    expect(shouldRetryTransient(0, new ApiError('boom', 503, null))).toBe(true);
+    // A non-ApiError (unexpected throw) is treated as transient.
+    expect(shouldRetryTransient(0, new Error('unknown'))).toBe(true);
+  });
+
+  it('does not retry hard client errors (4xx other than 429)', () => {
+    expect(shouldRetryTransient(0, new ApiError('bad request', 400, null))).toBe(false);
+    expect(shouldRetryTransient(0, new ApiError('not found', 404, null))).toBe(false);
+    expect(shouldRetryTransient(0, new ApiError('conflict', 409, null))).toBe(false);
+  });
+
+  it('stops retrying once the failure count reaches the cap', () => {
+    expect(shouldRetryTransient(3, new ApiError('boom', 503, null))).toBe(false);
   });
 });
