@@ -52,6 +52,11 @@ import {
   type GenerateLabelInput,
 } from '../../shipments';
 import {
+  COD_CURRENCY_VALUES,
+  clampCodCurrency,
+  codCurrenciesForPlatform,
+} from '../../../shared/shipping/cod-currencies';
+import {
   INSURED_CURRENCY_VALUES,
   LOCKER_TEMPLATE_VALUES,
   generateLabelSchema,
@@ -59,11 +64,6 @@ import {
   type GenerateLabelFormValues,
   type LockerTemplate,
 } from './generate-label-form.schema';
-import {
-  COD_CURRENCY_VALUES,
-  clampCodCurrency,
-  codCurrenciesForPlatform,
-} from '../../../shared/shipping/cod-currencies';
 import { useRoutedCarrierPlatform } from '../hooks/use-routed-carrier-platform';
 import {
   buildDispatchItem,
@@ -285,6 +285,39 @@ export function GenerateLabelForm({
       { shouldValidate: false },
     );
   }, [allowedCodCurrencies, codCurrencyValue, codAllowed, showSourcedCod, orderCurrency, form]);
+
+  // COD currency caption (#1569). Frames the currency as what the courier
+  // collects at delivery, warns when the routed carrier can't collect in the
+  // order currency (coercion), and only shows the "set from the order" hint
+  // until the operator manually re-picks a currency.
+  function renderCodCaption(): ReactElement | null {
+    const effectiveCurrency = codCurrencyValue ?? allowedCodCurrencies[0];
+    const currencyDirty = form.formState.dirtyFields.codCurrency;
+    if (orderCurrency && effectiveCurrency && effectiveCurrency !== orderCurrency) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          Order is in {orderCurrency}, but this carrier collects cash on delivery in{' '}
+          {effectiveCurrency} — the amount will be collected in {effectiveCurrency}.
+        </p>
+      );
+    }
+    if (allowedCodCurrencies.length <= 1) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          This carrier collects cash on delivery in {effectiveCurrency} only.
+        </p>
+      );
+    }
+    if (orderCurrency && !currencyDirty) {
+      return (
+        <p className="generate-label-form__cod-caption">
+          Set from the order currency ({orderCurrency}). Change it if the carrier requires a
+          different one.
+        </p>
+      );
+    }
+    return null;
+  }
 
   // Focus first input on mount (a11y — focus enters the inline expansion).
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -627,7 +660,11 @@ export function GenerateLabelForm({
                     className="generate-label-form__money-amount"
                     inputMode="decimal"
                     placeholder="129.90"
-                    aria-label="COD amount to collect"
+                    aria-label={
+                      allowedCodCurrencies.length > 1
+                        ? 'COD amount to collect'
+                        : `COD amount to collect in ${allowedCodCurrencies[0]}`
+                    }
                     invalid={Boolean(form.formState.errors.codAmount)}
                   />
                   {allowedCodCurrencies.length > 1 ? (
@@ -643,25 +680,13 @@ export function GenerateLabelForm({
                       ))}
                     </Select>
                   ) : (
-                    <span
-                      className="generate-label-form__money-ccy--static"
-                      aria-label={`COD currency: ${allowedCodCurrencies[0]}`}
-                    >
+                    <span className="generate-label-form__money-ccy--static" aria-hidden="true">
                       {allowedCodCurrencies[0]}
                     </span>
                   )}
                 </div>
                 <FieldError id="cod-error" message={form.formState.errors.codAmount?.message} />
-                {allowedCodCurrencies.length <= 1 ? (
-                  <p className="generate-label-form__cod-caption">
-                    This carrier collects cash on delivery in {allowedCodCurrencies[0]} only.
-                  </p>
-                ) : orderCurrency && codCurrencyValue === orderCurrency ? (
-                  <p className="generate-label-form__cod-caption">
-                    Defaulted from the order ({orderCurrency}). Change it if the carrier needs a
-                    different currency.
-                  </p>
-                ) : null}
+                {renderCodCaption()}
               </>
             )}
           </div>

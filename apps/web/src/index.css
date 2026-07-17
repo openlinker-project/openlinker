@@ -9385,14 +9385,6 @@ input.bulk-dispatch__num--wide {
   }
 }
 
-/* COD composite (#966) — amount input + currency select; amount takes the
- * remaining width, currency is sized to its content. */
-.generate-label-form__cod {
-  display: grid;
-  grid-template-columns: 1fr 7rem;
-  gap: var(--space-2);
-}
-
 /* ── COD payment panel (#1435) ──────────────────────────────────────────────
  * Payment-status-driven COD surface. Neutral recap container shared by the
  * read-only "from Allegro" amount and the fallback manual input, so both read
@@ -9429,10 +9421,6 @@ input.bulk-dispatch__num--wide {
   color: var(--text-muted);
 }
 
-.generate-label-form__cod-panel .generate-label-form__cod {
-  margin-top: var(--space-2);
-}
-
 /* ── Generate-label COD money field (#1569) ──────────────────────────────────
  * Amount + currency as a single control: a bordered row wrapping a borderless
  * amount input and a currency segment. The segment is a borderless select for a
@@ -9449,7 +9437,6 @@ input.bulk-dispatch__num--wide {
   overflow: hidden;
 }
 .generate-label-form__money:focus-within {
-  border-color: var(--border-strong);
   box-shadow: var(--shadow-focus);
 }
 .generate-label-form__money-amount.control {
@@ -9485,13 +9472,13 @@ input.bulk-dispatch__num--wide {
   padding: 0 var(--space-3);
   border-left: 1px solid var(--border-subtle);
   background: var(--bg-muted);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
 }
 .generate-label-form__cod-caption {
   margin: var(--space-2) 0 0;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
@@ -9505,7 +9492,7 @@ input.bulk-dispatch__num--wide {
 }
 .cod-currency-support__chip {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);

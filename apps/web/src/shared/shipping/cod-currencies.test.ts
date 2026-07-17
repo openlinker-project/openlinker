@@ -25,6 +25,13 @@ describe('cod-currencies — per-carrier sets (drift guard)', () => {
   it('should expose the union as the fallback vocabulary', () => {
     expect(COD_CURRENCY_VALUES).toEqual(['PLN', 'EUR', 'RON', 'CZK']);
   });
+
+  it('should keep the union equal to the de-duplicated union of every per-platform set', () => {
+    const perPlatformUnion = [
+      ...new Set(Object.values(COD_CURRENCIES_BY_PLATFORM).flat()),
+    ].sort();
+    expect([...COD_CURRENCY_VALUES].sort()).toEqual(perPlatformUnion);
+  });
 });
 
 describe('codCurrenciesForPlatform', () => {

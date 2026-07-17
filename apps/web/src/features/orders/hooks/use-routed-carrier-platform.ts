@@ -10,8 +10,9 @@
  *
  * Returns `undefined` when the carrier can't be predicted — no matching rule,
  * an OMP-fulfilled route (the destination store ships it, no OL carrier), or a
- * null / unresolvable processor connection — so callers fall back to the full
- * currency union and let the adapter preflight stay the backstop.
+ * processor connection that can't be resolved to a live connection — so callers
+ * fall back to the full currency union and let the adapter preflight stay the
+ * backstop.
  *
  * @module features/orders/hooks
  */
@@ -27,6 +28,8 @@ export function useRoutedCarrierPlatform(
 ): string | undefined {
   const enabled = (options?.enabled ?? true) && Boolean(deliveryMethodId);
   const routingRulesQuery = useRoutingRulesQuery(sourceConnectionId, { enabled });
+  // Not `enabled`-gated: connections are cache-warm across the app, so this
+  // resolves from cache rather than triggering a fetch on this hook's behalf.
   const connectionsQuery = useConnectionsQuery();
 
   return useMemo(() => {

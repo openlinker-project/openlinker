@@ -901,7 +901,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     const select = await screen.findByRole('combobox', { name: 'COD currency' });
     expect(within(select).getAllByRole('option')).toHaveLength(4);
     expect(select).toHaveValue('EUR');
-    expect(screen.getByText(/Defaulted from the order \(EUR\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Set from the order currency \(EUR\)/i)).toBeInTheDocument();
 
     fillParcel();
     fireEvent.change(screen.getByLabelText(/COD amount to collect/i), { target: { value: '50.00' } });
@@ -924,7 +924,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     );
 
     expect(
-      await screen.findByText(/collects cash on delivery in PLN only/i),
+      await screen.findByText(/Order is in CZK, but this carrier collects cash on delivery in PLN/i),
     ).toBeInTheDocument();
 
     fillParcel();

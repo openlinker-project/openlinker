@@ -58,8 +58,9 @@ export function clampCodCurrency(
   desired: string | undefined,
   allowed: readonly CodCurrency[],
 ): CodCurrency {
-  if (desired !== undefined && (allowed as readonly string[]).includes(desired)) {
-    return desired as CodCurrency;
+  const normalized = desired?.toUpperCase();
+  if (normalized !== undefined && (allowed as readonly string[]).includes(normalized)) {
+    return normalized as CodCurrency;
   }
   return allowed[0] ?? 'PLN';
 }
