@@ -39,6 +39,7 @@ import {
   useInvoicesQuery,
   InvoiceStatusBadge,
   RegulatoryStatusBadge,
+  REGULATORY_STATUS_LABEL_FALLBACK,
   InvoicePdfLink,
   InvoiceStatusValues,
   RegulatoryStatusValues,
@@ -405,7 +406,9 @@ export function InvoicesListPage(): ReactElement {
             (s) => s !== 'not-applicable' && s !== 'cleared',
           ).map((s) => (
             <option key={s} value={s}>
-              {t(`invoice.regulatory.${s}`, s)}
+              {/* Reuse the badge's label map (#1585 F7) so the filter never falls
+                  back to the raw hyphenated slug next to nicely-labelled badges. */}
+              {t(`invoice.regulatory.${s}`, REGULATORY_STATUS_LABEL_FALLBACK[s])}
             </option>
           ))}
         </Select>

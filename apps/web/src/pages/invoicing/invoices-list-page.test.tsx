@@ -109,9 +109,12 @@ describe('InvoicesListPage', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/invoice.pdf');
     expect(within(link).getByText('FV/2026/001')).toBeInTheDocument();
     // Status badge (issued) renders in both the desktop table cell and the
-    // mobile card-view meta; regulatory badge (KSeF: accepted) only in the table.
+    // mobile card-view meta. The regulatory label "KSeF: accepted" now appears
+    // both as the row badge AND as a filter <option> (the filter reuses the badge
+    // label map, #1585 F7), so assert the non-option badge element specifically.
     expect(screen.getAllByText('Issued').length).toBeGreaterThan(0);
-    expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
+    const accepted = screen.getAllByText('KSeF: accepted');
+    expect(accepted.some((el) => el.tagName !== 'OPTION')).toBe(true);
   });
 
   it('links each row to /invoices/:id (not /orders/:orderId)', async () => {

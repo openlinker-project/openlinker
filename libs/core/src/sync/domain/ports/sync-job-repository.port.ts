@@ -148,6 +148,21 @@ export interface SyncJobRepositoryPort {
   requeueDeadJob(id: string): Promise<SyncJob>;
 
   /**
+   * Requeue a DEAD job identified by its idempotency key, in a single guarded
+   * statement (#1585 S3). A lone `UPDATE ... WHERE idempotencyKey = ? AND status
+   * = 'dead'` so two overlapping callers cannot both observe `dead` and both
+   * act - Postgres serialises the row write and exactly one sees `affected > 0`.
+   * Returns `true` when a dead job was requeued, `false` when no matching dead
+   * job exists (absent key, or a job that is queued / running / already requeued)
+   * - never throws on a non-dead / missing row (unlike {@link requeueDeadJob},
+   * which is id-addressed and asserts state).
+   *
+   * @param idempotencyKey - The job's idempotency key
+   * @returns `true` if a dead job was requeued, else `false`
+   */
+  requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean>;
+
+  /**
    * Find recent jobs for a connection
    *
    * Returns the most recent sync jobs for the given connection, ordered by

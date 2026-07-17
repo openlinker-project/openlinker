@@ -52,6 +52,13 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
   where:
     '"status" = \'issued\' AND "regulatoryStatus" NOT IN (\'accepted\', \'rejected\', \'not-applicable\')',
 })
+// Offline-resubmission sweep (#1702): degraded-mode documents awaiting
+// retransmission, ordered `updatedAt ASC, id ASC`, connection-scoped. Partial so
+// only the (small, transient) `pending-submission` frontier is indexed - the
+// steady-state bulk of the table stays out. Mirrors the reconcile index shape.
+@Index('IDX_invoice_records_pending_submission', ['connectionId', 'updatedAt', 'id'], {
+  where: '"regulatoryStatus" = \'pending-submission\'',
+})
 // Last-line-of-defense numbering guards (#1575): a rendered document number is
 // unique within its series AND within its connection. Partial so the (common)
 // null-number rows a non-`DocumentNumberConsumer` provider produces never

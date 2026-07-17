@@ -52,6 +52,17 @@ describe('InpostSetupForm', () => {
     expect(screen.queryByLabelText('Street')).toBeNull();
   });
 
+  it('shows PLN as the only read-only COD currency on the account step (#1569)', () => {
+    const { container } = renderWithProviders(<InpostSetupForm />);
+
+    expect(screen.getByText('Supported COD currencies')).toBeInTheDocument();
+    const support = container.querySelector('.cod-currency-support') as HTMLElement;
+    expect(support).not.toBeNull();
+    expect(within(support).getByText('PLN')).toBeInTheDocument();
+    expect(within(support).queryByText('EUR')).toBeNull();
+    expect(within(support).getAllByText(/^(?:PLN|EUR|RON|CZK)$/)).toHaveLength(1);
+  });
+
   it('advances to the sender-address step once the account step is valid', async () => {
     const { container } = renderWithProviders(<InpostSetupForm />);
     fillAccountStep(container, { name: 'InPost — main', apiToken: 'shipx-token', organizationId: '123456' });

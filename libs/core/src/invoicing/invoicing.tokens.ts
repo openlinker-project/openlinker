@@ -55,3 +55,19 @@ export const NUMBERING_AUDIT_SERVICE_TOKEN = Symbol('INumberingAuditService');
  * seeding live behind it, never in the controller).
  */
 export const NUMBERING_SERIES_SERVICE_TOKEN = Symbol('INumberingSeriesService');
+
+/**
+ * Binding token for the `IOfflineResubmissionService` (#1700, mini-epic #1585).
+ * The degraded-mode sweep that resubmits `pending-submission` documents via the
+ * {@link OfflineResubmitter} sub-capability. Implementation lands in a later part
+ * of the epic; the token is declared here so the barrel exposes it now.
+ */
+export const OFFLINE_RESUBMISSION_SERVICE_TOKEN = Symbol('IOfflineResubmissionService');
+
+/**
+ * Binding token for the `IPendingRecoveryService` (#1700, mini-epic #1585). The
+ * crash-recovery sweep that reconciles interrupted submits, falling back to the
+ * {@link RegulatoryRecordLocator} authority lookup. Implementation lands in a
+ * later part of the epic; the token is declared here so the barrel exposes it now.
+ */
+export const PENDING_RECOVERY_SERVICE_TOKEN = Symbol('IPendingRecoveryService');

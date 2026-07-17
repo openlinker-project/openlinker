@@ -45,7 +45,13 @@ import { KsefRetryClassifierAdapter } from './infrastructure/adapters/ksef-retry
 export const ksefAdapterManifest: AdapterMetadata = {
   adapterKey: KSEF_ADAPTER_KEY,
   platformType: 'ksef',
-  supportedCapabilities: ['Invoicing'],
+  // `OfflineResubmitter` / `RegulatoryRecordLocator` (#1701) are advertised
+  // WITHOUT a dispatch-table entry: host-side discovery can tell them apart, but
+  // callers resolve them by narrowing the dispatched `Invoicing` adapter with the
+  // `isOfflineResubmitter` / `isRegulatoryRecordLocator` guards, never via
+  // `getCapabilityAdapter(connectionId, 'OfflineResubmitter')` (the Allegro
+  // CategoryBrowser/EanCategoryMatcher precedent, #1367/#1498).
+  supportedCapabilities: ['Invoicing', 'OfflineResubmitter', 'RegulatoryRecordLocator'],
   displayName: 'KSeF Public API v2',
   version: '1.0.0',
   // isDefault marks the canonical adapter for the ksef.publicapi.v2 API version.

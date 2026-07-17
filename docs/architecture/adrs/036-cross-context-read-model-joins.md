@@ -1,4 +1,4 @@
-# ADR-035: Cross-context read-model joins by table name
+# ADR-036: Cross-context read-model joins by table name
 
 - **Status**: Accepted
 - **Date**: 2026-07-17

@@ -38,6 +38,10 @@ export * from './domain/ports/capabilities/payment-status-reader.capability';
 export * from './domain/ports/capabilities/payment-marker.capability';
 export * from './domain/ports/capabilities/regulatory-transmitter.capability';
 export * from './domain/ports/capabilities/regulatory-resubmitter.capability';
+// Re-exports both `OfflineResubmitter` and `isOfflineResubmitter` (#1700).
+export * from './domain/ports/capabilities/offline-resubmitter.capability';
+// Re-exports both `RegulatoryRecordLocator` and `isRegulatoryRecordLocator` (#1700).
+export * from './domain/ports/capabilities/regulatory-record-locator.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';
@@ -77,6 +81,18 @@ export type {
   RegulatoryStatusReconcileResult,
 } from './application/services/regulatory-status-reconciliation.service.interface';
 export { RegulatoryStatusReconciliationService } from './application/services/regulatory-status-reconciliation.service';
+export type {
+  IOfflineResubmissionService,
+  OfflineResubmissionOptions,
+  OfflineResubmissionResult,
+} from './application/services/offline-resubmission.service.interface';
+export { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+export type {
+  IPendingRecoveryService,
+  PendingRecoveryOptions,
+  PendingRecoveryResult,
+} from './application/services/pending-recovery.service.interface';
+export { PendingRecoveryService } from './application/services/pending-recovery.service';
 export type {
   IPaymentStatusRefreshService,
   PaymentStatusRefreshOutcome,

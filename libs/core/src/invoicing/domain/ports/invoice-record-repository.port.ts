@@ -113,13 +113,109 @@ export interface InvoiceRecordRepositoryPort {
    * The service threads the last-seen `(updatedAt, id)` across pages within one
    * run so the whole non-terminal frontier is visited even when the oldest rows
    * never change `updatedAt` (a no-op read does NOT bump it). `total` is the full
-   * non-terminal count for the connection (cursor-independent) — for coverage
-   * logging only. The `IDX_invoice_records_reconcile` partial index keys
-   * `(updatedAt, id)` so the keyset seek stays index-only.
+   * non-terminal count for the connection (computed on page 1 only) — for
+   * coverage logging. The `IDX_invoice_records_reconcile` partial index narrows
+   * the candidate set to the non-terminal frontier; the keyset compares on
+   * `date_trunc('milliseconds', updatedAt)` (matching the JS `Date` cursor
+   * resolution), which the raw-column index cannot fully serve, so the ordering
+   * is an in-memory sort over that already-narrowed set — not a full index-only scan.
    */
   findIssuedNonTerminal(
     connectionId: string,
     opts: {
+      limit: number;
+      cursor?: { updatedAt: Date; id: string };
+    },
+  ): Promise<{ items: InvoiceRecord[]; total: number }>;
+
+  /**
+   * Select records on the connection whose regulatory status is
+   * `pending-submission` (#1702) - documents issued with legal effect during a
+   * degraded-mode outage that still await retransmission to the authority.
+   * Ordered `updatedAt ASC, id ASC` (oldest-first, deterministic `id` tie-break),
+   * capped at `opts.limit`.
+   *
+   * KEYSET PAGING (mirrors `findIssuedNonTerminal`): when `opts.cursor` is
+   * supplied the page is bounded to rows strictly AFTER it in `(updatedAt, id)`
+   * order - `(updatedAt, id) > (cursor.updatedAt, cursor.id)`. The offline-resubmit
+   * sweep threads the last-seen `(updatedAt, id)` across pages within one run so
+   * the whole pending-submission frontier is visited even when the oldest rows
+   * never bump `updatedAt` (a still-unreachable authority leaves the record
+   * untouched). `total` is the full pending-submission count for the connection
+   * (computed on page 1 only) - for coverage logging. The
+   * `IDX_invoice_records_pending_submission` partial index narrows the candidate
+   * set to the pending-submission frontier; the keyset compares on
+   * `date_trunc('milliseconds', updatedAt)`, which the raw-column index cannot
+   * fully serve, so the ordering is an in-memory sort over that narrowed set.
+   */
+  findPendingSubmission(
+    connectionId: string,
+    opts: {
+      limit: number;
+      cursor?: { updatedAt: Date; id: string };
+      /**
+       * Settling-margin upper bound (#1585 B1): when supplied, only rows whose
+       * `updatedAt <= olderThan` are selected. The offline-resubmit sweep passes
+       * `now - settlingMargin` so a document that LANDED at the authority but is
+       * not yet visible in its (eventually-consistent) metadata index has time to
+       * appear before a `null` locate is trusted as a genuine non-receipt — closing
+       * the false-`null` double-issue window. Absent = no lower age bound.
+       */
+      olderThan?: Date;
+    },
+  ): Promise<{ items: InvoiceRecord[]; total: number }>;
+
+  /**
+   * Atomic compare-and-swap claim of a `pending-submission` record for the
+   * offline-resubmit sweep (#1585 B1). A SINGLE guarded UPDATE stamps a fresh
+   * `leaseExpiresAt` ONLY when the row is still `pending-submission` AND no live
+   * lease already holds it (`leaseExpiresAt IS NULL OR <= now`). Postgres
+   * serialises the row-level write, so of two overlapping sweep runs (or a run
+   * racing the live issuance path) exactly one wins the claim; the loser's
+   * `affected` is 0 and it MUST skip the record WITHOUT resubmitting — this is the
+   * per-record guard that prevents two runs both seeing `null` from the locator
+   * and both resubmitting the same document.
+   *
+   * Returns the claimed row on a WIN, `null` on a contended loss (or if the row
+   * is no longer `pending-submission`). Throws `InvoiceRecordNotFoundException`
+   * when the id does not exist. The caller releases the lease (patch
+   * `leaseExpiresAt: null`) on its terminal `updateOutcome`, or explicitly when it
+   * leaves the record `pending-submission` for the next run.
+   */
+  claimPendingSubmission(id: string, leaseExpiresAt: Date): Promise<InvoiceRecord | null>;
+
+  /**
+   * Select records on the connection that are STUCK mid-issuance (#1703) - a
+   * process died between a successful provider submit and the terminal
+   * `updateOutcome`, leaving the row non-terminal with no live attempt. Two
+   * shapes qualify, both gated by the caller-supplied `olderThan` safety margin
+   * so a legitimately in-flight attempt is NEVER swept:
+   *   - `status = 'pending'` whose `updatedAt <= olderThan` (a row that was
+   *     created but never advanced - the crash happened before the CAS claim, or
+   *     `POST /invoices/retry` deliberately skips `pending`);
+   *   - `status = 'issuing'` whose `leaseExpiresAt <= olderThan` (a crashed
+   *     attempt whose CAS lease expired at least the safety margin ago; a row
+   *     with a null lease is NOT selected - it cannot be a lapsed claim).
+   * Connection-scoped, ordered `updatedAt ASC, id ASC` (oldest-first,
+   * deterministic `id` tie-break), capped at `opts.limit`.
+   *
+   * KEYSET PAGING (mirrors `findPendingSubmission`): when `opts.cursor` is
+   * supplied the page is bounded to rows strictly AFTER it in `(updatedAt, id)`
+   * order - `(updatedAt, id) > (cursor.updatedAt, cursor.id)`. The recovery sweep
+   * threads the last-seen `(updatedAt, id)` across pages within one run so the
+   * whole stuck frontier is visited even when the oldest rows never bump
+   * `updatedAt`. `total` is the full stuck count for the connection, computed on
+   * PAGE 1 ONLY (returns `0` on cursor pages, like `findPendingSubmission` /
+   * `findIssuedNonTerminal`) - for coverage logging only.
+   *
+   * `pending` / `issuing` are transient, low-cardinality states, so the existing
+   * `IDX_invoice_records_status` on `(status)` serves the seek without a
+   * dedicated partial index (#1703).
+   */
+  findStuckPending(
+    connectionId: string,
+    opts: {
+      olderThan: Date;
       limit: number;
       cursor?: { updatedAt: Date; id: string };
     },
