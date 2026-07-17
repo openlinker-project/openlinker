@@ -40,6 +40,13 @@ export interface Product {
   currency: string | null;
   description: string | null;
   images: string[] | null;
+  /**
+   * Source-platform external category ids (#1034), populated at product sync.
+   * Threaded into the bulk-offer wizard's Resolve step so an EAN-no-match row
+   * can still resolve its destination category via the configured
+   * per-source-category mapping (#1522). Null/absent until a sync populates it.
+   */
+  categories?: string[] | null;
   createdAt: string;
   updatedAt: string;
   variants?: ProductVariant[];

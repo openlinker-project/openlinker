@@ -31,11 +31,13 @@ import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OfferCreationRecord,
   SELLER_POLICIES_SERVICE_TOKEN,
+  RESPONSIBLE_PRODUCER_SERVICE_TOKEN,
 } from '@openlinker/core/listings';
 import type {
   ICategoryResolutionService,
   IOfferCreationEnqueueService,
   ISellerPoliciesService,
+  IResponsibleProducerService,
   OfferCreationRecordRepositoryPort,
   OfferMappingRepositoryPort,
 } from '@openlinker/core/listings';
@@ -55,6 +57,7 @@ describe('ListingsController', () => {
   let offerCreationRecords: jest.Mocked<OfferCreationRecordRepositoryPort>;
   let offerCreationEnqueue: jest.Mocked<IOfferCreationEnqueueService>;
   let sellerPolicies: jest.Mocked<ISellerPoliciesService>;
+  let responsibleProducers: jest.Mocked<IResponsibleProducerService>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
@@ -108,6 +111,9 @@ describe('ListingsController', () => {
     sellerPolicies = {
       getSellerPolicies: jest.fn(),
     };
+    responsibleProducers = {
+      listResponsibleProducers: jest.fn(),
+    };
     integrationsService = {
       getCapabilityAdapter: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
@@ -134,6 +140,7 @@ describe('ListingsController', () => {
         { provide: OFFER_CREATION_RECORD_REPOSITORY_TOKEN, useValue: offerCreationRecords },
         { provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN, useValue: offerCreationEnqueue },
         { provide: SELLER_POLICIES_SERVICE_TOKEN, useValue: sellerPolicies },
+        { provide: RESPONSIBLE_PRODUCER_SERVICE_TOKEN, useValue: responsibleProducers },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: PRODUCT_VARIANT_REPOSITORY_TOKEN, useValue: productVariantRepository },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
@@ -561,6 +568,25 @@ describe('ListingsController', () => {
     });
   });
 
+  describe('getResponsibleProducers', () => {
+    it('delegates to the responsible-producer service and wraps the result', async () => {
+      responsibleProducers.listResponsibleProducers.mockResolvedValue([
+        { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+        { id: '2', name: 'Importer Ltd', kind: 'PRODUCER' },
+      ]);
+
+      const result = await controller.getResponsibleProducers('conn-1');
+
+      expect(result).toEqual({
+        responsibleProducers: [
+          { id: '1', name: 'ACME Sp. z o.o.', kind: 'PRODUCER' },
+          { id: '2', name: 'Importer Ltd', kind: 'PRODUCER' },
+        ],
+      });
+      expect(responsibleProducers.listResponsibleProducers).toHaveBeenCalledWith('conn-1');
+    });
+  });
+
   describe('getCategoryParameters', () => {
     const sampleNeutral: CategoryParameter[] = [
       {
@@ -788,6 +814,39 @@ describe('ListingsController', () => {
         results: {
           v1: { kind: 'matched', allegroCategoryId: '257933', productCardId: 'card-1' },
           v2: { kind: 'no-ean' },
+        },
+      });
+    });
+
+    it('forwards sourceCategoryIds and surfaces a category_mapping result (#1522)', async () => {
+      const serviceResult = new Map<string, EanMatchResult>([
+        [
+          'v1',
+          {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
+        ],
+      ]);
+      categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
+
+      const result = await controller.resolveCategoriesBatch('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+
+      expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
+        items: [{ variantId: 'v1', ean: '5901234567890', sourceCategoryIds: ['ps-cat-42'] }],
+      });
+      expect(result).toEqual({
+        results: {
+          v1: {
+            kind: 'matched',
+            allegroCategoryId: '89508',
+            productCardId: '',
+            method: 'category_mapping',
+          },
         },
       });
     });

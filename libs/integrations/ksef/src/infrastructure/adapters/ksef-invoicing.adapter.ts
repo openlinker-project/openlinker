@@ -129,6 +129,12 @@ export class KsefInvoicingAdapter
    */
   private readonly payment: Fa3PaymentInput | undefined;
 
+  /**
+   * Connection-level default unit of measure (`P_8A`, #1525) - `undefined`
+   * when none is configured; unit-less lines then omit the element.
+   */
+  private readonly defaultLineUnit: string | undefined;
+
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
@@ -151,6 +157,7 @@ export class KsefInvoicingAdapter
     options: KsefInvoicingAdapterOptions = {},
   ) {
     this.payment = options.payment;
+    this.defaultLineUnit = options.defaultLineUnit;
     this.now = options.now ?? ((): Date => new Date());
   }
 
@@ -200,6 +207,7 @@ export class KsefInvoicingAdapter
         generatedAt: issuedAt.toISOString(),
         invoiceNumber: documentNumber,
         defaultTaxRate: this.defaultTaxRate,
+        defaultLineUnit: this.defaultLineUnit,
         payment: this.payment,
       }),
     );

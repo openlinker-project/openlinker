@@ -224,6 +224,23 @@ describe('AutoIssueTriggerService', () => {
       expect(buyer.type).toBe('private');
       expect(buyer.taxId).toBeNull();
     });
+
+    it('payload carries saleDate from order.placedAt (P_6 seam, #1525)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', placedAt: new Date('2026-06-19T14:30:00.000Z') }),
+        'src-1',
+      );
+      const payload = syncJobs.schedule.mock.calls[0][0].payload as { saleDate?: string };
+      expect(payload.saleDate).toBe('2026-06-19');
+    });
+
+    it('payload omits saleDate entirely when the order has no placedAt', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect('saleDate' in payload).toBe(false);
+    });
   });
 
   describe('per-connection isolation + PII-safe catch (F9/D11)', () => {

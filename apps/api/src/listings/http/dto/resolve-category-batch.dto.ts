@@ -38,6 +38,19 @@ export class ResolveCategoryBatchItemDto {
   @IsString()
   @MaxLength(64)
   ean?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Source-platform category ids for this variant's product, ordered deepest-first. " +
+      'When the EAN yields no catalogue match, the batch falls back to the configured ' +
+      'per-source-category mapping to resolve the destination category (#1522). ' +
+      'Omit for EAN-only resolution.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceCategoryIds?: string[];
 }
 
 export class ResolveCategoryBatchRequestDto {

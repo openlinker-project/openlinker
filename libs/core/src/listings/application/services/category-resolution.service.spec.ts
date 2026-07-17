@@ -172,8 +172,113 @@ describe('CategoryResolutionService', () => {
         CONNECTION_ID,
         'OfferManager'
       );
-      expect(resolveCategoriesForBatchByEan).toHaveBeenCalledWith(input);
-      expect(result).toBe(adapterResult);
+      // The adapter receives only the EAN-only shape (`sourceCategoryIds` is a
+      // core-owned fallback input, never forwarded to the adapter).
+      expect(resolveCategoriesForBatchByEan).toHaveBeenCalledWith({
+        items: [
+          { variantId: 'v1', ean: '590111' },
+          { variantId: 'v2', ean: null },
+        ],
+      });
+      // Returns one entry per input item, carrying the adapter's verdict when no
+      // mapping fallback applies (no `sourceCategoryIds` on these items).
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-1',
+        productCardId: 'card-1',
+      });
+      expect(result.get('v2')).toEqual({ kind: 'no-ean' });
+      expect(result.size).toBe(2);
+    });
+
+    it('should keep the EAN catalogue match when the EAN hits, ignoring the mapping', async () => {
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([
+          ['v1', { kind: 'matched', allegroCategoryId: 'cat-ean', productCardId: 'card-1' }],
+        ])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-ean',
+        productCardId: 'card-1',
+      });
+      // EAN won — the mapping was never consulted.
+      expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to category_mapping when the EAN misses but a source-category mapping exists', async () => {
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([['v1', { kind: 'no-match' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-mapped');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-deep', 'src-root'] }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-mapped',
+        productCardId: '',
+        method: 'category_mapping',
+      });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'src-deep'
+      );
+    });
+
+    it('should fall back to category_mapping for a variant with no EAN but a mapped source category', async () => {
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([['v1', { kind: 'no-ean' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-mapped');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: null, sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-mapped',
+        productCardId: '',
+        method: 'category_mapping',
+      });
+    });
+
+    it('should stay no-match when the EAN misses and no source-category mapping resolves', async () => {
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([['v1', { kind: 'no-match' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(CONNECTION_ID, 'src-1');
     });
 
     it('should degrade to no-match for every variant when the adapter cannot batch-resolve', async () => {

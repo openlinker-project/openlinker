@@ -10,6 +10,7 @@
 import type { Address, Order, OrderItem } from '@openlinker/core/orders';
 
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
+import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import { toIssueInvoiceCommand } from './order-to-issue-invoice-command.mapper';
 
@@ -89,6 +90,44 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.lines[0]).toEqual({ name: 'Named', quantity: 2, unitPriceGross: 10, taxRate: '' });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
+  });
+
+  it('should fill saleDate from placedAt (ISO YYYY-MM-DD) when the order carries one', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({ placedAt: new Date('2026-06-20T14:30:00.000Z') }),
+      connectionId: 'conn-1',
+    });
+
+    expect(cmd.saleDate).toBe('2026-06-20');
+  });
+
+  it.each([
+    ['zero', 0],
+    ['negative', -2],
+    ['NaN', Number.NaN],
+  ])('should throw InvalidInvoiceLineError for a %s item quantity (#1525 review)', (_label, quantity) => {
+    const order = makeOrder({ items: [makeItem({ quantity })] });
+    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+      InvalidInvoiceLineError,
+    );
+  });
+
+  it('InvalidInvoiceLineError is PII-clean: cites only the order id', () => {
+    const order = makeOrder({ items: [makeItem({ quantity: 0, name: 'SECRET_ITEM' })] });
+    try {
+      toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+      fail('expected InvalidInvoiceLineError');
+    } catch (error) {
+      expect((error as Error).message).toContain('order-1');
+      expect((error as Error).message).not.toContain('SECRET_ITEM');
+    }
+  });
+
+  it('should leave saleDate undefined when placedAt is absent (never substitute createdAt)', () => {
+    const cmd = toIssueInvoiceCommand({ order: makeOrder(), connectionId: 'conn-1' });
+
+    // createdAt is set on the fixture; it must NOT leak into saleDate.
+    expect(cmd.saleDate).toBeUndefined();
   });
 
   it('documentType pass-through: undefined stays undefined; supplied value verbatim; NO derivation', () => {

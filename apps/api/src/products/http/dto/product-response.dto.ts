@@ -36,6 +36,16 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'Product image URLs' })
   images!: string[] | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [String],
+    description:
+      'Source-platform external category ids (#1034), populated at product sync. ' +
+      'Drives the per-source-category mapping fallback in the bulk-offer wizard (#1522). ' +
+      'Null until a sync populates it.',
+  })
+  categories!: string[] | null;
+
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 
