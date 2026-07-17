@@ -34,6 +34,12 @@ const PRODUCTION_WEB_BASE_URL = 'https://allegro.pl';
 const SANDBOX_REST_API_BASE_URL = 'https://api.allegro.pl.allegrosandbox.pl';
 const PRODUCTION_REST_API_BASE_URL = 'https://api.allegro.pl';
 
+// Sales-center host — the seller-facing order-management UI. A seller order
+// deep link is `{salescenter}/orders/{checkoutFormId}` (#1713). Follows the same
+// sandbox suffix convention as the web/REST hosts.
+const SANDBOX_SALESCENTER_BASE_URL = 'https://salescenter.allegro.pl.allegrosandbox.pl';
+const PRODUCTION_SALESCENTER_BASE_URL = 'https://salescenter.allegro.pl';
+
 /**
  * Resolve the Allegro web/site base URL for an environment.
  *
@@ -70,4 +76,22 @@ export function getAllegroRestApiBaseUrl(environment: string): string {
       logger.warn(`Unknown environment: ${environment}, defaulting to sandbox`);
       return SANDBOX_REST_API_BASE_URL;
   }
+}
+
+/**
+ * Build the seller Sales Center deep link for an Allegro order (#1713).
+ *
+ * `checkoutFormId` is Allegro's native order id (the value the adapter also
+ * emits as `externalOrderId`). Defaults to sandbox on anything other than
+ * `'production'`, matching the other resolvers.
+ */
+export function getAllegroSalesCenterOrderUrl(
+  environment: string,
+  checkoutFormId: string
+): string {
+  const base =
+    environment === 'production'
+      ? PRODUCTION_SALESCENTER_BASE_URL
+      : SANDBOX_SALESCENTER_BASE_URL;
+  return `${base}/orders/${encodeURIComponent(checkoutFormId)}`;
 }

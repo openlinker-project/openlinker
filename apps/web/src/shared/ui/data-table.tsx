@@ -12,6 +12,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Fragment,
   useCallback,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -54,9 +55,22 @@ export interface DataTableCardView<Row> {
   /**
    * Full field set for the card body — the mobile counterpart of the desktop
    * expandable detail panel. Rendered below the meta row so a card shows every
-   * field without an expand step (#1620).
+   * field without an expand step (#1620), unless `collapsibleDetail` is set.
    */
   detail?: (row: Row) => ReactNode;
+  /**
+   * Always-visible summary block rendered between the meta row and the detail
+   * (#1713) — the handful of facts worth showing before expanding. Distinct
+   * from `detail`, which carries the full long-form field set.
+   */
+  summary?: (row: Row) => ReactNode;
+  /**
+   * When true, `detail` is collapsed behind a "View full details" disclosure
+   * (#1713) instead of always rendered — so the card leads with `title` /
+   * `subtitle` / `meta` / `summary` and the long field set is opt-in. Defaults
+   * to false: existing consumers keep the always-expanded card body.
+   */
+  collapsibleDetail?: boolean;
 }
 
 /**
@@ -479,49 +493,105 @@ export function DataTable<Row>({
             tableRows.map((tanstackRow) => {
               const row = tanstackRow.original;
               const href = rowHref?.(row);
-
-              const mainContent = (
-                <>
-                  <strong className="data-table__card-title">{cardView.title(row)}</strong>
-                  {cardView.subtitle ? (
-                    <span className="data-table__card-subtitle">{cardView.subtitle(row)}</span>
-                  ) : null}
-                </>
-              );
-
               return (
-                <li
+                <DataTableCard
                   key={rowKey(row)}
-                  className={
-                    href ? 'data-table__card data-table__card--linked' : 'data-table__card'
-                  }
+                  row={row}
+                  cardView={cardView}
+                  href={href}
                   onClick={href ? makeRowClickHandler(href) : undefined}
-                >
-                  <div className="data-table__card-head">
-                    {cardView.select ? (
-                      <div className="data-table__card-select">{cardView.select(row)}</div>
-                    ) : null}
-                    {href ? (
-                      <Link to={href} className="data-table__card-main data-table__card-main--link">
-                        {mainContent}
-                      </Link>
-                    ) : (
-                      <div className="data-table__card-main">{mainContent}</div>
-                    )}
-                    {cardView.meta ? (
-                      <div className="data-table__card-meta">{cardView.meta(row)}</div>
-                    ) : null}
-                  </div>
-                  {cardView.detail ? (
-                    <div className="data-table__card-detail">{cardView.detail(row)}</div>
-                  ) : null}
-                </li>
+                />
               );
             })
           )}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+interface DataTableCardProps<Row> {
+  row: Row;
+  cardView: DataTableCardView<Row>;
+  href?: string;
+  onClick?: (event: MouseEvent<HTMLLIElement>) => void;
+}
+
+/**
+ * One mobile card (#1713). Holds its own `detailOpen` state so the full detail
+ * can collapse behind a "View full details" disclosure when
+ * `cardView.collapsibleDetail` is set; otherwise the detail renders inline as
+ * before. The always-visible `summary` sits between the meta row and the
+ * disclosure.
+ */
+function DataTableCard<Row>({
+  row,
+  cardView,
+  href,
+  onClick,
+}: DataTableCardProps<Row>): ReactElement {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailId = useId();
+  const detail = cardView.detail;
+  const collapsible = cardView.collapsibleDetail ?? false;
+  const showDetail = detail !== undefined && (!collapsible || detailOpen);
+
+  const mainContent = (
+    <>
+      <strong className="data-table__card-title">{cardView.title(row)}</strong>
+      {cardView.subtitle ? (
+        <span className="data-table__card-subtitle">{cardView.subtitle(row)}</span>
+      ) : null}
+    </>
+  );
+
+  return (
+    <li
+      className={href ? 'data-table__card data-table__card--linked' : 'data-table__card'}
+      onClick={onClick}
+    >
+      <div className="data-table__card-head">
+        {cardView.select ? (
+          <div className="data-table__card-select">{cardView.select(row)}</div>
+        ) : null}
+        {href ? (
+          <Link to={href} className="data-table__card-main data-table__card-main--link">
+            {mainContent}
+          </Link>
+        ) : (
+          <div className="data-table__card-main">{mainContent}</div>
+        )}
+        {cardView.meta ? (
+          <div className="data-table__card-meta">{cardView.meta(row)}</div>
+        ) : null}
+      </div>
+      {cardView.summary ? (
+        <div className="data-table__card-summary">{cardView.summary(row)}</div>
+      ) : null}
+      {detail !== undefined && collapsible ? (
+        <button
+          type="button"
+          className="data-table__card-disclosure"
+          aria-expanded={detailOpen}
+          aria-controls={detailId}
+          onClick={(event) => {
+            // Never bubble to the card-level navigation handler.
+            event.stopPropagation();
+            setDetailOpen((open) => !open);
+          }}
+        >
+          <span className="data-table__card-disclosure-chev" aria-hidden="true">
+            {detailOpen ? '⌄' : '›'}
+          </span>
+          {detailOpen ? 'Hide details' : 'View full details'}
+        </button>
+      ) : null}
+      {showDetail && detail ? (
+        <div id={detailId} className="data-table__card-detail">
+          {detail(row)}
+        </div>
+      ) : null}
+    </li>
   );
 }
 

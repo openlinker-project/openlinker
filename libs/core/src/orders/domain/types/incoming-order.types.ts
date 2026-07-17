@@ -31,6 +31,16 @@ export interface IncomingOrder {
   orderNumber?: string;
 
   /**
+   * Optional deep link to this order in the source platform's own UI
+   * (marketplace seller panel / shop admin) (#1713). Built by the source
+   * adapter — the only layer that knows the platform's URL scheme and its
+   * per-connection base URL / environment. Absent when the source can't build
+   * a stable URL; core persists it verbatim onto the snapshot and the FE
+   * renders a link only when present.
+   */
+  externalUrl?: string;
+
+  /**
    * Status as provided/mapped by adapter.
    */
   status: string;

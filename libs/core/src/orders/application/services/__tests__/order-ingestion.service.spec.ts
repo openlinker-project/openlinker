@@ -337,6 +337,8 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistOrder).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'ol_order_test' }),
         connectionId,
+        null,
+        // sourceExternalUrl (#1713) — the test fixture's incoming order carries none.
         null
       );
       expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(

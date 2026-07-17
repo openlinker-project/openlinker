@@ -336,7 +336,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       internalCustomerId,
       resolvedItems
     );
-    await this.orderRecordService.persistOrder(order, connectionId, sourceEventId ?? null);
+    await this.orderRecordService.persistOrder(
+      order,
+      connectionId,
+      sourceEventId ?? null,
+      incoming.externalUrl ?? null
+    );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
     // a marketplace.offer.stockRestore job so the destination marketplace's
