@@ -63,6 +63,14 @@ export {
   ProductPagination,
   PaginatedProducts,
   PaginatedProductVariants,
+  ProductStockFilter,
+  ProductStockFilterValues,
+  ProductListSortField,
+  ProductListSortFieldValues,
+  ProductListSortDirection,
+  ProductListSortDirectionValues,
+  ProductListSort,
+  LOW_STOCK_THRESHOLD,
 } from './domain/types/product.types';
 
 // ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`

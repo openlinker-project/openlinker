@@ -89,6 +89,23 @@ export interface VariantAvailability {
 }
 
 /**
+ * Product-level stock aggregate across all of a product's inventory rows
+ * (#1720 - products catalog cockpit).
+ *
+ * Returned by `InventoryRepositoryPort.findStockAggregatesByProductIds` and
+ * `IInventoryQueryService.getProductStockAggregates`. Rows exist only for
+ * products that have at least one live (non-stale) inventory row; the caller
+ * decides how to treat absent products (the API layer zero-fills for display).
+ */
+export interface ProductStockAggregate {
+  productId: string;
+  totalAvailable: number;
+  totalReserved: number;
+  /** MAX(updatedAt) across the product's inventory rows; null never occurs on returned rows but the shape allows it for zero-filled callers */
+  stockUpdatedAt: Date | null;
+}
+
+/**
  * Result of a stale-marking prune (#1478 / #1599). `markedCount` is the total
  * rows newly flagged (may exceed `variantIds.length` — multiple location rows
  * per variant); `variantIds` is the distinct set of non-null variant ids

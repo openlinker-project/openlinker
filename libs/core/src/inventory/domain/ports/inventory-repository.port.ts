@@ -15,6 +15,7 @@ import type {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  ProductStockAggregate,
   PruneStaleVariantsResult,
 } from '../types/inventory.types';
 
@@ -52,11 +53,6 @@ export interface InventoryRepositoryPort {
   upsert(item: InventoryItem): Promise<InventoryItem>;
 
   /**
-   * Find inventory item by ID
-   */
-  findById(id: string): Promise<InventoryItem | null>;
-
-  /**
    * Find inventory items with filters and pagination
    */
   findMany(
@@ -76,6 +72,22 @@ export interface InventoryRepositoryPort {
   findAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantAvailability[]>;
+
+  /**
+   * Product-level stock aggregates for the given product IDs (#1720).
+   *
+   * Sums availableQuantity / reservedQuantity and takes MAX(updatedAt) across
+   * each product's live (non-stale) inventory rows. Returns rows ONLY for
+   * products that have at least one matching inventory row - products absent
+   * from the result simply have no inventory; the caller decides whether to
+   * zero-fill. Empty input returns [] without a storage round-trip.
+   *
+   * @param productIds list of internal product IDs to aggregate
+   * @returns one ProductStockAggregate row per product with inventory
+   */
+  findStockAggregatesByProductIds(
+    productIds: readonly string[]
+  ): Promise<readonly ProductStockAggregate[]>;
 
   /**
    * Soft-mark orphaned inventory rows as stale (#1478).

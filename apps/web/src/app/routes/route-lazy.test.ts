@@ -51,12 +51,14 @@ const lazyRoutes = collectLazyRoutes([
  * the parameterized test below is meant to catch.
  *
  * Today's breakdown (49 total):
- *   - 35 authenticated children (under `coreChildren`, counting per-children-node
- *     because grouped routes like orders/customers/inventory expose multiple
+ *   - 34 authenticated children (under `coreChildren`, counting per-children-node
+ *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), and `/invoices/:invoiceId` detail (#1240);
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
- *     `product-detail-page.tsx` subsumed per-item stock detail)
+ *     `product-detail-page.tsx` subsumed per-item stock detail, and the
+ *     `/inventory` list route was removed (#1720) when the products cockpit
+ *     absorbed cross-catalog stock browsing)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
  *   - 11 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
@@ -67,7 +69,7 @@ const lazyRoutes = collectLazyRoutes([
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 50;
+const EXPECTED_LAZY_ROUTE_COUNT = 49;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

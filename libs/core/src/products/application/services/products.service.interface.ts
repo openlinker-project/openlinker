@@ -13,6 +13,7 @@ import type {
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
+  ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
@@ -90,12 +91,23 @@ export interface IProductsService {
   ): Promise<ProductVariant[]>;
 
   /**
-   * List products with optional filters and pagination
+   * List products with optional filters, pagination, and sort (#1720).
+   * Omitting `sort` preserves the historical default ordering
+   * (createdAt DESC).
    */
   listProducts(
     filters: ProductListFilters,
-    pagination: ProductPagination
+    pagination: ProductPagination,
+    sort?: ProductListSort
   ): Promise<PaginatedProducts>;
+
+  /**
+   * Count variants per product for the given product IDs (#1720 - list-page
+   * display enrichment). Returns a Map<productId, count>; products with zero
+   * variants are omitted. Empty input returns an empty Map without a DB
+   * round-trip.
+   */
+  getVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>>;
 
   /**
    * List product variants with optional filters and pagination

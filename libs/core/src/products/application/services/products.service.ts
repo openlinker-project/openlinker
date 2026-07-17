@@ -21,6 +21,7 @@ import type {
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
+  ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
@@ -101,9 +102,15 @@ export class ProductsService implements IProductsService {
 
   async listProducts(
     filters: ProductListFilters,
-    pagination: ProductPagination
+    pagination: ProductPagination,
+    sort?: ProductListSort
   ): Promise<PaginatedProducts> {
-    return this.productRepository.findMany(filters, pagination);
+    return this.productRepository.findMany(filters, pagination, sort);
+  }
+
+  async getVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    return this.variantRepository.countByProductIds(productIds);
   }
 
   async listVariants(

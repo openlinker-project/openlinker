@@ -20,7 +20,6 @@ describe('useNavCounts', () => {
     expect(snapshots[0]).toEqual({
       connections: null,
       customers: null,
-      inventory: null,
       jobsFailed: null,
       listings: null,
       orders: null,
@@ -40,9 +39,6 @@ describe('useNavCounts', () => {
       },
       orders: {
         list: vi.fn().mockResolvedValue({ items: [], total: 42, limit: 1, offset: 0 }),
-      },
-      inventory: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 7, limit: 1, offset: 0 }),
       },
       customers: {
         list: vi.fn().mockResolvedValue({ items: [], total: 12, limit: 1, offset: 0 }),
@@ -64,7 +60,6 @@ describe('useNavCounts', () => {
       const latest = snapshots[snapshots.length - 1];
       expect(latest.connections).toBe(3);
       expect(latest.orders).toBe(42);
-      expect(latest.inventory).toBe(7);
       expect(latest.customers).toBe(12);
       expect(latest.listings).toBe(5);
       expect(latest.jobsFailed).toBe(9);

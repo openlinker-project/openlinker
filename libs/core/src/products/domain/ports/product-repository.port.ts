@@ -13,6 +13,7 @@ import type { Product } from '../entities/product.entity';
 import type {
   ProductListFilters,
   ProductPagination,
+  ProductListSort,
   PaginatedProducts,
 } from '../types/product.types';
 
@@ -47,9 +48,16 @@ export interface ProductRepositoryPort {
 
   /**
    * Find products matching filters with offset pagination.
-   * Results are ordered by createdAt DESC.
+   *
+   * `sort` is optional; omitting it preserves the historical default
+   * ordering (createdAt DESC). Stock filters/sort aggregate the
+   * inventory_items table (read-model reporting subquery, #1720).
    */
-  findMany(filters: ProductListFilters, pagination: ProductPagination): Promise<PaginatedProducts>;
+  findMany(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<PaginatedProducts>;
 
   /**
    * Upsert product (create or update by internal ID)

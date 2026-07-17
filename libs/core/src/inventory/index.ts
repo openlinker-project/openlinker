@@ -44,6 +44,7 @@ export {
   InventoryPagination,
   PaginatedInventoryItems,
   VariantAvailability,
+  ProductStockAggregate,
   PruneStaleVariantsResult,
 } from './domain/types/inventory.types';
 

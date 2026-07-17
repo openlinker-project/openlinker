@@ -124,5 +124,6 @@ One pointer per section, identical format every time.
 | [ADR-033](./033-openlinker-as-mcp-server.md) | Expose OpenLinker as an MCP server | Proposed | 2026-07-11 |
 | [ADR-034](./034-mcp-authorization-user-issued-pats.md) | MCP authorization — user-issued Personal Access Tokens (Resource Server); OAuth AS deferred | Proposed | 2026-07-12 |
 | [ADR-035](./035-ctc-offline-degraded-mode-issuance-lifecycle.md) | CTC offline / degraded-mode issuance lifecycle | Proposed | 2026-07-16 |
+| [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*

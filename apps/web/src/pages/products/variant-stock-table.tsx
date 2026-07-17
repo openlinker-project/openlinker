@@ -21,8 +21,8 @@ export function VariantStockTable({
   onListingsCount,
 }: VariantStockTableProps): ReactElement {
   return (
-    <div className="data-table__container">
-      <table className="data-table">
+    <div className="data-table__container variant-stock-table__container">
+      <table className="data-table variant-stock-table">
         <caption className="sr-only">Product variants, stock levels, and marketplace listings</caption>
         <thead>
           <tr>

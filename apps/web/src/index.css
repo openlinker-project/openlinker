@@ -2751,6 +2751,16 @@ textarea,
   grid-row: 2;
 }
 
+/* Shared badge-row slot content (products cockpit + orders cockpit mobile
+   cards) had no gap at all - badges/pills ran edge-to-edge with no
+   breathing room (#1720 review). */
+.data-table__badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .data-table__cards-empty {
   padding: 24px 14px;
   text-align: center;
@@ -3042,6 +3052,16 @@ textarea,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mobile card title (#1720 review): no fixed column width to truncate
+   against, so wrap the full product name onto further lines instead of
+   hard-clipping it with no visible "...". */
+.product-row__name--wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .product-row__name--link {
@@ -12161,6 +12181,19 @@ input.bulk-dispatch__num--wide {
   font-weight: 600;
 }
 
+/* Forces horizontal scroll (via the shared .data-table__container overflow-x)
+   instead of crushing cells into vertical per-character wraps when this table
+   is embedded in a narrow context - the products cockpit's mobile card
+   disclosure and expandable drawer (#1720). */
+.variant-stock-table {
+  min-width: 640px;
+}
+
+.variant-stock-table th,
+.variant-stock-table td {
+  white-space: nowrap;
+}
+
 .variant-stock-table__expand-cell {
   width: 2.25rem;
   padding-left: var(--space-3);
@@ -13130,4 +13163,363 @@ input.bulk-dispatch__num--wide {
     position: static;
     order: -1;
   }
+}
+
+/* ── Products cockpit (#1720) ─────────────────────────────────────── */
+/* KPI tiles double as clickable stock/coverage filters - mirrors the orders
+   `.orders-segment` mechanic (a reset button wraps a MetricCard; the active
+   segment gets the chip-active accent treatment). Kept page-namespaced like
+   the orders section; generalizing the pattern is out of scope for #1720. */
+.products-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
+.products-segment {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  /* Undo the global `button { white-space: nowrap }` so multi-word tile
+     labels ("Out of stock") can wrap instead of overflowing the track. */
+  white-space: normal;
+}
+.products-segment > .metric-card { height: 100%; }
+.products-segment:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-segment--active .metric-card {
+  border-color: var(--accent-primary-border);
+  box-shadow: var(--shadow-focus);
+}
+
+/* Two-line table cells (product identity / source / stock). */
+.products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.products-cell-stack--end { align-items: flex-end; min-width: 8rem; }
+/* Money-column date sub-lines: smaller and never wrapped - "upd. Jul 16,
+   2026" breaking onto two lines left-hung a stray "2026" (#1720 review). */
+.products-cell-sub--date { font-size: 0.6875rem; white-space: nowrap; }
+.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); }
+.products-stock-value { font-weight: 600; }
+
+/* Merged Price / Updated / Created header (#1720) - one column, three
+   independent per-label sort buttons, mirrors the orders cockpit's stacked
+   Total/Payment/Created sortstack so money-ish facts read as one group
+   instead of three separate columns competing for width. */
+.sortstack {
+  /* `width: 100%` + `display: flex` (not inline-flex) makes this fill the
+     entire <th> regardless of the cell's own text-align, so `align-items:
+     flex-end` reliably pins the buttons to the right edge - relying on the
+     th's text-align alone put the stack dead center (#1720 review). */
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.sortbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  /* Stable width so the column doesn't visibly resize as different sorts
+     bring different-width row content into view (#1720 review). */
+  min-width: 8rem;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sortbtn:hover { color: var(--text-secondary); }
+.sortbtn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.sortbtn--active { color: var(--text-secondary); }
+.sortbtn__ind { color: var(--text-disabled); font-size: 0.625rem; }
+.sortbtn--active .sortbtn__ind { color: var(--accent-primary); }
+
+/* Per-row "+ Create offers" mini-CTA in the Listings column. */
+/* Re-skinned as a filled mono-caps pill (the mockup's `.row-cta`) instead of
+   the shared Button component's ghost/ghost-sm look - a plain-text CTA read
+   as inert next to the coverage pills it sits below. */
+.products-row-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+.products-row-cta:hover {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+}
+
+/* Listings coverage pills - one per active OfferCreator connection. Reuses
+   the channel-pill silhouette (mono pill + platform-colored dot) with a
+   status-toned surface for full / partial / none coverage. */
+.coverage-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.coverage-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.coverage-pill::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.coverage-pill[data-channel='allegro']::before    { background: oklch(70% 0.18 35); }
+.coverage-pill[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.coverage-pill[data-channel='amazon']::before     { background: oklch(72% 0.16 75); }
+.coverage-pill[data-channel='shopify']::before    { background: oklch(64% 0.16 150); }
+.coverage-pill--full {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+}
+.coverage-pill--partial {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.coverage-pill--none { color: var(--text-muted); }
+.coverage-pill__count { font-weight: 600; }
+
+/* Expandable drawer body: variant stock table + links strip. Link chips
+   mirror the orders-drawer `.ext-link` silhouette (bordered pill, leading
+   dot, trailing arrow) - the internal links get the accent-outlined
+   treatment, same as "Open order" on the orders cockpit. */
+/* Inset "drawer" panel matching the orders cockpit's `.orders-detail`
+   recessed treatment (#1720 review) - a muted-surface box set apart from
+   the row above, instead of sitting flush against the shared
+   `.data-table__detail` background with no boundary of its own. */
+.products-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* 4-up field grid (Internal ID / Source external ID / Currency / Stock
+   synced) - same shape as the orders drawer's detail field grid. */
+.products-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3) var(--space-5);
+}
+@media (max-width: 1023.98px) {
+  .products-detail-fields { grid-template-columns: repeat(2, 1fr); }
+}
+.products-detail-field__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
+
+.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
+   listings count right. Deliberately NOT the dense VariantStockTable grid
+   (kept for the product-detail page's own accordion); the cockpit's
+   expandable drawer and mobile card need a lighter, flatter row. */
+.products-variant-list { display: flex; flex-direction: column; gap: 6px; }
+.products-variant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto auto auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+@media (max-width: 767.98px) {
+  /* A 2-column grid with 4 DOM children (id / badge / stock / listings)
+     auto-wraps unpredictably - badge and stock ended up squeezed against a
+     wrapping id/meta line. Stack every field as its own full-width line
+     instead - more vertical space, but nothing overlaps or wraps oddly
+     (#1720 review). */
+  .products-variant-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .products-variant-row__id { width: 100%; }
+  .products-variant-row__listings { width: 100%; justify-content: flex-start; }
+}
+.products-variant-row__id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
+.products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
+.products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+.products-variant-row__stock-reserved { margin-left: 4px; font-size: 0.6875rem; color: var(--text-muted); }
+.products-variant-row__listings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.products-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.products-detail-links__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.12s, color 0.12s;
+}
+.products-detail-links__link::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.products-detail-links__link:hover {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
+.products-detail-links__link--internal {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+.products-detail-links__link--internal::before { background: var(--accent-primary); }
+.products-detail-links__link[data-channel='prestashop']::before { background: oklch(60% 0.18 250); }
+.products-detail-links__link[data-channel='allegro']::before { background: oklch(70% 0.18 35); }
+.products-detail-links__link[data-channel='woocommerce']::before { background: oklch(64% 0.16 150); }
+.products-detail-links__link .products-detail-links__arrow { color: var(--accent-primary); font-size: 0.75rem; }
+
+/* Mobile card disclosure toggle (#1720) - the heavy per-variant detail (its
+   own queries + the wide variant-stock table) stays collapsed by default;
+   only the tapped card mounts it, mirroring the orders card's chevron. */
+.products-card-disclosure {
+  /* Full reset - the global `button, .button {}` base (height, box-shadow,
+     border, background) otherwise survives and reads as a boxed pill
+     instead of plain disclosure text (#1720 review). */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.products-card-disclosure:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-card-disclosure__chev { color: var(--accent-primary); }
+.products-card-disclosure[aria-expanded='true'] + .products-row-detail {
+  margin-top: var(--space-3);
+}
+
+/* Narrow-viewport (<1024px) filter collapse: a "Filters" toggle in the
+   toolbar opens a stacked panel with Stock / Listings / Source / Sort
+   groups (the chip rail would otherwise wrap into a tall block above the
+   table, and the hidden sortable columns lose their headers). */
+.products-filter-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.products-filter-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.products-filter-toggle--active {
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+.products-filter-toggle__count {
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+.products-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  margin-bottom: var(--space-3);
+}
+.products-filter-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.products-filter-panel__label {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }

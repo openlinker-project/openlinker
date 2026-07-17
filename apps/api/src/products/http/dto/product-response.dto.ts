@@ -9,6 +9,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductVariantResponseDto } from './product-variant-response.dto';
 import { ExternalIdMappingDto } from './external-id-mapping.dto';
+import { ProductListingsCoverageDto } from './product-listings-coverage.dto';
 
 export class ProductResponseDto {
   @ApiProperty({ description: 'Internal product ID' })
@@ -55,6 +56,33 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ type: [ProductVariantResponseDto], description: 'Product variants (detail only)' })
   variants?: ProductVariantResponseDto[];
 
-  @ApiPropertyOptional({ type: [ExternalIdMappingDto], description: 'External platform identifiers (detail only)' })
+  @ApiPropertyOptional({ type: [ExternalIdMappingDto], description: 'External platform identifiers (detail and list)' })
   externalIds?: ExternalIdMappingDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Total available quantity summed across the product inventory rows (#1720, list only; zero-filled when the product has no inventory rows)',
+  })
+  totalAvailable?: number;
+
+  @ApiPropertyOptional({
+    description: 'Total reserved quantity summed across the product inventory rows (#1720, list only)',
+  })
+  totalReserved?: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Most recent inventory write for the product (ISO 8601; #1720, list only). Null when the product has no inventory rows.',
+  })
+  stockUpdatedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Number of variants of the product (#1720, list only)' })
+  variantCount?: number;
+
+  @ApiPropertyOptional({
+    type: [ProductListingsCoverageDto],
+    description: 'Per-connection listed-variant counts (#1720, list only)',
+  })
+  listingsCoverage?: ProductListingsCoverageDto[];
 }

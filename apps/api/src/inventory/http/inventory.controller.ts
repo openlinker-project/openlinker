@@ -4,25 +4,16 @@
  * HTTP REST API endpoints for inventory read operations. Delegates the
  * cross-aggregate composition of inventory items with master-catalog product
  * details to IInventoryQueryService; keeps only transport concerns (pagination
- * echo, date serialisation, HTTP 404 translation).
+ * echo, date serialisation).
  *
  * @module apps/api/src/inventory/http
  */
-import {
-  Controller,
-  Get,
-  Query,
-  Param,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-  Inject,
-} from '@nestjs/common';
+import { Controller, Get, Query, HttpCode, HttpStatus, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type { InventoryItemView } from '@openlinker/core/inventory';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto';
-import { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
+import type { InventoryItemResponseDto } from './dto/inventory-item-response.dto';
 import { PaginatedInventoryResponseDto } from './dto/paginated-inventory-response.dto';
 import { GetInventoryAvailabilityQueryDto } from './dto/get-inventory-availability-query.dto';
 import { InventoryAvailabilityResponseDto } from './dto/inventory-availability-response.dto';
@@ -67,11 +58,6 @@ export class InventoryController {
     };
   }
 
-  // Declared before @Get(':id') so /inventory/availability is matched by
-  // this handler rather than getInventoryItem (which would treat
-  // 'availability' as a literal ID). Same registration-order concern as
-  // apps/api/src/products/http/products.controller.ts:101 documents for
-  // /products/variants/:variantId.
   @Get('availability')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -98,24 +84,6 @@ export class InventoryController {
         locationCount: i.locationCount,
       })),
     };
-  }
-
-  @Get(':id')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get inventory item by ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Inventory item detail',
-    type: InventoryItemResponseDto,
-  })
-  @ApiResponse({ status: 404, description: 'Inventory item not found' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getInventoryItem(@Param('id') id: string): Promise<InventoryItemResponseDto> {
-    const view = await this.queryService.getInventoryItem(id);
-    if (!view) {
-      throw new NotFoundException(`Inventory item not found: ${id}`);
-    }
-    return this.inventoryViewToDto(view);
   }
 
   private inventoryViewToDto(view: InventoryItemView): InventoryItemResponseDto {
