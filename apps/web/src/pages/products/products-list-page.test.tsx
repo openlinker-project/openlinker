@@ -2,7 +2,11 @@ import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type * as ReactRouterDom from 'react-router-dom';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 
@@ -231,7 +235,10 @@ describe('ProductsListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
-    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
@@ -249,7 +256,10 @@ describe('ProductsListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
-    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Test Product');
     const headerCheckbox = screen.getByRole('checkbox', {
@@ -276,7 +286,10 @@ describe('ProductsListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
-    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
@@ -296,7 +309,10 @@ describe('ProductsListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
     });
 
-    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
@@ -349,7 +365,10 @@ describe('ProductsListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([allegroConnection, erli]) },
     });
 
-    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Test Product');
     await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
@@ -361,5 +380,44 @@ describe('ProductsListPage', () => {
     // The picker modal appears; no navigation yet.
     expect(await screen.findByText('Where should these list?')).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  // ── Write-access gate on the bulk CTA (#1704) ──────────────────────
+
+  it('hides the create-offers CTA for a genuinely-unauthorized non-demo session', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
+    });
+
+    // Default noop session (no permissions), demoMode false ⇒ CTA hidden.
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Create .*offers/ })).not.toBeInTheDocument();
+  });
+
+  it('renders the create-offers CTA (enabled) for a demo read-only viewer', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+
+    // No permissions but demoMode ⇒ visible-but-usable entry (the gated
+    // confirm step blocks the actual write later).
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Create Allegro offers (1)' }),
+    ).toBeEnabled();
   });
 });
