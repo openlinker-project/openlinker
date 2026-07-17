@@ -24,11 +24,13 @@ import {
   type ResetPolicy,
 } from '../../../features/invoicing';
 import { ApiError } from '../../../shared/api/api-error';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
@@ -55,6 +57,8 @@ interface KsefNumberingEditorProps {
   series?: NumberingSeries;
   /** Create-mode prefill from a routing row ("Add a series first"). */
   createPrefill?: { documentType?: DocumentType; register?: string | null };
+  /** Demo viewer — the form is explorable but the final save is blocked. */
+  readOnly?: boolean;
   onDone: () => void;
   onCancel: () => void;
 }
@@ -74,6 +78,7 @@ export function KsefNumberingEditor({
   connectionId: _connectionId,
   series,
   createPrefill,
+  readOnly = false,
   onDone,
   onCancel,
 }: KsefNumberingEditorProps): ReactElement {
@@ -345,9 +350,11 @@ export function KsefNumberingEditor({
           <Button type="button" tone="secondary" onClick={onCancel} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="submit" tone="primary" disabled={isPending}>
-            {isPending ? 'Saving…' : 'Save series'}
-          </Button>
+          <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button type="submit" tone="primary" disabled={isPending || readOnly}>
+              {isPending ? 'Saving…' : 'Save series'}
+            </Button>
+          </ReadOnlyLock>
         </div>
       </form>
 

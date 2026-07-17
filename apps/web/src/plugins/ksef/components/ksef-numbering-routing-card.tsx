@@ -252,7 +252,6 @@ export function KsefNumberingRoutingCard({
                             register: row.register,
                           })
                         }
-                        disabled={readOnly}
                       >
                         Add a series first
                       </button>

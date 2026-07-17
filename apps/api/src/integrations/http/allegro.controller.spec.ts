@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AllegroController } from './allegro.controller';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type {
   IOAuthConnectionService,
   OAuthStateData,
@@ -474,6 +475,24 @@ describe('AllegroController', () => {
       await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
         'Command not found'
       );
+    });
+  });
+
+  // ─── @Roles metadata (#1707) ──────────────────────────────────────────────
+  //
+  // Listing responsible producers is a read of the same data the listings
+  // controller already exposes to admin/operator/viewer (#1608). Its role gate
+  // must match so a non-admin editing an Allegro connection doesn't get a
+  // spurious 403 "Insufficient permissions". Reads decorator metadata directly
+  // to stay in the fast unit tier.
+  describe('@Roles metadata (#1707 — responsible-producers read parity)', () => {
+    function rolesOf(methodName: string): string[] | undefined {
+      const proto = AllegroController.prototype as unknown as Record<string, unknown>;
+      return Reflect.getMetadata(ROLES_KEY, proto[methodName] as object) as string[] | undefined;
+    }
+
+    it('listResponsibleProducers includes admin, operator, and viewer', () => {
+      expect(rolesOf('listResponsibleProducers')).toEqual(['admin', 'operator', 'viewer']);
     });
   });
 });

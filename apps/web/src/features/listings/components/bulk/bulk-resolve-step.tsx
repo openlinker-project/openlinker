@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
+import { ApiError } from '../../../../shared/api/api-error';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { listingsQueryKeys } from '../../api/listings.query-keys';
@@ -58,6 +59,29 @@ interface BulkResolveStepProps {
   destinationResolvesCategoryAtSubmit?: boolean;
   /** Called once with the resolved outcomes for every row, on settle. */
   onComplete: (outcomes: BulkResolveOutcome[]) => void;
+}
+
+const RESOLVE_MAX_RETRIES = 3;
+
+/**
+ * Retry only transient conditions - request timeout / network drop (status 0),
+ * rate-limit (429), or a 5xx. The first Allegro `resolve-categories-batch` call
+ * on a cold connection (OAuth-token exchange + `/sale/products`) can time out or
+ * 5xx once; the app-wide `retry: false` default would otherwise dead-end the
+ * whole resolve step, forcing a manual page reload to warm the token and retry.
+ * A genuine 4xx (bad request, not-found) won't heal by retrying, so it fails fast.
+ */
+export function shouldRetryTransient(failureCount: number, error: Error): boolean {
+  if (failureCount >= RESOLVE_MAX_RETRIES) return false;
+  if (error instanceof ApiError) {
+    return error.isNetworkError() || error.status === 429 || error.isServerError();
+  }
+  return true;
+}
+
+/** Exponential backoff capped at 8s. */
+function resolveRetryDelay(attemptIndex: number): number {
+  return Math.min(1000 * 2 ** attemptIndex, 8000);
 }
 
 function barcodeOf(row: BulkWizardRow): string | null {
@@ -103,9 +127,14 @@ export function BulkResolveStep({
     queryKey: listingsQueryKeys.resolveCategoryBatch(connectionId, resolveVariantIds),
     queryFn: () => apiClient.listings.resolveCategoriesBatch(connectionId, { items: resolveItems }),
     enabled: resolveItems.length > 0,
+    retry: shouldRetryTransient,
+    retryDelay: resolveRetryDelay,
   });
 
-  const availabilityQuery = useInventoryAvailabilityBatchQuery(variantIds);
+  const availabilityQuery = useInventoryAvailabilityBatchQuery(variantIds, {
+    retry: shouldRetryTransient,
+    retryDelay: resolveRetryDelay,
+  });
 
   const categoryReady = resolveItems.length === 0 || categoryQuery.isSuccess;
   const availabilityReady = variantIds.length === 0 || availabilityQuery.isSuccess;

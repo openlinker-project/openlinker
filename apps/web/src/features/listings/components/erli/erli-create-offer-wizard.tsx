@@ -43,9 +43,13 @@ import { Input } from '../../../../shared/ui/input';
 import { SetupStepper } from '../../../../shared/ui/setup-stepper';
 import { Textarea } from '../../../../shared/ui/textarea';
 import { useToast } from '../../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
 import { useTranslation } from '../../../../shared/i18n';
 import { usePlatform, type OfferCreationWizardProps } from '../../../../shared/plugins';
 import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import { useDemoMode } from '../../../system';
 import { useProductQuery, useProductsQuery, useVariantQuery } from '../../../products';
 import type { Product, ProductVariant } from '../../../products';
 import { useCreateOfferMutation } from '../../hooks/use-create-offer-mutation';
@@ -130,6 +134,12 @@ export function ErliCreateOfferWizard({
   const mutation = useCreateOfferMutation();
   const { showToast } = useToast();
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+
+  // A demo viewer can walk the whole wizard (all steps stay editable); only
+  // the final "Create offer" submit is gated (#1704), mirroring the
+  // visible-but-disabled pattern used by AllegroCreateOfferWizard (#1663).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
 
   // Erli dispatch default parsed defensively from the (untyped) connection config.
   const dispatchDefault = useMemo<ErliDispatchTimeParam>(
@@ -752,9 +762,15 @@ export function ErliCreateOfferWizard({
                   Next →
                 </Button>
               ) : (
-                <Button type="submit" tone="primary" disabled={mutation.isPending}>
-                  {mutation.isPending ? 'Creating…' : 'Create offer'}
-                </Button>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    type="submit"
+                    tone="primary"
+                    disabled={mutation.isPending || write.demoReadOnly}
+                  >
+                    {mutation.isPending ? 'Creating…' : 'Create offer'}
+                  </Button>
+                </ReadOnlyLock>
               )}
             </div>
           </div>

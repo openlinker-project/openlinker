@@ -24,6 +24,8 @@ import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
 import type { Product, ProductFilters } from '../../features/products/api/products.types';
 import { useConnectionsQuery } from '../../features/connections';
@@ -75,6 +77,12 @@ export function ProductsListPage(): ReactElement {
   // resolve through the plugin registry.
   const connectionsQuery = useConnectionsQuery();
   const platforms = usePlatforms();
+  // The bulk "Create offers" CTA opens the bulk wizard whose final submit is a
+  // `listings:write` action; gate the CTA on `write.visible` so a genuinely
+  // unauthorized (non-demo) viewer never sees it, while a demo viewer sees it
+  // enabled and hits the gated confirm step (#1704).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
   const offerManagerConnections = useMemo<Connection[]>(
     () =>
       (connectionsQuery.data ?? [])
@@ -423,7 +431,7 @@ export function ProductsListPage(): ReactElement {
                   Clear
                 </Button>
                 {/* Capability-gated (#1096): hidden with 0 OfferManager connections. */}
-                {offerManagerConnections.length > 0 ? (
+                {offerManagerConnections.length > 0 && write.visible ? (
                   <Button tone="primary" onClick={handleCreateOffers}>
                     {soleConnectionName
                       ? `Create ${soleConnectionName} offers (${selectedIds.size.toLocaleString()})`
