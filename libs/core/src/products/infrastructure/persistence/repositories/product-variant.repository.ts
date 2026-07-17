@@ -54,6 +54,25 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async countByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (productIds.length === 0) return result;
+
+    const rows = await this.repository
+      .createQueryBuilder('variant')
+      .select('variant.productId', 'productId')
+      .addSelect('COUNT(*)', 'count')
+      .where('variant.productId IN (:...productIds)', { productIds: [...productIds] })
+      .groupBy('variant.productId')
+      .getRawMany<{ productId: string; count: string }>();
+
+    // COUNT(*) comes back as bigint (string) through TypeORM's raw-query path.
+    for (const row of rows) {
+      result.set(row.productId, Number(row.count));
+    }
+    return result;
+  }
+
   async findBySku(sku: string): Promise<ProductVariant | null> {
     const entity = await this.repository.findOne({
       where: { sku },

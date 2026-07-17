@@ -14,7 +14,7 @@
 import type { KpiCardTone } from '../../shared/ui/kpi-card';
 import type { StatusBadgeTone } from '../../shared/ui/status-badge';
 
-export type StockStatus = 'out-of-stock' | 'low-stock' | 'in-stock';
+export type StockStatus = 'oversold' | 'out-of-stock' | 'low-stock' | 'in-stock';
 
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
@@ -22,24 +22,30 @@ export function deriveStockStatus(
   availableQuantity: number,
   lowThreshold: number = DEFAULT_LOW_STOCK_THRESHOLD,
 ): StockStatus {
+  // Oversold before out-of-stock (#1720): a negative aggregate means more was
+  // sold than the master holds - the loudest state, not just "empty".
+  if (availableQuantity < 0) return 'oversold';
   if (availableQuantity <= 0) return 'out-of-stock';
   if (availableQuantity <= lowThreshold) return 'low-stock';
   return 'in-stock';
 }
 
 export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
+  oversold: 'Oversold',
   'out-of-stock': 'Out of stock',
   'low-stock': 'Low stock',
   'in-stock': 'In stock',
 };
 
 export const STOCK_STATUS_BADGE_TONE: Record<StockStatus, StatusBadgeTone> = {
+  oversold: 'error',
   'out-of-stock': 'error',
   'low-stock': 'warning',
   'in-stock': 'success',
 };
 
 export const STOCK_STATUS_KPI_TONE: Record<StockStatus, KpiCardTone> = {
+  oversold: 'error',
   'out-of-stock': 'error',
   'low-stock': 'warning',
   'in-stock': 'success',

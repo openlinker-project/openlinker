@@ -97,6 +97,7 @@ describe('ListingsController', () => {
       findById: jest.fn(),
       findMany: jest.fn(),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
+      countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
     };
     jobEnqueue = { enqueueJob: jest.fn() } as unknown as jest.Mocked<JobEnqueuePort>;
     offerCreationRecords = {
@@ -130,6 +131,7 @@ describe('ListingsController', () => {
     productVariantRepository = {
       findById: jest.fn().mockResolvedValue(null),
       findByProductId: jest.fn(),
+      countByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),
       findByEanOrGtinIn: jest.fn(),

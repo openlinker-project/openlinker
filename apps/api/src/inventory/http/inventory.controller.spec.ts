@@ -1,16 +1,15 @@
 /**
  * Inventory Controller Unit Tests
  *
- * Focuses on HTTP-shape concerns: pagination echo, date serialisation,
- * flattening of the InventoryItemView into the response DTO, and 404
- * translation on missing items. Composition correctness (dedup, null
- * product fallback across a list) is covered in the service spec.
+ * Focuses on HTTP-shape concerns: pagination echo, date serialisation, and
+ * flattening of the InventoryItemView into the response DTO. Composition
+ * correctness (dedup, null product fallback across a list) is covered in
+ * the service spec.
  *
  * @module apps/api/src/inventory/http
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
 import { InventoryController } from './inventory.controller';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
@@ -57,8 +56,8 @@ describe('InventoryController', () => {
   beforeEach(async () => {
     const mockQueryService: jest.Mocked<IInventoryQueryService> = {
       listInventoryItems: jest.fn(),
-      getInventoryItem: jest.fn(),
       getAvailabilityByVariantIds: jest.fn(),
+      getProductStockAggregates: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -131,33 +130,6 @@ describe('InventoryController', () => {
         { productId: 'prod-1', productVariantId: 'var-a', locationId: 'loc-1' },
         { limit: 10, offset: 5 }
       );
-    });
-  });
-
-  describe('getInventoryItem', () => {
-    it('flattens the view into the DTO on the happy path', async () => {
-      queryService.getInventoryItem.mockResolvedValue(viewWithProduct);
-
-      const result = await controller.getInventoryItem('inv-a');
-
-      expect(result).toEqual({
-        id: 'inv-a',
-        productId: 'prod-1',
-        productVariantId: 'var-a',
-        availableQuantity: 50,
-        reservedQuantity: 5,
-        locationId: null,
-        updatedAt: '2026-04-01T00:00:00.000Z',
-        productName: 'Product One',
-        productSku: 'SKU-1',
-        productImageUrl: 'https://shop.test/img/1/cover.jpg',
-      });
-    });
-
-    it('throws NotFoundException when the query service returns null', async () => {
-      queryService.getInventoryItem.mockResolvedValue(null);
-
-      await expect(controller.getInventoryItem('inv-missing')).rejects.toThrow(NotFoundException);
     });
   });
 

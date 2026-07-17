@@ -65,6 +65,7 @@ export type {
   OfferMappingFilters,
   OfferMappingPagination,
   PaginatedOfferMappings,
+  ProductListingsCoverage,
 } from './domain/types/offer-mapping.types';
 export type {
   OfferDescriptionSectionItem,

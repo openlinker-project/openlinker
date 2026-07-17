@@ -26,6 +26,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   VariantAvailability,
+  ProductStockAggregate,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -33,6 +34,11 @@ import type {
   PaginatedInventoryView,
 } from '../types/inventory-view.types';
 import type { IInventoryQueryService } from './inventory-query.service.interface';
+
+// Per-call input cap for the product-level stock aggregate read (#1720) -
+// mirrors the 200-ID request cap on the variant-availability endpoint
+// (INVENTORY_AVAILABILITY_MAX_VARIANT_IDS).
+const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
 
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
@@ -53,15 +59,6 @@ export class InventoryQueryService implements IInventoryQueryService {
       items: items.map((item) => this.compose(item, productMap.get(item.productId) ?? null)),
       total,
     };
-  }
-
-  async getInventoryItem(id: string): Promise<InventoryItemView | null> {
-    const item = await this.inventoryRepository.findById(id);
-    if (!item) {
-      return null;
-    }
-    const product = await this.productsService.getProduct(item.productId);
-    return this.compose(item, product);
   }
 
   async getAvailabilityByVariantIds(
@@ -85,6 +82,22 @@ export class InventoryQueryService implements IInventoryQueryService {
           locationCount: 0,
         }
     );
+  }
+
+  async getProductStockAggregates(
+    productIds: readonly string[]
+  ): Promise<readonly ProductStockAggregate[]> {
+    // Empty input short-circuits without a repo call (mirrors
+    // getAvailabilityByVariantIds); the size cap protects the grouped query
+    // from unbounded IN-lists - callers page their input (the products list
+    // page passes at most one page of ids).
+    if (productIds.length === 0) return [];
+    if (productIds.length > MAX_STOCK_AGGREGATE_PRODUCT_IDS) {
+      throw new Error(
+        `getProductStockAggregates accepts at most ${String(MAX_STOCK_AGGREGATE_PRODUCT_IDS)} productIds per call (got ${String(productIds.length)})`
+      );
+    }
+    return this.inventoryRepository.findStockAggregatesByProductIds(productIds);
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {

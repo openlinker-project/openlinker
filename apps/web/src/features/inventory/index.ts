@@ -5,12 +5,12 @@
  * here — never deep paths into api/ / hooks/ / components/. See
  * docs/frontend-architecture.md § Feature Public Surface.
  *
- * `useInventoryQuery` is intentionally not re-exported here — its two
- * consumers (`pages/inventory/inventory-list-page.tsx`, the cross-product
- * stock-overview page, and `pages/products/product-detail-page.tsx`) both
- * deep-import it directly, the same page-level pattern the removed Inventory
- * detail page used for `useListingsQuery`. Add it to the barrel in a
- * one-line edit if a cross-feature (non-page) consumer needs it.
+ * `useInventoryQuery` is intentionally not re-exported here — its consumers
+ * (`pages/products/product-detail-page.tsx` and the products cockpit's
+ * `ProductRowDetail`, which absorbed the removed `/inventory` list page in
+ * #1720) deep-import it directly, the same page-level pattern the removed
+ * Inventory detail page used for `useListingsQuery`. Add it to the barrel in
+ * a one-line edit if a cross-feature (non-page) consumer needs it.
  *
  * @module apps/web/src/features/inventory
  */

@@ -231,7 +231,6 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
-      getById: vi.fn().mockResolvedValue(null),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {

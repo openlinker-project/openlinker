@@ -11,6 +11,7 @@
  * @module apps/api/src/products/http
  */
 import {
+  BadRequestException,
   Controller,
   Get,
   Query,
@@ -23,8 +24,11 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { PRODUCTS_SERVICE_TOKEN, IProductsService } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import type { Product, ProductVariant } from '@openlinker/core/products';
+import type { Product, ProductVariant, ProductListSort } from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import { IOfferMappingsService, OFFER_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
+import type { ProductListingsCoverage } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
@@ -34,8 +38,18 @@ import { ProductVariantSummaryResponseDto } from './dto/product-variant-summary-
 import { PaginatedProductsResponseDto } from './dto/paginated-products-response.dto';
 import { PaginatedProductVariantsResponseDto } from './dto/paginated-product-variants-response.dto';
 import type { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
+import type { ProductListingsCoverageDto } from './dto/product-listings-coverage.dto';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
+
+// Cap on the number of connection ids accepted through the `unlistedOn` CSV
+// (#1720) - the realistic marketplace-connection count is single digits.
+const MAX_UNLISTED_ON_CONNECTION_IDS = 20;
+
+// Connection ids are UUIDs (connections.id). Validating the shape here keeps
+// garbage input out of the repository's `::uuid[]` cast (a non-UUID string
+// would otherwise surface as a Postgres 22P02 error / HTTP 500).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Shared variant-to-DTO mapper.
@@ -73,7 +87,11 @@ export class ProductsController {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IdentifierMappingPort
+    private readonly identifierMapping: IdentifierMappingPort,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventoryQuery: IInventoryQueryService,
+    @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
+    private readonly offerMappings: IOfferMappingsService
   ) {}
 
   @Get()
@@ -88,15 +106,93 @@ export class ProductsController {
     type: PaginatedProductsResponseDto,
   })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
-    const { search, limit = 20, offset = 0 } = query;
+    const { search, stock, connectionId, sort, dir, limit = 20, offset = 0 } = query;
 
-    const { items, total } = await this.productsService.listProducts({ search }, { limit, offset });
+    const unlistedOnConnectionIds = this.parseUnlistedOn(query.unlistedOn);
+    const sortSpec: ProductListSort | undefined = sort
+      ? { field: sort, dir: dir ?? 'desc' }
+      : undefined;
+
+    const { items, total } = await this.productsService.listProducts(
+      { search, stock, unlistedOnConnectionIds, sourceConnectionId: connectionId },
+      { limit, offset },
+      sortSpec
+    );
+
+    const dtos = items.map((p) => this.toProductDto(p));
+
+    // Display enrichment (#1720): page-scoped cross-context reads composed
+    // at the interface layer - stock aggregates (inventory), listings
+    // coverage (listings), variant counts (products), and source external
+    // ids (identifier mapping), all in parallel.
+    if (items.length > 0) {
+      const ids = items.map((p) => p.id);
+      const [aggregates, coverage, variantCounts, externalIdLists] = await Promise.all([
+        this.inventoryQuery.getProductStockAggregates(ids),
+        this.offerMappings.countListedVariantsByProducts(ids),
+        this.productsService.getVariantCountsByProductIds(ids),
+        Promise.all(ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))),
+      ]);
+
+      const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
+      const coverageByProduct = new Map<string, ProductListingsCoverageDto[]>();
+      for (const row of coverage) {
+        const list = coverageByProduct.get(row.productId) ?? [];
+        list.push(this.toCoverageDto(row));
+        coverageByProduct.set(row.productId, list);
+      }
+
+      dtos.forEach((dto, i) => {
+        const aggregate = aggregateByProduct.get(dto.id);
+        // Products with no inventory rows have no aggregate row - zero-fill
+        // for display (no stock = 0 available / 0 reserved, never written).
+        dto.totalAvailable = aggregate?.totalAvailable ?? 0;
+        dto.totalReserved = aggregate?.totalReserved ?? 0;
+        dto.stockUpdatedAt = aggregate?.stockUpdatedAt ? aggregate.stockUpdatedAt.toISOString() : null;
+        dto.variantCount = variantCounts.get(dto.id) ?? 0;
+        dto.listingsCoverage = coverageByProduct.get(dto.id) ?? [];
+        dto.externalIds = externalIdLists[i].map((e) => this.toExternalIdDto(e));
+      });
+    }
 
     return {
-      items: items.map((p) => this.toProductDto(p)),
+      items: dtos,
       total,
       limit,
       offset,
+    };
+  }
+
+  /**
+   * Split, trim, dedupe, and cap the `unlistedOn` CSV (#1720). Rejects
+   * non-UUID entries with 400 so garbage never reaches the repository's
+   * `::uuid[]` cast (which would surface as an HTTP 500).
+   */
+  private parseUnlistedOn(csv: string | undefined): readonly string[] | undefined {
+    if (!csv) return undefined;
+    const ids = [
+      ...new Set(
+        csv
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      ),
+    ];
+    if (ids.length === 0) return undefined;
+    const invalid = ids.filter((id) => !UUID_RE.test(id));
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `unlistedOn must be a CSV of connection UUIDs; invalid entries: ${invalid.join(', ')}`
+      );
+    }
+    return ids.slice(0, MAX_UNLISTED_ON_CONNECTION_IDS);
+  }
+
+  private toCoverageDto(row: ProductListingsCoverage): ProductListingsCoverageDto {
+    return {
+      connectionId: row.connectionId,
+      platformType: row.platformType,
+      listedVariants: row.listedVariants,
     };
   }
 

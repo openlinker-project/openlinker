@@ -77,8 +77,8 @@ describe('OfferStockRestoreService', () => {
 
     inventoryQuery = {
       listInventoryItems: jest.fn(),
-      getInventoryItem: jest.fn(),
       getAvailabilityByVariantIds: jest.fn(),
+      getProductStockAggregates: jest.fn(),
     } as unknown as jest.Mocked<IInventoryQueryService>;
 
     service = new OfferStockRestoreService(
